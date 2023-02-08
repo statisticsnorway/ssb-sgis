@@ -1,48 +1,5 @@
 
-
-def prepare_network_norway(
-    roads: GeoDataFrame, 
-    out_path: str,
-    source_col = "fromnode", 
-    target_col = "tonode",
-    direction_col = "oneway",
-    minute_cols = ("drivetime_fw", "drivetime_bw"),
-    muni_col = "municipality",
-    turn_restrictions: DataFrame | None = None,
-    ):
-
-    roads.columns = [col.lower() for col in roads.columns]
-
-    roads = (roads
-            .to_crs(25833)
-            .loc[:, [source_col, target_col, direction_col, "geometry"] + list(minute_cols)]
-            .rename(columns={
-                muni_col: "KOMMUNENR",
-            })
-    )
-
-    roads["geometry"] = force_2d(roads.geometry)
-
-    N = DirectedNetwork(
-        roads_directed,
-        cost="minutes",
-    )
-
-    N = N.make_directed_network_norway()
-
-    if turn_restrictions:
-        N.network = find_turn_restrictions(N.network, turn_restrictions)
-
-    N = N.close_network_holes(max_dist=1.1, hole_col="hole")
-
-    N = N.find_isolated(max_length=500)
-
-    write_geopandas(
-        N.network,
-        out_path
-    )
-
-    return N
+from .network_directed_undirected import DirectedNetwork
 
 
 class NetworkDaplaCar(DirectedNetwork):
@@ -120,6 +77,51 @@ class NetworkDaplaFoot(UndirectedNetwork):
             self.network["minutes"] = self.network.length / speed * 16.6666667
 
 
+def prepare_network_norway(
+    roads: GeoDataFrame, 
+    out_path: str,
+    source_col = "fromnode", 
+    target_col = "tonode",
+    direction_col = "oneway",
+    minute_cols = ("drivetime_fw", "drivetime_bw"),
+    muni_col = "municipality",
+    turn_restrictions: DataFrame | None = None,
+    ):
+
+    roads.columns = [col.lower() for col in roads.columns]
+
+    roads = (roads
+            .to_crs(25833)
+            .loc[:, [source_col, target_col, direction_col, "geometry"] + list(minute_cols)]
+            .rename(columns={
+                muni_col: "KOMMUNENR",
+            })
+    )
+
+    roads["geometry"] = force_2d(roads.geometry)
+
+    N = DirectedNetwork(
+        roads,
+        cost="minutes",
+    )
+
+    N = N.make_directed_network_norway()
+
+    if turn_restrictions:
+        N.network = find_turn_restrictions(N.network, turn_restrictions)
+
+    N = N.close_network_holes(max_dist=1.1, hole_col="hole")
+
+    N = N.find_isolated(max_length=500)
+
+    write_geopandas(
+        N.network,
+        out_path
+    )
+
+    return N
+
+
 def read_network_from_dapla(roads, kommuner):
     
     if kommuner:
@@ -133,7 +135,9 @@ def read_network_from_dapla(roads, kommuner):
 
 
 def find_turn_restrictions(roads, turn_restrictions):
-        
+    
+    """ Not sure which version is correct because of errors in the source data. """
+    
     # FID starter på  1
     roads["fid"] = roads["idx"] + 1
 
