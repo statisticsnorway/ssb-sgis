@@ -1,29 +1,13 @@
 
 import warnings
-from shapely import line_merge
 from shapely.constructive import reverse
-from igraph import Graph
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
 import numpy as np
-from pandas import DataFrame, RangeIndex
-from abc import ABC
-from copy import copy, deepcopy
+from pandas import DataFrame
 
 from .network import Network
 
-
-class UndirectedNetwork(Network):
-    def __init__(
-        self,
-        roads: GeoDataFrame,
-        cost: str = "meters",
-        ):
-
-        super().__init__(roads, cost)
-
-        self.prepare_network()
-
-        self.validate_cost(raise_error=True)
+from .gis import gdf_concat
 
 
 class DirectedNetwork(Network):
@@ -31,13 +15,16 @@ class DirectedNetwork(Network):
         self,
         roads: GeoDataFrame,
         cost: str = "minutes",
+        **kwargs,
         ):
         
-        super().__init__(roads, cost)
+        super().__init__(roads, cost=cost, **kwargs)
 
         self.prepare_network()
 
         self.check_if_directed()
+
+        self.directed = True
 
     def check_if_directed(self):
 
@@ -56,7 +43,7 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
         direction_col: str = "oneway",
         direction_vals: list | tuple = ("B", "F", "T"),
         speed_col: str = "maxspeed",
-        ) -> DirectedNetwork:
+        ):
 
         return self.make_directed_network(
             direction_col=direction_col,
@@ -69,7 +56,7 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
         direction_col: str = "oneway",
         direction_vals: list | tuple = ("B", "FT", "TF"),
         minute_cols: list | tuple = ("drivetime_fw", "drivetime_bw"),
-        ) -> DirectedNetwork:
+        ):
 
         return self.make_directed_network(
             direction_col=direction_col,
@@ -83,7 +70,7 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
         direction_vals: list | tuple,
         speed_col: str | None = None,
         minute_cols: list | tuple | str | None = None,
-        ) -> DirectedNetwork:
+        ):
         
         if len(direction_vals) != 3:
             raise ValueError("'direction_vals' should be tuple/list with values of directions both, forwards and backwards. E.g. ('B', 'F', 'T')")
@@ -124,3 +111,12 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
             self.network["minutes"] = self.network.length / self.network[speed_col] * 16.6666666667
         
         return self
+
+    def __repr__(self) -> str:
+        return f"""
+DirectedNetwork class instance with {len(self.network)} rows.
+- cost: {self.cost}
+- search_tolerance: {self.search_tolerance} meters
+- search_factor: {self.search_factor} % + m
+- cost_to_nodes: {self.cost_to_nodes} km/h
+"""

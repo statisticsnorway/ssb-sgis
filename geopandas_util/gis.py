@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 from shapely import Geometry
 from geopandas import GeoDataFrame, GeoSeries
-
+import matplotlib.pyplot as plt
+import warnings
 
 # evt fix_geoms()
 def clean_geoms(
@@ -46,7 +47,7 @@ def clean_geoms(
     
     if isinstance(gdf, gpd.GeoDataFrame):
         gdf = gdf.loc[cleaned.index]
-        gdf._geometry_column_name = cleaned
+        gdf[gdf._geometry_column_name] = cleaned
     else:
         gdf = cleaned
 
@@ -54,8 +55,6 @@ def clean_geoms(
         gdf = gdf.reset_index(drop=True)
 
     return gdf
-    
-git config --global diff.ipynb.textconv "C:\Users\ort\AppData\Local\Programs\Python\Python311\python.exe -m nbstripout -t"
 
 
 def to_single_geom_type(
@@ -73,11 +72,11 @@ def to_single_geom_type(
     poly_check = len(gdf.loc[gdf.geom_type.isin(polys)])
     lines_check = len(gdf.loc[gdf.geom_type.isin(lines)])
     points_check = len(gdf.loc[gdf.geom_type.isin(points)])
-    
+
     _max = max([poly_check, lines_check, points_check])
 
-    if _max == len(geom):
-        return geom
+    if _max == len(gdf):
+        return gdf
 
     if poly_check == _max:
         gdf = gdf.loc[gdf.geom_type.isin(polys)]
@@ -92,6 +91,68 @@ def to_single_geom_type(
         gdf = gdf.reset_index(drop=True)
     
     return gdf
+
+
+
+def close_holes(
+    geom: GeoDataFrame | GeoSeries | Geometry, 
+    max_km2: int | None = None, 
+    copy: bool=True
+) -> GeoDataFrame | GeoSeries | Geometry:
+    """
+    Closes holes in polygons. The operation is done row-wise if 'geom' is a GeoDataFrame or GeoSeries.
+
+    max_km2: if None (default), all holes are closed. 
+    Otherwise, closes holes with an area below the specified number in square kilometers.
+    """
+
+    if copy:
+        geom = geom.copy()
+
+    if isinstance(geom, gpd.GeoDataFrame):
+        geom["geometry"] = geom.geometry.map(lambda x: _close_holes_geom(x, max_km2))
+
+    elif isinstance(geom, gpd.GeoSeries):
+        geom = geom.map(lambda x: _close_holes_geom(x, max_km2))
+        geom = gpd.GeoSeries(geom)
+
+    else:
+        geom = _close_holes_geom(geom, max_km2)
+
+    return geom
+
+
+# flytte hvor?
+from shapely import (
+    polygons,
+    get_exterior_ring,
+    get_parts,
+    get_num_interior_rings,
+    get_interior_ring,
+    area,
+)
+from shapely.ops import unary_union
+
+
+def _close_holes_geom(geom, max_km2=None):
+    """ closes holes within one shapely geometry. """
+
+    # dissolve the exterior ring(s)
+    if max_km2 is None:
+        holes_closed = polygons(get_exterior_ring(get_parts(geom)))
+        return unary_union(holes_closed)
+
+    # start with list containing the geometry, then append all holes smaller than 'max_km2'.
+    holes_closed = [geom]
+    singlepart = get_parts(geom)
+    for part in singlepart:
+        antall_indre_ringer = get_num_interior_rings(part)
+        if antall_indre_ringer > 0:
+            for n in range(antall_indre_ringer):
+                hull = polygons(get_interior_ring(part, n))
+                if area(hull) / 1_000_000 < max_km2:
+                    holes_closed.append(hull)
+    return unary_union(holes_closed)
 
 
 #def clipclean(
@@ -296,47 +357,24 @@ def min_sjoin(left_gdf, right_gdf, fjern_dupkol = True, **kwargs) -> gpd.GeoData
     return joinet.loc[:, ~joinet.columns.str.contains('index|level_')]
 
 
-def kartlegg(gdf, kolonne=None, scheme="Quantiles", tittel=None, storrelse=15, fontsize=16, legend=True, alpha=0.7, **kwargs) -> None:
-    """ Enkel, statisk kartlegging. """
-    import matplotlib.pyplot as plt
+# mulig flytte tim maps.py?
+def qtm(gdf, kolonne=None, *, scheme="Quantiles", tittel=None, storrelse=12, fontsize=16, legend=True, **kwargs) -> None:
+    """ Quick, thematic map (name stolen from R's tmap package). """
     fig, ax = plt.subplots(1, figsize=(storrelse, storrelse))
     ax.set_axis_off()
     ax.set_title(tittel, fontsize = fontsize)
-    gdf.plot(kolonne, scheme=scheme, legend=legend, alpha=alpha, ax=ax, **kwargs)
+    gdf.plot(kolonne, scheme=scheme, legend=legend, ax=ax, **kwargs)
 
 
-def tilfeldige_punkter(n: int, mask=None) -> gpd.GeoDataFrame:
-    """ lager n tilfeldige punkter innenfor et gitt område (mask). """
-    from shapely.wkt import loads
-    import random
-    if mask is None:
-        x = np.array([random.random()*10**7 for _ in range(n*1000)])
-        y = np.array([random.random()*10**8 for _ in range(n*1000)])
-        punkter = to_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
-        return punkter
-    mask_kopi = mask.copy()
-    mask_kopi = mask_kopi.to_crs(25833)
-    out = gpd.GeoDataFrame({"geometry":[]}, geometry="geometry", crs=25833)
-    while len(out) < n:
-        x = np.array([random.random()*10**7 for _ in range(n*1000)])
-        x = x[(x > mask_kopi.bounds.minx.iloc[0]) & (x < mask_kopi.bounds.maxx.iloc[0])]
-        
-        y = np.array([random.random()*10**8 for _ in range(n*1000)])
-        y = y[(y > mask_kopi.bounds.miny.iloc[0]) & (y < mask_kopi.bounds.maxy.iloc[0])]
-        
-        punkter = til_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
-        overlapper = punkter.clip(mask_kopi)
-        out = gdf_concat([out, overlapper])
-    out = out.sample(n).reset_index(drop=True).to_crs(mask.crs)
-    out["idx"] = out.index
-    return out
+def clipmap():
+    pass
 
 
 def find_neighbours(
     gdf: GeoDataFrame | GeoSeries, 
     possible_neighbours: GeoDataFrame | GeoSeries, 
     id_col: str, 
-    within_metres: int = 1
+    within_distance: int = 1,
     ):
 
     """ Return geometries that are less than 1 meter
@@ -346,21 +384,22 @@ def find_neighbours(
     Args:
         gdf: the geometry 
     """
+
+    if gdf.crs == 4326 and within_distance > 0.01:
+        warnings.warn("'gdf' has latlon crs, meaning the 'within_distance' paramter will not be in meters, but degrees.")
     
-    mulige_naboer = mulige_naboer.to_crs(25833)
+    possible_neighbours = possible_neighbours.to_crs(gdf.crs)
     
-    bufret = (gdf
-              .to_crs(25833)
-              .buffer(within_metres)
+    joined = (gdf
+              .buffer(within_distance)
               .to_frame()
+              .sjoin(possible_neighbours, how="inner")
     )
     
-    joinet = bufret.sjoin(mulige_naboer, how="inner")
-    
-    return [x for x in joinet[id_col].unique()]
+    return [x for x in joined[id_col].unique()]
 
-def find_neighbors():
-    return find_neighbours()
+def find_neighbors(gdf: GeoDataFrame | GeoSeries, possible_neighbors: GeoDataFrame | GeoSeries, id_col: str, within_distance: int = 1):
+    return find_neighbours(gdf, possible_neighbors, id_col, within_distance)
 
 
 def gridish(gdf, meter, x2 = False, minmax=False):
@@ -405,7 +444,7 @@ def gridish(gdf, meter, x2 = False, minmax=False):
     return gdf
 
 
-def snap_til(punkter, snap_til, maks_distanse=500, copy=False):
+def snap_to(punkter, snap_til, maks_distanse=500, copy=False):
     """
     Snapper (flytter) punkter til naermeste punkt/linje/polygon innen en gitt maks_distanse.
     Går via nearest_points for å finne det nøyaktige punktet. Med kun snap() blir det unøyaktig.
@@ -431,6 +470,65 @@ def snap_til(punkter, snap_til, maks_distanse=500, copy=False):
             punkter.iloc[i] = snappet_punkt
         
     return punkter
+
+
+def to_multipoint(geom, copy=False):
+
+    from shapely.wkt import loads
+    from shapely import force_2d
+    from shapely.ops import unary_union
+    
+    if copy:
+        geom = geom.copy()
+
+    def til_multipunkt_i_shapely(geom):
+
+        koordinater = ''.join([x for x in geom.wkt if x.isdigit() or x.isspace() or x=="." or x==","]).strip()
+
+        alle_punkter = [loads(f"POINT ({punkt.strip()})") for punkt in koordinater.split(",")]
+
+        return unary_union(alle_punkter)
+
+    if isinstance(geom, gpd.GeoDataFrame):
+        geom["geometry"] = force_2d(geom.geometry)
+        geom["geometry"] = geom.geometry.apply(lambda x: til_multipunkt_i_shapely(x))
+
+    elif isinstance(geom, gpd.GeoSeries):
+        geom = force_2d(geom)
+        geom = geom.apply(lambda x: til_multipunkt_i_shapely(x))
+
+    else:
+        geom = force_2d(geom)
+        geom = til_multipunkt_i_shapely(unary_union(geom))
+
+    return geom
+
+
+def random_points(n: int, mask=None) -> gpd.GeoDataFrame:
+    """ lager n tilfeldige punkter innenfor et gitt område (mask). """
+    from shapely.wkt import loads
+    import random
+    if mask is None:
+        x = np.array([random.random()*10**7 for _ in range(n*1000)])
+        y = np.array([random.random()*10**8 for _ in range(n*1000)])
+        punkter = to_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
+        return punkter
+    mask_kopi = mask.copy()
+    mask_kopi = mask_kopi.to_crs(25833)
+    out = gpd.GeoDataFrame({"geometry":[]}, geometry="geometry", crs=25833)
+    while len(out) < n:
+        x = np.array([random.random()*10**7 for _ in range(n*1000)])
+        x = x[(x > mask_kopi.bounds.minx.iloc[0]) & (x < mask_kopi.bounds.maxx.iloc[0])]
+        
+        y = np.array([random.random()*10**8 for _ in range(n*1000)])
+        y = y[(y > mask_kopi.bounds.miny.iloc[0]) & (y < mask_kopi.bounds.maxy.iloc[0])]
+        
+        punkter = til_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
+        overlapper = punkter.clip(mask_kopi)
+        out = gdf_concat([out, overlapper])
+    out = out.sample(n).reset_index(drop=True).to_crs(mask.crs)
+    out["idx"] = out.index
+    return out
 
 
 def antall_innen_avstand(gdf1: gpd.GeoDataFrame,
@@ -467,35 +565,3 @@ def antall_innen_avstand(gdf1: gpd.GeoDataFrame,
     gdf1 = gdf1.drop("min_iddd",axis=1)
 
     return gdf1
-
-
-def til_multipunkt(geom, copy=False):
-
-    from shapely.wkt import loads
-    from shapely import force_2d
-    from shapely.ops import unary_union
-    
-    if copy:
-        geom = geom.copy()
-
-    def til_multipunkt_i_shapely(geom):
-
-        koordinater = ''.join([x for x in geom.wkt if x.isdigit() or x.isspace() or x=="." or x==","]).strip()
-
-        alle_punkter = [loads(f"POINT ({punkt.strip()})") for punkt in koordinater.split(",")]
-
-        return unary_union(alle_punkter)
-
-    if isinstance(geom, gpd.GeoDataFrame):
-        geom["geometry"] = force_2d(geom.geometry)
-        geom["geometry"] = geom.geometry.apply(lambda x: til_multipunkt_i_shapely(x))
-
-    elif isinstance(geom, gpd.GeoSeries):
-        geom = force_2d(geom)
-        geom = geom.apply(lambda x: til_multipunkt_i_shapely(x))
-
-    else:
-        geom = force_2d(geom)
-        geom = til_multipunkt_i_shapely(unary_union(geom))
-
-    return geom

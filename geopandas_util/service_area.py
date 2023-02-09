@@ -2,50 +2,49 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 from shapely.geometry import LineString
-from networkz.hjelpefunksjoner import gdf_concat
-from networkz.id_greier import bestem_ids, lag_midlr_id, map_ids
-from networkz.lag_igraph import lag_graf
 
+from .gis import gdf_concat
 
 def service_area(
-    G,
-    startpunkter: gpd.GeoDataFrame,
+    nx,
+    startpoints: gpd.GeoDataFrame,
     impedance,
-    id_kolonne=None,  # hvis ikke id-kolonne oppgis, brukes startpunktenes geometri som id
+    id_col=None,  # hvis ikke id-kolonne oppgis, brukes startpunktenes geometri som id
     dissolve=True,
 ):
-    startpunkter = startpunkter.to_crs(25833)
-
-    startpunkter, id_kolonner = bestem_ids(id_kolonne, startpunkter)
-
-    startpunkter["nz_idx"] = lag_midlr_id(G.noder, startpunkter)
-
-    G2, startpunkter = lag_graf(G, G.kostnad, startpunkter)
+    if not id_col:
+        id_col = "origin"
 
     if isinstance(impedance, (str, int, float)):
         impedance = [float(impedance)]
 
-    # loop for hvert startpunkt og hver kostnad
-    alle_service_areas = []
-    for i in startpunkter["nz_idx"]:
+    # loop for hvert startpunkt og hver cost
+    service_areas = []
+    for i in startpoints["temp_idx"]:
         for imp in impedance:
-            if not i in G2.vs()["name"] and not i in G2.vs.indices:
+            if not i in nx.graph.vs()["name"] and not i in nx.graph.vs.indices:
                 continue
 
-            # beregn alle kostnader fra startpunktet
-            resultat = G2.distances(weights="weight", source=i)
+            # beregn alle coster fra startpunktet
+            resultat = nx.graph.distances(weights="weight", source=i)
 
-            # lag tabell av resultatene og fjern alt over ønsket kostnad
+            # lag tabell av resultatene og fjern alt over ønsket cost
             df = pd.DataFrame(
-                data={"name": np.array(G2.vs["name"]), G.kostnad: resultat[0]}
+                data={"name": np.array(nx.graph.vs["name"]), nx.cost: resultat[0]}
             )
-            df = df[df[G.kostnad] < imp]
+            df = df[df[nx.cost] < imp]
 
             if len(df) == 0:
-                alle_service_areas.append(
+                service_areas.append(
+                        pd.DataFrame(
+                            {id_col: [i], nx.cost: [imp], "geometry": np.nan}
+                        )
+                    )
+                continue
+                service_areas.append(
                     gpd.GeoDataFrame(
                         pd.DataFrame(
-                            {id_kolonne: [i], G.kostnad: imp, "geometry": LineString()}
+                            {id_col: [i], nx.cost: imp, "geometry": LineString()}
                         ),
                         geometry="geometry",
                         crs=25833,
@@ -54,19 +53,14 @@ def service_area(
                 continue
 
             # velg ut vegene som er i dataframen vi nettopp lagde. Og dissolve til én rad.
-            sa = G.nettverk.loc[G.nettverk.target.isin(df.name)]
+            sa = nx.network.loc[nx.network.target.isin(df.name)]
 
             if dissolve:
                 sa = sa[["geometry"]].dissolve().reset_index(drop=True)
 
-            # lag kolonner for id, kostnad og evt. node-info
-            sa[id_kolonne] = i
-            sa[G.kostnad] = imp
-            alle_service_areas.append(sa)
+            # lag kolonner for id, cost og evt. node-info
+            sa[id_col] = i
+            sa[nx.cost] = imp
+            service_areas.append(sa)
 
-    alle_service_areas = gdf_concat(alle_service_areas)
-
-    # få tilbake opprinnelige id-er
-    alle_service_areas = map_ids(alle_service_areas, id_kolonner, startpunkter)
-
-    return alle_service_areas.reset_index(drop=True)
+    return gdf_concat(service_areas)

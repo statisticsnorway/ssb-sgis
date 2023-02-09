@@ -2,19 +2,15 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from shapely import shortest_line
-from networkz.id_greier import bestem_ids, lag_midlr_id, map_ids
-from networkz.lag_igraph import lag_graf
-from networkz.grafclass import Graf
 from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame
-
+import networkx as nx
 
 def od_cost_matrix(
-    N: Network,
+    nw,
     startpoints: GeoDataFrame,
     endpoints: GeoDataFrame,
     *,
-    id_col: str | list | tuple = None,
     lines=False,
     rowwise=False,
     cutoff: int = None,
@@ -24,11 +20,11 @@ def od_cost_matrix(
     """
     """
 
-    cost = N.cost
-
+    cost = nw.cost
+    
     if not rowwise:
         # selve avstandsberegningen her:
-        results = N.graph.distances(
+        results = nw.graph.distances(
             weights="weight",
             source=startpoints["temp_idx"],
             target=endpoints["temp_idx"],
@@ -44,12 +40,12 @@ def od_cost_matrix(
     else:
         ori_idx, des_idx, costs = [], [], []
         for f_idx, t_idx in zip(startpoints["temp_idx"], endpoints["temp_idx"]):
-            results = N.graph.distances(weights="weight", source=f_idx, target=t_idx)
+            results = nw.graph.distances(weights="weight", source=f_idx, target=t_idx)
             ori_idx.append(f_idx)
-            destination_idx.append(t_idx)
+            des_idx.append(t_idx)
             costs.append(results[0][0])
 
-    df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, N.cost: costs})
+    df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, nw.cost: costs})
 
     # litt opprydning
     out = (
@@ -76,8 +72,8 @@ def od_cost_matrix(
     }
     out["wkt_ori"] = out["origin"].map(wkt_dict_origin)
     out["wkt_des"] = out["destination"].map(wkt_dict_destination)
-    out[N.cost] = [
-        0 if ori == des else out[N.cost].iloc[i]
+    out[nw.cost] = [
+        0 if ori == des else out[nw.cost].iloc[i]
         for i, (ori, des) in enumerate(zip(out.wkt_ori, out.wkt_des))
     ]
 

@@ -1,34 +1,102 @@
-
+import numpy as np
 import warnings
-from shapely import line_merge
-from shapely.constructive import reverse
 from igraph import Graph
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
 from pandas import DataFrame, RangeIndex
-from abc import ABC
 from copy import copy, deepcopy
+from .make_graph import make_graph
 
-"""
-from .core import (
-    clean_geoms,
-)
-from .network_functions import (
-    make_node_ids,
-    close_network_holes,
-    find_isolated_networks,
-    ZeroRoadsError,
-)
 from .od_cost_matrix import od_cost_matrix
+from .shortest_path import shortest_path
+from .service_area import service_area
+
+# TODO: vurdere å gjøre denne mindre, dumt at denne skal være avhengig av Network
+# eller composition
+# MakeGraph, Rules, Points 
+
+# RunAnalysis(od, sp, sa, temp_ids, map_ids) - hva da med graph_is_up_to_date???
+# Points - self.startpoints = Points(startpoints, id_col)
+# Rules -> ABC, protocol...
+# MakeGraph - self.graph = MakeGraph(self) - hva med update_graph_info, graph_is_up_to_date???
+# ValidateGraph - update_graph_info, graph_is_up_to_date
+
+
 """
+points = Points()
+points.start = startpoints
+points.end = endpoints
+points.validate_points()
+points.prepare_points()
+"""
+class Points:
+    def __init__(
+        self, 
+        points: GeoDataFrame,
+        id_col: str,
+    ) -> None:
+#        self.points = points
+ #       self.len = len(points)
+        self.temp_idx_max = 0
+        self.id_dict = {temp_idx: idx for temp_idx, idx in zip(points.temp_idx, points[id_col])}
+
+    def prepare_points(self):
+        self.start = self.start.to_crs(self.network.crs)
+        self.start["temp_idx"] = self.make_temp_ids(self.start)
+
+        if self.end is not None:
+            self.end = self.end.to_crs(self.network.crs)
+            self.end["temp_idx"] = self.make_temp_ids(self.end, plus=len(self.start))
+        
+    def validate_points(self,
+        id_col: str | list | tuple = None,
+        ) -> None: 
+
+        if isinstance(id_col, str):
+            if not id_col in self.start.columns:
+                raise KeyError(f"'startpoints' has no attribute '{id_col}'")
+            if self.end is not None:
+                if not id_col in self.end.columns:
+                    raise KeyError(f"'endpoints' has no attribute '{id_col}'")
+        elif isinstance(id_col, (list, tuple)):
+            if not id_col[0] in self.star.columns:
+                raise KeyError(f"'startpoints' has no attribute '{id_col[0]}'")
+            if self.end is None:
+                warnings.warn(f"'id_col' is of type {type(id_col)} even though there are no endpoints")
+            else:
+                if not id_col[1] in self.end.columns:
+                    raise KeyError(f"'endpoints' has no attribute '{id_col[1]}'")
 
 
-class NetworkAnalysis(ABC):
+class EndPoints(Points):
+    def __init__(
+        self, 
+        points: GeoDataFrame,
+        id_col: str,
+    ) -> None:
+
+        super().__init__(points, id_col)
+
+
+class Rules:
     def __init__(
         self,
         search_tolerance: int = 1000,
         search_factor: int = 10,
         cost_to_nodes: int = 5,
     ):
+        self.search_tolerance = search_tolerance
+        self.search_factor = search_factor
+        self.cost_to_nodes = cost_to_nodes
+
+class NetworkAnalysis:
+    def __init__(
+        self,
+        cost: str,
+        search_tolerance: int = 1000,
+        search_factor: int = 10,
+        cost_to_nodes: int = 5,
+    ):
+        self.cost = cost
         self.search_tolerance = search_tolerance
         self.search_factor = search_factor
         self.cost_to_nodes = cost_to_nodes
@@ -49,11 +117,16 @@ class NetworkAnalysis(ABC):
                 return startpoints, id_col
             return startpoints, endpoints, id_col
                     
+        self.startpoints = startpoints
+        if endpoints is not None:
+            self.endpoints = endpoints
+
         self.make_node_ids()
 
         startpoints, endpoints = self.prepare_points(startpoints, endpoints)
 
         self.graph = self.make_graph(startpoints, endpoints)
+        self.network["idx"] = self.network.index
         
         self.update_graph_info(startpoints, endpoints)
         
@@ -61,12 +134,19 @@ class NetworkAnalysis(ABC):
             return startpoints, id_col
         
         return startpoints, endpoints, id_col
-    
+
     def graph_is_up_to_date(self, startpoints, endpoints):
 
         if not hasattr(self, "graph"):
             return False
-    
+
+        if not startpoints.wkt.equals(self.startpoints.wkt):
+            return False
+
+        if endpoints is not None:
+            if not endpoints.wkt.equals(self.endpoints.wkt):
+                return False
+
         if any(
             True if x not in self.graph.vs["name"] else False for x in startpoints.temp_idx
             ):
@@ -93,7 +173,7 @@ class NetworkAnalysis(ABC):
             return False
         if idx.stop != len(self.network):
             return False
-        
+
         return True
 
     def update_graph_info(self, startpoints, endpoints):
@@ -142,21 +222,23 @@ class NetworkAnalysis(ABC):
         startpoints: GeoDataFrame, 
         endpoints: GeoDataFrame,
         id_col: str | list | tuple = None, 
-        **kwargs
+        summarise: bool = False,
+        **kwargs,
         ) -> GeoDataFrame:
 
         startpoints, endpoints, id_cols = self.prepare_network_analysis(
             startpoints, endpoints, id_col
         )
 
-        res = shortest_path(self, startpoints, endpoints, **kwargs)
+        res = shortest_path(self, startpoints, endpoints, summarise, **kwargs)
 
-        res["from"] = self.map_ids(
-            res["from"], startpoints[id_cols[0]]
-        ) 
-        res["to"] = self.map_ids(
-            res["to"], endpoints[id_cols[1]]
-        )
+        if id_col and not summarise:
+            res["origin"] = self.map_ids(
+                res["origin"], startpoints, id_cols[0],
+            )
+            res["destination"] = self.map_ids(
+                res["destination"], endpoints, id_cols[1],
+            )
 
         return res
 
@@ -173,9 +255,10 @@ class NetworkAnalysis(ABC):
 
         res = service_area(self, startpoints, **kwargs)
 
-        res["from"] = self.map_ids(
-            res["from"], startpoints[id_cols[0]]
-        )
+        if id_col:
+            res["origin"] = self.map_ids(
+                res["origin"], startpoints, id_cols[0],
+            )
 
         return res
 
@@ -199,13 +282,16 @@ class NetworkAnalysis(ABC):
         return col.map(id_dict)
     
     def prepare_points(self, startpoints, endpoints):
+        """ Point class??? """
         startpoints = startpoints.to_crs(self.network.crs)
         startpoints["temp_idx"] = self.make_temp_ids(startpoints)
+        startpoints["wkt"] = [x.wkt for x in startpoints.geometry]
 
         if endpoints is not None:
             endpoints = endpoints.to_crs(self.network.crs)
-            endpoints["temp_idx"] = self.make_temp_ids(endpoints, plus=len(startpoints))
-        
+            endpoints["temp_idx"] = self.make_temp_ids(endpoints, plus=len(startpoints))    
+            endpoints["wkt"] = [x.wkt for x in endpoints.geometry]
+
         return startpoints, endpoints
 
     @staticmethod
@@ -238,11 +324,13 @@ class NetworkAnalysis(ABC):
                 raise ValueError("All values in the 'cost' column are NaN.")
 
             if (n := sum(self.network[self.cost].isna())):
-                warnings.warn(f"Warning: {n} rows have missing values in the 'cost' column. Removing NaNs.")
+                if n > len(self.network) * 0.05:
+                    warnings.warn(f"Warning: {n} rows have missing values in the 'cost' column. Removing NaNs.")
                 self.network = self.network.loc[self.network[self.cost].notna()]
             
             if (n := sum(self.network[self.cost] < 0)):
-                warnings.warn(f"Warning: {n} rows have a 'cost' less than 0. Removing these rows.")
+                if n > len(self.network) * 0.05:
+                    warnings.warn(f"Warning: {n} rows have a 'cost' less than 0. Removing these rows.")
                 self.network = self.network.loc[self.network[self.cost] > 0]
 
             try:
@@ -259,14 +347,14 @@ class NetworkAnalysis(ABC):
                 raise ValueError("'roads' cannot have crs 4326 (latlon) when cost is 'meters'.")
 
             self.cost = "meters"
+
+            self.network[self.cost] = self.network.length
             
             return
 
         if self.cost == "minutes" and "minutes" not in self.network.columns:
             if raise_error:
-                raise KeyError(f"Cannot find 'cost' column for minutes.")
-            else:
-                warnings.warn("Warning: Cannot find 'cost' column for minutes. Try running one of the 'make_directed_network_' methods, or set 'cost' to 'meters'.")
+                raise KeyError(f"Cannot find 'cost' column for minutes. \nTry running one of the 'make_directed_network_' methods, or set 'cost' to 'meters'.")
 
     def copy(self):
         return copy(self)

@@ -11,7 +11,7 @@ class NetworkDaplaCar(DirectedNetwork):
         cost: str = "minutes",
         turn_restrictions: bool = True,
         fill_holes: bool = False,
-        **network_analysis_rules,
+        **kwargs,
         kommuner: str | list | tuple | None = None,
         ):
         
@@ -24,20 +24,18 @@ class NetworkDaplaCar(DirectedNetwork):
         if not fill_holes:
             roads = roads.loc[roads.hole == 0]
         
-        super().__init__(roads, source_col, target_col, cost, minute_col)
+        super().__init__(roads, source_col, target_col, cost, **kwargs)
    
 
 class NetworkDaplaBike(DirectedNetwork):
     def __init__(
         self,
         roads: GeoDataFrame | str = "daplasti_nyeste",
-        source_col: str = "source",
-        target_col: str = "target",
         cost: str = "minutes",
         speed: int | None = 20,
         fill_holes: bool = False,
-        **network_analysis_rules,
         kommuner: str | list | tuple | None = None,
+        **kwargs,
         ):
 
         self.speed = speed

@@ -3,9 +3,14 @@ import igraph
 from igraph import Graph
 from sklearn.neighbors import NearestNeighbors
 
+from geopandas import GeoDataFrame
+
+class NoPointsWithinSearchTolerance(Exception):
+    def __init__(self, what: str | None = None, search_tolerance: str | None = None) -> None:
+        f"No {what}startpoints within specified 'search_tolerance' of {search_tolerance}"
 
 def make_graph(
-    self: Network,
+    nw,
     startpoints: GeoDataFrame,
     endpoints: GeoDataFrame | None = None,
 ) -> Graph:
@@ -13,18 +18,13 @@ def make_graph(
     
     """
 
-    if isinstance(self, UndirectedNetwork):
-        directed = False
-    else:
-        directed = True
-    
     # alle lenkene og costene i nettverket
     edges = [
         (str(source), str(target))
-        for source, target in zip(self.network["source"], self.network["target"])
+        for source, target in zip(nw.network["source"], nw.network["target"])
     ]
 
-    costs = list(self.network[self.cost])
+    costs = list(nw.network[nw.cost])
 
     # edges mellom startpunktene og nærmeste nodes
     edges_start, dists_start = distance_to_nodes(
@@ -32,10 +32,10 @@ def make_graph(
     )
 
     if not len(edges_start):
-        raise ValueError(f"No startpoints within specified 'searc_tolerance' of {self.search_tolerance}")
+        raise NoPointsWithinSearchTolerance("start", nw.search_tolerance)
 
     # omkod meter to minutter
-    dists_start = calculate_costs(dists_start, self.cost, self.cost_to_nodes)
+    dists_start = calculate_costs(dists_start, nw.cost, nw.cost_to_nodes)
 
     edges = edges + edges_start
     costs = costs + dists_start
@@ -47,9 +47,9 @@ def make_graph(
         )
 
         if not len(edges_end):
-            raise ValueError(f"No endpoints within specified 'searc_tolerance' of {self.search_tolerance}")
+            raise ValueError(f"No endpoints within specified 'search_tolerance' of {nw.search_tolerance}")
 
-        dists_end = calculate_costs(dists_end, self.cost, self.cost_to_nodes)
+        dists_end = calculate_costs(dists_end, nw.cost, nw.cost_to_nodes)
 
         edges = edges + edges_end
         costs = costs + dists_end
@@ -57,18 +57,26 @@ def make_graph(
     assert len(edges) == len(costs)
 
     # lag liste med tuples med edges og legg dem to i grafen
-    graph = igraph.Graph.TupleList(edges, directed=directed)
+    graph = igraph.Graph.TupleList(edges, directed=nw.directed)
     assert len(graph.get_edgelist()) == len(costs)
     graph.es["weight"] = costs
     assert min(graph.es["weight"]) > 0
 
     graph.add_vertices([idx for idx in startpoints.temp_idx if idx not in graph.vs["name"]])
-    graph.add_vertices([idx for idx in endpoints.temp_idx if idx not in graph.vs["name"]])
+    if endpoints is not None:
+        graph.add_vertices([idx for idx in endpoints.temp_idx if idx not in graph.vs["name"]])
 
+    """
+    import networkx as nx
+    nx_graph = graph.to_networkx()
+    largest_component = max(nx.connected_components(nx_graph), key=len)
+    subgraph = nx_graph.subgraph(largest_component)
+    graph = igraph.Graph.from_networkx(subgraph)
+    """
     return graph
 
 
-def distance_to_nodes(points, self: Network, hva):
+def distance_to_nodes(points, nw, hva):
     """
     Her finner man avstanden to de n nærmeste nodene for hvert start-/sluttpunkt.
     Gjør om punktene og nodene to 1d numpy arrays bestående av koordinat-tuples
@@ -82,7 +90,7 @@ def distance_to_nodes(points, self: Network, hva):
         [(x, y) for x, y in zip(points.geometry.x, points.geometry.y)]
     )
 
-    nodes_array = np.array([(x, y) for x, y in zip(self.nodes.geometry.x, self.nodes.geometry.y)])
+    nodes_array = np.array([(x, y) for x, y in zip(nw.nodes.geometry.x, nw.nodes.geometry.y)])
 
     # avstand from punktene to 50 nærmeste nodes (som regel vil bare de nærmeste være attraktive pga lav hastighet fromm to nodene)
     n_naboer = 50 if len(nodes_array) >= 50 else len(nodes_array)
@@ -113,8 +121,8 @@ def distance_to_nodes(points, self: Network, hva):
         [
             [
                 dist
-                if dist <= self.search_tolerance
-                and dist <= search_factor_avstand(dist_min, self.search_factor)
+                if dist <= nw.search_tolerance
+                and dist <= search_factor_avstand(dist_min, nw.search_factor)
                 else -1
                 for dist in dists[i]
             ]
@@ -138,7 +146,7 @@ def calculate_costs(dists, cost, kost_to_nodene):
     """
     Gjør om meter to minutter for lenkene mellom punktene og nabonodene.
     og ganger luftlinjeavstanden med 1.5 siden det alltid er svinger i Norge.
-    Gjør ellers ingentinself.
+    Gjør ellers ingentinnw.
     """
 
     if kost_to_nodene == 0:
