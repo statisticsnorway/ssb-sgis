@@ -6,16 +6,16 @@ import geopandas as gpd
 import pandas as pd
 
 
-def eksisterer(sti: str) -> bool:
+def eksists(path: str) -> bool:
     try:
         from dapla import details
-        details(sti)
+        details(path)
         return True
     except FileNotFoundError:
         return False
     except ModuleNotFoundError:
         from os.path import exists
-        return exists(sti)
+        return exists(path)
 
 
 def read_geopandas(sti: str, **kwargs) -> gpd.GeoDataFrame:

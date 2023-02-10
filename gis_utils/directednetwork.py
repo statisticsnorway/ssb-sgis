@@ -7,7 +7,7 @@ from pandas import DataFrame
 
 from .network import Network
 
-from .gis import gdf_concat
+from .geopandas_utils import gdf_concat
 
 
 class DirectedNetwork(Network):

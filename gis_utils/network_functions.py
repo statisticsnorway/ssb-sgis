@@ -8,9 +8,9 @@ from geopandas import GeoDataFrame, GeoSeries
 import igraph
 import networkx as nx
 
-from geopandas_util import clean_geoms, gdf_concat
+from gis_utils import clean_geoms, gdf_concat
 
-from .gis import (
+from .geopandas_utils import (
     clean_geoms,
     gdf_concat,
     to_gdf,

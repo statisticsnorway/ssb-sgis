@@ -2,7 +2,7 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 
-from .gis import (
+from .geopandas_utils import (
     clean_geoms,
     gdf_concat,
     to_gdf,

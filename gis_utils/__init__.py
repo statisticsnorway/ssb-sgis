@@ -8,7 +8,7 @@ from .buffer_dissolve_explode import (
     buffdissexp,
 )
 
-from .gis import (
+from .geopandas_utils import (
     clean_geoms,
     to_single_geom_type,
     close_holes,

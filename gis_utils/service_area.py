@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from shapely.geometry import LineString
 
-from .gis import gdf_concat
+from .geopandas_utils import gdf_concat
 
 def service_area(
     nx,

@@ -155,8 +155,7 @@ def _close_holes_geom(geom, max_km2=None):
     return unary_union(holes_closed)
 
 
-#def clipclean(
-def clipfix(
+def cleanclip(
     gdf: GeoDataFrame | GeoSeries,
     clip_to: GeoDataFrame | GeoSeries | Geometry,
     keep_geom_type: bool = True,

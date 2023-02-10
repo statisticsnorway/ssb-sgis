@@ -1,5 +1,5 @@
 
-from .network_directed_undirected import DirectedNetwork
+from .directednetwork import DirectedNetwork
 
 
 class NetworkDaplaCar(DirectedNetwork):

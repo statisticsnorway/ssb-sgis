@@ -3,9 +3,9 @@ import warnings
 import geopandas as gpd
 from time import perf_counter
 import sys
-sys.path.append("C:/Users/ort/git/ssb-geopandas-util")
+sys.path.append("C:/Users/ort/git/ssb-gis-utils")
 
-import geopandas_util as gs
+import gis_utils as gs
 
 
 def test_close_holes(meters=1.1):
