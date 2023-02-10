@@ -85,8 +85,6 @@ class Network(NetworkAnalysis):
                     f"{diff} multi-geometries were split into single part geometries. Minute column(s) will be wrong for these rows."
                 )
 
-        self.network["idx"] = self.network.index
-
     def make_node_ids(self) -> None:
         self.network, self._nodes = make_node_ids(self.network)
 

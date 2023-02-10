@@ -68,7 +68,7 @@ def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDat
     circles = boundary.loc[boundary.is_empty]
     roads = roads[~roads.index.isin(circles.index)]
 
-    endpoints = roads.geometry.boundary.explode(ignore_index=ignore_index)
+    endpoints = roads.geometry.boundary.explode(ignore_index=ignore_index, index_parts=False) #to silence warning
 
     if not len(endpoints) / len(roads) == 2:
         raise ValueError("The lines should have only two endpoints each. Try splitting multilinestrings with explode.")
@@ -312,7 +312,7 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
     return new_roads
 
 
-def cut_lines(gdf: GeoDataFrame, max_length: int) -> GeoDataFrame:
+def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoDataFrame:
     from shapely.geometry import LineString, Point
     from shapely.ops import unary_union
     from shapely import force_2d
@@ -343,23 +343,23 @@ def cut_lines(gdf: GeoDataFrame, max_length: int) -> GeoDataFrame:
 
     gdf = gdf.explode(ignore_index=True)
 
-    over_avstand = gdf.loc[gdf.length > avstand]
-    under_avstand = gdf.loc[gdf.length <= avstand]
+    over_max_length = gdf.loc[gdf.length > max_length]
+    under_max_length = gdf.loc[gdf.length <= max_length]
 
     for x in [10, 5, 1]:
-        maks_lengde = max(over_avstand.length)
+        maks_lengde = max(over_max_length.length)
 
-        while maks_lengde > avstand * x + 1:
-            maks_lengde = over_avstand.length.max()
+        while maks_lengde > max_length * x + 1:
+            maks_lengde = over_max_length.length.max()
 
-            over_avstand["geometry"] = cut_vektorisert(over_avstand.geometry, avstand)
+            over_max_length["geometry"] = cut_vektorisert(over_max_length.geometry, max_length)
 
-            over_avstand = over_avstand.explode(ignore_index=True)
+            over_max_length = over_max_length.explode(ignore_index=True)
 
-            if maks_lengde == max(over_avstand.length):
+            if maks_lengde == max(over_max_length.length):
                 break
 
-    over_avstand = over_avstand.explode(ignore_index=True)
+    over_max_length = over_max_length.explode(ignore_index=True)
 
-    return pd.concat([under_avstand, over_avstand], ignore_index=True)
+    return pd.concat([under_max_length, over_max_length], ignore_index=True)
 

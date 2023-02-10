@@ -19,12 +19,18 @@ class NoPointsWithinSearchTolerance(Exception):
 
 def make_graph(
     nw,
-    startpoints: GeoDataFrame,
-    endpoints: GeoDataFrame | None = None,
+#    startpoints: GeoDataFrame,
+ #   endpoints: GeoDataFrame | None = None,
 ) -> Graph:
     """Lager igraph.Graph som inkluderer edges to/from start-/sluttpunktene.
     
     """
+
+    startpoints = nw.startpoints.points
+    if hasattr(nw, "endpoints"):
+        endpoints = nw.endpoints.points
+    else:
+        endpoints = None
 
     # alle lenkene og costene i nettverket
     edges = [
