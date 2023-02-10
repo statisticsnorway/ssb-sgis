@@ -5,9 +5,17 @@ from sklearn.neighbors import NearestNeighbors
 
 from geopandas import GeoDataFrame
 
+
+# TODO: find closest exact point on closest line, create new node, new edges to the endnodes, 
+# cut the actual line by point to get exact length, devide cost by new length ratio.
+# both directions?
+
+
+# flytt til exceptions
 class NoPointsWithinSearchTolerance(Exception):
     def __init__(self, what: str | None = None, search_tolerance: str | None = None) -> None:
         f"No {what}startpoints within specified 'search_tolerance' of {search_tolerance}"
+
 
 def make_graph(
     nw,

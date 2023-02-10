@@ -13,7 +13,7 @@ from .network_functions import (
     cut_lines,
 )
 
-from .gis import clean_geoms
+from .geopandas_utils import clean_geoms
 
 
 class Network(NetworkAnalysis):
@@ -26,13 +26,13 @@ class Network(NetworkAnalysis):
         **kwargs,
         ):
 
+        super().__init__(cost=cost, **kwargs)
+
         if not isinstance(roads, GeoDataFrame):
             raise TypeError(f"'roads' should be GeoDataFrame, got {type(roads)}")
         
         if not len(roads):
             raise ZeroRoadsError
-
-        super().__init__(cost=cost, **kwargs)
 
         self.network = roads
         self.network["idx_orig"] = roads.index

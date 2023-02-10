@@ -39,6 +39,11 @@ class Points:
         self.temp_idx_max = 0
         self.id_dict = {temp_idx: idx for temp_idx, idx in zip(points.temp_idx, points[id_col])}
 
+    def n_missing(self):
+        """ inn i network? """
+        self.points["n"] = self.points["idx"].map(
+            res.groupby("origin")[self.cost].count()
+        )
     def prepare_points(self):
         self.start = self.start.to_crs(self.network.crs)
         self.start["temp_idx"] = self.make_temp_ids(self.start)

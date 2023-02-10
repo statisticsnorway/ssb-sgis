@@ -18,7 +18,7 @@ def eksisterer(sti: str) -> bool:
         return exists(sti)
 
 
-def les_geopandas(sti: str, **kwargs) -> gpd.GeoDataFrame:
+def read_geopandas(sti: str, **kwargs) -> gpd.GeoDataFrame:
     from dapla import FileClient
     fs = FileClient.get_gcs_file_system()
 
@@ -30,7 +30,7 @@ def les_geopandas(sti: str, **kwargs) -> gpd.GeoDataFrame:
             return gpd.read_file(file, **kwargs)
 
 
-def skriv_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
+def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
     """ funker ikke for shp og gdb """
     from dapla import FileClient
     from pyarrow import parquet
