@@ -90,13 +90,6 @@ def make_graph(
     if endpoints is not None:
         graph.add_vertices([idx for idx in endpoints.temp_idx if idx not in graph.vs["name"]])
 
-    """
-    import networkx as nx
-    nx_graph = graph.to_networkx()
-    largest_component = max(nx.connected_components(nx_graph), key=len)
-    subgraph = nx_graph.subgraph(largest_component)
-    graph = igraph.Graph.from_networkx(subgraph)
-    """
     return graph
 
 

@@ -1,37 +1,37 @@
-
+from geopandas import GeoDataFrame
+from pandas import DataFrame
 from .directednetwork import DirectedNetwork
+from .network import Network
+from shapely import force_2d
+from .geopandas_utils import gdf_concat
 
 
 class NetworkDaplaCar(DirectedNetwork):
     def __init__(
         self,
-        roads: GeoDataFrame | str = "daplasti_nyeste",
-        source_col: str = "source",
-        target_col: str = "target",
-        cost: str = "minutes",
+        gdf: GeoDataFrame | str = "daplasti_nyeste",
         turn_restrictions: bool = True,
         fill_holes: bool = False,
-        **kwargs,
         kommuner: str | list | tuple | None = None,
+        **kwargs,
         ):
         
-        if isinstance(roads, str):
-            roads = read_network_from_dapla(roads, kommuner)
+        if isinstance(gdf, str):
+            gdf = read_network_from_dapla(gdf, kommuner)
 
         if turn_restrictions:
-            roads = roads.loc[roads.turn_restriction == 0]
+            gdf = gdf.loc[gdf.turn_restriction == 0]
         
         if not fill_holes:
-            roads = roads.loc[roads.hole == 0]
+            gdf = gdf.loc[gdf.hole == 0]
         
-        super().__init__(roads, source_col, target_col, cost, **kwargs)
+        super().__init__(gdf, **kwargs)
    
 
 class NetworkDaplaBike(DirectedNetwork):
     def __init__(
         self,
-        roads: GeoDataFrame | str = "daplasti_nyeste",
-        cost: str = "minutes",
+        gdf: GeoDataFrame | str = "daplasti_nyeste",
         speed: int | None = 20,
         fill_holes: bool = False,
         kommuner: str | list | tuple | None = None,
@@ -40,39 +40,40 @@ class NetworkDaplaBike(DirectedNetwork):
 
         self.speed = speed
     
-        if isinstance(roads, str):
-            roads = read_network_from_dapla(roads, kommuner)
+        if isinstance(gdf, str):
+            gdf = read_network_from_dapla(gdf, kommuner)
         
         if not fill_holes:
-            roads = roads.loc[roads.hole == 0]
+            gdf = gdf.loc[gdf.hole == 0]
 
         if self.cost == "minutes":
             self.network["minutes"] = self.network.length / speed * 16.6666667
 
+        super().__init__(gdf, **kwargs)
 
-class NetworkDaplaFoot(UndirectedNetwork):
+
+class NetworkDaplaFoot(dNetwork):
     def __init__(
         self,
-        roads: GeoDataFrame | str = "daplasti_nyeste",
-        source_col: str = "source",
-        target_col: str = "target",
-        cost: str = "minutes",
+        gdf: GeoDataFrame | str = "daplasti_nyeste",
         speed: int | None = 5,
         fill_holes: bool = False,
-        **network_analysis_rules,
         kommuner: str | list | tuple | None = None,
+        **kwargs,
         ):
 
         self.speed = speed
 
-        if isinstance(roads, str):
-            roads = read_network_from_dapla(roads, kommuner)
+        if isinstance(gdf, str):
+            gdf = read_network_from_dapla(gdf, kommuner)
         
         if not fill_holes:
-            roads = roads.loc[roads.hole == 0]
+            gdf = gdf.loc[gdf.hole == 0]
 
         if self.cost == "minutes":
             self.network["minutes"] = self.network.length / speed * 16.6666667
+
+        super().__init__(gdf, **kwargs)
 
 
 def prepare_network_norway(
@@ -98,26 +99,23 @@ def prepare_network_norway(
 
     roads["geometry"] = force_2d(roads.geometry)
 
-    N = DirectedNetwork(
-        roads,
-        cost="minutes",
-    )
+    nw = DirectedNetwork(roads)
 
-    N = N.make_directed_network_norway()
+    nw = nw.make_directed_network_norway()
 
     if turn_restrictions:
-        N.network = find_turn_restrictions(N.network, turn_restrictions)
+        nw.network = find_turn_restrictions(nw.network, turn_restrictions)
 
-    N = N.close_network_holes(max_dist=1.1, hole_col="hole")
+    nw = nw.close_network_holes(max_dist=1.1, hole_col="hole")
 
-    N = N.find_isolated(max_length=500)
+    nw = nw.get_largest_component(max_length=500)
 
     write_geopandas(
-        N.network,
+        nw.gdf,
         out_path
     )
 
-    return N
+    return nw
 
 
 def read_network_from_dapla(roads, kommuner):
