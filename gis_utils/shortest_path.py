@@ -44,7 +44,7 @@ def shortest_path(
                 .count()
         )
 
-        roads = nw.network[["geometry", "source", "target"]]
+        roads = nw.network.gdf[["geometry", "source", "target"]]
         roads["source_target"] = roads.source + "_" + roads.target
 
         return roads.merge(edges, on="source_target", how="inner").drop(
@@ -89,8 +89,8 @@ def _run_shortest_path(ori_id, des_id, nw, summarise):
                 }
         return [pd.DataFrame(source_target)]
 
-    line = nw.network.loc[
-        (nw.network.source.isin(path)) & (nw.network.target.isin(path)),
+    line = nw.network.gdf.loc[
+        (nw.network.gdf.source.isin(path)) & (nw.network.gdf.target.isin(path)),
         ["geometry"],
     ]
 

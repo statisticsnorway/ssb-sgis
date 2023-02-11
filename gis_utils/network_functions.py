@@ -17,33 +17,42 @@ from .geopandas_utils import (
     gridish,
 )
 
-class ZeroRoadsError(Exception):
-    "The roads have 0 rows."
 
+def make_node_ids(roads: GeoDataFrame, ignore_index: bool = False) -> tuple[GeoDataFrame, GeoDataFrame]:
+    """Nye node-id-er som følger index (fordi indexes med numpy arrays i avstand_til_nodes())"""
 
-def find_isolated_components(roads: GeoDataFrame) -> GeoDataFrame:
-    """ Find the roads that are isolated from the largest component of the network. """
+    roads = make_edge_wkt_cols(roads, ignore_index)
 
-    if not "source" in roads.columns or not "target" in roads.columns:
-        roads = make_node_ids(roads)
+    sources = roads[["source_wkt"]].rename(columns={"source_wkt": "wkt"})
+    targets = roads[["target_wkt"]].rename(columns={"target_wkt": "wkt"})
 
-    edges = [
-        (str(source), str(target))
-        for source, target in zip(roads["source"], roads["target"])
-    ]
+    nodes = pd.concat([sources, targets], axis=0, ignore_index=True)
 
-    G = nx.Graph()
-    G.add_edges_from(edges)
-    largest_component = max(nx.connected_components(G), key=len)
-
-    largest_component = {x: 0 for x in largest_component}
-
-    roads["isolated"] = roads.source.map(largest_component).fillna(1)
-    roads["isolated2"] = roads.target.map(largest_component).fillna(1)
-    roads["isolated"] = roads[["isolated", "isolated2"]].max(axis=1)
-    roads = roads.drop("isolated2", axis=1)
+    nodes["n"] = (nodes
+                    .assign(n=1)
+                    .groupby("wkt")
+                    ["n"]
+                    .transform("sum")
+                    )
     
-    return roads
+    nodes = nodes.drop_duplicates(subset=["wkt"]).reset_index(drop=True)
+    
+    nodes["node_id"] = nodes.index
+    nodes["node_id"] = nodes["node_id"].astype(str)
+
+    id_dict = {wkt: node_id for wkt, node_id in zip(nodes["wkt"], nodes["node_id"])}
+    roads["source"] = roads["source_wkt"].map(id_dict)
+    roads["target"] = roads["target_wkt"].map(id_dict)
+
+    n_dict = {wkt: n for wkt, n in zip(nodes["wkt"], nodes["n"])}
+    roads["n_source"] = roads["source_wkt"].map(n_dict)
+    roads["n_target"] = roads["target_wkt"].map(n_dict)
+
+    nodes["geometry"] = gpd.GeoSeries.from_wkt(nodes.wkt, crs=roads.crs)
+    nodes = gpd.GeoDataFrame(nodes, geometry="geometry", crs=roads.crs)
+    nodes = nodes.reset_index(drop=True)
+
+    return roads, nodes
 
 
 def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDataFrame:
@@ -81,42 +90,53 @@ def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDat
 
     return roads
 
-
-def make_node_ids(roads: GeoDataFrame, ignore_index: bool = False) -> tuple[GeoDataFrame, GeoDataFrame]:
-    """Nye node-id-er som følger index (fordi indexes med numpy arrays i avstand_til_nodes())"""
-
-    roads = make_edge_wkt_cols(roads, ignore_index)
-
-    sources = roads[["source_wkt"]].rename(columns={"source_wkt": "wkt"})
-    targets = roads[["target_wkt"]].rename(columns={"target_wkt": "wkt"})
-
-    nodes = pd.concat([sources, targets], axis=0, ignore_index=True)
-
-    nodes["n"] = (nodes
-                    .assign(n=1)
-                    .groupby("wkt")
-                    ["n"]
-                    .transform("sum")
-                    )
     
-    nodes = nodes.drop_duplicates(subset=["wkt"]).reset_index(drop=True)
+def get_largest_component(roads: GeoDataFrame) -> GeoDataFrame:
+    """ Find the roads that are isolated from the largest component of the network. """
+
+    if not "source" in roads.columns or not "target" in roads.columns:
+        roads, nodes = make_node_ids(roads)
+
+    edges = [
+        (str(source), str(target))
+        for source, target in zip(roads["source"], roads["target"])
+    ]
+
+    G = nx.Graph()
+    G.add_edges_from(edges)
     
-    nodes["node_id"] = nodes.index
-    nodes["node_id"] = nodes["node_id"].astype(str)
+    largest_component = max(nx.connected_components(G), key=len)
 
-    id_dict = {wkt: node_id for wkt, node_id in zip(nodes["wkt"], nodes["node_id"])}
-    roads["source"] = roads["source_wkt"].map(id_dict)
-    roads["target"] = roads["target_wkt"].map(id_dict)
+    largest_component = {node_id: 1 for node_id in largest_component}
 
-    n_dict = {wkt: n for wkt, n in zip(nodes["wkt"], nodes["n"])}
-    roads["n_source"] = roads["source_wkt"].map(n_dict)
-    roads["n_target"] = roads["target_wkt"].map(n_dict)
+    roads["connected"] = roads.source.map(largest_component).fillna(0)
+    
+    return roads
 
-    nodes["geometry"] = gpd.GeoSeries.from_wkt(nodes.wkt, crs=roads.crs)
-    nodes = gpd.GeoDataFrame(nodes, geometry="geometry", crs=roads.crs)
-    nodes = nodes.reset_index(drop=True)
 
-    return roads, nodes
+def get_component_size(roads: GeoDataFrame) -> GeoDataFrame:
+    """ Find the roads that are isolated from the largest component of the network. """
+
+    if not "source" in roads.columns or not "target" in roads.columns:
+        roads, nodes = make_node_ids(roads)
+
+    edges = [
+        (str(source), str(target))
+        for source, target in zip(roads["source"], roads["target"])
+    ]
+
+    G = nx.Graph()
+    G.add_edges_from(edges)
+    components = [list(x) for x in nx.connected_components(G)]
+
+    componentsdict = {x: len(component) for component in components for x in component}
+
+    roads["comp1"] = roads.source.map(componentsdict)
+    roads["comp2"] = roads.target.map(componentsdict)
+    roads["component_size"] = roads[["comp1", "comp2"]].max(axis=1)
+    roads = roads.drop(["comp1", "comp2"], axis=1)
+    
+    return roads
 
 
 def close_network_holes(roads, max_dist, min_dist=0, deadends_only=False, hole_col: str | None = "hole"):

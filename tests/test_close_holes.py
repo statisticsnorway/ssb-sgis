@@ -17,24 +17,26 @@ def test_close_holes(meters=1.1):
 
     p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
     p = p.iloc[[0]] 
-    nw = gs.DirectedNetwork(r)
+    nw = gs.Network(r)
     
-    nw = nw.find_isolated()
-    gs.qtm(nw.network.sjoin(gs.buff(p, 1000)), "isolated", cmap="bwr", title="before close_holes")
-        
+    nw = nw.get_largest_component()
+    gs.qtm(nw.gdf.sjoin(gs.buff(p, 1000)), "connected", cmap="bwr", title="before close_holes", scheme="equalinterval")
+
     _time = perf_counter()
     nw = nw.close_network_holes(meters, deadends_only=False)
-    print("n", sum(nw.network.hole==1))
+    print("n", sum(nw.gdf.hole==1))
     print("time close_network_holes, all roads: ", perf_counter()-_time)
 
     _time = perf_counter()
     nw = nw.close_network_holes(meters, deadends_only=True)
-    print("n", sum(nw.network.hole==1))
+    print("n", sum(nw.gdf.hole==1))
     print("time close_network_holes, deadends_only: ", perf_counter()-_time)
 
-    nw = nw.find_isolated()
-    gs.qtm(nw.network.sjoin(gs.buff(p, 1000)), "isolated", cmap="bwr", title=f"after close_holes({meters})")
-
+    nw = nw.get_largest_component()
+    try:
+        gs.qtm(nw.gdf.sjoin(gs.buff(p, 1000)), "connected", cmap="bwr", title=f"after close_holes({meters})", scheme="equalinterval")
+    except ValueError:
+        gs.qtm(nw.gdf.sjoin(gs.buff(p, 1000)), "connected", cmap="bwr", title=f"after close_holes({meters})")
 
 def main():
     test_close_holes(1.1)

@@ -1,6 +1,6 @@
 from geopandas import GeoDataFrame
 from pandas import DataFrame
-from uuid import uuid4
+import numpy as np
 
 
 class Points:
@@ -15,11 +15,17 @@ class Points:
         
         self.wkt = [geom.wkt for geom in points.geometry]
         
-        self.points["temp_idx"] = [str(uuid4()) for _ in range(len(points))]
-
         self.id_col = id_col
 
     def make_id_dict(self):
+        if self.id_col:
+            self.id_dict = {temp_idx: idx for temp_idx, idx in zip(self.points.temp_idx, self.points[self.id_col])}
+
+    def make_temp_idx(self, start: int):
+
+        self.points["temp_idx"] = np.arange(start=start, stop=start+len(self.points), step=1)
+        self.points["temp_idx"] = self.points["temp_idx"].astype(str)
+
         if self.id_col:
             self.id_dict = {temp_idx: idx for temp_idx, idx in zip(self.points.temp_idx, self.points[self.id_col])}
 
@@ -46,16 +52,13 @@ class Points:
 
     def n_missing(
         self, 
-        results: GeoDataFrame | DataFrame
+        results: GeoDataFrame | DataFrame,
+        col: str,
         ) -> None:
 
-        self.points["n_missing_ori"] = self.points["temp_idx"].map(
-            len(results.origin.unique()) - results.groupby("origin")["destination"].count()
+        self.points["n_missing"] = self.points["temp_idx"].map(
+            len(results[col].unique()) - results.groupby(col).count().iloc[:, 0]
         )
-        self.points["n_missing_des"] = self.points["temp_idx"].map(
-            len(results.destination.unique()) - results.groupby("destination")["origin"].count()
-        )
-        self.points["n_missing"] = self.points[["n_missing_ori", "n_missing_des"]].sum(axis=1)
 
 
 class StartPoints(Points):
@@ -70,8 +73,6 @@ class StartPoints(Points):
 
         self.check_id_col(id_col=id_col, index=0)
 
-        self.make_id_dict()
-
 
 class EndPoints(Points):
     def __init__(
@@ -84,5 +85,3 @@ class EndPoints(Points):
         super().__init__(points, crs=crs, id_col=id_col)
 
         self.check_id_col(id_col=id_col, index=0)
-
-        self.make_id_dict()

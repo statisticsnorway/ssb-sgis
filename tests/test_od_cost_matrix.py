@@ -11,8 +11,8 @@ import cProfile
 
 def test_od_cost_matrix():
 
-    #r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
+#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
 
     p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
     p["idx"] = p.index
@@ -25,6 +25,8 @@ def test_od_cost_matrix():
     nw = nw.make_directed_network_norway()
     
     nw = nw.remove_isolated()
+ 
+    nw = gs.NetworkAnalysis(nw, cost="minutes")
     
     _time = perf_counter()
     od = nw.od_cost_matrix(p, p)
@@ -32,7 +34,7 @@ def test_od_cost_matrix():
     od = nw.od_cost_matrix(p, p, id_col=("idx", "idx2"),
         lines=True)
 
-#    gs.qtm(
+#    gs.qtm( 
  #       od.loc[od.origin == p1], 
   #      nw.cost, 
    #     scheme="quantiles"

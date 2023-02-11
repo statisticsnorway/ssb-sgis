@@ -25,6 +25,12 @@ from .geopandas_utils import (
     qtm,
 )
 
+from .network_functions import (
+    get_largest_component,
+    get_component_size,
+    close_network_holes,
+)
+
 from .networkanalysis import NetworkAnalysis
 from .network import Network
 from .directednetwork import DirectedNetwork

@@ -5,6 +5,8 @@ from sklearn.neighbors import NearestNeighbors
 
 from geopandas import GeoDataFrame
 
+from .exceptions import NoPointsWithinSearchTolerance
+from .directednetwork import DirectedNetwork
 
 # TODO: find closest exact point on closest line, create new node, new edges to the endnodes, 
 # cut the actual line by point to get exact length, devide cost by new length ratio.
@@ -12,10 +14,17 @@ from geopandas import GeoDataFrame
 
 
 # flytt til exceptions
-class NoPointsWithinSearchTolerance(Exception):
-    def __init__(self, what: str | None = None, search_tolerance: str | None = None) -> None:
-        f"No {what}startpoints within specified 'search_tolerance' of {search_tolerance}"
 
+
+"""
+class Graph:
+
+    def make_graph(self):
+
+        self.graph = graph
+
+self.graph.graph
+"""
 
 def make_graph(
     nw,
@@ -35,10 +44,10 @@ def make_graph(
     # alle lenkene og costene i nettverket
     edges = [
         (str(source), str(target))
-        for source, target in zip(nw.network["source"], nw.network["target"])
+        for source, target in zip(nw.network.gdf["source"], nw.network.gdf["target"])
     ]
 
-    costs = list(nw.network[nw.cost])
+    costs = list(nw.network.gdf[nw.cost])
 
     # edges mellom startpunktene og nærmeste nodes
     edges_start, dists_start = distance_to_nodes(
@@ -73,6 +82,7 @@ def make_graph(
     # lag liste med tuples med edges og legg dem to i grafen
     graph = igraph.Graph.TupleList(edges, directed=nw.directed)
     assert len(graph.get_edgelist()) == len(costs)
+
     graph.es["weight"] = costs
     assert min(graph.es["weight"]) > 0
 
@@ -104,7 +114,7 @@ def distance_to_nodes(points, nw, hva):
         [(x, y) for x, y in zip(points.geometry.x, points.geometry.y)]
     )
 
-    nodes_array = np.array([(x, y) for x, y in zip(nw.nodes.geometry.x, nw.nodes.geometry.y)])
+    nodes_array = np.array([(x, y) for x, y in zip(nw.network.nodes.geometry.x, nw.network.nodes.geometry.y)])
 
     # avstand from punktene to 50 nærmeste nodes (som regel vil bare de nærmeste være attraktive pga lav hastighet fromm to nodene)
     n_naboer = 50 if len(nodes_array) >= 50 else len(nodes_array)
