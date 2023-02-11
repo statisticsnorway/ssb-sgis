@@ -84,4 +84,4 @@ class EndPoints(Points):
 
         super().__init__(points, crs=crs, id_col=id_col)
 
-        self.check_id_col(id_col=id_col, index=0)
+        self.check_id_col(id_col=id_col, index=1)
