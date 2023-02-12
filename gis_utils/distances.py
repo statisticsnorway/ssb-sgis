@@ -16,8 +16,8 @@ def k_nearest_neigbors(
     k: int,
     ) -> tuple[np.ndarray[float]]:
 
-    nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(from_array)
-    dists, indices = nbr.kneighbors(to_array)
+    nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(to_array)
+    dists, indices = nbr.kneighbors(from_array)
     return dists, indices
 
 
@@ -111,8 +111,9 @@ def main():
     p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_10000.parquet")
     p["temp_idx"] = p.index
 
-#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
+#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+    r = r.to_crs(p.crs)
     r["road_idx"] = r.index
     r["geometry"] = r.centroid
     
@@ -126,6 +127,6 @@ def main():
 
 if __name__ == "__main__":
     import cProfile
-    #cProfile.run("main()", sort="cumtime")    
-    main()
+    cProfile.run("main()", sort="cumtime")    
+    #main()
     
