@@ -9,23 +9,17 @@ import gis_utils as gs
 import cProfile
 
 
-def test_mutability():
+def count_function_calls():
 
     r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+    p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
 
     nw = gs.DirectedNetwork(r)
     
-    for i in nw:
-        print(i)
-
-    print(len(nw.gdf))
-    nw.make_directed_network_norway()
-    print(len(nw.gdf))
     nw = nw.remove_isolated()
-    print(len(nw.gdf))
+    nw.make_directed_network_norway()
 
     nw = (nw
-        .make_directed_network_norway()
         .get_component_size()
         .get_largest_component()
         .close_network_holes(1.1)
@@ -33,8 +27,17 @@ def test_mutability():
        # .cut_lines(50)
     )
 
+    nwa = gs.NetworkAnalysis(nw, cost="minutes")
+    nwa.network = nwa.network.get_component_size()
+    nwa.network = nwa.network.remove_isolated()
+
+    for _ in range(10):
+        nwa.od_cost_matrix(p.sample(1), p.sample(1))
+
+
 def main():
-    cProfile.run("test_mutability()", sort="cumtime")
+    count_function_calls()
+    cProfile.run("count_function_calls()", sort="cumtime")
     
 
 if __name__ == "__main__":
