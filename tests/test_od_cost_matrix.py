@@ -1,5 +1,6 @@
 #%%
 import warnings
+import numpy as np
 import geopandas as gpd
 from time import perf_counter
 import sys
@@ -11,37 +12,57 @@ import cProfile
 
 def test_od_cost_matrix():
 
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
-#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
+    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
 
     p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
     p["idx"] = p.index
     p["idx2"] = p.index
 
-    p1 = p.sample(1).idx.values[0]
-
-    nw = gs.DirectedNetwork(r)
-
-    nw = nw.make_directed_network_norway()
-    
-    nw = nw.remove_isolated()
+    nw = (
+        gs.DirectedNetwork(r)
+        .make_directed_network_norway()
+        .remove_isolated()
+    )
  
-    nw = gs.NetworkAnalysis(nw, cost="minutes")
+    nwa = gs.NetworkAnalysis(nw, cost="minutes")
     
+    for search_factor in [0, 10, 25, 50, 100]:
+        nwa.search_factor = search_factor
+        od = nwa.od_cost_matrix(p, p)
+        print(
+            f"percent missing, search_factor {nwa.search_factor}", 
+            np.mean(od[nwa.cost].isna()) * 100
+            )
+
+    for search_tolerance in [0, 10, 25, 50, 100]:
+        nwa.search_tolerance = search_tolerance
+        od = nwa.od_cost_matrix(p, p)
+        print(
+            f"percent missing, search_factor 100, search_tolerance {nwa.search_tolerance}", 
+            np.mean(od[nwa.cost].isna()) * 100
+            )
+
+    nwa = gs.NetworkAnalysis(nw, cost="minutes")
+
     _time = perf_counter()
-    od = nw.od_cost_matrix(p, p)
-    od = nw.od_cost_matrix(p, p, id_col="idx")
-    od = nw.od_cost_matrix(p, p, id_col=("idx", "idx2"),
-        lines=True)
+    od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
 
-#    gs.qtm( 
- #       od.loc[od.origin == p1], 
-  #      nw.cost, 
-   #     scheme="quantiles"
-    #    )
     print("time od_cost_matrix: ", perf_counter()-_time)
+    print("percent missing", np.mean(od[nwa.cost].isna()) * 100)
+    print(nwa.startpoints.points.n_missing.value_counts())
 
-    print("percent missing", sum(od[nw.cost].isna()) / len(od) * 100)
+    p1 = nwa.startpoints.points
+    p1 = p1.loc[[p1.n_missing.idxmin()]].sample(1).idx.values[0]
+
+    gs.qtm(
+        od.loc[od.origin == p1], 
+        nwa.cost, 
+        scheme="quantiles"
+        )
+
+    m = nwa.startpoints.points.n_missing.mean()
+    display(nwa.startpoints.points.query("n_missing > @m").explore("n_missing", scheme="quantiles"))
 
 
 def main():

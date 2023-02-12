@@ -57,7 +57,7 @@ class Points:
         ) -> None:
 
         self.points["n_missing"] = self.points["temp_idx"].map(
-            len(results[col].unique()) - results.groupby(col).count().iloc[:, 0]
+            len(results[col].unique()) - results.dropna().groupby(col).count().iloc[:, 0]
         )
 
 

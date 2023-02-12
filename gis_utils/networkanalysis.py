@@ -30,6 +30,36 @@ class Rules:
 
 
 class NetworkAnalysis:
+    """Class that holds the actual network analysis methods. 
+    
+    Args:
+        network: either the base Network class or a subclass, chiefly the DirectedNetwork class.
+            The network should be customized beforehand, but can also be accessed through 
+            the 'network' attribute of this class. 
+        cost: e.i. 'minutes' or 'meters'. Or custom numeric column.
+        search_tolerance: meters.
+
+    Example:
+
+    roads = gpd.GeoDataFrame(filepath_roads)
+    points = gpd.GeoDataFrame(filepath_points)
+
+    # the data should have crs with meters as units, e.g. UTM:
+    roads = roads.to_crs(25833)
+    points = points.to_crs(25833)
+    
+    nw = (
+        DirectedNetwork(roads)
+        .make_directed_network_osm()
+        .remove_isolated()
+        )
+    
+    nwa = NetworkAnalysis(nw, cost="minutes")
+
+    od = nwa.od_cost_matrix(p, p)
+
+    """
+
     def __init__(
         self,
         network: Network | DirectedNetwork,
@@ -52,68 +82,12 @@ class NetworkAnalysis:
         self.search_factor = search_factor
         self.cost_to_nodes = cost_to_nodes
 
+        # attributes to check whether the rules have changed and the graph has to be remade
+        self._search_tolerance = search_tolerance
+        self._search_factor = search_factor
+        self._cost_to_nodes = cost_to_nodes
+
         self.validate_cost(raise_error=False)
-
-    def prepare_network_analysis(self, startpoints, endpoints=None, id_col: str | None = None) -> None:
-
-        self.validate_cost(raise_error=True)
-
-        self.startpoints = StartPoints(
-            startpoints, 
-            crs=self.network.gdf.crs,
-            id_col=id_col, 
-            )
-
-        if endpoints is not None:
-            self.endpoints = EndPoints(endpoints, id_col=id_col, crs=self.network.gdf.crs)
-        else:
-            del self.endpoints
-
-        self.make_temp_idx()
-
-        if self.graph_is_up_to_date(startpoints, endpoints):
-            return
-
-        self.graph = self.make_graph()
-
-    def make_temp_idx(self):
-        if hasattr(self.network, "nodes"):
-            self.startpoints.make_temp_idx(
-                start=max(self.network.nodes.node_id.astype(int)) + 1
-            )
-            if hasattr(self, "endpoints"):
-                self.endpoints.make_temp_idx(
-                    start=max(self.startpoints.points.temp_idx.astype(int)) + 1
-                )
-
-    def graph_is_up_to_date(self, startpoints, endpoints):
-        
-        if not hasattr(self, "graph"):
-            return False
-                
-        if self.startpoints.wkt != [
-            geom.wkt for geom in startpoints.geometry
-        ]:
-            return False
-
-        if hasattr(self, "endpoints"):
-            if self.endpoints.wkt != [
-                geom.wkt for geom in endpoints.geometry
-            ]:
-                return False
-
-        if not all(
-            x in self.graph.vs["name"] for x in list(self.startpoints.points.temp_idx.values)
-            ):
-            return False
-
-        if hasattr(self, "endpoints"):
-            if not all(
-            x in self.graph.vs["name"] for x in self.endpoints.points.temp_idx
-            ):
-                return False
-
-        return True
 
     def make_graph(
         self,
@@ -196,6 +170,83 @@ class NetworkAnalysis:
             )
 
         return results
+
+    def prepare_network_analysis(self, startpoints, endpoints=None, id_col: str | None = None) -> None:
+
+        self.validate_cost(raise_error=True)
+
+        self.startpoints = StartPoints(
+            startpoints, 
+            crs=self.network.gdf.crs,
+            id_col=id_col, 
+            )
+
+        if endpoints is not None:
+            self.endpoints = EndPoints(endpoints, id_col=id_col, crs=self.network.gdf.crs)
+        else:
+            del self.endpoints
+
+        self.make_temp_idx()
+
+        self.network.update_nodes_if()
+
+        if self.graph_is_up_to_date(startpoints, endpoints):
+            self.update_unders()
+            return
+        
+        self.update_unders()
+        self.graph = self.make_graph()
+
+    def make_temp_idx(self):
+        if hasattr(self.network, "nodes"):
+            self.startpoints.make_temp_idx(
+                start=max(self.network.nodes.node_id.astype(int)) + 1
+            )
+            if hasattr(self, "endpoints"):
+                self.endpoints.make_temp_idx(
+                    start=max(self.startpoints.points.temp_idx.astype(int)) + 1
+                )
+
+    def graph_is_up_to_date(self, startpoints, endpoints):
+        
+        if not hasattr(self, "graph"):
+            return False
+        
+        if self.search_factor != self._search_factor:
+            return False
+        if self.search_tolerance != self._search_tolerance:
+            return False
+        if self.cost_to_nodes != self._cost_to_nodes:
+            return False
+        
+        if self.startpoints.wkt != [
+            geom.wkt for geom in startpoints.geometry
+        ]:
+            return False
+
+        if hasattr(self, "endpoints"):
+            if self.endpoints.wkt != [
+                geom.wkt for geom in endpoints.geometry
+            ]:
+                return False
+
+        if not all(
+            x in self.graph.vs["name"] for x in list(self.startpoints.points.temp_idx.values)
+            ):
+            return False
+
+        if hasattr(self, "endpoints"):
+            if not all(
+            x in self.graph.vs["name"] for x in self.endpoints.points.temp_idx
+            ):
+                return False
+        print("Truetruetrue")
+        return True
+    
+    def update_unders(self):
+        self._search_tolerance = self.search_tolerance
+        self._search_factor = self.search_factor
+        self._cost_to_nodes = self.cost_to_nodes
 
     def validate_cost(self, raise_error: bool = True) -> None:
         

@@ -99,10 +99,16 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
 
         nw = self.gdf
         b, f, t = direction_vals
+
+        if "b" in t.lower() and "t" in b.lower():
+            warnings.warn(f"The 'direction_vals' should be in the order 'both ways', 'forwards', 'backwards'. Got {b, f, t}. If this is correct, please procede.")
         
+        if minute_cols:
+            nw = nw.drop("minutes", axis=1, errors="ignore")
+
         ft = nw.loc[nw[direction_col] == f]
         tf = nw.loc[nw[direction_col] == t]
-        both_ways = nw[nw[direction_col] == b]
+        both_ways = nw.loc[nw[direction_col] == b]
         both_ways2 = both_ways.copy()
 
         tf.geometry = reverse(tf.geometry)
@@ -112,7 +118,7 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
             if isinstance(minute_cols, str):
                 min_f, min_t = minute_cols, minute_cols
             if len(minute_cols) > 2:
-                raise ValueError("'minute_cols' should be column name (string) or tuple/list with values of directions both, forwards and backwards. E.g. ('B', 'F', 'T')")
+                raise ValueError("'minute_cols' should be column name (string) or tuple/list with values of directions forwards and backwards, in that order.")
             if len(minute_cols) == 2:
                 min_f, min_t = minute_cols
 
@@ -129,6 +135,8 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
         if flat_speed:
             self.gdf["minutes"] = self.gdf.length / flat_speed * 16.6666666667
         
+        self.make_node_ids()
+
         return self
 
     def __repr__(self) -> str:

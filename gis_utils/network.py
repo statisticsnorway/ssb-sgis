@@ -31,7 +31,7 @@ class Network:
         if not len(gdf):
             raise ZeroRowsError
 
-        self._gdf = self.prepare_network(gdf, merge_lines)
+        self.gdf = self.prepare_network(gdf, merge_lines)
 
         self.make_node_ids()
 
@@ -93,31 +93,36 @@ class Network:
         return gdf
 
     def make_node_ids(self) -> None:
-        self._gdf, self._nodes = make_node_ids(self._gdf)
+        self.gdf, self._nodes = make_node_ids(self.gdf)
 
+#    @nodes_are_up_to_date
     def close_network_holes(self, max_dist, min_dist=0, deadends_only=False, hole_col = "hole"):
+        self.update_nodes_if()
         self.gdf = close_network_holes(self.gdf, max_dist, min_dist, deadends_only, hole_col)
         return self
 
     def get_largest_component(self, remove: bool = False):
-        if "connected" in self._gdf.columns:
+        self.update_nodes_if()
+        if "connected" in self.gdf.columns:
             warnings.warn("There is already a column 'connected' in the network. Run .remove_connected() if you want to remove the connected networks.")
-        self._gdf = get_largest_component(self._gdf)
+        self.gdf = get_largest_component(self.gdf)
         if remove:
-            self._gdf = self._gdf.loc[self._gdf.connected == 1]
+            self.gdf = self.gdf.loc[self.gdf.connected == 1]
             self.make_node_ids()
 
         return self
 
     def get_component_size(self):
-        self._gdf = get_component_size(self._gdf)
+        self.update_nodes_if()
+        self.gdf = get_component_size(self.gdf)
         return self
 
     def remove_isolated(self):
-        if not "connected" in self._gdf.columns:
-            self._gdf = get_largest_component(self._gdf)
+        self.update_nodes_if()
+        if not "connected" in self.gdf.columns:
+            self.gdf = get_largest_component(self.gdf)
         
-        self._gdf = self._gdf.loc[self._gdf.connected == 1]
+        self.gdf = self.gdf.loc[self.gdf.connected == 1]
 
         return self
 
@@ -126,36 +131,41 @@ class Network:
         return self
 
     def nodes_are_up_to_date(self):
-
+        
+        if not hasattr(self, "nodes"):
+            return False
+        
         if not all(
-            self._gdf.source.isin(self._nodes.node_id)
+            self.gdf.source.isin(self._nodes.node_id)
             ) or not all(
-                self._gdf.target.isin(self._nodes.node_id)
+                self.gdf.target.isin(self._nodes.node_id)
                 ):
             return False
         
         return True
+
+    def update_nodes_if(self):
+        if not self.nodes_are_up_to_date():
+            self.make_node_ids()
 
     @property
     def nodes(self):
         """Nodes cannot be altered directly because it has to follow the numeric index. """
         return self._nodes
 
-    @property
-    def gdf(self):
-        return self._gdf
+    def __repr__(self) -> str:
+        return f"Network class instance with {len(self.gdf)} rows and {len(self.gdf.columns)} columns."
 
-    @gdf.setter
-    def gdf(self, new_gdf):
-        """Updates the node ids and source-target columns 
-        if the gdf has been altered in a meaningful way,
-        meaningful meaning that the rows have changed.
-        """
-        self._gdf = new_gdf
+    def __iter__(self):
+        return iter(self.__dict__.values())
+
+
+def nodes_are_up_to_date(function):
+    
+    def wrapper(*args, **kwargs):
         if not self.nodes_are_up_to_date():
             self.make_node_ids()
-        return self._gdf
+        out = function(*args, **kwargs)
+        return out
 
-    def __repr__(self) -> str:
-        return f"Network class instance with {len(self._gdf)} rows and {len(self._gdf.columns)} columns."
-
+    return wrapper
