@@ -3,8 +3,18 @@ import pandas as pd
 import numpy as np
 from shapely import Geometry
 from geopandas import GeoDataFrame, GeoSeries
-import matplotlib.pyplot as plt
 import warnings
+
+from shapely import (
+    polygons,
+    get_exterior_ring,
+    get_parts,
+    get_num_interior_rings,
+    get_interior_ring,
+    area,
+)
+from shapely.ops import unary_union
+from .buffer_dissolve_explode import buff
 
 
 def clean_geoms(
@@ -45,7 +55,7 @@ def clean_geoms(
     if single_geom_type:
         cleaned = to_single_geom_type(cleaned)
     
-    if isinstance(gdf, gpd.GeoDataFrame):
+    if isinstance(gdf, GeoDataFrame):
         gdf = gdf.loc[cleaned.index]
         gdf[gdf._geometry_column_name] = cleaned
     else:
@@ -93,7 +103,6 @@ def to_single_geom_type(
     return gdf
 
 
-
 def close_holes(
     geom: GeoDataFrame | GeoSeries | Geometry, 
     max_km2: int | None = None, 
@@ -109,7 +118,7 @@ def close_holes(
     if copy:
         geom = geom.copy()
 
-    if isinstance(geom, gpd.GeoDataFrame):
+    if isinstance(geom, GeoDataFrame):
         geom["geometry"] = geom.geometry.map(lambda x: _close_holes_geom(x, max_km2))
 
     elif isinstance(geom, gpd.GeoSeries):
@@ -120,18 +129,6 @@ def close_holes(
         geom = _close_holes_geom(geom, max_km2)
 
     return geom
-
-
-# flytte hvor?
-from shapely import (
-    polygons,
-    get_exterior_ring,
-    get_parts,
-    get_num_interior_rings,
-    get_interior_ring,
-    area,
-)
-from shapely.ops import unary_union
 
 
 def _close_holes_geom(geom, max_km2=None):
@@ -155,36 +152,18 @@ def _close_holes_geom(geom, max_km2=None):
     return unary_union(holes_closed)
 
 
-def cleanclip(
-    gdf: GeoDataFrame | GeoSeries,
-    clip_to: GeoDataFrame | GeoSeries | Geometry,
-    keep_geom_type: bool = True,
-    **kwargs
-    ) -> GeoDataFrame | GeoSeries:
-
-    """Clip geometries to the mask extent, then cleans the geometries.
-    geopandas.clip does a fast clipping, with no guarantee for valid outputs. Here, geometries are made valid, then invalid, empty, nan and None geometries are removed. 
-
-    """
-    
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
-        raise TypeError(
-            f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}"
-        )
-    
-    return gdf.clip(clip_to, keep_geom_type=keep_geom_type, **kwargs).pipe(clean_geoms)
-
-
 def gdf_concat(
     gdfs: list[GeoDataFrame], 
     crs: str | int | None = None, 
     ignore_index: bool = True, 
     geometry: str = "geometry", 
     **kwargs
-    ) -> gpd.GeoDataFrame:
+    ) -> GeoDataFrame:
     """ 
-    Samler liste med geodataframes til en lang geodataframe.
-    Ignorerer index, endrer til felles crs. 
+    Concats geodataframes rowwise.
+    Ignores index, changes to common crs. 
+    If no crs is given, chooses the first crs in the list of geodataframes.
+
     """
     
     gdfs = [gdf for gdf in gdfs if len(gdf)]
@@ -200,10 +179,10 @@ def gdf_concat(
     except ValueError:
         print("OBS: ikke alle gdf-ene dine har crs. Hvis du nå samler latlon og utm, må du først bestemme crs med set_crs(), så gi dem samme crs med to_crs()")
 
-    return gpd.GeoDataFrame(pd.concat(gdfs,ignore_index=ignore_index, **kwargs), geometry=geometry, crs=crs)
+    return GeoDataFrame(pd.concat(gdfs,ignore_index=ignore_index, **kwargs), geometry=geometry, crs=crs)
 
 
-def to_gdf(geom: GeoSeries | Geometry | str, crs=None, **kwargs) -> gpd.GeoDataFrame:
+def to_gdf(geom: GeoSeries | Geometry | str, crs=None, **kwargs) -> GeoDataFrame:
     """ 
     Konverterer til geodataframe fra geoseries, shapely-objekt, wkt, liste med shapely-objekter eller shapely-sekvenser 
     OBS: når man har shapely-objekter eller wkt, bør man velge crs. 
@@ -217,11 +196,80 @@ def to_gdf(geom: GeoSeries | Geometry | str, crs=None, **kwargs) -> gpd.GeoDataF
     if isinstance(geom, str):
         from shapely.wkt import loads
         geom = loads(geom)
-        gdf = gpd.GeoDataFrame({"geometry": gpd.GeoSeries(geom)}, crs=crs, **kwargs)
+        gdf = GeoDataFrame({"geometry": gpd.GeoSeries(geom)}, crs=crs, **kwargs)
     else:
-        gdf = gpd.GeoDataFrame({"geometry": gpd.GeoSeries(geom)}, crs=crs, **kwargs)
+        gdf = GeoDataFrame({"geometry": gpd.GeoSeries(geom)}, crs=crs, **kwargs)
     
     return gdf
+
+
+def clean_clip(
+    gdf: GeoDataFrame | GeoSeries,
+    mask: GeoDataFrame | GeoSeries | Geometry,
+    keep_geom_type: bool = True,
+    **kwargs
+    ) -> GeoDataFrame | GeoSeries:
+
+    """Clip geometries to the mask extent, then cleans the geometries.
+    geopandas.clip does a fast clipping, with no guarantee for valid outputs. 
+    Here, geometries are made valid, then invalid, empty, nan and None geometries are removed. 
+
+    """
+    
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+        raise TypeError(
+            f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}"
+        )
+    
+    return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(clean_geoms)
+
+
+def overlay(left_gdf, right_gdf, drop_dupcol = True, **kwargs) -> GeoDataFrame:
+    """ 
+    som gpd.overlay bare at kolonner i right_gdf som også er i left_gdf fjernes (fordi det snart vil gi feilmelding i geopandas)
+    og kolonner som har med index å gjøre fjernes, fordi sjoin returnerer index_right som kolonnenavn, som gir feilmelding ved neste join. 
+    """
+
+    left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains('index|level_')]
+    right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains('index|level_')]
+
+    if drop_dupcol:
+        right_gdf = right_gdf.loc[:, right_gdf.columns.difference(left_gdf.columns.difference(["geometry"]))]
+
+    try:
+        joined = left_gdf.overlay(right_gdf, **kwargs)
+    except Exception:
+        right_gdf = right_gdf.to_crs(left_gdf.crs)
+        left_gdf = clean_geoms(left_gdf, single_geom_type=True)
+        right_gdf = clean_geoms(right_gdf, single_geom_type=True)
+        joined = left_gdf.overlay(right_gdf, **kwargs)
+
+    right_gdf = clean_geoms(right_gdf, single_geom_type=True)
+
+    return joined.loc[:, ~joined.columns.str.contains('index|level_')]
+
+
+def sjoin(left_gdf, right_gdf, drop_dupcol = True, **kwargs) -> GeoDataFrame:
+    """ 
+    som gpd.sjoin bare at kolonner i right_gdf som også er i left_gdf fjernes (fordi det snart vil gi feilmelding i geopandas)
+    og kolonner som har med index å gjøre fjernes, fordi sjoin returnerer index_right som kolonnenavn, som gir feilmelding ved neste join. 
+    """
+
+    left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains('index|level_')]
+    right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains('index|level_')]
+
+    if drop_dupcol:
+        right_gdf = right_gdf.loc[:, right_gdf.columns.difference(left_gdf.columns.difference(["geometry"]))]
+
+    try:
+        joined = left_gdf.sjoin(right_gdf, **kwargs)
+    except Exception:
+        right_gdf = right_gdf.to_crs(left_gdf.crs)
+        left_gdf = clean_geoms(left_gdf, single_geom_type=True)
+        right_gdf = clean_geoms(right_gdf, single_geom_type=True)
+        joined = left_gdf.sjoin(right_gdf, **kwargs)
+
+    return joined.loc[:, ~joined.columns.str.contains('index|level_')]
 
 
 def overlay_update(gdf1: GeoDataFrame, gdf2: GeoDataFrame, **kwargs) -> GeoDataFrame:
@@ -246,7 +294,7 @@ def snap_to(punkter, snap_til, maks_distanse=500, copy=False):
     if copy:
         punkter = punkter.copy()
         
-    if isinstance(punkter, gpd.GeoDataFrame):
+    if isinstance(punkter, GeoDataFrame):
         for i, punkt in enumerate(punkter.geometry):
             nearest = nearest_points(punkt, snap_til_shapely)[1] 
             snappet_punkt = snap(punkt, nearest, tolerance=maks_distanse)
@@ -265,7 +313,6 @@ def to_multipoint(geom, copy=False):
 
     from shapely.wkt import loads
     from shapely import force_2d
-    from shapely.ops import unary_union
     
     if copy:
         geom = geom.copy()
@@ -278,7 +325,7 @@ def to_multipoint(geom, copy=False):
 
         return unary_union(alle_punkter)
 
-    if isinstance(geom, gpd.GeoDataFrame):
+    if isinstance(geom, GeoDataFrame):
         geom["geometry"] = force_2d(geom.geometry)
         geom["geometry"] = geom.geometry.apply(lambda x: til_multipunkt_i_shapely(x))
 
@@ -291,20 +338,6 @@ def to_multipoint(geom, copy=False):
         geom = til_multipunkt_i_shapely(unary_union(geom))
 
     return geom
-
-
-
-# mulig flytte tim maps.py?
-def qtm(gdf, kolonne=None, *, scheme="Quantiles", title=None, size=12, fontsize=16, legend=True, **kwargs) -> None:
-    """ Quick, thematic map (name stolen from R's tmap package). """
-    fig, ax = plt.subplots(1, figsize=(size, size))
-    ax.set_axis_off()
-    ax.set_title(title, fontsize = fontsize)
-    gdf.plot(kolonne, scheme=scheme, legend=legend, ax=ax, **kwargs)
-
-
-def clipmap():
-    pass
 
 
 def find_neighbours(
@@ -435,39 +468,6 @@ def try_diss(gdf, presicion_col=True, max_rounding = 5, **kwargs):
         diss(gdf, **kwargs)
 
 
-def del_i_kommuner(gdf, kommunedata):
-    
-    kommunedata = kommunedata.loc[:, ["KOMMUNENR", "FYLKE", "geometry"]]
-    
-    gdf = gdf.loc[:, ~gdf.columns.str.contains("KOMM|FYLK|Shape_|SHAPE_|index|level_")]
-    
-    return (gdf
-            .overlay(kommunedata, how="intersection")
-            .drop("index_right", axis=1, errors="ignore")
-            .pipe(clean_geoms)
-           )
-    
-
-def min_sjoin(left_gdf, right_gdf, fjern_dupkol = True, **kwargs) -> gpd.GeoDataFrame:
-    """ 
-    som gpd.sjoin bare at kolonner i right_gdf som også er i left_gdf fjernes (fordi det snart vil gi feilmelding i geopandas)
-    og kolonner som har med index å gjøre fjernes, fordi sjoin returnerer index_right som kolonnenavn, som gir feilmelding ved neste join. 
-    """
-
-    #fjern index-kolonner
-    left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains('index|level_')]
-    right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains('index|level_')]
-
-    #fjern kolonner fra gdf2 som er i gdf1
-    if fjern_dupkol:
-        right_gdf.columns = [col if col not in left_gdf.columns or col=="geometry" else "skal_fjernes" for col in right_gdf.columns]
-        right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains('skal_fjernes')]
-
-    joinet = left_gdf.sjoin(right_gdf, **kwargs).reset_index()
-
-    return joinet.loc[:, ~joinet.columns.str.contains('index|level_')]
-
-
 def gridish(gdf, meter, x2 = False, minmax=False):
     """
     Enkel rutedeling av dataene, for å kunne loope tunge greier for områder i valgfri størrelse. 
@@ -510,9 +510,7 @@ def gridish(gdf, meter, x2 = False, minmax=False):
     return gdf
 
 
-
-
-def random_points(n: int, mask=None) -> gpd.GeoDataFrame:
+def random_points(n: int, mask=None) -> GeoDataFrame:
     """ lager n tilfeldige punkter innenfor et gitt område (mask). """
     from shapely.wkt import loads
     import random
@@ -523,7 +521,7 @@ def random_points(n: int, mask=None) -> gpd.GeoDataFrame:
         return punkter
     mask_kopi = mask.copy()
     mask_kopi = mask_kopi.to_crs(25833)
-    out = gpd.GeoDataFrame({"geometry":[]}, geometry="geometry", crs=25833)
+    out = GeoDataFrame({"geometry":[]}, geometry="geometry", crs=25833)
     while len(out) < n:
         x = np.array([random.random()*10**7 for _ in range(n*1000)])
         x = x[(x > mask_kopi.bounds.minx.iloc[0]) & (x < mask_kopi.bounds.maxx.iloc[0])]
@@ -539,37 +537,26 @@ def random_points(n: int, mask=None) -> gpd.GeoDataFrame:
     return out
 
 
-def antall_innen_avstand(gdf1: gpd.GeoDataFrame,
-                         gdf2: gpd.GeoDataFrame,
-                         avstand=0,
-                         kolonnenavn="antall") -> gpd.GeoDataFrame:
+def count_within_distance(gdf1: GeoDataFrame,
+                         gdf2: GeoDataFrame,
+                         distance = 0,
+                         col_name="n") -> GeoDataFrame:
     """
     Teller opp antall nærliggende eller overlappende (hvis avstan=0) geometrier i to geodataframes.
-    gdf1 returneres med en ny kolonne ('antall') som forteller hvor mange geometrier (rader) fra gdf2 som er innen spesifisert avstand. """
+    gdf1 returneres med en ny kolonne ('antall') som forteller hvor mange geometrier (rader) fra gdf2 som er innen spesifisert distance .  """
 
-    #lag midlertidig ID
-    gdf1["min_iddd"] = range(len(gdf1))
+    gdf1["temp_idx"] = range(len(gdf1))
+    gdf2["temp_idx2"] = range(len(gdf2))
 
-    #buffer paa gdf2
-    if avstand>0:
-        gdf2 = gdf2.copy()
-        gdf2["geometry"] = gdf2.buffer(avstand)
+    if distance > 0:
+        gdf2 = buff(gdf2[["geometry"]], distance)
     
-    #join med relevante kolonner
-    joined = gdf1[["min_iddd", "geometry"]].sjoin(gdf2[["geometry"]], how="inner")
+    joined = (gdf1[["temp_idx", "geometry"]]
+                .sjoin(gdf2[["geometry"]], how="inner")
+                ["temp_idx"]
+                .value_counts()
+    )
 
-    #tell opp antall overlappende gdf2-geometrier, gjor om NA til 0 og sorg for at kolonnen er integer (heltall)
-    joined[kolonnenavn] = joined['min_iddd'].map(joined['min_iddd'].value_counts()).fillna(0).astype(int)
+    gdf1[col_name] = gdf1["temp_idx"].map(joined).fillna(0)
 
-    #fjern duplikater
-    joined = joined.drop_duplicates("min_iddd")
-
-    #koble kolonnen 'antall' til den opprinnelige gdf1
-    joined = pd.DataFrame(joined[['min_iddd',kolonnenavn]])
-    gdf1 = gdf1.drop([kolonnenavn], axis=1, errors='ignore') #fjern kolonnen antall hvis den allerede finnes i inputen
-    gdf1 = gdf1.merge(joined, on = 'min_iddd', how = 'left')
-
-    #fjern midlertidig ID
-    gdf1 = gdf1.drop("min_iddd",axis=1)
-
-    return gdf1
+    return gdf1.drop("temp_idx", axis=1)

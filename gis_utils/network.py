@@ -1,8 +1,12 @@
+# The Network class is a wrapper around a GeoDataFrame with (Multi)LineStrings. It makes sure there
+# are only singlepart LineStrings in the network, and that the network is connected. It also makes
+# sure that the nodes are up to date with the lines
 import warnings
 from shapely import line_merge
 from geopandas import GeoDataFrame
 from pandas import RangeIndex
 import numpy as np
+from copy import copy, deepcopy
 
 from .exceptions import ZeroRowsError
 
@@ -95,16 +99,15 @@ class Network:
     def make_node_ids(self) -> None:
         self.gdf, self._nodes = make_node_ids(self.gdf)
 
-#    @nodes_are_up_to_date
     def close_network_holes(self, max_dist, min_dist=0, deadends_only=False, hole_col = "hole"):
         self.update_nodes_if()
         self.gdf = close_network_holes(self.gdf, max_dist, min_dist, deadends_only, hole_col)
         return self
 
-    def get_largest_component(self, remove: bool = False):
+    def get_largest_component(self, remove: bool = False, **kwargs):
         self.update_nodes_if()
         if "connected" in self.gdf.columns:
-            warnings.warn("There is already a column 'connected' in the network. Run .remove_connected() if you want to remove the connected networks.")
+            warnings.warn("There is already a column 'connected' in the network. Run .remove_isolated() if you want to remove the isolated networks.")
         self.gdf = get_largest_component(self.gdf)
         if remove:
             self.gdf = self.gdf.loc[self.gdf.connected == 1]
@@ -118,8 +121,10 @@ class Network:
         return self
 
     def remove_isolated(self):
-        self.update_nodes_if()
-        if not "connected" in self.gdf.columns:
+        if not self.nodes_are_up_to_date():
+            self.make_node_ids()
+            self.gdf = get_largest_component(self.gdf)
+        elif not "connected" in self.gdf.columns:
             self.gdf = get_largest_component(self.gdf)
         
         self.gdf = self.gdf.loc[self.gdf.connected == 1]
@@ -131,17 +136,24 @@ class Network:
         return self
 
     def nodes_are_up_to_date(self):
+        """Returns False if there are any source or target values not in the node-ids, or any superfluous node-ids (meaning rows have been removed from the lines gdf). """
         
-        if not hasattr(self, "nodes"):
+        new_or_missing = (
+            (~self.gdf.source.isin(self._nodes.node_id)) |
+            (~self.gdf.target.isin(self._nodes.node_id))
+            )
+        
+        if any(new_or_missing):
             return False
+
+        removed = (
+            (~self._nodes.node_id.isin(self.gdf.source)) |
+            (~self._nodes.node_id.isin(self.gdf.target))
+            )
         
-        if not all(
-            self.gdf.source.isin(self._nodes.node_id)
-            ) or not all(
-                self.gdf.target.isin(self._nodes.node_id)
-                ):
+        if any(removed):
             return False
-        
+                
         return True
 
     def update_nodes_if(self):
@@ -154,18 +166,14 @@ class Network:
         return self._nodes
 
     def __repr__(self) -> str:
-        return f"Network class instance with {len(self.gdf)} rows and {len(self.gdf.columns)} columns."
+        return f"{self.__class__.__name__} class instance with {len(self.gdf)} rows and a length of {sum(self.gdf.length)/1000} km."
 
     def __iter__(self):
         return iter(self.__dict__.values())
 
+    def copy(self):
+        return copy(self)
 
-def nodes_are_up_to_date(function):
+    def deepcopy(self):
+        return deepcopy(self)
     
-    def wrapper(*args, **kwargs):
-        if not self.nodes_are_up_to_date():
-            self.make_node_ids()
-        out = function(*args, **kwargs)
-        return out
-
-    return wrapper

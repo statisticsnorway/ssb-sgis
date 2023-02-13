@@ -4,7 +4,10 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 
 
-def coordinate_array(gdf):
+def coordinate_array(gdf: GeoDataFrame) -> np.ndarray[np.ndarray[float]]:
+    """Takes a GeoDataFrame of point geometries and turns it into a 2d ndarray 
+    of coordinates.
+    """
     return np.array(
         [(x, y) for x, y in zip(gdf.geometry.x, gdf.geometry.y)]
     )
@@ -19,19 +22,7 @@ def k_nearest_neigbors(
     nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(to_array)
     dists, indices = nbr.kneighbors(from_array)
     return dists, indices
-
-
-def return_two_id_cols(
-    id_cols: str | list[str, str] | tuple[str, str]
-    ) -> tuple[str]:
-
-    if isinstance(id_cols, (tuple, list)) and len(id_cols) == 2:
-        return id_cols
-    elif isinstance(id_cols, str):
-        return id_cols, id_cols
-    else:
-        raise ValueError
-    
+   
 
 def get_edges(gdf, indices):
     return np.array(
@@ -106,13 +97,25 @@ def get_k_nearest_neighbors(
     return df
 
 
+def return_two_id_cols(
+    id_cols: str | list[str, str] | tuple[str, str]
+    ) -> tuple[str]:
+
+    if isinstance(id_cols, (tuple, list)) and len(id_cols) == 2:
+        return id_cols
+    elif isinstance(id_cols, str):
+        return id_cols, id_cols
+    else:
+        raise ValueError
+
+
 def main():
     import geopandas as gpd
     p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_10000.parquet")
     p["temp_idx"] = p.index
 
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
-#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
+    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
     r = r.to_crs(p.crs)
     r["road_idx"] = r.index
     r["geometry"] = r.centroid
@@ -124,6 +127,7 @@ def main():
     print(
         p.sjoin_nearest(r, distance_col="dist")
         )
+
 
 if __name__ == "__main__":
     import cProfile

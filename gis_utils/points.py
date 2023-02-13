@@ -20,13 +20,12 @@ class Points:
         self.id_col = id_col
         self.temp_idx_start = temp_idx_start
 
-    def make_id_dict(self):
-        if self.id_col:
-            self.id_dict = {temp_idx: idx for temp_idx, idx in zip(self.points.temp_idx, self.points[self.id_col])}
+    def make_temp_idx(self):
 
-    def make_temp_idx(self, start: int):
-
-        self.points["temp_idx"] = np.arange(start=start, stop=start+len(self.points), step=1)
+        self.points["temp_idx"] = np.arange(
+            start=self.temp_idx_start, 
+            stop=self.temp_idx_start+len(self.points)
+            )
         self.points["temp_idx"] = self.points["temp_idx"].astype(str)
 
         if self.id_col:
@@ -60,7 +59,7 @@ class Points:
             len(results[col].unique()) - results.dropna().groupby(col).count().iloc[:, 0]
         )
     
-    def distance_to_nodes(self, nodes, search_tolerance, search_factor):
+    def distance_to_nodes(self, nodes: GeoDataFrame, search_tolerance, search_factor) -> DataFrame:
 
         df = get_k_nearest_neighbors(
             gdf=self.points, 
@@ -73,8 +72,7 @@ class Points:
         search_factor_mult = (1 + search_factor / 100)
         df = df.loc[df.dist <= df.dist_min * search_factor_mult + search_factor]
 
-        self.edges = [(temp_idx, node_id) for temp_idx, node_id in zip(df.temp_idx, df.node_id)]
-        self.dists = list(df.dist)
+        return df
 
 
 class StartPoints(Points):
@@ -88,6 +86,13 @@ class StartPoints(Points):
 
         self.check_id_col(index=0)
         self.make_temp_idx()
+    
+    def distance_to_nodes(self, nodes, search_tolerance, search_factor) -> None:
+        df = super().distance_to_nodes(nodes, search_tolerance, search_factor)
+        
+        self.edges = [(temp_idx, node_id) for temp_idx, node_id in zip(df.temp_idx, df.node_id)]
+        self.dists = list(df.dist)
+
 
 
 class EndPoints(Points):
@@ -101,3 +106,10 @@ class EndPoints(Points):
 
         self.check_id_col(index=1)
         self.make_temp_idx()
+    
+    def distance_to_nodes(self, nodes, search_tolerance, search_factor) -> None:
+        """Same as for the startpoints, but opposite edge direction"""
+        df = super().distance_to_nodes(nodes, search_tolerance, search_factor)
+        
+        self.edges = [(node_id, temp_idx) for temp_idx, node_id in zip(df.temp_idx, df.node_id)]
+        self.dists = list(df.dist)

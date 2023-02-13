@@ -35,36 +35,33 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
     def make_directed_network_osm(
         self,
         direction_col: str = "oneway",
-        direction_vals: list | tuple = ("B", "F", "T"),
+        direction_vals_bft: list | tuple = ("B", "F", "T"),
         speed_col: str = "maxspeed",
         ):
 
         return self.make_directed_network(
             direction_col=direction_col,
-            direction_vals=direction_vals,
+            direction_vals_bft=direction_vals_bft,
             speed_col=speed_col,
         )
 
     def make_directed_network_norway(
         self,
         direction_col: str = "oneway",
-        direction_vals: list | tuple = ("B", "FT", "TF"),
+        direction_vals_bft: list | tuple = ("B", "FT", "TF"),
         minute_cols: list | tuple = ("drivetime_fw", "drivetime_bw"),
         ):
 
         return self.make_directed_network(
             direction_col=direction_col,
-            direction_vals=direction_vals,
+            direction_vals_bft=direction_vals_bft,
             minute_cols=minute_cols,
         )
 
     def make_directed_network(
         self,
         direction_col: str,
-        direction_vals: tuple[str, str, str] | list[str, str, str] | None, #None???
-        direction_forward_val: str | None = None,
-        direction_backward_val: str | None = None,
-        direction_both_val: str | None = None,
+        direction_vals_bft: tuple[str, str, str] | list[str, str, str],
         speed_col: str | None = None,
         minute_cols: tuple[str, str] | list[str, str] | str | None = None,
         flat_speed: int | None = None,
@@ -74,8 +71,8 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
         
         Args:
             direction_col: name of column specifying the direction of the line geometry.
-            direction_vals: tuple or list with the values of the direction column. 
-                Must be in the order 'both directions', 'forwards', 'backwards'. E.g. ('B', 'F', 'T').
+            direction_vals_bft: tuple or list with the values of the direction column. 
+                Must be in the order 'both directions', 'from', 'to'. E.g. ('B', 'F', 'T').
             speed_col (optional): name of column with the road speed limit.
             minute_cols (optional): column or columns containing the number of minutes it takes to traverse the line. 
                 If one column name is given, this will be used for both directions. If tuple/list with two column names, 
@@ -88,8 +85,8 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
 
         """
         
-        if len(direction_vals) != 3:
-            raise ValueError("'direction_vals' should be tuple/list with values of directions both, forwards and backwards. E.g. ('B', 'F', 'T')")
+        if len(direction_vals_bft) != 3:
+            raise ValueError("'direction_vals_bft' should be tuple/list with values of directions both, from and to. E.g. ('B', 'F', 'T')")
         
         if not minute_cols and not speed_col:
             warnings.warn("")
@@ -98,10 +95,10 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
             raise ValueError("Can only calculate minutes from either 'speed_col', 'minute_cols' or 'flat_speed'.")
 
         nw = self.gdf
-        b, f, t = direction_vals
+        b, f, t = direction_vals_bft
 
-        if "b" in t.lower() and "t" in b.lower():
-            warnings.warn(f"The 'direction_vals' should be in the order 'both ways', 'forwards', 'backwards'. Got {b, f, t}. If this is correct, please procede.")
+        if "b" in t.lower() and "t" in b.lower() and "f" in f.lower():
+            warnings.warn(f"The 'direction_vals_bft' should be in the order 'both ways', 'from', 'to'. Got {b, f, t}. Is this correct?")
         
         if minute_cols:
             nw = nw.drop("minutes", axis=1, errors="ignore")

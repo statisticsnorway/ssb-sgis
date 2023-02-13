@@ -1,9 +1,9 @@
+# NetworkAnalysis is a class that holds the actual network analysis methods.
 import numpy as np
 import warnings
 from igraph import Graph
 from geopandas import GeoDataFrame
 from pandas import DataFrame, RangeIndex
-from copy import copy, deepcopy
 from .make_graph import make_graph
 
 from .od_cost_matrix import od_cost_matrix
@@ -19,17 +19,34 @@ class Rules:
     def __init__(
         self,
         cost: int,
+        directed: bool,
         search_tolerance: int = 1000,
         search_factor: int = 10,
         cost_to_nodes: int = 5,
     ):
         self.cost = cost
+        self.directed = directed
         self.search_tolerance = search_tolerance
         self.search_factor = search_factor
         self.cost_to_nodes = cost_to_nodes
 
+        self._search_tolerance = search_tolerance
+        self._search_factor = search_factor
+        self._cost_to_nodes = cost_to_nodes
 
-class NetworkAnalysis:
+
+from dataclasses import dataclass
+
+@dataclass
+class Rules:
+    cost: str
+    directed: bool
+    search_tolerance: int = 1000
+    search_factor: int = 10
+    cost_to_nodes: int = 5
+
+
+class NetworkAnalysis(Rules):
     """Class that holds the actual network analysis methods. 
     
     Args:
@@ -38,6 +55,8 @@ class NetworkAnalysis:
             the 'network' attribute of this class. 
         cost: e.i. 'minutes' or 'meters'. Or custom numeric column.
         search_tolerance: meters.
+        search_factor: .
+        cost_to_nodes: .
 
     Example:
 
@@ -64,19 +83,24 @@ class NetworkAnalysis:
         self,
         network: Network | DirectedNetwork,
         cost: str,
-        search_tolerance: int = 1000,
-        search_factor: int = 10,
-        cost_to_nodes: int = 5,
+        **kwargs,
+#        cost: str,
+ #       search_tolerance: int = 1000,
+  #      search_factor: int = 10,
+   #     cost_to_nodes: int = 5,
     ):
 
         if isinstance(network, DirectedNetwork):
-            self.directed = True
+            directed = True
         elif isinstance(network, Network):
-            self.directed = False
+            directed = False
         else:
             raise ValueError(f"'network' should be either a DirectedNetwork or Network. Got {type(network)}")
         
         self.network = network
+
+        super().__init__(cost, directed, **kwargs)
+        """
         self.cost = cost
         self.search_tolerance = search_tolerance
         self.search_factor = search_factor
@@ -86,13 +110,13 @@ class NetworkAnalysis:
         self._search_tolerance = search_tolerance
         self._search_factor = search_factor
         self._cost_to_nodes = cost_to_nodes
+        """
 
         self.validate_cost(raise_error=False)
 
-    def make_graph(
-        self,
-        ) -> Graph:
-        return make_graph(self)
+#        self.makegraph = MakeGraph(self, **kwargs)
+
+        self.update_unders()
 
     def od_cost_matrix(
         self, 
@@ -177,41 +201,94 @@ class NetworkAnalysis:
 
         self.startpoints = StartPoints(
             startpoints, 
-            crs=self.network.gdf.crs,
             id_col=id_col, 
+            crs=self.network.gdf.crs,
+            temp_idx_start=max(self.network.nodes.node_id.astype(int)) + 1
             )
 
         if endpoints is not None:
-            self.endpoints = EndPoints(endpoints, id_col=id_col, crs=self.network.gdf.crs)
+            self.endpoints = EndPoints(
+                endpoints, 
+                id_col=id_col, 
+                crs=self.network.gdf.crs,
+                temp_idx_start=max(self.startpoints.points.temp_idx.astype(int)) + 1
+                )
+        
         else:
-            del self.endpoints
-
-        self.make_temp_idx()
+            self.endpoints = None
 
         self.network.update_nodes_if()
 
-        if self.graph_is_up_to_date(startpoints, endpoints):
-            self.update_unders()
-            return
+        if not self.graph_is_up_to_date(startpoints, endpoints):
+#        if not self.makegraph.graph_is_up_to_date():
+            self.startpoints.distance_to_nodes(self.network.nodes, self.search_tolerance, self.search_factor)
+            self.endpoints.distance_to_nodes(self.network.nodes, self.search_tolerance, self.search_factor)
+       #     self.makegraph.graph = self.makegraph.make_graph()
+            self.graph = self.make_graph(self.network.gdf)
         
         self.update_unders()
-        self.graph = self.make_graph()
 
-    def make_temp_idx(self):
-        if hasattr(self.network, "nodes"):
-            self.startpoints.make_temp_idx(
-                start=max(self.network.nodes.node_id.astype(int)) + 1
-            )
-            if hasattr(self, "endpoints"):
-                self.endpoints.make_temp_idx(
-                    start=max(self.startpoints.points.temp_idx.astype(int)) + 1
-                )
+    def make_graph(
+        self,
+        ) -> Graph:
+        return make_graph(self)
 
+    def make_graph(self, gdf: GeoDataFrame) -> Graph:
+        """Lager igraph.Graph som inkluderer edges to/from start-/sluttpunktene.
+        """
+
+        edges = [
+            (str(source), str(target))
+            for source, target in zip(gdf["source"], gdf["target"])
+        ]
+
+        costs = list(gdf[self.cost])
+
+        edges = edges + self.startpoints.edges
+        costs = costs + self.calculate_costs(self.startpoints.dists)
+
+        if self.endpoints is not None:
+            edges = edges + self.endpoints.edges
+            costs = costs + self.calculate_costs(self.endpoints.dists)
+
+        graph = Graph.TupleList(edges, directed=self.directed)
+        assert len(graph.get_edgelist()) == len(costs)
+
+        graph.es["weight"] = costs
+        assert min(graph.es["weight"]) > 0
+
+        graph.add_vertices([idx for idx in self.startpoints.points.temp_idx if idx not in graph.vs["name"]])
+        if self.endpoints is not None:
+            graph.add_vertices([idx for idx in self.endpoints.points.temp_idx if idx not in graph.vs["name"]])
+            
+        return graph
+
+    def calculate_costs(self, distances):
+        """
+        Gjør om meter to minutter for lenkene mellom punktene og nabonodene.
+        og ganger luftlinjeavstanden med 1.5 siden det alltid er svinger i Norge.
+        Gjør ellers ingentinnw.
+        """
+
+        if self.cost_to_nodes == 0:
+            return [0 for _ in distances]
+
+        elif "meter" in self.cost:
+            return [x * 1.5 for x in distances]
+
+        elif "min" in self.cost:
+            return [(x * 1.5) / (16.666667 * self.cost_to_nodes) for x in distances]
+
+        else:
+            return distances
+            
     def graph_is_up_to_date(self, startpoints, endpoints):
-        
+        """Returns False if the rules of the graphmaking has changed, """
+
         if not hasattr(self, "graph"):
             return False
         
+        # check if the rules for making the graph have changed
         if self.search_factor != self._search_factor:
             return False
         if self.search_tolerance != self._search_tolerance:
@@ -224,7 +301,7 @@ class NetworkAnalysis:
         ]:
             return False
 
-        if hasattr(self, "endpoints"):
+        if self.endpoints:
             if self.endpoints.wkt != [
                 geom.wkt for geom in endpoints.geometry
             ]:
@@ -235,12 +312,12 @@ class NetworkAnalysis:
             ):
             return False
 
-        if hasattr(self, "endpoints"):
+        if self.endpoints:
             if not all(
             x in self.graph.vs["name"] for x in self.endpoints.points.temp_idx
             ):
                 return False
-        print("Truetruetrue")
+
         return True
     
     def update_unders(self):
@@ -291,8 +368,5 @@ class NetworkAnalysis:
             if raise_error:
                 raise KeyError(f"Cannot find 'cost' column for minutes. Try running one of the 'make_directed_network_' methods, or set 'cost' to 'meters'.")
 
-    def copy(self):
-        return copy(self)
-
-    def deepcopy(self):
-        return deepcopy(self)
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(cost={self.cost}, search_tolerance={self.search_tolerance}, search_factor={self.search_factor}, cost_to_nodes={self.cost_to_nodes})"

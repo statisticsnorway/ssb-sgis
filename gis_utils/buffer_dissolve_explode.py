@@ -1,20 +1,22 @@
 import pandas as pd
 import geopandas as gpd
-from shapely import Geometry
 from geopandas import GeoDataFrame, GeoSeries
+from shapely import Geometry
+from shapely import get_parts, make_valid
+from shapely.ops import unary_union
 
 """
 Functions that buffer, dissolve and/or explodes (multipart to singlepart) geodataframes.
 
 Rules that apply to all functions:
- - høyere buffer-oppløsning enn standard
+ - higher buffer-oppløsning enn standard
  - reparerer geometrien etter buffer og dissolve, men ikke etter explode, siden reparering kan returnere multipart-geometrier
  - index ignoreres og resettes alltid og kolonner som har med index å gjøre fjernes fordi de kan gi unødvendige feilmeldinger
 """
 
 
 def buff(
-    geom: GeoDataFrame | GeoSeries | Geometry, 
+    gdf: GeoDataFrame | GeoSeries | Geometry, 
     distance: int,
     resolution: int = 50, 
     copy: bool = True, 
@@ -26,25 +28,30 @@ def buff(
     repairs geometry afterwards
     """
 
-    if copy:
-        geom = geom.copy()
+    if copy and not isinstance(gdf, Geometry):
+        gdf = gdf.copy()
 
-    if isinstance(geom, gpd.GeoDataFrame):
-        geom["geometry"] = geom.buffer(distance, resolution=resolution, **kwargs)
-        geom["geometry"] = geom.make_valid()
+    if isinstance(gdf, GeoDataFrame):
+        gdf["geometry"] = gdf.buffer(distance, resolution=resolution, **kwargs)
+        gdf["geometry"] = gdf.make_valid()
+    elif isinstance(gdf, GeoSeries):
+        gdf = gdf.buffer(distance, resolution=resolution, **kwargs)
+        gdf = gdf.make_valid()
+    elif isinstance(gdf, Geometry):
+        gdf = gdf.buffer(distance, resolution=resolution, **kwargs)
+        gdf = make_valid(gdf)
     else:
-        geom = geom.buffer(distance, resolution=resolution, **kwargs)
-        geom = geom.make_valid()
-
-    return geom
+        raise TypeError(f"'gdf' should be GeoDataFrame, GeoSeries or shapely Geometry. Got {type(gdf)}")
+    
+    return gdf
 
 
 def diss(
-    gdf: GeoDataFrame, 
+    gdf: GeoDataFrame | GeoSeries | Geometry, 
     by=None, aggfunc="sum", 
     reset_index=True,
     **kwargs
-    ) -> GeoDataFrame:
+) -> GeoDataFrame | GeoSeries | Geometry:
     """
     dissolve som ignorerer og resetter index
     med aggfunc='sum' som default fordi 'first' gir null mening
@@ -55,7 +62,10 @@ def diss(
         return gpd.GeoSeries(gdf.unary_union)
     
     if isinstance(gdf, Geometry):
-        return gdf.unary_union
+        return unary_union(gdf)
+
+    if not isinstance(gdf, GeoDataFrame):
+        raise TypeError(f"'gdf' should be GeoDataFrame, GeoSeries or shapely Geometry. Got {type(gdf)}")
 
     dissolved = gdf.dissolve(by=by, aggfunc=aggfunc, **kwargs)
 
@@ -70,17 +80,42 @@ def diss(
     return dissolved.loc[:, ~dissolved.columns.str.contains("index|level_")]
 
 
-# denne funksjonen trengs egentlig ikke, bare la den til for å være konsistent med opplegget med buff, diss og exp
-def exp(gdf, ignore_index=True, **kwargs) -> gpd.GeoDataFrame:
+def exp(
+    gdf: GeoDataFrame | GeoSeries | Geometry, 
+    ignore_index=True,
+    **kwargs,
+) -> GeoDataFrame | GeoSeries | Geometry:
+
     """ 
     explode (til singlepart) som reparerer geometrien og ignorerer index som default (samme som i pandas). 
     reparerer før explode fordi reparering kan skape multigeometrier. 
     """
-    gdf["geometry"] = gdf.make_valid()
-    return gdf.explode(ignore_index=ignore_index, **kwargs)
+    if isinstance(gdf, GeoDataFrame):
+        gdf["geometry"] = gdf.make_valid()
+        return gdf.explode(ignore_index=ignore_index, **kwargs)
+
+    elif isinstance(gdf, GeoSeries):
+        gdf = gdf.make_valid()
+        return gdf.explode(ignore_index=ignore_index, **kwargs)
+    
+    elif isinstance(gdf, Geometry):
+        return get_parts(make_valid(gdf))
+    
+    else:
+        raise TypeError(f"'gdf' should be GeoDataFrame, GeoSeries or shapely Geometry. Got {type(gdf)}")
 
 
-def buffdissexp(gdf, distance, resolution=50, by=None, id=None, ignore_index=True, copy=True, **dissolve_kwargs) -> gpd.GeoDataFrame:
+
+def buffdissexp(
+    gdf: GeoDataFrame | GeoSeries | Geometry, 
+    distance: int, 
+    resolution: int=50, 
+    id=None, 
+    ignore_index=True, 
+    reset_index=True, 
+    copy=True, 
+    **dissolve_kwargs
+) -> GeoDataFrame | GeoSeries | Geometry:
     """
     Bufrer og samler overlappende. Altså buffer, dissolve, explode (til singlepart).
     distance: buffer-distance
@@ -89,47 +124,25 @@ def buffdissexp(gdf, distance, resolution=50, by=None, id=None, ignore_index=Tru
     id: navn på eventuell id-kolonne
     """
 
+    if isinstance(gdf, Geometry):
+        return exp(diss(buff(gdf, distance, resolution=resolution)))
+
     gdf = (
-        buff(gdf, distance, resolution=resolution)
-        .pipe(diss, **dissolve_kwargs)
-        .explode(ignore_index=ignore_index)
+        buff(gdf, distance, resolution=resolution, copy=copy)
+        .pipe(diss, reset_index=reset_index, **dissolve_kwargs)
+        .pipe(exp, ignore_index=ignore_index)
     )
     
-    if copy:
-        gdf = gdf.copy()
-
-    if isinstance(gdf, gpd.GeoSeries):
-        return (
-            gpd.GeoSeries(gdf
-                          .buffer(distance, resolution=resolution)
-                          .make_valid()
-                          .unary_union)
-            .make_valid()
-            .explode(ignore_index=ignore_index)
-        )
-
-    gdf["geometry"] = gdf.buffer(distance, resolution=resolution)
-    gdf["geometry"] = gdf.make_valid()
-
-    dissolved = (gdf
-                .dissolve(by=by, **dissolve_kwargs)
-                .reset_index()
-    )
-
-    dissolved["geometry"] = dissolved.make_valid()
-
-    # gjør kolonner fra tuple til string (hvis flere by-kolonner)
-    dissolved.columns = ["_".join(kolonne).strip("_") if isinstance(kolonne, tuple) else kolonne for kolonne in dissolved.columns]
-
-    singlepart = dissolved.explode(ignore_index=ignore_index)
-
     if id:
-        singlepart[id] = list(range(len(singlepart)))
+        gdf[id] = list(range(len(gdf)))
     
-    return singlepart.loc[:, ~singlepart.columns.str.contains("index|level_")]
+    return gdf
 
 
-def dissexp(gdf, by=None, id=None, reset_index=True, **kwargs) -> gpd.GeoDataFrame:
+def dissexp(
+    gdf: GeoDataFrame | GeoSeries | Geometry, 
+    id=None, reset_index=True, ignore_index=True, **kwargs
+) -> GeoDataFrame | GeoSeries | Geometry:
     """
     Dissolve, explode (til singlepart). Altså dissolve overlappende.
     resolution: buffer-oppløsning
@@ -137,49 +150,30 @@ def dissexp(gdf, by=None, id=None, reset_index=True, **kwargs) -> gpd.GeoDataFra
     id: navn på eventuell id-kolonne
     """
     
-    gdf["geometry"] = gdf.make_valid()
+    gdf = (
+        diss(gdf, reset_index=reset_index, **kwargs)
+        .pipe(exp, ignore_index=ignore_index)
+    )
     
-    dissolved = gdf.dissolve(by=by, **kwargs)
-
-    if reset_index:
-        dissolved = dissolved.reset_index()
-
-    dissolved["geometry"] = dissolved.make_valid()
-
-    # gjør kolonner fra tuple til string (hvis flere by-kolonner)
-    dissolved.columns = ["_".join(kolonne).strip("_") if isinstance(kolonne, tuple) else kolonne for kolonne in dissolved.columns]
-
-    singlepart = dissolved.explode(ignore_index=True)
-
     if id:
-        singlepart[id] = list(range(len(singlepart)))
+        gdf[id] = list(range(len(gdf)))
+    
+    return gdf
 
-    return singlepart.loc[:, ~singlepart.columns.str.contains("index|level_")]
 
-
-def buffdiss(gdf, distance, resolution=50, by=None, id=None, reset_index=True, copy = True, **dissolve_kwargs) -> gpd.GeoDataFrame:
+def buffdiss(gdf, distance, resolution=50, id=None, reset_index=True, copy = True, **dissolve_kwargs
+) -> GeoDataFrame | GeoSeries | Geometry:
     """
     Buffer, dissolve.
     """
     
-    if copy:
-        gdf = gdf.copy()
-
-    gdf["geometry"] = gdf.buffer(distance, resolution=resolution)
-    gdf["geometry"] = gdf.make_valid()
+    gdf = (
+        buff(gdf, distance, resolution=resolution, copy=copy)
+        .pipe(diss, reset_index=reset_index, **dissolve_kwargs)
+    )
     
-    dissolved = gdf.dissolve(by=by, **dissolve_kwargs)
-
-    if reset_index:
-        dissolved = dissolved.reset_index()
-    
-    dissolved["geometry"] = dissolved.make_valid()
-
-    # gjør kolonner fra tuple til string (hvis flere by-kolonner)
-    dissolved.columns = ["_".join(kolonne).strip("_") if isinstance(kolonne, tuple) else kolonne for kolonne in dissolved.columns]
-
     if id:
-        dissolved[id] = list(range(len(dissolved)))
+        gdf[id] = list(range(len(gdf)))
     
-    return dissolved.loc[:, ~dissolved.columns.str.contains("index|level_")]
+    return gdf
 

@@ -18,15 +18,15 @@ class NetworkDaplaCar(DirectedNetwork):
         
         if isinstance(gdf, str):
             gdf = read_network_from_dapla(gdf, kommuner)
-
+        
         if turn_restrictions:
-            gdf = gdf.loc[gdf.turn_restriction == 0]
+            self.gdf = self.gdf.loc[gdf.turn_restriction == 0]
         
         if not fill_holes:
-            gdf = gdf.loc[gdf.hole == 0]
-        
+            self.gdf = self.gdf.loc[gdf.hole == 0]
+
         super().__init__(gdf, **kwargs)
-   
+
 
 class NetworkDaplaBike(DirectedNetwork):
     def __init__(
@@ -52,7 +52,7 @@ class NetworkDaplaBike(DirectedNetwork):
         super().__init__(gdf, **kwargs)
 
 
-class NetworkDaplaFoot(dNetwork):
+class NetworkDaplaFoot(Network):
     def __init__(
         self,
         gdf: GeoDataFrame | str = "daplasti_nyeste",
@@ -108,7 +108,7 @@ def prepare_network_norway(
 
     nw = nw.close_network_holes(max_dist=1.1, hole_col="hole")
 
-    nw = nw.get_largest_component(max_length=500)
+    nw = nw.get_largest_component()
 
     write_geopandas(
         nw.gdf,

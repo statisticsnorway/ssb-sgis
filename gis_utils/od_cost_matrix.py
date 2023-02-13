@@ -6,6 +6,7 @@ from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame
 import networkx as nx
 
+
 def od_cost_matrix(
     nw, # endre til graf
     startpoints: GeoDataFrame,
@@ -18,7 +19,24 @@ def od_cost_matrix(
 ) -> DataFrame | GeoDataFrame:
 
     """
+    It takes a network, a GeoDataFrame of origins and a GeoDataFrame of destinations, and returns a
+    GeoDataFrame with the shortest path between each origin and destination
+    
+    Args:
+      nw: the network object
+      startpoints (GeoDataFrame): GeoDataFrame
+      endpoints (GeoDataFrame): GeoDataFrame
+      lines: If True, the output will be a GeoDataFrame with straight lines between origin and destination. Defaults to False
+      rowwise: .
+    Defaults to False
+      cutoff (int): If you want to limit the maximum cost between origin and destination, you can
+    set a cutoff.
+      destination_count (int): int = None
+    
+    Returns:
+      A dataframe with the origin, destination and cost.
     """
+
 
     cost = nw.cost
     

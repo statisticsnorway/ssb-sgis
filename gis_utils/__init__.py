@@ -22,7 +22,16 @@ from .geopandas_utils import (
     find_neighbors,
     find_neighbours,
     random_points,
-    qtm,
+    sjoin,
+    overlay,
+    count_within_distance,
+)
+
+from .maps import (
+        qtm,
+        concat_explore,
+        clipmap,
+        samplemap,
 )
 
 from .network_functions import (

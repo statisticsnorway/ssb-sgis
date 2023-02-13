@@ -13,12 +13,22 @@ from gis_utils import clean_geoms, gdf_concat
 from .geopandas_utils import (
     clean_geoms,
     gdf_concat,
-    to_gdf,
-    gridish,
 )
 
 
 def make_node_ids(roads: GeoDataFrame, ignore_index: bool = False) -> tuple[GeoDataFrame, GeoDataFrame]:
+    """
+    > We make a new column for each node, and then we make a new column for each edge, and then we make
+    a new column for each node again
+    
+    Args:
+      roads (GeoDataFrame): GeoDataFrame
+      ignore_index (bool): If True, the index of the roads GeoDataFrame will be ignored. Defaults to
+    False
+    
+    Returns:
+      A tuple of two GeoDataFrames, one with the roads and one with the nodes.
+    """
     """Nye node-id-er som følger index (fordi indexes med numpy arrays i avstand_til_nodes())"""
 
     roads = make_edge_wkt_cols(roads, ignore_index)
@@ -56,13 +66,17 @@ def make_node_ids(roads: GeoDataFrame, ignore_index: bool = False) -> tuple[GeoD
 
 
 def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDataFrame:
-    """Make columns 'source_wkt' and 'target_wkt' for the first and last points of the linestrings.
-    LinearRings have no first and last points, and will be removed. Also circles coded as LineStrings have no boundary and will be removed.
-    The lines must be single part (LineStrings). An exception will be raised if there are MultiLineStrings.
-
+    """
+    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new columns, source_wkt
+    and target_wkt, which are the WKT representations of the first and last points of the LineStrings
+    
     Args:
-        roads:
-        ignore_index (bool): True by default to avoid futurewarning. But will change to False to be consistent with pandas.
+      roads (GeoDataFrame): the GeoDataFrame with the roads
+      ignore_index (bool): True by default to avoid futurewarning. But will change to False to be
+    consistent with pandas. Defaults to True
+    
+    Returns:
+      A GeoDataFrame with the columns 'source_wkt' and 'target_wkt'
     """
 
     roads = roads.loc[roads.geom_type != "LinearRing"]
