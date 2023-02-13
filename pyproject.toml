@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "ssb-gis-utils"
+version = "0.1.0"
+description = "GIS utility functions used at Statistics Norway."
+authors = ["Morten Letnes <ort@ssb.no>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "gis_utils"}]
+homepage = "https://github.com/statisticsnorway/ssb-gis-utils"
+repository = "https://github.com/statisticsnorway/ssb-gis-utils"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+
+[tool.poetry.urls]
+Changelog = "https://github.com/statisticsnorway/ssb-gis-utils/releases"
+
+
+[tool.poetry.dependencies]
+python = "^3.10"
+geopandas = "^0.12.2"
+shapely = "^2.0.1"
+pyogrio = "^0.5.1"
+pandas = "^1.5.3"
+scikit-learn = "^1.2.1"
+requests = "^2.28.2"
+pyarrow = "^11.0.0"
+igraph = "^0.10.4"
+networkx = "^3.0"
+
+[tool.poetry.group.dev.dependencies]
+black = {extras = ["d", "jupyter"], version = "^23.1.0"}
+isort = "^5.12.0"
+pytest = "^7.2.1"
+
+[tool.isort]
+profile = "black"
+lines_after_imports = 2
+skip_gitignore = true
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
