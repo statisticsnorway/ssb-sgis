@@ -131,7 +131,7 @@ def sjoin_overlay(gdf):
     assert list(gdf.columns)==['geometry', 'numkol', 'txtkol', 'nykoll']
     assert len(gdf)==18
     
-    
+
 def test_copy(gdf):
     """
     Sjekk at copy-parametret i buff funker. Og sjekk pandas' copy-regler samtidig.

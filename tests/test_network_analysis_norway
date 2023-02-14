@@ -1,0 +1,44 @@
+#%%
+import warnings
+import numpy as np
+import geopandas as gpd
+from time import perf_counter
+import sys
+sys.path.append("C:/Users/ort/git/ssb-gis-utils")
+
+import gis_utils as gs
+import cProfile
+from tests.test_od_cost_matrix import test_od_cost_matrix
+from tests.test_shortest_path import test_shortest_path
+from tests.test_service_area import test_service_area
+
+def test_network_analysis_norway(nw):
+
+    p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
+    p["idx"] = p.index
+    p["idx2"] = p.index
+
+    test_shortest_path(nw)
+    test_service_area(nw)
+    test_od_cost_matrix(nw)
+
+    
+def main():
+
+    #    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
+    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+    r = r.to_crs(25833)
+
+    nw = (
+        gs.DirectedNetwork(r)
+        .make_directed_network_norway()
+        .remove_isolated()
+    )
+
+    nwa = gs.NetworkAnalysis(nw, cost="minutes")
+
+    test_network_analysis_norway(nwa)
+
+
+if __name__ == "__main__":
+    main()

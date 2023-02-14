@@ -10,24 +10,13 @@ import gis_utils as gs
 import cProfile
 
 
-def test_od_cost_matrix():
-
-#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+def test_od_cost_matrix(nwa: gs.NetworkAnalysis):
 
     p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
     p["idx"] = p.index
     p["idx2"] = p.index
 
-    nw = (
-        gs.DirectedNetwork(r)
-        .make_directed_network_norway()
-        .remove_isolated()
-    )
- 
-    nwa = gs.NetworkAnalysis(nw, cost="minutes")
-    
-    for search_factor in [0, 10, 25, 50, 100]:
+    for search_factor in [0, 10, 25, 50]:
         nwa.search_factor = search_factor
         od = nwa.od_cost_matrix(p, p)
         print(
@@ -35,7 +24,7 @@ def test_od_cost_matrix():
             np.mean(od[nwa.cost].isna()) * 100
             )
 
-    for search_tolerance in [100, 250, 1000, 10_000]:
+    for search_tolerance in [100, 250, 1000]:
         nwa.search_tolerance = search_tolerance
         od = nwa.od_cost_matrix(p, p)
         print(
@@ -58,11 +47,25 @@ def test_od_cost_matrix():
 
     # ved Lindeberg skole, på hovedøya
     m = nwa.startpoints.points.n_missing.mean()
-    display(nwa.startpoints.points.query("n_missing > @m").explore("n_missing", scheme="quantiles"))
+    missings = nwa.startpoints.points.query("n_missing > @m")
+    if len(missings):
+        display(missings.explore("n_missing", scheme="quantiles"))
 
 
 def main():
-    cProfile.run("test_od_cost_matrix()", sort="cumtime")
+#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
+    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+    
+    nw = (
+        gs.DirectedNetwork(r)
+        .make_directed_network_norway()
+        .remove_isolated()
+    )
+
+    nwa = gs.NetworkAnalysis(nw, cost="meters")
+
+    test_od_cost_matrix(nwa)
+#    cProfile.run(f"test_od_cost_matrix({r})", sort="cumtime")
 
 
 if __name__ == "__main__":
