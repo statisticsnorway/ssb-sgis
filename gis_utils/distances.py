@@ -17,27 +17,46 @@ def k_nearest_neigbors(
     from_array: np.ndarray[np.ndarray[float]], 
     to_array: np.ndarray[np.ndarray[float]],
     k: int,
+    strict: bool = False,
     ) -> tuple[np.ndarray[float]]:
+    """Given a set of points, find the k nearest neighbors of each point in another set of points.
+    
+    Args:
+      from_array (np.ndarray[np.ndarray[float]]): The array of points (coordinate tuples) you want to find the nearest
+    neighbors for.
+      to_array (np.ndarray[np.ndarray[float]]): The array of points that we want to find the nearest
+    neighbors of.
+      k (int): the number of nearest neighbors to find.
+      strict (bool): If True, will raise an error if k is greater than the number of points in to_array.
+    If False, will return all distances if there is less than k points in to_array.
+    Defaults to False
+    
+    Returns:
+      The distances and indices of the nearest neighbors.
+    """
+
+    if not strict:
+        k = k if len(to_array) >= k else len(to_array)
 
     nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(to_array)
     dists, indices = nbr.kneighbors(from_array)
     return dists, indices
    
 
-def get_edges(gdf, indices):
+def get_edges(gdf: GeoDataFrame, indices: np.ndarray[float]) -> np.ndarray[tuple[int]]:
+    """Takes a GeoDataFrame and a list of indices, and returns a list of edges.
+    
+    Args:
+      gdf (GeoDataFrame): GeoDataFrame
+      indices (np.ndarray[float]): a numpy array of the indices of the nearest neighbors for each point
+    in the GeoDataFrame.
+    
+    Returns:
+      A numpy array of edge tuples (from-to indices).
+    """
     return np.array(
         [
             [(i, neighbor) for neighbor in indices[i]]
-            for i in range(len(gdf))
-        ]
-    )
-
-
-def get_dists(gdf, dists):
-    
-    return np.array(
-        [
-            [dist for dist in dists[i]]
             for i in range(len(gdf))
         ]
     )
@@ -50,6 +69,7 @@ def get_k_nearest_neighbors(
     id_cols: str | list[str, str] | tuple[str, str] | None = None,
     min_dist: int = 0.0001,
     max_dist: int | None = None,
+    strict: bool = False,
     ) -> DataFrame:
 
     if id_cols:
@@ -62,11 +82,9 @@ def get_k_nearest_neighbors(
     gdf_array = coordinate_array(gdf)
     neighbors_array = coordinate_array(neighbors)
 
-    dists, neighbor_indices = k_nearest_neigbors(gdf_array, neighbors_array, k)
+    dists, neighbor_indices = k_nearest_neigbors(gdf_array, neighbors_array, k, strict)
 
     edges = get_edges(gdf, neighbor_indices)
-
-    dists = get_dists(gdf, dists)
     
     if max_dist:
         condition = (dists <= max_dist) & (dists > min_dist)
@@ -100,6 +118,16 @@ def get_k_nearest_neighbors(
 def return_two_id_cols(
     id_cols: str | list[str, str] | tuple[str, str]
     ) -> tuple[str]:
+    """
+    Make sure the id_cols are a 2 length tuple.> If the input is a string, return a tuple of two strings. If the input is a list or tuple of two
+    strings, return the list or tuple. Otherwise, raise a ValueError
+    
+    Args:
+      id_cols (str | list[str, str] | tuple[str, str]): str | list[str, str] | tuple[str, str]
+    
+    Returns:
+      A tuple of two strings.
+    """
 
     if isinstance(id_cols, (tuple, list)) and len(id_cols) == 2:
         return id_cols

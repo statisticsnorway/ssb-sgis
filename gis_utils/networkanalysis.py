@@ -112,8 +112,8 @@ class NetworkAnalysis(Rules):
 
         results = od_cost_matrix(self, self.startpoints.points, self.endpoints.points, **kwargs)
 
-        self.startpoints.n_missing(results, "origin")
-        self.endpoints.n_missing(results, "destination")
+        self.startpoints.get_n_missing(results, "origin")
+        self.endpoints.get_n_missing(results, "destination")
 
         if id_col:
             results["origin"] = results["origin"].map(
@@ -141,8 +141,8 @@ class NetworkAnalysis(Rules):
         results = shortest_path(self, self.startpoints.points, self.endpoints.points, summarise=summarise, **kwargs)
 
         if not summarise:
-            self.startpoints.n_missing(results, "origin")
-            self.endpoints.n_missing(results, "destination")
+            self.startpoints.get_n_missing(results, "origin")
+            self.endpoints.get_n_missing(results, "destination")
 
         if id_col and not summarise:
             results["origin"] = results["origin"].map(
@@ -257,7 +257,7 @@ class NetworkAnalysis(Rules):
         else:
             return distances
 
-    def graph_is_up_to_date(self, startpoints: GeoDataFrame, endpoints: GeoDataFrame):
+    def graph_is_up_to_date(self, startpoints: GeoDataFrame, endpoints: GeoDataFrame) -> bool:
         """Returns False if the rules of the graphmaking has changed, """
 
         if not hasattr(self, "graph") or not hasattr(self, "start_wkts"):
@@ -304,7 +304,7 @@ class NetworkAnalysis(Rules):
             self.start_wkts = [geom.wkt for geom in self.startpoints.points.geometry]
         if hasattr(self, "endpoints"):
             if self.endpoints is not None:
-                self.start_wkts = [geom.wkt for geom in self.endpoints.points.geometry]
+                self.end_wkts = [geom.wkt for geom in self.endpoints.points.geometry]
 
     def validate_cost(self, raise_error: bool = True) -> None:
         

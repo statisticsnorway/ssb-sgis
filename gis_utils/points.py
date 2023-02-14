@@ -18,7 +18,10 @@ class Points:
         self.id_col = id_col
         self.temp_idx_start = temp_idx_start
 
-    def make_temp_idx(self):
+    def make_temp_idx(self) -> None:
+        """Make a temporary id column that is not present in the node ids of the network.
+        The original ids are stored in a dict and mapped to the results after the network analysis. 
+        This method has to be run after get_id_col, because this determines the id column differently for start- and endpoints. """
 
         self.points["temp_idx"] = np.arange(
             start=self.temp_idx_start, 
@@ -29,7 +32,7 @@ class Points:
         if self.id_col:
             self.id_dict = {temp_idx: idx for temp_idx, idx in zip(self.points.temp_idx, self.points[self.id_col])}
 
-    def check_id_col(
+    def get_id_col(
         self,
         index: int,
         ) -> None:
@@ -47,7 +50,7 @@ class Points:
         if not self.id_col in self.points.columns:
             raise KeyError(f"'startpoints' has no attribute '{self.id_col}'")
 
-    def n_missing(
+    def get_n_missing(
         self, 
         results: GeoDataFrame | DataFrame,
         col: str,
@@ -57,7 +60,10 @@ class Points:
             len(results[col].unique()) - results.dropna().groupby(col).count().iloc[:, 0]
         )
     
-    def distance_to_nodes(self, nodes: GeoDataFrame, search_tolerance, search_factor) -> DataFrame:
+    def distance_to_nodes(self, nodes: GeoDataFrame, search_tolerance: int, search_factor: int) -> DataFrame:
+        """Creates a DataFrame with distances and indices of the 50 closest nodes for each point,
+        then keeps only the rows with a distance less than the search_tolerance and the search_factor. 
+        """
 
         df = get_k_nearest_neighbors(
             gdf=self.points, 
@@ -82,10 +88,12 @@ class StartPoints(Points):
 
         super().__init__(points, **kwargs)
 
-        self.check_id_col(index=0)
+        self.get_id_col(index=0)
         self.make_temp_idx()
     
-    def distance_to_nodes(self, nodes, search_tolerance, search_factor) -> None:
+    def distance_to_nodes(self, nodes: GeoDataFrame, search_tolerance: int, search_factor: int) -> None:
+        """First runs the super method, which returns a DataFrame with distances and indices of the startpoints and the nodes,
+        then an edgelist (of tuples) and a distance list is created. """
         df = super().distance_to_nodes(nodes, search_tolerance, search_factor)
         
         self.edges = [(temp_idx, node_id) for temp_idx, node_id in zip(df.temp_idx, df.node_id)]
@@ -101,11 +109,11 @@ class EndPoints(Points):
 
         super().__init__(points, **kwargs)
 
-        self.check_id_col(index=1)
+        self.get_id_col(index=1)
         self.make_temp_idx()
     
-    def distance_to_nodes(self, nodes, search_tolerance, search_factor) -> None:
-        """Same as for the startpoints, but opposite edge direction"""
+    def distance_to_nodes(self, nodes: GeoDataFrame, search_tolerance: int, search_factor: int) -> None:
+        """Same as the method in the StartPoints class, but with opposite edge direction (node_id, point_id). """
         df = super().distance_to_nodes(nodes, search_tolerance, search_factor)
         
         self.edges = [(node_id, temp_idx) for temp_idx, node_id in zip(df.temp_idx, df.node_id)]

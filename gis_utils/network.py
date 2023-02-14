@@ -104,7 +104,7 @@ class Network:
         self.gdf = close_network_holes(self.gdf, max_dist, min_dist, deadends_only, hole_col)
         return self
 
-    def get_largest_component(self, remove: bool = False, **kwargs):
+    def get_largest_component(self, remove: bool = False):
         self.update_nodes_if()
         if "connected" in self.gdf.columns:
             warnings.warn("There is already a column 'connected' in the network. Run .remove_isolated() if you want to remove the isolated networks.")
@@ -135,7 +135,7 @@ class Network:
         self.gdf = cut_lines(self.gdf, max_length)
         return self
 
-    def nodes_are_up_to_date(self):
+    def nodes_are_up_to_date(self) -> bool:
         """Returns False if there are any source or target values not in the node-ids, or any superfluous node-ids (meaning rows have been removed from the lines gdf). """
         
         new_or_missing = (
@@ -144,16 +144,20 @@ class Network:
             )
         
         if any(new_or_missing):
+            print("nodes.. new or missing")
             return False
 
         removed = (
-            (~self._nodes.node_id.isin(self.gdf.source)) |
-            (~self._nodes.node_id.isin(self.gdf.target))
+            ~((self._nodes.node_id.isin(self.gdf.source)) |
+            (self._nodes.node_id.isin(self.gdf.target)))
             )
         
         if any(removed):
+            print("nodes.. removed")
             return False
-                
+        
+        print("nodes are up to date")
+
         return True
 
     def update_nodes_if(self):
