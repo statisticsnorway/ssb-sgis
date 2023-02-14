@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 from .geopandas_utils import gdf_concat
 
 
-def qtm(gdf, kolonne=None, *, scheme="Quantiles", title=None, size=12, fontsize=16, legend=True, **kwargs) -> None:
+def qtm(gdf, column=None, *, scheme="Quantiles", title=None, size=12, fontsize=16, legend=True, **kwargs) -> None:
     """ Quick, thematic map (name stolen from R's tmap package). """
     fig, ax = plt.subplots(1, figsize=(size, size))
     ax.set_axis_off()
     ax.set_title(title, fontsize = fontsize)
-    gdf.plot(kolonne, scheme=scheme, legend=legend, ax=ax, **kwargs)
+    gdf.plot(column, scheme=scheme, legend=legend, ax=ax, **kwargs)
 
 
 def concat_explore(*gdfs: GeoDataFrame, cmap=None, **kwargs) -> None:
@@ -43,12 +43,13 @@ def clipmap(
     gdf: GeoDataFrame, 
     mask: GeoDataFrame | GeoSeries | Geometry,
     explore: bool = True,
+    *args,
     **kwargs
     ) -> None:
 
     clipped = gdf.clip(mask.to_crs(gdf.crs))
 
     if explore:
-        display(clipped.explore(**kwargs))
+        display(clipped.explore(*args, **kwargs))
     else:
-        qtm(clipped, **kwargs)
+        qtm(clipped, *args, **kwargs)

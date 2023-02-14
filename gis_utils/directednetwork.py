@@ -51,6 +51,7 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
         direction_vals_bft: list | tuple = ("B", "FT", "TF"),
         minute_cols: list | tuple = ("drivetime_fw", "drivetime_bw"),
         ):
+        """ https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313 """
 
         return self.make_directed_network(
             direction_col=direction_col,
@@ -88,8 +89,8 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
         if len(direction_vals_bft) != 3:
             raise ValueError("'direction_vals_bft' should be tuple/list with values of directions both, from and to. E.g. ('B', 'F', 'T')")
         
-        if not minute_cols and not speed_col:
-            warnings.warn("")
+        if not minute_cols and not speed_col and not flat_speed:
+            warnings.warn("Minute column will not be calculated when both 'minute_cols', 'speed_col' and 'flat_speed' is None")
 
         if sum([bool(minute_cols), bool(speed_col), bool(flat_speed)]) > 1:
             raise ValueError("Can only calculate minutes from either 'speed_col', 'minute_cols' or 'flat_speed'.")
@@ -108,30 +109,35 @@ With 'make_directed_network', specify the direction column (e.g. 'oneway'), and 
         both_ways = nw.loc[nw[direction_col] == b]
         both_ways2 = both_ways.copy()
 
-        tf.geometry = reverse(tf.geometry)
-        both_ways2.geometry = reverse(both_ways2.geometry)
-
         if minute_cols:
             if isinstance(minute_cols, str):
                 min_f, min_t = minute_cols, minute_cols
             if len(minute_cols) > 2:
                 raise ValueError("'minute_cols' should be column name (string) or tuple/list with values of directions forwards and backwards, in that order.")
+
             if len(minute_cols) == 2:
                 min_f, min_t = minute_cols
-
+            
             both_ways = both_ways.rename(columns={min_f: "minutes"})
             both_ways2 = both_ways2.rename(columns={min_t: "minutes"})
+
             ft = ft.rename(columns={min_f: "minutes"})
             tf = tf.rename(columns={min_t: "minutes"})
 
-        self.gdf = gdf_concat([both_ways, both_ways2, ft, tf])
+        tf.geometry = reverse(tf.geometry)
+        both_ways2.geometry = reverse(both_ways2.geometry)
 
+        self.gdf = gdf_concat([both_ways, both_ways2, ft, tf])
+    
         if speed_col:
             self.gdf["minutes"] = self.gdf.length / self.gdf[speed_col].astype(float) * 16.6666666667
 
         if flat_speed:
             self.gdf["minutes"] = self.gdf.length / flat_speed * 16.6666666667
         
+        if "minutes" in self.gdf.columns:
+            self.gdf = self.gdf.loc[self.gdf["minutes"] >= 0]
+    
         self.make_node_ids()
 
         return self

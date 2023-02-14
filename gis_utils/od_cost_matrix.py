@@ -79,6 +79,17 @@ def od_cost_matrix(
         out = out.loc[~out[cost].isna()]
         out = out.loc[out.groupby("origin")[cost].idxmin()].reset_index(drop=True)
 
+    wkt_dict_origin = {
+        idd: geom.wkt
+        for idd, geom in zip(startpoints["temp_idx"], startpoints.geometry)
+    }
+    wkt_dict_destination = {
+        idd: geom.wkt
+        for idd, geom in zip(endpoints["temp_idx"], endpoints.geometry)
+    }
+    out["wkt_ori"] = out["origin"].map(wkt_dict_origin)
+    out["wkt_des"] = out["destination"].map(wkt_dict_destination)
+    
     out[nw.cost] = np.where(
         out.wkt_ori != out.wkt_des,
         out[nw.cost],
@@ -87,16 +98,6 @@ def od_cost_matrix(
 
     # lag linjer mellom origin og destination
     if lines:
-        wkt_dict_origin = {
-            idd: geom.wkt
-            for idd, geom in zip(startpoints["temp_idx"], startpoints.geometry)
-        }
-        wkt_dict_destination = {
-            idd: geom.wkt
-            for idd, geom in zip(endpoints["temp_idx"], endpoints.geometry)
-        }
-        out["wkt_ori"] = out["origin"].map(wkt_dict_origin)
-        out["wkt_des"] = out["destination"].map(wkt_dict_destination)
         origin = gpd.GeoSeries.from_wkt(out["wkt_ori"], crs=25833)
         destination = gpd.GeoSeries.from_wkt(out["wkt_des"], crs=25833)
         out["geometry"] = shortest_line(origin, destination)

@@ -14,9 +14,7 @@ class Points:
     ) -> None:
 
         self.points = points.to_crs(crs).reset_index(drop=True)
-        
-        self.wkt = [geom.wkt for geom in points.geometry]
-        
+                
         self.id_col = id_col
         self.temp_idx_start = temp_idx_start
 
@@ -92,7 +90,6 @@ class StartPoints(Points):
         
         self.edges = [(temp_idx, node_id) for temp_idx, node_id in zip(df.temp_idx, df.node_id)]
         self.dists = list(df.dist)
-
 
 
 class EndPoints(Points):

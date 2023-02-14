@@ -118,7 +118,7 @@ def get_largest_component(roads: GeoDataFrame) -> GeoDataFrame:
 
     G = nx.Graph()
     G.add_edges_from(edges)
-    
+
     largest_component = max(nx.connected_components(G), key=len)
 
     largest_component = {node_id: 1 for node_id in largest_component}
@@ -143,12 +143,9 @@ def get_component_size(roads: GeoDataFrame) -> GeoDataFrame:
     G.add_edges_from(edges)
     components = [list(x) for x in nx.connected_components(G)]
 
-    componentsdict = {x: len(component) for component in components for x in component}
+    componentsdict = {idx: len(component) for component in components for idx in component}
 
-    roads["comp1"] = roads.source.map(componentsdict)
-    roads["comp2"] = roads.target.map(componentsdict)
-    roads["component_size"] = roads[["comp1", "comp2"]].max(axis=1)
-    roads = roads.drop(["comp1", "comp2"], axis=1)
+    roads["component_size"] = roads.source.map(componentsdict)
     
     return roads
 

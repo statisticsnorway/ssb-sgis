@@ -166,7 +166,7 @@ class Network:
         return self._nodes
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__} class instance with {len(self.gdf)} rows and a length of {sum(self.gdf.length)/1000} km."
+        return f"{self.__class__.__name__} class instance with {len(self.gdf)} rows and a length of {int(sum(self.gdf.length)/1000)} km."
 
     def __iter__(self):
         return iter(self.__dict__.values())

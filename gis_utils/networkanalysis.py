@@ -15,33 +15,13 @@ from .network import Network
 from .directednetwork import DirectedNetwork
 
 
-class Rules:
-    def __init__(
-        self,
-        cost: int,
-        directed: bool,
-        search_tolerance: int = 1000,
-        search_factor: int = 10,
-        cost_to_nodes: int = 5,
-    ):
-        self.cost = cost
-        self.directed = directed
-        self.search_tolerance = search_tolerance
-        self.search_factor = search_factor
-        self.cost_to_nodes = cost_to_nodes
-
-        self._search_tolerance = search_tolerance
-        self._search_factor = search_factor
-        self._cost_to_nodes = cost_to_nodes
-
-
 from dataclasses import dataclass
 
 @dataclass
 class Rules:
     cost: str
     directed: bool
-    search_tolerance: int = 1000
+    search_tolerance: int = 250
     search_factor: int = 10
     cost_to_nodes: int = 5
 
@@ -122,7 +102,7 @@ class NetworkAnalysis(Rules):
         self, 
         startpoints: GeoDataFrame, 
         endpoints: GeoDataFrame,
-        id_col: str | list[str, str] | tuple[str, str] | None = None,
+        id_col: str | list[str] | tuple[str] | None = None,
         **kwargs
         ) -> DataFrame | GeoDataFrame:
 
@@ -149,7 +129,7 @@ class NetworkAnalysis(Rules):
         self, 
         startpoints: GeoDataFrame, 
         endpoints: GeoDataFrame,
-        id_col: str | list[str, str] | tuple[str, str] | None = None,
+        id_col: str | list[str] | tuple[str] | None = None,
         summarise: bool = False,
         **kwargs,
         ) -> GeoDataFrame:
@@ -160,10 +140,11 @@ class NetworkAnalysis(Rules):
 
         results = shortest_path(self, self.startpoints.points, self.endpoints.points, summarise=summarise, **kwargs)
 
-        self.startpoints.n_missing(results, "origin")
-        self.endpoints.n_missing(results, "destination")
+        if not summarise:
+            self.startpoints.n_missing(results, "origin")
+            self.endpoints.n_missing(results, "destination")
 
-        if id_col:
+        if id_col and not summarise:
             results["origin"] = results["origin"].map(
                 self.startpoints.id_dict
             )
@@ -176,7 +157,7 @@ class NetworkAnalysis(Rules):
     def service_area(
         self, 
         startpoints: GeoDataFrame, 
-        id_col: str | list[str, str] | tuple[str, str] | None = None,
+        id_col: str | list[str] | tuple[str] | None = None,
         **kwargs
         ) -> GeoDataFrame:
 
@@ -185,13 +166,6 @@ class NetworkAnalysis(Rules):
         )
 
         results = service_area(self, self.startpoints.points, **kwargs)
-
-        self.startpoints.n_missing(results, self.cost)
-
-        if id_col:
-            results[id_col] = results[id_col].map(
-                self.startpoints.id_dict
-            )
 
         return results
 
@@ -222,7 +196,8 @@ class NetworkAnalysis(Rules):
         if not self.graph_is_up_to_date(startpoints, endpoints):
 #        if not self.makegraph.graph_is_up_to_date():
             self.startpoints.distance_to_nodes(self.network.nodes, self.search_tolerance, self.search_factor)
-            self.endpoints.distance_to_nodes(self.network.nodes, self.search_tolerance, self.search_factor)
+            if endpoints is not None:
+                self.endpoints.distance_to_nodes(self.network.nodes, self.search_tolerance, self.search_factor)
        #     self.makegraph.graph = self.makegraph.make_graph()
             self.graph = self.make_graph(self.network.gdf)
         
@@ -263,7 +238,7 @@ class NetworkAnalysis(Rules):
             
         return graph
 
-    def calculate_costs(self, distances):
+    def calculate_costs(self, distances: list[float]):
         """
         Gjør om meter to minutter for lenkene mellom punktene og nabonodene.
         og ganger luftlinjeavstanden med 1.5 siden det alltid er svinger i Norge.
@@ -281,11 +256,11 @@ class NetworkAnalysis(Rules):
 
         else:
             return distances
-            
-    def graph_is_up_to_date(self, startpoints, endpoints):
+
+    def graph_is_up_to_date(self, startpoints: GeoDataFrame, endpoints: GeoDataFrame):
         """Returns False if the rules of the graphmaking has changed, """
 
-        if not hasattr(self, "graph"):
+        if not hasattr(self, "graph") or not hasattr(self, "start_wkts"):
             return False
         
         # check if the rules for making the graph have changed
@@ -296,13 +271,13 @@ class NetworkAnalysis(Rules):
         if self.cost_to_nodes != self._cost_to_nodes:
             return False
         
-        if self.startpoints.wkt != [
+        if self.start_wkts != [
             geom.wkt for geom in startpoints.geometry
         ]:
             return False
 
-        if self.endpoints:
-            if self.endpoints.wkt != [
+        if self.endpoints is not None:
+            if self.end_wkts != [
                 geom.wkt for geom in endpoints.geometry
             ]:
                 return False
@@ -325,9 +300,14 @@ class NetworkAnalysis(Rules):
         self._search_factor = self.search_factor
         self._cost_to_nodes = self.cost_to_nodes
 
+        if hasattr(self, "startpoints"):
+            self.start_wkts = [geom.wkt for geom in self.startpoints.points.geometry]
+        if hasattr(self, "endpoints"):
+            if self.endpoints is not None:
+                self.start_wkts = [geom.wkt for geom in self.endpoints.points.geometry]
+
     def validate_cost(self, raise_error: bool = True) -> None:
         
-        gdf = self.network.gdf
         cost = self.cost
 
         if cost in self.network.gdf.columns:
