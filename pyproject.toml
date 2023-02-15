@@ -52,10 +52,10 @@ profile = "black"
 lines_after_imports = 2
 skip_gitignore = true
 
-# [tool.pytest.ini_options]
-# pythonpath = [
-#   "src"
-# ]
+[tool.pytest.ini_options]
+  pythonpath = [
+   "src"
+]
 
 [build-system]
 requires = ["poetry-core"]
