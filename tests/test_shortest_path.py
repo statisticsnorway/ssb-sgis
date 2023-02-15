@@ -55,7 +55,7 @@ def main():
         .remove_isolated()
     )
 
-    nwa = gs.NetworkAnalysis(nw, cost="meters")
+    nwa = gs.NetworkAnalysis(nw, cost="minutes")
 
     test_shortest_path(nwa)
 #    cProfile.run(f"test_shortest_path()", sort="cumtime")

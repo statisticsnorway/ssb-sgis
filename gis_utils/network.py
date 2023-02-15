@@ -1,6 +1,3 @@
-# The Network class is a wrapper around a GeoDataFrame with (Multi)LineStrings. It makes sure there
-# are only singlepart LineStrings in the network, and that the network is connected. It also makes
-# sure that the nodes are up to date with the lines
 import warnings
 from shapely import line_merge
 from geopandas import GeoDataFrame
@@ -22,6 +19,17 @@ from .geopandas_utils import clean_geoms
 
 
 class Network:
+    """
+    The Network class is a wrapper around a GeoDataFrame with (Multi)LineStrings. It makes sure there
+    are only singlepart LineStrings in the network, and that the network is connected. It also makes
+    sure that the nodes are up to date with the lines
+
+    Args:
+        gdf: a GeoDataFrame of line geometries.
+        merge_lines (bool): if True (default), multilinestrings within the same row will be merged if they overlap.
+            if False, multilines will be split into separate rows of singlepart lines.
+
+    """
 
     def __init__(
         self,
@@ -144,7 +152,6 @@ class Network:
             )
         
         if any(new_or_missing):
-            print("nodes.. new or missing")
             return False
 
         removed = (
@@ -153,11 +160,8 @@ class Network:
             )
         
         if any(removed):
-            print("nodes.. removed")
             return False
         
-        print("nodes are up to date")
-
         return True
 
     def update_nodes_if(self):

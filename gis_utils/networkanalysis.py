@@ -13,6 +13,7 @@ from .points import StartPoints, EndPoints
 
 from .network import Network
 from .directednetwork import DirectedNetwork
+from .makegraph import MakeGraph
 
 
 from dataclasses import dataclass
@@ -80,6 +81,7 @@ class NetworkAnalysis(Rules):
         self.network = network
 
         super().__init__(cost, directed, **kwargs)
+        self.makegraph = MakeGraph(cost=cost, directed=directed, **kwargs)
         """
         self.cost = cost
         self.search_tolerance = search_tolerance
@@ -92,7 +94,7 @@ class NetworkAnalysis(Rules):
         self._cost_to_nodes = cost_to_nodes
         """
 
-        self.validate_cost(raise_error=False)
+        self.validate_cost(self.network.gdf, raise_error=False)
 
 #        self.makegraph = MakeGraph(self, **kwargs)
 
@@ -171,7 +173,7 @@ class NetworkAnalysis(Rules):
 
     def prepare_network_analysis(self, startpoints, endpoints=None, id_col: str | None = None) -> None:
 
-        self.validate_cost(raise_error=True)
+        self.validate_cost(self.network.gdf, raise_error=True)
 
         self.startpoints = StartPoints(
             startpoints, 
@@ -198,7 +200,16 @@ class NetworkAnalysis(Rules):
             self.startpoints.distance_to_nodes(self.network.nodes, self.search_tolerance, self.search_factor)
             if endpoints is not None:
                 self.endpoints.distance_to_nodes(self.network.nodes, self.search_tolerance, self.search_factor)
-       #     self.makegraph.graph = self.makegraph.make_graph()
+            """
+            self.makegraph.graph = self.makegraph.make_graph()
+            self.graph = self.makegraph.make_graph(self.network.gdf)
+            self.graph = self.makegraph.add_to_graph(self.graph, self.startpoints.edges, self.startpoints.dists)
+            if endpoints is not None:
+                self.graph = self.makegraph.add_to_graph(self.graph, self.endpoints.edges, self.endpoints.dists)
+            self.graph.add_vertices([idx for idx in self.startpoints.points.temp_idx if idx not in self.graph.vs["name"]])
+            if self.endpoints is not None:
+                self.graph.add_vertices([idx for idx in self.endpoints.points.temp_idx if idx not in self.graph.vs["name"]])
+                """
             self.graph = self.make_graph(self.network.gdf)
         
         self.update_unders()
@@ -306,47 +317,53 @@ class NetworkAnalysis(Rules):
             if self.endpoints is not None:
                 self.end_wkts = [geom.wkt for geom in self.endpoints.points.geometry]
 
-    def validate_cost(self, raise_error: bool = True) -> None:
-        
-        cost = self.cost
+    def validate_cost(self, gdf, raise_error: bool = True) -> None:
 
-        if cost in self.network.gdf.columns:
+        if self.cost in gdf.columns:
 
-            if all(self.network.gdf[cost].isna()):
-                raise ValueError("All values in the 'cost' column are NaN.")
-
-            if (n := sum(self.network.gdf[cost].isna())):
-                if n > len(self.network.gdf) * 0.05:
-                    warnings.warn(f"Warning: {n} rows have missing values in the 'cost' column. Removing NaNs.")
-                self.network.gdf = self.network.gdf.loc[self.network.gdf[cost].notna()]
-            
-            if (n := sum(self.network.gdf[cost] < 0)):
-                if n > len(self.network.gdf) * 0.05:
-                    warnings.warn(f"Warning: {n} rows have a 'cost' less than 0. Removing these rows.")
-                self.network.gdf = self.network.gdf.loc[self.network.gdf[cost] > 0]
+            self.warn_if_nans(gdf, self.cost)
+            self.warn_if_negative_values(gdf, self.cost)
 
             try:
-                self.network.gdf[cost] = self.network.gdf[cost].astype(float)    
+                gdf[self.cost] = gdf[self.cost].astype(float)    
             except ValueError as e:
-                raise ValueError(f"There are alphabetical characters in the 'cost' column: {str(e)}")
+                raise ValueError(f"The 'cost' column must be numeric. Got characters that couldn't be interpreted as numbers.")
 
-            if "min" in cost:
-                cost = "minutes"
+            if "min" in self.cost:
+                self.cost = "minutes"
                     
-        if "meter" in cost or "metre" in cost:
+        if "meter" in self.cost or "metre" in self.cost:
 
-            if self.network.gdf.crs == 4326:
+            if gdf.crs == 4326:
                 raise ValueError("'roads' cannot have crs 4326 (latlon) when cost is 'meters'.")
 
-            cost = "meters"
+            self.cost = "meters"
+            gdf[self.cost] = gdf.length
+            return gdf
 
-            self.network.gdf[cost] = self.network.gdf.length
-            
-            return
-
-        if cost == "minutes" and "minutes" not in self.network.gdf.columns:
+        if self.cost == "minutes" and "minutes" not in gdf.columns:
             if raise_error:
-                raise KeyError(f"Cannot find 'cost' column for minutes. Try running one of the 'make_directed_network_' methods, or set 'cost' to 'meters'.")
+                raise KeyError(f"Cannot find 'cost' column for minutes. \nTry running one of the 'make_directed_network_' methods, or set 'cost' to 'meters'.")
 
+    @staticmethod
+    def warn_if_nans(gdf, cost):
+
+        if all(gdf[cost].isna()):
+            raise ValueError("All values in the 'cost' column are NaN.")
+
+        nans = sum(gdf[cost].isna())
+        if nans:
+            if nans > len(gdf) * 0.05:
+                warnings.warn(f"Warning: {nans} rows have missing values in the 'cost' column. Removing these rows.")
+            gdf = gdf.loc[gdf[cost].notna()]
+        
+    @staticmethod
+    def warn_if_negative_values(gdf, cost):
+        negative = sum(gdf[cost] < 0)
+        if negative:
+            if negative > len(gdf) * 0.05:
+                warnings.warn(f"Warning: {negative} rows have a 'cost' less than 0. Removing these rows.")
+            gdf = gdf.loc[gdf[cost] >= 0]
+    
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(cost={self.cost}, search_tolerance={self.search_tolerance}, search_factor={self.search_factor}, cost_to_nodes={self.cost_to_nodes})"

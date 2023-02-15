@@ -41,7 +41,7 @@ def main():
         .remove_isolated()
     )
 
-    nwa = gs.NetworkAnalysis(nw, cost="meters")
+    nwa = gs.NetworkAnalysis(nw, cost="minutes")
 
     test_service_area(nwa)
 #    cProfile.run(f"test_service_area({r})", sort="cumtime")

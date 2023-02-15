@@ -63,7 +63,7 @@ def get_edges(gdf: GeoDataFrame, indices: np.ndarray[float]) -> np.ndarray[tuple
 
 
 def get_k_nearest_neighbors(
-    gdf: GeoDataFrame, 
+    gdf: GeoDataFrame,
     neighbors: GeoDataFrame, 
     k: int, 
     id_cols: str | list[str, str] | tuple[str, str] | None = None,
@@ -71,7 +71,25 @@ def get_k_nearest_neighbors(
     max_dist: int | None = None,
     strict: bool = False,
     ) -> DataFrame:
-
+    """ 
+    It takes a GeoDataFrame of points, a GeoDataFrame of neighbors, and a number of neighbors to find,
+    and returns a DataFrame of the k nearest neighbors for each point in the GeoDataFrame
+    
+    Args:
+      gdf: a GeoDataFrame of points
+      neighbors: a GeoDataFrame of points
+      k (int): number of neighbors to find
+      id_cols: one or two column names (strings) 
+      min_dist (int): The minimum distance between the two points. Defaults to 0.0001 so that identical points 
+    arent considered neighbors. 
+      max_dist: if specified, distances larger than this number will be removed.
+      strict (bool): If True, will raise an error if k is greater than the number of points in to_array.
+    If False, will return all distances if there is less than k points in to_array.
+    Defaults to False
+    
+    Returns:
+      A DataFrame with the following columns:
+    """
     if id_cols:
         id_col1, id_col2 = return_two_id_cols(id_cols)
         id_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf[id_col1])}
@@ -123,7 +141,7 @@ def return_two_id_cols(
     strings, return the list or tuple. Otherwise, raise a ValueError
     
     Args:
-      id_cols (str | list[str, str] | tuple[str, str]): str | list[str, str] | tuple[str, str]
+      id_cols: one or two id columns (strings)
     
     Returns:
       A tuple of two strings.
@@ -133,6 +151,8 @@ def return_two_id_cols(
         return id_cols
     elif isinstance(id_cols, str):
         return id_cols, id_cols
+    if isinstance(id_cols, (tuple, list)) and len(id_cols) == 1:
+        return id_cols[0], id_cols[0]
     else:
         raise ValueError
 

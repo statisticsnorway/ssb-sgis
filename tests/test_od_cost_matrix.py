@@ -12,7 +12,7 @@ import cProfile
 
 def test_od_cost_matrix(nwa: gs.NetworkAnalysis):
 
-    p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
+    p = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/tilfeldige_adresser_1000.parquet")
     p["idx"] = p.index
     p["idx2"] = p.index
 
@@ -62,7 +62,7 @@ def main():
         .remove_isolated()
     )
 
-    nwa = gs.NetworkAnalysis(nw, cost="meters")
+    nwa = gs.NetworkAnalysis(nw, cost="minutes")
 
     test_od_cost_matrix(nwa)
 #    cProfile.run(f"test_od_cost_matrix({r})", sort="cumtime")

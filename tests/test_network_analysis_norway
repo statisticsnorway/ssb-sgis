@@ -12,6 +12,7 @@ from tests.test_od_cost_matrix import test_od_cost_matrix
 from tests.test_shortest_path import test_shortest_path
 from tests.test_service_area import test_service_area
 
+
 def test_network_analysis_norway(nw):
 
     p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
@@ -25,8 +26,9 @@ def test_network_analysis_norway(nw):
     
 def main():
 
-    #    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
+    #r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
     r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
+    r.loc[r.municipality.astype(int)==301].to_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_2022.parquet")
     r = r.to_crs(25833)
 
     nw = (
@@ -41,4 +43,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    cProfile.run("main()", sort="cumtime")
