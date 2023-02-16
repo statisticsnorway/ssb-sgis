@@ -2,7 +2,7 @@
 name = "ssb-gis-utils"
 version = "0.1.0"
 description = "GIS utility functions used at Statistics Norway."
-authors = ["Morten Letnes <ort@ssb.no>"]
+authors = ["Statistics Norway <ort@ssb.no>"]
 license = "MIT"
 readme = "README.md"
 packages = [{include = "gis_utils"}]
