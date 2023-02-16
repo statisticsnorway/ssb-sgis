@@ -12,7 +12,6 @@
 *.feather
 *.gz
 *.orig
-*.parquet
 *.sas7bdat
 *.xls
 *.xlsx
