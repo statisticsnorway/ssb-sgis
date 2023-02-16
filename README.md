@@ -17,5 +17,5 @@ poetry install --no-root
 ### Tests
 Use the following command from the root directory to run the tests: 
 ```shell
-poetry run python -m pytest  # from root directory
+poetry run pytest  # from root directory
 ```
