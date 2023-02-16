@@ -28,6 +28,8 @@ pyarrow = "^11.0.0"
 igraph = "^0.10.4"
 networkx = "^3.0"
 matplotlib = "^3.7.0"
+mapclassify = "^2.5.0"
+folium = "^0.14.0"
 
 [tool.poetry.group.dev.dependencies]
 black = {extras = ["d", "jupyter"], version = "^23.1.0"}

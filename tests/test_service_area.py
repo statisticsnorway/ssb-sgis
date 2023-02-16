@@ -2,19 +2,25 @@
 import warnings
 import numpy as np
 import geopandas as gpd
-from time import perf_counter
-import sys
-sys.path.append("C:/Users/ort/git/ssb-gis-utils")
-
 import gis_utils as gs
-import cProfile
+from pathlib import Path
 
 
-def test_service_area(nwa: gs.NetworkAnalysis):
+def test_service_area():
 
-    p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
+    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
     p["idx"] = p.index
     p["idx2"] = p.index
+    
+    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    
+    nw = (
+        gs.DirectedNetwork(r)
+        .make_directed_network_norway()
+        .remove_isolated()
+    )
+
+    nwa = gs.NetworkAnalysis(nw, cost="minutes")
 
     sa = nwa.service_area(p.sample(25), impedance=5, dissolve=False)
 
@@ -32,19 +38,7 @@ def test_service_area(nwa: gs.NetworkAnalysis):
 
 
 def main():
-#    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
-    
-    nw = (
-        gs.DirectedNetwork(r)
-        .make_directed_network_norway()
-        .remove_isolated()
-    )
-
-    nwa = gs.NetworkAnalysis(nw, cost="minutes")
-
-    test_service_area(nwa)
-#    cProfile.run(f"test_service_area({r})", sort="cumtime")
+    test_service_area()
 
 
 if __name__ == "__main__":

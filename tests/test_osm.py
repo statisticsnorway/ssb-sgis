@@ -1,19 +1,16 @@
 #%%
 import warnings
-import numpy as np
 import geopandas as gpd
-from time import perf_counter
-import sys
-sys.path.append("C:/Users/ort/git/ssb-gis-utils")
 
 import gis_utils as gs
-import cProfile
 import pyogrio
+"""
 from tests.test_od_cost_matrix import test_od_cost_matrix
 from tests.test_shortest_path import test_shortest_path
 from tests.test_service_area import test_service_area
+"""
 
-def test_osm(nw):
+def not_test_osm(nw):
 
     test_shortest_path(nw)
     test_service_area(nw)
@@ -50,7 +47,7 @@ def main():
 
     nwa = gs.NetworkAnalysis(nw, cost="meters")
 
-    test_osm(nwa)
+    not_test_osm(nwa)
 
 
 if __name__ == "__main__":

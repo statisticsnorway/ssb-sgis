@@ -1,19 +1,16 @@
 #%%
-import warnings
 import geopandas as gpd
-import numpy as np
-from time import perf_counter
-import sys
-import cProfile
-sys.path.append("C:/Users/ort/git/ssb-gis-utils")
+from pathlib import Path
 
 import gis_utils as gs
 
 def test_node_ids():
 
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
-    p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
+    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
     p["idx"] = p.index
+    p["idx2"] = p.index
+    
+    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
 
     nw = gs.DirectedNetwork(r)
     nw = gs.NetworkAnalysis(nw, cost="meters")
@@ -38,6 +35,7 @@ def test_node_ids():
 
 
 def main():
+    import cProfile
     cProfile.run("test_node_ids()", sort="cumtime")
 
 
