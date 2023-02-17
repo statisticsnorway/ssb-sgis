@@ -1,12 +1,9 @@
 import geopandas as gpd
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from .geopandas_utils import (
-    clean_geoms,
-    gdf_concat,
-    to_gdf,
-)
+from .geopandas_utils import clean_geoms, gdf_concat, to_gdf
+
 
 def shortest_path(
     nw,
@@ -19,9 +16,7 @@ def shortest_path(
 ):
     import warnings
 
-    warnings.filterwarnings(
-        "ignore", category=RuntimeWarning
-    )
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
 
     lines = []
     if rowwise:
@@ -33,16 +28,10 @@ def shortest_path(
                 lines = lines + _run_shortest_path(ori_id, des_id, nw, summarise)
 
     if summarise:
-        
-#        edges.groupby(["source", "target"])["n"].count()
+        #        edges.groupby(["source", "target"])["n"].count()
 
         edges = pd.concat(lines, ignore_index=True)
-        edges = (edges
-                .assign(n=1)
-                .groupby("source_target")
-                ["n"]
-                .count()
-        )
+        edges = edges.assign(n=1).groupby("source_target")["n"].count()
 
         roads = nw.network.gdf[["geometry", "source", "target"]]
         roads["source_target"] = roads.source + "_" + roads.target
@@ -55,7 +44,8 @@ def shortest_path(
         lines = gdf_concat(lines)
     except Exception:
         raise ValueError(
-            f"No paths were found. Try larger search_tolerance or search_factor. Or close_network_holes() or remove_isolated()."
+            f"No paths were found. Try larger search_tolerance or search_factor. "
+            f"Or close_network_holes() or remove_isolated()."
         )
 
     if cutoff:
@@ -72,7 +62,6 @@ def shortest_path(
 
 
 def _run_shortest_path(ori_id, des_id, nw, summarise):
-
     res = nw.graph.get_shortest_paths(weights="weight", v=ori_id, to=des_id)
 
     if len(res[0]) == 0:
@@ -85,8 +74,8 @@ def _run_shortest_path(ori_id, des_id, nw, summarise):
             "source_target": (
                 str(source) + "_" + str(target)
                 for source, target in zip(path[:-1], path[1:])
-                )
-                }
+            )
+        }
         return [pd.DataFrame(source_target)]
 
     line = nw.network.gdf.loc[

@@ -1,35 +1,31 @@
-import warnings
+import geopandas as gpd
+import networkx as nx
 import numpy as np
 import pandas as pd
-import geopandas as gpd
+from geopandas import GeoDataFrame
+from shapely import shortest_line
 from sklearn.neighbors import NearestNeighbors
-from shapely import line_merge, union, force_2d, shortest_line
-from geopandas import GeoDataFrame, GeoSeries
-import igraph
-import networkx as nx
 
-from gis_utils import clean_geoms, gdf_concat
-
-from .geopandas_utils import (
-    clean_geoms,
-    gdf_concat,
-)
+from .geopandas_utils import gdf_concat
 
 
-def make_node_ids(roads: GeoDataFrame, ignore_index: bool = False) -> tuple[GeoDataFrame, GeoDataFrame]:
+def make_node_ids(
+    roads: GeoDataFrame, ignore_index: bool = False
+) -> tuple[GeoDataFrame, GeoDataFrame]:
     """
-    > We make a new column for each node, and then we make a new column for each edge, and then we make
-    a new column for each node again
-    
+    > We make a new column for each node, and then we make a new column for each edge,
+    and then we make a new column for each node again
+
     Args:
       roads (GeoDataFrame): GeoDataFrame
-      ignore_index (bool): If True, the index of the roads GeoDataFrame will be ignored. Defaults to
-    False
-    
+      ignore_index (bool): If True, the index of the roads GeoDataFrame will be ignored.
+        Defaults to False.
+
     Returns:
       A tuple of two GeoDataFrames, one with the roads and one with the nodes.
     """
-    """Nye node-id-er som følger index (fordi indexes med numpy arrays i avstand_til_nodes())"""
+    """Nye node-id-er som følger index (fordi indexes med numpy arrays i
+    avstand_til_nodes())"""
 
     roads = make_edge_wkt_cols(roads, ignore_index)
 
@@ -38,15 +34,10 @@ def make_node_ids(roads: GeoDataFrame, ignore_index: bool = False) -> tuple[GeoD
 
     nodes = pd.concat([sources, targets], axis=0, ignore_index=True)
 
-    nodes["n"] = (nodes
-                    .assign(n=1)
-                    .groupby("wkt")
-                    ["n"]
-                    .transform("sum")
-                    )
-    
+    nodes["n"] = nodes.assign(n=1).groupby("wkt")["n"].transform("sum")
+
     nodes = nodes.drop_duplicates(subset=["wkt"]).reset_index(drop=True)
-    
+
     nodes["node_id"] = nodes.index
     nodes["node_id"] = nodes["node_id"].astype(str)
 
@@ -67,14 +58,15 @@ def make_node_ids(roads: GeoDataFrame, ignore_index: bool = False) -> tuple[GeoD
 
 def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDataFrame:
     """
-    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new columns, source_wkt
-    and target_wkt, which are the WKT representations of the first and last points of the LineStrings
-    
+    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
+    columns, source_wkt and target_wkt, which are the WKT representations of the first
+    and last points of the LineStrings
+
     Args:
       roads (GeoDataFrame): the GeoDataFrame with the roads
-      ignore_index (bool): True by default to avoid futurewarning. But will change to False to be
-    consistent with pandas. Defaults to True
-    
+      ignore_index (bool): True by default to avoid futurewarning. But will change to
+        False to be consistent with pandas. Defaults to True.
+
     Returns:
       A GeoDataFrame with the columns 'source_wkt' and 'target_wkt'
     """
@@ -83,18 +75,29 @@ def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDat
 
     if not all(roads.geom_type == "LineString"):
         if all(roads.geom_type.isin(["LineString", "MultiLinestring"])):
-            raise ValueError("MultiLineStrings have more than two endpoints. Try explode() to get LineStrings.")
+            raise ValueError(
+                "MultiLineStrings have more than two endpoints. "
+                "Try explode() to get LineStrings."
+            )
         else:
-            raise ValueError("You have mixed geometry types. Only singlepart LineStrings are allowed in make_edge_wkt_cols.")
+            raise ValueError(
+                "You have mixed geometry types. Only singlepart LineStrings are "
+                "allowed in make_edge_wkt_cols."
+            )
 
     boundary = roads.geometry.boundary
     circles = boundary.loc[boundary.is_empty]
     roads = roads[~roads.index.isin(circles.index)]
 
-    endpoints = roads.geometry.boundary.explode(ignore_index=ignore_index, index_parts=False) #to silence warning
+    endpoints = roads.geometry.boundary.explode(
+        ignore_index=ignore_index, index_parts=False
+    )  # to silence warning
 
     if not len(endpoints) / len(roads) == 2:
-        raise ValueError("The lines should have only two endpoints each. Try splitting multilinestrings with explode.")
+        raise ValueError(
+            "The lines should have only two endpoints each. "
+            "Try splitting multilinestrings with explode."
+        )
 
     wkt_geom = [f"POINT ({x} {y})" for x, y in zip(endpoints.x, endpoints.y)]
     roads["source_wkt"], roads["target_wkt"] = (
@@ -104,9 +107,9 @@ def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDat
 
     return roads
 
-    
+
 def get_largest_component(roads: GeoDataFrame) -> GeoDataFrame:
-    """ Find the roads that are isolated from the largest component of the network. """
+    """Find the roads that are isolated from the largest component of the network."""
 
     if not "source" in roads.columns or not "target" in roads.columns:
         roads, nodes = make_node_ids(roads)
@@ -124,12 +127,12 @@ def get_largest_component(roads: GeoDataFrame) -> GeoDataFrame:
     largest_component = {node_id: 1 for node_id in largest_component}
 
     roads["connected"] = roads.source.map(largest_component).fillna(0)
-    
+
     return roads
 
 
 def get_component_size(roads: GeoDataFrame) -> GeoDataFrame:
-    """ Find the roads that are isolated from the largest component of the network. """
+    """Find the roads that are isolated from the largest component of the network."""
 
     if not "source" in roads.columns or not "target" in roads.columns:
         roads, nodes = make_node_ids(roads)
@@ -143,18 +146,23 @@ def get_component_size(roads: GeoDataFrame) -> GeoDataFrame:
     G.add_edges_from(edges)
     components = [list(x) for x in nx.connected_components(G)]
 
-    componentsdict = {idx: len(component) for component in components for idx in component}
+    componentsdict = {
+        idx: len(component) for component in components for idx in component
+    }
 
     roads["component_size"] = roads.source.map(componentsdict)
-    
+
     return roads
 
 
-def close_network_holes(roads, max_dist, min_dist=0, deadends_only=False, hole_col: str | None = "hole"):
+def close_network_holes(
+    roads, max_dist, min_dist=0, deadends_only=False, hole_col: str | None = "hole"
+):
     """
     Lager rette linjer der det er små hull i networket.
-    Bruker NearestNeighbors fra scikit-learn, fordi det er utrolig raskt. Man trenger ikke loope for områder en gang.
-    scikit-learn bruker numpy arrays, som må konverteres tilbake til geopandas via index-ene.
+    Bruker NearestNeighbors fra scikit-learn, fordi det er utrolig raskt. Man trenger
+    ikke loope for områder en gang. scikit-learn bruker numpy arrays, som må konverteres
+    tilbake til geopandas via index-ene.
     """
 
     roads, nodes = make_node_ids(roads)
@@ -166,7 +174,7 @@ def close_network_holes(roads, max_dist, min_dist=0, deadends_only=False, hole_c
 
     if not len(new_roads):
         return roads
-    
+
     wkt_id_dict = {wkt: id for wkt, id in zip(nodes["wkt"], nodes["node_id"])}
     new_roads["source"] = new_roads["source_wkt"].map(wkt_id_dict)
     new_roads["target"] = new_roads["target_wkt"].map(wkt_id_dict)
@@ -176,21 +184,20 @@ def close_network_holes(roads, max_dist, min_dist=0, deadends_only=False, hole_c
 
     if hole_col:
         new_roads[hole_col] = 1
-    
+
     return gdf_concat([roads, new_roads])
 
 
 def find_holes_all_roads(roads, nodes, max_dist, min_dist=0, n=10):
-
     crs = nodes.crs
 
     # velger ut nodene som kun finnes i én lenke. Altså blindveier i en networksanalyse.
     deadends_source = roads.loc[roads.n_source == 1].rename(
         columns={"source_wkt": "wkt", "target_wkt": "wkt_andre_ende"}
     )
-#    deadends_source["geometry"] = gpd.GeoSeries.from_wkt(
- #       deadends_source["wkt"], crs=crs
-  #  )
+    #    deadends_source["geometry"] = gpd.GeoSeries.from_wkt(
+    #       deadends_source["wkt"], crs=crs
+    #  )
     deadends_target = roads.loc[roads.n_target == 1].rename(
         columns={"source_wkt": "wkt_andre_ende", "target_wkt": "wkt"}
     )
@@ -201,9 +208,7 @@ def find_holes_all_roads(roads, nodes, max_dist, min_dist=0, n=10):
 
     deadends_andre_ende = deadends.copy()
 
-    deadends["geometry"] = gpd.GeoSeries.from_wkt(
-        deadends["wkt"], crs=crs
-    )
+    deadends["geometry"] = gpd.GeoSeries.from_wkt(deadends["wkt"], crs=crs)
 
     deadends_andre_ende["geometry"] = gpd.GeoSeries.from_wkt(
         deadends_andre_ende["wkt_andre_ende"], crs=crs
@@ -236,7 +241,8 @@ def find_holes_all_roads(roads, nodes, max_dist, min_dist=0, n=10):
             nodes.loc[idxs1], align=False
         )
 
-        # henter ut blindveg-wkt og node-wkt hvis avstanden er mellom max-min og i riktig retning (
+        # henter ut blindveg-wkt og node-wkt hvis avstanden er mellom max-min og
+        # i riktig retning (
         fratil = [
             (geom, nodes.loc[idx, "wkt"])
             for geom, idx, dist, dist_andre, lengde in zip(
@@ -259,9 +265,7 @@ def find_holes_all_roads(roads, nodes, max_dist, min_dist=0, n=10):
     fra = gpd.GeoSeries.from_wkt(fra, crs=crs)
     til = gpd.GeoSeries.from_wkt(til, crs=crs)
     new_roads = shortest_line(fra, til)
-    new_roads = gpd.GeoDataFrame(
-        {"geometry": new_roads}, geometry="geometry", crs=crs
-    )
+    new_roads = gpd.GeoDataFrame({"geometry": new_roads}, geometry="geometry", crs=crs)
 
     if not len(new_roads):
         return new_roads
@@ -274,8 +278,9 @@ def find_holes_all_roads(roads, nodes, max_dist, min_dist=0, n=10):
 def find_holes_deadends(nodes, max_dist, min_dist=0):
     """
     Lager rette linjer der det er små hull i networket.
-    Bruker NearestNeighbors fra scikit-learn, fordi det er utrolig raskt. Man trenger ikke loope for områder en gang.
-    scikit-learn bruker numpy arrays, som må konverteres tilbake til geopandas via index-ene.
+    Bruker NearestNeighbors fra scikit-learn, fordi det er utrolig raskt. Man trenger
+    ikke loope for områder en gang. scikit-learn bruker numpy arrays, som må konverteres
+    tilbake til geopandas via index-ene.
     """
 
     crs = nodes.crs
@@ -283,7 +288,8 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
     # velger ut nodene som kun finnes i én lenke. Altså blindveier i en networksanalyse.
     deadends = nodes[nodes["n"] == 1]
 
-    # viktig å nullstille index siden sklearn kneighbors gir oss en numpy.array med indekser
+    # viktig å nullstille index siden sklearn kneighbors gir oss en numpy.array
+    # med indekser
     deadends = deadends.reset_index(drop=True)
 
     if len(deadends) <= 1:
@@ -305,11 +311,13 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
 
     """
     Nå har vi 1d-numpy arrays av lik lengde som blindvegene. 
-    'idxs' inneholder numpy-indeksen for vegen som er nærmest, altså endepunktene for de nye lenkene.
-    For å konvertere dette fra numpy til geopandas, trengs geometri og node-id. 
+    'idxs' inneholder numpy-indeksen for vegen som er nærmest, altså endepunktene for de
+    nye lenkene. For å konvertere dette fra numpy til geopandas, trengs geometri og
+    node-id. 
     """
 
-    # fra-geometrien kan hentes direkte siden avstandene og blindvegene har samme rekkefølge
+    # fra-geometrien kan hentes direkte siden avstandene og blindvegene har samme
+    # rekkefølge
     fra = np.array(
         [
             geom.wkt
@@ -331,9 +339,7 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
     fra = gpd.GeoSeries.from_wkt(fra, crs=crs)
     til = gpd.GeoSeries.from_wkt(til, crs=crs)
     new_roads = shortest_line(fra, til)
-    new_roads = gpd.GeoDataFrame(
-        {"geometry": new_roads}, geometry="geometry", crs=crs
-    )
+    new_roads = gpd.GeoDataFrame({"geometry": new_roads}, geometry="geometry", crs=crs)
 
     if not len(new_roads):
         return new_roads
@@ -344,9 +350,9 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
 
 
 def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoDataFrame:
+    from shapely import force_2d
     from shapely.geometry import LineString, Point
     from shapely.ops import unary_union
-    from shapely import force_2d
 
     def cut(line, distance):
         """fra shapely-dokumentasjonen"""
@@ -383,7 +389,9 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
         while maks_lengde > max_length * x + 1:
             maks_lengde = over_max_length.length.max()
 
-            over_max_length["geometry"] = cut_vektorisert(over_max_length.geometry, max_length)
+            over_max_length["geometry"] = cut_vektorisert(
+                over_max_length.geometry, max_length
+            )
 
             over_max_length = over_max_length.explode(ignore_index=True)
 
@@ -393,4 +401,3 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
     over_max_length = over_max_length.explode(ignore_index=True)
 
     return pd.concat([under_max_length, over_max_length], ignore_index=True)
-

@@ -1,30 +1,37 @@
-#%%
-import warnings
-import geopandas as gpd
-from time import perf_counter
+# %%
 import sys
+import warnings
+from time import perf_counter
+
+import geopandas as gpd
+
+
 sys.path.append("C:/Users/ort/git/ssb-gis-utils")
 
-import gis_utils as gs
 import cProfile
+
+import gis_utils as gs
 
 
 def count_function_calls():
-
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
-    p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
+    r = gpd.read_parquet(
+        r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet"
+    )
+    p = gpd.read_parquet(
+        r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet"
+    )
 
     nw = gs.DirectedNetwork(r)
-    
+
     nw = nw.remove_isolated()
     nw.make_directed_network_norway()
 
-    nw = (nw
-        .get_component_size()
+    nw = (
+        nw.get_component_size()
         .get_largest_component()
         .close_network_holes(1.1)
         .remove_isolated()
-       # .cut_lines(50)
+        # .cut_lines(50)
     )
 
     nwa = gs.NetworkAnalysis(nw, cost="minutes")
@@ -38,7 +45,7 @@ def count_function_calls():
 def main():
     count_function_calls()
     cProfile.run("count_function_calls()", sort="cumtime")
-    
+
 
 if __name__ == "__main__":
     main()
