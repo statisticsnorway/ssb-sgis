@@ -17,6 +17,8 @@ class DirectedNetwork(Network):
         **kwargs,
     ):
         super().__init__(gdf, merge_lines, **kwargs)
+        
+        self.directed = True
 
         self.check_if_directed()
 

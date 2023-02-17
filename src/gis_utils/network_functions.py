@@ -93,7 +93,7 @@ def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDat
         ignore_index=ignore_index, index_parts=False
     )  # to silence warning
 
-    if not len(endpoints) / len(roads) == 2:
+    if len(endpoints) / len(roads) != 2:
         raise ValueError(
             "The lines should have only two endpoints each. "
             "Try splitting multilinestrings with explode."
@@ -111,7 +111,7 @@ def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDat
 def get_largest_component(roads: GeoDataFrame) -> GeoDataFrame:
     """Find the roads that are isolated from the largest component of the network."""
 
-    if not "source" in roads.columns or not "target" in roads.columns:
+    if "source" not in roads.columns or "target" not in roads.columns:
         roads, nodes = make_node_ids(roads)
 
     edges = [

@@ -1,17 +1,18 @@
-import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import LineString
+from igraph import Graph
 
 from .geopandas_utils import gdf_concat
-
+from geopandas import GeoDataFrame
 
 def service_area(
-    nw,
-    startpoints: gpd.GeoDataFrame,
-    impedance,
-    id_col=None,  # hvis ikke id-kolonne oppgis, brukes startpunktenes geometri som id
-    dissolve=True,
+    graph: Graph,
+    startpoints: GeoDataFrame,
+    cost: str,
+    roads: GeoDataFrame,
+    impedance: int | list[int] | tuple[int],
+    id_col: str | None = None,  # hvis ikke id-kolonne oppgis, brukes startpunktenes geometri som id
+    dissolve: bool = True,
 ):
     if not id_col:
         id_col = "origin"
@@ -23,34 +24,34 @@ def service_area(
     service_areas = []
     for i in startpoints["temp_idx"]:
         for imp in impedance:
-            if not i in nw.graph.vs()["name"] and not i in nw.graph.vs.indices:
+            if not i in graph.vs()["name"] and not i in graph.vs.indices:
                 continue
 
             # beregn alle coster fra startpunktet
-            resultat = nw.graph.distances(weights="weight", source=i)
+            resultat = graph.distances(weights="weight", source=i)
 
             # lag tabell av resultatene og fjern alt over ønsket cost
             df = pd.DataFrame(
-                data={"name": np.array(nw.graph.vs["name"]), nw.cost: resultat[0]}
+                data={"name": np.array(graph.vs["name"]), cost: resultat[0]}
             )
-            df = df[df[nw.cost] < imp]
+            df = df[df[cost] < imp]
 
             if len(df) == 0:
                 service_areas.append(
-                    pd.DataFrame({id_col: [i], nw.cost: [imp], "geometry": np.nan})
+                    pd.DataFrame({id_col: [i], cost: [imp], "geometry": np.nan})
                 )
                 continue
 
             # velg ut vegene som er i dataframen vi nettopp lagde.
             # Og dissolve til én rad.
-            sa = nw.network.gdf.loc[nw.network.gdf.target.isin(df.name)]
+            sa = roads.loc[roads.target.isin(df.name)]
 
             if dissolve:
                 sa = sa[["geometry"]].dissolve().reset_index(drop=True)
 
             # lag kolonner for id, cost og evt. node-info
             sa[id_col] = i
-            sa[nw.cost] = imp
+            sa[cost] = imp
             service_areas.append(sa)
 
     return gdf_concat(service_areas)

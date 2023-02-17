@@ -46,37 +46,37 @@ def test_geos(gdf_fixture):
 
 
 def test_aggfuncs(gdf_fixture):
-    copy = gs.dissexp(gdf_fixture, by="txtkol", aggfunc="sum")
+    copy = gs.dissexp(gdf_fixture, by="txtcol", aggfunc="sum")
     assert (
         len(copy) == 11
-    ), "dissexp by txtkol skal gi 11 rader, tre stykk linestrings..."
+    ), "dissexp by txtcol skal gi 11 rader, tre stykk linestrings..."
 
-    copy = gs.buffdiss(gdf_fixture, 100, by="txtkol", aggfunc="sum", copy=True)
+    copy = gs.buffdiss(gdf_fixture, 100, by="txtcol", aggfunc="sum", copy=True)
     assert (
-        copy.numkol.sum()
-        == gdf_fixture.numkol.sum()
+        copy.numcol.sum()
+        == gdf_fixture.numcol.sum()
         == sum([1, 2, 3, 4, 5, 6, 7, 8, 9])
     )
 
     copy = gs.buffdissexp(
-        gdf_fixture, 100, by="txtkol", aggfunc=["sum", "mean"], copy=True
+        gdf_fixture, 100, by="txtcol", aggfunc=["sum", "mean"], copy=True
     )
     assert (
-        "numkol_sum" in copy.columns and "numkol_sum" in copy.columns
+        "numcol_sum" in copy.columns and "numcol_mean" in copy.columns
     ), "kolonnene følger ikke mønstret 'kolonnenavn_aggfunc'"
     assert len(copy) == 6, "feil lengde"
 
     copy = gs.buffdissexp(
-        gdf_fixture, 1000, by="txtkol", aggfunc=["sum", "mean"], copy=True
+        gdf_fixture, 1000, by="txtcol", aggfunc=["sum", "mean"], copy=True
     )
     assert len(copy) == 4, "feil lengde"
 
-    copy = gs.buffdissexp(gdf_fixture, 100, by="numkol", copy=True)
+    copy = gs.buffdissexp(gdf_fixture, 100, by="numcol", copy=True)
     assert len(copy) == 9, "feil lengde"
 
-    copy = gs.buffdissexp(gdf_fixture, 100, by=["numkol", "txtkol"], copy=True)
+    copy = gs.buffdissexp(gdf_fixture, 100, by=["numcol", "txtcol"], copy=True)
     assert (
-        "numkol" in copy.columns and "txtkol" in copy.columns
+        "numcol" in copy.columns and "txtcol" in copy.columns
     ), "kolonnene mangler. Er de index?"
     assert len(copy) == 9, "feil lengde"
 
@@ -103,22 +103,22 @@ def sjoin_overlay(gdf_fixture):
     gdf2 = gs.buff(gdf_fixture, 100, copy=True)
     gdf2["nykoll"] = 1
     gdf = gs.sjoin(gdf1, gdf2)
-    assert all(col in ["geometry", "numkol", "txtkol", "nykoll"] for col in gdf.columns)
+    assert all(col in ["geometry", "numcol", "txtcol", "nykoll"] for col in gdf.columns)
     assert not any(
         col not in list(gdf.columns)
-        for col in ["geometry", "numkol", "txtkol", "nykoll"]
+        for col in ["geometry", "numcol", "txtcol", "nykoll"]
     )
     assert len(gdf) == 25
     gdf = gs.overlay(gdf1, gdf2)
-    assert all(col in ["geometry", "numkol", "txtkol", "nykoll"] for col in gdf.columns)
+    assert all(col in ["geometry", "numcol", "txtcol", "nykoll"] for col in gdf.columns)
     assert not any(
         col not in list(gdf.columns)
-        for col in ["geometry", "numkol", "txtkol", "nykoll"]
+        for col in ["geometry", "numcol", "txtcol", "nykoll"]
     )
     assert len(gdf) == 25
 
     gdf = gs.overlay_update(gdf2, gdf1)
-    assert list(gdf.columns) == ["geometry", "numkol", "txtkol", "nykoll"]
+    assert list(gdf.columns) == ["geometry", "numcol", "txtcol", "nykoll"]
     assert len(gdf) == 18
 
 
@@ -145,7 +145,7 @@ def test_neighbors(gdf_fixture):
     naboer = gs.find_neighbors(
         gdf_fixture.iloc[[0]],
         possible_neighbors=gdf_fixture,
-        id_col="numkol",
+        id_col="numcol",
         within_distance=100,
     )
     naboer.sort()
@@ -153,7 +153,7 @@ def test_neighbors(gdf_fixture):
     naboer = gs.find_neighbors(
         gdf_fixture.iloc[[8]],
         possible_neighbors=gdf_fixture,
-        id_col="numkol",
+        id_col="numcol",
         within_distance=100,
     )
     naboer.sort()

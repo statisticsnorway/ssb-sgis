@@ -42,22 +42,28 @@ def clean_geoms(
 
     """
 
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
-        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
-
-    fixed = gdf.make_valid()
-
-    cleaned = fixed.loc[(fixed.is_valid) & (~fixed.is_empty) & (fixed.notna())]
-
-    if single_geom_type:
-        cleaned = to_single_geom_type(cleaned)
-
     if isinstance(gdf, GeoDataFrame):
-        gdf = gdf.loc[cleaned.index]
-        gdf[gdf._geometry_column_name] = cleaned
+        gdf["geometry"] = gdf.make_valid()
+        gdf = gdf.loc[
+                (gdf.geometry.is_valid) & 
+                (~gdf.geometry.is_empty) &
+                (gdf.geometry.notna())
+            ]
+    elif isinstance(gdf, GeoSeries):
+        gdf = gdf.make_valid()
+        gdf = gdf.loc[
+            (gdf.is_valid) & 
+            (~gdf.is_empty) &
+            (gdf.notna())
+        ]
     else:
-        gdf = cleaned
-
+        raise TypeError(
+            f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}"
+        )
+    
+    if single_geom_type:
+        gdf = to_single_geom_type(gdf)
+    
     if ignore_index:
         gdf = gdf.reset_index(drop=True)
 
@@ -70,6 +76,11 @@ def to_single_geom_type(
     """
     overlay godtar ikke blandede geometrityper i samme gdf.
     """
+    
+    collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
+    if len(collections):
+        collections = collections.explode(ignore_index=ignore_index)
+        gdf = gdf_concat([gdf, collections])
 
     polys = ["Polygon", "MultiPolygon"]
     lines = ["LineString", "MultiLineString", "LinearRing"]

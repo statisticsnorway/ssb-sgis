@@ -25,4 +25,4 @@ from .network_functions import (
     get_component_size,
     get_largest_component,
 )
-from .networkanalysis import NetworkAnalysis
+from .networkanalysis import NetworkAnalysis, NetworkAnalysisRules
