@@ -1,38 +1,33 @@
-#%%
+# %%
 import warnings
-import numpy as np
+from pathlib import Path
+
 import geopandas as gpd
+import numpy as np
 
 import gis_utils as gs
-from pathlib import Path
 
 
 def test_shortest_path():
     warnings.filterwarnings(action="ignore", category=UserWarning)
     warnings.filterwarnings(action="ignore", category=FutureWarning)
-    
+
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
     p["idx"] = p.index
     p["idx2"] = p.index
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
 
-    nw = (
-        gs.DirectedNetwork(r)
-        .make_directed_network_norway()
-        .remove_isolated()
-    )
+    nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
 
     nwa = gs.NetworkAnalysis(nw, cost="minutes")
 
     sp = nwa.shortest_path(p.iloc[[0]], p.sample(250), id_col="idx", summarise=True)
 
-    sp = nwa.shortest_path(
-        p.sample(50), p.sample(50), 
-        summarise=True
-    )
+    sp = nwa.shortest_path(p.sample(50), p.sample(50), summarise=True)
 
     sp = nwa.shortest_path(
-        p.sample(25), p.sample(25), 
+        p.sample(25),
+        p.sample(25),
     )
 
 

@@ -1,9 +1,10 @@
 import geopandas as gpd
-import pandas as pd
 import numpy as np
+import pandas as pd
 from shapely.geometry import LineString
 
 from .geopandas_utils import gdf_concat
+
 
 def service_area(
     nw,
@@ -36,13 +37,12 @@ def service_area(
 
             if len(df) == 0:
                 service_areas.append(
-                        pd.DataFrame(
-                            {id_col: [i], nw.cost: [imp], "geometry": np.nan}
-                        )
-                    )
+                    pd.DataFrame({id_col: [i], nw.cost: [imp], "geometry": np.nan})
+                )
                 continue
 
-            # velg ut vegene som er i dataframen vi nettopp lagde. Og dissolve til én rad.
+            # velg ut vegene som er i dataframen vi nettopp lagde.
+            # Og dissolve til én rad.
             sa = nw.network.gdf.loc[nw.network.gdf.target.isin(df.name)]
 
             if dissolve:

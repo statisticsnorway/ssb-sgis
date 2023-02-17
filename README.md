@@ -19,3 +19,11 @@ Use the following command from the root directory to run the tests:
 ```shell
 poetry run pytest  # from root directory
 ```
+
+### Formatting
+Format the code with `black`  and `isort` by running the following command from the
+root directory:
+```shell
+poetry run black .
+poetry run isort .
+```

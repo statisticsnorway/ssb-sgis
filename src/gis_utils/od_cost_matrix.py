@@ -1,14 +1,14 @@
+import geopandas as gpd
+import networkx as nx
 import numpy as np
 import pandas as pd
-import geopandas as gpd
-from shapely import shortest_line
 from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame
-import networkx as nx
+from shapely import shortest_line
 
 
 def od_cost_matrix(
-    nw, # endre til graf
+    nw,  # endre til graf
     startpoints: GeoDataFrame,
     endpoints: GeoDataFrame,
     *,
@@ -17,29 +17,28 @@ def od_cost_matrix(
     cutoff: int = None,
     destination_count: int = None,
 ) -> DataFrame | GeoDataFrame:
-
     """
-    It takes a network, a GeoDataFrame of origins and a GeoDataFrame of destinations, and returns a
-    GeoDataFrame with the shortest path between each origin and destination
-    
+    It takes a network, a GeoDataFrame of origins and a GeoDataFrame of destinations,
+    and returns a GeoDataFrame with the shortest path between each origin and
+    destination.
+
     Args:
       nw: the network object
       startpoints (GeoDataFrame): GeoDataFrame
       endpoints (GeoDataFrame): GeoDataFrame
-      lines: If True, the output will be a GeoDataFrame with straight lines between origin and destination. Defaults to False
-      rowwise: .
-    Defaults to False
-      cutoff (int): If you want to limit the maximum cost between origin and destination, you can
-    set a cutoff.
+      lines: If True, the output will be a GeoDataFrame with straight lines between
+        origin and destination. Defaults to False.
+      rowwise: Defaults to False
+      cutoff (int): If you want to limit the maximum cost between origin and
+        destination, you can set a cutoff.
       destination_count (int): int = None
-    
+
     Returns:
       A dataframe with the origin, destination and cost.
     """
 
-
     cost = nw.cost
-    
+
     if not rowwise:
         # selve avstandsberegningen her:
         results = nw.graph.distances(
@@ -84,17 +83,12 @@ def od_cost_matrix(
         for idd, geom in zip(startpoints["temp_idx"], startpoints.geometry)
     }
     wkt_dict_destination = {
-        idd: geom.wkt
-        for idd, geom in zip(endpoints["temp_idx"], endpoints.geometry)
+        idd: geom.wkt for idd, geom in zip(endpoints["temp_idx"], endpoints.geometry)
     }
     out["wkt_ori"] = out["origin"].map(wkt_dict_origin)
     out["wkt_des"] = out["destination"].map(wkt_dict_destination)
-    
-    out[nw.cost] = np.where(
-        out.wkt_ori != out.wkt_des,
-        out[nw.cost],
-        0
-    )
+
+    out[nw.cost] = np.where(out.wkt_ori != out.wkt_des, out[nw.cost], 0)
 
     # lag linjer mellom origin og destination
     if lines:
@@ -106,4 +100,3 @@ def od_cost_matrix(
     out = out.drop(["wkt_ori", "wkt_des"], axis=1, errors="ignore")
 
     return out.reset_index(drop=True)
-
