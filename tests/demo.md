@@ -9,7 +9,6 @@ The package supports three types of network analysis:
 
 
 ```python
-
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -24,15 +23,103 @@ os.chdir("../src")
 import gis_utils as gs
 
 os.chdir("..")
-
-# gs.__version__
 ```
+
+Let's start by loading the data:
 
 
 ```python
 points = gpd.read_parquet("tests/testdata/random_points.parquet")
-p = points.iloc[[0]]
+points
 ```
+
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>idx</th>
+      <th>geometry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>POINT (263122.700 6651184.900)</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>2</td>
+      <td>POINT (272456.100 6653369.500)</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>3</td>
+      <td>POINT (270082.300 6653032.700)</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>4</td>
+      <td>POINT (259804.800 6650339.700)</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>5</td>
+      <td>POINT (272876.200 6652889.100)</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>995</th>
+      <td>996</td>
+      <td>POINT (266801.700 6647844.500)</td>
+    </tr>
+    <tr>
+      <th>996</th>
+      <td>997</td>
+      <td>POINT (261274.000 6653593.400)</td>
+    </tr>
+    <tr>
+      <th>997</th>
+      <td>998</td>
+      <td>POINT (263542.900 6645427.000)</td>
+    </tr>
+    <tr>
+      <th>998</th>
+      <td>999</td>
+      <td>POINT (269226.700 6650628.000)</td>
+    </tr>
+    <tr>
+      <th>999</th>
+      <td>1000</td>
+      <td>POINT (264570.300 6644239.500)</td>
+    </tr>
+  </tbody>
+</table>
+<p>1000 rows × 2 columns</p>
+</div>
+
+
 
 
 ```python
@@ -199,14 +286,14 @@ nw.gdf.head(3)
 
 
 
-The network class includes methods for customising the road data. More about this further down in this notebook.
+The network class includes methods for optimizing the road data. More about this further down in this notebook.
 
 
 ```python
 nw = (
     nw.close_network_holes(1.5)
     .remove_isolated()
-    # .cut_lines(25)
+    .cut_lines(100)
 )
 nw
 ```
@@ -214,7 +301,7 @@ nw
 
 
 
-    Network class instance with 100337 rows and a length of 3832 km.
+    Network class instance with 132399 rows and a length of 3832 km.
 
 
 
@@ -290,7 +377,7 @@ nw
 
 ## NetworkAnalysis
 
-The NetworkAnalysis class takes a network (created above) and some rules. 
+The NetworkAnalysis class takes a network and some rules.
 
 This will set the rules to its default values:
 
@@ -325,6 +412,8 @@ nwa
     NetworkAnalysis(cost=minutes, search_tolerance=250, search_factor=10, cost_to_nodes=5)
 
 
+
+od_cost_matrix calculates the traveltime from a set of startpoints to a set of endpoints:
 
 
 ```python
@@ -432,10 +521,14 @@ od
 
 
 
+Set 'lines' to True to get straight lines between origin and destination:
+
 
 ```python
+od = nwa.od_cost_matrix(points.sample(1), points, lines=True)
+
 gs.qtm(
-    nwa.od_cost_matrix(points.sample(1), points, lines=True),
+    od,
     "minutes",
     title="Travel time (minutes) from 1 to 1000 addresses.",
     k=7,
@@ -444,40 +537,143 @@ gs.qtm(
 
 
     
-![png](demo_files/demo_22_0.png)
+![png](demo_files/demo_25_0.png)
     
 
+
+The shortest_path method can be used to get the actual paths: 
 
 
 ```python
 sp = nwa.shortest_path(points.iloc[[0]], points.sample(100), id_col="idx")
 
-gs.qtm(sp)
+gs.qtm(sp, "minutes", cmap=gs.chop_cmap("RdPu", 0.2), title="Travel times")
+
+sp
 ```
 
 
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>origin</th>
+      <th>destination</th>
+      <th>minutes</th>
+      <th>geometry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>393</td>
+      <td>15.161138</td>
+      <td>MULTILINESTRING Z ((261352.158 6649521.080 6.6...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1</td>
+      <td>283</td>
+      <td>10.171877</td>
+      <td>MULTILINESTRING Z ((264242.071 6648335.139 18....</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>1</td>
+      <td>897</td>
+      <td>8.628959</td>
+      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>1</td>
+      <td>632</td>
+      <td>11.235565</td>
+      <td>MULTILINESTRING Z ((260679.000 6651295.200 48....</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>1</td>
+      <td>745</td>
+      <td>12.481765</td>
+      <td>MULTILINESTRING Z ((268655.697 6653425.194 185...</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>94</th>
+      <td>1</td>
+      <td>729</td>
+      <td>4.426419</td>
+      <td>MULTILINESTRING Z ((263949.900 6650218.700 36....</td>
+    </tr>
+    <tr>
+      <th>95</th>
+      <td>1</td>
+      <td>431</td>
+      <td>11.963411</td>
+      <td>MULTILINESTRING Z ((266612.400 6649059.000 87....</td>
+    </tr>
+    <tr>
+      <th>96</th>
+      <td>1</td>
+      <td>78</td>
+      <td>11.299218</td>
+      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+    </tr>
+    <tr>
+      <th>97</th>
+      <td>1</td>
+      <td>361</td>
+      <td>3.597505</td>
+      <td>MULTILINESTRING Z ((262949.500 6652047.000 71....</td>
+    </tr>
+    <tr>
+      <th>98</th>
+      <td>1</td>
+      <td>573</td>
+      <td>18.972410</td>
+      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
+    </tr>
+  </tbody>
+</table>
+<p>99 rows × 4 columns</p>
+</div>
+
+
+
+
     
-![png](demo_files/demo_23_0.png)
+![png](demo_files/demo_27_1.png)
     
 
+
+Set 'summarise' to True to get the number of times each road segment was used. This is faster than not summarising, because no dissolve is done.
 
 
 ```python
-from matplotlib.colors import LinearSegmentedColormap
-
-
-def chop_cmap_frac(
-    cmap: LinearSegmentedColormap, frac: float
-) -> LinearSegmentedColormap:
-    """Chops off the beginning `frac` fraction of a colormap."""
-    cmap = plt.get_cmap(cmap)
-    cmap_as_array = cmap(np.arange(256))
-    cmap_as_array = cmap_as_array[int(frac * len(cmap_as_array)) :]
-    return LinearSegmentedColormap.from_list(cmap.name + f"_frac{frac}", cmap_as_array)
-
-
-cmap = chop_cmap_frac("RdPu", 0.2)
-
 sp = nwa.shortest_path(points.sample(150), points.sample(150), summarise=True)
 
 gs.qtm(
@@ -485,16 +681,20 @@ gs.qtm(
     "n",
     scheme="naturalbreaks",
     k=7,
-    cmap=cmap,
+    cmap=gs.chop_cmap("RdPu", 0.2),
     title="Number of times each road was used.",
 )
 ```
 
 
     
-![png](demo_files/demo_24_0.png)
+![png](demo_files/demo_29_0.png)
     
 
+
+The service_area method finds the area that can be reached within one or more impedances. 
+
+Here, we find the areas that can be reached within 5, 10 and 15 minutes for five random points:
 
 
 ```python
@@ -523,101 +723,101 @@ sa
   <thead>
     <tr style="text-align: right;">
       <th></th>
-      <th>geometry</th>
-      <th>origin</th>
       <th>minutes</th>
+      <th>idx</th>
+      <th>geometry</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <th>0</th>
-      <td>MULTILINESTRING Z ((261416.340 6653760.610 108...</td>
-      <td>79166</td>
       <td>5</td>
+      <td>241</td>
+      <td>MULTILINESTRING Z ((265722.272 6644607.992 164...</td>
     </tr>
     <tr>
       <th>1</th>
-      <td>MULTILINESTRING Z ((265378.000 6650581.600 85....</td>
-      <td>79166</td>
       <td>10</td>
+      <td>241</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>2</th>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
-      <td>79166</td>
       <td>15</td>
+      <td>241</td>
+      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
     </tr>
     <tr>
       <th>3</th>
-      <td>MULTILINESTRING Z ((265722.272 6644607.992 164...</td>
-      <td>79167</td>
       <td>5</td>
+      <td>689</td>
+      <td>MULTILINESTRING Z ((261416.340 6653760.610 108...</td>
     </tr>
     <tr>
       <th>4</th>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
-      <td>79167</td>
       <td>10</td>
+      <td>689</td>
+      <td>MULTILINESTRING Z ((264242.071 6648335.139 18....</td>
     </tr>
     <tr>
       <th>5</th>
-      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
-      <td>79167</td>
       <td>15</td>
+      <td>689</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>6</th>
-      <td>MULTILINESTRING Z ((273330.930 6653248.870 208...</td>
-      <td>79168</td>
       <td>5</td>
+      <td>593</td>
+      <td>MULTILINESTRING Z ((273338.510 6653270.220 209...</td>
     </tr>
     <tr>
       <th>7</th>
-      <td>MULTILINESTRING Z ((273221.890 6654039.220 213...</td>
-      <td>79168</td>
       <td>10</td>
+      <td>593</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
     <tr>
       <th>8</th>
-      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
-      <td>79168</td>
       <td>15</td>
+      <td>593</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>9</th>
-      <td>MULTILINESTRING Z ((256284.280 6651413.280 84....</td>
-      <td>79169</td>
       <td>5</td>
+      <td>411</td>
+      <td>MULTILINESTRING Z ((265657.500 6654844.860 296...</td>
     </tr>
     <tr>
       <th>10</th>
-      <td>MULTILINESTRING Z ((257935.700 6651969.000 80....</td>
-      <td>79169</td>
       <td>10</td>
+      <td>411</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
     <tr>
       <th>11</th>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
-      <td>79169</td>
       <td>15</td>
+      <td>411</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>12</th>
-      <td>MULTILINESTRING Z ((259185.676 6652656.707 76....</td>
-      <td>79170</td>
       <td>5</td>
+      <td>811</td>
+      <td>MULTILINESTRING Z ((267287.202 6646656.305 155...</td>
     </tr>
     <tr>
       <th>13</th>
-      <td>MULTILINESTRING Z ((258017.108 6655033.261 309...</td>
-      <td>79170</td>
       <td>10</td>
+      <td>811</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>14</th>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
-      <td>79170</td>
       <td>15</td>
+      <td>811</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
   </tbody>
 </table>
@@ -627,18 +827,20 @@ sa
 
 
 ```python
-sa = nwa.service_area(points.iloc[[0]], impedance=np.arange(1, 11))
-sa = sa.sort_values("minutes", ascending=False)
-gs.qtm(sa, "minutes", k=9)
+sa = (
+    nwa.service_area(points.iloc[[0]], impedance=np.arange(1, 11))
+    .sort_values("minutes", ascending=False)
+)
+gs.qtm(sa, "minutes", k=9, title="Area that can be reached within 1 to 10 minutes.")
 ```
 
 
     
-![png](demo_files/demo_26_0.png)
+![png](demo_files/demo_32_0.png)
     
 
 
-Set dissolve=False to get each road segment returned, one for each service area that uses the segment. If you have a lot of overlapping service areas that are to be dissolved in the end, removing duplicates first makes things a whole lot faster.
+Set 'dissolve' to False to get every road segment returned, one for each service area that uses the segment. If there are a lot of overlapping service areas, that are to be dissolved in the end, removing duplicates first will make things a whole lot faster.
 
 
 ```python
@@ -653,13 +855,13 @@ print(len(sa))
 gs.qtm(sa)
 ```
 
-    1419304
-    151579
+    1430788
+    149069
     
 
 
     
-![png](demo_files/demo_28_1.png)
+![png](demo_files/demo_34_1.png)
     
 
 
@@ -687,6 +889,12 @@ nw
 
 
 
+Networks often consist of one large, connected network and many small, isolated "network islands".
+
+Start- and endpoints located inside these isolated networks, will have a hard time finding their way out. 
+
+The large, connected network component can be found with the method get_largest_component:
+
 
 ```python
 nw = nw.get_largest_component()
@@ -695,6 +903,7 @@ gs.clipmap(
     nw.gdf,
     points.iloc[[0]].buffer(1000),
     column="connected",
+    title="Connected and isolated networks",
     scheme="equalinterval",
     cmap="bwr",
     explore=False,
@@ -703,11 +912,11 @@ gs.clipmap(
 
 
     
-![png](demo_files/demo_31_0.png)
+![png](demo_files/demo_38_0.png)
     
 
 
-The isolated networks can be removed by setting remove=True. Or use the remove_isolated method:
+Use the remove_isolated method to remove the unconnected roads:
 
 
 ```python
@@ -731,7 +940,7 @@ nw
 
 
     
-![png](demo_files/demo_33_1.png)
+![png](demo_files/demo_40_1.png)
     
 
 
@@ -749,6 +958,10 @@ nw
     DirectedNetwork class instance with 86929 rows and 13 columns.
 
 
+
+The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the endpoint will either be reached or not within the impedance. This can be fixed by cutting all lines to a maximum distance. 
+
+Note: cutting the lines can be time consuming for large networks and low maximum distances. 
 
 
 ```python
