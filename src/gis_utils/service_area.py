@@ -1,7 +1,6 @@
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import LineString
 
 from .geopandas_utils import gdf_concat
 

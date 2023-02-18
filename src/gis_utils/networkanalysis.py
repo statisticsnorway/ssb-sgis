@@ -2,10 +2,9 @@
 import warnings
 from dataclasses import dataclass
 
-import numpy as np
 from geopandas import GeoDataFrame
 from igraph import Graph
-from pandas import DataFrame, RangeIndex
+from pandas import DataFrame
 
 from .directednetwork import DirectedNetwork
 from .make_graph import make_graph

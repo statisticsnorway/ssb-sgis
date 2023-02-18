@@ -52,9 +52,9 @@ class MakeGraph:
         cost_to_nodes,
     ):
         pass
-    
 
-    def make_graph(self, nwa, 
+
+    def make_graph(self, nwa,
     gdf: GeoDataFrame, startpoints: StartPoints, endpoints: EndPoints | None, cost_to_nodes/speed_kmh, ) -> Graph:
         """Lager igraph.Graph som inkluderer edges to/from start-/sluttpunktene.
         """
@@ -82,17 +82,17 @@ class MakeGraph:
         return graph
 
     def graph_is_up_to_date(self, startpoints, endpoints):
-        
+
         if not hasattr(self, "graph"):
             return False
-        
+
         if self.search_factor != self._search_factor:
             return False
         if self.search_tolerance != self._search_tolerance:
             return False
         if self.cost_to_nodes != self._cost_to_nodes:
             return False
-        
+
         if self.startpoints.wkt != [
             geom.wkt for geom in startpoints.geometry
         ]:
@@ -143,13 +143,13 @@ class MakeGraph:
             self.warn_if_nans_or_negative()
 
             try:
-                gdf[self.cost] = gdf[self.cost].astype(float)    
+                gdf[self.cost] = gdf[self.cost].astype(float)
             except ValueError as e:
                 raise ValueError(f"The 'cost' column must be numeric. Got characters that couldn't be interpreted as numbers.")
 
             if "min" in self.cost:
                 self.cost = "minutes"
-                    
+
         if "meter" in self.cost or "metre" in self.cost:
 
             if gdf.crs == 4326:
@@ -174,7 +174,7 @@ class MakeGraph:
             if nans > len(gdf) * 0.05:
                 warnings.warn(f"Warning: {nans} rows have missing values in the 'cost' column. Removing these rows.")
             gdf = gdf.loc[gdf[self.cost].notna()]
-        
+
         negative = sum(gdf[self.cost] < 0)
         if negative:
             if negative > len(gdf) * 0.05:
@@ -182,7 +182,7 @@ class MakeGraph:
             gdf = gdf.loc[gdf[self.cost] >= 0]
 
 """
-cost, cost_to_nodes, startpoints, endpoints, search_factor, search_tolerance, 
+cost, cost_to_nodes, startpoints, endpoints, search_factor, search_tolerance,
 network.gdf
 """
 
@@ -229,7 +229,7 @@ from .directednetwork import DirectedNetwork
 
 # lage grafen på forhånd???
 
-# TODO: vurdere å gjøre denne mindre, 
+# TODO: vurdere å gjøre denne mindre,
 # dumt at parent-en skal være avhengig av Network
 # noe composition:
 # MakeGraph, Rules, NetworkAnalysis -> alle som composition inni Network?
@@ -415,7 +415,7 @@ class MakeGraph(Rules):
 
 
 """
-cost, cost_to_nodes, startpoints, endpoints, search_factor, search_tolerance, 
+cost, cost_to_nodes, startpoints, endpoints, search_factor, search_tolerance,
 network.gdf
 """
 
@@ -532,6 +532,6 @@ def warn_if_nans_or_negative(gdf, cost):
 
 
 """
-cost, cost_to_nodes, startpoints, endpoints, search_factor, search_tolerance, 
+cost, cost_to_nodes, startpoints, endpoints, search_factor, search_tolerance,
 network.gdf
 """

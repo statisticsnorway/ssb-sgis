@@ -1,8 +1,7 @@
 import geopandas as gpd
-import networkx as nx
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
 from pandas import DataFrame
 from shapely import shortest_line
 

@@ -1,14 +1,7 @@
 # %%
-import sys
-import warnings
-from time import perf_counter
+import cProfile
 
 import geopandas as gpd
-
-
-sys.path.append("C:/Users/ort/git/ssb-gis-utils")
-
-import cProfile
 
 import gis_utils as gs
 
