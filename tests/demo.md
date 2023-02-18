@@ -228,13 +228,13 @@ nw.gdf.head(3)
       <th>drivetime_fw</th>
       <th>drivetime_bw</th>
       <th>idx_orig</th>
-      <th>geometry</th>
       <th>source_wkt</th>
       <th>target_wkt</th>
       <th>source</th>
       <th>target</th>
       <th>n_source</th>
       <th>n_target</th>
+      <th>geometry</th>
     </tr>
   </thead>
   <tbody>
@@ -244,13 +244,13 @@ nw.gdf.head(3)
       <td>0.216611</td>
       <td>0.216611</td>
       <td>119702</td>
-      <td>LINESTRING Z (258028.440 6674249.890 413.751, ...</td>
       <td>POINT (258028.4400000004 6674249.890000001)</td>
       <td>POINT (258023.5 6674213.59)</td>
       <td>0</td>
       <td>49540</td>
       <td>1</td>
       <td>2</td>
+      <td>LINESTRING Z (258028.440 6674249.890 413.751, ...</td>
     </tr>
     <tr>
       <th>1</th>
@@ -258,13 +258,13 @@ nw.gdf.head(3)
       <td>0.099323</td>
       <td>-1.000000</td>
       <td>199710</td>
-      <td>LINESTRING Z (271778.700 6653238.900 138.671, ...</td>
       <td>POINT (271778.7000000002 6653238.9)</td>
       <td>POINT (271884.5099999998 6653207.539999999)</td>
       <td>1</td>
       <td>2</td>
       <td>2</td>
       <td>4</td>
+      <td>LINESTRING Z (271778.700 6653238.900 138.671, ...</td>
     </tr>
     <tr>
       <th>2</th>
@@ -272,13 +272,13 @@ nw.gdf.head(3)
       <td>0.173963</td>
       <td>-1.000000</td>
       <td>199725</td>
-      <td>LINESTRING Z (271884.510 6653207.540 142.211, ...</td>
       <td>POINT (271884.5099999998 6653207.539999999)</td>
       <td>POINT (272069.7999999998 6653152.5)</td>
       <td>2</td>
       <td>60241</td>
       <td>4</td>
       <td>2</td>
+      <td>LINESTRING Z (271884.510 6653207.540 142.211, ...</td>
     </tr>
   </tbody>
 </table>
@@ -583,37 +583,37 @@ sp
     <tr>
       <th>0</th>
       <td>1</td>
-      <td>393</td>
-      <td>15.161138</td>
-      <td>MULTILINESTRING Z ((261352.158 6649521.080 6.6...</td>
+      <td>155</td>
+      <td>25.173575</td>
+      <td>MULTILINESTRING Z ((263657.065 6639633.600 95....</td>
     </tr>
     <tr>
       <th>1</th>
       <td>1</td>
-      <td>283</td>
-      <td>10.171877</td>
-      <td>MULTILINESTRING Z ((264242.071 6648335.139 18....</td>
+      <td>94</td>
+      <td>22.320564</td>
+      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
     </tr>
     <tr>
       <th>2</th>
       <td>1</td>
-      <td>897</td>
-      <td>8.628959</td>
-      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+      <td>529</td>
+      <td>11.734803</td>
+      <td>MULTILINESTRING Z ((265035.261 6646071.360 167...</td>
     </tr>
     <tr>
       <th>3</th>
       <td>1</td>
-      <td>632</td>
-      <td>11.235565</td>
-      <td>MULTILINESTRING Z ((260679.000 6651295.200 48....</td>
+      <td>971</td>
+      <td>11.081780</td>
+      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
     </tr>
     <tr>
       <th>4</th>
       <td>1</td>
-      <td>745</td>
-      <td>12.481765</td>
-      <td>MULTILINESTRING Z ((268655.697 6653425.194 185...</td>
+      <td>112</td>
+      <td>11.414343</td>
+      <td>MULTILINESTRING Z ((265808.097 6646476.613 122...</td>
     </tr>
     <tr>
       <th>...</th>
@@ -623,43 +623,43 @@ sp
       <td>...</td>
     </tr>
     <tr>
-      <th>94</th>
-      <td>1</td>
-      <td>729</td>
-      <td>4.426419</td>
-      <td>MULTILINESTRING Z ((263949.900 6650218.700 36....</td>
-    </tr>
-    <tr>
       <th>95</th>
       <td>1</td>
-      <td>431</td>
-      <td>11.963411</td>
-      <td>MULTILINESTRING Z ((266612.400 6649059.000 87....</td>
+      <td>800</td>
+      <td>4.090858</td>
+      <td>MULTILINESTRING Z ((263653.383 6650170.636 27....</td>
     </tr>
     <tr>
       <th>96</th>
       <td>1</td>
-      <td>78</td>
-      <td>11.299218</td>
-      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+      <td>484</td>
+      <td>3.513541</td>
+      <td>MULTILINESTRING Z ((262863.700 6650489.600 19....</td>
     </tr>
     <tr>
       <th>97</th>
       <td>1</td>
-      <td>361</td>
-      <td>3.597505</td>
-      <td>MULTILINESTRING Z ((262949.500 6652047.000 71....</td>
+      <td>404</td>
+      <td>17.001788</td>
+      <td>MULTILINESTRING Z ((272281.367 6653079.745 160...</td>
     </tr>
     <tr>
       <th>98</th>
       <td>1</td>
-      <td>573</td>
-      <td>18.972410</td>
-      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
+      <td>398</td>
+      <td>9.689767</td>
+      <td>MULTILINESTRING Z ((258781.100 6652368.597 70....</td>
+    </tr>
+    <tr>
+      <th>99</th>
+      <td>1</td>
+      <td>776</td>
+      <td>10.366584</td>
+      <td>MULTILINESTRING Z ((259299.882 6652137.025 58....</td>
     </tr>
   </tbody>
 </table>
-<p>99 rows × 4 columns</p>
+<p>100 rows × 4 columns</p>
 </div>
 
 
@@ -732,91 +732,73 @@ sa
     <tr>
       <th>0</th>
       <td>5</td>
-      <td>241</td>
-      <td>MULTILINESTRING Z ((265722.272 6644607.992 164...</td>
+      <td>502</td>
+      <td>MULTILINESTRING Z ((256284.280 6651413.280 84....</td>
     </tr>
     <tr>
       <th>1</th>
       <td>10</td>
-      <td>241</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>502</td>
+      <td>MULTILINESTRING Z ((257935.700 6651969.000 80....</td>
     </tr>
     <tr>
       <th>2</th>
       <td>15</td>
-      <td>241</td>
-      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
+      <td>502</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>3</th>
       <td>5</td>
-      <td>689</td>
-      <td>MULTILINESTRING Z ((261416.340 6653760.610 108...</td>
+      <td>416</td>
+      <td>MULTILINESTRING Z ((258018.154 6650524.353 16....</td>
     </tr>
     <tr>
       <th>4</th>
       <td>10</td>
-      <td>689</td>
-      <td>MULTILINESTRING Z ((264242.071 6648335.139 18....</td>
+      <td>416</td>
+      <td>MULTILINESTRING Z ((262670.900 6647824.940 2.2...</td>
     </tr>
     <tr>
       <th>5</th>
       <td>15</td>
-      <td>689</td>
+      <td>416</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>6</th>
       <td>5</td>
-      <td>593</td>
-      <td>MULTILINESTRING Z ((273338.510 6653270.220 209...</td>
+      <td>746</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>7</th>
       <td>10</td>
-      <td>593</td>
-      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
+      <td>746</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>8</th>
       <td>15</td>
-      <td>593</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>746</td>
+      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
     </tr>
     <tr>
       <th>9</th>
       <td>5</td>
-      <td>411</td>
-      <td>MULTILINESTRING Z ((265657.500 6654844.860 296...</td>
+      <td>500</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
     <tr>
       <th>10</th>
       <td>10</td>
-      <td>411</td>
-      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
+      <td>500</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>11</th>
       <td>15</td>
-      <td>411</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
-    </tr>
-    <tr>
-      <th>12</th>
-      <td>5</td>
-      <td>811</td>
-      <td>MULTILINESTRING Z ((267287.202 6646656.305 155...</td>
-    </tr>
-    <tr>
-      <th>13</th>
-      <td>10</td>
-      <td>811</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
-    </tr>
-    <tr>
-      <th>14</th>
-      <td>15</td>
-      <td>811</td>
+      <td>500</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
   </tbody>
@@ -855,8 +837,8 @@ print(len(sa))
 gs.qtm(sa)
 ```
 
-    1430788
-    149069
+    1445557
+    151225
     
 
 
