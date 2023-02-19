@@ -20,34 +20,36 @@ from .buffer_dissolve_explode import buff
 
 def clean_geoms(
     gdf: GeoDataFrame | GeoSeries,
-    ignore_index=False,
     single_geom_type: bool = True,
+    ignore_index: bool = False,
 ) -> GeoDataFrame | GeoSeries:
     """
     Repairs geometries, removes geometries that are invalid, empty, NaN and None,
-    keeps only rows with in the data.
+    keeps only the most common geometry type (multi- and singlepart).
 
     Args:
-        gdf: GeoDataFrame or GeoSeries to be fixed or removed.
-        ignore_index: whether the index should be reset and dropped. Defaults to False
-          to be consistent with pandas.
-        single_geomtype: if only the most common geometry type
-          ((multi)point, (multi)line, (multi)poly) should be kept. Defaults to False,
-          even though this might raise an exception in overlay operations
-          Please note that in order for the function to not do anything unexpected.
+        gdf: GeoDataFrame or GeoSeries to be cleaned.
+        single_geomtype: if only the most common geometry type should be kept.
+            This will be either points, lines or polygons. 
+            Both multi- and singlepart geometries are included.
+            GeometryCollections will be exploded first, so that no geometries are excluded.
+            Defaults to True.
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1. 
+            Defaults to False
 
     Returns:
         GeoDataFrame or GeoSeries with fixed geometries and only the rows with valid,
         non-empty and not-NaN/-None geometries.
 
     """
-
+    
     if isinstance(gdf, GeoDataFrame):
-        gdf["geometry"] = gdf.make_valid()
+        geom_col = gdf._geometry_column_name
+        gdf[geom_col] = gdf.make_valid()
         gdf = gdf.loc[
-                (gdf.geometry.is_valid) & 
-                (~gdf.geometry.is_empty) &
-                (gdf.geometry.notna())
+                (gdf[geom_col].is_valid) & 
+                (~gdf[geom_col].is_empty) &
+                (gdf[geom_col].notna())
             ]
     elif isinstance(gdf, GeoSeries):
         gdf = gdf.make_valid()
@@ -62,21 +64,37 @@ def clean_geoms(
         )
     
     if single_geom_type:
-        gdf = to_single_geom_type(gdf)
+        gdf = to_single_geom_type(gdf, ignore_index=ignore_index)
     
-    if ignore_index:
-        gdf = gdf.reset_index(drop=True)
-
     return gdf
 
 
 def to_single_geom_type(
-    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
+    gdf: GeoDataFrame | GeoSeries, 
+    ignore_index: bool = False
 ) -> GeoDataFrame | GeoSeries:
     """
-    overlay godtar ikke blandede geometrityper i samme gdf.
-    """
+    It takes a GeoDataFrame or GeoSeries and returns a GeoDataFrame or GeoSeries 
+    with only one geometry type. This will either be points, lines or polygons. 
+    Both multipart and singlepart geometries are kept. 
+    LinearRings are considered as lines.
+
+    GeometryCollections will be exploded to single-typed geometries, so that the
+    correctly typed geometries in these collections are included in the output.
     
+    Args:
+      gdf (GeoDataFrame | GeoSeries): GeoDataFrame | GeoSeries
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+        Defaults to False
+    
+    Returns:
+      A GeoDataFrame with a single geometry type.
+    """
+
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
+    
+    # explode collections to single-typed geometries
     collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
     if len(collections):
         collections = collections.explode(ignore_index=ignore_index)
@@ -113,33 +131,39 @@ def to_single_geom_type(
 
 
 def close_holes(
-    geom: GeoDataFrame | GeoSeries | Geometry,
+    gdf: GeoDataFrame | GeoSeries | Geometry,
     max_km2: int | None = None,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """
-    Closes holes in polygons. The operation is done row-wise if 'geom' is a GeoDataFrame
-    or GeoSeries.
-
-    max_km2: if None (default), all holes are closed.
-      Otherwise, closes holes with an area below the specified number in square
-      kilometers.
+    It closes holes in polygons of a GeoDataFrame, GeoSeries or shapely Geometry.
+    
+    Args:
+      gdf: GeoDataFrame, GeoSeries or shapely Geometry.
+      max_km2 (int | None): if None (default), all holes are closed. 
+        Otherwise, closes holes with an area below the specified number in 
+        square kilometers if the crs unit is in meters. 
+      copy (bool): if True (default), the input GeoDataFrame or GeoSeries is copied. 
+        Defaults to True
+    
+    Returns:
+      A GeoDataFrame, GeoSeries or shapely Geometry with closed holes in the geometry column
     """
 
     if copy:
-        geom = geom.copy()
+        gdf = gdf.copy()
 
-    if isinstance(geom, GeoDataFrame):
-        geom["geometry"] = geom.geometry.map(lambda x: _close_holes_geom(x, max_km2))
+    if isinstance(gdf, GeoDataFrame):
+        gdf["geometry"] = gdf.geometry.map(lambda x: _close_holes_geom(x, max_km2))
 
-    elif isinstance(geom, gpd.GeoSeries):
-        geom = geom.map(lambda x: _close_holes_geom(x, max_km2))
-        geom = gpd.GeoSeries(geom)
+    elif isinstance(gdf, gpd.GeoSeries):
+        gdf = gdf.map(lambda x: _close_holes_geom(x, max_km2))
+        gdf = gpd.GeoSeries(gdf)
 
     else:
-        geom = _close_holes_geom(geom, max_km2)
+        gdf = _close_holes_geom(gdf, max_km2)
 
-    return geom
+    return gdf
 
 
 def _close_holes_geom(geom, max_km2=None):
@@ -150,17 +174,24 @@ def _close_holes_geom(geom, max_km2=None):
         holes_closed = polygons(get_exterior_ring(get_parts(geom)))
         return unary_union(holes_closed)
 
-    # start with list containing the geometry,
-    # then append all holes smaller than 'max_km2'.
+    # start with a list containing the geometry,
+    # then append all holes smaller than 'max_km2' to the list.
     holes_closed = [geom]
     singlepart = get_parts(geom)
     for part in singlepart:
-        antall_indre_ringer = get_num_interior_rings(part)
-        if antall_indre_ringer > 0:
-            for n in range(antall_indre_ringer):
-                hull = polygons(get_interior_ring(part, n))
-                if area(hull) / 1_000_000 < max_km2:
-                    holes_closed.append(hull)
+
+        n_interior_rings = get_num_interior_rings(part)
+        
+        if not(n_interior_rings):
+            continue
+
+        for n in range(n_interior_rings):
+
+            hole = polygons(get_interior_ring(part, n))
+            
+            if area(hole) / 1_000_000 < max_km2:
+                holes_closed.append(hole)
+
     return unary_union(holes_closed)
 
 
@@ -172,16 +203,26 @@ def gdf_concat(
     **kwargs,
 ) -> GeoDataFrame:
     """
-    Concats geodataframes rowwise.
-    Ignores index, changes to common crs.
-    If no crs is given, chooses the first crs in the list of geodataframes.
+    concatinates GeoDataFrames rowwise.
+    Ignores index and changes to common crs.
+    If no crs is given, chooses the first crs in the list of GeoDataFrames.
+
+    Args:
+        gdfs: list or tuple of GeoDataFrames to be concatinated.
+        crs: common coordinate reference system each GeoDataFrames
+            will be converted to before concatination. If None, it uses 
+            the crs of the first GeoDataFrame in the list or tuple.
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1. Defaults to True
+
+    Returns:
+        A GeoDataFrame.
 
     """
 
     gdfs = [gdf for gdf in gdfs if len(gdf)]
 
     if not len(gdfs):
-        raise ValueError("gdf_concat: alle gdf-ene har 0 rader")
+        raise ValueError("All GeoDataFrames have 0 rows")
 
     if not crs:
         crs = gdfs[0].crs
@@ -190,8 +231,9 @@ def gdf_concat(
         gdfs = [gdf.to_crs(crs) for gdf in gdfs]
     except ValueError:
         print(
-            "OBS: ikke alle gdf-ene dine har crs. Hvis du nå samler latlon og utm, "
-            "må du først bestemme crs med set_crs(), så gi dem samme crs med to_crs()"
+            "Not all your GeoDataFrames have crs. If you are concatenating GeoDataFrames "
+            "with different crs, the results will be wrong. First use set_crs to set the correct crs"
+            "then the crs can be changed with to_crs()"
         )
 
     return GeoDataFrame(
@@ -199,27 +241,48 @@ def gdf_concat(
     )
 
 
-def to_gdf(geom: GeoSeries | Geometry | str, crs=None, **kwargs) -> GeoDataFrame:
+def to_gdf(
+    geom: GeoSeries | Geometry | str | bytes, 
+    crs=None, **kwargs
+    ) -> GeoDataFrame:
     """
-    Konverterer til geodataframe fra geoseries, shapely-objekt, wkt, liste med
-    shapely-objekter eller shapely-sekvenser.
-    OBS: når man har shapely-objekter eller wkt, bør man velge crs.
+    Converts a GeoSeries, shapely Geometry, wkt string or wkb bytes object to a 
+    GeoDataFrame.
+
+    Args:
+        geom: the object to be converted to a GeoDataFrame
+        crs: if None (default), it uses the crs of the GeoSeries if GeoSeries 
+            is the input type. Otherwise, an exception is raised, saying that 
+            crs has to be specified.
     """
 
     if not crs:
-        if isinstance(geom, str):
-            raise ValueError("Du må bestemme crs når input er string.")
+        if not isinstance(geom, GeoSeries):
+            raise ValueError("'crs' have to be specified when the input is a string.")
         crs = geom.crs
 
     if isinstance(geom, str):
         from shapely.wkt import loads
-
         geom = loads(geom)
-        gdf = GeoDataFrame({"geometry": gpd.GeoSeries(geom)}, crs=crs, **kwargs)
+        gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
+
+    if isinstance(geom, bytes):
+        from shapely.wkb import loads
+        geom = loads(geom)
+        gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
+
     else:
-        gdf = GeoDataFrame({"geometry": gpd.GeoSeries(geom)}, crs=crs, **kwargs)
+        gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
 
     return gdf
+
+
+def push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:
+    """ Makes the geometry column the leftmost column in the GeoDataFrame. """
+    geom_col = gdf._geometry_column_name
+    return gdf.reindex(
+        columns=[c for c in gdf.columns if c != geom_col] + [geom_col]
+    )
 
 
 def clean_clip(
@@ -228,7 +291,8 @@ def clean_clip(
     keep_geom_type: bool = True,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries:
-    """Clip geometries to the mask extent, then cleans the geometries.
+    """
+    Clips geometries to the mask extent, then cleans the geometries.
     geopandas.clip does a fast clipping, with no guarantee for valid outputs.
     Here, geometries are made valid, then invalid, empty, nan and None geometries are
     removed.
@@ -238,36 +302,12 @@ def clean_clip(
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
-    return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(clean_geoms)
-
-
-def overlay(left_gdf, right_gdf, drop_dupcol=True, **kwargs) -> GeoDataFrame:
-    """
-    som gpd.overlay bare at kolonner i right_gdf som også er i left_gdf fjernes
-    (fordi det snart vil gi feilmelding i geopandas) og kolonner som har med index
-    å gjøre fjernes, fordi sjoin returnerer index_right som kolonnenavn,
-    som gir feilmelding ved neste join.
-    """
-
-    left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains("index|level_")]
-    right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains("index|level_")]
-
-    if drop_dupcol:
-        right_gdf = right_gdf.loc[
-            :, right_gdf.columns.difference(left_gdf.columns.difference(["geometry"]))
-        ]
-
     try:
-        joined = left_gdf.overlay(right_gdf, **kwargs)
+        return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(clean_geoms)
     except Exception:
-        right_gdf = right_gdf.to_crs(left_gdf.crs)
-        left_gdf = clean_geoms(left_gdf, single_geom_type=True)
-        right_gdf = clean_geoms(right_gdf, single_geom_type=True)
-        joined = left_gdf.overlay(right_gdf, **kwargs)
-
-    right_gdf = clean_geoms(right_gdf, single_geom_type=True)
-
-    return joined.loc[:, ~joined.columns.str.contains("index|level_")]
+        gdf = clean_geoms(gdf)
+        mask = clean_geoms(mask)
+        return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(clean_geoms)
 
 
 def sjoin(left_gdf, right_gdf, drop_dupcol=True, **kwargs) -> GeoDataFrame:
@@ -295,15 +335,6 @@ def sjoin(left_gdf, right_gdf, drop_dupcol=True, **kwargs) -> GeoDataFrame:
         joined = left_gdf.sjoin(right_gdf, **kwargs)
 
     return joined.loc[:, ~joined.columns.str.contains("index|level_")]
-
-
-def overlay_update(gdf1: GeoDataFrame, gdf2: GeoDataFrame, **kwargs) -> GeoDataFrame:
-    """En overlay-variant som ikke finnes i geopandas."""
-
-    out = gdf1.overlay(gdf2, how="difference", keep_geom_type=True, **kwargs)
-    out = out.loc[:, ~out.columns.str.contains("index|level_")]
-    out = gdf_concat([out, gdf2])
-    return out
 
 
 def snap_to(punkter, snap_til, maks_distanse=500, copy=False):
@@ -403,68 +434,6 @@ def find_neighbors(
     within_distance: int = 1,
 ):
     return find_neighbours(gdf, possible_neighbors, id_col, within_distance)
-
-
-def try_overlay(
-    gdf1: GeoDataFrame,
-    gdf2: GeoDataFrame,
-    presicion_col: bool = True,
-    max_rounding: int = 3,
-    single_geomtype: bool = True,
-    **kwargs,
-) -> GeoDataFrame:
-    """
-    Overlay, i hvert fall union, har gitt TopologyException: found non-noded
-    intersection error from overlay. https://github.com/geopandas/geopandas/issues/1724
-    En løsning er å avrunde koordinatene for å få valid polygon. Prøver først uten
-    avrunding, så runder av til 10 koordinatdesimaler, så 9, 8, ..., og så gir opp på 0
-
-    Args:
-      presisjonskolonne: om man skal inkludere en kolonne som angir hvilken avrunding
-        som måtte til.
-      max_avrunding: hvilken avrunding man stopper på. 0 betyr at man fortsetter fram
-        til 0 desimaler.
-    """
-
-    try:
-        gdf1 = clean_geoms(gdf1, single_geomtype=single_geomtype)
-        gdf2 = clean_geoms(gdf2, single_geomtype=single_geomtype)
-        return gdf1.overlay(gdf2, **kwargs)
-
-    except Exception:
-        from shapely.wkt import dumps, loads
-
-        # loop through list from 10 to 'max_rounding'
-
-        roundings = list(range(max_rounding, 11))
-        roundings.reverse()
-
-        for rounding in roundings:
-            try:
-                gdf1.geometry = [
-                    loads(dumps(gdf, rounding_precision=rounding))
-                    for geom in gdf1.geometry
-                ]
-                gdf2.geometry = [
-                    loads(dumps(gdf, rounding_precision=rounding))
-                    for geom in gdf2.geometry
-                ]
-
-                gdf1 = clean_geoms(gdf1, single_geomtype=single_geomtype)
-                gdf2 = clean_geoms(gdf2, single_geomtype=single_geomtype)
-
-                overlayet = gdf1.overlay(gdf2, **kwargs)
-
-                if presicion_col:
-                    overlayet["avrunding"] = rounding
-
-                return overlayet
-
-            except Exception:
-                rounding -= 1
-
-        # returnerer feilmeldingen hvis det fortsatt ikke funker
-        gdf1.overlay(gdf2, **kwargs)
 
 
 def try_diss(gdf, presicion_col=True, max_rounding=5, **kwargs):
