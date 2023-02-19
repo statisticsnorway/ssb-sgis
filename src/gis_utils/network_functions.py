@@ -6,7 +6,7 @@ from geopandas import GeoDataFrame
 from shapely import shortest_line
 from sklearn.neighbors import NearestNeighbors
 
-from .geopandas_utils import gdf_concat
+from .geopandas_utils import gdf_concat, push_geom_col
 
 
 def make_node_ids(
@@ -52,6 +52,8 @@ def make_node_ids(
     nodes["geometry"] = gpd.GeoSeries.from_wkt(nodes.wkt, crs=roads.crs)
     nodes = gpd.GeoDataFrame(nodes, geometry="geometry", crs=roads.crs)
     nodes = nodes.reset_index(drop=True)
+
+    roads = push_geom_col(roads)
 
     return roads, nodes
 

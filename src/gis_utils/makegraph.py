@@ -26,28 +26,17 @@ from geopandas import GeoDataFrame
 
 from .exceptions import NoPointsWithinSearchTolerance
 from .directednetwork import DirectedNetwork
+from .networkanalysisrules import NetworkAnalysisRules
 
-
-from dataclasses import dataclass
 from pandas import Series
 
+from dataclasses import dataclass
 
 @dataclass
-class Rules:
-    cost: str
-    directed: bool
-    search_tolerance: int = 250
-    search_factor: int = 10
-    cost_to_nodes: int = 5
+class MakeGraph:
 
-
-class MakeGraph(Rules):
-    def __init__(
-        self,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-
+    rules: NetworkAnalysisRules
+    
     @staticmethod
     def make_graph(
         edges: list[tuple] | np.ndarray[tuple], 
@@ -132,78 +121,6 @@ class MakeGraph(Rules):
                 return False
 
         return True
-
-    def calculate_cost_to_nodes(self, distances):
-        """
-        Gjør om meter to minutter for lenkene mellom punktene og nabonodene.
-        og ganger luftlinjeavstanden med 1.5 siden det alltid er svinger i Norge.
-        Gjør ellers ingentinnw.
-        """
-
-        if self.cost_to_nodes == 0:
-            return [0 for _ in distances]
-
-        elif "meter" in self.cost:
-            return [x * 1.5 for x in distances]
-
-        elif "min" in self.cost:
-            return [(x * 1.5) / (16.666667 * self.cost_to_nodes) for x in distances]
-
-        else:
-            return distances
-
-    def validate_cost(self, gdf, raise_error: bool = True) -> None:
-
-        if self.cost in gdf.columns:
-
-            self.warn_if_nans()
-            self.warn_if_negative_values()
-
-            try:
-                gdf[self.cost] = gdf[self.cost].astype(float)    
-            except ValueError as e:
-                raise ValueError(f"The 'cost' column must be numeric. Got characters that couldn't be interpreted as numbers.")
-
-            if "min" in self.cost:
-                self.cost = "minutes"
-                    
-        if "meter" in self.cost or "metre" in self.cost:
-
-            if gdf.crs == 4326:
-                raise ValueError("'roads' cannot have crs 4326 (latlon) when cost is 'meters'.")
-
-            self.cost = "meters"
-            gdf[self.cost] = gdf.length
-            return gdf
-
-        if self.cost == "minutes" and "minutes" not in gdf.columns:
-            if raise_error:
-                raise KeyError(f"Cannot find 'cost' column for minutes. \nTry running one of the 'make_directed_network_' methods, or set 'cost' to 'meters'.")
-
-    def warn_if_nans(self):
-        """Give a warning if there are NaNs or negative values in the gdf."""
-
-        if all(gdf[self.cost].isna()):
-            raise ValueError("All values in the 'cost' column are NaN.")
-
-        nans = sum(gdf[self.cost].isna())
-        if nans:
-            if nans > len(gdf) * 0.05:
-                warnings.warn(f"Warning: {nans} rows have missing values in the 'cost' column. Removing these rows.")
-            gdf = gdf.loc[gdf[self.cost].notna()]
-        
-    def warn_if_negative_values(self):
-        negative = sum(gdf[self.cost] < 0)
-        if negative:
-            if negative > len(gdf) * 0.05:
-                warnings.warn(f"Warning: {negative} rows have a 'cost' less than 0. Removing these rows.")
-            gdf = gdf.loc[gdf[self.cost] >= 0]
-
-"""
-cost, cost_to_nodes, startpoints, endpoints, search_factor, search_tolerance, 
-network.gdf
-"""
-
 
 
 

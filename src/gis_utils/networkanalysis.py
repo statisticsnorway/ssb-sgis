@@ -3,6 +3,7 @@ from igraph import Graph
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 import igraph
+from typing import Tuple
 
 from .od_cost_matrix import od_cost_matrix
 from .shortest_path import shortest_path
@@ -12,6 +13,7 @@ from .points import StartPoints, EndPoints
 from .network import Network
 from .directednetwork import DirectedNetwork
 from .networkanalysisrules import NetworkAnalysisRules
+from .geopandas_utils import push_geom_col
 
 
 class NetworkAnalysis:
@@ -73,7 +75,8 @@ class NetworkAnalysis:
         self, 
         startpoints: GeoDataFrame, 
         endpoints: GeoDataFrame,
-        id_col: str | list[str] | tuple[str] | None = None,
+        id_col: str | Tuple[str, str] | None = None,
+        lines: bool = False,
         **kwargs
         ) -> DataFrame | GeoDataFrame:
 
@@ -86,6 +89,7 @@ class NetworkAnalysis:
             startpoints=self.startpoints.gdf, 
             endpoints=self.endpoints.gdf, 
             cost=self.rules.cost,
+            lines=lines,
             **kwargs
         )
 
@@ -100,13 +104,16 @@ class NetworkAnalysis:
                 self.endpoints.id_dict
             )
 
+        if lines:
+            results = push_geom_col(results)
+
         return results
 
     def shortest_path(
         self, 
         startpoints: GeoDataFrame, 
         endpoints: GeoDataFrame,
-        id_col: str | list[str] | tuple[str] | None = None,
+        id_col: str | Tuple[str, str] | None = None,
         summarise: bool = False,
         **kwargs,
         ) -> GeoDataFrame:
@@ -116,11 +123,11 @@ class NetworkAnalysis:
         )
 
         results = shortest_path(
-            self.graph, 
-            self.startpoints.gdf, 
-            self.endpoints.gdf, 
-            self.rules.cost, 
-            self.network.gdf, 
+            graph=self.graph, 
+            startpoints=self.startpoints.gdf, 
+            endpoints=self.endpoints.gdf, 
+            cost=self.rules.cost, 
+            roads=self.network.gdf,
             summarise=summarise, 
             **kwargs
         )
@@ -137,12 +144,14 @@ class NetworkAnalysis:
                 self.endpoints.id_dict
             )
 
+        results = push_geom_col(results)
+
         return results
 
     def service_area(
         self, 
         startpoints: GeoDataFrame, 
-        id_col: str | list[str] | tuple[str] | None = None,
+        id_col: str | None = None,
         **kwargs
         ) -> GeoDataFrame:
 
@@ -158,10 +167,21 @@ class NetworkAnalysis:
             **kwargs
         )
 
+        if id_col:
+            results[id_col] = results["origin"].map(
+                self.startpoints.id_dict
+            )
+            results = results.drop("origin", axis=1)
+
+        results = push_geom_col(results)
+
         return results
 
     def prepare_network_analysis(self, startpoints, endpoints=None, id_col: str | None = None) -> None:
-        """Method that is run inside od_cost_matrix, shortest_path and service_area. """
+        """Prepares the cost column, node ids and start- and endpoints. 
+        Also updates the graph if it is not yet created and no parts of the analysis has changed. 
+        this method is run inside od_cost_matrix, shortest_path and service_area. 
+        """
 
         self.network.gdf = self.rules.validate_cost(
             self.network.gdf, raise_error=True
@@ -197,7 +217,10 @@ class NetworkAnalysis:
         self.update_point_wkts()
         self.rules.update_rules()
 
-    def get_edges_and_costs(self) -> tuple[list[tuple[str]], list[float]]:
+    def get_edges_and_costs(self) -> Tuple[list[Tuple[str, ...]], list[float]]:
+        """Creates lists of edges and costs which will be used to make the graph. 
+        Edges and costs between startpoints and nodes and nodes and endpoints are also added.
+        """
 
         edges = [
             (str(source), str(target))
@@ -230,7 +253,7 @@ class NetworkAnalysis:
 
     @staticmethod
     def make_graph(
-        edges: list[tuple] | np.ndarray[tuple], 
+        edges: list[Tuple[str, ...]] | np.ndarray[Tuple[str, ...]], 
         costs: list[float] | np.ndarray[float], 
         directed: bool,
         ) -> Graph:
@@ -265,7 +288,7 @@ class NetworkAnalysis:
 
         return True
 
-    def points_have_changed(self, points: GeoDataFrame, what: str):
+    def points_have_changed(self, points: GeoDataFrame, what: str) -> bool:
         
         if self.wkts[what] != [
             geom.wkt for geom in points.geometry
@@ -283,9 +306,8 @@ class NetworkAnalysis:
         if not hasattr(self, "endpoints"):
             return
 
-        if hasattr(self, "startpoints"):
-            self.wkts = {}
-            self.wkts["start"] = [geom.wkt for geom in self.startpoints.gdf.geometry]
+        self.wkts = {}
+        self.wkts["start"] = [geom.wkt for geom in self.startpoints.gdf.geometry]
 
         if self.endpoints is not None:
             self.wkts["end"] = [geom.wkt for geom in self.endpoints.gdf.geometry]

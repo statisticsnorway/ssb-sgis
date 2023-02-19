@@ -3,11 +3,10 @@ from copy import copy, deepcopy
 
 import numpy as np
 from geopandas import GeoDataFrame
-from pandas import RangeIndex
 from shapely import line_merge
 
 from .exceptions import ZeroRowsError
-from .geopandas_utils import clean_geoms
+from .geopandas_utils import clean_geoms, push_geom_col
 from .network_functions import (
     close_network_holes,
     cut_lines,

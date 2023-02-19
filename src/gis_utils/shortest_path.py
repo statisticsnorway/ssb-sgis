@@ -63,7 +63,8 @@ def shortest_path(
     return lines.reset_index(drop=True)
 
 
-def _run_shortest_path(ori_id, des_id, graph: Graph, roads: GeoDataFrame, cost: str, summarise):
+def _run_shortest_path(ori_id, des_id, graph: Graph, roads: GeoDataFrame, cost: str, summarise: bool):
+
     res = graph.get_shortest_paths(weights="weight", v=ori_id, to=des_id)
 
     if len(res[0]) == 0:

@@ -11,7 +11,7 @@ def service_area(
     cost: str,
     roads: GeoDataFrame,
     impedance: int | list[int] | tuple[int],
-    id_col: str | None = None,  # hvis ikke id-kolonne oppgis, brukes startpunktenes geometri som id
+    id_col: str | None = None,
     dissolve: bool = True,
 ):
     if not id_col:
