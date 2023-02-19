@@ -1,15 +1,11 @@
 import igraph
 import numpy as np
-from geopandas import GeoDataFrame
 from igraph import Graph
 from sklearn.neighbors import NearestNeighbors
 
-from .directednetwork import DirectedNetwork
 from .exceptions import NoPointsWithinSearchTolerance
 from .points import EndPoints, Points, StartPoints
 
-
-# from .networkanalysis import NetworkAnalysis
 
 # TODO: find closest exact point on closest line, create new node, new edges to the
 # endnodes, cut the actual line by point to get exact length, devide cost by new length

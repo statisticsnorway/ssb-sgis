@@ -1,8 +1,7 @@
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 
-from .geopandas_utils import clean_geoms, gdf_concat, to_gdf
+from .geopandas_utils import gdf_concat
 
 
 def shortest_path(

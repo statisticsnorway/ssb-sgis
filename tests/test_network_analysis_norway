@@ -19,7 +19,7 @@ def not_test_network_analysis_norway(nw):
     test_service_area()
     test_od_cost_matrix()
 
-    
+
 def main():
 
     #r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")

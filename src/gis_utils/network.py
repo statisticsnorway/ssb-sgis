@@ -1,9 +1,7 @@
 import warnings
 from copy import copy, deepcopy
 
-import numpy as np
 from geopandas import GeoDataFrame
-from pandas import RangeIndex
 from shapely import line_merge
 
 from .exceptions import ZeroRowsError

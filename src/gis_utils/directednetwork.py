@@ -28,7 +28,7 @@ class DirectedNetwork(Network):
         if len(self.gdf) * 0.9 < len(no_dups):
             warnings.warn(
                 """
-Your network does not seem to be directed. 
+Your network does not seem to be directed.
 Try running 'make_directed_network' or 'make_directed_network_osm'.
 With 'make_directed_network', specify the direction column (e.g. 'oneway'),
 and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T")).
