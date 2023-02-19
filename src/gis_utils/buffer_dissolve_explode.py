@@ -27,15 +27,15 @@ def buff(
     It buffers a GeoDataFrame, GeoSeries, or Geometry, and returns the same type of object
     buffers with higher resolution than the geopandas default.
     repairs geometry afterwards
-    
+
     Args:
         gdf: GeoDataFrame, GeoSeries or shapely Geometry
         distance (int): the distance (meters, degrees, depending on the crs) to buffer the geometry by
-        resolution (int): The number of segments used to approximate a quarter circle. Here defaults to 50, 
+        resolution (int): The number of segments used to approximate a quarter circle. Here defaults to 50,
             as opposed to the default 16 in geopandas.
         copy: if True (the default), the input geometry will not be bufferd. Setting copy to False will save
             memory.
-    
+
     Returns:
       A GeoDataFrame with the buffered geometry.
 
@@ -68,13 +68,13 @@ def diss(
     **kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """
-    It dissolves a GeoDataFrame, GeoSeries or Geometry, fixes the geometry, 
+    It dissolves a GeoDataFrame, GeoSeries or Geometry, fixes the geometry,
     resets the index and makes columns from tuple to string if multiple aggfuncs.
-    
+
     Args:
       gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be dissolved
       reset_index: If True, the index is reset to the default integer index. Defaults to True
-    
+
     Returns:
       A GeoDataFrame with the dissolved polygons.
     """
@@ -114,13 +114,13 @@ def exp(
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """
     It takes a GeoDataFrame, GeoSeries or Geometry,
-    makes the geometry valid, and then explodes it from 
+    makes the geometry valid, and then explodes it from
     multipart to singlepart geometries.
-    
+
     Args:
       gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be exploded
       ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1. Defaults to True
-    
+
     Returns:
       A GeoDataFrame, GeoSeries or shapely Geometry with singlepart geometries.
     """
@@ -154,19 +154,19 @@ def buffdissexp(
     **dissolve_kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """
-    Buffers and dissolves overlapping geometries. 
+    Buffers and dissolves overlapping geometries.
     So buffer, dissolve and explode (to singlepart).
 
     Args:
-        gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be 
+        gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be
             buffered, dissolved and exploded
         distance (int): the distance (meters, degrees, depending on the crs) to buffer the geometry by
-        resolution (int): The number of segments used to approximate a quarter circle. Here defaults to 50, 
+        resolution (int): The number of segments used to approximate a quarter circle. Here defaults to 50,
             as opposed to the default 16 in geopandas.
         copy: if True (the default), the input geometry will not be bufferd. Setting copy to False will save
             memory.
         id (str | None): if not None (the default), an id column will be created from the integer index (from 0 and up).
-        reset_index: If True, the index is reset to the default integer index after dissolve. 
+        reset_index: If True, the index is reset to the default integer index after dissolve.
             Defaults to True
       ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1. Defaults to True
 
@@ -201,12 +201,12 @@ def dissexp(
     Dissolves overlapping geometries. So dissolve and explode (to singlepart).
 
     Args:
-        gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be 
+        gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be
             dissolved and exploded
         id (str | None): if not None (the default), an id column will be created from the integer index (from 0 and up).
-        reset_index: If True, the index is reset to the default integer index after dissolve. 
+        reset_index: If True, the index is reset to the default integer index after dissolve.
             Defaults to True
-        ignore_index: If True, the row index will be reset to its default integer index after explode. 
+        ignore_index: If True, the row index will be reset to its default integer index after explode.
             Defaults to True
 
     Returns:
@@ -236,15 +236,15 @@ def buffdiss(
     Buffers and dissolves all geometries.
 
     Args:
-        gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be 
+        gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be
             buffered and dissolved
         distance (int): the distance (meters, degrees, depending on the crs) to buffer the geometry by
-        resolution (int): The number of segments used to approximate a quarter circle. Here defaults to 50, 
+        resolution (int): The number of segments used to approximate a quarter circle. Here defaults to 50,
             as opposed to the default 16 in geopandas.
         copy: if True (the default), the input geometry will not be bufferd. Setting copy to False will save
             memory.
         id (str | None): if not None (the default), an id column will be created from the integer index (from 0 and up).
-        reset_index: If True, the index is reset to the default integer index after dissolve. 
+        reset_index: If True, the index is reset to the default integer index after dissolve.
             Defaults to True
 
     Returns:

@@ -30,11 +30,11 @@ def clean_geoms(
     Args:
         gdf: GeoDataFrame or GeoSeries to be cleaned.
         single_geomtype: if only the most common geometry type should be kept.
-            This will be either points, lines or polygons. 
+            This will be either points, lines or polygons.
             Both multi- and singlepart geometries are included.
             GeometryCollections will be exploded first, so that no geometries are excluded.
             Defaults to True.
-        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1. 
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to False
 
     Returns:
@@ -42,58 +42,51 @@ def clean_geoms(
         non-empty and not-NaN/-None geometries.
 
     """
-    
+
     if isinstance(gdf, GeoDataFrame):
         geom_col = gdf._geometry_column_name
         gdf[geom_col] = gdf.make_valid()
         gdf = gdf.loc[
-                (gdf[geom_col].is_valid) & 
-                (~gdf[geom_col].is_empty) &
-                (gdf[geom_col].notna())
-            ]
+            (gdf[geom_col].is_valid)
+            & (~gdf[geom_col].is_empty)
+            & (gdf[geom_col].notna())
+        ]
     elif isinstance(gdf, GeoSeries):
         gdf = gdf.make_valid()
-        gdf = gdf.loc[
-            (gdf.is_valid) & 
-            (~gdf.is_empty) &
-            (gdf.notna())
-        ]
+        gdf = gdf.loc[(gdf.is_valid) & (~gdf.is_empty) & (gdf.notna())]
     else:
-        raise TypeError(
-            f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}"
-        )
-    
+        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
+
     if single_geom_type:
         gdf = to_single_geom_type(gdf, ignore_index=ignore_index)
-    
+
     return gdf
 
 
 def to_single_geom_type(
-    gdf: GeoDataFrame | GeoSeries, 
-    ignore_index: bool = False
+    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
 ) -> GeoDataFrame | GeoSeries:
     """
-    It takes a GeoDataFrame or GeoSeries and returns a GeoDataFrame or GeoSeries 
-    with only one geometry type. This will either be points, lines or polygons. 
-    Both multipart and singlepart geometries are kept. 
+    It takes a GeoDataFrame or GeoSeries and returns a GeoDataFrame or GeoSeries
+    with only one geometry type. This will either be points, lines or polygons.
+    Both multipart and singlepart geometries are kept.
     LinearRings are considered as lines.
 
     GeometryCollections will be exploded to single-typed geometries, so that the
     correctly typed geometries in these collections are included in the output.
-    
+
     Args:
       gdf (GeoDataFrame | GeoSeries): GeoDataFrame | GeoSeries
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
         Defaults to False
-    
+
     Returns:
       A GeoDataFrame with a single geometry type.
     """
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
-    
+
     # explode collections to single-typed geometries
     collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
     if len(collections):
@@ -137,15 +130,15 @@ def close_holes(
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """
     It closes holes in polygons of a GeoDataFrame, GeoSeries or shapely Geometry.
-    
+
     Args:
       gdf: GeoDataFrame, GeoSeries or shapely Geometry.
-      max_km2 (int | None): if None (default), all holes are closed. 
-        Otherwise, closes holes with an area below the specified number in 
-        square kilometers if the crs unit is in meters. 
-      copy (bool): if True (default), the input GeoDataFrame or GeoSeries is copied. 
+      max_km2 (int | None): if None (default), all holes are closed.
+        Otherwise, closes holes with an area below the specified number in
+        square kilometers if the crs unit is in meters.
+      copy (bool): if True (default), the input GeoDataFrame or GeoSeries is copied.
         Defaults to True
-    
+
     Returns:
       A GeoDataFrame, GeoSeries or shapely Geometry with closed holes in the geometry column
     """
@@ -179,16 +172,14 @@ def _close_holes_geom(geom, max_km2=None):
     holes_closed = [geom]
     singlepart = get_parts(geom)
     for part in singlepart:
-
         n_interior_rings = get_num_interior_rings(part)
-        
-        if not(n_interior_rings):
+
+        if not (n_interior_rings):
             continue
 
         for n in range(n_interior_rings):
-
             hole = polygons(get_interior_ring(part, n))
-            
+
             if area(hole) / 1_000_000 < max_km2:
                 holes_closed.append(hole)
 
@@ -210,7 +201,7 @@ def gdf_concat(
     Args:
         gdfs: list or tuple of GeoDataFrames to be concatinated.
         crs: common coordinate reference system each GeoDataFrames
-            will be converted to before concatination. If None, it uses 
+            will be converted to before concatination. If None, it uses
             the crs of the first GeoDataFrame in the list or tuple.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1. Defaults to True
 
@@ -242,17 +233,16 @@ def gdf_concat(
 
 
 def to_gdf(
-    geom: GeoSeries | Geometry | str | bytes, 
-    crs=None, **kwargs
-    ) -> GeoDataFrame:
+    geom: GeoSeries | Geometry | str | bytes, crs=None, **kwargs
+) -> GeoDataFrame:
     """
-    Converts a GeoSeries, shapely Geometry, wkt string or wkb bytes object to a 
+    Converts a GeoSeries, shapely Geometry, wkt string or wkb bytes object to a
     GeoDataFrame.
 
     Args:
         geom: the object to be converted to a GeoDataFrame
-        crs: if None (default), it uses the crs of the GeoSeries if GeoSeries 
-            is the input type. Otherwise, an exception is raised, saying that 
+        crs: if None (default), it uses the crs of the GeoSeries if GeoSeries
+            is the input type. Otherwise, an exception is raised, saying that
             crs has to be specified.
     """
 
@@ -263,11 +253,13 @@ def to_gdf(
 
     if isinstance(geom, str):
         from shapely.wkt import loads
+
         geom = loads(geom)
         gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
 
     if isinstance(geom, bytes):
         from shapely.wkb import loads
+
         geom = loads(geom)
         gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
 
@@ -278,11 +270,9 @@ def to_gdf(
 
 
 def push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:
-    """ Makes the geometry column the leftmost column in the GeoDataFrame. """
+    """Makes the geometry column the leftmost column in the GeoDataFrame."""
     geom_col = gdf._geometry_column_name
-    return gdf.reindex(
-        columns=[c for c in gdf.columns if c != geom_col] + [geom_col]
-    )
+    return gdf.reindex(columns=[c for c in gdf.columns if c != geom_col] + [geom_col])
 
 
 def clean_clip(

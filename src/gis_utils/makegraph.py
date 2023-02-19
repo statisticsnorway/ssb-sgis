@@ -1,49 +1,35 @@
-import numpy as np
 import warnings
-from igraph import Graph
-from geopandas import GeoDataFrame
-from pandas import DataFrame, RangeIndex
 from copy import copy, deepcopy
-from .make_graph import make_graph
-
-from .od_cost_matrix import od_cost_matrix
-from .shortest_path import shortest_path
-from .service_area import service_area
-from .points import StartPoints, EndPoints
-
-from .network import Network
-from .directednetwork import DirectedNetwork
+from dataclasses import dataclass
 
 import igraph
-from .exceptions import NoPointsWithinSearchTolerance
-
 import numpy as np
-import igraph
+from geopandas import GeoDataFrame
 from igraph import Graph
+from pandas import DataFrame, RangeIndex, Series
 from sklearn.neighbors import NearestNeighbors
 
-from geopandas import GeoDataFrame
-
-from .exceptions import NoPointsWithinSearchTolerance
 from .directednetwork import DirectedNetwork
+from .exceptions import NoPointsWithinSearchTolerance
+from .make_graph import make_graph
+from .network import Network
 from .networkanalysisrules import NetworkAnalysisRules
+from .od_cost_matrix import od_cost_matrix
+from .points import EndPoints, StartPoints
+from .service_area import service_area
+from .shortest_path import shortest_path
 
-from pandas import Series
-
-from dataclasses import dataclass
 
 @dataclass
 class MakeGraph:
-
     rules: NetworkAnalysisRules
-    
+
     @staticmethod
     def make_graph(
-        edges: list[tuple] | np.ndarray[tuple], 
-        costs: list[float] | np.ndarray[float], 
+        edges: list[tuple] | np.ndarray[tuple],
+        costs: list[float] | np.ndarray[float],
         directed: bool,
-        ) -> Graph:
-        
+    ) -> Graph:
         if len(edges) != len(costs):
             raise ValueError("Length of 'edges' and 'costs' should be equal.")
 
@@ -55,18 +41,19 @@ class MakeGraph:
         return graph
 
     def make_graph(
-        self, 
-        gdf: GeoDataFrame, 
-        startpoints: StartPoints, 
-        endpoints: EndPoints | None, 
+        self,
+        gdf: GeoDataFrame,
+        startpoints: StartPoints,
+        endpoints: EndPoints | None,
         cost_to_nodes: int,
-        ) -> Graph:
-        """Lager igraph.Graph som inkluderer edges to/from start-/sluttpunktene.
-        """
+    ) -> Graph:
+        """Lager igraph.Graph som inkluderer edges to/from start-/sluttpunktene."""
 
         edges = [
             (str(source), str(target))
-            for source, target in zip(nwa.network.gdf["source"], nwa.network.gdf["target"])
+            for source, target in zip(
+                nwa.network.gdf["source"], nwa.network.gdf["target"]
+            )
         ]
 
         costs = list(nwa.network.gdf[self.cost])
@@ -87,51 +74,43 @@ class MakeGraph:
         return graph
 
     def graph_is_up_to_date(self, startpoints, endpoints):
-        
         if not hasattr(self, "graph"):
             return False
-        
+
         if self.search_factor != self._search_factor:
             return False
         if self.search_tolerance != self._search_tolerance:
             return False
         if self.cost_to_nodes != self._cost_to_nodes:
             return False
-        
-        if self.startpoints.wkt != [
-            geom.wkt for geom in startpoints.geometry
-        ]:
+
+        if self.startpoints.wkt != [geom.wkt for geom in startpoints.geometry]:
             return False
 
         if self.endpoints is not None:
-            if self.endpoints.wkt != [
-                geom.wkt for geom in endpoints.geometry
-            ]:
+            if self.endpoints.wkt != [geom.wkt for geom in endpoints.geometry]:
                 return False
 
         if not all(
-            x in self.graph.vs["name"] for x in list(self.startpoints.points.temp_idx.values)
-            ):
+            x in self.graph.vs["name"]
+            for x in list(self.startpoints.points.temp_idx.values)
+        ):
             return False
 
         if hasattr(self, "endpoints"):
             if not all(
-            x in self.graph.vs["name"] for x in self.endpoints.points.temp_idx
+                x in self.graph.vs["name"] for x in self.endpoints.points.temp_idx
             ):
                 return False
 
         return True
 
 
-
-
-
 def make_graph(
-    gdf: GeoDataFrame, 
+    gdf: GeoDataFrame,
     cost: str,
     directed: bool,
-    ) -> Graph:
-
+) -> Graph:
     edges = [
         (str(source), str(target))
         for source, target in zip(gdf["source"], gdf["target"])
@@ -147,15 +126,15 @@ def make_graph(
 
     return graph
 
+
 def add_to_graph(
-    graph: Graph, 
-    edges: np.ndarray[tuple], 
+    graph: Graph,
+    edges: np.ndarray[tuple],
     vertices: list | Series,
-    costs: np.ndarray[float], 
-    cost, 
+    costs: np.ndarray[float],
+    cost,
     cost_to_nodes,
 ) -> Graph:
-
     costs = graph.es["weight"] + calculate_costs(list(costs), cost, cost_to_nodes)
 
     new_vertices = list(np.unique(edges)) + list(vertices)
@@ -166,6 +145,7 @@ def add_to_graph(
     graph.es["weight"] = costs
 
     return graph
+
 
 def calculate_costs(distances, cost, cost_to_nodes):
     """
@@ -186,32 +166,36 @@ def calculate_costs(distances, cost, cost_to_nodes):
     else:
         return distances
 
+
 def validate_cost(gdf, cost, raise_error: bool = True) -> None:
-
     if cost in gdf.columns:
-
         gdf = remove_nans(gdf, cost)
         gdf = remove_negative(gdf, cost)
 
         try:
-            gdf[cost] = gdf[cost].astype(float)    
+            gdf[cost] = gdf[cost].astype(float)
         except ValueError as e:
-            raise ValueError(f"The 'cost' column must be numeric. Got characters that couldn't be interpreted as numbers.")
+            raise ValueError(
+                f"The 'cost' column must be numeric. Got characters that couldn't be interpreted as numbers."
+            )
 
         if "min" in cost:
             cost = "minutes"
-                
-    if "meter" in cost or "metre" in cost:
 
+    if "meter" in cost or "metre" in cost:
         if gdf.crs == 4326:
-            raise ValueError("'roads' cannot have crs 4326 (latlon) when cost is 'meters'.")
+            raise ValueError(
+                "'roads' cannot have crs 4326 (latlon) when cost is 'meters'."
+            )
 
         cost = "meters"
         gdf[cost] = gdf.length
 
     if cost == "minutes" and "minutes" not in gdf.columns:
         if raise_error:
-            raise KeyError(f"Cannot find 'cost' column for minutes. \nTry running one of the 'make_directed_network_' methods, or set 'cost' to 'meters'.")
+            raise KeyError(
+                f"Cannot find 'cost' column for minutes. \nTry running one of the 'make_directed_network_' methods, or set 'cost' to 'meters'."
+            )
 
     return gdf
 
@@ -225,42 +209,29 @@ def remove_nans(gdf, cost):
     nans = sum(gdf[cost].isna())
     if nans:
         if nans > len(gdf) * 0.05:
-            warnings.warn(f"Warning: {nans} rows have missing values in the 'cost' column. Removing these rows.")
+            warnings.warn(
+                f"Warning: {nans} rows have missing values in the 'cost' column. Removing these rows."
+            )
         gdf = gdf.loc[gdf[cost].notna()]
 
     return gdf
+
 
 def remove_negative(gdf, cost):
     negative = sum(gdf[cost] < 0)
     if negative:
         if negative > len(gdf) * 0.05:
-            warnings.warn(f"Warning: {negative} rows have a 'cost' less than 0. Removing these rows.")
+            warnings.warn(
+                f"Warning: {negative} rows have a 'cost' less than 0. Removing these rows."
+            )
         gdf = gdf.loc[gdf[cost] >= 0]
-    
+
     return gdf
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # lage grafen på forhånd???
 
-# TODO: vurdere å gjøre denne mindre, 
+# TODO: vurdere å gjøre denne mindre,
 # dumt at parent-en skal være avhengig av Network
 # noe composition:
 # MakeGraph, Rules, NetworkAnalysis -> alle som composition inni Network?

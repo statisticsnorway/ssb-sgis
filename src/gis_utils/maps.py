@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
-from geopandas import GeoDataFrame, GeoSeries
-from shapely import Geometry
-from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
+from geopandas import GeoDataFrame, GeoSeries
+from matplotlib.colors import LinearSegmentedColormap
+from shapely import Geometry
 
 from .geopandas_utils import gdf_concat
 
@@ -16,7 +16,7 @@ def qtm(
     size=12,
     fontsize=16,
     legend=True,
-    **kwargs
+    **kwargs,
 ) -> None:
     """Quick, thematic map (name stolen from R's tmap package)."""
     fig, ax = plt.subplots(1, figsize=(size, size))
@@ -53,7 +53,7 @@ def clipmap(
     mask: GeoDataFrame | GeoSeries | Geometry,
     explore: bool = True,
     *args,
-    **kwargs
+    **kwargs,
 ) -> None:
     clipped = gdf.clip(mask.to_crs(gdf.crs))
 
@@ -63,13 +63,11 @@ def clipmap(
         qtm(clipped, *args, **kwargs)
 
 
-def chop_cmap(
-    cmap: LinearSegmentedColormap, frac: float
-) -> LinearSegmentedColormap:
+def chop_cmap(cmap: LinearSegmentedColormap, frac: float) -> LinearSegmentedColormap:
     """Chops off the beginning `frac` fraction of a colormap.
-    https://stackoverflow.com/questions/7574748/setting-range-of-a-colormap-in-matplotlib """
+    https://stackoverflow.com/questions/7574748/setting-range-of-a-colormap-in-matplotlib
+    """
     cmap = plt.get_cmap(cmap)
     cmap_as_array = cmap(np.arange(256))
     cmap_as_array = cmap_as_array[int(frac * len(cmap_as_array)) :]
     return LinearSegmentedColormap.from_list(cmap.name + f"_frac{frac}", cmap_as_array)
-

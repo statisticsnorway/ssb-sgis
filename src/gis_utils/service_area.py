@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
+from geopandas import GeoDataFrame
 from igraph import Graph
 
 from .geopandas_utils import gdf_concat
-from geopandas import GeoDataFrame
+
 
 def service_area(
     graph: Graph,

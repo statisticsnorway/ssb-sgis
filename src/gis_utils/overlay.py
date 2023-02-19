@@ -2,19 +2,19 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from shapely import STRtree, intersection, union_all, difference
+from shapely import STRtree, difference, intersection, union_all
 
 from .geopandas_utils import clean_geoms, gdf_concat, push_geom_col
 
 
 def overlay(
-        left_gdf: GeoDataFrame, 
-        right_gdf: GeoDataFrame, 
-        how: str = "intersection", 
-        drop_dupcol: bool = True, 
-        single_geom_type: bool = True, 
-        **kwargs
-        ) -> GeoDataFrame:
+    left_gdf: GeoDataFrame,
+    right_gdf: GeoDataFrame,
+    how: str = "intersection",
+    drop_dupcol: bool = True,
+    single_geom_type: bool = True,
+    **kwargs,
+) -> GeoDataFrame:
     """
     som gpd.overlay bare at kolonner i right_gdf som også er i left_gdf fjernes
     (fordi det snart vil gi feilmelding i geopandas) og kolonner som har med index
@@ -36,16 +36,17 @@ def overlay(
         raise ValueError(
             f"`how` was '{how}' but is expected to be in {', '.join(allowed_hows)}"
         )
-    
+
     left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains("index|level_")]
     right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains("index|level_")]
 
     # remove columns in right_gdf that are in left_gdf (except for geometry column)
     if drop_dupcol:
         right_gdf = right_gdf.loc[
-            :, right_gdf.columns.difference(
-            left_gdf.columns.difference([left_gdf._geometry_column_name])
-            )
+            :,
+            right_gdf.columns.difference(
+                left_gdf.columns.difference([left_gdf._geometry_column_name])
+            ),
         ]
 
     if how == "update":
@@ -72,7 +73,9 @@ def overlay(
     return joined.loc[:, ~joined.columns.str.contains("index|level_")]
 
 
-def overlay_update(left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, **kwargs) -> GeoDataFrame:
+def overlay_update(
+    left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, **kwargs
+) -> GeoDataFrame:
     """En overlay-variant som ikke finnes i geopandas."""
 
     try:
@@ -84,8 +87,9 @@ def overlay_update(left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, **kwargs) ->
     return out
 
 
-def clean_shapely_overlay(left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, how: str = "intersection") -> GeoDataFrame:
-    
+def clean_shapely_overlay(
+    left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, how: str = "intersection"
+) -> GeoDataFrame:
     # Allowed operations
     allowed_hows = [
         "intersection",
@@ -99,10 +103,10 @@ def clean_shapely_overlay(left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, how: 
         raise ValueError(
             f"`how` was '{how}' but is expected to be in {', '.join(allowed_hows)}"
         )
-    
+
     left_gdf = clean_geoms(left_gdf)
     right_gdf = clean_geoms(right_gdf)
-    
+
     left_gdf = left_gdf.explode(ignore_index=True)
     right_gdf = right_gdf.explode(ignore_index=True)
 
@@ -116,22 +120,26 @@ def clean_shapely_overlay(left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, how: 
 
 
 def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataFrame:
-    
     merged = []
 
     tree = STRtree(df2.geometry.values)
     left, right = tree.query(df1.geometry.values, predicate="intersects")
 
     if len(left):
-        pairs = (
-            pd.concat([df1.take(left),
-            (pd.DataFrame({"index_right": right}, index=df1.index.values.take(left)))
-            ], axis=1)
-            .join(
-                df2.rename(columns={"geometry": "geom_right"}),
-                on="index_right",
-                rsuffix="_2",
-            )
+        pairs = pd.concat(
+            [
+                df1.take(left),
+                (
+                    pd.DataFrame(
+                        {"index_right": right}, index=df1.index.values.take(left)
+                    )
+                ),
+            ],
+            axis=1,
+        ).join(
+            df2.rename(columns={"geometry": "geom_right"}),
+            on="index_right",
+            rsuffix="_2",
         )
 
         if how == "intersection":
@@ -143,14 +151,14 @@ def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataF
         if how == "union" or how == "identity":
             intersections = _shapely_intersection(pairs)
             merged.append(intersections)
-        
+
         clip_left = _shapely_difference_left(pairs, df1)
         merged.append(clip_left)
 
         if how != "identity":
             clip_right = _shapely_difference_right(pairs, df1, df2)
             merged.append(clip_right)
-        
+
     # add any from left or right data frames that did not intersect
     diff_left = df1.take(np.setdiff1d(np.arange(len(df1)), left))
     merged.append(diff_left)
@@ -158,9 +166,10 @@ def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataF
     if how != "identity":
         diff_right = df2.take(np.setdiff1d(np.arange(len(df2)), right)).rename(
             columns={
-                c: f"{c}_2" if c in df1.columns and c != "geometry" else c for c in df2.columns
+                c: f"{c}_2" if c in df1.columns and c != "geometry" else c
+                for c in df2.columns
             }
-        )    
+        )
         merged.append(diff_right)
 
     # merge all data frames

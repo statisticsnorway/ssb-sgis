@@ -1,8 +1,8 @@
 import pandas as pd
+from geopandas import GeoDataFrame
+from igraph import Graph
 
 from .geopandas_utils import gdf_concat
-from igraph import Graph
-from geopandas import GeoDataFrame
 
 
 def shortest_path(
@@ -23,11 +23,15 @@ def shortest_path(
     lines = []
     if rowwise:
         for ori_id, des_id in zip(startpoints["temp_idx"], endpoints["temp_idx"]):
-            lines = lines + _run_shortest_path(ori_id, des_id, graph, roads, cost, summarise)
+            lines = lines + _run_shortest_path(
+                ori_id, des_id, graph, roads, cost, summarise
+            )
     else:
         for ori_id in startpoints["temp_idx"]:
             for des_id in endpoints["temp_idx"]:
-                lines = lines + _run_shortest_path(ori_id, des_id, graph, roads, cost, summarise)
+                lines = lines + _run_shortest_path(
+                    ori_id, des_id, graph, roads, cost, summarise
+                )
 
     if summarise:
         #        edges.groupby(["source", "target"])["n"].count()
@@ -54,17 +58,16 @@ def shortest_path(
         lines = lines[lines[cost] < cutoff]
 
     if destination_count:
-        lines = lines.loc[lines.groupby("origin")[cost].idxmin()].reset_index(
-            drop=True
-        )
+        lines = lines.loc[lines.groupby("origin")[cost].idxmin()].reset_index(drop=True)
 
     lines = lines[["origin", "destination", cost, "geometry"]]
 
     return lines.reset_index(drop=True)
 
 
-def _run_shortest_path(ori_id, des_id, graph: Graph, roads: GeoDataFrame, cost: str, summarise: bool):
-
+def _run_shortest_path(
+    ori_id, des_id, graph: Graph, roads: GeoDataFrame, cost: str, summarise: bool
+):
     res = graph.get_shortest_paths(weights="weight", v=ori_id, to=des_id)
 
     if len(res[0]) == 0:

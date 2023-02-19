@@ -2,9 +2,9 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
+from igraph import Graph
 from pandas import DataFrame
 from shapely import shortest_line
-from igraph import Graph
 
 
 def od_cost_matrix(
@@ -99,4 +99,3 @@ def od_cost_matrix(
     out = out.drop(["wkt_ori", "wkt_des"], axis=1, errors="ignore")
 
     return out.reset_index(drop=True)
-

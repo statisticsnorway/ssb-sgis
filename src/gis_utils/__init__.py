@@ -8,26 +8,15 @@ from .geopandas_utils import (
     find_neighbours,
     gdf_concat,
     gridish,
+    push_geom_col,
     random_points,
     sjoin,
     snap_to,
     to_gdf,
     to_multipoint,
     to_single_geom_type,
-    push_geom_col,
 )
-from .overlay import (
-    overlay,
-    clean_shapely_overlay,
-    overlay_update,
-)
-from .maps import (
-    clipmap, 
-    concat_explore, 
-    qtm, 
-    samplemap,
-    chop_cmap,
-)
+from .maps import chop_cmap, clipmap, concat_explore, qtm, samplemap
 from .network import Network
 from .network_functions import (
     close_network_holes,
@@ -35,3 +24,4 @@ from .network_functions import (
     get_largest_component,
 )
 from .networkanalysis import NetworkAnalysis, NetworkAnalysisRules
+from .overlay import clean_shapely_overlay, overlay, overlay_update

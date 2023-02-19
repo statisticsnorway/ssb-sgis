@@ -87,7 +87,7 @@ def get_k_nearest_neighbors(
     Returns:
       A DataFrame with the following columns:
     """
-    
+
     if gdf.crs != neighbors.crs:
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 

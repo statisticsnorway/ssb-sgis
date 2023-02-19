@@ -42,7 +42,7 @@ class Network:
             raise ZeroRowsError
 
         self.directed = False
-        
+
         self.gdf = self.prepare_network(gdf, merge_lines)
 
         self.make_node_ids()
@@ -83,7 +83,7 @@ class Network:
         rows_now = len(gdf)
         gdf = gdf.loc[gdf.geom_type != "LinearRing"]
 
-        if (diff := rows_now - len(gdf)):
+        if diff := rows_now - len(gdf):
             if diff == 1:
                 print(f"{diff} LinearRing was removed from the network.")
             else:
@@ -92,7 +92,7 @@ class Network:
         rows_now = len(gdf)
         gdf = gdf.explode(ignore_index=True)
 
-        if (diff := rows_now - len(gdf)):
+        if diff := rows_now - len(gdf):
             if diff == 1:
                 print(
                     f"1 multi-geometry was split into single part geometries. "
@@ -179,7 +179,7 @@ class Network:
     def update_nodes_if(self):
         if not self.nodes_are_up_to_date():
             self.make_node_ids()
-    
+
     @property
     def nodes(self):
         """Nodes cannot be altered directly because it has to follow the numeric
@@ -197,6 +197,3 @@ class Network:
 
     def deepcopy(self):
         return deepcopy(self)
-
-
-
