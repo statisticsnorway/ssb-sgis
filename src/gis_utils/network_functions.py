@@ -197,9 +197,6 @@ def find_holes_all_roads(roads, nodes, max_dist, min_dist=0, n=10):
     deadends_source = roads.loc[roads.n_source == 1].rename(
         columns={"source_wkt": "wkt", "target_wkt": "wkt_andre_ende"}
     )
-    #    deadends_source["geometry"] = gpd.GeoSeries.from_wkt(
-    #       deadends_source["wkt"], crs=crs
-    #  )
     deadends_target = roads.loc[roads.n_target == 1].rename(
         columns={"source_wkt": "wkt_andre_ende", "target_wkt": "wkt"}
     )

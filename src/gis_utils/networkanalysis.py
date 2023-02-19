@@ -181,9 +181,13 @@ class NetworkAnalysis:
         else:
             self.endpoints = None
 
-        self.network.update_nodes_if()
+        if not (
+            self.graph_is_up_to_date() and 
+            self.network.nodes_are_up_to_date()
+            ):
 
-        if not self.graph_is_up_to_date():
+            self.network.update_nodes_if()
+
             edges, costs = self.get_edges_and_costs()
 
             self.graph = self.make_graph(
@@ -227,6 +231,9 @@ class NetworkAnalysis:
         return edges, costs
 
     def add_missing_vertices(self):
+        """Adds the points that had no nodes within the search_tolerance
+        to the graph. To prevent error when running the distance calculation.
+        """
         self.graph.add_vertices(
             [
                 idx
@@ -249,6 +256,8 @@ class NetworkAnalysis:
         costs: list[float] | np.ndarray[float],
         directed: bool,
     ) -> Graph:
+        """Creates an igraph Graph from a list of edges and costs. """
+
         assert len(edges) == len(costs)
 
         graph = igraph.Graph.TupleList(edges, directed=directed)
@@ -260,7 +269,8 @@ class NetworkAnalysis:
         return graph
 
     def graph_is_up_to_date(self) -> bool:
-        """Returns False if the rules of the graphmaking has changed,"""
+        """Returns False if the rules of the graphmaking has changed,
+        or if the points have changed"""
 
         if not hasattr(self, "graph") or not hasattr(self, "wkts"):
             return False
@@ -280,6 +290,8 @@ class NetworkAnalysis:
         return True
 
     def points_have_changed(self, points: GeoDataFrame, what: str) -> bool:
+        """This method is best stored in the NetworkAnalysis class, 
+        since the point classes are initialised each time an analysis is run. """
         if self.wkts[what] != [geom.wkt for geom in points.geometry]:
             return True
 
@@ -288,11 +300,17 @@ class NetworkAnalysis:
 
         return False
 
-    def update_point_wkts(self):
-        if not hasattr(self, "endpoints"):
+    def update_point_wkts(self) -> None:
+        """Creates a dict of wkt lists. This method is run after the graph is created.
+        If the wkts haven't updated since the last run, the graph doesn't have to be remade.
+        """
+        self.wkts = {}
+
+        self.wkts["network"] = [geom.wkt for geom in self.network.gdf.geometry]
+
+        if not hasattr(self, "startpoints"):
             return
 
-        self.wkts = {}
         self.wkts["start"] = [geom.wkt for geom in self.startpoints.gdf.geometry]
 
         if self.endpoints is not None:

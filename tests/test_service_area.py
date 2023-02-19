@@ -17,8 +17,9 @@ def test_service_area():
 
     nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
 
-    nwa = gs.NetworkAnalysis(nw, cost="minutes")
-
+    rules = gs.NetworkAnalysisRules(cost="minutes")
+    nwa = gs.NetworkAnalysis(nw, rules=rules)
+    
     sa = nwa.service_area(p.sample(25), impedance=5, dissolve=False)
 
     print(len(sa))

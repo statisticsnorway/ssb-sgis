@@ -19,7 +19,6 @@ def test_shortest_path():
 
     nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
     rules = gs.NetworkAnalysisRules(cost="minutes")
-
     nwa = gs.NetworkAnalysis(nw, rules=rules)
 
     sp = nwa.shortest_path(p.iloc[[0]], p.sample(250), id_col="idx", summarise=True)

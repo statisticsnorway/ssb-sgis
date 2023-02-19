@@ -24,17 +24,16 @@ def service_area(
     # loop for hvert startpunkt og hver cost
     service_areas = []
     for i in startpoints["temp_idx"]:
+
         for imp in impedance:
-            if not i in graph.vs()["name"] and not i in graph.vs.indices:
-                continue
+            
+            result = graph.distances(weights="weight", source=i)
 
-            # beregn alle coster fra startpunktet
-            resultat = graph.distances(weights="weight", source=i)
-
-            # lag tabell av resultatene og fjern alt over ønsket cost
+            # lag tabell av resultene og fjern alt over ønsket cost
             df = pd.DataFrame(
-                data={"name": np.array(graph.vs["name"]), cost: resultat[0]}
+                data={"name": np.array(graph.vs["name"]), cost: result[0]}
             )
+
             df = df[df[cost] < imp]
 
             if len(df) == 0:

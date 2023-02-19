@@ -11,18 +11,30 @@ class NetworkAnalysisRules:
     search_factor: int = 10
     cost_to_nodes: int = 5
 
+    def update_rules(self):
+        """
+        Stores the rules as separate attributes to 
+        be able to check whether the rules have changed.
+        """
+
+        self._cost = self.cost
+        self._search_tolerance = self.search_tolerance
+        self._search_factor = self.search_factor
+        self._cost_to_nodes = self.cost_to_nodes
+    
     def rules_have_changed(self):
+        """Checks if any of the rules have changed since the graph was made last.
+        If no rules have changed, the graph doesn't have to be remade (the network and
+        points have to be the same as well).
+        """
+        if self.cost != self._cost:
+            return True
         if self.search_factor != self._search_factor:
             return True
         if self.search_tolerance != self._search_tolerance:
             return True
         if self.cost_to_nodes != self._cost_to_nodes:
             return True
-
-    def update_rules(self):
-        self._search_tolerance = self.search_tolerance
-        self._search_factor = self.search_factor
-        self._cost_to_nodes = self.cost_to_nodes
 
     def validate_cost(
         self, gdf: GeoDataFrame, raise_error: bool = True

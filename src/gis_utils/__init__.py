@@ -1,5 +1,11 @@
-from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
-from .directednetwork import DirectedNetwork
+from .buffer_dissolve_explode import (
+    buff, 
+    buffdiss, 
+    buffdissexp, 
+    diss, 
+    dissexp, 
+    exp,
+)
 from .geopandas_utils import (
     clean_geoms,
     close_holes,
@@ -16,12 +22,27 @@ from .geopandas_utils import (
     to_multipoint,
     to_single_geom_type,
 )
-from .maps import chop_cmap, clipmap, concat_explore, qtm, samplemap
-from .network import Network
+from .overlay import (
+    clean_shapely_overlay, 
+    overlay, 
+    overlay_update
+)
+
+from .maps import (
+    chop_cmap, 
+    clipmap, 
+    concat_explore, 
+    qtm, 
+    samplemap,
+)
+
 from .network_functions import (
     close_network_holes,
     get_component_size,
     get_largest_component,
 )
-from .networkanalysis import NetworkAnalysis, NetworkAnalysisRules
-from .overlay import clean_shapely_overlay, overlay, overlay_update
+
+from .directednetwork import DirectedNetwork
+from .network import Network
+from .networkanalysis import NetworkAnalysis
+from .networkanalysisrules import NetworkAnalysisRules

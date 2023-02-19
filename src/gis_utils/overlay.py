@@ -16,10 +16,10 @@ def overlay(
     **kwargs,
 ) -> GeoDataFrame:
     """
-    som gpd.overlay bare at kolonner i right_gdf som også er i left_gdf fjernes
-    (fordi det snart vil gi feilmelding i geopandas) og kolonner som har med index
-    å gjøre fjernes, fordi sjoin returnerer index_right som kolonnenavn,
-    som gir feilmelding ved neste join.
+    Try to do a geopandas overlay, then try to set common crs and clean geometries
+    before retrying the overlay. Then, last resort is to do the overlay in shapely, 
+    as suggested here: https://github.com/geopandas/geopandas/issues/2792
+
     """
 
     # Allowed operations
