@@ -19,7 +19,7 @@ def test_service_area():
 
     rules = gs.NetworkAnalysisRules(cost="minutes")
     nwa = gs.NetworkAnalysis(nw, rules=rules)
-    
+
     sa = nwa.service_area(p.sample(25), impedance=5, dissolve=False)
 
     print(len(sa))

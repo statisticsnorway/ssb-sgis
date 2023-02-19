@@ -17,7 +17,7 @@ def overlay(
 ) -> GeoDataFrame:
     """
     Try to do a geopandas overlay, then try to set common crs and clean geometries
-    before retrying the overlay. Then, last resort is to do the overlay in shapely, 
+    before retrying the overlay. Then, last resort is to do the overlay in shapely,
     as suggested here: https://github.com/geopandas/geopandas/issues/2792
 
     """

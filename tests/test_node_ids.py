@@ -1,6 +1,8 @@
 # %%
 from pathlib import Path
+
 import geopandas as gpd
+
 import gis_utils as gs
 
 
@@ -14,7 +16,7 @@ def test_node_ids():
     nw = gs.DirectedNetwork(r)
     rules = gs.NetworkAnalysisRules(cost="meters")
     nwa = gs.NetworkAnalysis(nw, rules=rules)
-    
+
     nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")
 
     nwa.network = nwa.network.close_network_holes(2)

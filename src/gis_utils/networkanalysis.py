@@ -181,11 +181,7 @@ class NetworkAnalysis:
         else:
             self.endpoints = None
 
-        if not (
-            self.graph_is_up_to_date() and 
-            self.network.nodes_are_up_to_date()
-            ):
-
+        if not (self.graph_is_up_to_date() and self.network.nodes_are_up_to_date()):
             self.network.update_nodes_if()
 
             edges, costs = self.get_edges_and_costs()
@@ -256,7 +252,7 @@ class NetworkAnalysis:
         costs: list[float] | np.ndarray[float],
         directed: bool,
     ) -> Graph:
-        """Creates an igraph Graph from a list of edges and costs. """
+        """Creates an igraph Graph from a list of edges and costs."""
 
         assert len(edges) == len(costs)
 
@@ -290,8 +286,8 @@ class NetworkAnalysis:
         return True
 
     def points_have_changed(self, points: GeoDataFrame, what: str) -> bool:
-        """This method is best stored in the NetworkAnalysis class, 
-        since the point classes are initialised each time an analysis is run. """
+        """This method is best stored in the NetworkAnalysis class,
+        since the point classes are initialised each time an analysis is run."""
         if self.wkts[what] != [geom.wkt for geom in points.geometry]:
             return True
 

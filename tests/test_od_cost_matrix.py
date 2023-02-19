@@ -15,11 +15,7 @@ def test_od_cost_matrix():
 
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
 
-    nw = (
-        gs.DirectedNetwork(r)
-        .make_directed_network_norway()
-        .remove_isolated()
-    )
+    nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
     rules = gs.NetworkAnalysisRules(cost="minutes")
     nwa = gs.NetworkAnalysis(nw, rules=rules)
 

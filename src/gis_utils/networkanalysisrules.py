@@ -13,7 +13,7 @@ class NetworkAnalysisRules:
 
     def update_rules(self):
         """
-        Stores the rules as separate attributes to 
+        Stores the rules as separate attributes to
         be able to check whether the rules have changed.
         """
 
@@ -21,7 +21,7 @@ class NetworkAnalysisRules:
         self._search_tolerance = self.search_tolerance
         self._search_factor = self.search_factor
         self._cost_to_nodes = self.cost_to_nodes
-    
+
     def rules_have_changed(self):
         """Checks if any of the rules have changed since the graph was made last.
         If no rules have changed, the graph doesn't have to be remade (the network and

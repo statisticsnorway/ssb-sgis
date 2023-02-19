@@ -24,9 +24,7 @@ def service_area(
     # loop for hvert startpunkt og hver cost
     service_areas = []
     for i in startpoints["temp_idx"]:
-
         for imp in impedance:
-            
             result = graph.distances(weights="weight", source=i)
 
             # lag tabell av resultene og fjern alt over ønsket cost
