@@ -1,5 +1,9 @@
 # %%
 
+import cProfile
+
+import geopandas as gpd
+
 
 def not_test_network_analysis_norway():
     import os

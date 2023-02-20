@@ -5,7 +5,7 @@ description = "GIS utility functions used at Statistics Norway."
 authors = ["Statistics Norway <ort@ssb.no>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "gis_utils"}]
+packages = [{include = "gis_utils", from = "src"}]
 homepage = "https://github.com/statisticsnorway/ssb-gis-utils"
 repository = "https://github.com/statisticsnorway/ssb-gis-utils"
 classifiers = [
@@ -43,6 +43,8 @@ mypy = "^1.0.1"
 pre-commit = "^3.0.4"
 pre-commit-hooks = "^4.4.0"
 pyupgrade = "^3.3.1"
+jupyterlab = "^3.6.1"
+jupytext = "^1.14.4"
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]
@@ -59,6 +61,11 @@ show_missing = true
 profile = "black"
 lines_after_imports = 2
 skip_gitignore = true
+
+[tool.jupytext]
+formats = "ipynb,auto:percent"
+notebook_metadata_filter = "jupytext.text_representation,-jupytext.text_representation.jupytext_version,-widgets,-varInspector,-kernelspec"
+cell_metadata_filter = "-all"
 
 [tool.pytest.ini_options]
   pythonpath = [
