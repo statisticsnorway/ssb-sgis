@@ -88,7 +88,9 @@ def overlay_update(
 
 
 def clean_shapely_overlay(
-    left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, how: str = "intersection"
+    left_gdf: GeoDataFrame,
+    right_gdf: GeoDataFrame,
+    how: str = "intersection",
 ) -> GeoDataFrame:
     # Allowed operations
     allowed_hows = [
@@ -155,7 +157,7 @@ def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataF
         clip_left = _shapely_difference_left(pairs, df1)
         merged.append(clip_left)
 
-        if how != "identity":
+        if how == "union" or how == "symmetric_difference":
             clip_right = _shapely_difference_right(pairs, df1, df2)
             merged.append(clip_right)
 
@@ -163,7 +165,7 @@ def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataF
     diff_left = df1.take(np.setdiff1d(np.arange(len(df1)), left))
     merged.append(diff_left)
 
-    if how != "identity":
+    if how == "union" or how == "symmetric_difference":
         diff_right = df2.take(np.setdiff1d(np.arange(len(df2)), right)).rename(
             columns={
                 c: f"{c}_2" if c in df1.columns and c != "geometry" else c
