@@ -6,7 +6,7 @@ from geopandas import GeoDataFrame
 from shapely import shortest_line
 from sklearn.neighbors import NearestNeighbors
 
-from .geopandas_utils import gdf_concat
+from .geopandas_utils import gdf_concat, push_geom_col
 
 
 def make_node_ids(
@@ -53,6 +53,8 @@ def make_node_ids(
     nodes = gpd.GeoDataFrame(nodes, geometry="geometry", crs=roads.crs)
     nodes = nodes.reset_index(drop=True)
 
+    roads = push_geom_col(roads)
+
     return roads, nodes
 
 
@@ -93,7 +95,7 @@ def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDat
         ignore_index=ignore_index, index_parts=False
     )  # to silence warning
 
-    if not len(endpoints) / len(roads) == 2:
+    if len(endpoints) / len(roads) != 2:
         raise ValueError(
             "The lines should have only two endpoints each. "
             "Try splitting multilinestrings with explode."
@@ -111,7 +113,7 @@ def make_edge_wkt_cols(roads: GeoDataFrame, ignore_index: bool = True) -> GeoDat
 def get_largest_component(roads: GeoDataFrame) -> GeoDataFrame:
     """Find the roads that are isolated from the largest component of the network."""
 
-    if not "source" in roads.columns or not "target" in roads.columns:
+    if "source" not in roads.columns or "target" not in roads.columns:
         roads, nodes = make_node_ids(roads)
 
     edges = [
@@ -195,9 +197,6 @@ def find_holes_all_roads(roads, nodes, max_dist, min_dist=0, n=10):
     deadends_source = roads.loc[roads.n_source == 1].rename(
         columns={"source_wkt": "wkt", "target_wkt": "wkt_andre_ende"}
     )
-    #    deadends_source["geometry"] = gpd.GeoSeries.from_wkt(
-    #       deadends_source["wkt"], crs=crs
-    #  )
     deadends_target = roads.loc[roads.n_target == 1].rename(
         columns={"source_wkt": "wkt_andre_ende", "target_wkt": "wkt"}
     )

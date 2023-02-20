@@ -5,7 +5,7 @@ from geopandas import GeoDataFrame
 from shapely import line_merge
 
 from .exceptions import ZeroRowsError
-from .geopandas_utils import clean_geoms
+from .geopandas_utils import clean_geoms, push_geom_col
 from .network_functions import (
     close_network_holes,
     cut_lines,
@@ -18,9 +18,8 @@ from .network_functions import (
 class Network:
     """
     The Network class is a wrapper around a GeoDataFrame with (Multi)LineStrings.
-    It makes sure there are only singlepart LineStrings in the network, and that the
-    network is connected. It also makes sure that the nodes are up to date with the
-    lines.
+    It makes sure there are only singlepart LineStrings in the network, and that the nodes are up to date with the
+    lines. It also contains methods for optimizing the network before the network analysis.
 
     Args:
         gdf: a GeoDataFrame of line geometries.
@@ -40,6 +39,8 @@ class Network:
 
         if not len(gdf):
             raise ZeroRowsError
+
+        self.directed = False
 
         self.gdf = self.prepare_network(gdf, merge_lines)
 

@@ -2,14 +2,16 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
+from igraph import Graph
 from pandas import DataFrame
 from shapely import shortest_line
 
 
 def od_cost_matrix(
-    nw,  # endre til graf
+    graph: Graph,
     startpoints: GeoDataFrame,
     endpoints: GeoDataFrame,
+    cost: str,
     *,
     lines=False,
     rowwise=False,
@@ -36,11 +38,9 @@ def od_cost_matrix(
       A dataframe with the origin, destination and cost.
     """
 
-    cost = nw.cost
-
     if not rowwise:
         # selve avstandsberegningen her:
-        results = nw.graph.distances(
+        results = graph.distances(
             weights="weight",
             source=startpoints["temp_idx"],
             target=endpoints["temp_idx"],
@@ -56,12 +56,12 @@ def od_cost_matrix(
     else:
         ori_idx, des_idx, costs = [], [], []
         for f_idx, t_idx in zip(startpoints["temp_idx"], endpoints["temp_idx"]):
-            results = nw.graph.distances(weights="weight", source=f_idx, target=t_idx)
+            results = graph.distances(weights="weight", source=f_idx, target=t_idx)
             ori_idx.append(f_idx)
             des_idx.append(t_idx)
             costs.append(results[0][0])
 
-    df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, nw.cost: costs})
+    df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, cost: costs})
 
     # litt opprydning
     out = (
@@ -87,7 +87,7 @@ def od_cost_matrix(
     out["wkt_ori"] = out["origin"].map(wkt_dict_origin)
     out["wkt_des"] = out["destination"].map(wkt_dict_destination)
 
-    out[nw.cost] = np.where(out.wkt_ori != out.wkt_des, out[nw.cost], 0)
+    out[cost] = np.where(out.wkt_ori != out.wkt_des, out[cost], 0)
 
     # lag linjer mellom origin og destination
     if lines:

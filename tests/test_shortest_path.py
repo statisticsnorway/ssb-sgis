@@ -17,8 +17,8 @@ def test_shortest_path():
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
 
     nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
-
-    nwa = gs.NetworkAnalysis(nw, cost="minutes")
+    rules = gs.NetworkAnalysisRules(cost="minutes")
+    nwa = gs.NetworkAnalysis(nw, rules=rules)
 
     sp = nwa.shortest_path(p.iloc[[0]], p.sample(250), id_col="idx", summarise=True)
 

@@ -87,6 +87,10 @@ def get_k_nearest_neighbors(
     Returns:
       A DataFrame with the following columns:
     """
+
+    if gdf.crs != neighbors.crs:
+        raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
+
     if id_cols:
         id_col1, id_col2 = return_two_id_cols(id_cols)
         id_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf[id_col1])}
