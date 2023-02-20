@@ -5,7 +5,7 @@ description = "GIS utility functions used at Statistics Norway."
 authors = ["Statistics Norway <ort@ssb.no>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "gis_utils"}]
+packages = [{include = "gis_utils", from = "src"}]
 homepage = "https://github.com/statisticsnorway/ssb-gis-utils"
 repository = "https://github.com/statisticsnorway/ssb-gis-utils"
 classifiers = [
