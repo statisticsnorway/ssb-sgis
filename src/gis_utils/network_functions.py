@@ -309,10 +309,10 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
     idxs = idxs[:, 1]
 
     """
-    Nå har vi 1d-numpy arrays av lik lengde som blindvegene. 
+    Nå har vi 1d-numpy arrays av lik lengde som blindvegene.
     'idxs' inneholder numpy-indeksen for vegen som er nærmest, altså endepunktene for de
     nye lenkene. For å konvertere dette fra numpy til geopandas, trengs geometri og
-    node-id. 
+    node-id.
     """
 
     # fra-geometrien kan hentes direkte siden avstandene og blindvegene har samme

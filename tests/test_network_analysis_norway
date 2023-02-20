@@ -1,37 +1,11 @@
 #%%
+from pathlib import Path
+
 import geopandas as gpd
-import sys
-sys.path.append("C:/Users/ort/git/ssb-gis-utils")
 
-import gis_utils as gs
+import cProfile
 
-
-
-def test_network_analysis_norway():
-    
-    #r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_landet_2022.parquet")
-    r = gpd.read_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet")
-    r.loc[r.municipality.astype(int)==301].to_parquet(r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_2022.parquet")
-    r = r.to_crs(25833)
-
-    nw = (
-        gs.DirectedNetwork(r)
-        .make_directed_network_norway()
-        .remove_isolated()
-    )
-
-    nwa = gs.NetworkAnalysis(nw, cost="minutes")
-
-    p = gpd.read_parquet(r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet")
-    p["idx"] = p.index
-    p["idx2"] = p.index
-
-    test_shortest_path(nwa)
-    test_service_area(nwa)
-    test_od_cost_matrix(nwa)
-
-    
-def main():
+def not_test_network_analysis_norway():
     import os
 
     os.chdir("../src")
@@ -40,12 +14,20 @@ def main():
 
     os.chdir("..")
 
-    import cProfile
     from tests.test_od_cost_matrix import test_od_cost_matrix
     from tests.test_shortest_path import test_shortest_path
     from tests.test_service_area import test_service_area
 
-    cProfile.run("test_network_analysis_norway()", sort="cumtime")
+    test_shortest_path()
+    test_service_area()
+    test_od_cost_matrix()
+
+    
+def main():
+
+    import cProfile
+
+    cProfile.run("not_test_network_analysis_norway()", sort="cumtime")
 
 if __name__ == "__main__":
-    main
+    main()

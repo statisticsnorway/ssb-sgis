@@ -1,5 +1,4 @@
 # %%
-import warnings
 from pathlib import Path
 
 import geopandas as gpd

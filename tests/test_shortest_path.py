@@ -3,7 +3,6 @@ import warnings
 from pathlib import Path
 
 import geopandas as gpd
-import numpy as np
 
 import gis_utils as gs
 

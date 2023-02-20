@@ -1,3 +1,4 @@
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
@@ -41,7 +42,6 @@ def service_area(
                 continue
 
             # velg ut vegene som er i dataframen vi nettopp lagde.
-            # Og dissolve til én rad.
             sa = roads.loc[roads.target.isin(df.name)]
 
             if dissolve:

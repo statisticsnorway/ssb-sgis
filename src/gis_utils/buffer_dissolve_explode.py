@@ -1,5 +1,4 @@
 import geopandas as gpd
-import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry, get_parts, make_valid
 from shapely.ops import unary_union

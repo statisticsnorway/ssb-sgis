@@ -1,7 +1,6 @@
 import warnings
 from copy import copy, deepcopy
 
-import numpy as np
 from geopandas import GeoDataFrame
 from shapely import line_merge
 

@@ -1,6 +1,6 @@
 """
-Test om funksjonene gir forventede resultater. 
-Bruker en fast gdf som aldri må endres. 
+Test om funksjonene gir forventede resultater.
+Bruker en fast gdf som aldri må endres.
 Funksjonen test_alt kjøres når man importerer geopandasgreier. Gir advarsel hvis en av
 testene feilet.
 """
@@ -203,7 +203,7 @@ def test_to_multipoint(gdf_fixture):
 def main():
     info = """
     The test was created 08.01.2023 with the following package versions.
-    From C++: GEOS 3.11.1, PROJ 9.1.0, GDAL 3.6.1. 
+    From C++: GEOS 3.11.1, PROJ 9.1.0, GDAL 3.6.1.
     From Python: geopandas 0.12.2, shapely 2.0.0, pyproj 3.4.1, pandas 1.5.2, numpy 1.24.
     """
     print(info)

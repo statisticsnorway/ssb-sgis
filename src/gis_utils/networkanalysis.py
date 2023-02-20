@@ -178,6 +178,7 @@ class NetworkAnalysis:
                 id_col=id_col,
                 temp_idx_start=max(self.startpoints.gdf.temp_idx.astype(int)) + 1,
             )
+
         else:
             self.endpoints = None
 

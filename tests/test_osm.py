@@ -1,6 +1,4 @@
 # %%
-import warnings
-
 import geopandas as gpd
 import pyogrio
 
