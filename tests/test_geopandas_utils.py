@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 from shapely.wkt import loads
 
+import gis_utils as gs
+
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 

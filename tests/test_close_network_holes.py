@@ -8,14 +8,16 @@ import geopandas as gpd
 import gis_utils as gs
 
 
-def test_close_holes():
+def test_close_network_holes():
     warnings.filterwarnings(action="ignore", category=UserWarning)
     warnings.filterwarnings(action="ignore", category=FutureWarning)
 
-    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
-
     p = p.iloc[[0]]
+
+    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    r = gs.clean_clip(r, p.buffer(600))
+
     nw = gs.Network(r)
 
     nw = nw.get_largest_component()
@@ -37,7 +39,7 @@ def test_close_holes():
 
 
 def main():
-    test_close_holes()
+    test_close_network_holes()
 
 
 if __name__ == "__main__":

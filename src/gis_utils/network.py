@@ -91,7 +91,7 @@ class Network:
         rows_now = len(gdf)
         gdf = gdf.explode(ignore_index=True)
 
-        if diff := rows_now - len(gdf):
+        if diff := len(gdf) - rows_now:
             if diff == 1:
                 print(
                     f"1 multi-geometry was split into single part geometries. "

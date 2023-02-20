@@ -3,7 +3,9 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from shapely import shortest_line
+from shapely import force_2d, shortest_line
+from shapely.geometry import LineString, Point
+from shapely.ops import unary_union
 from sklearn.neighbors import NearestNeighbors
 
 from .geopandas_utils import gdf_concat, push_geom_col
@@ -349,12 +351,17 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
 
 
 def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoDataFrame:
-    from shapely import force_2d
-    from shapely.geometry import LineString, Point
-    from shapely.ops import unary_union
+    gdf["geometry"] = force_2d(gdf.geometry)
+
+    gdf = gdf.explode(ignore_index=True)
+
+    over_max_length = gdf.loc[gdf.length > max_length]
+
+    if not len(over_max_length):
+        return gdf
 
     def cut(line, distance):
-        """fra shapely-dokumentasjonen"""
+        """from the shapely docs"""
         if distance <= 0.0 or distance >= line.length:
             return line
         coords = list(line.coords)
@@ -375,18 +382,11 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
 
     cut_vektorisert = np.vectorize(cut)
 
-    gdf["geometry"] = force_2d(gdf.geometry)
-
-    gdf = gdf.explode(ignore_index=True)
-
-    over_max_length = gdf.loc[gdf.length > max_length]
-    under_max_length = gdf.loc[gdf.length <= max_length]
-
     for x in [10, 5, 1]:
-        maks_lengde = max(over_max_length.length)
-
-        while maks_lengde > max_length * x + 1:
-            maks_lengde = over_max_length.length.max()
+        _max = max(over_max_length.length)
+        print(_max)
+        while _max > max_length * x + 1:
+            _max = max(over_max_length.length)
 
             over_max_length["geometry"] = cut_vektorisert(
                 over_max_length.geometry, max_length
@@ -394,9 +394,11 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
 
             over_max_length = over_max_length.explode(ignore_index=True)
 
-            if maks_lengde == max(over_max_length.length):
+            if _max == max(over_max_length.length):
                 break
 
     over_max_length = over_max_length.explode(ignore_index=True)
+
+    under_max_length = gdf.loc[gdf.length <= max_length]
 
     return pd.concat([under_max_length, over_max_length], ignore_index=True)

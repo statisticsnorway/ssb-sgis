@@ -8,10 +8,12 @@ import gis_utils as gs
 
 def test_node_ids():
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
     p["idx"] = p.index
     p["idx2"] = p.index
 
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
 
     nw = gs.DirectedNetwork(r)
     rules = gs.NetworkAnalysisRules(cost="meters")
@@ -22,8 +24,8 @@ def test_node_ids():
     nwa.network = nwa.network.close_network_holes(2)
     nwa.network = nwa.network.get_component_size()
     nwa.network = nwa.network.remove_isolated()
-    nwa.network.gdf["kolonne"] = 1
-    nwa.network.gdf = nwa.network.gdf.drop("kolonne", axis=1)
+    nwa.network.gdf["col"] = 1
+    nwa.network.gdf = nwa.network.gdf.drop("col", axis=1)
 
     nwa.network.gdf = nwa.network.gdf.sjoin(
         gs.buff(p[["geometry"]].sample(1), 2500)
@@ -43,6 +45,7 @@ def test_node_ids():
 
 
 def main():
+    """Check how many times make_node_ids is run."""
     import cProfile
 
     cProfile.run("test_node_ids()", sort="cumtime")

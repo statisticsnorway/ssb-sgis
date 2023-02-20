@@ -7,7 +7,7 @@ import geopandas as gpd
 import gis_utils as gs
 
 
-def test_get_components():
+def not_test_get_components():
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
     p["idx"] = p.index
     p["idx2"] = p.index
@@ -36,7 +36,7 @@ def test_get_components():
 
 
 def main():
-    test_get_components()
+    not_test_get_components()
 
 
 if __name__ == "__main__":

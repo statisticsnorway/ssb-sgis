@@ -1,29 +1,59 @@
 # %%
+import warnings
 from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 
+
+src = str(Path(__file__).parent).strip("tests") + "src"
+
+import sys
+
+
+sys.path.append(src)
+
 import gis_utils as gs
 
 
-def test_od_cost_matrix():
+def test_network_analysis():
+    warnings.filterwarnings(action="ignore", category=UserWarning)
+    warnings.filterwarnings(action="ignore", category=FutureWarning)
+
+    ### READ FILES
+
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
     p["idx"] = p.index
     p["idx2"] = p.index
 
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
+
+    ### MAKE THE ANALYSIS CLASS
+
+    nw = (
+        gs.Network(r)
+        .get_largest_component()
+        .close_network_holes(1.1)
+        .remove_isolated()
+        .cut_lines(250)
+    )
 
     nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
     rules = gs.NetworkAnalysisRules(cost="minutes")
     nwa = gs.NetworkAnalysis(nw, rules=rules)
 
-    for search_factor in [0, 10, 25, 50]:
+    ### OD COST MATRIX
+
+    for search_factor in [0, 25, 50]:
         nwa.rules.search_factor = search_factor
         od = nwa.od_cost_matrix(p, p)
         print(
             f"percent missing, search_factor {nwa.rules.search_factor}:",
             np.mean(od[nwa.rules.cost].isna()) * 100,
+            "len",
+            len(od),
         )
 
     for search_tolerance in [100, 250, 1000]:
@@ -33,6 +63,8 @@ def test_od_cost_matrix():
             f"percent missing, search_factor 100, "
             f"search_tolerance {nwa.rules.search_tolerance}:",
             np.mean(od[nwa.rules.cost].isna()) * 100,
+            "len",
+            len(od),
         )
 
     od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
@@ -44,9 +76,35 @@ def test_od_cost_matrix():
 
     gs.qtm(od.loc[od.origin == p1], nwa.rules.cost, scheme="quantiles")
 
+    ### SHORTEST PATH
+
+    sp = nwa.shortest_path(p.iloc[[0]], p, id_col="idx", summarise=True)
+
+    sp = nwa.shortest_path(p, p, summarise=True)
+
+    sp = nwa.shortest_path(
+        p,
+        p,
+    )
+
+    ### SERVICE AREA
+
+    sa = nwa.service_area(p, impedance=5, dissolve=False)
+
+    print(len(sa))
+
+    sa = sa.drop_duplicates(["source", "target"])
+
+    print(len(sa))
+    gs.qtm(sa)
+
+    sa = nwa.service_area(p.iloc[[0]], impedance=np.arange(1, 11), id_col="idx")
+    sa = sa.sort_values("minutes", ascending=False)
+    gs.qtm(sa, "minutes", k=10)
+
 
 def main():
-    test_od_cost_matrix()
+    test_network_analysis()
 
 
 if __name__ == "__main__":

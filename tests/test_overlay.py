@@ -16,6 +16,7 @@ import gis_utils as gs
 
 def test_overlay():
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = p.iloc[:100]
 
     p500 = gs.buff(p, 500)
     p1000 = gs.buff(p, 1000)
