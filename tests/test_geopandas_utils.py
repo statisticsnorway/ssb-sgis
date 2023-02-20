@@ -1,10 +1,4 @@
 # %%
-"""
-Test om funksjonene gir forventede resultater.
-Bruker en fast gdf som aldri må endres.
-Funksjonen test_alt kjøres når man importerer geopandasgreier. Gir advarsel hvis en av
-testene feilet.
-"""
 
 from pathlib import Path
 

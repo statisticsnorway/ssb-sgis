@@ -2,9 +2,6 @@ import sys
 from pathlib import Path
 
 import geopandas as gpd
-import numpy as np
-import pandas as pd
-from shapely.wkt import loads
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
