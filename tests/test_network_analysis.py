@@ -76,16 +76,22 @@ def test_network_analysis():
 
     gs.qtm(od.loc[od.origin == p1], nwa.rules.cost, scheme="quantiles")
 
+    od = nwa.od_cost_matrix(p, p, destination_count=3)
+    assert (od.groupby("origin")["destination"].count() <= 3).all()
+
+    od = nwa.od_cost_matrix(p, p, cutoff=5)
+    assert (od[nwa.rules.cost] <= 5).all()
+
     ### SHORTEST PATH
 
     sp = nwa.shortest_path(p.iloc[[0]], p, id_col="idx", summarise=True)
-
-    sp = nwa.shortest_path(p, p, summarise=True)
+    gs.qtm(sa)
 
     sp = nwa.shortest_path(
         p,
         p,
     )
+    gs.qtm(sa)
 
     ### SERVICE AREA
 

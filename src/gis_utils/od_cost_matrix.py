@@ -39,7 +39,6 @@ def od_cost_matrix(
     """
 
     if not rowwise:
-        # selve avstandsberegningen her:
         results = graph.distances(
             weights="weight",
             source=startpoints["temp_idx"],
@@ -71,23 +70,24 @@ def od_cost_matrix(
     )
 
     if cutoff:
-        out = out[out[cost] < cutoff].reset_index(drop=True)
+        out = out[out[cost] < cutoff]
 
     if destination_count:
         out = out.loc[~out[cost].isna()]
-        out = out.loc[out.groupby("origin")[cost].idxmin()].reset_index(drop=True)
+        cost_ranked = out.groupby("origin")[cost].rank()
+        out = out.loc[cost_ranked <= destination_count]
 
     wkt_dict_origin = {
-        idd: geom.wkt
-        for idd, geom in zip(startpoints["temp_idx"], startpoints.geometry)
+        idx: geom.wkt
+        for idx, geom in zip(startpoints["temp_idx"], startpoints.geometry)
     }
     wkt_dict_destination = {
-        idd: geom.wkt for idd, geom in zip(endpoints["temp_idx"], endpoints.geometry)
+        idx: geom.wkt for idx, geom in zip(endpoints["temp_idx"], endpoints.geometry)
     }
     out["wkt_ori"] = out["origin"].map(wkt_dict_origin)
     out["wkt_des"] = out["destination"].map(wkt_dict_destination)
 
-    out[cost] = np.where(out.wkt_ori != out.wkt_des, out[cost], 0)
+    out[cost] = np.where(out.wkt_ori == out.wkt_des, 0, out[cost])
 
     # lag linjer mellom origin og destination
     if lines:

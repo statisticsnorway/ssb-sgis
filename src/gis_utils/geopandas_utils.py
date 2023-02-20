@@ -246,6 +246,10 @@ def to_gdf(
         crs: if None (default), it uses the crs of the GeoSeries if GeoSeries
             is the input type. Otherwise, an exception is raised, saying that
             crs has to be specified.
+
+    Returns:
+        A GeoDataFrame
+
     """
 
     if not crs:
@@ -443,12 +447,12 @@ def find_neighbours(
     Finds all the geometries in another GeoDataFrame that intersects with the first geometry
 
     Args:
-      gdf (GeoDataFrame | GeoSeries): the geometry
-      possible_neighbours (GeoDataFrame | GeoSeries): the geometries that you want to find neighbours
-    for
-      id_col (str): The column in the GeoDataFrame that contains the unique identifier for each
-    geometry.
-      within_distance (int): The maximum distance between the two geometries. Defaults to 0
+        gdf (GeoDataFrame | GeoSeries): the geometry
+        possible_neighbours (GeoDataFrame | GeoSeries): the geometries that you want to find neighbours
+            for
+        id_col (str): The column in the GeoDataFrame that contains the unique identifier for each
+            geometry.
+        within_distance (int): The maximum distance between the two geometries. Defaults to 0
 
     Returns:
       A list of unique values from the id_col column in the joined dataframe.
