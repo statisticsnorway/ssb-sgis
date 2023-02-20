@@ -1,4 +1,5 @@
 import warnings
+from random import random
 
 import geopandas as gpd
 import numpy as np
@@ -13,7 +14,8 @@ from shapely import (
     get_parts,
     polygons,
 )
-from shapely.ops import unary_union
+from shapely.ops import nearest_points, snap, unary_union
+from shapely.wkt import loads
 
 from .buffer_dissolve_explode import buff
 
@@ -358,8 +360,6 @@ def snap_to(
     GeoDataFrame or GeoSeries.
     """
 
-    from shapely.ops import nearest_points, snap
-
     unioned = snap_to.unary_union
 
     if copy:
@@ -546,23 +546,20 @@ def gridish(
 
 def random_points(n: int, mask=None) -> GeoDataFrame:
     """lager n tilfeldige punkter innenfor et gitt område (mask)."""
-    import random
-
-    from shapely.wkt import loads
 
     if mask is None:
-        x = np.array([random.random() * 10**7 for _ in range(n * 1000)])
-        y = np.array([random.random() * 10**8 for _ in range(n * 1000)])
+        x = np.array([random() * 10**7 for _ in range(n * 1000)])
+        y = np.array([random() * 10**8 for _ in range(n * 1000)])
         punkter = to_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
         return punkter
     mask_kopi = mask.copy()
     mask_kopi = mask_kopi.to_crs(25833)
     out = GeoDataFrame({"geometry": []}, geometry="geometry", crs=25833)
     while len(out) < n:
-        x = np.array([random.random() * 10**7 for _ in range(n * 1000)])
+        x = np.array([random() * 10**7 for _ in range(n * 1000)])
         x = x[(x > mask_kopi.bounds.minx.iloc[0]) & (x < mask_kopi.bounds.maxx.iloc[0])]
 
-        y = np.array([random.random() * 10**8 for _ in range(n * 1000)])
+        y = np.array([random() * 10**8 for _ in range(n * 1000)])
         y = y[(y > mask_kopi.bounds.miny.iloc[0]) & (y < mask_kopi.bounds.maxy.iloc[0])]
 
         punkter = to_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)

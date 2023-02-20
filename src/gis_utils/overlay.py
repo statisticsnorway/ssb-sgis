@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from shapely import STRtree, difference, intersection, union_all
+from shapely.wkt import dumps, loads
 
 from .geopandas_utils import clean_geoms, gdf_concat, push_geom_col
 
@@ -274,8 +275,6 @@ def try_overlay(
         return gdf1.overlay(gdf2, **kwargs)
 
     except Exception:
-        from shapely.wkt import dumps, loads
-
         # loop through list from 10 to 'max_rounding'
 
         roundings = list(range(max_rounding, 11))
@@ -310,8 +309,6 @@ def try_overlay(
 
 
 def make_valid_with_equal_precision(gdf, precision: int = 10):
-    from shapely.wkt import dumps, loads
-
     while True:
         gdf.geometry = [
             loads(dumps(geom, rounding_precision=precision)) for geom in gdf.geometry
