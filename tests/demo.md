@@ -3,10 +3,10 @@
 Network analysis with igraph, integrated with geopandas.
 
 The package supports three types of network analysis:
+
 - od_cost_matrix: fast many-to-many travel times/distances
 - shortest_path: returns the geometry of the lowest-cost paths.
 - service_area: returns the roads that can be reached within one or more impedances.
-
 
 ```python
 import geopandas as gpd
@@ -27,14 +27,10 @@ os.chdir("..")
 
 Let's start by loading the data:
 
-
 ```python
 points = gpd.read_parquet("tests/testdata/random_points.parquet")
 points
 ```
-
-
-
 
 <div>
 <style scoped>
@@ -49,6 +45,7 @@ points
     .dataframe thead th {
         text-align: right;
     }
+
 </style>
 <table border="1" class="dataframe">
   <thead>
@@ -119,17 +116,11 @@ points
 <p>1000 rows × 2 columns</p>
 </div>
 
-
-
-
 ```python
 roads = gpd.read_parquet("tests/testdata/roads_oslo_2022.parquet")
 roads = roads[["oneway", "drivetime_fw", "drivetime_bw", "geometry"]]
 roads.head(3)
 ```
-
-
-
 
 <div>
 <style scoped>
@@ -144,6 +135,7 @@ roads.head(3)
     .dataframe thead th {
         text-align: right;
     }
+
 </style>
 <table border="1" class="dataframe">
   <thead>
@@ -181,30 +173,18 @@ roads.head(3)
 </table>
 </div>
 
-
-
 ## The Network
-
 
 ```python
 nw = gs.Network(roads)
 nw
 ```
 
-
-
-
     Network class instance with 93395 rows and a length of 3851 km.
-
-
-
 
 ```python
 nw.gdf.head(3)
 ```
-
-
-
 
 <div>
 <style scoped>
@@ -219,6 +199,7 @@ nw.gdf.head(3)
     .dataframe thead th {
         text-align: right;
     }
+
 </style>
 <table border="1" class="dataframe">
   <thead>
@@ -284,10 +265,7 @@ nw.gdf.head(3)
 </table>
 </div>
 
-
-
 The network class includes methods for optimizing the road data. More about this further down in this notebook.
-
 
 ```python
 nw = (
@@ -298,41 +276,32 @@ nw = (
 nw
 ```
 
-
-
-
     Network class instance with 132399 rows and a length of 3832 km.
 
-
-
 For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.
-
 
 ```python
 nw = gs.DirectedNetwork(roads).remove_isolated()
 nw
 ```
 
-    c:\Users\ort\git\ssb-gis-utils\src\gis_utils\directednetwork.py:31: UserWarning: 
-    Your network does not seem to be directed. 
+    c:\Users\ort\git\ssb-gis-utils\src\gis_utils\directednetwork.py:31: UserWarning:
+    Your network does not seem to be directed.
     Try running 'make_directed_network' or 'make_directed_network_osm'.
     With 'make_directed_network', specify the direction column (e.g. 'oneway'),
     and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T")).
-                
+
       warnings.warn(
-    
+
 
 
 
 
     DirectedNetwork class instance with 85638 rows and 12 columns.
 
+The above warning suggests that the data might not be directed yet. This is correct. The roads going both ways, only appear once, and the roads going backwards, have to be flipped around.
 
-
-The above warning suggests that the data might not be directed yet. This is correct. The roads going both ways, only appear once, and the roads going backwards, have to be flipped around. 
-
-This can be done in the make_directed_network method. 
-
+This can be done in the make_directed_network method.
 
 ```python
 nw2 = nw.copy()
@@ -346,34 +315,22 @@ nw2 = nw2.make_directed_network(
 nw2
 ```
 
-
-
-
     DirectedNetwork class instance with 160137 rows and 13 columns.
-
-
 
 The roads now have almost twice as many rows, since most roads are bidirectional in this network.
 
 OpenStreetMap road data and Norwegian road network can be made directional with custom methods, where the default parameters should give the correct results:
 
-
 ```python
 # nw.make_directed_network_osm()
 ```
-
 
 ```python
 nw = nw.make_directed_network_norway()
 nw
 ```
 
-
-
-
     DirectedNetwork class instance with 160137 rows and 13 columns.
-
-
 
 ## NetworkAnalysis
 
@@ -381,21 +338,14 @@ The NetworkAnalysis class takes a network and some rules.
 
 This will set the rules to its default values:
 
-
 ```python
 rules = gs.NetworkAnalysisRules(cost="minutes")
 rules
 ```
 
-
-
-
     NetworkAnalysisRules(cost=minutes, search_tolerance=250, search_factor=10, cost_to_nodes=5)
 
-
-
 Now we have what we need to start the network analysis.
-
 
 ```python
 nwa = gs.NetworkAnalysis(
@@ -405,24 +355,14 @@ nwa = gs.NetworkAnalysis(
 nwa
 ```
 
-
-
-
-    
     NetworkAnalysis(cost=minutes, search_tolerance=250, search_factor=10, cost_to_nodes=5)
 
-
-
 od_cost_matrix calculates the traveltime from a set of startpoints to a set of endpoints:
-
 
 ```python
 od = nwa.od_cost_matrix(points, points, id_col="idx")
 od
 ```
-
-
-
 
 <div>
 <style scoped>
@@ -437,6 +377,7 @@ od
     .dataframe thead th {
         text-align: right;
     }
+
 </style>
 <table border="1" class="dataframe">
   <thead>
@@ -519,10 +460,7 @@ od
 <p>1000000 rows × 3 columns</p>
 </div>
 
-
-
 Set 'lines' to True to get straight lines between origin and destination:
-
 
 ```python
 od = nwa.od_cost_matrix(points.sample(1), points, lines=True)
@@ -535,14 +473,9 @@ gs.qtm(
 )
 ```
 
-
-    
 ![png](demo_files/demo_25_0.png)
-    
 
-
-The shortest_path method can be used to get the actual paths: 
-
+The shortest_path method can be used to get the actual paths:
 
 ```python
 sp = nwa.shortest_path(points.iloc[[0]], points.sample(100), id_col="idx")
@@ -551,9 +484,6 @@ gs.qtm(sp, "minutes", cmap=gs.chop_cmap("RdPu", 0.2), title="Travel times")
 
 sp
 ```
-
-
-
 
 <div>
 <style scoped>
@@ -568,6 +498,7 @@ sp
     .dataframe thead th {
         text-align: right;
     }
+
 </style>
 <table border="1" class="dataframe">
   <thead>
@@ -662,16 +593,9 @@ sp
 <p>100 rows × 4 columns</p>
 </div>
 
-
-
-
-    
 ![png](demo_files/demo_27_1.png)
-    
-
 
 Set 'summarise' to True to get the number of times each road segment was used. This is faster than not summarising, because no dissolve is done.
-
 
 ```python
 sp = nwa.shortest_path(points.sample(150), points.sample(150), summarise=True)
@@ -686,24 +610,16 @@ gs.qtm(
 )
 ```
 
-
-    
 ![png](demo_files/demo_29_0.png)
-    
 
-
-The service_area method finds the area that can be reached within one or more impedances. 
+The service_area method finds the area that can be reached within one or more impedances.
 
 Here, we find the areas that can be reached within 5, 10 and 15 minutes for five random points:
-
 
 ```python
 sa = nwa.service_area(points.sample(5), impedance=(5, 10, 15), id_col="idx")
 sa
 ```
-
-
-
 
 <div>
 <style scoped>
@@ -718,6 +634,7 @@ sa
     .dataframe thead th {
         text-align: right;
     }
+
 </style>
 <table border="1" class="dataframe">
   <thead>
@@ -805,9 +722,6 @@ sa
 </table>
 </div>
 
-
-
-
 ```python
 sa = (
     nwa.service_area(points.iloc[[0]], impedance=np.arange(1, 11))
@@ -816,14 +730,9 @@ sa = (
 gs.qtm(sa, "minutes", k=9, title="Area that can be reached within 1 to 10 minutes.")
 ```
 
-
-    
 ![png](demo_files/demo_32_0.png)
-    
-
 
 Set 'dissolve' to False to get every road segment returned, one for each service area that uses the segment. If there are a lot of overlapping service areas, that are to be dissolved in the end, removing duplicates first will make things a whole lot faster.
-
 
 ```python
 sa = nwa.service_area(points.sample(250), impedance=5, dissolve=False)
@@ -839,44 +748,35 @@ gs.qtm(sa)
 
     1445557
     151225
-    
 
-
-    
 ![png](demo_files/demo_34_1.png)
-    
-
 
 ### Customising the network
-
 
 ```python
 nw = gs.DirectedNetwork(roads)
 nw
 ```
 
-    c:\Users\ort\git\ssb-gis-utils\src\gis_utils\directednetwork.py:31: UserWarning: 
-    Your network does not seem to be directed. 
+    c:\Users\ort\git\ssb-gis-utils\src\gis_utils\directednetwork.py:31: UserWarning:
+    Your network does not seem to be directed.
     Try running 'make_directed_network' or 'make_directed_network_osm'.
     With 'make_directed_network', specify the direction column (e.g. 'oneway'),
     and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T")).
-                
+
       warnings.warn(
-    
+
 
 
 
 
     DirectedNetwork class instance with 93395 rows and 11 columns.
 
-
-
 Networks often consist of one large, connected network and many small, isolated "network islands".
 
-Start- and endpoints located inside these isolated networks, will have a hard time finding their way out. 
+Start- and endpoints located inside these isolated networks, will have a hard time finding their way out.
 
 The large, connected network component can be found with the method get_largest_component:
-
 
 ```python
 nw = nw.get_largest_component()
@@ -892,14 +792,9 @@ gs.clipmap(
 )
 ```
 
-
-    
 ![png](demo_files/demo_38_0.png)
-    
-
 
 Use the remove_isolated method to remove the unconnected roads:
-
 
 ```python
 nw = nw.remove_isolated()
@@ -913,51 +808,29 @@ gs.clipmap(
 nw
 ```
 
-
-
-
     DirectedNetwork class instance with 85638 rows and 12 columns.
 
-
-
-
-    
 ![png](demo_files/demo_40_1.png)
-    
-
 
 If your road data has small gaps between the segments, these can be populated with straight lines:
-
 
 ```python
 nw = nw.close_network_holes(max_dist=1.5)  # meters
 nw
 ```
 
-
-
-
     DirectedNetwork class instance with 86929 rows and 13 columns.
 
+The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the endpoint will either be reached or not within the impedance. This can be fixed by cutting all lines to a maximum distance.
 
-
-The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the endpoint will either be reached or not within the impedance. This can be fixed by cutting all lines to a maximum distance. 
-
-Note: cutting the lines can be time consuming for large networks and low maximum distances. 
-
+Note: cutting the lines can be time consuming for large networks and low maximum distances.
 
 ```python
 nw = nw.cut_lines(25)  # meters
 nw
 ```
 
-
-
-
     DirectedNetwork class instance with 399231 rows and 13 columns.
-
-
-
 
 ```python
 

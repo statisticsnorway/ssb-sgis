@@ -194,7 +194,7 @@ def _shapely_intersection(pairs: GeoDataFrame) -> GeoDataFrame:
 
 def _shapely_difference_left(pairs, df1):
     """Aggregate areas in right by unique values of left, then use those to clip
-    areas out of left """
+    areas out of left"""
     clip_left = gpd.GeoDataFrame(
         pairs.groupby(level=0).agg(
             {
@@ -213,7 +213,7 @@ def _shapely_difference_left(pairs, df1):
         clip_left.geometry.values, clip_left.geom_right.values
     )
     clip_left = clip_left.drop(columns=["geom_right"])
-    
+
     return clip_left
 
 

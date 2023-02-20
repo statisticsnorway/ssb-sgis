@@ -9,7 +9,7 @@ Functions that buffer, dissolve and/or explodes (multipart to singlepart) geodat
 
 Rules that apply to all functions:
  - higher buffer-resolution (50) than the default (16) for accuracy's sake.
- - fixes geometries after buffer dissolve, but not after explode, 
+ - fixes geometries after buffer dissolve, but not after explode,
   since fixing geometries might result in multipart geometries.
  - ignoring and reseting index. Columns containing 'index' or 'level_' are removed.
 """

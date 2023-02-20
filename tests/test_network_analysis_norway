@@ -22,7 +22,7 @@ def not_test_network_analysis_norway():
     test_service_area()
     test_od_cost_matrix()
 
-    
+
 def main():
 
     import cProfile
