@@ -25,6 +25,22 @@ Use the following command from the root directory to run the tests:
 poetry run pytest  # from root directory
 ```
 
+#### Jupyter Notebooks
+
+The files ending with `_ipynb.py` in the tests directory are jupyter notebooks
+stored as plain python files, using `jupytext`. To open them as Jupyter notebooks,
+right-click on them in JupyterLab and select Open With &rarr; Notebook.
+
+When testing locally, start JupyterLab with this command:
+
+```shell
+poetry run jupter lab
+```
+
+For VS Code there are extensions for opening a python script as Jupyter Notebook,
+for example:
+[Jupytext for Notebooks](https://marketplace.visualstudio.com/items?itemName=donjayamanne.vscode-jupytext).
+
 ### Formatting
 
 Format the code with `black` and `isort` by running the following command from the
