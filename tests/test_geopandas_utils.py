@@ -1,3 +1,4 @@
+# %%
 """
 Test om funksjonene gir forventede resultater.
 Bruker en fast gdf som aldri må endres.
@@ -5,10 +6,20 @@ Funksjonen test_alt kjøres når man importerer geopandasgreier. Gir advarsel hv
 testene feilet.
 """
 
+from pathlib import Path
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 from shapely.wkt import loads
+
+
+src = str(Path(__file__).parent).strip("tests") + "src"
+
+import sys
+
+
+sys.path.append(src)
 
 import gis_utils as gs
 
@@ -176,10 +187,19 @@ def test_gridish(gdf_fixture):
 def test_snap(gdf_fixture):
     punkter = gdf_fixture[gdf_fixture.length == 0]
     annet = gdf_fixture[gdf_fixture.length != 0]
-    snappet = gs.snap_to(punkter, annet, maks_distanse=50000, copy=True)
-    assert all(snappet.intersects(annet.buffer(1).unary_union))
-    snappet = gs.snap_to(punkter, annet, maks_distanse=50)
-    assert sum(snappet.intersects(annet.buffer(1).unary_union)) == 3
+    snapped = gs.snap_to(punkter, annet, max_dist=None, copy=True)
+    assert all(snapped.intersects(annet.buffer(1).unary_union))
+    snapped = gs.snap_to(punkter, annet, max_dist=200, copy=True)
+    assert sum(snapped.intersects(annet.buffer(1).unary_union)) == 3
+    snapped = gs.snap_to(punkter, annet, max_dist=20, copy=True)
+    assert sum(snapped.intersects(annet.buffer(1).unary_union)) == 1
+
+    snapped = gs.snap_to(punkter, annet, max_dist=None, to_vertex=True, copy=True)
+
+    assert all(
+        geom in list(gs.to_multipoint(annet).explode().geometry)
+        for geom in snapped.geometry
+    )
 
 
 def test_count_within_distance(gdf_fixture):
@@ -216,6 +236,14 @@ def main():
     print(f"{geos_versjon    = }")
     print(f"{pd.__version__  = }")
     print(f"{np.__version__  = }")
+
+    src = str(Path(__file__).parent).strip("tests") + "src"
+
+    sys.path.append(src)
+
+    from conftest import make_gdf
+
+    test_snap(make_gdf())
 
     print("Success")
 
