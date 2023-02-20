@@ -148,7 +148,7 @@ def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataF
             return _shapely_intersection(pairs)
 
         if how == "difference":
-            return push_geom_col(clip_left)
+            return push_geom_col(pairs)
 
         if how == "union" or how == "identity":
             intersections = _shapely_intersection(pairs)
@@ -193,8 +193,8 @@ def _shapely_intersection(pairs: GeoDataFrame) -> GeoDataFrame:
 
 
 def _shapely_difference_left(pairs, df1):
-    # aggregate areas in right by unique values of left, then use those to clip
-    # areas out of left
+    """Aggregate areas in right by unique values of left, then use those to clip
+    areas out of left """
     clip_left = gpd.GeoDataFrame(
         pairs.groupby(level=0).agg(
             {
@@ -213,6 +213,7 @@ def _shapely_difference_left(pairs, df1):
         clip_left.geometry.values, clip_left.geom_right.values
     )
     clip_left = clip_left.drop(columns=["geom_right"])
+    
     return clip_left
 
 
@@ -250,7 +251,7 @@ def try_overlay(
     gdf2: GeoDataFrame,
     presicion_col: bool = True,
     max_rounding: int = 3,
-    single_geomtype: bool = True,
+    single_geom_type: bool = True,
     **kwargs,
 ) -> GeoDataFrame:
     """
@@ -267,8 +268,8 @@ def try_overlay(
     """
 
     try:
-        gdf1 = clean_geoms(gdf1, single_geomtype=single_geomtype)
-        gdf2 = clean_geoms(gdf2, single_geomtype=single_geomtype)
+        gdf1 = clean_geoms(gdf1, single_geom_type=single_geom_type)
+        gdf2 = clean_geoms(gdf2, single_geom_type=single_geom_type)
         return gdf1.overlay(gdf2, **kwargs)
 
     except Exception:
@@ -282,16 +283,16 @@ def try_overlay(
         for rounding in roundings:
             try:
                 gdf1.geometry = [
-                    loads(dumps(gdf, rounding_precision=rounding))
+                    loads(dumps(gdf1, rounding_precision=rounding))
                     for geom in gdf1.geometry
                 ]
                 gdf2.geometry = [
-                    loads(dumps(gdf, rounding_precision=rounding))
+                    loads(dumps(gdf2, rounding_precision=rounding))
                     for geom in gdf2.geometry
                 ]
 
-                gdf1 = clean_geoms(gdf1, single_geomtype=single_geomtype)
-                gdf2 = clean_geoms(gdf2, single_geomtype=single_geomtype)
+                gdf1 = clean_geoms(gdf1, single_geom_type=single_geom_type)
+                gdf2 = clean_geoms(gdf2, single_geom_type=single_geom_type)
 
                 overlayet = gdf1.overlay(gdf2, **kwargs)
 
