@@ -2,17 +2,9 @@
 from pathlib import Path
 
 import geopandas as gpd
-
 import cProfile
 
 def not_test_network_analysis_norway():
-    import os
-
-    os.chdir("../src")
-
-    import gis_utils as gs
-
-    os.chdir("..")
 
     from tests.test_od_cost_matrix import test_od_cost_matrix
     from tests.test_shortest_path import test_shortest_path
