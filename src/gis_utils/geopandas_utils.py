@@ -126,7 +126,7 @@ def to_single_geom_type(
 
 
 def close_holes(
-    gdf: GeoDataFrame | GeoSeries | Geometry,
+    polygons: GeoDataFrame | GeoSeries | Geometry,
     max_km2: int | None = None,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries | Geometry:
@@ -134,7 +134,7 @@ def close_holes(
     It closes holes in polygons of a GeoDataFrame, GeoSeries or shapely Geometry.
 
     Args:
-      gdf: GeoDataFrame, GeoSeries or shapely Geometry.
+      polygons: GeoDataFrame, GeoSeries or shapely Geometry.
       max_km2 (int | None): if None (default), all holes are closed.
         Otherwise, closes holes with an area below the specified number in
         square kilometers if the crs unit is in meters.
@@ -146,33 +146,35 @@ def close_holes(
     """
 
     if copy:
-        gdf = gdf.copy()
+        polygons = polygons.copy()
 
-    if isinstance(gdf, GeoDataFrame):
-        gdf["geometry"] = gdf.geometry.map(lambda x: _close_holes_geom(x, max_km2))
+    if isinstance(polygons, GeoDataFrame):
+        polygons["geometry"] = polygons.geometry.map(
+            lambda x: _close_holes_geom(x, max_km2)
+        )
 
-    elif isinstance(gdf, gpd.GeoSeries):
-        gdf = gdf.map(lambda x: _close_holes_geom(x, max_km2))
-        gdf = gpd.GeoSeries(gdf)
+    elif isinstance(polygons, gpd.GeoSeries):
+        polygons = polygons.map(lambda x: _close_holes_geom(x, max_km2))
+        polygons = gpd.GeoSeries(polygons)
 
     else:
-        gdf = _close_holes_geom(gdf, max_km2)
+        polygons = _close_holes_geom(polygons, max_km2)
 
-    return gdf
+    return polygons
 
 
-def _close_holes_geom(geom, max_km2=None):
-    """closes holes within one shapely geometry."""
+def _close_holes_geom(polygons, max_km2=None):
+    """closes holes within one shapely geometry of polygons."""
 
     # dissolve the exterior ring(s)
     if max_km2 is None:
-        holes_closed = polygons(get_exterior_ring(get_parts(geom)))
+        holes_closed = polygons(get_exterior_ring(get_parts(polygons)))
         return unary_union(holes_closed)
 
-    # start with a list containing the geometry,
+    # start with a list containing the polygonsetry,
     # then append all holes smaller than 'max_km2' to the list.
-    holes_closed = [geom]
-    singlepart = get_parts(geom)
+    holes_closed = [polygons]
+    singlepart = get_parts(polygons)
     for part in singlepart:
         n_interior_rings = get_num_interior_rings(part)
 
@@ -441,7 +443,7 @@ def find_neighbours(
     gdf: GeoDataFrame | GeoSeries,
     possible_neighbours: GeoDataFrame | GeoSeries,
     id_col: str,
-    within_distance: int = 0,
+    max_dist: int = 0,
 ) -> list:
     """
     Finds all the geometries in another GeoDataFrame that intersects with the first geometry
@@ -452,19 +454,19 @@ def find_neighbours(
             for
         id_col (str): The column in the GeoDataFrame that contains the unique identifier for each
             geometry.
-        within_distance (int): The maximum distance between the two geometries. Defaults to 0
+        max_dist (int): The maximum distance between the two geometries. Defaults to 0
 
     Returns:
       A list of unique values from the id_col column in the joined dataframe.
     """
 
-    if within_distance:
+    if max_dist:
         if gdf.crs == 4326:
             warnings.warn(
-                "'gdf' has latlon crs, meaning the 'within_distance' paramter "
+                "'gdf' has latlon crs, meaning the 'max_dist' paramter "
                 "will not be in meters, but degrees."
             )
-        gdf = gdf.buffer(within_distance).to_frame()
+        gdf = gdf.buffer(max_dist).to_frame()
 
     possible_neighbours = possible_neighbours.to_crs(gdf.crs)
 
@@ -477,10 +479,10 @@ def find_neighbors(
     gdf: GeoDataFrame | GeoSeries,
     possible_neighbors: GeoDataFrame | GeoSeries,
     id_col: str,
-    within_distance: int = 0,
+    max_dist: int = 0,
 ):
     """American alias for find_neighbours."""
-    return find_neighbours(gdf, possible_neighbors, id_col, within_distance)
+    return find_neighbours(gdf, possible_neighbors, id_col, max_dist)
 
 
 def gridish(
@@ -575,19 +577,19 @@ def random_points(n: int, mask=None) -> GeoDataFrame:
 
 
 def count_within_distance(
-    gdf1: GeoDataFrame, gdf2: GeoDataFrame, distance=0, col_name="n"
+    gdf1: GeoDataFrame, gdf2: GeoDataFrame, max_dist=0, col_name="n"
 ) -> GeoDataFrame:
     """
     Teller opp antall nærliggende eller overlappende (hvis avstan=0) geometrier i
     to geodataframes. gdf1 returneres med en ny kolonne ('antall') som forteller hvor
-    mange geometrier (rader) fra gdf2 som er innen spesifisert distance.
+    mange geometrier (rader) fra gdf2 som er innen spesifisert max_dist.
     """
 
     gdf1["temp_idx"] = range(len(gdf1))
     gdf2["temp_idx2"] = range(len(gdf2))
 
-    if distance > 0:
-        gdf2 = buff(gdf2[["geometry"]], distance)
+    if max_dist > 0:
+        gdf2 = buff(gdf2[["geometry"]], max_dist)
 
     joined = (
         gdf1[["temp_idx", "geometry"]]
