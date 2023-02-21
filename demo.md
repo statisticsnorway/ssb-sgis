@@ -40,13 +40,13 @@ points = gpd.read_parquet("tests/testdata/random_points.parquet")
 
 ```
 
-| idx |                  geometry                   |
-| :-: | :-----------------------------------------: |
-|  1  |         POINT (263122.7 6651184.9)          |
-|  2  |         POINT (272456.1 6653369.5)          |
-|  3  | POINT (270082.2999999999 6653032.699999999) |
-|  4  |     POINT (259804.8000000001 6650339.7)     |
-|  5  | POINT (272876.2000000001 6652889.099999999) |
+| idx |                                    geometry |
+| --: | ------------------------------------------: |
+|   1 |                  POINT (263122.7 6651184.9) |
+|   2 |                  POINT (272456.1 6653369.5) |
+|   3 | POINT (270082.2999999999 6653032.699999999) |
+|   4 |         POINT (259804.8000000001 6650339.7) |
+|   5 | POINT (272876.2000000001 6652889.099999999) |
 
 ```
 
@@ -58,7 +58,7 @@ roads.head(3)
 
 # The Network
 
-The road data can be made into a network like
+The road data can be made into a network like this
 
 ```
 
@@ -66,6 +66,8 @@ nw = gs.Network(roads)
 nw
 
 ```
+
+<img src="./tests/demo_files/demo_22_0.png" width="300"/>
 
 ```
 
