@@ -9,20 +9,24 @@ The package supports three types of network analysis:
 - service_area: returns the roads that can be reached within one or more impedances.
 
 ```python
+import warnings
 import geopandas as gpd
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-pd.options.mode.chained_assignment = None  # ignore SettingWithCopyWarning for now
-
 import os
+import pandas as pd
+import numpy as np
 
 os.chdir("../src")
 
 import gis_utils as gs
 
 os.chdir("..")
+```
+
+```python
+# ignore some warnings to make it cleaner
+pd.options.mode.chained_assignment = None
+warnings.filterwarnings(action="ignore", category=UserWarning)
+warnings.filterwarnings(action="ignore", category=FutureWarning)
 ```
 
 Let's start by loading the data:
@@ -268,15 +272,11 @@ nw.gdf.head(3)
 The network class includes methods for optimizing the road data. More about this further down in this notebook.
 
 ```python
-nw = (
-    nw.close_network_holes(1.5)
-    .remove_isolated()
-    .cut_lines(100)
-)
+nw = nw.close_network_holes(1.5).remove_isolated().cut_lines(250)
 nw
 ```
 
-    Network class instance with 132399 rows and a length of 3832 km.
+    Network class instance with 105288 rows and a length of 3832 km.
 
 For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.
 
@@ -285,19 +285,13 @@ nw = gs.DirectedNetwork(roads).remove_isolated()
 nw
 ```
 
-    c:\Users\ort\git\ssb-gis-utils\src\gis_utils\directednetwork.py:31: UserWarning:
-    Your network does not seem to be directed.
-    Try running 'make_directed_network' or 'make_directed_network_osm'.
-    With 'make_directed_network', specify the direction column (e.g. 'oneway'),
-    and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T")).
-
-      warnings.warn(
-
-
-
-
-
     DirectedNetwork class instance with 85638 rows and 12 columns.
+
+```python
+isinstance(nw, gs.Network)
+```
+
+    True
 
 The above warning suggests that the data might not be directed yet. This is correct. The roads going both ways, only appear once, and the roads going backwards, have to be flipped around.
 
@@ -319,11 +313,7 @@ nw2
 
 The roads now have almost twice as many rows, since most roads are bidirectional in this network.
 
-OpenStreetMap road data and Norwegian road network can be made directional with custom methods, where the default parameters should give the correct results:
-
-```python
-# nw.make_directed_network_osm()
-```
+Norwegian road network can be made directional with custom methods, where the default parameters should give the correct results:
 
 ```python
 nw = nw.make_directed_network_norway()
@@ -348,10 +338,7 @@ rules
 Now we have what we need to start the network analysis.
 
 ```python
-nwa = gs.NetworkAnalysis(
-    network=nw,
-    rules=rules
-)
+nwa = gs.NetworkAnalysis(network=nw, rules=rules)
 nwa
 ```
 
@@ -473,7 +460,7 @@ gs.qtm(
 )
 ```
 
-![png](demo_files/demo_25_0.png)
+![png](demo_files/demo_26_0.png)
 
 The shortest_path method can be used to get the actual paths:
 
@@ -514,37 +501,37 @@ sp
     <tr>
       <th>0</th>
       <td>1</td>
-      <td>155</td>
-      <td>25.173575</td>
-      <td>MULTILINESTRING Z ((263657.065 6639633.600 95....</td>
+      <td>969</td>
+      <td>7.071388</td>
+      <td>MULTILINESTRING Z ((265921.420 6652983.780 200...</td>
     </tr>
     <tr>
       <th>1</th>
       <td>1</td>
-      <td>94</td>
-      <td>22.320564</td>
-      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
+      <td>793</td>
+      <td>17.600763</td>
+      <td>MULTILINESTRING Z ((266643.500 6642094.400 151...</td>
     </tr>
     <tr>
       <th>2</th>
       <td>1</td>
-      <td>529</td>
-      <td>11.734803</td>
-      <td>MULTILINESTRING Z ((265035.261 6646071.360 167...</td>
+      <td>451</td>
+      <td>15.086112</td>
+      <td>MULTILINESTRING Z ((256637.800 6653432.100 150...</td>
     </tr>
     <tr>
       <th>3</th>
       <td>1</td>
-      <td>971</td>
-      <td>11.081780</td>
-      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+      <td>542</td>
+      <td>14.490566</td>
+      <td>MULTILINESTRING Z ((263813.240 6645595.740 101...</td>
     </tr>
     <tr>
       <th>4</th>
       <td>1</td>
-      <td>112</td>
-      <td>11.414343</td>
-      <td>MULTILINESTRING Z ((265808.097 6646476.613 122...</td>
+      <td>828</td>
+      <td>16.865093</td>
+      <td>MULTILINESTRING Z ((272938.038 6653749.515 196...</td>
     </tr>
     <tr>
       <th>...</th>
@@ -556,49 +543,49 @@ sp
     <tr>
       <th>95</th>
       <td>1</td>
-      <td>800</td>
-      <td>4.090858</td>
-      <td>MULTILINESTRING Z ((263653.383 6650170.636 27....</td>
+      <td>955</td>
+      <td>15.188677</td>
+      <td>MULTILINESTRING Z ((264750.600 6644501.300 123...</td>
     </tr>
     <tr>
       <th>96</th>
       <td>1</td>
-      <td>484</td>
-      <td>3.513541</td>
-      <td>MULTILINESTRING Z ((262863.700 6650489.600 19....</td>
+      <td>133</td>
+      <td>7.563836</td>
+      <td>MULTILINESTRING Z ((265611.900 6651045.190 94....</td>
     </tr>
     <tr>
       <th>97</th>
       <td>1</td>
-      <td>404</td>
-      <td>17.001788</td>
-      <td>MULTILINESTRING Z ((272281.367 6653079.745 160...</td>
+      <td>351</td>
+      <td>11.900012</td>
+      <td>MULTILINESTRING Z ((270449.853 6654028.293 184...</td>
     </tr>
     <tr>
       <th>98</th>
       <td>1</td>
-      <td>398</td>
-      <td>9.689767</td>
-      <td>MULTILINESTRING Z ((258781.100 6652368.597 70....</td>
+      <td>131</td>
+      <td>10.680028</td>
+      <td>MULTILINESTRING Z ((269875.369 6653604.721 160...</td>
     </tr>
     <tr>
       <th>99</th>
       <td>1</td>
-      <td>776</td>
-      <td>10.366584</td>
-      <td>MULTILINESTRING Z ((259299.882 6652137.025 58....</td>
+      <td>430</td>
+      <td>15.878928</td>
+      <td>MULTILINESTRING Z ((265209.481 6643646.566 136...</td>
     </tr>
   </tbody>
 </table>
 <p>100 rows × 4 columns</p>
 </div>
 
-![png](demo_files/demo_27_1.png)
+![png](demo_files/demo_28_1.png)
 
 Set 'summarise' to True to get the number of times each road segment was used. This is faster than not summarising, because no dissolve is done.
 
 ```python
-sp = nwa.shortest_path(points.sample(150), points.sample(150), summarise=True)
+sp = nwa.shortest_path(points.sample(100), points.sample(100), summarise=True)
 
 gs.qtm(
     sp,
@@ -610,7 +597,7 @@ gs.qtm(
 )
 ```
 
-![png](demo_files/demo_29_0.png)
+![png](demo_files/demo_30_0.png)
 
 The service_area method finds the area that can be reached within one or more impedances.
 
@@ -649,73 +636,91 @@ sa
     <tr>
       <th>0</th>
       <td>5</td>
-      <td>502</td>
-      <td>MULTILINESTRING Z ((256284.280 6651413.280 84....</td>
+      <td>665</td>
+      <td>MULTILINESTRING Z ((264802.500 6653645.400 184...</td>
     </tr>
     <tr>
       <th>1</th>
       <td>10</td>
-      <td>502</td>
-      <td>MULTILINESTRING Z ((257935.700 6651969.000 80....</td>
+      <td>665</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>2</th>
       <td>15</td>
-      <td>502</td>
+      <td>665</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>3</th>
       <td>5</td>
-      <td>416</td>
-      <td>MULTILINESTRING Z ((258018.154 6650524.353 16....</td>
+      <td>649</td>
+      <td>MULTILINESTRING Z ((270233.009 6655379.237 238...</td>
     </tr>
     <tr>
       <th>4</th>
       <td>10</td>
-      <td>416</td>
-      <td>MULTILINESTRING Z ((262670.900 6647824.940 2.2...</td>
+      <td>649</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
     <tr>
       <th>5</th>
       <td>15</td>
-      <td>416</td>
+      <td>649</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>6</th>
       <td>5</td>
-      <td>746</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>187</td>
+      <td>MULTILINESTRING Z ((257922.652 6655163.375 336...</td>
     </tr>
     <tr>
       <th>7</th>
       <td>10</td>
-      <td>746</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>187</td>
+      <td>MULTILINESTRING Z ((258147.795 6657045.202 473...</td>
     </tr>
     <tr>
       <th>8</th>
       <td>15</td>
-      <td>746</td>
-      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
+      <td>187</td>
+      <td>MULTILINESTRING Z ((255781.500 6658998.540 152...</td>
     </tr>
     <tr>
       <th>9</th>
       <td>5</td>
-      <td>500</td>
-      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
+      <td>969</td>
+      <td>MULTILINESTRING Z ((266443.113 6653595.795 204...</td>
     </tr>
     <tr>
       <th>10</th>
       <td>10</td>
-      <td>500</td>
+      <td>969</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>11</th>
       <td>15</td>
-      <td>500</td>
+      <td>969</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+    </tr>
+    <tr>
+      <th>12</th>
+      <td>5</td>
+      <td>632</td>
+      <td>MULTILINESTRING Z ((259185.676 6652656.707 76....</td>
+    </tr>
+    <tr>
+      <th>13</th>
+      <td>10</td>
+      <td>632</td>
+      <td>MULTILINESTRING Z ((257922.652 6655163.375 336...</td>
+    </tr>
+    <tr>
+      <th>14</th>
+      <td>15</td>
+      <td>632</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
   </tbody>
@@ -723,33 +728,32 @@ sa
 </div>
 
 ```python
-sa = (
-    nwa.service_area(points.iloc[[0]], impedance=np.arange(1, 11))
-    .sort_values("minutes", ascending=False)
+sa = nwa.service_area(points.iloc[[0]], impedance=np.arange(1, 11)).sort_values(
+    "minutes", ascending=False
 )
 gs.qtm(sa, "minutes", k=9, title="Area that can be reached within 1 to 10 minutes.")
 ```
 
-![png](demo_files/demo_32_0.png)
+![png](demo_files/demo_33_0.png)
 
 Set 'dissolve' to False to get every road segment returned, one for each service area that uses the segment. If there are a lot of overlapping service areas, that are to be dissolved in the end, removing duplicates first will make things a whole lot faster.
 
 ```python
 sa = nwa.service_area(points.sample(250), impedance=5, dissolve=False)
 
-print(len(sa))
+print("rows with duplicates:", len(sa))
 
 sa = sa.drop_duplicates(["source", "target"])
 
-print(len(sa))
+print("rows without duplicates:", len(sa))
 
 gs.qtm(sa)
 ```
 
-    1445557
-    151225
+    rows with duplicates: 1402638
+    rows without duplicates: 152471
 
-![png](demo_files/demo_34_1.png)
+![png](demo_files/demo_35_1.png)
 
 ### Customising the network
 
@@ -757,18 +761,6 @@ gs.qtm(sa)
 nw = gs.DirectedNetwork(roads)
 nw
 ```
-
-    c:\Users\ort\git\ssb-gis-utils\src\gis_utils\directednetwork.py:31: UserWarning:
-    Your network does not seem to be directed.
-    Try running 'make_directed_network' or 'make_directed_network_osm'.
-    With 'make_directed_network', specify the direction column (e.g. 'oneway'),
-    and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T")).
-
-      warnings.warn(
-
-
-
-
 
     DirectedNetwork class instance with 93395 rows and 11 columns.
 
@@ -792,7 +784,7 @@ gs.clipmap(
 )
 ```
 
-![png](demo_files/demo_38_0.png)
+![png](demo_files/demo_39_0.png)
 
 Use the remove_isolated method to remove the unconnected roads:
 
@@ -810,7 +802,7 @@ nw
 
     DirectedNetwork class instance with 85638 rows and 12 columns.
 
-![png](demo_files/demo_40_1.png)
+![png](demo_files/demo_41_1.png)
 
 If your road data has small gaps between the segments, these can be populated with straight lines:
 
@@ -823,14 +815,14 @@ nw
 
 The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the endpoint will either be reached or not within the impedance. This can be fixed by cutting all lines to a maximum distance.
 
-Note: cutting the lines can be time consuming for large networks and low maximum distances.
+Note: cutting the lines can take a lot of time for large networks and low cut distances.
 
 ```python
 nw = nw.cut_lines(25)  # meters
-nw
+nw.gdf.length.sum()
 ```
 
-    DirectedNetwork class instance with 399231 rows and 13 columns.
+    3408569.008428547
 
 ```python
 

@@ -153,7 +153,7 @@ def test_neighbors(gdf_fixture):
         gdf_fixture.iloc[[0]],
         possible_neighbors=gdf_fixture,
         id_col="numcol",
-        within_distance=100,
+        max_dist=100,
     )
     naboer.sort()
     assert naboer == [1, 2], "feil i find_neighbors"
@@ -161,7 +161,7 @@ def test_neighbors(gdf_fixture):
         gdf_fixture.iloc[[8]],
         possible_neighbors=gdf_fixture,
         id_col="numcol",
-        within_distance=100,
+        max_dist=100,
     )
     naboer.sort()
     assert naboer == [4, 5, 7, 8, 9], "feil i find_neighbors"

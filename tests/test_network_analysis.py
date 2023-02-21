@@ -32,14 +32,6 @@ def test_network_analysis():
 
     ### MAKE THE ANALYSIS CLASS
 
-    nw = (
-        gs.Network(r)
-        .get_largest_component()
-        .close_network_holes(1.1)
-        .remove_isolated()
-        .cut_lines(250)
-    )
-
     nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
     rules = gs.NetworkAnalysisRules(cost="minutes")
     nwa = gs.NetworkAnalysis(nw, rules=rules)
