@@ -62,20 +62,19 @@ def od_cost_matrix(
 
     df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, cost: costs})
 
-    # litt opprydning
-    out = (
+    results = (
         df.replace([np.inf, -np.inf], np.nan)
         .loc[(df[cost] > 0) | (df[cost].isna())]
         .reset_index(drop=True)
     )
 
     if cutoff:
-        out = out[out[cost] < cutoff]
+        results = results[results[cost] < cutoff]
 
     if destination_count:
-        out = out.loc[~out[cost].isna()]
-        cost_ranked = out.groupby("origin")[cost].rank()
-        out = out.loc[cost_ranked <= destination_count]
+        results = results.loc[~results[cost].isna()]
+        cost_ranked = results.groupby("origin")[cost].rank()
+        results = results.loc[cost_ranked <= destination_count]
 
     wkt_dict_origin = {
         idx: geom.wkt
@@ -84,18 +83,18 @@ def od_cost_matrix(
     wkt_dict_destination = {
         idx: geom.wkt for idx, geom in zip(endpoints["temp_idx"], endpoints.geometry)
     }
-    out["wkt_ori"] = out["origin"].map(wkt_dict_origin)
-    out["wkt_des"] = out["destination"].map(wkt_dict_destination)
+    results["wkt_ori"] = results["origin"].map(wkt_dict_origin)
+    results["wkt_des"] = results["destination"].map(wkt_dict_destination)
 
-    out[cost] = np.where(out.wkt_ori == out.wkt_des, 0, out[cost])
+    results[cost] = np.where(results.wkt_ori == results.wkt_des, 0, results[cost])
 
-    # lag linjer mellom origin og destination
+    # straight lines between origin and destination
     if lines:
-        origin = gpd.GeoSeries.from_wkt(out["wkt_ori"], crs=25833)
-        destination = gpd.GeoSeries.from_wkt(out["wkt_des"], crs=25833)
-        out["geometry"] = shortest_line(origin, destination)
-        out = gpd.GeoDataFrame(out, geometry="geometry", crs=25833)
+        origin = gpd.GeoSeries.from_wkt(results["wkt_ori"], crs=25833)
+        destination = gpd.GeoSeries.from_wkt(results["wkt_des"], crs=25833)
+        results["geometry"] = shortest_line(origin, destination)
+        results = gpd.GeoDataFrame(results, geometry="geometry", crs=25833)
 
-    out = out.drop(["wkt_ori", "wkt_des"], axis=1, errors="ignore")
+    results = results.drop(["wkt_ori", "wkt_des"], axis=1, errors="ignore")
 
-    return out.reset_index(drop=True)
+    return results.reset_index(drop=True)

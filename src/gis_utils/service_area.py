@@ -22,34 +22,31 @@ def service_area(
     if isinstance(impedance, (str, int, float)):
         impedance = [float(impedance)]
 
-    # loop for hvert startpunkt og hver cost
-    service_areas = []
+    # loop through every startpoint and every impedance
+    results = []
     for i in startpoints["temp_idx"]:
+        result = graph.distances(weights="weight", source=i)
+
+        df = pd.DataFrame(data={"node_id": np.array(graph.vs["name"]), cost: result[0]})
+
         for imp in impedance:
-            result = graph.distances(weights="weight", source=i)
+            indices = df.loc[df[cost] < imp]
 
-            # lag tabell av resultene og fjern alt over ønsket cost
-            df = pd.DataFrame(
-                data={"name": np.array(graph.vs["name"]), cost: result[0]}
-            )
-
-            df = df[df[cost] < imp]
-
-            if len(df) == 0:
-                service_areas.append(
+            if not len(indices):
+                results.append(
                     pd.DataFrame({id_col: [i], cost: [imp], "geometry": np.nan})
                 )
                 continue
 
-            # velg ut vegene som er i dataframen vi nettopp lagde.
-            sa = roads.loc[roads.target.isin(df.name)]
+            service_area = roads.loc[roads.target.isin(indices.node_id)]
 
             if dissolve:
-                sa = sa[["geometry"]].dissolve().reset_index(drop=True)
+                service_area = (
+                    service_area[["geometry"]].dissolve().reset_index(drop=True)
+                )
 
-            # lag kolonner for id, cost og evt. node-info
-            sa[id_col] = i
-            sa[cost] = imp
-            service_areas.append(sa)
+            service_area[id_col] = i
+            service_area[cost] = imp
+            results.append(service_area)
 
-    return gdf_concat(service_areas)
+    return gdf_concat(results)

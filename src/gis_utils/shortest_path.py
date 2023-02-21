@@ -22,34 +22,36 @@ def shortest_path(
 
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-    lines = []
+    results = []
     if rowwise:
         for ori_id, des_id in zip(startpoints["temp_idx"], endpoints["temp_idx"]):
-            lines = lines + _run_shortest_path(
+            results = results + _run_shortest_path(
                 ori_id, des_id, graph, roads, cost, summarise
             )
     else:
         for ori_id in startpoints["temp_idx"]:
             for des_id in endpoints["temp_idx"]:
-                lines = lines + _run_shortest_path(
+                results = results + _run_shortest_path(
                     ori_id, des_id, graph, roads, cost, summarise
                 )
 
     if summarise:
-        #        edges.groupby(["source", "target"])["n"].count()
+        counted = (
+            pd.concat(results, ignore_index=True)
+            .assign(n=1)
+            .groupby("source_target")["n"]
+            .count()
+        )
 
-        edges = pd.concat(lines, ignore_index=True)
-        edges = edges.assign(n=1).groupby("source_target")["n"].count()
+        roads = roads[["geometry", "source", "target"]]
+        roads["source_target"] = roads.source + "_" + roads.target
 
-        roads2 = roads[["geometry", "source", "target"]]
-        roads2["source_target"] = roads2.source + "_" + roads2.target
-
-        return roads2.merge(edges, on="source_target", how="inner").drop(
+        return roads.merge(counted, on="source_target", how="inner").drop(
             "source_target", axis=1
         )
 
     try:
-        lines = gdf_concat(lines)
+        results = gdf_concat(results)
     except Exception:
         raise ValueError(
             f"No paths were found. Try larger search_tolerance or search_factor. "
@@ -57,14 +59,16 @@ def shortest_path(
         )
 
     if cutoff:
-        lines = lines[lines[cost] < cutoff]
+        results = results[results[cost] < cutoff]
 
     if destination_count:
-        lines = lines.loc[lines.groupby("origin")[cost].idxmin()].reset_index(drop=True)
+        results = results.loc[~results[cost].isna()]
+        cost_ranked = results.groupby("origin")[cost].rank()
+        results = results.loc[cost_ranked <= destination_count]
 
-    lines = lines[["origin", "destination", cost, "geometry"]]
+    results = results[["origin", "destination", cost, "geometry"]]
 
-    return lines.reset_index(drop=True)
+    return results.reset_index(drop=True)
 
 
 def _run_shortest_path(
