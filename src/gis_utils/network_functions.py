@@ -157,7 +157,7 @@ def get_component_size(lines: GeoDataFrame) -> GeoDataFrame:
       A GeoDataFrame with the size of the component that each line is in.
     """
 
-    if not "source" in lines.columns or not "target" in lines.columns:
+    if "source" not in lines.columns or "target" not in lines.columns:
         lines, nodes = make_node_ids(lines)
 
     edges = [
@@ -452,7 +452,6 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
 
     for x in [10, 5, 1]:
         _max = max(over_max_length.length)
-        print(_max)
         while _max > max_length * x + 1:
             _max = max(over_max_length.length)
 

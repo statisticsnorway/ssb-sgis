@@ -6,41 +6,10 @@ from zipfile import ZipFile
 import geopandas as gpd
 import requests
 
+from .dapla import exists, read_geopandas, write_geopandas
+
 
 # from dapla import FileClient
-
-
-def eksisterer(sti: str) -> bool:
-    """returnerer True hvis filen eksisterer, False hvis ikke."""
-    return os.path.exists(sti)
-
-
-def les_geopandas(sti: str, engine="pyogrio", **kwargs) -> gpd.GeoDataFrame:
-    if "parquet" in sti:
-        return gpd.read_parquet(sti, **kwargs)
-    else:
-        return gpd.read_file(sti, engine=engine, **kwargs)
-
-
-def skriv_geopandas(df: gpd.GeoDataFrame, gcs_path: str, schema=None, **kwargs) -> None:
-    from pyarrow import parquet
-
-    if ".parquet" in gcs_path:
-        df.to_parquet(gcs_path)
-        return
-
-    if ".gpkg" in gcs_path:
-        driver = "GPKG"
-    elif ".geojson" in gcs_path:
-        driver = "GeoJSON"
-    elif ".gml" in gcs_path:
-        driver = "GML"
-    elif ".shp" in gcs_path:
-        driver = "ESRI Shapefile"
-    else:
-        driver = None
-
-    df.to_file(gcs_path, driver=driver)
 
 
 def geonorge_json(
@@ -113,7 +82,7 @@ def hent_fra_geonorge(metadataUuid, sti, filformat="FGDB 10.0", parquet=True, **
 
         if parquet and not filformat == "TIFF":
             parquetfil = f"{sti}/{filnavn.strip('.zip')}.parquet"
-            skriv_geopandas(les_geopandas(out), parquetfil)
+            write_geopandas(read_geopandas(out), parquetfil)
             slett(out)
             slett(sti)
 
