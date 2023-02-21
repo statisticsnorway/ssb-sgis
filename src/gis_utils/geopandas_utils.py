@@ -150,31 +150,31 @@ def close_holes(
 
     if isinstance(polygons, GeoDataFrame):
         polygons["geometry"] = polygons.geometry.map(
-            lambda x: _close_holes_geom(x, max_km2)
+            lambda x: _close_holes_poly(x, max_km2)
         )
 
     elif isinstance(polygons, gpd.GeoSeries):
-        polygons = polygons.map(lambda x: _close_holes_geom(x, max_km2))
+        polygons = polygons.map(lambda x: _close_holes_poly(x, max_km2))
         polygons = gpd.GeoSeries(polygons)
 
     else:
-        polygons = _close_holes_geom(polygons, max_km2)
+        polygons = _close_holes_poly(polygons, max_km2)
 
     return polygons
 
 
-def _close_holes_geom(polygons, max_km2=None):
+def _close_holes_poly(poly, max_km2=None):
     """closes holes within one shapely geometry of polygons."""
 
     # dissolve the exterior ring(s)
     if max_km2 is None:
-        holes_closed = polygons(get_exterior_ring(get_parts(polygons)))
+        holes_closed = polygons(get_exterior_ring(get_parts(poly)))
         return unary_union(holes_closed)
 
-    # start with a list containing the polygonsetry,
+    # start with a list containing the polygon,
     # then append all holes smaller than 'max_km2' to the list.
-    holes_closed = [polygons]
-    singlepart = get_parts(polygons)
+    holes_closed = [poly]
+    singlepart = get_parts(poly)
     for part in singlepart:
         n_interior_rings = get_num_interior_rings(part)
 
@@ -548,32 +548,6 @@ def gridish(
         gdf = gdf.drop(["gridish_x", "gridish_y", "gridish_x2", "gridish_y2"], axis=1)
 
     return gdf
-
-
-def random_points(n: int, mask=None) -> GeoDataFrame:
-    """lager n tilfeldige punkter innenfor et gitt område (mask)."""
-
-    if mask is None:
-        x = np.array([random() * 10**7 for _ in range(n * 1000)])
-        y = np.array([random() * 10**8 for _ in range(n * 1000)])
-        punkter = to_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
-        return punkter
-    mask_kopi = mask.copy()
-    mask_kopi = mask_kopi.to_crs(25833)
-    out = GeoDataFrame({"geometry": []}, geometry="geometry", crs=25833)
-    while len(out) < n:
-        x = np.array([random() * 10**7 for _ in range(n * 1000)])
-        x = x[(x > mask_kopi.bounds.minx.iloc[0]) & (x < mask_kopi.bounds.maxx.iloc[0])]
-
-        y = np.array([random() * 10**8 for _ in range(n * 1000)])
-        y = y[(y > mask_kopi.bounds.miny.iloc[0]) & (y < mask_kopi.bounds.maxy.iloc[0])]
-
-        punkter = to_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
-        overlapper = punkter.clip(mask_kopi)
-        out = gdf_concat([out, overlapper])
-    out = out.sample(n).reset_index(drop=True).to_crs(mask.crs)
-    out["idx"] = out.index
-    return out
 
 
 def count_within_distance(

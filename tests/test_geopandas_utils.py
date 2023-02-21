@@ -88,6 +88,19 @@ def test_aggfuncs(gdf_fixture):
     assert len(copy) == 9, "feil lengde"
 
 
+def test_close_holes(gdf_fixture):
+    p = gdf_fixture.loc[gdf_fixture.geom_type == "Point"]
+    buff1 = gs.buff(p, 100)
+    buff2 = gs.buff(p, 200)
+    rings_with_holes = gs.overlay(buff2, buff1, how="difference")
+    holes_closed = gs.close_holes(rings_with_holes)
+    assert sum(holes_closed.area) > sum(rings_with_holes.area)
+    holes_closed = gs.close_holes(rings_with_holes, 10000)
+    assert sum(holes_closed.area) > sum(rings_with_holes.area)
+    holes_not_closed = gs.close_holes(rings_with_holes, 0.000001)
+    assert sum(holes_not_closed.area) == sum(rings_with_holes.area)
+
+
 def test_clean(gdf_fixture):
     missing = gpd.GeoDataFrame(
         {"geometry": [None, np.nan]}, geometry="geometry", crs=25833
