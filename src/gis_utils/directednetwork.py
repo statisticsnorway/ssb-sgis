@@ -149,7 +149,7 @@ and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T
         self.gdf = gdf_concat([both_ways, both_ways2, ft, tf])
 
         unit = self.gdf.crs.axis_info[0].unit_name
-        if flat_speed or speed_col and unit != "metre":
+        if (flat_speed or speed_col) and unit != "metre":
             raise ValueError(
                 f"The crs must have 'metre' as units when calculating minutes. Got '{unit}'. "
                 "Change crs or calculate minutes manually."
