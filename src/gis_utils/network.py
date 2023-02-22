@@ -198,9 +198,8 @@ class Network:
 
     def __repr__(self) -> str:
         cl = self.__class__.__name__
-        ln = len(self.gdf)
         km = int(sum(self.gdf.length) / 1000)
-        return f"{cl} class instance with {ln} rows and a length of {km} km."
+        return f"{cl}({km} km)"
 
     def __iter__(self):
         return iter(self.__dict__.values())

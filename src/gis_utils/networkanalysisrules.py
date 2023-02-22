@@ -12,6 +12,7 @@ class NetworkAnalysisRules:
     weight_to_nodes_dist: bool = False
     weight_to_nodes_kmh: int | None = None
     weight_to_nodes_mph: int | None = None
+    weight_to_nodes_: None = None
 
     """
     Args:

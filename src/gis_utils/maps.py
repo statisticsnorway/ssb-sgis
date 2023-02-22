@@ -17,6 +17,8 @@ def qtm(
     size=10,
     fontsize=15,
     legend=True,
+    facecolor: str = "white",
+    title_color: str = "black",
     **kwargs,
 ) -> None:
     """Quick, thematic map (name stolen from the tmap package in R).
@@ -25,8 +27,10 @@ def qtm(
         if not is_numeric_dtype(gdf[column]):
             scheme = None
     fig, ax = plt.subplots(1, figsize=(size, size))
+    fig.patch.set_facecolor(facecolor)
     ax.set_axis_off()
-    ax.set_title(title, fontsize=fontsize)
+    if title:
+        ax.set_title(title, fontsize=fontsize, color=title_color)
     gdf.plot(column, scheme=scheme, legend=legend, ax=ax, **kwargs)
 
 

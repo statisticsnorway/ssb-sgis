@@ -1,3 +1,83 @@
+```css
+/* jupyterlab/packages/theme-light-extension/style/variables.css */
+:root {
+  --jp-ui-font-color0: rgba(0, 0, 0, 1);
+  --jp-ui-font-color1: rgba(0, 0, 0, 0.87);
+  --jp-layout-color0: white;
+  --jp-rendermime-error-background: #fdd;
+  --jp-rendermime-table-row-background: #ddd;
+  --jp-rendermime-table-row-hover-background: #aaa;
+}
+
+/* Tables */
+.jp-RenderedHTMLCommon table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  border: none;
+  color: var(--jp-ui-font-color1);
+  font-size: 12px;
+  table-layout: fixed;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.jp-RenderedHTMLCommon thead {
+  border-bottom: var(--jp-border-width) solid var(--jp-border-color1);
+  vertical-align: bottom;
+}
+
+.jp-RenderedHTMLCommon td,
+.jp-RenderedHTMLCommon th,
+.jp-RenderedHTMLCommon tr {
+  vertical-align: middle;
+  padding: 0.5em 0.5em;
+  line-height: normal;
+  white-space: normal;
+  max-width: none;
+  border: none;
+}
+
+.jp-RenderedMarkdown.jp-RenderedHTMLCommon td,
+.jp-RenderedMarkdown.jp-RenderedHTMLCommon th {
+  max-width: none;
+}
+
+:not(.jp-RenderedMarkdown).jp-RenderedHTMLCommon td,
+:not(.jp-RenderedMarkdown).jp-RenderedHTMLCommon th,
+:not(.jp-RenderedMarkdown).jp-RenderedHTMLCommon tr {
+  text-align: right;
+}
+
+.jp-RenderedHTMLCommon th {
+  font-weight: bold;
+}
+
+.jp-RenderedHTMLCommon tbody tr:nth-child(odd) {
+  background: var(--jp-layout-color0);
+}
+
+.jp-RenderedHTMLCommon tbody tr:nth-child(even) {
+  background: var(--jp-rendermime-table-row-background);
+}
+
+.jp-RenderedHTMLCommon tbody tr:hover {
+  background: var(--jp-rendermime-table-row-hover-background);
+}
+
+.jp-RenderedHTMLCommon table {
+  margin-bottom: 1em;
+}
+
+.jp-RenderedHTMLCommon p {
+  text-align: left;
+  margin: 0px;
+}
+
+.jp-RenderedHTMLCommon p {
+  margin-bottom: 1em;
+}
+```
+
 ## Network analysis in ssb-gis-utils
 
 ##### igraph integrated with geopandas
@@ -29,6 +109,13 @@ warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 ```
 
+```python
+plot_kwargs = {
+    "facecolor": "#0f0f0f",
+    "title_color": "#f7f7f7",
+}
+```
+
 At the core of the network analysis, is the NetworkAnalysis class.
 
 It takes a network and a set of rules for the analysis:
@@ -57,6 +144,20 @@ roads.head(3)
 ```
 
 <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+
+</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -120,6 +221,20 @@ nw.gdf.head(3)
 ```
 
 <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+
+</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -254,6 +369,20 @@ points
 ```
 
 <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+
+</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -333,6 +462,20 @@ od
 ```
 
 <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+
+</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -417,17 +560,29 @@ od
 Set 'lines' to True to get straight lines between origin and destination:
 
 ```python
-od = nwa.od_cost_matrix(points.sample(1), points, lines=True)
+od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
+
+print(od.head(3))
 
 gs.qtm(
     od,
     "minutes",
     title="Travel time (minutes) from 1 to 1000 addresses.",
-    k=7,
+    **plot_kwargs,
 )
 ```
 
-![png](demo_files/demo_30_0.png)
+      origin destination    minutes  \
+    0  79166       79167   0.000000
+    1  79166       79168  12.930588
+    2  79166       79169  10.867076
+
+                                                geometry
+    0  LINESTRING (263122.700 6651184.900, 263122.700...
+    1  LINESTRING (263122.700 6651184.900, 272456.100...
+    2  LINESTRING (263122.700 6651184.900, 270082.300...
+
+![png](demo_files/demo_31_1.png)
 
 ### Shortest path
 
@@ -436,12 +591,26 @@ The shortest_path method can be used to get the actual paths:
 ```python
 sp = nwa.shortest_path(points.iloc[[0]], points.sample(100), id_col="idx")
 
-gs.qtm(sp, "minutes", cmap=gs.chop_cmap("RdPu", 0.2), title="Travel times (minutes)")
+gs.qtm(gs.buff(sp, 10), "minutes", cmap="plasma", title="Travel times (minutes)", **plot_kwargs)
 
 sp
 ```
 
 <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+
+</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -456,37 +625,37 @@ sp
     <tr>
       <th>0</th>
       <td>1</td>
-      <td>553</td>
-      <td>1.214820</td>
-      <td>MULTILINESTRING Z ((263191.940 6650704.850 25....</td>
+      <td>916</td>
+      <td>9.621821</td>
+      <td>MULTILINESTRING Z ((259124.095 6650710.589 9.7...</td>
     </tr>
     <tr>
       <th>1</th>
       <td>1</td>
-      <td>56</td>
-      <td>8.524345</td>
-      <td>MULTILINESTRING Z ((260679.000 6651295.200 48....</td>
+      <td>270</td>
+      <td>10.089833</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>2</th>
       <td>1</td>
-      <td>738</td>
-      <td>6.774958</td>
-      <td>MULTILINESTRING Z ((261867.900 6650493.300 47....</td>
+      <td>828</td>
+      <td>15.253633</td>
+      <td>MULTILINESTRING Z ((272938.038 6653749.515 196...</td>
     </tr>
     <tr>
       <th>3</th>
       <td>1</td>
-      <td>623</td>
-      <td>12.468534</td>
+      <td>588</td>
+      <td>12.808823</td>
       <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>4</th>
       <td>1</td>
-      <td>121</td>
-      <td>13.405679</td>
-      <td>MULTILINESTRING Z ((265975.500 6644787.700 161...</td>
+      <td>966</td>
+      <td>8.587798</td>
+      <td>MULTILINESTRING Z ((263815.000 6654977.203 171...</td>
     </tr>
     <tr>
       <th>...</th>
@@ -496,63 +665,63 @@ sp
       <td>...</td>
     </tr>
     <tr>
+      <th>93</th>
+      <td>1</td>
+      <td>148</td>
+      <td>7.877749</td>
+      <td>MULTILINESTRING Z ((266290.276 6649617.149 111...</td>
+    </tr>
+    <tr>
       <th>94</th>
       <td>1</td>
-      <td>328</td>
-      <td>6.777099</td>
-      <td>MULTILINESTRING Z ((268037.994 6652561.378 157...</td>
+      <td>709</td>
+      <td>14.489904</td>
+      <td>MULTILINESTRING Z ((272281.367 6653079.745 160...</td>
     </tr>
     <tr>
       <th>95</th>
       <td>1</td>
-      <td>508</td>
-      <td>21.051914</td>
-      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
+      <td>935</td>
+      <td>3.346286</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>96</th>
       <td>1</td>
-      <td>533</td>
-      <td>13.493656</td>
-      <td>MULTILINESTRING Z ((257711.039 6654032.042 146...</td>
+      <td>41</td>
+      <td>15.195555</td>
+      <td>MULTILINESTRING Z ((272839.400 6654806.100 202...</td>
     </tr>
     <tr>
       <th>97</th>
       <td>1</td>
-      <td>430</td>
-      <td>14.969325</td>
-      <td>MULTILINESTRING Z ((265209.481 6643646.566 136...</td>
-    </tr>
-    <tr>
-      <th>98</th>
-      <td>1</td>
-      <td>731</td>
-      <td>11.256682</td>
-      <td>MULTILINESTRING Z ((261276.828 6654115.849 146...</td>
+      <td>351</td>
+      <td>10.963558</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
   </tbody>
 </table>
-<p>99 rows × 4 columns</p>
+<p>98 rows × 4 columns</p>
 </div>
 
-![png](demo_files/demo_33_1.png)
+![png](demo_files/demo_34_1.png)
 
 Set 'summarise' to True to get the number of times each road segment was used. This is faster than not summarising, because no dissolve is done.
 
 ```python
-sp = nwa.shortest_path(points.sample(50), points.sample(50), summarise=True)
+sp = nwa.shortest_path(points.sample(75), points.sample(75), summarise=True)
 
 gs.qtm(
-    sp,
+    gs.buff(sp, 12),
     "n",
     scheme="naturalbreaks",
-    k=7,
-    cmap=gs.chop_cmap("RdPu", 0.2),
+    cmap="plasma",
     title="Number of times each road was used.",
+    **plot_kwargs,
 )
 ```
 
-![png](demo_files/demo_35_0.png)
+![png](demo_files/demo_36_0.png)
 
 ### Service area
 
@@ -566,6 +735,20 @@ sa
 ```
 
 <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+
+</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -579,91 +762,91 @@ sa
     <tr>
       <th>0</th>
       <td>5</td>
-      <td>731</td>
-      <td>MULTILINESTRING Z ((261416.340 6653760.610 108...</td>
+      <td>856</td>
+      <td>MULTILINESTRING Z ((270317.040 6651059.690 179...</td>
     </tr>
     <tr>
       <th>1</th>
       <td>10</td>
-      <td>731</td>
-      <td>MULTILINESTRING Z ((259185.676 6652656.707 76....</td>
+      <td>856</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>2</th>
       <td>15</td>
-      <td>731</td>
-      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
+      <td>856</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>3</th>
       <td>5</td>
-      <td>424</td>
-      <td>MULTILINESTRING Z ((265894.871 6643331.708 113...</td>
+      <td>664</td>
+      <td>MULTILINESTRING Z ((261907.290 6655530.930 196...</td>
     </tr>
     <tr>
       <th>4</th>
       <td>10</td>
-      <td>424</td>
-      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
+      <td>664</td>
+      <td>MULTILINESTRING Z ((263186.050 6657441.280 157...</td>
     </tr>
     <tr>
       <th>5</th>
       <td>15</td>
-      <td>424</td>
-      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
+      <td>664</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>6</th>
       <td>5</td>
-      <td>462</td>
-      <td>MULTILINESTRING Z ((256284.280 6651413.280 84....</td>
+      <td>208</td>
+      <td>MULTILINESTRING Z ((267287.202 6646656.305 155...</td>
     </tr>
     <tr>
       <th>7</th>
       <td>10</td>
-      <td>462</td>
-      <td>MULTILINESTRING Z ((256747.750 6655744.370 182...</td>
+      <td>208</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>8</th>
       <td>15</td>
-      <td>462</td>
+      <td>208</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>9</th>
       <td>5</td>
-      <td>851</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>499</td>
+      <td>MULTILINESTRING Z ((269100.290 6654598.780 237...</td>
     </tr>
     <tr>
       <th>10</th>
       <td>10</td>
-      <td>851</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>499</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
     <tr>
       <th>11</th>
       <td>15</td>
-      <td>851</td>
+      <td>499</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>12</th>
       <td>5</td>
-      <td>662</td>
-      <td>MULTILINESTRING Z ((264802.500 6653645.400 184...</td>
+      <td>536</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>13</th>
       <td>10</td>
-      <td>662</td>
+      <td>536</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>14</th>
       <td>15</td>
-      <td>662</td>
+      <td>536</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
   </tbody>
@@ -674,10 +857,10 @@ sa
 sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11)).sort_values(
     "minutes", ascending=False
 )
-gs.qtm(sa, "minutes", k=9, title="Roads that can be reached within 1 to 10 minutes.")
+gs.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minutes", legend=False, **plot_kwargs)
 ```
 
-![png](demo_files/demo_39_0.png)
+![png](demo_files/demo_40_0.png)
 
 Set 'dissolve' to False to get every road segment returned, one for each service area that uses the segment. If there are a lot of overlapping service areas, that are to be dissolved in the end, removing duplicates first will make things a whole lot faster.
 
@@ -690,13 +873,13 @@ sa = sa.drop_duplicates(["source", "target"])
 
 print("rows without duplicates:", len(sa))
 
-gs.qtm(sa)
+gs.qtm(gs.buff(sa, 5), **plot_kwargs)
 ```
 
-    rows with duplicates: 1622322
-    rows without duplicates: 151362
+    rows with duplicates: 1756524
+    rows without duplicates: 151127
 
-![png](demo_files/demo_41_1.png)
+![png](demo_files/demo_42_1.png)
 
 ### Customising the network
 
@@ -725,10 +908,11 @@ gs.clipmap(
     title="Connected and isolated networks",
     cmap="bwr",
     explore=False,
+    **plot_kwargs,
 )
 ```
 
-![png](demo_files/demo_45_0.png)
+![png](demo_files/demo_46_0.png)
 
 Use the remove_isolated method to remove the unconnected roads:
 

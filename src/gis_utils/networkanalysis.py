@@ -318,6 +318,7 @@ class NetworkAnalysis:
             self.wkts["end"] = [geom.wkt for geom in self.endpoints.gdf.geometry]
 
     def __repr__(self) -> str:
+        nw = f"network={self.network.__repr__()}"
         if self.rules.weight_to_nodes_dist:
             x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
         elif self.rules.weight_to_nodes_kmh:
@@ -325,12 +326,22 @@ class NetworkAnalysis:
         elif self.rules.weight_to_nodes_mph:
             x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_mph}"
         else:
-            x = ""
+            x = ", ..."
+
+        rules = self.rules.__repr__()
+        for txt in ["weight_to_nodes_", "dist", "kmh", "mph", "=None", "=False"]:
+            rules = rules.replace(txt, "")
+        for txt in [", )"] * 4:
+            rules = rules.replace(txt, ")")
+        rules = rules.replace(")", "")
 
         return (
             f"{self.__class__.__name__}("
-            f"weight={self.rules.weight}, "
-            f"search_tolerance={self.rules.search_tolerance}, "
-            f"search_factor={self.rules.search_factor}"
-            f"{x})"
+            f"network={self.network.__repr__()}, "
+            f"rules={rules}{x}))"
+            #          f"{nw}"
+            #         f"weight={self.rules.weight}, "
+            #        f"search_tolerance={self.rules.search_tolerance}, "
+            #       f"search_factor={self.rules.search_factor}"
+            #      f"{x})"
         )
