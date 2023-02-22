@@ -177,7 +177,7 @@ od
 # %%
 service_areas = G.service_area(
     startpunkter=punkter.sample(5),
-    impedance=5,  # antall minutter/meter
+    breaks=5,  # antall minutter/meter
     id_kolonne="idx",
 )
 service_areas.plot()
@@ -186,7 +186,7 @@ service_areas
 # %%
 service_areas = G.service_area(
     startpunkter=punkter.sample(1),
-    impedance=[10, 9, 8, 7, 6, 5, 4, 3, 2, 1],  # antall minutter/meter/annet
+    breaks=[10, 9, 8, 7, 6, 5, 4, 3, 2, 1],  # antall minutter/meter/annet
     id_kolonne="idx",
 )
 service_areas.plot(G.kostnad)
@@ -328,12 +328,12 @@ def test_nettverk(G, punkter, kostnad):
     od.plot(G.kostnad, scheme="quantiles")
 
     if kostnad == "minutter":
-        impedance = (7.5, 6, 4, 2.5, 1)
+        breaks = (7.5, 6, 4, 2.5, 1)
     else:
-        impedance = (3000, 2000, 1000, 500, 200)
+        breaks = (3000, 2000, 1000, 500, 200)
 
     service_area = G.service_area(
-        startpunkter=punkter.sample(5), impedance=impedance, id_kolonne="idx"
+        startpunkter=punkter.sample(5), breaks=breaks, id_kolonne="idx"
     )
     service_area.plot(G.kostnad)
 

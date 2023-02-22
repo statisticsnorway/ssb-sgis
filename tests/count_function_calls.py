@@ -28,7 +28,7 @@ def count_function_calls():
         .cut_lines(250)
     )
 
-    rules = gs.NetworkAnalysisRules(cost="minutes")
+    rules = gs.NetworkAnalysisRules(weight="minutes")
     nwa = gs.NetworkAnalysis(nw, rules=rules)
     nwa.network = nwa.network.get_component_size()
     nwa.network = nwa.network.remove_isolated()

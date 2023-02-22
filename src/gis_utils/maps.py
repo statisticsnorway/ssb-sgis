@@ -13,12 +13,13 @@ def qtm(
     *,
     scheme="Quantiles",
     title=None,
-    size=12,
-    fontsize=16,
+    size=10,
+    fontsize=15,
     legend=True,
     **kwargs,
 ) -> None:
-    """Quick, thematic map (name stolen from R's tmap package)."""
+    """Quick, thematic map (name stolen from the tmap package in R).
+    Larger than the default, with legend and quantiles scheme."""
     fig, ax = plt.subplots(1, figsize=(size, size))
     ax.set_axis_off()
     ax.set_title(title, fontsize=fontsize)

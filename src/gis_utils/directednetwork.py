@@ -161,9 +161,3 @@ and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T
         self.make_node_ids()
 
         return self
-
-    def __repr__(self) -> str:
-        return (
-            f"DirectedNetwork class instance with {len(self.gdf)} rows "
-            f"and {len(self.gdf.columns)} columns."
-        )

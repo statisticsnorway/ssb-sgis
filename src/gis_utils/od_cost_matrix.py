@@ -11,7 +11,7 @@ def od_cost_matrix(
     graph: Graph,
     startpoints: GeoDataFrame,
     endpoints: GeoDataFrame,
-    cost: str,
+    weight: str,
     *,
     lines=False,
     rowwise=False,
@@ -30,12 +30,12 @@ def od_cost_matrix(
       lines: If True, the output will be a GeoDataFrame with straight lines between
         origin and destination. Defaults to False.
       rowwise: Defaults to False
-      cutoff (int): If you want to limit the maximum cost between origin and
+      cutoff (int): If you want to limit the maximum weight between origin and
         destination, you can set a cutoff.
       destination_count (int): int = None
 
     Returns:
-      A dataframe with the origin, destination and cost.
+      A dataframe with the origin, destination and costs.
     """
 
     if not rowwise:
@@ -60,21 +60,21 @@ def od_cost_matrix(
             des_idx.append(t_idx)
             costs.append(results[0][0])
 
-    df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, cost: costs})
+    df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, weight: costs})
 
     results = (
         df.replace([np.inf, -np.inf], np.nan)
-        .loc[(df[cost] > 0) | (df[cost].isna())]
+        #    .loc[(df[weight] > 0) | (df[weight].isna())]
         .reset_index(drop=True)
     )
 
     if cutoff:
-        results = results[results[cost] < cutoff]
+        results = results[results[weight] < cutoff]
 
     if destination_count:
-        results = results.loc[~results[cost].isna()]
-        cost_ranked = results.groupby("origin")[cost].rank()
-        results = results.loc[cost_ranked <= destination_count]
+        results = results.loc[~results[weight].isna()]
+        weight_ranked = results.groupby("origin")[weight].rank()
+        results = results.loc[weight_ranked <= destination_count]
 
     wkt_dict_origin = {
         idx: geom.wkt
@@ -86,7 +86,7 @@ def od_cost_matrix(
     results["wkt_ori"] = results["origin"].map(wkt_dict_origin)
     results["wkt_des"] = results["destination"].map(wkt_dict_destination)
 
-    results[cost] = np.where(results.wkt_ori == results.wkt_des, 0, results[cost])
+    results[weight] = np.where(results.wkt_ori == results.wkt_des, 0, results[weight])
 
     # straight lines between origin and destination
     if lines:

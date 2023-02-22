@@ -33,7 +33,7 @@ def test_network_analysis():
     ### MAKE THE ANALYSIS CLASS
 
     nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
-    rules = gs.NetworkAnalysisRules(cost="minutes")
+    rules = gs.NetworkAnalysisRules(weight="minutes")
     nwa = gs.NetworkAnalysis(nw, rules=rules)
 
     ### OD COST MATRIX
@@ -43,7 +43,7 @@ def test_network_analysis():
         od = nwa.od_cost_matrix(p, p)
         print(
             f"percent missing, search_factor {nwa.rules.search_factor}:",
-            np.mean(od[nwa.rules.cost].isna()) * 100,
+            np.mean(od[nwa.rules.weight].isna()) * 100,
             "len",
             len(od),
         )
@@ -54,7 +54,7 @@ def test_network_analysis():
         print(
             f"percent missing, search_factor 100, "
             f"search_tolerance {nwa.rules.search_tolerance}:",
-            np.mean(od[nwa.rules.cost].isna()) * 100,
+            np.mean(od[nwa.rules.weight].isna()) * 100,
             "len",
             len(od),
         )
@@ -66,15 +66,15 @@ def test_network_analysis():
     p1 = nwa.startpoints.gdf
     p1 = p1.loc[[p1.n_missing.idxmin()]].sample(1).idx.values[0]
 
-    gs.qtm(od.loc[od.origin == p1], nwa.rules.cost, scheme="quantiles")
+    gs.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
 
     od2 = nwa.od_cost_matrix(p, p, destination_count=3)
     assert (od2.groupby("origin")["destination"].count() <= 3).all()
     if len(od2) != len(od):
-        assert np.mean(od2[nwa.rules.cost]) < np.mean(od[nwa.rules.cost])
+        assert np.mean(od2[nwa.rules.weight]) < np.mean(od[nwa.rules.weight])
 
     od = nwa.od_cost_matrix(p, p, cutoff=5)
-    assert (od[nwa.rules.cost] <= 5).all()
+    assert (od[nwa.rules.weight] <= 5).all()
 
     od = nwa.od_cost_matrix(p, p, rowwise=True)
     assert len(od) == len(p)
@@ -92,7 +92,7 @@ def test_network_analysis():
 
     ### SERVICE AREA
 
-    sa = nwa.service_area(p, impedance=5, dissolve=False)
+    sa = nwa.service_area(p, breaks=5, dissolve=False)
 
     print(len(sa))
 
@@ -101,7 +101,7 @@ def test_network_analysis():
     print(len(sa))
     gs.qtm(sa)
 
-    sa = nwa.service_area(p.iloc[[0]], impedance=np.arange(1, 11), id_col="idx")
+    sa = nwa.service_area(p.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
     sa = sa.sort_values("minutes", ascending=False)
     gs.qtm(sa, "minutes", k=10)
 

@@ -45,7 +45,7 @@ class NetworkDaplaBike(DirectedNetwork):
         if not fill_holes:
             gdf = gdf.loc[gdf.hole == 0]
 
-        if self.cost == "minutes":
+        if self.weight == "minutes":
             self.network["minutes"] = self.network.length / speed * 16.6666667
 
         super().__init__(gdf, **kwargs)
@@ -68,7 +68,7 @@ class NetworkDaplaFoot(Network):
         if not fill_holes:
             gdf = gdf.loc[gdf.hole == 0]
 
-        if self.cost == "minutes":
+        if self.weight == "minutes":
             self.network["minutes"] = self.network.length / speed * 16.6666667
 
         super().__init__(gdf, **kwargs)

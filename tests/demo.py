@@ -12,7 +12,7 @@ The package supports three types of network analysis:
 - od_cost_matrix: fast many-to-many travel times/distances
 - shortest_path: returns the geometry of the lowest-cost paths,
     or counts the number of times each road segment was used.
-- service_area: returns the roads that can be reached within one or more impedances.
+- service_area: returns the roads that can be reached within one or more breaks.
 """
 )
 

@@ -221,6 +221,7 @@ def close_network_holes(
 
     if hole_col:
         new_lines[hole_col] = 1
+        lines[hole_col] = 0
 
     return gdf_concat([lines, new_lines])
 
@@ -469,3 +470,47 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
     under_max_length = gdf.loc[gdf.length <= max_length]
 
     return pd.concat([under_max_length, over_max_length], ignore_index=ignore_index)
+
+
+def rundkjoringer_til_kryss(veger, query="ROADTYPE=='Rundkjøring'"):
+    from geopandasgreier.gis_operasjoner_samlet import buffdissexp
+    from shapely.geometry import LineString
+    from shapely.ops import nearest_points
+    from shapely.wkt import loads
+
+    rundkjoringer = veger.query(query).copy(deep=True)
+    ikke_rundkjoringer = veger.query(query.replace("==", "!=")).copy(deep=True)
+
+    # liten buffer rundt rundkjøringene, samle overlappende og lag id (dette kunne vært erstattet med buffdissexp, men gjør det manuelt for å unngå dependency)
+    rundkjoringer = rundkjoringer[["geometry"]]
+    rundkjoringer["geometry"] = rundkjoringer.buffer(1)
+    rundkjoringer = rundkjoringer.dissolve()
+    rundkjoringer = rundkjoringer.explode(ignore_index=True)
+    rundkjoringer["rundkjoringsid"] = rundkjoringer.index
+
+    # koble med ikke-rundkjøringer for å få linjene som grenser mot rundkjøringer
+    grenser_til = gpd.overlay(ikke_rundkjoringer, rundkjoringer, how="intersection")
+
+    # for hver rundkjøring: lag linjer mellom rundkjøringens mitdpunkt og hver linje som grenser til rundkjøringen
+    alle_rundkjoringer_som_kryss = []
+    for i in rundkjoringer.rundkjoringsid:
+        linjer = []
+        rundkjoring = rundkjoringer[rundkjoringer.rundkjoringsid == i].copy(deep=True)
+        grenser_til_denne = grenser_til[grenser_til.rundkjoringsid == i].copy(deep=True)
+        midtpunkt = rundkjoring.unary_union.centroid
+
+        # lag rett linje mellom midtpunktet og alle linjene som grenser til rundkjøringen
+        for ii, linje in enumerate(grenser_til_denne.geometry):
+            naermeste = nearest_points(midtpunkt, linje)[1]
+            grenser_til_denne.geometry.iloc[ii] = LineString([naermeste, midtpunkt])
+
+        grenser_til_denne = grenser_til_denne.drop("rundkjoringsid", axis=1)
+        alle_rundkjoringer_som_kryss.append(grenser_til_denne)
+
+    # samle alle linjene, så samle med ikke-rundkjøringene
+    alle_rundkjoringer_som_kryss = gdf_concat(
+        alle_rundkjoringer_som_kryss, crs=veger.crs
+    )
+    out = gdf_concat([ikke_rundkjoringer, alle_rundkjoringer_som_kryss], crs=veger.crs)
+
+    return out

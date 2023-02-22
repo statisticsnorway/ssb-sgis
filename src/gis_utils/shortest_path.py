@@ -11,7 +11,7 @@ def shortest_path(
     graph: Graph,
     startpoints: GeoDataFrame,
     endpoints: GeoDataFrame,
-    cost: str,
+    weight: str,
     roads: GeoDataFrame,
     summarise=False,
     cutoff: int = None,
@@ -26,13 +26,13 @@ def shortest_path(
     if rowwise:
         for ori_id, des_id in zip(startpoints["temp_idx"], endpoints["temp_idx"]):
             results = results + _run_shortest_path(
-                ori_id, des_id, graph, roads, cost, summarise
+                ori_id, des_id, graph, roads, weight, summarise
             )
     else:
         for ori_id in startpoints["temp_idx"]:
             for des_id in endpoints["temp_idx"]:
                 results = results + _run_shortest_path(
-                    ori_id, des_id, graph, roads, cost, summarise
+                    ori_id, des_id, graph, roads, weight, summarise
                 )
 
     if summarise:
@@ -59,20 +59,20 @@ def shortest_path(
         )
 
     if cutoff:
-        results = results[results[cost] < cutoff]
+        results = results[results[weight] < cutoff]
 
     if destination_count:
-        results = results.loc[~results[cost].isna()]
-        cost_ranked = results.groupby("origin")[cost].rank()
-        results = results.loc[cost_ranked <= destination_count]
+        results = results.loc[~results[weight].isna()]
+        weight_ranked = results.groupby("origin")[weight].rank()
+        results = results.loc[weight_ranked <= destination_count]
 
-    results = results[["origin", "destination", cost, "geometry"]]
+    results = results[["origin", "destination", weight, "geometry"]]
 
     return results.reset_index(drop=True)
 
 
 def _run_shortest_path(
-    ori_id, des_id, graph: Graph, roads: GeoDataFrame, cost: str, summarise: bool
+    ori_id, des_id, graph: Graph, roads: GeoDataFrame, weight: str, summarise: bool
 ):
     res = graph.get_shortest_paths(weights="weight", v=ori_id, to=des_id)
 
@@ -103,8 +103,8 @@ def _run_shortest_path(
     line["origin"] = ori_id
     line["destination"] = des_id
 
-    # for å få costen også
-    kost = graph.distances(weights="weight", source=ori_id, target=des_id)
-    line[cost] = kost[0][0]
+    # to get the cost:
+    cost = graph.distances(weights="weight", source=ori_id, target=des_id)
+    line[weight] = cost[0][0]
 
     return [line]

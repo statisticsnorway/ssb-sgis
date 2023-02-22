@@ -16,7 +16,7 @@ def test_node_ids():
     r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
 
     nw = gs.DirectedNetwork(r)
-    rules = gs.NetworkAnalysisRules(cost="meters")
+    rules = gs.NetworkAnalysisRules(weight="meters")
     nwa = gs.NetworkAnalysis(nw, rules=rules)
 
     nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")

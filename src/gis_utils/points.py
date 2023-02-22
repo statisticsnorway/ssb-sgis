@@ -84,25 +84,51 @@ class Points:
         return df
 
     @staticmethod
-    def meters_to_cost(dists, cost, cost_to_nodes):
+    def to_weight(dists, rules):
         """
         Gjør om meter to minutter for lenkene mellom punktene og nabonodene.
         og ganger luftlinjeavstanden med 1.5 siden det alltid er svinger i Norge.
         Gjør ellers ingenting.
         """
 
-        if cost_to_nodes == 0:
+        if (
+            not rules.weight_to_nodes_dist
+            and not rules.weight_to_nodes_kmh
+            and not rules.weight_to_nodes_mph
+        ):
             return [0 for _ in dists]
 
-        if cost == "minutes":
-            return [x / (16.666667 * cost_to_nodes) for x in dists]
+        if (
+            sum(
+                [
+                    bool(rules.weight_to_nodes_dist),
+                    bool(rules.weight_to_nodes_kmh),
+                    bool(rules.weight_to_nodes_mph),
+                ]
+            )
+            > 1
+        ):
+            raise ValueError(
+                "Can only specify one of 'weight_to_nodes_dist', 'weight_to_nodes_kmh' and 'weight_to_nodes_mph'"
+            )
+
+        if rules.weight_to_nodes_dist and not rules.weight == "meters":
+            raise ValueError(
+                "Can only specify 'weight_to_nodes_dist' when the 'weight' is meters"
+            )
+
+        if rules.weight_to_nodes_kmh:
+            return [x / (16.666667 * rules.weight_to_nodes_kmh) for x in dists]
+
+        if rules.weight_to_nodes_mph:
+            return [x / (26.8224 * rules.weight_to_nodes_mph) for x in dists]
 
         return dists
 
     def make_edges(self, df, from_col, to_col):
         return [(f, t) for f, t in zip(df[from_col], df[to_col])]
 
-    def get_edges_and_costs(
+    def get_edges_and_weights(
         self,
         nodes: GeoDataFrame,
         rules: NetworkAnalysisRules,
@@ -113,10 +139,9 @@ class Points:
 
         edges = self.make_edges(df, from_col=from_col, to_col=to_col)
 
-        dists = list(df.dist)
-        costs = self.meters_to_cost(dists, rules.cost, rules.cost_to_nodes)
+        weighs = self.to_weight(dists=list(df.dist), rules=rules)
 
-        return edges, costs
+        return edges, weighs
 
 
 class StartPoints(Points):
@@ -130,8 +155,8 @@ class StartPoints(Points):
         self.get_id_col(index=0)
         self.make_temp_idx()
 
-    def get_edges_and_costs(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
-        return super().get_edges_and_costs(
+    def get_edges_and_weights(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
+        return super().get_edges_and_weights(
             nodes, rules, from_col="temp_idx", to_col="node_id"
         )
 
@@ -147,7 +172,7 @@ class EndPoints(Points):
         self.get_id_col(index=1)
         self.make_temp_idx()
 
-    def get_edges_and_costs(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
-        return super().get_edges_and_costs(
+    def get_edges_and_weights(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
+        return super().get_edges_and_weights(
             nodes, rules, from_col="node_id", to_col="temp_idx"
         )

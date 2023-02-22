@@ -16,7 +16,7 @@
 # The package supports three types of network analysis:
 # - od_cost_matrix: fast many-to-many travel times/distances
 # - shortest_path: returns the geometry of the lowest-cost paths.
-# - service_area: returns the roads that can be reached within one or more impedances.
+# - service_area: returns the roads that can be reached within one or more breaks.
 
 # %%
 import geopandas as gpd
@@ -112,7 +112,7 @@ nw
 # This will set the rules to its default values:
 
 # %%
-rules = gs.NetworkAnalysisRules(cost="minutes")
+rules = gs.NetworkAnalysisRules(weight="minutes")
 rules
 
 # %% [markdown]
@@ -168,16 +168,16 @@ gs.qtm(
 )
 
 # %% [markdown]
-# The service_area method finds the area that can be reached within one or more impedances.
+# The service_area method finds the area that can be reached within one or more breaks.
 #
 # Here, we find the areas that can be reached within 5, 10 and 15 minutes for five random points:
 
 # %%
-sa = nwa.service_area(points.sample(5), impedance=(5, 10, 15), id_col="idx")
+sa = nwa.service_area(points.sample(5), breaks=(5, 10, 15), id_col="idx")
 sa
 
 # %%
-sa = nwa.service_area(points.iloc[[0]], impedance=np.arange(1, 11)).sort_values(
+sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11)).sort_values(
     "minutes", ascending=False
 )
 gs.qtm(sa, "minutes", k=9, title="Area that can be reached within 1 to 10 minutes.")
@@ -186,7 +186,7 @@ gs.qtm(sa, "minutes", k=9, title="Area that can be reached within 1 to 10 minute
 # Set 'dissolve' to False to get every road segment returned, one for each service area that uses the segment. If there are a lot of overlapping service areas, that are to be dissolved in the end, removing duplicates first will make things a whole lot faster.
 
 # %%
-sa = nwa.service_area(points.sample(250), impedance=5, dissolve=False)
+sa = nwa.service_area(points.sample(250), breaks=5, dissolve=False)
 
 print(len(sa))
 
@@ -245,7 +245,7 @@ nw = nw.close_network_holes(max_dist=1.5)  # meters
 nw
 
 # %% [markdown]
-# The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the endpoint will either be reached or not within the impedance. This can be fixed by cutting all lines to a maximum distance.
+# The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the endpoint will either be reached or not within the breaks. This can be fixed by cutting all lines to a maximum distance.
 #
 # Note: cutting the lines can be time consuming for large networks and low maximum distances.
 
