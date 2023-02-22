@@ -9,7 +9,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 import sys
 
 
-sys.path.append(src)
+sys.path.insert(0, src)
 import gis_utils as gs
 
 

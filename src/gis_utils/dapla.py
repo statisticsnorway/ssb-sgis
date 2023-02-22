@@ -1,6 +1,9 @@
+import os
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from geopandas.io.arrow import _geopandas_to_arrow
 from pyarrow import parquet
 
 
@@ -13,9 +16,7 @@ def exists(path: str) -> bool:
     except FileNotFoundError:
         return False
     except ModuleNotFoundError:
-        from os.path import exists
-
-        return exists(path)
+        return os.path.exists(path)
 
 
 def read_geopandas(sti: str, **kwargs) -> gpd.GeoDataFrame:
@@ -40,8 +41,6 @@ def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
     fs = FileClient.get_gcs_file_system()
 
     if ".parquet" in gcs_path:
-        from geopandas.io.arrow import _geopandas_to_arrow
-
         with fs.open(gcs_path, mode="wb") as buffer:
             table = _geopandas_to_arrow(df, index=df.index, schema_version=None)
             parquet.write_table(table, buffer, compression="snappy", **kwargs)
@@ -60,16 +59,3 @@ def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
 
     with fs.open(gcs_path, "wb") as file:
         df.to_file(file, driver=driver)
-
-
-def samle_filer(filer: list, **kwargs) -> gpd.GeoDataFrame:
-    return pd.concat(
-        (read_geopandas(fil, **kwargs) for fil in filer), axis=0, ignore_index=True
-    )
-
-
-def lag_mappe(sti):
-    if not exists(sti):
-        from os import makedirs
-
-        makedirs(sti)

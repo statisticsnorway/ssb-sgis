@@ -49,7 +49,7 @@ class Network:
 
         if not allow_degree_units and gdf.crs.axis_info[0].unit_name == "degree":
             raise ValueError(
-                "The crs of cannot have degrees as unit. Change to a projected crs with e.g. 'metre' as unit."
+                "The crs cannot have degrees as unit. Change to a projected crs with e.g. 'metre' as unit."
                 "If you really want to use an unprojected crs, set 'allow_degree_units' to True."
             )
 
@@ -158,8 +158,8 @@ class Network:
 
         return self
 
-    def cut_lines(self, max_length: int):
-        self.gdf = cut_lines(self.gdf, max_length)
+    def cut_lines(self, max_length: int, ignore_index=True):
+        self.gdf = cut_lines(self.gdf, max_length=max_length, ignore_index=ignore_index)
         return self
 
     def nodes_are_up_to_date(self) -> bool:

@@ -1,4 +1,5 @@
 import warnings
+from typing import Tuple
 
 import numpy as np
 from geopandas import GeoDataFrame
@@ -52,8 +53,8 @@ and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T
     def make_directed_network_norway(
         self,
         direction_col: str = "oneway",
-        direction_vals_bft: list | tuple = ("B", "FT", "TF"),
-        minute_cols: list | tuple = ("drivetime_fw", "drivetime_bw"),
+        direction_vals_bft: Tuple[str, str, str] = ("B", "FT", "TF"),
+        minute_cols: Tuple[str, str] = ("drivetime_fw", "drivetime_bw"),
     ):
         """https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313"""
 
@@ -66,9 +67,9 @@ and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T
     def make_directed_network(
         self,
         direction_col: str,
-        direction_vals_bft: tuple[str, str, str] | list[str, str, str],
+        direction_vals_bft: Tuple[str, str, str],
         speed_col: str | None = None,
-        minute_cols: tuple[str, str] | list[str, str] | str | None = None,
+        minute_cols: Tuple[str, str] | str | None = None,
         flat_speed: int | None = None,
     ):
         """Flips the line geometries of roads going backwards and in both directions.
@@ -146,6 +147,13 @@ and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T
         both_ways2.geometry = reverse(both_ways2.geometry)
 
         self.gdf = gdf_concat([both_ways, both_ways2, ft, tf])
+
+        unit = self.gdf.crs.axis_info[0].unit_name
+        if flat_speed or speed_col and unit != "metre":
+            raise ValueError(
+                f"The crs must have 'metre' as units when calculating minutes. Got '{unit}'. "
+                "Change crs or calculate minutes manually."
+            )
 
         if speed_col:
             self.gdf["minutes"] = (

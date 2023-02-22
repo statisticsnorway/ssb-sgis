@@ -99,13 +99,9 @@ class Points:
             return [0 for _ in dists]
 
         if (
-            sum(
-                [
-                    bool(rules.weight_to_nodes_dist),
-                    bool(rules.weight_to_nodes_kmh),
-                    bool(rules.weight_to_nodes_mph),
-                ]
-            )
+            bool(rules.weight_to_nodes_dist)
+            + bool(rules.weight_to_nodes_kmh)
+            + bool(rules.weight_to_nodes_mph)
             > 1
         ):
             raise ValueError(

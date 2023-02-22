@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
 from matplotlib.colors import LinearSegmentedColormap
+from pandas.api.types import is_numeric_dtype
 from shapely import Geometry
 
 from .geopandas_utils import gdf_concat
@@ -11,7 +12,7 @@ def qtm(
     gdf,
     column=None,
     *,
-    scheme="Quantiles",
+    scheme="quantiles",
     title=None,
     size=10,
     fontsize=15,
@@ -19,7 +20,10 @@ def qtm(
     **kwargs,
 ) -> None:
     """Quick, thematic map (name stolen from the tmap package in R).
-    Larger than the default, with legend and quantiles scheme."""
+    Larger than the default, with legend and quantiles scheme if numeric dtype."""
+    if column:
+        if not is_numeric_dtype(gdf[column]):
+            scheme = None
     fig, ax = plt.subplots(1, figsize=(size, size))
     ax.set_axis_off()
     ax.set_title(title, fontsize=fontsize)

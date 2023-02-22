@@ -405,15 +405,15 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
     return new_lines
 
 
-def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoDataFrame:
+def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataFrame:
     """
     It cuts lines of a GeoDataFrame into pieces of a given length
 
     Args:
       gdf (GeoDataFrame): GeoDataFrame
       max_length (int): The maximum length of the lines in the output GeoDataFrame.
-      ignore_index: If True, the resulting GeoDataFrame will have a simple RangeIndex. If False, it will
-    retain the index of the original GeoDataFrame. Defaults to False
+      ignore_index: If True, the resulting GeoDataFrame will have a simple RangeIndex. If False, you will get a
+      MultiIndex. Defaults to True
 
     Returns:
       A GeoDataFrame with lines cut to the maximum distance.
@@ -472,45 +472,38 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
     return pd.concat([under_max_length, over_max_length], ignore_index=ignore_index)
 
 
-def rundkjoringer_til_kryss(veger, query="ROADTYPE=='Rundkjøring'"):
-    from geopandasgreier.gis_operasjoner_samlet import buffdissexp
+def roundabouts_to_intersections(roads, query="ROADTYPE=='Rundkjøring'"):
     from shapely.geometry import LineString
     from shapely.ops import nearest_points
-    from shapely.wkt import loads
 
-    rundkjoringer = veger.query(query).copy(deep=True)
-    ikke_rundkjoringer = veger.query(query.replace("==", "!=")).copy(deep=True)
+    from .buffer_dissolve_explode import buffdissexp
 
-    # liten buffer rundt rundkjøringene, samle overlappende og lag id (dette kunne vært erstattet med buffdissexp, men gjør det manuelt for å unngå dependency)
-    rundkjoringer = rundkjoringer[["geometry"]]
-    rundkjoringer["geometry"] = rundkjoringer.buffer(1)
-    rundkjoringer = rundkjoringer.dissolve()
-    rundkjoringer = rundkjoringer.explode(ignore_index=True)
-    rundkjoringer["rundkjoringsid"] = rundkjoringer.index
+    roundabouts = roads.query(query)
+    not_roundabouts = roads.loc[~roads.index.isin(roundabouts.index)]
 
-    # koble med ikke-rundkjøringer for å få linjene som grenser mot rundkjøringer
-    grenser_til = gpd.overlay(ikke_rundkjoringer, rundkjoringer, how="intersection")
+    roundabouts = buffdissexp(roundabouts[["geometry"]], 1)
+    roundabouts["roundidx"] = roundabouts.index
+
+    border_to = roundabouts.overlay(not_roundabouts, how="intersection")
 
     # for hver rundkjøring: lag linjer mellom rundkjøringens mitdpunkt og hver linje som grenser til rundkjøringen
-    alle_rundkjoringer_som_kryss = []
-    for i in rundkjoringer.rundkjoringsid:
-        linjer = []
-        rundkjoring = rundkjoringer[rundkjoringer.rundkjoringsid == i].copy(deep=True)
-        grenser_til_denne = grenser_til[grenser_til.rundkjoringsid == i].copy(deep=True)
-        midtpunkt = rundkjoring.unary_union.centroid
+    as_intersections = []
+    for idx in roundabouts.roundidx:
+        this = roundabouts.loc[roundabouts.roundidx == idx]
+        border_to_this = border_to.loc[border_to.roundidx == idx].drop(
+            "roundidx", axis=1
+        )
 
-        # lag rett linje mellom midtpunktet og alle linjene som grenser til rundkjøringen
-        for ii, linje in enumerate(grenser_til_denne.geometry):
-            naermeste = nearest_points(midtpunkt, linje)[1]
-            grenser_til_denne.geometry.iloc[ii] = LineString([naermeste, midtpunkt])
+        midpoint = this.unary_union.centroid
 
-        grenser_til_denne = grenser_til_denne.drop("rundkjoringsid", axis=1)
-        alle_rundkjoringer_som_kryss.append(grenser_til_denne)
+        # straight lines to the midpoint
+        for i, line in enumerate(border_to_this.geometry):
+            closest_point = nearest_points(midpoint, line)[1]
+            border_to_this.geometry.iloc[i] = LineString([closest_point, midpoint])
 
-    # samle alle linjene, så samle med ikke-rundkjøringene
-    alle_rundkjoringer_som_kryss = gdf_concat(
-        alle_rundkjoringer_som_kryss, crs=veger.crs
-    )
-    out = gdf_concat([ikke_rundkjoringer, alle_rundkjoringer_som_kryss], crs=veger.crs)
+        as_intersections.append(border_to_this)
+
+    as_intersections = gdf_concat(as_intersections, crs=roads.crs)
+    out = gdf_concat([not_roundabouts, as_intersections], crs=roads.crs)
 
     return out
