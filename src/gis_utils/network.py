@@ -33,14 +33,25 @@ class Network:
         self,
         gdf: GeoDataFrame,
         merge_lines: bool = True,
+        allow_degree_units: bool = False,
     ):
+        # the 'directed' attribute will be overridden when initialising the DirectedNetwork class
+        self.directed = False
+
         if not isinstance(gdf, GeoDataFrame):
             raise TypeError(f"'lines' should be GeoDataFrame, got {type(gdf)}")
 
         if not len(gdf):
             raise ZeroRowsError
 
-        self.directed = False
+        if not len(gdf):
+            raise ZeroRowsError
+
+        if not allow_degree_units and gdf.crs.axis_info[0].unit_name == "degree":
+            raise ValueError(
+                "The crs cannot have degrees as unit. Change to a projected crs with e.g. 'metre' as unit."
+                "If you really want to use an unprojected crs, set 'allow_degree_units' to True."
+            )
 
         self.gdf = self.prepare_network(gdf, merge_lines)
 
@@ -91,7 +102,7 @@ class Network:
         rows_now = len(gdf)
         gdf = gdf.explode(ignore_index=True)
 
-        if diff := rows_now - len(gdf):
+        if diff := len(gdf) - rows_now:
             if diff == 1:
                 print(
                     f"1 multi-geometry was split into single part geometries. "
@@ -147,8 +158,8 @@ class Network:
 
         return self
 
-    def cut_lines(self, max_length: int):
-        self.gdf = cut_lines(self.gdf, max_length)
+    def cut_lines(self, max_length: int, ignore_index=True):
+        self.gdf = cut_lines(self.gdf, max_length=max_length, ignore_index=ignore_index)
         return self
 
     def nodes_are_up_to_date(self) -> bool:
@@ -186,7 +197,10 @@ class Network:
         return self._nodes
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__} class instance with {len(self.gdf)} rows and a length of {int(sum(self.gdf.length)/1000)} km."
+        cl = self.__class__.__name__
+        ln = len(self.gdf)
+        km = int(sum(self.gdf.length) / 1000)
+        return f"{cl} class instance with {ln} rows and a length of {km} km."
 
     def __iter__(self):
         return iter(self.__dict__.values())

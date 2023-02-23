@@ -1,4 +1,5 @@
 import warnings
+from random import random
 
 import geopandas as gpd
 import numpy as np
@@ -13,7 +14,8 @@ from shapely import (
     get_parts,
     polygons,
 )
-from shapely.ops import unary_union
+from shapely.ops import nearest_points, snap, unary_union
+from shapely.wkt import loads
 
 from .buffer_dissolve_explode import buff
 
@@ -124,7 +126,7 @@ def to_single_geom_type(
 
 
 def close_holes(
-    gdf: GeoDataFrame | GeoSeries | Geometry,
+    polygons: GeoDataFrame | GeoSeries | Geometry,
     max_km2: int | None = None,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries | Geometry:
@@ -132,7 +134,7 @@ def close_holes(
     It closes holes in polygons of a GeoDataFrame, GeoSeries or shapely Geometry.
 
     Args:
-      gdf: GeoDataFrame, GeoSeries or shapely Geometry.
+      polygons: GeoDataFrame, GeoSeries or shapely Geometry.
       max_km2 (int | None): if None (default), all holes are closed.
         Otherwise, closes holes with an area below the specified number in
         square kilometers if the crs unit is in meters.
@@ -144,33 +146,35 @@ def close_holes(
     """
 
     if copy:
-        gdf = gdf.copy()
+        polygons = polygons.copy()
 
-    if isinstance(gdf, GeoDataFrame):
-        gdf["geometry"] = gdf.geometry.map(lambda x: _close_holes_geom(x, max_km2))
+    if isinstance(polygons, GeoDataFrame):
+        polygons["geometry"] = polygons.geometry.map(
+            lambda x: _close_holes_poly(x, max_km2)
+        )
 
-    elif isinstance(gdf, gpd.GeoSeries):
-        gdf = gdf.map(lambda x: _close_holes_geom(x, max_km2))
-        gdf = gpd.GeoSeries(gdf)
+    elif isinstance(polygons, gpd.GeoSeries):
+        polygons = polygons.map(lambda x: _close_holes_poly(x, max_km2))
+        polygons = gpd.GeoSeries(polygons)
 
     else:
-        gdf = _close_holes_geom(gdf, max_km2)
+        polygons = _close_holes_poly(polygons, max_km2)
 
-    return gdf
+    return polygons
 
 
-def _close_holes_geom(geom, max_km2=None):
-    """closes holes within one shapely geometry."""
+def _close_holes_poly(poly, max_km2=None):
+    """closes holes within one shapely geometry of polygons."""
 
     # dissolve the exterior ring(s)
     if max_km2 is None:
-        holes_closed = polygons(get_exterior_ring(get_parts(geom)))
+        holes_closed = polygons(get_exterior_ring(get_parts(poly)))
         return unary_union(holes_closed)
 
-    # start with a list containing the geometry,
+    # start with a list containing the polygon,
     # then append all holes smaller than 'max_km2' to the list.
-    holes_closed = [geom]
-    singlepart = get_parts(geom)
+    holes_closed = [poly]
+    singlepart = get_parts(poly)
     for part in singlepart:
         n_interior_rings = get_num_interior_rings(part)
 
@@ -244,6 +248,10 @@ def to_gdf(
         crs: if None (default), it uses the crs of the GeoSeries if GeoSeries
             is the input type. Otherwise, an exception is raised, saying that
             crs has to be specified.
+
+    Returns:
+        A GeoDataFrame
+
     """
 
     if not crs:
@@ -300,7 +308,9 @@ def clean_clip(
         return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(clean_geoms)
 
 
-def sjoin(left_gdf, right_gdf, drop_dupcol=True, **kwargs) -> GeoDataFrame:
+def sjoin(
+    left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, drop_dupcol: bool = True, **kwargs
+) -> GeoDataFrame:
     """
     som gpd.sjoin bare at kolonner i right_gdf som også er i left_gdf fjernes
     (fordi det snart vil gi feilmelding i geopandas) og kolonner som har med index
@@ -313,7 +323,10 @@ def sjoin(left_gdf, right_gdf, drop_dupcol=True, **kwargs) -> GeoDataFrame:
 
     if drop_dupcol:
         right_gdf = right_gdf.loc[
-            :, right_gdf.columns.difference(left_gdf.columns.difference(["geometry"]))
+            :,
+            right_gdf.columns.difference(
+                left_gdf.columns.difference([left_gdf._geometry_column_name])
+            ),
         ]
 
     try:
@@ -327,44 +340,79 @@ def sjoin(left_gdf, right_gdf, drop_dupcol=True, **kwargs) -> GeoDataFrame:
     return joined.loc[:, ~joined.columns.str.contains("index|level_")]
 
 
-def snap_to(punkter, snap_til, maks_distanse=500, copy=False):
+def snap_to(
+    points: GeoDataFrame | GeoSeries,
+    snap_to: GeoDataFrame | GeoSeries,
+    max_dist: int | None = None,
+    to_vertex: bool = False,
+    copy: bool = False,
+) -> GeoDataFrame | GeoSeries:
     """
-    Snapper (flytter) punkter til naermeste punkt/linje/polygon innen en gitt
-    maks_distanse. Går via nearest_points for å finne det nøyaktige punktet. Med kun
-    snap() blir det unøyaktig. Funker med geodataframes og geoseries."""
+    It takes a GeoDataFrame or GeoSeries of points and snaps them to the nearest point in a second
+    GeoDataFrame or GeoSeries
 
-    from shapely.ops import nearest_points, snap
+    Args:
+      points (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries of points to snap
+      snap_to (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries to snap to
+      max_dist (int): The maximum distance to snap to. Defaults to None.
+      to_vertex (bool): If True, the points will snap to the nearest vertex of the snap_to geometry. If
+        False, the points will snap to the nearest point on the snap_to geometry, which can be between two vertices
+        if the snap_to geometry is line or polygon. Defaults to False
+      copy (bool): If True, a copy of the GeoDataFrame is returned. Otherwise, the original
+    GeoDataFrame. Defaults to False
 
-    snap_til_shapely = snap_til.unary_union
+    Returns:
+      A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the snap_to
+    GeoDataFrame or GeoSeries.
+    """
+
+    unioned = snap_to.unary_union
 
     if copy:
-        punkter = punkter.copy()
+        points = points.copy()
 
-    if isinstance(punkter, GeoDataFrame):
-        for i, punkt in enumerate(punkter.geometry):
-            nearest = nearest_points(punkt, snap_til_shapely)[1]
-            snappet_punkt = snap(punkt, nearest, tolerance=maks_distanse)
-            punkter.geometry.iloc[i] = snappet_punkt
+    def func(point, snap_to, to_vertex):
+        if to_vertex:
+            snap_to = to_multipoint(snap_to)
 
-    if isinstance(punkter, gpd.GeoSeries):
-        for i, punkt in enumerate(punkter):
-            nearest = nearest_points(punkt, snap_til_shapely)[1]
-            snappet_punkt = snap(punkt, nearest, tolerance=maks_distanse)
-            punkter.iloc[i] = snappet_punkt
+        if not max_dist:
+            return nearest_points(point, snap_to)[1]
 
-    return punkter
+        nearest = nearest_points(point, snap_to)[1]
+        return snap(point, nearest, tolerance=max_dist)
+
+    if isinstance(points, GeoDataFrame):
+        points[points._geometry_column_name] = points[
+            points._geometry_column_name
+        ].apply(lambda point: func(point, unioned, to_vertex))
+
+    if isinstance(points, gpd.GeoSeries):
+        points = points.apply(lambda point: func(point, unioned, to_vertex))
+
+    return points
 
 
-def to_multipoint(geom, copy=False):
+def to_multipoint(gdf, copy=False):
+    """
+    It takes a geometry and returns a multipoint geometry
+
+    Args:
+      gdf: The geometry to be converted. Can be a GeoDataFrame, GeoSeries or a shapely geometry.
+      copy: If True, the geometry will be copied. Otherwise, it may be possible to modify the original
+    geometry in-place, which can improve performance. Defaults to False
+
+    Returns:
+      A GeoDataFrame with the geometry column as a MultiPoint
+    """
     from shapely import force_2d
     from shapely.wkt import loads
 
     if copy:
-        geom = geom.copy()
+        gdf = gdf.copy()
 
-    def til_multipunkt_i_shapely(geom):
+    def _to_multipoint(gdf):
         koordinater = "".join(
-            [x for x in geom.wkt if x.isdigit() or x.isspace() or x == "." or x == ","]
+            [x for x in gdf.wkt if x.isdigit() or x.isspace() or x == "." or x == ","]
         ).strip()
 
         alle_punkter = [
@@ -373,46 +421,56 @@ def to_multipoint(geom, copy=False):
 
         return unary_union(alle_punkter)
 
-    if isinstance(geom, GeoDataFrame):
-        geom["geometry"] = force_2d(geom.geometry)
-        geom["geometry"] = geom.geometry.apply(lambda x: til_multipunkt_i_shapely(x))
+    if isinstance(gdf, GeoDataFrame):
+        gdf[gdf._geometry_column_name] = (
+            gdf[gdf._geometry_column_name]
+            .pipe(force_2d)
+            .apply(lambda x: _to_multipoint(x))
+        )
 
-    elif isinstance(geom, gpd.GeoSeries):
-        geom = force_2d(geom)
-        geom = geom.apply(lambda x: til_multipunkt_i_shapely(x))
+    elif isinstance(gdf, gpd.GeoSeries):
+        gdf = force_2d(gdf)
+        gdf = gdf.apply(lambda x: _to_multipoint(x))
 
     else:
-        geom = force_2d(geom)
-        geom = til_multipunkt_i_shapely(unary_union(geom))
+        gdf = force_2d(gdf)
+        gdf = _to_multipoint(unary_union(gdf))
 
-    return geom
+    return gdf
 
 
 def find_neighbours(
     gdf: GeoDataFrame | GeoSeries,
     possible_neighbours: GeoDataFrame | GeoSeries,
     id_col: str,
-    within_distance: int = 1,
-):
-    """Return geometries that are less than 1 meter
-    finner geometrier som er maks. 1 meter unna.
-    i alle retninger (queen contiguity).
+    max_dist: int = 0,
+) -> list:
+    """
+    Finds all the geometries in another GeoDataFrame that intersects with the first geometry
 
     Args:
-        gdf: the geometry
+        gdf (GeoDataFrame | GeoSeries): the geometry
+        possible_neighbours (GeoDataFrame | GeoSeries): the geometries that you want to find neighbours
+            for
+        id_col (str): The column in the GeoDataFrame that contains the unique identifier for each
+            geometry.
+        max_dist (int): The maximum distance between the two geometries. Defaults to 0
+
+    Returns:
+      A list of unique values from the id_col column in the joined dataframe.
     """
 
-    if gdf.crs == 4326 and within_distance > 0.01:
-        warnings.warn(
-            "'gdf' has latlon crs, meaning the 'within_distance' paramter "
-            "will not be in meters, but degrees."
-        )
+    if max_dist:
+        if gdf.crs == 4326:
+            warnings.warn(
+                "'gdf' has latlon crs, meaning the 'max_dist' paramter "
+                "will not be in meters, but degrees."
+            )
+        gdf = gdf.buffer(max_dist).to_frame()
 
     possible_neighbours = possible_neighbours.to_crs(gdf.crs)
 
-    joined = (
-        gdf.buffer(within_distance).to_frame().sjoin(possible_neighbours, how="inner")
-    )
+    joined = gdf.sjoin(possible_neighbours, how="inner")
 
     return [x for x in joined[id_col].unique()]
 
@@ -421,62 +479,15 @@ def find_neighbors(
     gdf: GeoDataFrame | GeoSeries,
     possible_neighbors: GeoDataFrame | GeoSeries,
     id_col: str,
-    within_distance: int = 1,
+    max_dist: int = 0,
 ):
-    return find_neighbours(gdf, possible_neighbors, id_col, within_distance)
+    """American alias for find_neighbours."""
+    return find_neighbours(gdf, possible_neighbors, id_col, max_dist)
 
 
-def try_diss(gdf, presicion_col=True, max_rounding=5, **kwargs):
-    """
-    dissolve har gitt TopologyException: found non-noded intersection error from
-    overlay. En løsning er å avrunde koordinatene for å få valid polygon.
-    Prøver først uten avrunding, så runder av til 10 koordinatdesimaler, så 9, 8, ...,
-    og så gir opp på 0
-
-    Args:
-      presisjonskolonne: om man skal inkludere en kolonne som angir hvilken avrunding
-        som måtte til.
-      max_avrunding: hvilken avrunding man stopper på. 0 betyr at man fortsetter fram
-        til 0 desimaler.
-    """
-
-    from .buffer_dissolve_explode import diss
-
-    try:
-        dissolvet = diss(gdf, **kwargs)
-        if presicion_col:
-            dissolvet["avrunding"] = np.nan
-        return dissolvet
-
-    except Exception:
-        from shapely.wkt import dumps, loads
-
-        # liste fra 10 til 0, eller max_avrunding til 0
-        avrundinger = list(range(max_rounding, 11))
-        avrundinger.reverse()
-
-        for avrunding in avrundinger:
-            try:
-                gdf.geometry = [
-                    loads(dumps(gdf, rounding_precision=avrunding))
-                    for geom in gdf.geometry
-                ]
-
-                dissolvet = diss(gdf, **kwargs)
-
-                if presicion_col:
-                    dissolvet["avrunding"] = avrunding
-
-                return dissolvet
-
-            except Exception:
-                avrunding -= 1
-
-        # returnerer feilmeldingen hvis det fortsatt ikke funker
-        diss(gdf, **kwargs)
-
-
-def gridish(gdf, meter, x2=False, minmax=False):
+def gridish(
+    gdf: GeoDataFrame, meters: int, x2: bool = False, minmax: bool = False
+) -> GeoDataFrame:
     """
     Enkel rutedeling av dataene, for å kunne loope tunge greier for områder i valgfri
     størrelse. Gir dataene kolonne med avrundede minimum-xy-koordinater, altså det
@@ -494,18 +505,18 @@ def gridish(gdf, meter, x2=False, minmax=False):
 
     # rund ned koordinatene og sett sammen til kolonne
     gdf["gridish"] = [
-        f"{round(minx/meter)}_{round(miny/meter)}"
+        f"{round(minx/meters)}_{round(miny/meters)}"
         for minx, miny in zip(gdf.geometry.bounds.minx, gdf.geometry.bounds.miny)
     ]
 
     if minmax:
         gdf["gridish_max"] = [
-            f"{round(maxx/meter)}_{round(maxy/meter)}"
+            f"{round(maxx/meters)}_{round(maxy/meters)}"
             for maxx, maxy in zip(gdf.geometry.bounds.maxx, gdf.geometry.bounds.maxy)
         ]
 
     if x2:
-        gdf["gridish_x"] = gdf.geometry.bounds.minx / meter
+        gdf["gridish_x"] = gdf.geometry.bounds.minx / meters
 
         unike_x = gdf["gridish_x"].astype(int).unique()
         unike_x.sort()
@@ -519,7 +530,7 @@ def gridish(gdf, meter, x2=False, minmax=False):
             )
 
         # samme for y
-        gdf["gridish_y"] = gdf.geometry.bounds.miny / meter
+        gdf["gridish_y"] = gdf.geometry.bounds.miny / meters
         unike_y = gdf["gridish_y"].astype(int).unique()
         unike_y.sort()
         for y in unike_y:
@@ -539,49 +550,20 @@ def gridish(gdf, meter, x2=False, minmax=False):
     return gdf
 
 
-def random_points(n: int, mask=None) -> GeoDataFrame:
-    """lager n tilfeldige punkter innenfor et gitt område (mask)."""
-    import random
-
-    from shapely.wkt import loads
-
-    if mask is None:
-        x = np.array([random.random() * 10**7 for _ in range(n * 1000)])
-        y = np.array([random.random() * 10**8 for _ in range(n * 1000)])
-        punkter = to_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
-        return punkter
-    mask_kopi = mask.copy()
-    mask_kopi = mask_kopi.to_crs(25833)
-    out = GeoDataFrame({"geometry": []}, geometry="geometry", crs=25833)
-    while len(out) < n:
-        x = np.array([random.random() * 10**7 for _ in range(n * 1000)])
-        x = x[(x > mask_kopi.bounds.minx.iloc[0]) & (x < mask_kopi.bounds.maxx.iloc[0])]
-
-        y = np.array([random.random() * 10**8 for _ in range(n * 1000)])
-        y = y[(y > mask_kopi.bounds.miny.iloc[0]) & (y < mask_kopi.bounds.maxy.iloc[0])]
-
-        punkter = til_gdf([loads(f"POINT ({x} {y})") for x, y in zip(x, y)], crs=25833)
-        overlapper = punkter.clip(mask_kopi)
-        out = gdf_concat([out, overlapper])
-    out = out.sample(n).reset_index(drop=True).to_crs(mask.crs)
-    out["idx"] = out.index
-    return out
-
-
 def count_within_distance(
-    gdf1: GeoDataFrame, gdf2: GeoDataFrame, distance=0, col_name="n"
+    gdf1: GeoDataFrame, gdf2: GeoDataFrame, max_dist=0, col_name="n"
 ) -> GeoDataFrame:
     """
     Teller opp antall nærliggende eller overlappende (hvis avstan=0) geometrier i
     to geodataframes. gdf1 returneres med en ny kolonne ('antall') som forteller hvor
-    mange geometrier (rader) fra gdf2 som er innen spesifisert distance .
+    mange geometrier (rader) fra gdf2 som er innen spesifisert max_dist.
     """
 
     gdf1["temp_idx"] = range(len(gdf1))
     gdf2["temp_idx2"] = range(len(gdf2))
 
-    if distance > 0:
-        gdf2 = buff(gdf2[["geometry"]], distance)
+    if max_dist > 0:
+        gdf2 = buff(gdf2[["geometry"]], max_dist)
 
     joined = (
         gdf1[["temp_idx", "geometry"]]

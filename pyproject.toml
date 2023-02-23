@@ -17,7 +17,7 @@ classifiers = [
 Changelog = "https://github.com/statisticsnorway/ssb-gis-utils/releases"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<4.0"
 geopandas = "^0.12.2"
 shapely = "^2.0.1"
 pyogrio = "^0.5.1"

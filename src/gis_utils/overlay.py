@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from shapely import STRtree, difference, intersection, union_all
+from shapely.wkt import dumps, loads
 
 from .geopandas_utils import clean_geoms, gdf_concat, push_geom_col
 
@@ -148,7 +149,8 @@ def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataF
             return _shapely_intersection(pairs)
 
         if how == "difference":
-            return push_geom_col(pairs)
+            clip_left = _shapely_difference_left(pairs, df1)
+            return push_geom_col(clip_left)
 
         if how == "union" or how == "identity":
             intersections = _shapely_intersection(pairs)
@@ -273,8 +275,6 @@ def try_overlay(
         return gdf1.overlay(gdf2, **kwargs)
 
     except Exception:
-        from shapely.wkt import dumps, loads
-
         # loop through list from 10 to 'max_rounding'
 
         roundings = list(range(max_rounding, 11))
@@ -306,3 +306,18 @@ def try_overlay(
 
         # returnerer feilmeldingen hvis det fortsatt ikke funker
         gdf1.overlay(gdf2, **kwargs)
+
+
+def make_valid_with_equal_precision(gdf, precision: int = 10):
+    while True:
+        gdf.geometry = [
+            loads(dumps(geom, rounding_precision=precision)) for geom in gdf.geometry
+        ]
+
+        if all(gdf.geometry.is_valid):
+            gdf = behold_vanligste_geomtype(gdf)
+            break
+
+        gdf = fiks_geometrier(gdf, to_single_geomtype=False)
+
+    return gdf

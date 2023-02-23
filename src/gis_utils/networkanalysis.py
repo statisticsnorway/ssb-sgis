@@ -23,10 +23,10 @@ class NetworkAnalysis:
         network: either the base Network class or a subclass, chiefly the DirectedNetwork class.
             The network should be customized beforehand, but can also be accessed through
             the 'network' attribute of this class.
-        cost: e.i. 'minutes' or 'meters'. Or custom numeric column.
+        weight: e.i. 'minutes' or 'meters'. Or custom numeric column.
         search_tolerance: meters.
         search_factor: .
-        cost_to_nodes: .
+        weight_to_nodes: .
 
     Example:
 
@@ -43,7 +43,7 @@ class NetworkAnalysis:
         .remove_isolated()
         )
 
-    nwa = NetworkAnalysis(nw, cost="minutes")
+    nwa = NetworkAnalysis(nw, weight="minutes")
 
     od = nwa.od_cost_matrix(p, p)
 
@@ -67,7 +67,9 @@ class NetworkAnalysis:
                 f"'network' should of type DirectedNetwork or Network. Got {type(network)}"
             )
 
-        self.network.gdf = self.rules.validate_cost(self.network.gdf, raise_error=False)
+        self.network.gdf = self.rules.validate_weight(
+            self.network.gdf, raise_error=False
+        )
 
         self.update_point_wkts()
         self.rules.update_rules()
@@ -86,7 +88,7 @@ class NetworkAnalysis:
             graph=self.graph,
             startpoints=self.startpoints.gdf,
             endpoints=self.endpoints.gdf,
-            cost=self.rules.cost,
+            weight=self.rules.weight,
             lines=lines,
             **kwargs,
         )
@@ -117,7 +119,7 @@ class NetworkAnalysis:
             graph=self.graph,
             startpoints=self.startpoints.gdf,
             endpoints=self.endpoints.gdf,
-            cost=self.rules.cost,
+            weight=self.rules.weight,
             roads=self.network.gdf,
             summarise=summarise,
             **kwargs,
@@ -143,7 +145,7 @@ class NetworkAnalysis:
         results = service_area(
             self.graph,
             self.startpoints.gdf,
-            self.rules.cost,
+            self.rules.weight,
             self.network.gdf,
             **kwargs,
         )
@@ -159,12 +161,14 @@ class NetworkAnalysis:
     def prepare_network_analysis(
         self, startpoints, endpoints=None, id_col: str | None = None
     ) -> None:
-        """Prepares the cost column, node ids and start- and endpoints.
+        """Prepares the weight column, node ids and start- and endpoints.
         Also updates the graph if it is not yet created and no parts of the analysis has changed.
         this method is run inside od_cost_matrix, shortest_path and service_area.
         """
 
-        self.network.gdf = self.rules.validate_cost(self.network.gdf, raise_error=True)
+        self.network.gdf = self.rules.validate_weight(
+            self.network.gdf, raise_error=True
+        )
 
         self.startpoints = StartPoints(
             startpoints,
@@ -185,10 +189,10 @@ class NetworkAnalysis:
         if not (self.graph_is_up_to_date() and self.network.nodes_are_up_to_date()):
             self.network.update_nodes_if()
 
-            edges, costs = self.get_edges_and_costs()
+            edges, weights = self.get_edges_and_weights()
 
             self.graph = self.make_graph(
-                edges=edges, costs=costs, directed=self.network.directed
+                edges=edges, weights=weights, directed=self.network.directed
             )
 
             self.add_missing_vertices()
@@ -196,9 +200,9 @@ class NetworkAnalysis:
         self.update_point_wkts()
         self.rules.update_rules()
 
-    def get_edges_and_costs(self) -> Tuple[list[Tuple[str, ...]], list[float]]:
-        """Creates lists of edges and costs which will be used to make the graph.
-        Edges and costs between startpoints and nodes and nodes and endpoints are also added.
+    def get_edges_and_weights(self) -> Tuple[list[Tuple[str, ...]], list[float]]:
+        """Creates lists of edges and weights which will be used to make the graph.
+        Edges and weights between startpoints and nodes and nodes and endpoints are also added.
         """
 
         edges = [
@@ -208,24 +212,24 @@ class NetworkAnalysis:
             )
         ]
 
-        costs = list(self.network.gdf[self.rules.cost])
+        weights = list(self.network.gdf[self.rules.weight])
 
-        edges_start, costs_start = self.startpoints.get_edges_and_costs(
+        edges_start, weights_start = self.startpoints.get_edges_and_weights(
             self.network.nodes, self.rules
         )
         edges = edges + edges_start
-        costs = costs + costs_start
+        weights = weights + weights_start
 
         if self.endpoints is None:
-            return edges, costs
+            return edges, weights
 
-        edges_end, costs_end = self.endpoints.get_edges_and_costs(
+        edges_end, weights_end = self.endpoints.get_edges_and_weights(
             self.network.nodes, self.rules
         )
         edges = edges + edges_end
-        costs = costs + costs_end
+        weights = weights + weights_end
 
-        return edges, costs
+        return edges, weights
 
     def add_missing_vertices(self):
         """Adds the points that had no nodes within the search_tolerance
@@ -250,18 +254,18 @@ class NetworkAnalysis:
     @staticmethod
     def make_graph(
         edges: list[Tuple[str, ...]] | np.ndarray[Tuple[str, ...]],
-        costs: list[float] | np.ndarray[float],
+        weights: list[float] | np.ndarray[float],
         directed: bool,
     ) -> Graph:
-        """Creates an igraph Graph from a list of edges and costs."""
+        """Creates an igraph Graph from a list of edges and weights."""
 
-        assert len(edges) == len(costs)
+        assert len(edges) == len(weights)
 
         graph = igraph.Graph.TupleList(edges, directed=directed)
 
-        graph.es["weight"] = costs
+        graph.es["weight"] = weights
 
-        assert min(graph.es["weight"]) > 0
+        assert min(graph.es["weight"]) >= 0
 
         return graph
 
@@ -314,6 +318,19 @@ class NetworkAnalysis:
             self.wkts["end"] = [geom.wkt for geom in self.endpoints.gdf.geometry]
 
     def __repr__(self) -> str:
-        return f"""
-{self.__class__.__name__}(cost={self.rules.cost}, search_tolerance={self.rules.search_tolerance}, search_factor={self.rules.search_factor}, cost_to_nodes={self.rules.cost_to_nodes})
-"""
+        if self.rules.weight_to_nodes_dist:
+            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
+        elif self.rules.weight_to_nodes_kmh:
+            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_kmh}"
+        elif self.rules.weight_to_nodes_mph:
+            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_mph}"
+        else:
+            x = ""
+
+        return (
+            f"{self.__class__.__name__}("
+            f"weight={self.rules.weight}, "
+            f"search_tolerance={self.rules.search_tolerance}, "
+            f"search_factor={self.rules.search_factor}"
+            f"{x})"
+        )

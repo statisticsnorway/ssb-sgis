@@ -1,6 +1,9 @@
 from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
+from .dapla import exists, read_geopandas, write_geopandas
 from .directednetwork import DirectedNetwork
+from .distances import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbors
 from .geopandas_utils import (
+    clean_clip,
     clean_geoms,
     close_holes,
     count_within_distance,
@@ -9,7 +12,6 @@ from .geopandas_utils import (
     gdf_concat,
     gridish,
     push_geom_col,
-    random_points,
     sjoin,
     snap_to,
     to_gdf,

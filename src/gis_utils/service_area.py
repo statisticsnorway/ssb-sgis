@@ -10,46 +10,45 @@ from .geopandas_utils import gdf_concat
 def service_area(
     graph: Graph,
     startpoints: GeoDataFrame,
-    cost: str,
+    weight: str,
     roads: GeoDataFrame,
-    impedance: int | list[int] | tuple[int],
+    breaks: int | list[int] | tuple[int],
     id_col: str | None = None,
     dissolve: bool = True,
 ):
     if not id_col:
         id_col = "origin"
 
-    if isinstance(impedance, (str, int, float)):
-        impedance = [float(impedance)]
+    if isinstance(breaks, (str, int, float)):
+        breaks = [float(breaks)]
 
-    # loop for hvert startpunkt og hver cost
-    service_areas = []
+    # loop through every startpoint and every breaks
+    results = []
     for i in startpoints["temp_idx"]:
-        for imp in impedance:
-            result = graph.distances(weights="weight", source=i)
+        result = graph.distances(weights="weight", source=i)
 
-            # lag tabell av resultene og fjern alt over ønsket cost
-            df = pd.DataFrame(
-                data={"name": np.array(graph.vs["name"]), cost: result[0]}
-            )
+        df = pd.DataFrame(
+            data={"node_id": np.array(graph.vs["name"]), weight: result[0]}
+        )
 
-            df = df[df[cost] < imp]
+        for imp in breaks:
+            indices = df.loc[df[weight] < imp]
 
-            if len(df) == 0:
-                service_areas.append(
-                    pd.DataFrame({id_col: [i], cost: [imp], "geometry": np.nan})
+            if not len(indices):
+                results.append(
+                    pd.DataFrame({id_col: [i], weight: [imp], "geometry": np.nan})
                 )
                 continue
 
-            # velg ut vegene som er i dataframen vi nettopp lagde.
-            sa = roads.loc[roads.target.isin(df.name)]
+            service_area = roads.loc[roads.target.isin(indices.node_id)]
 
             if dissolve:
-                sa = sa[["geometry"]].dissolve().reset_index(drop=True)
+                service_area = (
+                    service_area[["geometry"]].dissolve().reset_index(drop=True)
+                )
 
-            # lag kolonner for id, cost og evt. node-info
-            sa[id_col] = i
-            sa[cost] = imp
-            service_areas.append(sa)
+            service_area[id_col] = i
+            service_area[weight] = imp
+            results.append(service_area)
 
-    return gdf_concat(service_areas)
+    return gdf_concat(results)

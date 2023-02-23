@@ -1,5 +1,6 @@
 # %%
 import cProfile
+from pathlib import Path
 
 import geopandas as gpd
 
@@ -7,12 +8,12 @@ import gis_utils as gs
 
 
 def count_function_calls():
-    r = gpd.read_parquet(
-        r"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/vegdata/veger_oslo_og_naboer_2022.parquet"
-    )
-    p = gpd.read_parquet(
-        r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\tilfeldige_adresser_1000.parquet"
-    )
+    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = p.iloc[:50]
+    p["idx"] = p.index
+    p["idx2"] = p.index
+
+    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
 
     nw = gs.DirectedNetwork(r)
 
@@ -24,10 +25,11 @@ def count_function_calls():
         .get_largest_component()
         .close_network_holes(1.1)
         .remove_isolated()
-        # .cut_lines(50)
+        .cut_lines(250)
     )
 
-    nwa = gs.NetworkAnalysis(nw, cost="minutes")
+    rules = gs.NetworkAnalysisRules(weight="minutes")
+    nwa = gs.NetworkAnalysis(nw, rules=rules)
     nwa.network = nwa.network.get_component_size()
     nwa.network = nwa.network.remove_isolated()
 

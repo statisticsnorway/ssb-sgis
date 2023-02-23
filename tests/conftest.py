@@ -7,6 +7,12 @@ from gis_utils import to_gdf
 
 @pytest.fixture(scope="module")
 def gdf_fixture() -> gpd.GeoDataFrame:
+    """Calling the make_gdf function here so that make_gdf can be
+    imported when running test outside of pytest."""
+    return make_gdf()
+
+
+def make_gdf() -> gpd.GeoDataFrame:
     """Making a small geodataframe of points, a line and a polygon."""
 
     xs = [
@@ -30,11 +36,21 @@ def gdf_fixture() -> gpd.GeoDataFrame:
     points = [f"POINT ({x} {y})" for x, y in zip(xs, ys)]
 
     line = [
-        "LINESTRING (10.7284623 59.9075267,10.7184623 59.9175267, 10.7114623 59.9135267, 10.7143623 59.8975267, 10.7384623 59.900000, 10.720000 59.9075200)"
+        "LINESTRING ("
+        "10.7284623 59.9075267, "
+        "10.7184623 59.9175267, "
+        "10.7114623 59.9135267, "
+        "10.7143623 59.8975267, "
+        "10.7384623 59.900000, "
+        "10.720000 59.9075200)"
     ]
 
     polygon = [
-        "POLYGON ((10.74 59.92, 10.735 59.915, 10.73 59.91, 10.725 59.905, 10.72 59.9, 10.72 59.91, 10.72 59.91, 10.74 59.92))"
+        "POLYGON (("
+        "10.74 59.92, 10.735 59.915, "
+        "10.73 59.91, 10.725 59.905, "
+        "10.72 59.9, 10.72 59.91, "
+        "10.72 59.91, 10.74 59.92))"
     ]
 
     geoms = [loads(x) for x in points + line + polygon]
