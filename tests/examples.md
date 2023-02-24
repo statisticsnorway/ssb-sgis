@@ -1,3 +1,34 @@
+---
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .md
+      format_name: markdown
+      format_version: "1.3"
+---
+
+```python
+import warnings
+import geopandas as gpd
+import os
+import pandas as pd
+import numpy as np
+
+os.chdir("../src")
+import gis_utils as gs
+
+os.chdir("..")
+
+# ignore some warnings to make it cleaner
+pd.options.mode.chained_assignment = None
+warnings.filterwarnings(action="ignore", category=UserWarning)
+warnings.filterwarnings(action="ignore", category=FutureWarning)
+plot_kwargs = {
+    "facecolor": "#0f0f0f",
+    "title_color": "#f7f7f7",
+}
+```
+
 ## Network analysis
 
 The package supports three types of network analysis, and methods for customising and optimising your road data.
@@ -28,8 +59,6 @@ nwa = NetworkAnalysis(
 nwa
 ```
 
-    NetworkAnalysis(network=DirectedNetwork(6364 km), rules=NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=10, ...))
-
 ```python
 points = gpd.read_parquet("tests/testdata/random_points.parquet")
 p1 = points.iloc[[0]]
@@ -48,18 +77,6 @@ gs.qtm(od, "minutes", title="Travel time (minutes) from 1 to 1000 points.", **pl
 )
 ```
 
-      origin destination    minutes  \
-    0  79166       79167   0.000000
-    1  79166       79168  12.930588
-    2  79166       79169  10.867076
-
-                                                geometry
-    0  LINESTRING (263122.700 6651184.900, 263122.700...
-    1  LINESTRING (263122.700 6651184.900, 272456.100...
-    2  LINESTRING (263122.700 6651184.900, 270082.300...
-
-![png](examples_files/examples_4_1.png)
-
 ### Shortest path
 
 Get the actual paths, either individually or summarised:
@@ -77,8 +94,6 @@ gs.qtm(
 )
 ```
 
-![png](examples_files/examples_6_0.png)
-
 ### Service area
 
 Get the area that can be reached within one or more breaks
@@ -91,4 +106,16 @@ sa = sa.drop_duplicates(["source", "target"])
 gs.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minutes", legend=False, **plot_kwargs)
 ```
 
-![png](examples_files/examples_8_0.png)
+```python
+#!jupytext --to md --metadata '{"jupytext":{"formats":"ipynb,md:light"}}' tests/examples.ipynb
+!jupytext --set-formats ipynb,py --sync tests/examples.ipynb
+```
+
+```python
+!jupytext --to markdown tests/examples.ipynb
+```
+
+```python
+!jupyter nbconvert --to markdown tests/examples.ipynb --TagRemovePreprocessor.enabled=True --TagRemovePreprocessor.remove_cell_tags remove_cell
+
+```

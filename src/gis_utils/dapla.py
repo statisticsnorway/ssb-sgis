@@ -3,14 +3,13 @@ import os
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from dapla import FileClient, details
 from geopandas.io.arrow import _geopandas_to_arrow
 from pyarrow import parquet
 
 
 def exists(path: str) -> bool:
     try:
-        from dapla import details
-
         details(path)
         return True
     except FileNotFoundError:
@@ -20,8 +19,6 @@ def exists(path: str) -> bool:
 
 
 def read_geopandas(sti: str, **kwargs) -> gpd.GeoDataFrame:
-    from dapla import FileClient
-
     fs = FileClient.get_gcs_file_system()
 
     if "parquet" in sti:
@@ -34,7 +31,6 @@ def read_geopandas(sti: str, **kwargs) -> gpd.GeoDataFrame:
 
 def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
     """funker ikke for shp og gdb"""
-    from dapla import FileClient
 
     pd.io.parquet.BaseImpl.validate_dataframe(df)
 

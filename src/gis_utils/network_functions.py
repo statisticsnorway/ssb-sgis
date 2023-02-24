@@ -30,7 +30,7 @@ def make_node_ids(
       A tuple of two GeoDataFrames, one with the lines and one with the nodes.
     """
 
-    lines = _make_edge_wkt_cols(lines, ignore_index)
+    lines = make_edge_wkt_cols(lines, ignore_index)
 
     sources = lines[["source_wkt"]].rename(columns={"source_wkt": "wkt"})
     targets = lines[["target_wkt"]].rename(columns={"target_wkt": "wkt"})
@@ -61,7 +61,55 @@ def make_node_ids(
     return lines, nodes
 
 
-def _make_edge_wkt_cols(lines: GeoDataFrame, ignore_index: bool = True) -> GeoDataFrame:
+def _prepare_make_edge_cols(
+    lines: GeoDataFrame, ignore_index: bool
+) -> Tuple[GeoDataFrame, GeoDataFrame]:
+    lines = lines.loc[lines.geom_type != "LinearRing"]
+
+    if not all(lines.geom_type == "LineString"):
+        if all(lines.geom_type.isin(["LineString", "MultiLinestring"])):
+            raise ValueError(
+                "MultiLineStrings have more than two endpoints. "
+                "Try explode() to get LineStrings."
+            )
+        else:
+            raise ValueError(
+                "You have mixed geometry types. Only singlepart LineStrings are "
+                "allowed in make_edge_wkt_cols."
+            )
+
+    boundary = lines.geometry.boundary
+    circles = boundary.loc[boundary.is_empty]
+    lines = lines[~lines.index.isin(circles.index)]
+
+    endpoints = lines.geometry.boundary.explode(
+        ignore_index=ignore_index, index_parts=False
+    )  # to silence warning
+
+    if len(endpoints) / len(lines) != 2:
+        raise ValueError(
+            "The lines should have only two endpoints each. "
+            "Try splitting multilinestrings with explode."
+        )
+
+    return lines, endpoints
+
+
+def make_edge_coords_cols(
+    lines: GeoDataFrame, ignore_index: bool = True
+) -> GeoDataFrame:
+    lines, endpoints = _prepare_make_edge_cols(lines, ignore_index=ignore_index)
+
+    coords = [(geom.x, geom.y) for geom in endpoints.geometry]
+    lines["source_coords"], lines["target_coords"] = (
+        coords[0::2],
+        coords[1::2],
+    )
+
+    return lines
+
+
+def make_edge_wkt_cols(lines: GeoDataFrame, ignore_index: bool = True) -> GeoDataFrame:
     """
     It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
     columns, source_wkt and target_wkt, which are the WKT representations of the first
@@ -87,7 +135,7 @@ def _make_edge_wkt_cols(lines: GeoDataFrame, ignore_index: bool = True) -> GeoDa
         else:
             raise ValueError(
                 "You have mixed geometry types. Only singlepart LineStrings are "
-                "allowed in _make_edge_wkt_cols."
+                "allowed in make_edge_wkt_cols."
             )
 
     boundary = lines.geometry.boundary
@@ -319,7 +367,7 @@ def find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10):
     if not len(new_lines):
         return new_lines
 
-    new_lines = _make_edge_wkt_cols(new_lines)
+    new_lines = make_edge_wkt_cols(new_lines)
 
     return new_lines
 
@@ -400,7 +448,7 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
     if not len(new_lines):
         return new_lines
 
-    new_lines = _make_edge_wkt_cols(new_lines)
+    new_lines = make_edge_wkt_cols(new_lines)
 
     return new_lines
 
@@ -435,12 +483,12 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
             return line
         coords = list(line.coords)
         for i, p in enumerate(coords):
-            pd = line.project(Point(p))
-            if pd == distance:
+            prd = line.project(Point(p))
+            if prd == distance:
                 return unary_union(
                     [LineString(coords[: i + 1]), LineString(coords[i:])]
                 )
-            if pd > distance:
+            if prd > distance:
                 cp = line.interpolate(distance)
                 return unary_union(
                     [
@@ -452,9 +500,9 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
     cut_vektorisert = np.vectorize(cut)
 
     for x in [10, 5, 1]:
-        _max = max(over_max_length.length)
-        while _max > max_length * x + 1:
-            _max = max(over_max_length.length)
+        max_ = max(over_max_length.length)
+        while max_ > max_length * x + 1:
+            max_ = max(over_max_length.length)
 
             over_max_length["geometry"] = cut_vektorisert(
                 over_max_length.geometry, max_length
@@ -462,7 +510,7 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
 
             over_max_length = over_max_length.explode(ignore_index=ignore_index)
 
-            if _max == max(over_max_length.length):
+            if max_ == max(over_max_length.length):
                 break
 
     over_max_length = over_max_length.explode(ignore_index=ignore_index)

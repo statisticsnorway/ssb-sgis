@@ -1,5 +1,4 @@
 from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
-from .dapla import exists, read_geopandas, write_geopandas
 from .directednetwork import DirectedNetwork
 from .distances import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbors
 from .geopandas_utils import (
@@ -24,6 +23,9 @@ from .network_functions import (
     close_network_holes,
     get_component_size,
     get_largest_component,
+    make_edge_coords_cols,
+    make_edge_wkt_cols,
+    make_node_ids,
 )
 from .networkanalysis import NetworkAnalysis
 from .networkanalysisrules import NetworkAnalysisRules

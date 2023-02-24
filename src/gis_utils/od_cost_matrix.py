@@ -62,11 +62,7 @@ def od_cost_matrix(
 
     df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, weight: costs})
 
-    results = (
-        df.replace([np.inf, -np.inf], np.nan)
-        #    .loc[(df[weight] > 0) | (df[weight].isna())]
-        .reset_index(drop=True)
-    )
+    results = df.replace([np.inf, -np.inf], np.nan).reset_index(drop=True)
 
     if cutoff:
         results = results[results[weight] < cutoff]

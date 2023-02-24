@@ -21,22 +21,24 @@ class DirectedNetwork(Network):
 
         self.directed = True
 
-        self.check_if_directed()
+    def _warn_if_not_directed(self):
+        """Road data often have to be duplicated and flipped to make it directed."""
 
-    def check_if_directed(self):
-        no_dups = DataFrame(
-            np.sort(self.gdf[["source", "target"]].values, axis=1),
-            columns=[["source", "target"]],
-        ).drop_duplicates()
-        if len(self.gdf) * 0.9 < len(no_dups):
-            warnings.warn(
-                """
-Your network does not seem to be directed.
-Try running 'make_directed_network' or 'make_directed_network_osm'.
-With 'make_directed_network', specify the direction column (e.g. 'oneway'),
-and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T")).
-            """
+        if self._percent_directional > 5:
+            return
+
+        mess = (
+            "Your network is likely not directed. "
+            f"Only {self._percent_directional:.1f} percent of the lines go both ways."
+        )
+        if "oneway" in [col.lower() for col in self.gdf.columns]:
+            mess = mess + (
+                " Try setting direction_col='oneway' in the 'make_directed_network' method"
             )
+        else:
+            mess = mess + "Try running 'make_directed_network'"
+
+        warnings.warn(mess)
 
     def make_directed_network_osm(
         self,
@@ -167,5 +169,8 @@ and the values of directions 'both', 'from', 'to' in a tuple (e.g. ("B", "F", "T
             self.gdf = self.gdf.loc[self.gdf["minutes"] >= 0]
 
         self.make_node_ids()
+
+        self._is_directed = True
+        self._percent_directional = self._check_percent_directional()
 
         return self

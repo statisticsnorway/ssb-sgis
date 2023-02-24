@@ -1,7 +1,9 @@
 import warnings
 from copy import copy, deepcopy
 
+import numpy as np
 from geopandas import GeoDataFrame
+from pandas import DataFrame
 from shapely import line_merge
 
 from .exceptions import ZeroRowsError
@@ -53,12 +55,70 @@ class Network:
                 "If you really want to use an unprojected crs, set 'allow_degree_units' to True."
             )
 
-        self.gdf = self.prepare_network(gdf, merge_lines)
+        self.gdf = self._prepare_network(gdf, merge_lines)
 
         self.make_node_ids()
 
+        # attributes for the log
+        if "connected" in self.gdf.columns:
+            if all(self.gdf["connected"] == 1):
+                self._isolated_removed = True
+        else:
+            self._isolated_removed = False
+
+        self._percent_directional = self._check_percent_directional()
+
+    def make_node_ids(self) -> None:
+        self.gdf, self._nodes = make_node_ids(self.gdf)
+
+    def close_network_holes(
+        self, max_dist, min_dist=0, deadends_only=False, hole_col="hole"
+    ):
+        self._update_nodes_if()
+        self.gdf = close_network_holes(
+            self.gdf, max_dist, min_dist, deadends_only, hole_col
+        )
+        return self
+
+    def get_largest_component(self, remove: bool = False):
+        self._update_nodes_if()
+        if "connected" in self.gdf.columns:
+            warnings.warn(
+                "There is already a column 'connected' in the network. Run "
+                ".remove_isolated() if you want to remove the isolated networks."
+            )
+        self.gdf = get_largest_component(self.gdf)
+        if remove:
+            self.gdf = self.gdf.loc[self.gdf.connected == 1]
+            self.make_node_ids()
+            self._isolated_removed = True
+
+        return self
+
+    def get_component_size(self):
+        self._update_nodes_if()
+        self.gdf = get_component_size(self.gdf)
+        return self
+
+    def remove_isolated(self):
+        if not self._nodes_are_up_to_date():
+            self.make_node_ids()
+            self.gdf = get_largest_component(self.gdf)
+        elif not "connected" in self.gdf.columns:
+            self.gdf = get_largest_component(self.gdf)
+
+        self.gdf = self.gdf.loc[self.gdf.connected == 1]
+
+        self._isolated_removed = True
+
+        return self
+
+    def cut_lines(self, max_length: int, ignore_index=True):
+        self.gdf = cut_lines(self.gdf, max_length=max_length, ignore_index=ignore_index)
+        return self
+
     @staticmethod
-    def prepare_network(gdf: GeoDataFrame, merge_lines: bool = True) -> GeoDataFrame:
+    def _prepare_network(gdf: GeoDataFrame, merge_lines: bool = True) -> GeoDataFrame:
         """Make sure there are only singlepart LineStrings in the network.
         This is needed when making node-ids based on the lines' endpoints, because
         MultiLineStrings have more than two endpoints, and LinearRings have zero.
@@ -116,53 +176,16 @@ class Network:
 
         return gdf
 
-    def make_node_ids(self) -> None:
-        self.gdf, self._nodes = make_node_ids(self.gdf)
+    def _check_percent_directional(self) -> int:
+        """Road data often have to be duplicated and flipped to make it directed."""
+        no_dups = DataFrame(
+            np.sort(self.gdf[["source", "target"]].values, axis=1),
+            columns=[["source", "target"]],
+        ).drop_duplicates()
 
-    def close_network_holes(
-        self, max_dist, min_dist=0, deadends_only=False, hole_col="hole"
-    ):
-        self.update_nodes_if()
-        self.gdf = close_network_holes(
-            self.gdf, max_dist, min_dist, deadends_only, hole_col
-        )
-        return self
+        return int((len(self.gdf) - len(no_dups)) / len(self.gdf) * 100)
 
-    def get_largest_component(self, remove: bool = False):
-        self.update_nodes_if()
-        if "connected" in self.gdf.columns:
-            warnings.warn(
-                "There is already a column 'connected' in the network. Run "
-                ".remove_isolated() if you want to remove the isolated networks."
-            )
-        self.gdf = get_largest_component(self.gdf)
-        if remove:
-            self.gdf = self.gdf.loc[self.gdf.connected == 1]
-            self.make_node_ids()
-
-        return self
-
-    def get_component_size(self):
-        self.update_nodes_if()
-        self.gdf = get_component_size(self.gdf)
-        return self
-
-    def remove_isolated(self):
-        if not self.nodes_are_up_to_date():
-            self.make_node_ids()
-            self.gdf = get_largest_component(self.gdf)
-        elif not "connected" in self.gdf.columns:
-            self.gdf = get_largest_component(self.gdf)
-
-        self.gdf = self.gdf.loc[self.gdf.connected == 1]
-
-        return self
-
-    def cut_lines(self, max_length: int, ignore_index=True):
-        self.gdf = cut_lines(self.gdf, max_length=max_length, ignore_index=ignore_index)
-        return self
-
-    def nodes_are_up_to_date(self) -> bool:
+    def _nodes_are_up_to_date(self) -> bool:
         """
         Returns False if there are any source or target values not in the node-ids,
         or any superfluous node-ids (meaning rows have been removed from the lines gdf).
@@ -186,8 +209,8 @@ class Network:
 
         return True
 
-    def update_nodes_if(self):
-        if not self.nodes_are_up_to_date():
+    def _update_nodes_if(self):
+        if not self._nodes_are_up_to_date():
             self.make_node_ids()
 
     @property

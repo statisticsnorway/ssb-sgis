@@ -90,10 +90,12 @@ def _run_shortest_path(
         }
         return [pd.DataFrame(source_target)]
 
-    line = roads.loc[
-        (roads.source.isin(path)) & (roads.target.isin(path)),
-        ["geometry"],
+    source_target = [
+        str(source) + "_" + str(target) for source, target in zip(path[:-1], path[1:])
     ]
+    print(source_target)
+    roads["source_target"] = roads["source"] + "_" + roads["target"]
+    line = roads.loc[roads["source_target"].isin(source_target), ["geometry"]]
 
     if not len(line):
         return []

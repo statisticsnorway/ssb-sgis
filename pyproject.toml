@@ -44,6 +44,8 @@ pre-commit-hooks = "^4.4.0"
 pyupgrade = "^3.3.1"
 jupyterlab = "^3.6.1"
 jupytext = "^1.14.4"
+pandoc = "^2.3"
+nbconvert = "^7.2.9"
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]

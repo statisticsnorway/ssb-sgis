@@ -344,8 +344,8 @@ def snap_to(
     points: GeoDataFrame | GeoSeries,
     snap_to: GeoDataFrame | GeoSeries,
     max_dist: int | None = None,
-    to_vertex: bool = False,
-    copy: bool = False,
+    to_node: bool = False,
+    copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
     """
     It takes a GeoDataFrame or GeoSeries of points and snaps them to the nearest point in a second
@@ -355,26 +355,26 @@ def snap_to(
       points (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries of points to snap
       snap_to (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries to snap to
       max_dist (int): The maximum distance to snap to. Defaults to None.
-      to_vertex (bool): If True, the points will snap to the nearest vertex of the snap_to geometry. If
+      to_node (bool): If True, the points will snap to the nearest node of the snap_to geometry. If
         False, the points will snap to the nearest point on the snap_to geometry, which can be between two vertices
         if the snap_to geometry is line or polygon. Defaults to False
       copy (bool): If True, a copy of the GeoDataFrame is returned. Otherwise, the original
-    GeoDataFrame. Defaults to False
+    GeoDataFrame. Defaults to True
 
     Returns:
       A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the snap_to
     GeoDataFrame or GeoSeries.
     """
 
-    unioned = snap_to.unary_union
-
     if copy:
         points = points.copy()
 
-    def func(point, snap_to, to_vertex):
-        if to_vertex:
-            snap_to = to_multipoint(snap_to)
+    unioned = snap_to.unary_union
 
+    if to_node:
+        unioned = to_multipoint(unioned)
+
+    def func(point, snap_to):
         if not max_dist:
             return nearest_points(point, snap_to)[1]
 
@@ -384,10 +384,10 @@ def snap_to(
     if isinstance(points, GeoDataFrame):
         points[points._geometry_column_name] = points[
             points._geometry_column_name
-        ].apply(lambda point: func(point, unioned, to_vertex))
+        ].apply(lambda point: func(point, unioned))
 
     if isinstance(points, gpd.GeoSeries):
-        points = points.apply(lambda point: func(point, unioned, to_vertex))
+        points = points.apply(lambda point: func(point, unioned))
 
     return points
 

@@ -203,7 +203,7 @@ def test_snap(gdf_fixture):
     snapped = gs.snap_to(punkter, annet, max_dist=20, copy=True)
     assert sum(snapped.intersects(annet.buffer(1).unary_union)) == 1
 
-    snapped = gs.snap_to(punkter, annet, max_dist=None, to_vertex=True, copy=True)
+    snapped = gs.snap_to(punkter, annet, max_dist=None, to_node=True, copy=True)
 
     assert all(
         geom in list(gs.to_multipoint(annet).explode().geometry)

@@ -2,7 +2,8 @@ import numpy as np
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 
-from .distances import get_k_nearest_neighbors
+from .distances import get_k_nearest_neighbors, split_lines_at_closest_point
+from .network_functions import make_node_ids
 from .networkanalysisrules import NetworkAnalysisRules
 
 
@@ -18,24 +19,7 @@ class Points:
         self.id_col = id_col
         self.temp_idx_start = temp_idx_start
 
-    def make_temp_idx(self) -> None:
-        """Make a temporary id column that is not present in the node ids of the network.
-        The original ids are stored in a dict and mapped to the results after the network analysis.
-        This method has to be run after get_id_col, because this determines the id column differently for start- and endpoints.
-        """
-
-        self.gdf["temp_idx"] = np.arange(
-            start=self.temp_idx_start, stop=self.temp_idx_start + len(self.gdf)
-        )
-        self.gdf["temp_idx"] = self.gdf["temp_idx"].astype(str)
-
-        if self.id_col:
-            self.id_dict = {
-                temp_idx: idx
-                for temp_idx, idx in zip(self.gdf.temp_idx, self.gdf[self.id_col])
-            }
-
-    def get_id_col(
+    def _get_id_col(
         self,
         index: int,
     ) -> None:
@@ -53,17 +37,45 @@ class Points:
         if self.id_col not in self.gdf.columns:
             raise KeyError(f"'startpoints' has no attribute '{self.id_col}'")
 
-    def get_n_missing(
+    def _make_temp_idx(self) -> None:
+        """Make a temporary id column that is not present in the node ids of the network.
+        The original ids are stored in a dict and mapped to the results after the network analysis.
+        This method has to be run after _get_id_col, because this determines the id column differently for start- and endpoints.
+        """
+
+        self.gdf["temp_idx"] = np.arange(
+            start=self.temp_idx_start, stop=self.temp_idx_start + len(self.gdf)
+        )
+        self.gdf["temp_idx"] = self.gdf["temp_idx"].astype(str)
+
+        if self.id_col:
+            self.id_dict = {
+                temp_idx: idx
+                for temp_idx, idx in zip(self.gdf.temp_idx, self.gdf[self.id_col])
+            }
+
+    def _get_n_missing(
         self,
         results: GeoDataFrame | DataFrame,
         col: str,
     ) -> None:
+        """
+        Get number of missing values for each point after a network analysis.
+
+        Args:
+            results: resulting (Geo)DataFrame of od_cost_matrix, shortest_path or service_area analysis.
+            col: id column of the results. Either 'origin' or 'destination'.
+
+        Returns:
+            None, but gives the points.gdf a column n_missing.
+
+        """
         self.gdf["n_missing"] = self.gdf["temp_idx"].map(
-            len(results[col].unique())
+            results.groupby(col).count().iloc[:, 0]
             - results.dropna().groupby(col).count().iloc[:, 0]
         )
 
-    def distance_to_nodes(
+    def _distance_to_nodes(
         self, nodes: GeoDataFrame, search_tolerance: int, search_factor: int
     ) -> DataFrame:
         """Creates a DataFrame with distances and indices of the 50 closest nodes for each point,
@@ -84,7 +96,7 @@ class Points:
         return df
 
     @staticmethod
-    def to_weight(dists, rules):
+    def _to_weight(dists, rules):
         """
         Gjør om meter to minutter for lenkene mellom punktene og nabonodene.
         og ganger luftlinjeavstanden med 1.5 siden det alltid er svinger i Norge.
@@ -121,21 +133,31 @@ class Points:
 
         return dists
 
-    def make_edges(self, df, from_col, to_col):
+    def _make_edges(self, df, from_col, to_col):
         return [(f, t) for f, t in zip(df[from_col], df[to_col])]
 
-    def get_edges_and_weights(
+    def _get_edges_and_weights(
         self,
         nodes: GeoDataFrame,
         rules: NetworkAnalysisRules,
         from_col: str,
         to_col: str,
     ):
-        df = self.distance_to_nodes(nodes, rules.search_tolerance, rules.search_factor)
+        df = get_k_nearest_neighbors(
+            gdf=self.gdf,
+            neighbors=nodes,
+            id_cols=("temp_idx", "node_id"),
+            k=50,
+            max_dist=rules.search_tolerance,
+        )
 
-        edges = self.make_edges(df, from_col=from_col, to_col=to_col)
+        search_factor_mult = 1 + rules.search_factor / 100
+        df = df.loc[df.dist <= df.dist_min * search_factor_mult + rules.search_factor]
+        #        df = self._distance_to_nodes(nodes, rules.search_tolerance, rules.search_factor)
 
-        weighs = self.to_weight(dists=list(df.dist), rules=rules)
+        edges = self._make_edges(df, from_col=from_col, to_col=to_col)
+
+        weighs = self._to_weight(dists=list(df.dist), rules=rules)
 
         return edges, weighs
 
@@ -148,11 +170,11 @@ class StartPoints(Points):
     ) -> None:
         super().__init__(points, **kwargs)
 
-        self.get_id_col(index=0)
-        self.make_temp_idx()
+        self._get_id_col(index=0)
+        self._make_temp_idx()
 
-    def get_edges_and_weights(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
-        return super().get_edges_and_weights(
+    def _get_edges_and_weights(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
+        return super()._get_edges_and_weights(
             nodes, rules, from_col="temp_idx", to_col="node_id"
         )
 
@@ -165,10 +187,10 @@ class EndPoints(Points):
     ) -> None:
         super().__init__(points, **kwargs)
 
-        self.get_id_col(index=1)
-        self.make_temp_idx()
+        self._get_id_col(index=1)
+        self._make_temp_idx()
 
-    def get_edges_and_weights(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
-        return super().get_edges_and_weights(
+    def _get_edges_and_weights(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
+        return super()._get_edges_and_weights(
             nodes, rules, from_col="node_id", to_col="temp_idx"
         )
