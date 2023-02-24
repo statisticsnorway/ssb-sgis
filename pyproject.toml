@@ -60,6 +60,9 @@ show_missing = true
 profile = "black"
 lines_after_imports = 2
 skip_gitignore = true
+# The line below is needed for jupyter notebooks stored as .py in percent format.
+# See https://github.com/PyCQA/isort/issues/1338 for details
+treat_comments_as_code = ["# %%"]
 
 [tool.jupytext]
 formats = "ipynb,auto:percent"
