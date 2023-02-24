@@ -1,3 +1,4 @@
+# flake8: noqa: F401
 from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
 from .dapla import exists, read_geopandas, write_geopandas
 from .directednetwork import DirectedNetwork
