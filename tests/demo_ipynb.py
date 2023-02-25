@@ -15,7 +15,7 @@
 #
 # The package supports three types of network analysis:
 # - od_cost_matrix: fast many-to-many travel times/distances
-# - shortest_path: returns the geometry of the lowest-cost paths.
+# - get_route: returns the geometry of the lowest-cost paths.
 # - service_area: returns the roads that can be reached within one or more breaks.
 
 # %%
@@ -123,7 +123,7 @@ nwa = gs.NetworkAnalysis(network=nw, rules=rules)
 nwa
 
 # %% [markdown]
-# od_cost_matrix calculates the traveltime from a set of startpoints to a set of endpoints:
+# od_cost_matrix calculates the traveltime from a set of origins to a set of destinations:
 
 # %%
 od = nwa.od_cost_matrix(points, points, id_col="idx")
@@ -143,10 +143,10 @@ gs.qtm(
 )
 
 # %% [markdown]
-# The shortest_path method can be used to get the actual paths:
+# The get_route method can be used to get the actual paths:
 
 # %%
-sp = nwa.shortest_path(points.iloc[[0]], points.sample(100), id_col="idx")
+sp = nwa.get_route(points.iloc[[0]], points.sample(100), id_col="idx")
 
 gs.qtm(sp, "minutes", cmap=gs.chop_cmap("RdPu", 0.2), title="Travel times")
 
@@ -156,7 +156,7 @@ sp
 # Set 'summarise' to True to get the number of times each road segment was used. This is faster than not summarising, because no dissolve is done.
 
 # %%
-sp = nwa.shortest_path(points.sample(150), points.sample(150), summarise=True)
+sp = nwa.get_route(points.sample(150), points.sample(150), summarise=True)
 
 gs.qtm(
     sp,
@@ -206,7 +206,7 @@ nw
 # %% [markdown]
 # Networks often consist of one large, connected network and many small, isolated "network islands".
 #
-# Start- and endpoints located inside these isolated networks, will have a hard time finding their way out.
+# Start- and destinations located inside these isolated networks, will have a hard time finding their way out.
 #
 # The large, connected network component can be found with the method get_largest_component:
 
@@ -245,7 +245,7 @@ nw = nw.close_network_holes(max_dist=1.5)  # meters
 nw
 
 # %% [markdown]
-# The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the endpoint will either be reached or not within the breaks. This can be fixed by cutting all lines to a maximum distance.
+# The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the destination will either be reached or not within the breaks. This can be fixed by cutting all lines to a maximum distance.
 #
 # Note: cutting the lines can be time consuming for large networks and low maximum distances.
 

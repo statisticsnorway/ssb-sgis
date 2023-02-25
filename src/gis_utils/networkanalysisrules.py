@@ -13,18 +13,37 @@ class NetworkAnalysisRules:
     weight_to_nodes_dist: bool = False
     weight_to_nodes_kmh: int | None = None
     weight_to_nodes_mph: int | None = None
-    weight_to_nodes_: None = None
+    #    weight_to_nodes_: None = None
 
-    """
+    """Rules for how the network analysis should be executed
+
+    To be used as the 'rules' parameter in the NetworkAnalysis class.
+
+    Note:
+        Whether the network graph should be built as directed or undirected
+        is not stored in this class.
+
+    The only rule that is not stored
+
     Args:
-        weight: either 'meters'/'metres' or a column in the network.gdf
-        search_tolerance: distance to search for
+        weight: either a column in the gdf of the network or 'meters'/'metres'
+        search_tolerance: distance to search for nodes in the network.
+            Points further away than the search_tolerance will not find any paths
+        search_factor: number of meters and percent to add to the closest distance to a node.
+            So if the closest node is 1 meter away, paths will be created from the point and
+            all nodes within 11.1 meters. If the closest node is 100 meters away, paths will be created
+            with all nodes within 120 meters.
+        split_lines: If False (the default), points will be connected to the nodes of the network,
+            i.e. the destinations of the lines. If True, the closest line to each point will be split in two at the
+            closest part of the line to the point. The weight of the split lines are then adjusted to the ratio
+            to the original length. Defaults to False because it's faster and doesn't make a huge difference in
+            most cases. Note: the split lines stays with the network until it is re-instantiated.
+
     """
 
     def _update_rules(self):
-        """
-        Stores the rules as separate attributes to
-        be able to check whether the rules have changed.
+        """Stores the rules as separate attributes
+        used for checking whether the rules have changed.
         """
 
         self._weight = self.weight
@@ -36,9 +55,9 @@ class NetworkAnalysisRules:
         self._weight_to_nodes_mph = self.weight_to_nodes_mph
 
     def _rules_have_changed(self):
-        """Checks if any of the rules have changed since the graph was made last.
-        If no rules have changed, the graph doesn't have to be remade (the network and
-        points have to be the same as well).
+        """Checks if any of the rules have changed since the graph was last created.
+        If no rules have changed, time can be saved by not remaking the graph
+        (the network and the points have to be unchanged as well).
         """
         if self.weight != self._weight:
             return True
@@ -64,7 +83,7 @@ class NetworkAnalysisRules:
             gdf = self._try_to_float(gdf, self.weight)
 
         elif "meter" in self.weight or "metre" in self.weight:
-            if not gdf.crs.axis_info[0].unit_name == "metre":
+            if gdf.crs.axis_info[0].unit_name != "metre":
                 raise ValueError(
                     "the crs of the roads have to have units in 'meters' when the weight is 'meters'."
                 )
@@ -85,7 +104,7 @@ class NetworkAnalysisRules:
                 )
 
             else:
-                incorrect_weight_column = f"Cannot find 'cost' column {self.weight}"
+                incorrect_weight_column = f"Cannot find 'weight' column {self.weight}"
 
             if raise_error:
                 raise KeyError(incorrect_weight_column)
@@ -95,38 +114,39 @@ class NetworkAnalysisRules:
         return gdf
 
     @staticmethod
-    def _check_for_nans(gdf, cost):
-        if all(gdf[cost].isna()):
-            raise ValueError("All values in the 'cost' column are NaN.")
+    def _check_for_nans(df, col):
+        """Remove NaNs and give warning if there are any"""
+        if all(df[col].isna()):
+            raise ValueError(f"All values in the '{col}' column are NaN.")
 
-        nans = sum(gdf[cost].isna())
+        nans = sum(df[col].isna())
         if nans:
-            if nans > len(gdf) * 0.05:
+            if 1:  # nans > len(df) * 0.05:
                 warnings.warn(
-                    f"Warning: {nans} rows have missing values in the 'cost' column. Removing these rows."
+                    f"Warning: {nans} rows have missing values in the '{col}' column. Removing these rows."
                 )
-            gdf = gdf.loc[gdf[cost].notna()]
+            df = df.loc[df[col].notna()]
 
-        return gdf
+        return df
 
     @staticmethod
-    def _check_for_negative_values(gdf, cost):
-        negative = sum(gdf[cost] < 0)
+    def _check_for_negative_values(df, col):
+        negative = sum(df[col] < 0)
         if negative:
-            if negative > len(gdf) * 0.05:
+            if negative > len(df) * 0.05:
                 warnings.warn(
-                    f"Warning: {negative} rows have a 'cost' less than 0. Removing these rows."
+                    f"Warning: {negative} rows have a 'col' less than 0. Removing these rows."
                 )
-            gdf = gdf.loc[gdf[cost] >= 0]
+            df = df.loc[df[col] >= 0]
 
-        return gdf
+        return df
 
     @staticmethod
-    def _try_to_float(gdf, cost):
+    def _try_to_float(df, col):
         try:
-            gdf[cost] = gdf[cost].astype(float)
+            df[col] = df[col].astype(float)
         except ValueError:
             raise ValueError(
-                f"The 'cost' column must be numeric. Got characters that couldn't be interpreted as numbers."
+                f"The '{col}' column must be numeric. Got characters that couldn't be interpreted as numbers."
             )
-        return gdf
+        return df

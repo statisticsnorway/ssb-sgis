@@ -7,7 +7,7 @@ from pandas import DataFrame
 from shapely import line_merge
 
 from .exceptions import ZeroRowsError
-from .geopandas_utils import clean_geoms, push_geom_col
+from .geopandas_utils import clean_geoms
 from .network_functions import (
     close_network_holes,
     cut_lines,
@@ -18,22 +18,56 @@ from .network_functions import (
 
 
 class Network:
-    """
-    The Network class is a wrapper around a GeoDataFrame with (Multi)LineStrings.
-    It makes sure there are only singlepart LineStrings in the network, and that the nodes are up to date with the
-    lines. It also contains methods for optimizing the network before the network analysis.
+    """Prepares a GeoDataFrame of lines for network analysis
+
+    Upon instantiation, the geometries are made valid and into
+    singlepart LineStrings. The lines are given 'source' and 'target'
+    ids based on the line endpoints. The ids are also stored as points
+    in the 'nodes' attribute, which is always kept up to date with the
+    lines and the actual geometries.
+
+    The class contains methods for optimizing the network further.
+    The most important, is the remove_isolated method. It will remove
+    network islands, meaning higher success rate in the network analyses.
+    The network islands can be found and inspected with the
+    get_largest_component method, or get_component_size to find the actual
+    length of each network.
+
+    If the network has a lot of unconnected parts, that are supposed to be
+    connected, network holes can be filled with close_network_holes method.
+    Often, this should be run before removing the isolated network components.
+
+    Long lines can be cut into equal length pieces with the cut_lines method.
+    This is mostly relevant for service_area analysis, since shorter lines
+    will give more accurate results.
 
     Args:
         gdf: a GeoDataFrame of line geometries.
-        merge_lines (bool): if True (default), multilinestrings within the same row
+        merge_lines: if True (default), multilinestrings within the same row
           will be merged if they overlap. if False, multilines will be split into
           separate rows of singlepart lines.
+        allow_degree_units: If False (the default), it will raise an exception if the
+            coordinate reference system of 'gdf' is in degree units,
+            i.e. unprojected (4326). If set to True, all crs are allowed, but it might
+            raise exceptions and give erronous results.
+
+    Attributes:
+        gdf: the GeoDataFrame of lines
+        nodes (property): GeoDataFrame with the network nodes (line endpoints).
+            Node ids are always kept updated with the source and target ids of the lines.
+        directed: whether the network should be treated as directed in network analysis.
+            Set to False if the base Network class is instantiated, but is overwritten to
+            True if the DirectedNetwork is instantiated.
+            Note: this attribute concerns only if the network graph should be directed or not.
+                If you want directed analysis, use the DirectedNetwork class.
+
 
     """
 
     def __init__(
         self,
         gdf: GeoDataFrame,
+        *,
         merge_lines: bool = True,
         allow_degree_units: bool = False,
     ):
@@ -57,7 +91,7 @@ class Network:
 
         self.gdf = self._prepare_network(gdf, merge_lines)
 
-        self.make_node_ids()
+        self._make_node_ids()
 
         # attributes for the log
         if "connected" in self.gdf.columns:
@@ -67,9 +101,6 @@ class Network:
             self._isolated_removed = False
 
         self._percent_directional = self._check_percent_directional()
-
-    def make_node_ids(self) -> None:
-        self.gdf, self._nodes = make_node_ids(self.gdf)
 
     def close_network_holes(
         self, max_dist, min_dist=0, deadends_only=False, hole_col="hole"
@@ -90,7 +121,7 @@ class Network:
         self.gdf = get_largest_component(self.gdf)
         if remove:
             self.gdf = self.gdf.loc[self.gdf.connected == 1]
-            self.make_node_ids()
+            self._make_node_ids()
             self._isolated_removed = True
 
         return self
@@ -102,9 +133,9 @@ class Network:
 
     def remove_isolated(self):
         if not self._nodes_are_up_to_date():
-            self.make_node_ids()
+            self._make_node_ids()
             self.gdf = get_largest_component(self.gdf)
-        elif not "connected" in self.gdf.columns:
+        elif "connected" not in self.gdf.columns:
             self.gdf = get_largest_component(self.gdf)
 
         self.gdf = self.gdf.loc[self.gdf.connected == 1]
@@ -113,9 +144,41 @@ class Network:
 
         return self
 
-    def cut_lines(self, max_length: int, ignore_index=True):
+    def cut_lines(
+        self, max_length: int, adjust_weight_col: str | None = None, ignore_index=True
+    ):
+        """Cuts lines into pieces no longer than 'max_length'
+
+        Args:
+          max_length: The maximum length of the line segments.
+          adjust_weight_col: If you have a column in your GeoDataFrame that you want to adjust
+            based on the length of the new lines, you can pass the name of that column here.
+            For example, if you have a column called "minutes", the minute value will be halved
+            if the line is halved.
+          ignore_index: If True, the index of the resulting GeoDataFrame will be reset to be sequential.
+            Defaults to True
+
+        Returns:
+          Self
+        """
+        if adjust_weight_col:
+            if adjust_weight_col not in self.gdf.columns:
+                raise KeyError(f"'gdf' has no column {adjust_weight_col}")
+            self.gdf["original_length"] = self.gdf.length
         self.gdf = cut_lines(self.gdf, max_length=max_length, ignore_index=ignore_index)
+
+        if adjust_weight_col:
+            self.gdf[adjust_weight_col] = self.gdf[adjust_weight_col] * (
+                self.gdf.length / self.gdf[adjust_weight_col]
+            )
+
         return self
+
+    def _make_node_ids(self) -> None:
+        """Creates updated node-ids for each unique node of the network
+        and use this as 'source' and 'target' columns in the network.
+        """
+        self.gdf, self._nodes = make_node_ids(self.gdf)
 
     @staticmethod
     def _prepare_network(gdf: GeoDataFrame, merge_lines: bool = True) -> GeoDataFrame:
@@ -139,10 +202,10 @@ class Network:
 
         gdf["idx_orig"] = gdf.index
 
-        if not gdf._geometry_column_name == "geometry":
+        if gdf._geometry_column_name != "geometry":
             gdf = gdf.rename_geometry("geometry")
 
-        gdf = clean_geoms(gdf, single_geom_type=True)
+        gdf = clean_geoms(gdf, geom_type="lines")
 
         if not len(gdf):
             raise ZeroRowsError
@@ -177,7 +240,8 @@ class Network:
         return gdf
 
     def _check_percent_directional(self) -> int:
-        """Road data often have to be duplicated and flipped to make it directed."""
+        """Road data often have to be duplicated and flipped to make it directed.
+        Here we check how"""
         no_dups = DataFrame(
             np.sort(self.gdf[["source", "target"]].values, axis=1),
             columns=[["source", "target"]],
@@ -211,7 +275,7 @@ class Network:
 
     def _update_nodes_if(self):
         if not self._nodes_are_up_to_date():
-            self.make_node_ids()
+            self._make_node_ids()
 
     @property
     def nodes(self):

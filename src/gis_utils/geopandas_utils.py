@@ -22,7 +22,7 @@ from .buffer_dissolve_explode import buff
 
 def clean_geoms(
     gdf: GeoDataFrame | GeoSeries,
-    single_geom_type: bool = True,
+    geom_type: str | None = None,
     ignore_index: bool = False,
 ) -> GeoDataFrame | GeoSeries:
     """
@@ -31,11 +31,8 @@ def clean_geoms(
 
     Args:
         gdf: GeoDataFrame or GeoSeries to be cleaned.
-        single_geomtype: if only the most common geometry type should be kept.
-            This will be either points, lines or polygons.
-            Both multi- and singlepart geometries are included.
+        geom_type: the geometry type to keep. Both multi- and singlepart geometries are included.
             GeometryCollections will be exploded first, so that no geometries are excluded.
-            Defaults to True.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to False
 
@@ -59,14 +56,16 @@ def clean_geoms(
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
-    if single_geom_type:
-        gdf = to_single_geom_type(gdf, ignore_index=ignore_index)
+    if geom_type:
+        gdf = to_single_geom_type(gdf, geom_type=geom_type, ignore_index=ignore_index)
 
     return gdf
 
 
 def to_single_geom_type(
-    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
+    gdf: GeoDataFrame | GeoSeries,
+    geom_type: str,
+    ignore_index: bool = False,
 ) -> GeoDataFrame | GeoSeries:
     """
     It takes a GeoDataFrame or GeoSeries and returns a GeoDataFrame or GeoSeries
@@ -84,6 +83,10 @@ def to_single_geom_type(
 
     Returns:
       A GeoDataFrame with a single geometry type.
+
+    Raises:
+        TypeError if incorrect gdf type. ValueError if incorrect geom_type.
+
     """
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
@@ -95,34 +98,63 @@ def to_single_geom_type(
         collections = collections.explode(ignore_index=ignore_index)
         gdf = gdf_concat([gdf, collections])
 
-    polys = ["Polygon", "MultiPolygon"]
-    lines = ["LineString", "MultiLineString", "LinearRing"]
-    points = ["Point", "MultiPoint"]
-
-    poly_check = len(gdf.loc[gdf.geom_type.isin(polys)])
-    lines_check = len(gdf.loc[gdf.geom_type.isin(lines)])
-    points_check = len(gdf.loc[gdf.geom_type.isin(points)])
-
-    _max = max([poly_check, lines_check, points_check])
-
-    if _max == len(gdf):
-        return gdf
-
-    if poly_check == _max:
-        gdf = gdf.loc[gdf.geom_type.isin(polys)]
-    elif lines_check == _max:
-        gdf = gdf.loc[gdf.geom_type.isin(lines)]
-    elif points_check == _max:
-        gdf = gdf.loc[gdf.geom_type.isin(points)]
+    if "poly" in geom_type:
+        gdf = gdf.loc[gdf.geom_type.isin(["Polygon", "MultiPolygon"])]
+    elif "line" in geom_type:
+        gdf = gdf.loc[
+            gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])
+        ]
+    elif "point" in geom_type:
+        gdf = gdf.loc[gdf.geom_type.isin(["Point", "MultiPoint"])]
     else:
-        raise ValueError(
-            "Mixed geometry types and equal amount of two or all the types."
-        )
+        raise ValueError(f"Invalid geom_type '{geom_type}'.")
 
     if ignore_index:
         gdf = gdf.reset_index(drop=True)
 
     return gdf
+
+
+def is_single_geom_type(
+    gdf: GeoDataFrame | GeoSeries,
+) -> bool:
+    """
+    Returns True if all the geometries in the GeoDataFrame are of the same type
+    Multipart and singlepart are considered the same type.
+
+    Args:
+      gdf: GeoDataFrame or GeoSeries
+
+    Returns:
+      A boolean value.
+    """
+
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
+
+    if all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
+        return True
+    if all(gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])):
+        return True
+    if all(gdf.geom_type.isin(["Point", "MultiPoint"])):
+        return True
+
+    return False
+
+
+def get_geom_type(
+    gdf: GeoDataFrame | GeoSeries,
+) -> str:
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
+
+    if all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
+        return "polygon"
+    if all(gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])):
+        return "line"
+    if all(gdf.geom_type.isin(["Point", "MultiPoint"])):
+        return "point"
+    return "mixed"
 
 
 def close_holes(
@@ -287,6 +319,7 @@ def clean_clip(
     gdf: GeoDataFrame | GeoSeries,
     mask: GeoDataFrame | GeoSeries | Geometry,
     keep_geom_type: bool = True,
+    geom_type: str | None = None,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries:
     """
@@ -301,11 +334,15 @@ def clean_clip(
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
     try:
-        return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(clean_geoms)
+        return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(
+            clean_geoms, geom_type=geom_type
+        )
     except Exception:
-        gdf = clean_geoms(gdf)
-        mask = clean_geoms(mask)
-        return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(clean_geoms)
+        gdf = clean_geoms(gdf, geom_type=geom_type)
+        mask = clean_geoms(mask, geom_type=geom_type)
+        return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(
+            clean_geoms, geom_type=geom_type
+        )
 
 
 def sjoin(
@@ -333,8 +370,8 @@ def sjoin(
         joined = left_gdf.sjoin(right_gdf, **kwargs)
     except Exception:
         right_gdf = right_gdf.to_crs(left_gdf.crs)
-        left_gdf = clean_geoms(left_gdf, single_geom_type=True)
-        right_gdf = clean_geoms(right_gdf, single_geom_type=True)
+        left_gdf = clean_geoms(left_gdf)
+        right_gdf = clean_geoms(right_gdf)
         joined = left_gdf.sjoin(right_gdf, **kwargs)
 
     return joined.loc[:, ~joined.columns.str.contains("index|level_")]
@@ -345,6 +382,7 @@ def snap_to(
     snap_to: GeoDataFrame | GeoSeries,
     max_dist: int | None = None,
     to_node: bool = False,
+    snap_to_id: str | None = None,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
     """
@@ -356,8 +394,9 @@ def snap_to(
       snap_to (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries to snap to
       max_dist (int): The maximum distance to snap to. Defaults to None.
       to_node (bool): If True, the points will snap to the nearest node of the snap_to geometry. If
-        False, the points will snap to the nearest point on the snap_to geometry, which can be between two vertices
-        if the snap_to geometry is line or polygon. Defaults to False
+            False, the points will snap to the nearest point on the snap_to geometry, which can be between two vertices
+            if the snap_to geometry is line or polygon. Defaults to False
+        snap_to_id: name of a column in the snap_to data to use as an identifier for the geometry it was snapped to.
       copy (bool): If True, a copy of the GeoDataFrame is returned. Otherwise, the original
     GeoDataFrame. Defaults to True
 
@@ -388,6 +427,11 @@ def snap_to(
 
     if isinstance(points, gpd.GeoSeries):
         points = points.apply(lambda point: func(point, unioned))
+
+    if snap_to_id:
+        points = points.sjoin_nearest(snap_to[[snap_to_id, "geometry"]]).drop(
+            "index_right", axis=1, errors="ignore"
+        )
 
     return points
 

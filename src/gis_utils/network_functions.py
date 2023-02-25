@@ -4,161 +4,16 @@ import geopandas as gpd
 import networkx as nx
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
+from pandas import DataFrame
 from shapely import force_2d, shortest_line
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 from sklearn.neighbors import NearestNeighbors
 
-from .geopandas_utils import gdf_concat, push_geom_col
-
-
-def make_node_ids(
-    lines: GeoDataFrame, ignore_index: bool = False
-) -> Tuple[GeoDataFrame, GeoDataFrame]:
-    """
-    Create an integer index for the unique endpoints (nodes) of the lines (edges),
-    then map this index to the 'source' and 'target' columns of the 'lines' GeoDataFrame.
-    Returns both the lines and the nodes.
-
-    Args:
-      lines (GeoDataFrame): GeoDataFrame with line geometries
-      ignore_index (bool): If True, the index of the lines GeoDataFrame will be ignored.
-        Defaults to False.
-
-    Returns:
-      A tuple of two GeoDataFrames, one with the lines and one with the nodes.
-    """
-
-    lines = make_edge_wkt_cols(lines, ignore_index)
-
-    sources = lines[["source_wkt"]].rename(columns={"source_wkt": "wkt"})
-    targets = lines[["target_wkt"]].rename(columns={"target_wkt": "wkt"})
-
-    nodes = pd.concat([sources, targets], axis=0, ignore_index=True)
-
-    nodes["n"] = nodes.assign(n=1).groupby("wkt")["n"].transform("sum")
-
-    nodes = nodes.drop_duplicates(subset=["wkt"]).reset_index(drop=True)
-
-    nodes["node_id"] = nodes.index
-    nodes["node_id"] = nodes["node_id"].astype(str)
-
-    id_dict = {wkt: node_id for wkt, node_id in zip(nodes["wkt"], nodes["node_id"])}
-    lines["source"] = lines["source_wkt"].map(id_dict)
-    lines["target"] = lines["target_wkt"].map(id_dict)
-
-    n_dict = {wkt: n for wkt, n in zip(nodes["wkt"], nodes["n"])}
-    lines["n_source"] = lines["source_wkt"].map(n_dict)
-    lines["n_target"] = lines["target_wkt"].map(n_dict)
-
-    nodes["geometry"] = gpd.GeoSeries.from_wkt(nodes.wkt, crs=lines.crs)
-    nodes = gpd.GeoDataFrame(nodes, geometry="geometry", crs=lines.crs)
-    nodes = nodes.reset_index(drop=True)
-
-    lines = push_geom_col(lines)
-
-    return lines, nodes
-
-
-def _prepare_make_edge_cols(
-    lines: GeoDataFrame, ignore_index: bool
-) -> Tuple[GeoDataFrame, GeoDataFrame]:
-    lines = lines.loc[lines.geom_type != "LinearRing"]
-
-    if not all(lines.geom_type == "LineString"):
-        if all(lines.geom_type.isin(["LineString", "MultiLinestring"])):
-            raise ValueError(
-                "MultiLineStrings have more than two endpoints. "
-                "Try explode() to get LineStrings."
-            )
-        else:
-            raise ValueError(
-                "You have mixed geometry types. Only singlepart LineStrings are "
-                "allowed in make_edge_wkt_cols."
-            )
-
-    boundary = lines.geometry.boundary
-    circles = boundary.loc[boundary.is_empty]
-    lines = lines[~lines.index.isin(circles.index)]
-
-    endpoints = lines.geometry.boundary.explode(
-        ignore_index=ignore_index, index_parts=False
-    )  # to silence warning
-
-    if len(endpoints) / len(lines) != 2:
-        raise ValueError(
-            "The lines should have only two endpoints each. "
-            "Try splitting multilinestrings with explode."
-        )
-
-    return lines, endpoints
-
-
-def make_edge_coords_cols(
-    lines: GeoDataFrame, ignore_index: bool = True
-) -> GeoDataFrame:
-    lines, endpoints = _prepare_make_edge_cols(lines, ignore_index=ignore_index)
-
-    coords = [(geom.x, geom.y) for geom in endpoints.geometry]
-    lines["source_coords"], lines["target_coords"] = (
-        coords[0::2],
-        coords[1::2],
-    )
-
-    return lines
-
-
-def make_edge_wkt_cols(lines: GeoDataFrame, ignore_index: bool = True) -> GeoDataFrame:
-    """
-    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
-    columns, source_wkt and target_wkt, which are the WKT representations of the first
-    and last points of the LineStrings
-
-    Args:
-      lines (GeoDataFrame): the GeoDataFrame with the lines
-      ignore_index (bool): True by default to avoid futurewarning. But will change to
-        False to be consistent with pandas. Defaults to True.
-
-    Returns:
-      A GeoDataFrame with the columns 'source_wkt' and 'target_wkt'
-    """
-
-    lines = lines.loc[lines.geom_type != "LinearRing"]
-
-    if not all(lines.geom_type == "LineString"):
-        if all(lines.geom_type.isin(["LineString", "MultiLinestring"])):
-            raise ValueError(
-                "MultiLineStrings have more than two endpoints. "
-                "Try explode() to get LineStrings."
-            )
-        else:
-            raise ValueError(
-                "You have mixed geometry types. Only singlepart LineStrings are "
-                "allowed in make_edge_wkt_cols."
-            )
-
-    boundary = lines.geometry.boundary
-    circles = boundary.loc[boundary.is_empty]
-    lines = lines[~lines.index.isin(circles.index)]
-
-    endpoints = lines.geometry.boundary.explode(
-        ignore_index=ignore_index, index_parts=False
-    )  # to silence warning
-
-    if len(endpoints) / len(lines) != 2:
-        raise ValueError(
-            "The lines should have only two endpoints each. "
-            "Try splitting multilinestrings with explode."
-        )
-
-    wkt_geom = [f"POINT ({x} {y})" for x, y in zip(endpoints.x, endpoints.y)]
-    lines["source_wkt"], lines["target_wkt"] = (
-        wkt_geom[0::2],
-        wkt_geom[1::2],
-    )
-
-    return lines
+from .buffer_dissolve_explode import buff
+from .distances import get_k_nearest_neighbors
+from .geopandas_utils import gdf_concat, push_geom_col, snap_to
 
 
 def get_largest_component(lines: GeoDataFrame) -> GeoDataFrame:
@@ -222,6 +77,140 @@ def get_component_size(lines: GeoDataFrame) -> GeoDataFrame:
     }
 
     lines["component_size"] = lines.source.map(componentsdict)
+
+    return lines
+
+
+def split_lines_at_closest_point(
+    lines: GeoDataFrame,
+    points: GeoDataFrame,
+    max_dist: int | None = None,
+) -> DataFrame:
+    """Snaps points to lines, then splits the lines in two as the snap point
+
+    Args:
+      lines: GeoDataFrame of lines that will be split
+      points: GeoDataFrame of points to split the lines with
+      max_dist: the maximum distance between the point and the line.
+        Points further away than max_dist will not split any lines.
+        Defaults to None.
+
+    Returns:
+      A GeoDataFrame with the same columns as the input lines, but with the lines split at the closest
+    point to the points.
+
+    Raises:
+        ValueError if the crs of the input data differs.
+
+    """
+
+    BUFFDIST = 0.000001
+
+    if points.crs != lines.crs:
+        raise ValueError("crs mismatch:", points.crs, "and", lines.crs)
+
+    # move the points to the closest exact point of the line
+    # and get the line index
+    lines["temp_idx_"] = lines.index
+    snapped = snap_to(
+        points,
+        lines,
+        max_dist=max_dist,
+        to_node=False,
+        snap_to_id="temp_idx_",
+    )
+
+    condition = lines["temp_idx_"].isin(snapped["temp_idx_"])
+    relevant_lines = lines.loc[condition]
+    the_other_lines = lines.loc[~condition]
+
+    snapped["point_coords"] = [(geom.x, geom.y) for geom in snapped.geometry]
+
+    # need consistent coordinate dimensions.
+    # doing it down here to not overwrite the original data
+    relevant_lines.geometry = force_2d(relevant_lines.geometry)
+    snapped.geometry = force_2d(snapped.geometry)
+
+    # splitting geometry doesn't work, so doing a buffer and difference
+    # this means we have to move the new of the lines to the actual points later
+    splitted = relevant_lines.overlay(
+        buff(snapped, BUFFDIST), how="difference"
+    ).explode(ignore_index=True)
+
+    splitted["splitidx"] = splitted.index
+
+    # get the endpoints of the lines as columns
+    splitted = make_edge_coords_cols(splitted)
+
+    splitted_source = GeoDataFrame(
+        {
+            "splitidx": splitted["splitidx"],
+            "geometry": GeoSeries(
+                [Point(geom) for geom in splitted["source_coords"]], crs=lines.crs
+            ),
+        }
+    )
+    splitted_target = GeoDataFrame(
+        {
+            "splitidx": splitted["splitidx"],
+            "geometry": GeoSeries(
+                [Point(geom) for geom in splitted["target_coords"]], crs=lines.crs
+            ),
+        }
+    )
+
+    # matching the snapped points with the new sources and targets
+    # low max_dist makes sure we only get either source or target
+    #  get only the sources/targets where the lines were split
+    # use the point coordinates as id
+    dists_source = get_k_nearest_neighbors(
+        splitted_source,
+        snapped,
+        k=1,
+        max_dist=BUFFDIST * 2,
+        id_cols=("splitidx", "point_coords"),
+    )
+    dists_target = get_k_nearest_neighbors(
+        splitted_target,
+        snapped,
+        k=1,
+        max_dist=BUFFDIST * 2,
+        id_cols=("splitidx", "point_coords"),
+    )
+
+    # using the
+    # dictionaries that map the split lines with the point it was split by
+    splitdict_source = {
+        idx: coords
+        for idx, coords in zip(dists_source.splitidx, dists_source.point_coords)
+    }
+    splitdict_target = {
+        idx: coords
+        for idx, coords in zip(dists_target.splitidx, dists_target.point_coords)
+    }
+
+    # for each line where it was the source that was split,
+    # change the first point of the line to the point coordinate it was split by
+    # and for the lines where the target was split, change the last point of the line
+
+    for idx in dists_source.splitidx:
+        line = splitted.loc[idx, "geometry"]
+        coordslist = list(line.coords)
+        coordslist[0] = splitdict_source[idx]
+        splitted.loc[splitted.splitidx == idx, "geometry"] = LineString(coordslist)
+
+    # change the last point of each line that has a target by the point
+    for idx in dists_target.splitidx:
+        line = splitted.loc[idx, "geometry"]
+        coordslist = list(line.coords)
+        coordslist[-1] = splitdict_target[idx]
+        splitted.loc[splitted.splitidx == idx, "geometry"] = LineString(coordslist)
+
+    splitted["splitted"] = 1
+
+    lines = gdf_concat([the_other_lines, splitted]).drop(
+        ["temp_idx_", "splitidx"], axis=1
+    )
 
     return lines
 
@@ -520,7 +509,141 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
     return pd.concat([under_max_length, over_max_length], ignore_index=ignore_index)
 
 
-def roundabouts_to_intersections(roads, query="ROADTYPE=='Rundkjøring'"):
+def make_node_ids(
+    lines: GeoDataFrame,
+    wkt: bool = True,
+) -> Tuple[GeoDataFrame, GeoDataFrame]:
+    """
+    Create an integer index for the unique endpoints (nodes) of the lines (edges),
+    then map this index to the 'source' and 'target' columns of the 'lines' GeoDataFrame.
+    Returns both the lines and the nodes.
+
+    Args:
+      lines (GeoDataFrame): GeoDataFrame with line geometries
+
+    Returns:
+      A tuple of two GeoDataFrames, one with the lines and one with the nodes.
+    """
+
+    if wkt:
+        lines = make_edge_wkt_cols(lines)
+        source_geom_col, target_geom_col = "source_wkt", "target_wkt"
+    else:
+        lines = make_edge_coords_cols(lines)
+        source_geom_col, target_geom_col = "source_coords", "target_coords"
+
+    sources = lines[[source_geom_col]].rename(columns={source_geom_col: "wkt"})
+    targets = lines[[target_geom_col]].rename(columns={target_geom_col: "wkt"})
+
+    nodes = pd.concat([sources, targets], axis=0, ignore_index=True)
+
+    nodes["n"] = nodes.assign(n=1).groupby("wkt")["n"].transform("sum")
+
+    nodes = nodes.drop_duplicates(subset=["wkt"]).reset_index(drop=True)
+
+    nodes["node_id"] = nodes.index
+    nodes["node_id"] = nodes["node_id"].astype(str)
+
+    id_dict = {wkt: node_id for wkt, node_id in zip(nodes["wkt"], nodes["node_id"])}
+    lines["source"] = lines[source_geom_col].map(id_dict)
+    lines["target"] = lines[target_geom_col].map(id_dict)
+
+    n_dict = {wkt: n for wkt, n in zip(nodes["wkt"], nodes["n"])}
+    lines["n_source"] = lines[source_geom_col].map(n_dict)
+    lines["n_target"] = lines[target_geom_col].map(n_dict)
+
+    nodes["geometry"] = gpd.GeoSeries.from_wkt(nodes.wkt, crs=lines.crs)
+    nodes = gpd.GeoDataFrame(nodes, geometry="geometry", crs=lines.crs)
+    nodes = nodes.reset_index(drop=True)
+
+    lines = push_geom_col(lines)
+
+    return lines, nodes
+
+
+def make_edge_coords_cols(lines: GeoDataFrame) -> GeoDataFrame:
+    """Get the wkt of the first and last points of lines as columns
+
+    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
+    columns, source_coords and target_coords, which are the x and y coordinates of the
+    first and last points of the LineStrings in a tuple. The lines all have to be
+
+    Args:
+      lines (GeoDataFrame): the GeoDataFrame with the lines
+
+    Returns:
+      A GeoDataFrame with new columns 'source_coords' and 'target_coords'
+    """
+
+    lines, endpoints = _prepare_make_edge_cols(lines)
+
+    coords = [(geom.x, geom.y) for geom in endpoints.geometry]
+    lines["source_coords"], lines["target_coords"] = (
+        coords[0::2],
+        coords[1::2],
+    )
+
+    return lines
+
+
+def make_edge_wkt_cols(lines: GeoDataFrame) -> GeoDataFrame:
+    """Get coordinate tuples of the first and last points of lines as columns
+
+    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
+    columns, source_wkt and target_wkt, which are the WKT representations of the first
+    and last points of the LineStrings
+
+    Args:
+      lines (GeoDataFrame): the GeoDataFrame with the lines
+
+    Returns:
+      A GeoDataFrame with new columns 'source_wkt' and 'target_wkt'
+    """
+
+    lines, endpoints = _prepare_make_edge_cols(lines)
+
+    wkt_geom = [f"POINT ({x} {y})" for x, y in zip(endpoints.x, endpoints.y)]
+    lines["source_wkt"], lines["target_wkt"] = (
+        wkt_geom[0::2],
+        wkt_geom[1::2],
+    )
+
+    return lines
+
+
+def _prepare_make_edge_cols(
+    lines: GeoDataFrame,
+) -> Tuple[GeoDataFrame, GeoDataFrame]:
+    lines = lines.loc[lines.geom_type != "LinearRing"]
+
+    if not all(lines.geom_type == "LineString"):
+        if all(lines.geom_type.isin(["LineString", "MultiLinestring"])):
+            raise ValueError(
+                "MultiLineStrings have more than two endpoints. "
+                "Try explode() to get LineStrings."
+            )
+        else:
+            raise ValueError(
+                "You have mixed geometry types. Only singlepart LineStrings are "
+                "allowed in make_edge_wkt_cols."
+            )
+
+    boundary = lines.geometry.boundary
+    circles = boundary.loc[boundary.is_empty]
+    lines = lines[~lines.index.isin(circles.index)]
+
+    endpoints = lines.geometry.boundary.explode(ignore_index=True)
+
+    if len(endpoints) / len(lines) != 2:
+        raise ValueError(
+            "The lines should have only two endpoints each. "
+            "Try splitting multilinestrings with explode."
+        )
+
+    return lines, endpoints
+
+
+def _roundabouts_to_intersections(roads, query="ROADTYPE=='Rundkjøring'"):
     from shapely.geometry import LineString
     from shapely.ops import nearest_points
 

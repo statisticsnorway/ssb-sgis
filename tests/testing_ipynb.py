@@ -98,14 +98,14 @@ nett.sjoin(nz.til_gdf(punkter.buffer(1000).iloc[0], crs=25833)).plot(
 )
 
 # %%
-korteste_ruter = G.shortest_path(
+korteste_ruter = G.get_route(
     startpunkter=punkter.sample(10), sluttpunkter=punkter.sample(10), id_kolonne="idx"
 )
 korteste_ruter.plot()
 korteste_ruter
 
 # %%
-relevante_veglenker = G.shortest_path(
+relevante_veglenker = G.get_route(
     startpunkter=punkter.sample(10), sluttpunkter=punkter.sample(10), tell_opp=True
 )
 
@@ -121,7 +121,7 @@ relevante_veglenker.plot(
 )
 
 # %%
-korteste_ruter = G.shortest_path(
+korteste_ruter = G.get_route(
     startpunkter=punkter.sample(10),
     sluttpunkter=punkter.sample(10),
     id_kolonne="idx",
@@ -235,25 +235,19 @@ grefsenkollen["idx"] = "grefsenkollen"
 
 G = nz.Graf(kjoretoy="sykkel")
 
-oppover = G.shortest_path(
-    startpunkter=storo, sluttpunkter=grefsenkollen, id_kolonne="idx"
-)
-nedover = G.shortest_path(
-    startpunkter=grefsenkollen, sluttpunkter=storo, id_kolonne="idx"
-)
+oppover = G.get_route(startpunkter=storo, sluttpunkter=grefsenkollen, id_kolonne="idx")
+nedover = G.get_route(startpunkter=grefsenkollen, sluttpunkter=storo, id_kolonne="idx")
 nz.gdf_concat([oppover, nedover])
 
 # %%
 G = nz.Graf(kjoretoy="sykkel", kostnad="minutter")
-med_sykkel = G.shortest_path(
+med_sykkel = G.get_route(
     startpunkter=storo, sluttpunkter=grefsenkollen, id_kolonne="idx"
 )
 med_sykkel["hva"] = "sykkel"
 
 G = nz.Graf(kjoretoy="fot", kostnad="minutter")
-til_fots = G.shortest_path(
-    startpunkter=storo, sluttpunkter=grefsenkollen, id_kolonne="idx"
-)
+til_fots = G.get_route(startpunkter=storo, sluttpunkter=grefsenkollen, id_kolonne="idx")
 til_fots["hva"] = "fot"
 
 begge = nz.gdf_concat([med_sykkel, til_fots])
@@ -274,7 +268,7 @@ resultater = pd.DataFrame()
 for kjoretoy in ["fot", "sykkel"]:
     G = nz.Graf(kjoretoy=kjoretoy, kostnad="minutter", kommuner="0301")
 
-    korteste_ruter = G.shortest_path(
+    korteste_ruter = G.get_route(
         startpunkter=punkter_rundt_akersveien,
         sluttpunkter=punkter_rundt_akersveien,
         id_kolonne="idx",
@@ -313,7 +307,7 @@ def test_nettverk(G, punkter, kostnad):
         "isolert", cmap="bwr"
     )
 
-    korteste_ruter = G.shortest_path(
+    korteste_ruter = G.get_route(
         startpunkter=punkter.sample(35),
         sluttpunkter=punkter.sample(35),
         id_kolonne="idx",
@@ -361,7 +355,7 @@ resultater = pd.DataFrame()
 for kjoretoy in ["bil", "sykkel", "fot"]:
     G = nz.Graf(kjoretoy=kjoretoy, kommuner="0301")
 
-    mest_brukte_gater = G.shortest_path(
+    mest_brukte_gater = G.get_route(
         startpunkter=utvalg, sluttpunkter=utvalg, tell_opp=True
     )
 

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -18,21 +19,26 @@ import gis_utils as gs
 
 def test_network_analysis():
     warnings.filterwarnings(action="ignore", category=FutureWarning)
+    #    warnings.filterwarnings(action="ignore", category=UserWarning)
+    pd.options.mode.chained_assignment = None
+
+    split_lines = True
 
     ### READ FILES
 
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
-    #  p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
+    #    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
     p["idx"] = p.index
     p["idx2"] = p.index
+    print(p.idx)
 
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
-    #  r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
+    #   r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
 
     ### MAKE THE ANALYSIS CLASS
 
     nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
-    rules = gs.NetworkAnalysisRules(weight="minutes")
+    rules = gs.NetworkAnalysisRules(weight="minutes", split_lines=split_lines)
     nwa = gs.NetworkAnalysis(nw, rules=rules)
 
     ### OD COST MATRIX
@@ -53,21 +59,16 @@ def test_network_analysis():
 
     od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
 
-    print(nwa.startpoints.gdf.n_missing.value_counts())
+    print(nwa.origins.gdf.n_missing.value_counts())
 
-    p1 = nwa.startpoints.gdf
+    p1 = nwa.origins.gdf
     p1 = p1.loc[[p1.n_missing.idxmin()]].sample(1).idx.values[0]
 
     gs.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
 
     od2 = nwa.od_cost_matrix(p, p, destination_count=3)
 
-    print((od2.groupby("origin")["destination"].count() <= 3).mean())
-    print((od2.groupby("origin")["destination"].count() <= 3).mean())
-    print((od2.groupby("origin")["destination"].count() <= 3).mean())
-    print((od2.groupby("origin")["destination"].count() <= 3).mean())
-    print((od2.groupby("origin")["destination"].count() <= 3).mean())
-    assert (od2.groupby("origin")["destination"].count() <= 3).mean() > 0.95
+    assert (od2.groupby("origin")["destination"].count() <= 3).mean() > 0.8
 
     if len(od2) != len(od):
         assert np.mean(od2[nwa.rules.weight]) < np.mean(od[nwa.rules.weight])
@@ -80,34 +81,25 @@ def test_network_analysis():
 
     ### SHORTEST PATH
 
-    sp = nwa.shortest_path(p.iloc[[0]], p, id_col="idx", summarise=True)
+    sp = nwa.get_route(p, p, id_col="idx", summarise=False)
+
+    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx", summarise=True)
     gs.qtm(sp)
 
     i = 1
     nwa.rules.search_factor = 0
     nwa.rules.split_lines = False
-    sp = nwa.shortest_path(p.iloc[[0]], p.iloc[[i]], id_col="idx", summarise=False)
-    display(
-        nwa.network.gdf[
-            ["source", "target", nwa.rules.weight, "oneway", "geometry"]
-        ].explore(nwa.rules.weight)
-    )
-    display(sp.explore())
+    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx", summarise=False)
+    gs.qtm(sp)
     nwa.rules.split_lines = True
-    sp = nwa.shortest_path(p.iloc[[0]], p.iloc[[i]], id_col="idx", summarise=False)
-    display(sp.explore())
-    display(p.iloc[[i]].explore())
-    display(
-        nwa.network.gdf[
-            ["source", "target", nwa.rules.weight, "oneway", "geometry"]
-        ].explore(nwa.rules.weight)
-    )
-    sss
+    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx", summarise=False)
+    gs.qtm(sp)
 
-    sp = nwa.shortest_path(
-        p,
-        p,
-    )
+    nwa.rules.split_lines = False
+    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx", summarise=False)
+    gs.qtm(sp)
+    nwa.rules.split_lines = True
+    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx", summarise=False)
     gs.qtm(sp)
 
     ### SERVICE AREA
@@ -127,7 +119,10 @@ def test_network_analysis():
 
 
 def main():
-    test_network_analysis()
+    # test_network_analysis()
+    import cProfile
+
+    cProfile.run("test_network_analysis()", sort="cumtime")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -5,7 +7,14 @@ from geopandas import GeoDataFrame
 from shapely import STRtree, difference, intersection, union_all
 from shapely.wkt import dumps, loads
 
-from .geopandas_utils import clean_geoms, gdf_concat, push_geom_col
+from .geopandas_utils import (
+    clean_geoms,
+    gdf_concat,
+    get_geom_type,
+    is_single_geom_type,
+    push_geom_col,
+    to_single_geom_type,
+)
 
 
 def overlay(
@@ -13,7 +22,10 @@ def overlay(
     right_gdf: GeoDataFrame,
     how: str = "intersection",
     drop_dupcol: bool = True,
-    single_geom_type: bool = True,
+    keep_geom_type: bool = True,
+    geom_type: str | None = None,
+    geom_type_left: str | None = None,
+    geom_type_right: str | None = None,
     **kwargs,
 ) -> GeoDataFrame:
     """
@@ -22,6 +34,39 @@ def overlay(
     as suggested here: https://github.com/geopandas/geopandas/issues/2792
 
     """
+
+    if geom_type:
+        if geom_type_left or geom_type_right:
+            raise ValueError(
+                "Specify only geom_type or geom_type_left and geom_type_right"
+            )
+
+        geom_type_left, geom_type_right = geom_type, geom_type
+
+        left_gdf = to_single_geom_type(left_gdf, geom_type=geom_type)
+        right_gdf = to_single_geom_type(right_gdf, geom_type=geom_type)
+
+    elif geom_type_left or geom_type_right:
+        if not geom_type_left:
+            geom_type_left = geom_type_right
+        if not geom_type_right:
+            geom_type_right = geom_type_left
+        left_gdf = to_single_geom_type(left_gdf, geom_type=geom_type_left)
+        right_gdf = to_single_geom_type(right_gdf, geom_type=geom_type_right)
+    else:
+        geom_type_left, geom_type_right = None, None
+
+    if not is_single_geom_type(left_gdf):
+        raise ValueError(
+            "mixed geometry types in 'left_gdf'. Specify 'geom_type' to keep"
+        )
+    if not is_single_geom_type(right_gdf):
+        raise ValueError(
+            "mixed geometry types in 'right_gdf'. Specify 'geom_type' to keep"
+        )
+
+    if keep_geom_type:
+        geom_type_left = get_geom_type(left_gdf)
 
     # Allowed operations
     allowed_hows = [
@@ -61,15 +106,18 @@ def overlay(
     except Exception:
         try:
             right_gdf = right_gdf.to_crs(left_gdf.crs)
-            left_gdf = clean_geoms(left_gdf, single_geom_type=True)
-            right_gdf = clean_geoms(right_gdf, single_geom_type=True)
+            left_gdf = clean_geoms(left_gdf, geom_type=geom_type_left)
+            right_gdf = clean_geoms(right_gdf, geom_type=geom_type_right)
             joined = overlayfunc(left_gdf, right_gdf, **kwargs)
         except Exception as e:
             if how == "update":
                 raise e
             joined = clean_shapely_overlay(left_gdf, right_gdf, how=how)
 
-    joined = clean_geoms(joined, single_geom_type=single_geom_type)
+    joined = clean_geoms(joined)
+
+    if keep_geom_type:
+        joined = to_single_geom_type(joined, geom_type_left)
 
     return joined.loc[:, ~joined.columns.str.contains("index|level_")]
 

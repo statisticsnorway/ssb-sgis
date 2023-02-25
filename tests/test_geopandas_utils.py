@@ -112,8 +112,8 @@ def test_clean(gdf_fixture):
     )
     gdf = gs.gdf_concat([gdf_fixture, missing, empty])
     assert len(gdf) == 12
-    gdf2 = gs.clean_geoms(gdf_fixture, single_geom_type=False)
-    ser = gs.clean_geoms(gdf_fixture.geometry, single_geom_type=False)
+    gdf2 = gs.clean_geoms(gdf_fixture)
+    ser = gs.clean_geoms(gdf_fixture.geometry)
     assert len(gdf2) == 9
     assert len(ser) == 9
 

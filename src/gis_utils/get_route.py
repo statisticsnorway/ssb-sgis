@@ -5,12 +5,13 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 
 from .geopandas_utils import gdf_concat
+from .od_cost_matrix import _od_cost_matrix
 
 
-def shortest_path(
+def _get_route(
     graph: Graph,
-    startpoints: GeoDataFrame,
-    endpoints: GeoDataFrame,
+    origins: GeoDataFrame,
+    destinations: GeoDataFrame,
     weight: str,
     roads: GeoDataFrame,
     summarise=False,
@@ -22,18 +23,33 @@ def shortest_path(
 
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+    # to get the actual cost, od_cost_matrix has to be run. Doing it first,
+    # so that NaNs can be filtered out before the slower path calculation
+    od_results = _od_cost_matrix(
+        graph=graph,
+        origins=origins,
+        destinations=destinations,
+        weight=weight,
+        rowwise=rowwise,
+        cutoff=cutoff,
+        destination_count=destination_count,
+    )
+
+    od_notna = od_results.dropna()
+
     results = []
-    if rowwise:
-        for ori_id, des_id in zip(startpoints["temp_idx"], endpoints["temp_idx"]):
-            results = results + _run_shortest_path(
-                ori_id, des_id, graph, roads, weight, summarise
-            )
+    if not rowwise:
+        for ori_id, des_id in zip(od_notna["origin"], od_notna["destination"]):
+            results = results + _run_get_route(ori_id, des_id, graph, roads, summarise)
     else:
-        for ori_id in startpoints["temp_idx"]:
-            for des_id in endpoints["temp_idx"]:
-                results = results + _run_shortest_path(
-                    ori_id, des_id, graph, roads, weight, summarise
-                )
+        for ori_id, des_id in zip(origins["temp_idx"], destinations["temp_idx"]):
+            if (
+                ori_id not in od_notna["origin"]
+                or des_id not in od_notna["destination"]
+            ):
+                continue
+
+            results = results + _run_get_route(ori_id, des_id, graph, roads, summarise)
 
     if summarise:
         counted = (
@@ -66,14 +82,14 @@ def shortest_path(
         weight_ranked = results.groupby("origin")[weight].rank()
         results = results.loc[weight_ranked <= destination_count]
 
-    results = results[["origin", "destination", weight, "geometry"]]
+    results = results.merge(od_results, on=["origin", "destination"])[
+        ["origin", "destination", weight, "geometry"]
+    ].reset_index(drop=True)
 
-    return results.reset_index(drop=True)
+    return results
 
 
-def _run_shortest_path(
-    ori_id, des_id, graph: Graph, roads: GeoDataFrame, weight: str, summarise: bool
-):
+def _run_get_route(ori_id, des_id, graph: Graph, roads: GeoDataFrame, summarise: bool):
     res = graph.get_shortest_paths(weights="weight", v=ori_id, to=des_id)
 
     if len(res[0]) == 0:
@@ -93,7 +109,7 @@ def _run_shortest_path(
     source_target = [
         str(source) + "_" + str(target) for source, target in zip(path[:-1], path[1:])
     ]
-    print(source_target)
+
     roads["source_target"] = roads["source"] + "_" + roads["target"]
     line = roads.loc[roads["source_target"].isin(source_target), ["geometry"]]
 
@@ -104,9 +120,5 @@ def _run_shortest_path(
 
     line["origin"] = ori_id
     line["destination"] = des_id
-
-    # to get the cost:
-    cost = graph.distances(weights="weight", source=ori_id, target=des_id)
-    line[weight] = cost[0][0]
 
     return [line]

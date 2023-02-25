@@ -1,14 +1,7 @@
 import numpy as np
-import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
 from pandas import DataFrame
-from shapely import force_2d
-from shapely.geometry import LineString, Point
 from sklearn.neighbors import NearestNeighbors
-
-from .buffer_dissolve_explode import buff
-from .geopandas_utils import gdf_concat, snap_to
-from .network_functions import make_edge_coords_cols
 
 
 def get_k_nearest_neighbors(
@@ -45,7 +38,7 @@ def get_k_nearest_neighbors(
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 
     if id_cols:
-        id_col1, id_col2 = return_two_id_cols(id_cols)
+        id_col1, id_col2 = _return_two_id_cols(id_cols)
         id_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf[id_col1])}
         id_dict_neighbors = {
             i: col for i, col in zip(range(len(neighbors)), neighbors[id_col2])
@@ -58,7 +51,7 @@ def get_k_nearest_neighbors(
 
     dists, neighbor_indices = k_nearest_neighbors(gdf_array, neighbors_array, k, strict)
 
-    edges = get_edges(gdf, neighbor_indices)
+    edges = _get_edges(gdf, neighbor_indices)
 
     if max_dist:
         condition = (dists <= max_dist) & (dists >= min_dist)
@@ -89,105 +82,15 @@ def get_k_nearest_neighbors(
     return df
 
 
-def split_lines_at_closest_point(
-    lines: GeoDataFrame,
-    points: GeoDataFrame,
-    max_dist: int | None = None,
-) -> DataFrame:
-    BUFFDIST = 0.000001
-
-    if points.crs != lines.crs:
-        raise ValueError("crs mismatch:", points.crs, "and", lines.crs)
-
-    lines.geometry = force_2d(lines.geometry)
-
-    points_snapped = snap_to(points, lines, max_dist=max_dist, to_node=False)
-
-    points_snapped["point_coords"] = [
-        (geom.x, geom.y) for geom in points_snapped.geometry
-    ]
-
-    lines["temp_lineidx"] = lines.index
-    points_snapped = points_snapped.sjoin_nearest(lines)
-
-    line_indices = points_snapped.set_index("temp_lineidx").index
-    relevant_lines = lines.loc[line_indices]
-    lines = lines.loc[~lines.index.isin(line_indices)]
-
-    # splitting geometry doesn't work, so doing a buffer and difference instead
-    splitted = relevant_lines.overlay(
-        buff(points_snapped, BUFFDIST), how="difference"
-    ).explode(ignore_index=True)
-
-    splitted["splitidx"] = splitted.index
-
-    splitted = make_edge_coords_cols(splitted)
-
-    splitted_source = GeoDataFrame(
-        {
-            "splitidx": splitted.splitidx,
-            "geometry": GeoSeries(
-                [Point(geom) for geom in splitted["source_coords"]], crs=lines.crs
-            ),
-        }
-    )
-    splitted_target = GeoDataFrame(
-        {
-            "splitidx": splitted.splitidx,
-            "geometry": GeoSeries(
-                [Point(geom) for geom in splitted["target_coords"]], crs=lines.crs
-            ),
-        }
-    )
-
-    dists_source = get_k_nearest_neighbors(
-        splitted_source,
-        points_snapped,
-        k=1,
-        max_dist=BUFFDIST * 2,
-        id_cols=("splitidx", "point_coords"),
-    )
-    dists_target = get_k_nearest_neighbors(
-        splitted_target,
-        points_snapped,
-        k=1,
-        max_dist=BUFFDIST * 2,
-        id_cols=("splitidx", "point_coords"),
-    )
-
-    splitdict_source = {
-        idx: coords
-        for idx, coords in zip(dists_source.splitidx, dists_source.point_coords)
-    }
-    splitdict_target = {
-        idx: coords
-        for idx, coords in zip(dists_target.splitidx, dists_target.point_coords)
-    }
-
-    # change the first point of each line that has a source by the point
-    for idx in dists_source.splitidx:
-        line = splitted.loc[idx, "geometry"]
-        coordslist = list(line.coords)
-        coordslist[0] = splitdict_source[idx]
-        splitted.loc[splitted.splitidx == idx, "geometry"] = LineString(coordslist)
-
-    # change the last point of each line that has a target by the point
-    for idx in dists_target.splitidx:
-        line = splitted.loc[idx, "geometry"]
-        coordslist = list(line.coords)
-        coordslist[-1] = splitdict_target[idx]
-        splitted.loc[splitted.splitidx == idx, "geometry"] = LineString(coordslist)
-
-    splitted["splitted"] = 1
-
-    lines = gdf_concat([lines, splitted]).drop(["temp_lineidx"], axis=1)
-
-    return lines
-
-
 def coordinate_array(gdf: GeoDataFrame) -> np.ndarray[np.ndarray[float]]:
     """Takes a GeoDataFrame of point geometries and turns it into a 2d ndarray
     of coordinates.
+
+    Args:
+        gdf: GeoDataFrame of point geometries
+
+    Returns:
+        np.ndarray of np.ndarrays of coordinates
     """
     return np.array([(x, y) for x, y in zip(gdf.geometry.x, gdf.geometry.y)])
 
@@ -223,7 +126,7 @@ def k_nearest_neighbors(
     return dists, indices
 
 
-def get_edges(gdf: GeoDataFrame, indices: np.ndarray[float]) -> np.ndarray[tuple[int]]:
+def _get_edges(gdf: GeoDataFrame, indices: np.ndarray[float]) -> np.ndarray[tuple[int]]:
     """Takes a GeoDataFrame and a list of indices, and returns a list of edges.
 
     Args:
@@ -239,7 +142,7 @@ def get_edges(gdf: GeoDataFrame, indices: np.ndarray[float]) -> np.ndarray[tuple
     )
 
 
-def return_two_id_cols(id_cols: str | list[str, str] | tuple[str, str]) -> tuple[str]:
+def _return_two_id_cols(id_cols: str | list[str, str] | tuple[str, str]) -> tuple[str]:
     """
     Make sure the id_cols are a 2 length tuple.> If the input is a string, return
     a tuple of two strings. If the input is a list or tuple of two

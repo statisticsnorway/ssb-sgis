@@ -26,6 +26,7 @@ from .network_functions import (
     make_edge_coords_cols,
     make_edge_wkt_cols,
     make_node_ids,
+    split_lines_at_closest_point,
 )
 from .networkanalysis import NetworkAnalysis
 from .networkanalysisrules import NetworkAnalysisRules

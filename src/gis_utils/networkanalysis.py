@@ -1,4 +1,5 @@
 from datetime import datetime
+from time import perf_counter
 from typing import Tuple
 
 import igraph
@@ -9,37 +10,41 @@ from igraph import Graph
 from pandas import DataFrame
 
 from .directednetwork import DirectedNetwork
-from .distances import split_lines_at_closest_point
 from .geopandas_utils import gdf_concat, push_geom_col
+from .get_route import _get_route
 from .network import Network
-from .network_functions import make_node_ids
+from .network_functions import make_node_ids, split_lines_at_closest_point
 from .networkanalysisrules import NetworkAnalysisRules
-from .od_cost_matrix import od_cost_matrix
-from .points import EndPoints, StartPoints
-from .service_area import service_area
-from .shortest_path import shortest_path
+from .od_cost_matrix import _od_cost_matrix
+from .points import Destinations, Origins
+from .service_area import _service_area
 
 
 class NetworkAnalysis:
     """Class that holds the actual network analysis methods.
 
+    It takes a (Directed)Network and rules (NetworkAnalysisRules).
+
     Args:
         network: either the base Network class or a subclass, chiefly the DirectedNetwork class.
             The network should be customized beforehand, but can also be accessed through
             the 'network' attribute of this class.
-        weight: e.i. 'minutes' or 'meters'. Or custom numeric column.
-        search_tolerance: meters.
-        search_factor: .
-        weight_to_nodes: .
+        rules: NetworkAnalysisRules class instance.
+        log: If True (the default), a DataFrame with information about each analysis run
+            will be stored in the 'log' attribute.
 
-    Example:
+    Attributes:
+        network: the Network instance
+        rules: the NetworkAnalysisRules instance
+        log: A DataFrame with information about each analysis run
+        origins: the origins used in the latest analysis run,
+            contained in a origins class instance, with the GeoDataFrame stored
+            in the 'gdf' attribute.
 
-    roads = gpd.GeoDataFrame(filepath_roads)
-    points = gpd.GeoDataFrame(filepath_points)
+    Examples:
 
-    # the data should have crs with meters as units, e.g. UTM:
-    roads = roads.to_crs(25833)
-    points = points.to_crs(25833)
+    roads = gpd.read_parquet(filepath_roads)
+    points = gpd.read_parquet(filepath_points)
 
     nw = (
         DirectedNetwork(roads)
@@ -49,7 +54,7 @@ class NetworkAnalysis:
 
     nwa = NetworkAnalysis(nw, weight="minutes")
 
-    od = nwa.od_cost_matrix(p, p)
+    od = nwa.od_cost_matrix(points, points)
 
     """
 
@@ -57,16 +62,20 @@ class NetworkAnalysis:
         self,
         network: Network | DirectedNetwork,
         rules: NetworkAnalysisRules,
+        log: bool = True,
+        detailed_log: bool = True,
     ):
         self.network = network
         self.rules = rules
+        self._log = log
+        self.detailed_log = detailed_log
 
         if not isinstance(rules, NetworkAnalysisRules):
             raise ValueError(
                 f"'rules' should be of type NetworkAnalysisRules. Got {type(rules)}"
             )
 
-        if not isinstance(network, (Network, DirectedNetwork)):
+        if not isinstance(network, Network):
             raise ValueError(
                 f"'network' should of type DirectedNetwork or Network. Got {type(network)}"
             )
@@ -76,102 +85,238 @@ class NetworkAnalysis:
         )
 
         if isinstance(self.network, DirectedNetwork):
-            self.network._warn_if_not_directed()
+            self.network._warn_if_undirected()
 
         self._update_point_wkts()
         self.rules._update_rules()
 
+        if log:
+            self.log = DataFrame()
+
     def od_cost_matrix(
         self,
-        startpoints: GeoDataFrame,
-        endpoints: GeoDataFrame,
+        origins: GeoDataFrame,
+        destinations: GeoDataFrame,
         id_col: str | Tuple[str, str] | None = None,
-        lines: bool = False,
-        **kwargs,
+        lines=False,
+        rowwise=False,
+        cutoff: int = None,
+        destination_count: int = None,
     ) -> DataFrame | GeoDataFrame:
-        self._prepare_network_analysis(startpoints, endpoints, id_col)
+        """Fast calculation of many-to-many travel costs
 
-        results = od_cost_matrix(
+        Args:
+            origins: GeoDataFrame of points from where the trips will originate
+            destinations: GeoDataFrame of points from where the trips will terminate
+            id_col: optional column to be used as identifier of the service areas. If None,
+                an arbitrary id will be used.
+            lines: if True, returns a geometry column with straight lines between
+                origin and destination. Defaults to False.
+            rowwise: if False (the default), it will calculate the cost from each origins
+                to each destination. If true, it will calculate the cost from origin 1 to destination 1,
+                origin 2 to destination 2 and so on.
+            cutoff: the maximum cost (weight) for the trips. Defaults to None,
+                meaning all rows will be included. NaNs will also be removed if cutoff
+                is specified.
+            destination_count: number of closest destinations to keep for each origin.
+                If None (the default), all trips will be included. The number of destinations
+                might be higher than the destination count if trips have equal cost.
+
+        Returns:
+            A DataFrame with the columns 'origin', 'destination' and the weight column.
+            If lines is True, adds a geometry column with straight lines between origin
+            and destination.
+
+        """
+
+        if self._log:
+            time_ = perf_counter()
+
+        self._prepare_network_analysis(origins, destinations, id_col)
+
+        results = _od_cost_matrix(
             graph=self.graph,
-            startpoints=self.startpoints.gdf,
-            endpoints=self.endpoints.gdf,
+            origins=self.origins.gdf,
+            destinations=self.destinations.gdf,
             weight=self.rules.weight,
             lines=lines,
-            **kwargs,
+            cutoff=cutoff,
+            destination_count=destination_count,
+            rowwise=rowwise,
         )
 
-        self.startpoints._get_n_missing(results, "origin")
-        self.endpoints._get_n_missing(results, "destination")
+        self.origins._get_n_missing(results, "origin")
+        self.destinations._get_n_missing(results, "destination")
 
         if id_col:
-            results["origin"] = results["origin"].map(self.startpoints.id_dict)
-            results["destination"] = results["destination"].map(self.endpoints.id_dict)
+            results["origin"] = results["origin"].map(self.origins.id_dict)
+            results["destination"] = results["destination"].map(
+                self.destinations.id_dict
+            )
 
         if lines:
             results = push_geom_col(results)
 
-        self._runlog("od_cost_matrix", results, **kwargs)
+        if self._log:
+            minutes_elapsed_ = round((perf_counter() - time_) / 60, 1)
+            self._runlog(
+                "od_cost_matrix",
+                results,
+                minutes_elapsed_,
+                lines=lines,
+                cutoff=cutoff,
+                destination_count=destination_count,
+                rowwise=rowwise,
+            )
 
         return results
 
-    def shortest_path(
+    def get_route(
         self,
-        startpoints: GeoDataFrame,
-        endpoints: GeoDataFrame,
+        origins: GeoDataFrame,
+        destinations: GeoDataFrame,
         id_col: str | Tuple[str, str] | None = None,
         summarise: bool = False,
-        **kwargs,
+        rowwise=False,
+        cutoff: int = None,
+        destination_count: int = None,
     ) -> GeoDataFrame:
-        self._prepare_network_analysis(startpoints, endpoints, id_col)
+        """Returns the geometry of the low-cost route between start- and destinations
 
-        results = shortest_path(
+        Finds the route with the lowest cost (minutes, meters, etc.) from a set of origins
+        to a set of destinations. If the weight is meters, the shortest route will be found.
+        If the weight is minutes, the fastest route will be found.
+
+        Args:
+            origins: GeoDataFrame of points from where the routes will originate
+            destinations: GeoDataFrame of points from where the routes will terminate
+            id_col: optional column to be used as identifier of the service areas. If None,
+                an arbitrary id will be used.
+            summarise: if False (the default), the routes will be returned individually. If
+                True, all lines that were visited at least once will be returned with a column
+                'n', which represents how many times the line was used in all the routes.
+            rowwise: if False (the default), it will calculate the cost from each origins
+                to each destination. If true, it will calculate the cost from origin 1 to destination 1,
+                origin 2 to destination 2 and so on.
+            cutoff: the maximum cost (weight) for the trips. Defaults to None,
+                meaning all rows will be included. NaNs will also be removed if cutoff
+                is specified.
+            destination_count: number of closest destinations to keep for each origin.
+                If None (the default), all trips will be included. The number of destinations
+                might be higher than the destination count if trips have equal cost.
+
+        Returns:
+            A GeoDataFrame of lines. If summarise is False, will return each trip as one row,
+            with the columns 'origin', 'destination', the weight column and the geometry.
+            If summarise is True, will return the line segments that were visited at least once,
+            with the column 'n', which is the number of times the segment was visited in total.
+
+        Raises:
+            ValueError if no paths were found.
+        """
+        if self._log:
+            time_ = perf_counter()
+
+        self._prepare_network_analysis(origins, destinations, id_col)
+
+        results = _get_route(
             graph=self.graph,
-            startpoints=self.startpoints.gdf,
-            endpoints=self.endpoints.gdf,
+            origins=self.origins.gdf,
+            destinations=self.destinations.gdf,
             weight=self.rules.weight,
             roads=self.network.gdf,
             summarise=summarise,
-            **kwargs,
+            cutoff=cutoff,
+            destination_count=destination_count,
+            rowwise=rowwise,
         )
 
         if not summarise:
-            self.startpoints._get_n_missing(results, "origin")
-            self.endpoints._get_n_missing(results, "destination")
+            self.origins._get_n_missing(results, "origin")
+            self.destinations._get_n_missing(results, "destination")
 
         if id_col and not summarise:
-            results["origin"] = results["origin"].map(self.startpoints.id_dict)
-            results["destination"] = results["destination"].map(self.endpoints.id_dict)
+            results["origin"] = results["origin"].map(self.origins.id_dict)
+            results["destination"] = results["destination"].map(
+                self.destinations.id_dict
+            )
 
         results = push_geom_col(results)
 
-        self._runlog("shortest_path", results, **kwargs)
+        if self._log:
+            minutes_elapsed_ = round((perf_counter() - time_) / 60, 1)
+            self._runlog(
+                "get_route",
+                results,
+                minutes_elapsed_,
+                summarise=summarise,
+                cutoff=cutoff,
+                destination_count=destination_count,
+                rowwise=rowwise,
+            )
 
         return results
 
     def service_area(
-        self, startpoints: GeoDataFrame, id_col: str | None = None, **kwargs
+        self,
+        origins: GeoDataFrame,
+        breaks: int | float | list[int | float] | tuple[int | float],
+        id_col: str | None = None,
+        dissolve: bool = True,
     ) -> GeoDataFrame:
-        self._prepare_network_analysis(startpoints, id_col=id_col)
+        """Returns the lines that can be reached within breaks (weight values)
 
-        results = service_area(
-            self.graph,
-            self.startpoints.gdf,
-            self.rules.weight,
-            self.network.gdf,
-            **kwargs,
+        It finds all the network lines that can be reached within each weight impedance,
+        given in the breaks argument as one or more integers/floats.
+
+        Args:
+            origins: GeoDataFrame of points from where the service areas will originate
+            breaks: one or more integers or floats which will be the maximum weight for
+                the service areas. Calculates multiple areas for each origins if
+                multiple breaks.
+            id_col: optional column to be used as identifier of the service areas. If None,
+                an arbitrary id will be used.
+            dissolve: If True (the default), each service area will be dissolved into one long
+                multilinestring. If False, the individual line segments will be returned. Duplicate
+                lines can then be removed, or occurences counted.
+
+
+        """
+
+        if self._log:
+            time_ = perf_counter()
+
+        self._prepare_network_analysis(origins, id_col=id_col)
+
+        results = _service_area(
+            graph=self.graph,
+            origins=self.origins.gdf,
+            weight=self.rules.weight,
+            lines=self.network.gdf,
+            breaks=breaks,
+            dissolve=dissolve,
         )
 
         if id_col:
-            results[id_col] = results["origin"].map(self.startpoints.id_dict)
+            results[id_col] = results["origin"].map(self.origins.id_dict)
             results = results.drop("origin", axis=1)
 
         results = push_geom_col(results)
 
-        self._runlog("service_area", results, **kwargs)
+        if self._log:
+            minutes_elapsed_ = round((perf_counter() - time_) / 60, 1)
+            self._runlog(
+                "service_area",
+                results,
+                minutes_elapsed_,
+                breaks=breaks,
+                dissolve=dissolve,
+            )
 
         return results
 
     def __repr__(self) -> str:
+        """The print representation"""
         # remove 'weight_to_nodes_' arguments in the repr of the NetworkAnalysisRules instance
         rules = self.rules.__repr__()
         for txt in ["weight_to_nodes_", "dist", "kmh", "mph", "=None", "=False"]:
@@ -197,23 +342,23 @@ class NetworkAnalysis:
             f"rules={rules}{x}))"
         )
 
-    def _log_df_template(self, fun: str) -> DataFrame:
-        """
+    def _log_df_template(self, fun: str, minutes_elapsed: int) -> DataFrame:
+        """Creates a df with one row
         The 'isolated_removed' column does not account for
         preperation done before initialising the (Directed)Network class.
         """
 
-        if not hasattr(self, "log"):
-            self.log = DataFrame()
-
         df = DataFrame(
             {
                 "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
+                "minutes_elapsed": minutes_elapsed,
                 "function": fun,
                 "percent_missing": np.nan,
                 "cost_mean": np.nan,
-                "n_startpoints": np.nan,
-                "n_endpoints": np.nan,
+                "cost_median": np.nan,
+                "cost_std": np.nan,
+                "n_origins": np.nan,
+                "n_destinations": np.nan,
                 "isolated_removed": self.network._isolated_removed,
                 "percent_directional": self.network._percent_directional,
             },
@@ -227,17 +372,28 @@ class NetworkAnalysis:
 
         return df
 
-    def _runlog(self, fun: str, results: DataFrame | GeoDataFrame, **kwargs) -> None:
-        df = self._log_df_template(fun)
+    def _runlog(
+        self,
+        fun: str,
+        results: DataFrame | GeoDataFrame,
+        minutes_elapsed: int,
+        **kwargs,
+    ) -> None:
+        df = self._log_df_template(fun, minutes_elapsed)
 
-        df["n_startpoints"] = len(self.startpoints.gdf)
+        df["n_origins"] = len(self.origins.gdf)
 
         if self.rules.weight in results.columns:
             df["percent_missing"] = results[self.rules.weight].isna().mean() * 100
             df["cost_mean"] = results[self.rules.weight].mean()
+            if self.detailed_log:
+                df["cost_p25"] = results[self.rules.weight].quantile(0.25)
+                df["cost_median"] = results[self.rules.weight].median()
+                df["cost_p75"] = results[self.rules.weight].quantile(0.75)
+                df["cost_std"] = results[self.rules.weight].std()
 
         if fun != "service_area":
-            df["n_endpoints"] = len(self.endpoints.gdf)
+            df["n_destinations"] = len(self.destinations.gdf)
         else:
             df["percent_missing"] = results["geometry"].isna().mean() * 100
 
@@ -252,34 +408,34 @@ class NetworkAnalysis:
         self.log = pd.concat([self.log, df], ignore_index=True)
 
     def _prepare_network_analysis(
-        self, startpoints, endpoints=None, id_col: str | None = None
+        self, origins, destinations=None, id_col: str | None = None
     ) -> None:
-        """Prepares the weight column, node ids and start- and endpoints.
+        """Prepares the weight column, node ids and start- and destinations.
         Also updates the graph if it is not yet created and no parts of the analysis has changed.
-        this method is run inside od_cost_matrix, shortest_path and service_area.
+        this method is run inside od_cost_matrix, get_route and service_area.
         """
 
         self.network.gdf = self.rules._validate_weight(
             self.network.gdf, raise_error=True
         )
 
-        self.startpoints = StartPoints(
-            startpoints,
+        self.origins = Origins(
+            origins,
             id_col=id_col,
             temp_idx_start=max(self.network.nodes.node_id.astype(int)) + 1,
         )
 
-        if endpoints is not None:
-            self.endpoints = EndPoints(
-                endpoints,
+        if destinations is not None:
+            self.destinations = Destinations(
+                destinations,
                 id_col=id_col,
-                temp_idx_start=max(self.startpoints.gdf.temp_idx.astype(int)) + 1,
+                temp_idx_start=max(self.origins.gdf.temp_idx.astype(int)) + 1,
             )
 
         else:
-            self.endpoints = None
+            self.destinations = None
 
-        if not (self._graph_is_up_to_date() and self.network._nodes_are_up_to_date()):
+        if not self._graph_is_up_to_date() or not self.network._nodes_are_up_to_date():
             self.network._update_nodes_if()
 
             edges, weights = self._get_edges_and_weights()
@@ -295,14 +451,14 @@ class NetworkAnalysis:
 
     def _get_edges_and_weights(self) -> Tuple[list[Tuple[str, ...]], list[float]]:
         """Creates lists of edges and weights which will be used to make the graph.
-        Edges and weights between startpoints and nodes and nodes and endpoints are also added.
+        Edges and weights between origins and nodes and nodes and destinations are also added.
         """
 
         if self.rules.split_lines:
-            if self.endpoints:
-                points = gdf_concat([self.startpoints.gdf, self.endpoints.gdf])
+            if self.destinations is not None:
+                points = gdf_concat([self.origins.gdf, self.destinations.gdf])
             else:
-                points = self.startpoints.gdf
+                points = self.origins.gdf
 
             points = points.drop_duplicates("geometry")
 
@@ -314,13 +470,25 @@ class NetworkAnalysis:
                 max_dist=self.rules.search_tolerance,
             )
 
-            # adjust the weight to splitted length
+            # adjust the weight to new splitted length
             lines.loc[lines["splitted"] == 1, self.rules.weight] = lines[
                 self.rules.weight
             ] * (lines.length / lines["meters"])
 
             self.network.gdf = lines
-            self.network.make_node_ids()
+            self.network._make_node_ids()
+
+            # remake the temp_idx
+            # TODO: consider changing how this thing works
+            self.origins.temp_idx_start = (
+                max(self.network.nodes.node_id.astype(int)) + 1
+            )
+            self.origins._make_temp_idx()
+            if self.destinations is not None:
+                self.destinations.temp_idx_start = (
+                    max(self.origins.gdf.temp_idx.astype(int)) + 1
+                )
+                self.destinations._make_temp_idx()
 
         edges = [
             (str(source), str(target))
@@ -331,16 +499,16 @@ class NetworkAnalysis:
 
         weights = list(self.network.gdf[self.rules.weight])
 
-        edges_start, weights_start = self.startpoints._get_edges_and_weights(
+        edges_start, weights_start = self.origins._get_edges_and_weights(
             nodes=self.network.nodes, rules=self.rules
         )
         edges = edges + edges_start
         weights = weights + weights_start
 
-        if self.endpoints is None:
+        if self.destinations is None:
             return edges, weights
 
-        edges_end, weights_end = self.endpoints._get_edges_and_weights(
+        edges_end, weights_end = self.destinations._get_edges_and_weights(
             nodes=self.network.nodes, rules=self.rules
         )
 
@@ -358,15 +526,15 @@ class NetworkAnalysis:
         self.graph.add_vertices(
             [
                 idx
-                for idx in self.startpoints.gdf["temp_idx"]
+                for idx in self.origins.gdf["temp_idx"]
                 if idx not in self.graph.vs["name"]
             ]
         )
-        if self.endpoints is not None:
+        if self.destinations is not None:
             self.graph.add_vertices(
                 [
                     idx
-                    for idx in self.endpoints.gdf["temp_idx"]
+                    for idx in self.destinations.gdf["temp_idx"]
                     if idx not in self.graph.vs["name"]
                 ]
             )
@@ -399,20 +567,20 @@ class NetworkAnalysis:
         if self.rules._rules_have_changed():
             return False
 
-        if self._points_have_changed(self.startpoints.gdf, what="start"):
+        if self._points_have_changed(self.origins.gdf, what="start"):
             return False
 
-        if self.endpoints is None:
+        if self.destinations is None:
             return True
 
-        if self._points_have_changed(self.endpoints.gdf, what="end"):
+        if self._points_have_changed(self.destinations.gdf, what="end"):
             return False
 
         return True
 
     def _points_have_changed(self, points: GeoDataFrame, what: str) -> bool:
         """This method is best stored in the NetworkAnalysis class,
-        since the point classes are initialised each time an analysis is run."""
+        since the point classes are instantiated each time an analysis is run."""
         if self.wkts[what] != [geom.wkt for geom in points.geometry]:
             return True
 
@@ -429,10 +597,10 @@ class NetworkAnalysis:
 
         self.wkts["network"] = [geom.wkt for geom in self.network.gdf.geometry]
 
-        if not hasattr(self, "startpoints"):
+        if not hasattr(self, "origins"):
             return
 
-        self.wkts["start"] = [geom.wkt for geom in self.startpoints.gdf.geometry]
+        self.wkts["start"] = [geom.wkt for geom in self.origins.gdf.geometry]
 
-        if self.endpoints is not None:
-            self.wkts["end"] = [geom.wkt for geom in self.endpoints.gdf.geometry]
+        if self.destinations is not None:
+            self.wkts["end"] = [geom.wkt for geom in self.destinations.gdf.geometry]

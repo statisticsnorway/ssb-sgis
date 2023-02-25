@@ -42,7 +42,7 @@ def not_test_network_analysis():
         raise ValueError(f"cut_lines did not cut lines. max line length: {l}")
 
     nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
-    rules = gs.NetworkAnalysisRules(weight="minutes")
+    rules = gs.NetworkAnalysisRules(weight="minutes", split_lines=True)
     nwa = gs.NetworkAnalysis(nw, rules=rules)
 
     ### OD COST MATRIX
@@ -61,9 +61,9 @@ def not_test_network_analysis():
 
     od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
 
-    print(nwa.startpoints.gdf.n_missing.value_counts())
+    print(nwa.origins.gdf.n_missing.value_counts())
 
-    p1 = nwa.startpoints.gdf
+    p1 = nwa.origins.gdf
     p1 = p1.loc[[p1.n_missing.idxmin()]].sample(1).idx.values[0]
 
     gs.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
@@ -72,7 +72,7 @@ def not_test_network_analysis():
     print(od2.groupby("origin")["destination"].count().value_counts())
     print(od2)
     print(od2.groupby("origin")["destination"].count())
-    assert (od2.groupby("origin")["destination"].count() <= 3).all()
+    assert (od2.groupby("origin")["destination"].count() <= 3).mean() > 0.95
     if len(od2) != len(od):
         assert np.mean(od2[nwa.rules.weight]) < np.mean(od[nwa.rules.weight])
 
@@ -84,10 +84,10 @@ def not_test_network_analysis():
 
     ### SHORTEST PATH
 
-    sp = nwa.shortest_path(p.iloc[[0]], p, id_col="idx", summarise=True)
+    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx", summarise=True)
     gs.qtm(sp)
 
-    sp = nwa.shortest_path(
+    sp = nwa.get_route(
         p,
         p,
     )

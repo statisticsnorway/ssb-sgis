@@ -7,24 +7,20 @@ from igraph import Graph
 from .geopandas_utils import gdf_concat
 
 
-def service_area(
+def _service_area(
     graph: Graph,
-    startpoints: GeoDataFrame,
+    origins: GeoDataFrame,
     weight: str,
-    roads: GeoDataFrame,
+    lines: GeoDataFrame,
     breaks: int | list[int] | tuple[int],
-    id_col: str | None = None,
     dissolve: bool = True,
-):
-    if not id_col:
-        id_col = "origin"
-
+) -> GeoDataFrame:
     if isinstance(breaks, (str, int, float)):
         breaks = [float(breaks)]
 
-    # loop through every startpoint and every breaks
+    # loop through every origin and every breaks
     results = []
-    for i in startpoints["temp_idx"]:
+    for i in origins["temp_idx"]:
         result = graph.distances(weights="weight", source=i)
 
         df = pd.DataFrame(
@@ -36,18 +32,18 @@ def service_area(
 
             if not len(indices):
                 results.append(
-                    pd.DataFrame({id_col: [i], weight: [imp], "geometry": np.nan})
+                    pd.DataFrame({"origin": [i], weight: [imp], "geometry": np.nan})
                 )
                 continue
 
-            service_area = roads.loc[roads.target.isin(indices.node_id)]
+            service_area = lines.loc[lines.target.isin(indices.node_id)]
 
             if dissolve:
                 service_area = (
                     service_area[["geometry"]].dissolve().reset_index(drop=True)
                 )
 
-            service_area[id_col] = i
+            service_area["origin"] = i
             service_area[weight] = imp
             results.append(service_area)
 

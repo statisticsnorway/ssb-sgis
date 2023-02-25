@@ -7,13 +7,13 @@ import gis_utils as gs
 
 """
 from tests.test_od_cost_matrix import test_od_cost_matrix
-from tests.test_shortest_path import test_shortest_path
+from tests.test_get_route import test_get_route
 from tests.test_service_area import test_service_area
 """
 
 
 def not_test_osm(nw):
-    test_shortest_path(nw)
+    test_get_route(nw)
     test_service_area(nw)
     test_od_cost_matrix(nw)
 

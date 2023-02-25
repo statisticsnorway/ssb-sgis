@@ -48,6 +48,15 @@ def test_overlay():
                     round(sum(overlayed2.area), i),
                 )
 
+            gs.overlay(p500, p1000, how=how, geom_type="polygon")
+            gs.overlay(
+                p500,
+                p1000,
+                how=how,
+                geom_type_left="polygon",
+                geom_type_right="polygon",
+            )
+
 
 def main():
     test_overlay()
