@@ -2,6 +2,27 @@
 
 GIS utility functions used in [Statistics Norway](https://www.ssb.no/en).
 
+[![PyPI](https://img.shields.io/pypi/v/ssb-gis-utils.svg)][pypi_]
+[![Status](https://img.shields.io/pypi/status/ssb-gis-utils.svg)][status]
+[![Python Version](https://img.shields.io/pypi/pyversions/ssb-gis-utils)][python version]
+[![License](https://img.shields.io/pypi/l/ssb-gis-utils)][license]
+
+[![Read the documentation at https://ssb-gis-utils.readthedocs.io/](https://img.shields.io/readthedocs/ssb-gis-utils/latest.svg?label=Read%20the%20Docs)][read the docs]
+[![Tests](https://github.com/statisticsnorway/ssb-gis-utils/workflows/Tests/badge.svg)][tests]
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=statisticsnorway_ssb-gis-utils&metric=coverage)][coverage]
+
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)][pre-commit]
+[![Black](https://img.shields.io/badge/code%20style-black-000000.svg)][black]
+
+[pypi_]: https://pypi.org/project/ssb-gis-utils/
+[status]: https://pypi.org/project/ssb-gis-utils/
+[python version]: https://pypi.org/project/ssb-gis-utils
+[read the docs]: https://ssb-gis-utils.readthedocs.io/
+[tests]: https://github.com/statisticsnorway/ssb-gis-utils/actions?workflow=Tests
+[coverage]: https://sonarcloud.io/component_measures?metric=coverage&id=statisticsnorway_ssb-gis-utils
+[pre-commit]: https://github.com/pre-commit/pre-commit
+[black]: https://github.com/psf/black
+
 ## Network analysis integrated with geopandas
 
 The package offers methods that makes it easy to customise and optimise road data and
@@ -139,3 +160,19 @@ on all files by using this command:
 ```shell
 poetry run pre-commit run --all-files
 ```
+
+### Documentation
+
+To generate the API-documentation locally, run the following command from the root
+directory:
+
+```shell
+poetry run sphinx-build docs docs/_build
+```
+
+Then open the file `docs/_build/index.html`.
+
+<!-- github-only -->
+
+[license]: https://github.com/statisticsnorway/ssb-gis-utils/blob/main/LICENSE
+[contributor guide]: https://github.com/statisticsnorway/ssb-gis-utils/blob/main/CONTRIBUTING.md

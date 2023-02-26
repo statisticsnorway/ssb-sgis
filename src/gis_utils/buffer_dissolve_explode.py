@@ -1,17 +1,12 @@
-"""Functions that buffer, dissolve and/or explodes geometries.
+"""Functions that buffer, dissolve and/or explodes GeoDataFrames.
 
-Rules that apply to all functions in the module:
- - higher buffer resolution (50) than the geopandas default (16) for accuracy's sake.
+Rules that apply to all functions:
+ - higher buffer-resolution (50) than the default (16) for accuracy's sake.
+ - fixes geometries after buffer dissolve, but not after explode,
+   since fixing geometries might result in multipart geometries.
+ - ignoring and resetting index. Columns containing ``index`` or ``level_`` are removed.
 
- - Fixes geometries after buffer and dissolve, but not after explode,
-    since fixing geometries might result in multipart geometries.
- - Ignoring and reseting index by default. Columns containing 'index' or 'level_' are
-    removed.
- - Input type can be GeoDataFrames, GeoSeries or shapely geometries, and the output
-    type will be the same as the input.
 """
-
-
 import geopandas as gpd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry, get_parts, make_valid
