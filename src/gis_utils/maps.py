@@ -21,8 +21,11 @@ def qtm(
     title_color: str = "black",
     **kwargs,
 ) -> None:
-    """Quick, thematic map (name stolen from the tmap package in R).
-    Larger than the default, with legend and quantiles scheme if numeric dtype."""
+    """Quick, thematic map (name stolen from the tmap package in R)
+
+    Like geopandas' plot method, but larger, without axis labels and quantile scheme
+    if numeric column.
+    """
     if column:
         if not is_numeric_dtype(gdf[column]):
             scheme = None
@@ -35,6 +38,7 @@ def qtm(
 
 
 def concat_explore(*gdfs: GeoDataFrame, cmap=None, **kwargs) -> None:
+    """Interactive map of one or more GeoDataFrames"""
     for i, gdf in enumerate(gdfs):
         gdf["nr"] = i
 
@@ -45,8 +49,9 @@ def concat_explore(*gdfs: GeoDataFrame, cmap=None, **kwargs) -> None:
 
 
 def samplemap(
-    gdf: GeoDataFrame, explore: bool = True, size: int = 1000, **kwargs
+    gdf: GeoDataFrame, size: int = 1000, explore: bool = True, **kwargs
 ) -> None:
+    """Takes a random sample of a GeoDataFrame and plots all data within a 1 km radius"""
     random_point = gdf.sample(1).assign(geometry=lambda x: x.centroid)
 
     clipped = gdf.clip(random_point.buffer(size))
@@ -64,6 +69,7 @@ def clipmap(
     *args,
     **kwargs,
 ) -> None:
+    """Clips a GeoDataFrame to mask and plots it"""
     clipped = gdf.clip(mask.to_crs(gdf.crs))
 
     if explore:
@@ -73,7 +79,7 @@ def clipmap(
 
 
 def chop_cmap(cmap: LinearSegmentedColormap, frac: float) -> LinearSegmentedColormap:
-    """Chops off the beginning `frac` fraction of a colormap.
+    """Removes the first part of a cmap
     https://stackoverflow.com/questions/7574748/setting-range-of-a-colormap-in-matplotlib
     """
     cmap = plt.get_cmap(cmap)

@@ -1,5 +1,4 @@
 import warnings
-from typing import Tuple
 
 import numpy as np
 from geopandas import GeoDataFrame
@@ -13,22 +12,30 @@ from .network import Network
 class DirectedNetwork(Network):
     """Network subclass with methods for making the network directed
 
-    The DirectedNetwork class differs from the Network base class in two ways:
-    1) using a DirectedNetwork means the network graph will be directed, meaning
-    you can only travel in one direction on each line. 2) the class offers methods
-    for making the network directed, mainly the 'make_directed_network' method,
-    which reverses lines going the wrong direction and duplicates and flips lines
-    going both directions. It also creates a 'minute' column.
+    Can be used as the 'network' parameter in the NetworkAnalysis class for directed
+    network analysis.
 
-    So, instantiating a DirectedNetwork instance will not make your network directed.
-    It will, however, make the graph, and therefore the network analysis, directed.
-    When used with the NetworkAnalysis class.
+    The DirectedNetwork class differs from the Network base class in two ways:
+    1) using a DirectedNetwork in the NetworkAnalysis class means the network graph
+    will be directed, meaning you can only travel in one direction on each line.
+    2) the class offers methods for making the network directed, mainly the
+    'make_directed_network' method, which reverses lines going the wrong direction
+    and duplicates and flips lines going both directions. It also creates a 'minute'
+    column.
+
+    Note:
+        Instantiating a DirectedNetwork instance will not make your network directed.
+        It will, however, make the graph, and therefore the network analysis, directed.
+        When used with the NetworkAnalysis class.
 
     Args:
-        gdf: a GeoDataFrame of line geometries.
-        **kwargs: keyword arguments taken by the Network class.
+        gdf: a GeoDataFrame of line geometries
+        **kwargs: keyword arguments taken by the Network class
 
     Attributes:
+        gdf: the GeoDataFrame of lines
+        nodes (property): GeoDataFrame with the network nodes (line endpoints).
+            Node ids are always kept updated with the source and target ids of the lines.
         directed: whether the network should be treated as directed in network analysis.
             Defaults to True for the DirectedNetwork class, even though the network
             might be undirected.
@@ -44,66 +51,12 @@ class DirectedNetwork(Network):
 
         self.directed = True
 
-    def _warn_if_undirected(self):
-        """Road data often have to be duplicated and flipped to make it directed."""
-
-        if self._percent_directional > 5:
-            return
-
-        mess = (
-            "Your network is likely not directed. "
-            f"Only {self._percent_directional:.1f} percent of the lines go both ways."
-        )
-        if "oneway" in [col.lower() for col in self.gdf.columns]:
-            mess = mess + (
-                " Try setting direction_col='oneway' in the 'make_directed_network' method"
-            )
-        else:
-            mess = mess + "Try running 'make_directed_network'"
-
-        warnings.warn(mess)
-
-    def _make_directed_network_osm(
-        self,
-        direction_col: str = "oneway",
-        direction_vals_bft: list | tuple = ("B", "F", "T"),
-        speed_col: str = "maxspeed",
-    ):
-        """Currently not working."""
-
-        return self.make_directed_network(
-            direction_col=direction_col,
-            direction_vals_bft=direction_vals_bft,
-            speed_col=speed_col,
-        )
-
-    def make_directed_network_norway(
-        self,
-        direction_col: str = "oneway",
-        direction_vals_bft: Tuple[str, str, str] = ("B", "FT", "TF"),
-        minute_cols: Tuple[str, str] = ("drivetime_fw", "drivetime_bw"),
-    ):
-        """Runs method make_directed_network for Norwegian road data
-
-        Runs the method make_directed_network with default arguments to fit
-        Norwegian road data:
-        https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
-
-
-        """
-
-        return self.make_directed_network(
-            direction_col=direction_col,
-            direction_vals_bft=direction_vals_bft,
-            minute_cols=minute_cols,
-        )
-
     def make_directed_network(
         self,
         direction_col: str,
-        direction_vals_bft: Tuple[str, str, str],
+        direction_vals_bft: tuple[str, str, str],
+        minute_cols: tuple[str, str] | str | None = None,
         speed_col: str | None = None,
-        minute_cols: Tuple[str, str] | str | None = None,
         flat_speed: int | None = None,
     ):
         """Flips the line geometries of roads going backwards and in both directions.
@@ -206,3 +159,57 @@ class DirectedNetwork(Network):
         self._percent_directional = self._check_percent_directional()
 
         return self
+
+    def make_directed_network_norway(
+        self,
+        direction_col: str = "oneway",
+        direction_vals_bft: tuple[str, str, str] = ("B", "FT", "TF"),
+        minute_cols: tuple[str, str] = ("drivetime_fw", "drivetime_bw"),
+    ):
+        """Runs method make_directed_network for Norwegian road data
+
+        Runs the method make_directed_network with default arguments to fit
+        Norwegian road data:
+        https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
+
+
+        """
+
+        return self.make_directed_network(
+            direction_col=direction_col,
+            direction_vals_bft=direction_vals_bft,
+            minute_cols=minute_cols,
+        )
+
+    def _warn_if_undirected(self):
+        """Road data often have to be duplicated and flipped to make it directed."""
+
+        if self._percent_directional > 5:
+            return
+
+        mess = (
+            "Your network is likely not directed. "
+            f"Only {self._percent_directional:.1f} percent of the lines go both ways."
+        )
+        if "oneway" in [col.lower() for col in self.gdf.columns]:
+            mess = mess + (
+                " Try setting direction_col='oneway' in the 'make_directed_network' method"
+            )
+        else:
+            mess = mess + "Try running 'make_directed_network'"
+
+        warnings.warn(mess)
+
+    def _make_directed_network_osm(
+        self,
+        direction_col: str = "oneway",
+        direction_vals_bft: list | tuple = ("B", "F", "T"),
+        speed_col: str = "maxspeed",
+    ):
+        """Currently not working."""
+
+        return self.make_directed_network(
+            direction_col=direction_col,
+            direction_vals_bft=direction_vals_bft,
+            speed_col=speed_col,
+        )

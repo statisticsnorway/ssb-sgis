@@ -67,22 +67,21 @@ def to_single_geom_type(
     geom_type: str,
     ignore_index: bool = False,
 ) -> GeoDataFrame | GeoSeries:
-    """
-    It takes a GeoDataFrame or GeoSeries and returns a GeoDataFrame or GeoSeries
-    with only one geometry type. This will either be points, lines or polygons.
-    Both multipart and singlepart geometries are kept.
-    LinearRings are considered as lines.
+    """Returns only the specified geometry type in a GeoDataFrame or GeoSeries
 
-    GeometryCollections will be exploded to single-typed geometries, so that the
-    correctly typed geometries in these collections are included in the output.
+    Explodes GeometryCollections, then keeps only the given geometry_type,
+    either polygon, line or point. Both multipart and singlepart geometries
+    are kept. LinearRings are considered lines. GeometryCollections are exploded
+    to single-typed geometries before the selection.
 
     Args:
-      gdf (GeoDataFrame | GeoSeries): GeoDataFrame | GeoSeries
+        gdf: GeoDataFrame or GeoSeries
+        geom_type: the geometry type to keep. Either "polygon", "line" or "point"
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
         Defaults to False
 
     Returns:
-      A GeoDataFrame with a single geometry type.
+      A GeoDataFrame with a single geometry type
 
     Raises:
         TypeError if incorrect gdf type. ValueError if incorrect geom_type.
@@ -107,7 +106,9 @@ def to_single_geom_type(
     elif "point" in geom_type:
         gdf = gdf.loc[gdf.geom_type.isin(["Point", "MultiPoint"])]
     else:
-        raise ValueError(f"Invalid geom_type '{geom_type}'.")
+        raise ValueError(
+            f"Invalid geom_type '{geom_type}'. Should be 'polygon', 'line' or 'point'"
+        )
 
     if ignore_index:
         gdf = gdf.reset_index(drop=True)
@@ -119,8 +120,9 @@ def is_single_geom_type(
     gdf: GeoDataFrame | GeoSeries,
 ) -> bool:
     """
-    Returns True if all the geometries in the GeoDataFrame are of the same type
-    Multipart and singlepart are considered the same type.
+    Returns True if all the geometries in the GeoDataFrame are of the same type,
+    either polygon, line or point. Multipart and singlepart are considered the same
+    type.
 
     Args:
       gdf: GeoDataFrame or GeoSeries
@@ -145,6 +147,14 @@ def is_single_geom_type(
 def get_geom_type(
     gdf: GeoDataFrame | GeoSeries,
 ) -> str:
+    """Returns a string of the geometry type in a GeoDataFrame or GeoSeries
+
+    Args:
+      gdf: GeoDataFrame or GeoSeries
+
+    Returns:
+      A string that is either "polygon", "line", "point", or "mixed"
+    """
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
@@ -240,6 +250,8 @@ def gdf_concat(
             will be converted to before concatination. If None, it uses
             the crs of the first GeoDataFrame in the list or tuple.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1. Defaults to True
+        geometry: name of geometry column. Defaults to 'geometry'
+        **kwargs: additional keyword argument taken by pandas.condat
 
     Returns:
         A GeoDataFrame.
@@ -318,7 +330,6 @@ def push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:
 def clean_clip(
     gdf: GeoDataFrame | GeoSeries,
     mask: GeoDataFrame | GeoSeries | Geometry,
-    keep_geom_type: bool = True,
     geom_type: str | None = None,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries:
@@ -328,35 +339,38 @@ def clean_clip(
     Here, geometries are made valid, then invalid, empty, nan and None geometries are
     removed.
 
+    Args:
+        gdf: GeoDataFrame or GeoSeries to be clipped
+        mask: the geometry to clip gdf
+        geom_type (optional): geometry type to keep in 'gdf' before and after the clip
+        **kwargs: clip keyword arguments
+
     """
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
     try:
-        return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(
-            clean_geoms, geom_type=geom_type
-        )
+        return gdf.clip(mask, **kwargs).pipe(clean_geoms, geom_type=geom_type)
     except Exception:
         gdf = clean_geoms(gdf, geom_type=geom_type)
-        mask = clean_geoms(mask, geom_type=geom_type)
-        return gdf.clip(mask, keep_geom_type=keep_geom_type, **kwargs).pipe(
-            clean_geoms, geom_type=geom_type
-        )
+        mask = clean_geoms(mask, geom_type="polygon")
+        return gdf.clip(mask, **kwargs).pipe(clean_geoms, geom_type=geom_type)
 
 
 def sjoin(
-    left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, drop_dupcol: bool = True, **kwargs
+    left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, drop_dupcol: bool = False, **kwargs
 ) -> GeoDataFrame:
-    """
-    som gpd.sjoin bare at kolonner i right_gdf som også er i left_gdf fjernes
-    (fordi det snart vil gi feilmelding i geopandas) og kolonner som har med index
-     å gjøre fjernes, fordi sjoin returnerer index_right som kolonnenavn,
-     som gir feilmelding ved neste join.
+    """geopandas.sjoin that removes index columns before and after
+
+    geopandas.sjoin returns the column 'index_right', which throws
+    an error the next time.
     """
 
-    left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains("index|level_")]
-    right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains("index|level_")]
+    INDEX_COLS = "index|level_"
+
+    left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains(INDEX_COLS)]
+    right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains(INDEX_COLS)]
 
     if drop_dupcol:
         right_gdf = right_gdf.loc[
@@ -369,12 +383,11 @@ def sjoin(
     try:
         joined = left_gdf.sjoin(right_gdf, **kwargs)
     except Exception:
-        right_gdf = right_gdf.to_crs(left_gdf.crs)
         left_gdf = clean_geoms(left_gdf)
         right_gdf = clean_geoms(right_gdf)
         joined = left_gdf.sjoin(right_gdf, **kwargs)
 
-    return joined.loc[:, ~joined.columns.str.contains("index|level_")]
+    return joined.loc[:, ~joined.columns.str.contains(INDEX_COLS)]
 
 
 def snap_to(
@@ -390,15 +403,16 @@ def snap_to(
     GeoDataFrame or GeoSeries
 
     Args:
-      points (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries of points to snap
-      snap_to (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries to snap to
-      max_dist (int): The maximum distance to snap to. Defaults to None.
-      to_node (bool): If True, the points will snap to the nearest node of the snap_to geometry. If
+        points (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries of points to snap
+        snap_to (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries to snap to
+        max_dist (int): The maximum distance to snap to. Defaults to None.
+        to_node (bool): If True, the points will snap to the nearest node of the snap_to geometry. If
             False, the points will snap to the nearest point on the snap_to geometry, which can be between two vertices
             if the snap_to geometry is line or polygon. Defaults to False
         snap_to_id: name of a column in the snap_to data to use as an identifier for the geometry it was snapped to.
-      copy (bool): If True, a copy of the GeoDataFrame is returned. Otherwise, the original
-    GeoDataFrame. Defaults to True
+            Defaults to None.
+        copy (bool): If True, a copy of the GeoDataFrame is returned. Otherwise, the original
+        GeoDataFrame. Defaults to True
 
     Returns:
       A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the snap_to
@@ -436,14 +450,15 @@ def snap_to(
     return points
 
 
-def to_multipoint(gdf, copy=False):
-    """
-    It takes a geometry and returns a multipoint geometry
+def to_multipoint(gdf: GeoDataFrame | GeoSeries | Geometry, copy: bool = False):
+    """Creates a multipoint geometry of any geometry object
+
+    If the input is a GeoDataFrame or GeoSeries, the rows will be preserved, but the
+    geometries will be multipoints if more than one point in the original geometry.
 
     Args:
       gdf: The geometry to be converted. Can be a GeoDataFrame, GeoSeries or a shapely geometry.
-      copy: If True, the geometry will be copied. Otherwise, it may be possible to modify the original
-    geometry in-place, which can improve performance. Defaults to False
+      copy: If True, the geometry will be copied. Defaults to False
 
     Returns:
       A GeoDataFrame with the geometry column as a MultiPoint
@@ -525,28 +540,41 @@ def find_neighbors(
     id_col: str,
     max_dist: int = 0,
 ):
-    """American alias for find_neighbours."""
+    """American alias for find_neighbours"""
     return find_neighbours(gdf, possible_neighbors, id_col, max_dist)
 
 
 def gridish(
     gdf: GeoDataFrame, meters: int, x2: bool = False, minmax: bool = False
 ) -> GeoDataFrame:
+    """Creates the column 'gridish', grid categories based on rounded down coordinates
+
+    TODO: fix docstring
+
+    Takes a GeoDataFrame and a number of meters, and creates the column 'gridish', which
+    consists of the x and y coordinates rounded down to the specified number of meters.
+
+    So if 'meters' is 1000 and the crs is in meter units, it will categorise the data
+    based on its location in a 1000x1000 meter grid.
+
+    Polygons and lines will get gridish category based on the southwesternmost corner of
+    the geometry.
+    meter grid
+    It takes a GeoDataFrame, a number of meters, and two optional boolean arguments, and returns a
+    GeoDataFrame with a new column called "gridish" that contains a string of the form "x_y" where x and
+    y are the rounded down coordinates of the bounding box of the geometry in the GeoDataFrame
+
+    Args:
+      gdf (GeoDataFrame): GeoDataFrame
+      meters (int): the size of the grid in meters
+      x2 (bool): If True, the function will also create a gridish2 column, which is a grid with a
+    different origin. Defaults to False
+      minmax (bool): If True, will also create a column with the max coordinates of the bounding box.
+    Defaults to False
+
+    Returns:
+      A GeoDataFrame with a new column called 'gridish'
     """
-    Enkel rutedeling av dataene, for å kunne loope tunge greier for områder i valgfri
-    størrelse. Gir dataene kolonne med avrundede minimum-xy-koordinater, altså det
-    sørvestlige hjørnets koordinater avrundet.
-
-    minmax=True gir kolonnen 'gridish_max', som er avrundede maksimum-koordinater,
-    altså koordinatene i det nordøstlige hjørtet.
-    Hvis man skal gjøre en overlay/sjoin og dataene er større i utstrekning enn
-    områdene man vil loope for.
-
-    x2=True gir kolonnen 'gridish2', med ruter 1/2 hakk nedover og bortover.
-    Hvis grensetilfeller er viktig, kan man måtte loope for begge gridish-kolonnene.
-
-    """
-
     # rund ned koordinatene og sett sammen til kolonne
     gdf["gridish"] = [
         f"{round(minx/meters)}_{round(miny/meters)}"
@@ -597,12 +625,6 @@ def gridish(
 def count_within_distance(
     gdf1: GeoDataFrame, gdf2: GeoDataFrame, max_dist=0, col_name="n"
 ) -> GeoDataFrame:
-    """
-    Teller opp antall nærliggende eller overlappende (hvis avstan=0) geometrier i
-    to geodataframes. gdf1 returneres med en ny kolonne ('antall') som forteller hvor
-    mange geometrier (rader) fra gdf2 som er innen spesifisert max_dist.
-    """
-
     gdf1["temp_idx"] = range(len(gdf1))
     gdf2["temp_idx2"] = range(len(gdf2))
 

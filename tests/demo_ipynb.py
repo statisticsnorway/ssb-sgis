@@ -206,7 +206,7 @@ nw
 # %% [markdown]
 # Networks often consist of one large, connected network and many small, isolated "network islands".
 #
-# Start- and destinations located inside these isolated networks, will have a hard time finding their way out.
+# origins and destinations located inside these isolated networks, will have a hard time finding their way out.
 #
 # The large, connected network component can be found with the method get_largest_component:
 

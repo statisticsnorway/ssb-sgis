@@ -1,3 +1,5 @@
+import warnings
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -19,7 +21,10 @@ def _get_route(
     destination_count: int = None,
     rowwise=False,
 ):
-    import warnings
+    """Function that is used in the get_route and get_route_frequencies methods
+    of the NetworkAnalysis class
+
+    """
 
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
@@ -61,6 +66,10 @@ def _get_route(
 
         roads = roads[["geometry", "source", "target"]]
         roads["source_target"] = roads.source + "_" + roads.target
+
+        roads["n"] = roads["source_target"].map(counted)
+
+        return roads.drop("source_target", axis=1)
 
         return roads.merge(counted, on="source_target", how="inner").drop(
             "source_target", axis=1

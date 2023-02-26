@@ -1,6 +1,5 @@
 from datetime import datetime
 from time import perf_counter
-from typing import Tuple
 
 import igraph
 import numpy as np
@@ -32,6 +31,9 @@ class NetworkAnalysis:
         rules: NetworkAnalysisRules class instance.
         log: If True (the default), a DataFrame with information about each analysis run
             will be stored in the 'log' attribute.
+        detailed_log: If True (the default), will include all arguments passed to the
+            analysis methods and the standard deviation, 25th, 50th and 75th percentile
+            of the weight column in the results.
 
     Attributes:
         network: the Network instance
@@ -87,7 +89,7 @@ class NetworkAnalysis:
         if isinstance(self.network, DirectedNetwork):
             self.network._warn_if_undirected()
 
-        self._update_point_wkts()
+        self._update_wkts()
         self.rules._update_rules()
 
         if log:
@@ -97,7 +99,8 @@ class NetworkAnalysis:
         self,
         origins: GeoDataFrame,
         destinations: GeoDataFrame,
-        id_col: str | Tuple[str, str] | None = None,
+        id_col: str | tuple[str, str] | None = None,
+        *,
         lines=False,
         rowwise=False,
         cutoff: int = None,
@@ -108,8 +111,9 @@ class NetworkAnalysis:
         Args:
             origins: GeoDataFrame of points from where the trips will originate
             destinations: GeoDataFrame of points from where the trips will terminate
-            id_col: optional column to be used as identifier of the service areas. If None,
-                an arbitrary id will be used.
+            id_col: column(s) to be used as identifier for the origins and destinations.
+                If two different columns, put it in a tuple as ("origin_col", "destination_col")
+                If None, an arbitrary id will be returned.
             lines: if True, returns a geometry column with straight lines between
                 origin and destination. Defaults to False.
             rowwise: if False (the default), it will calculate the cost from each origins
@@ -175,13 +179,13 @@ class NetworkAnalysis:
         self,
         origins: GeoDataFrame,
         destinations: GeoDataFrame,
-        id_col: str | Tuple[str, str] | None = None,
-        summarise: bool = False,
+        id_col: str | tuple[str, str] | None = None,
+        *,
         rowwise=False,
         cutoff: int = None,
         destination_count: int = None,
     ) -> GeoDataFrame:
-        """Returns the geometry of the low-cost route between start- and destinations
+        """Returns the geometry of the low-cost route between origins and destinations
 
         Finds the route with the lowest cost (minutes, meters, etc.) from a set of origins
         to a set of destinations. If the weight is meters, the shortest route will be found.
@@ -192,9 +196,6 @@ class NetworkAnalysis:
             destinations: GeoDataFrame of points from where the routes will terminate
             id_col: optional column to be used as identifier of the service areas. If None,
                 an arbitrary id will be used.
-            summarise: if False (the default), the routes will be returned individually. If
-                True, all lines that were visited at least once will be returned with a column
-                'n', which represents how many times the line was used in all the routes.
             rowwise: if False (the default), it will calculate the cost from each origins
                 to each destination. If true, it will calculate the cost from origin 1 to destination 1,
                 origin 2 to destination 2 and so on.
@@ -206,10 +207,8 @@ class NetworkAnalysis:
                 might be higher than the destination count if trips have equal cost.
 
         Returns:
-            A GeoDataFrame of lines. If summarise is False, will return each trip as one row,
-            with the columns 'origin', 'destination', the weight column and the geometry.
-            If summarise is True, will return the line segments that were visited at least once,
-            with the column 'n', which is the number of times the segment was visited in total.
+            A GeoDataFrame with the columns 'origin', 'destination', the weight
+            column and the geometry of the route between origin and destination.
 
         Raises:
             ValueError if no paths were found.
@@ -225,17 +224,15 @@ class NetworkAnalysis:
             destinations=self.destinations.gdf,
             weight=self.rules.weight,
             roads=self.network.gdf,
-            summarise=summarise,
             cutoff=cutoff,
             destination_count=destination_count,
             rowwise=rowwise,
         )
 
-        if not summarise:
-            self.origins._get_n_missing(results, "origin")
-            self.destinations._get_n_missing(results, "destination")
+        self.origins._get_n_missing(results, "origin")
+        self.destinations._get_n_missing(results, "destination")
 
-        if id_col and not summarise:
+        if id_col:
             results["origin"] = results["origin"].map(self.origins.id_dict)
             results["destination"] = results["destination"].map(
                 self.destinations.id_dict
@@ -249,10 +246,58 @@ class NetworkAnalysis:
                 "get_route",
                 results,
                 minutes_elapsed_,
-                summarise=summarise,
                 cutoff=cutoff,
                 destination_count=destination_count,
                 rowwise=rowwise,
+            )
+
+        return results
+
+    def get_route_frequencies(
+        self,
+        origins: GeoDataFrame,
+        destinations: GeoDataFrame,
+    ) -> GeoDataFrame:
+        """Finds the number of times each line segment was visited in all trips
+
+        Finds the route with the lowest cost (minutes, meters, etc.) from a set of origins
+        to a set of destinations. If the weight is meters, the shortest route will be found.
+        If the weight is minutes, the fastest route will be found.
+
+        Args:
+            origins: GeoDataFrame of points from where the routes will originate
+            destinations: GeoDataFrame of points from where the routes will terminate
+
+        Returns:
+            A GeoDataFrame with all line segments that were visited at least once,
+            with the column 'n', which is the number of times the segment was visited
+            for all the trips.
+
+        Raises:
+            ValueError if no paths were found.
+        """
+        if self._log:
+            time_ = perf_counter()
+
+        self._prepare_network_analysis(origins, destinations, None)
+
+        results = _get_route(
+            graph=self.graph,
+            origins=self.origins.gdf,
+            destinations=self.destinations.gdf,
+            weight=self.rules.weight,
+            roads=self.network.gdf,
+            summarise=True,
+        )
+
+        results = push_geom_col(results)
+
+        if self._log:
+            minutes_elapsed_ = round((perf_counter() - time_) / 60, 1)
+            self._runlog(
+                "get_route_frequencies",
+                results,
+                minutes_elapsed_,
             )
 
         return results
@@ -261,6 +306,7 @@ class NetworkAnalysis:
         self,
         origins: GeoDataFrame,
         breaks: int | float | list[int | float] | tuple[int | float],
+        *,
         id_col: str | None = None,
         dissolve: bool = True,
     ) -> GeoDataFrame:
@@ -280,6 +326,13 @@ class NetworkAnalysis:
                 multilinestring. If False, the individual line segments will be returned. Duplicate
                 lines can then be removed, or occurences counted.
 
+        Returns:
+            A GeoDataFrame with the roads that can be reached within the break
+            for each origin. If dissolve is False, the columns will be the weight
+            column, which contains the relevant break, and the if_col if specified,
+            or the column 'origin' if not. If dissolve is False, it will return all
+            the columns of the network.gdf as well. The columns 'source' and 'target'
+            can be used to remove duplicates, or count occurences.
 
         """
 
@@ -296,6 +349,15 @@ class NetworkAnalysis:
             breaks=breaks,
             dissolve=dissolve,
         )
+
+        # add missing rows as NaNs
+        missing = self.origins.gdf.loc[
+            ~self.origins.gdf["temp_idx"].isin(results["origin"])
+        ].rename(columns={"temp_idx": "origin"})[["origin"]]
+
+        if len(missing):
+            missing["geometry"] = np.nan
+            results = pd.concat([results, missing], ignore_index=True)
 
         if id_col:
             results[id_col] = results["origin"].map(self.origins.id_dict)
@@ -315,33 +377,6 @@ class NetworkAnalysis:
 
         return results
 
-    def __repr__(self) -> str:
-        """The print representation"""
-        # remove 'weight_to_nodes_' arguments in the repr of the NetworkAnalysisRules instance
-        rules = self.rules.__repr__()
-        for txt in ["weight_to_nodes_", "dist", "kmh", "mph", "=None", "=False"]:
-            rules = rules.replace(txt, "")
-        for txt in [", )"] * 5:
-            rules = rules.replace(txt, ")")
-        rules = rules.strip(")")
-
-        # add a 'weight_to_nodes_' argument if used,
-        # else inform that there are more with some '...'
-        if self.rules.weight_to_nodes_dist:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
-        elif self.rules.weight_to_nodes_kmh:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_kmh}"
-        elif self.rules.weight_to_nodes_mph:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_mph}"
-        else:
-            x = ", ..."
-
-        return (
-            f"{self.__class__.__name__}("
-            f"network={self.network.__repr__()}, "
-            f"rules={rules}{x}))"
-        )
-
     def _log_df_template(self, fun: str, minutes_elapsed: int) -> DataFrame:
         """Creates a df with one row
         The 'isolated_removed' column does not account for
@@ -353,12 +388,10 @@ class NetworkAnalysis:
                 "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
                 "minutes_elapsed": minutes_elapsed,
                 "function": fun,
+                "origins_count": np.nan,
+                "destinations_count": np.nan,
                 "percent_missing": np.nan,
                 "cost_mean": np.nan,
-                "cost_median": np.nan,
-                "cost_std": np.nan,
-                "n_origins": np.nan,
-                "n_destinations": np.nan,
                 "isolated_removed": self.network._isolated_removed,
                 "percent_directional": self.network._percent_directional,
             },
@@ -381,7 +414,7 @@ class NetworkAnalysis:
     ) -> None:
         df = self._log_df_template(fun, minutes_elapsed)
 
-        df["n_origins"] = len(self.origins.gdf)
+        df["origins_count"] = len(self.origins.gdf)
 
         if self.rules.weight in results.columns:
             df["percent_missing"] = results[self.rules.weight].isna().mean() * 100
@@ -392,25 +425,26 @@ class NetworkAnalysis:
                 df["cost_p75"] = results[self.rules.weight].quantile(0.75)
                 df["cost_std"] = results[self.rules.weight].std()
 
-        if fun != "service_area":
-            df["n_destinations"] = len(self.destinations.gdf)
-        else:
+        if fun == "service_area":
             df["percent_missing"] = results["geometry"].isna().mean() * 100
+        else:
+            df["destinations_count"] = len(self.destinations.gdf)
 
-        for key, value in kwargs.items():
-            if isinstance(value, np.ndarray):
-                value = list(value)
-            if isinstance(value, (list, tuple)):
-                value = [str(x) for x in value]
-                value = ", ".join(value)
-            df[key] = value
+        if self.detailed_log:
+            for key, value in kwargs.items():
+                if isinstance(value, np.ndarray):
+                    value = list(value)
+                if isinstance(value, (list, tuple)):
+                    value = [str(x) for x in value]
+                    value = ", ".join(value)
+                df[key] = value
 
         self.log = pd.concat([self.log, df], ignore_index=True)
 
     def _prepare_network_analysis(
         self, origins, destinations=None, id_col: str | None = None
     ) -> None:
-        """Prepares the weight column, node ids and start- and destinations.
+        """Prepares the weight column, node ids and origins and destinations.
         Also updates the graph if it is not yet created and no parts of the analysis has changed.
         this method is run inside od_cost_matrix, get_route and service_area.
         """
@@ -446,10 +480,10 @@ class NetworkAnalysis:
 
             self._add_missing_vertices()
 
-        self._update_point_wkts()
+        self._update_wkts()
         self.rules._update_rules()
 
-    def _get_edges_and_weights(self) -> Tuple[list[Tuple[str, ...]], list[float]]:
+    def _get_edges_and_weights(self) -> tuple[list[tuple[str, ...]], list[float]]:
         """Creates lists of edges and weights which will be used to make the graph.
         Edges and weights between origins and nodes and nodes and destinations are also added.
         """
@@ -541,7 +575,7 @@ class NetworkAnalysis:
 
     @staticmethod
     def _make_graph(
-        edges: list[Tuple[str, ...]] | np.ndarray[Tuple[str, ...]],
+        edges: list[tuple[str, ...]] | np.ndarray[tuple[str, ...]],
         weights: list[float] | np.ndarray[float],
         directed: bool,
     ) -> Graph:
@@ -567,14 +601,11 @@ class NetworkAnalysis:
         if self.rules._rules_have_changed():
             return False
 
-        if self._points_have_changed(self.origins.gdf, what="start"):
-            return False
-
-        if self.destinations is None:
-            return True
-
-        if self._points_have_changed(self.destinations.gdf, what="end"):
-            return False
+        for points in ["origins", "destinations"]:
+            if not hasattr(self.wkts, points):
+                return False
+            if self._points_have_changed(self[points].gdf, what=points):
+                return False
 
         return True
 
@@ -589,7 +620,7 @@ class NetworkAnalysis:
 
         return False
 
-    def _update_point_wkts(self) -> None:
+    def _update_wkts(self) -> None:
         """Creates a dict of wkt lists. This method is run after the graph is created.
         If the wkts haven't updated since the last run, the graph doesn't have to be remade.
         """
@@ -600,7 +631,39 @@ class NetworkAnalysis:
         if not hasattr(self, "origins"):
             return
 
-        self.wkts["start"] = [geom.wkt for geom in self.origins.gdf.geometry]
+        self.wkts["origins"] = [geom.wkt for geom in self.origins.gdf.geometry]
 
         if self.destinations is not None:
-            self.wkts["end"] = [geom.wkt for geom in self.destinations.gdf.geometry]
+            self.wkts["destinations"] = [
+                geom.wkt for geom in self.destinations.gdf.geometry
+            ]
+
+    def __repr__(self) -> str:
+        """The print representation"""
+        # remove 'weight_to_nodes_' arguments in the repr of the NetworkAnalysisRules instance
+        rules = self.rules.__repr__()
+        for txt in ["weight_to_nodes_", "dist", "kmh", "mph", "=None", "=False"]:
+            rules = rules.replace(txt, "")
+        for txt in [", )"] * 5:
+            rules = rules.replace(txt, ")")
+        rules = rules.strip(")")
+
+        # add a 'weight_to_nodes_' argument if used,
+        # else inform that there are more with some '...'
+        if self.rules.weight_to_nodes_dist:
+            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
+        elif self.rules.weight_to_nodes_kmh:
+            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_kmh}"
+        elif self.rules.weight_to_nodes_mph:
+            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_mph}"
+        else:
+            x = ", ..."
+
+        return (
+            f"{self.__class__.__name__}("
+            f"network={self.network.__repr__()}, "
+            f"rules={rules}{x}))"
+        )
+
+    def __getitem__(self, item):
+        return getattr(self, item)

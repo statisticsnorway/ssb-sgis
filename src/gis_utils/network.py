@@ -20,18 +20,17 @@ from .network_functions import (
 class Network:
     """Prepares a GeoDataFrame of lines for network analysis
 
-    Upon instantiation, the geometries are made valid and into
-    singlepart LineStrings. The lines are given 'source' and 'target'
-    ids based on the line endpoints. The ids are also stored as points
-    in the 'nodes' attribute, which is always kept up to date with the
-    lines and the actual geometries.
+    Can be used as the 'network' parameter in the NetworkAnalysis class for undirected
+    network analysis.
 
-    The class contains methods for optimizing the network further.
-    The most important, is the remove_isolated method. It will remove
-    network islands, meaning higher success rate in the network analyses.
-    The network islands can be found and inspected with the
-    get_largest_component method, or get_component_size to find the actual
-    length of each network.
+    The geometries are made valid and into singlepart LineStrings, and given 'source'
+    and 'target' ids based on the first and last point of the lines. The Network
+    instance can immediately be used in the NetworkAnalysis class. But the Network
+    class also contains methods for optimizing the network further. The most
+    important, is the remove_isolated method. It will remove network islands, meaning
+    higher success rate in the network analyses. The network islands can be found and
+    inspected with the get_largest_component method, or get_component_size to find the
+    actual length of each network.
 
     If the network has a lot of unconnected parts, that are supposed to be
     connected, network holes can be filled with close_network_holes method.
@@ -40,6 +39,16 @@ class Network:
     Long lines can be cut into equal length pieces with the cut_lines method.
     This is mostly relevant for service_area analysis, since shorter lines
     will give more accurate results.
+
+    All methods return self, and can therefore be chained together. However,
+    all methods also overwrite the instance to save memory. Take a copy with the copy
+    or deepcopy methods before using another method if you want to save the previous
+    instance.
+
+    The 'source' and 'target' ids are also stored as points in the 'nodes' attribute,
+    which is always kept up to date with the lines and the actual geometries. The ids
+    therefore changes whenever the lines change, so they cannot be used as fixed
+    identifiers.
 
     Args:
         gdf: a GeoDataFrame of line geometries.
@@ -105,6 +114,24 @@ class Network:
     def close_network_holes(
         self, max_dist, min_dist=0, deadends_only=False, hole_col="hole"
     ):
+        """Fills holes in the network lines shorter than the max_dist
+
+        It fills holes in the network by finding the nearest neighbors of each node,
+        then connecting the nodes that are within the max_dist of each other. The
+        minimum distance is set to 0, but can be changed with the min_dist parameter.
+
+        Args:
+            lines: GeoDataFrame with lines
+            max_dist: The maximum distance between two nodes to be considered a hole.
+            min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
+            deadends_only: If True, only holes between two deadends will be filled.
+                If False (the default), deadends might be connected to any node of the network.
+            hole_col: Holes will get the value 1 in a column named 'hole' by default, or what
+                is specified as hole_col. If set to None or False, no column will be added.
+
+        Returns:
+            The input GeoDataFrame with new lines added
+        """
         self._update_nodes_if()
         self.gdf = close_network_holes(
             self.gdf, max_dist, min_dist, deadends_only, hole_col
@@ -112,6 +139,17 @@ class Network:
         return self
 
     def get_largest_component(self, remove: bool = False):
+        """Create column 'connected' in the network.gdf, where '1' means connected
+
+        that the line is part of the largest
+        component of the network.
+
+        It takes the lines of the network, creates a graph, finds the largest component,
+        and maps this as the value '1' in the column 'connected'.
+
+        Returns:
+            self
+        """
         self._update_nodes_if()
         if "connected" in self.gdf.columns:
             warnings.warn(
@@ -127,11 +165,33 @@ class Network:
         return self
 
     def get_component_size(self):
+        """Create column 'connected' in the network.gdf, where '1' means connected
+
+        that the line is part of the largest
+        component of the network.
+
+        It takes the lines of the network, creates a graph, finds the largest component,
+        and maps this as the value '1' in the column 'connected'.
+
+        Returns:
+            self
+        """
         self._update_nodes_if()
         self.gdf = get_component_size(self.gdf)
         return self
 
     def remove_isolated(self):
+        """Removes lines not connected to the largest network component
+
+        It creates a graph and finds the edges that are part of the largest
+        connected component of the network. Then removes all lines not part of
+        the largest component. Updates node ids if neccessary.
+
+        Note:
+            If the nodes are updated and the column already has a column named
+            'connected', the network will be filtered based on this column,
+            and no graph will be built.
+        """
         if not self._nodes_are_up_to_date():
             self._make_node_ids()
             self.gdf = get_largest_component(self.gdf)
@@ -286,7 +346,7 @@ class Network:
     def __repr__(self) -> str:
         cl = self.__class__.__name__
         km = int(sum(self.gdf.length) / 1000)
-        return f"{cl}({km} km)"
+        return f"{cl}({km} km, directed={self.directed})"
 
     def __iter__(self):
         return iter(self.__dict__.values())

@@ -3,8 +3,12 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 
 from .distances import get_k_nearest_neighbors
-from .network_functions import make_node_ids
 from .networkanalysisrules import NetworkAnalysisRules
+
+
+"""
+These are internal classes used in the NetworkAnalysis class.
+"""
 
 
 class Points:
@@ -47,8 +51,8 @@ class Points:
 
     def _make_temp_idx(self) -> None:
         """Make a temporary id column that is not present in the node ids of the network.
-        The original ids are stored in a dict and mapped to the results after the network analysis.
-        This method has to be run after _get_id_col, because this determines the id column differently for start- and endpoints.
+        The original ids are stored in a dict and mapped back to the results in the end.
+        This method has to be run after _get_id_col, because this determines the id column differently for origins and destinations.
         """
 
         self.gdf["temp_idx"] = np.arange(

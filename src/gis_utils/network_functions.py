@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import geopandas as gpd
 import networkx as nx
 import numpy as np
@@ -17,12 +15,14 @@ from .geopandas_utils import gdf_concat, push_geom_col, snap_to
 
 
 def get_largest_component(lines: GeoDataFrame) -> GeoDataFrame:
-    """
-    We create a graph from the lines, find the largest connected component,
-    and assign this to the value 1 in a new column 'connected'
+    """Create column 'connected', where '1' means that the line is part of the largest
+    component of the network.
+
+    It takes a GeoDataFrame of lines, creates a graph, finds the largest component,
+    and maps this as the value '1' in the column 'connected'.
 
     Args:
-      lines (GeoDataFrame): GeoDataFrame
+      lines: GeoDataFrame
 
     Returns:
       A GeoDataFrame with a new boolean column "connected"
@@ -57,7 +57,7 @@ def get_component_size(lines: GeoDataFrame) -> GeoDataFrame:
       lines (GeoDataFrame): GeoDataFrame
 
     Returns:
-      A GeoDataFrame with the size of the component that each line is in.
+      A GeoDataFrame with the size of the component that each line is in
     """
 
     if "source" not in lines.columns or "target" not in lines.columns:
@@ -215,6 +215,73 @@ def split_lines_at_closest_point(
     return lines
 
 
+def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataFrame:
+    """
+    It cuts lines of a GeoDataFrame into pieces of a given length
+
+    Args:
+      gdf (GeoDataFrame): GeoDataFrame
+      max_length (int): The maximum length of the lines in the output GeoDataFrame.
+      ignore_index: If True, the resulting GeoDataFrame will have a simple RangeIndex. If False, you will get a
+      MultiIndex. Defaults to True
+
+    Returns:
+      A GeoDataFrame with lines cut to the maximum distance.
+
+    """
+
+    gdf["geometry"] = force_2d(gdf.geometry)
+
+    gdf = gdf.explode(ignore_index=ignore_index)
+
+    over_max_length = gdf.loc[gdf.length > max_length]
+
+    if not len(over_max_length):
+        return gdf
+
+    def cut(line, distance):
+        """from the shapely docs"""
+        if distance <= 0.0 or distance >= line.length:
+            return line
+        coords = list(line.coords)
+        for i, p in enumerate(coords):
+            prd = line.project(Point(p))
+            if prd == distance:
+                return unary_union(
+                    [LineString(coords[: i + 1]), LineString(coords[i:])]
+                )
+            if prd > distance:
+                cp = line.interpolate(distance)
+                return unary_union(
+                    [
+                        LineString(coords[:i] + [(cp.x, cp.y)]),
+                        LineString([(cp.x, cp.y)] + coords[i:]),
+                    ]
+                )
+
+    cut_vektorisert = np.vectorize(cut)
+
+    for x in [10, 5, 1]:
+        max_ = max(over_max_length.length)
+        while max_ > max_length * x + 1:
+            max_ = max(over_max_length.length)
+
+            over_max_length["geometry"] = cut_vektorisert(
+                over_max_length.geometry, max_length
+            )
+
+            over_max_length = over_max_length.explode(ignore_index=ignore_index)
+
+            if max_ == max(over_max_length.length):
+                break
+
+    over_max_length = over_max_length.explode(ignore_index=ignore_index)
+
+    under_max_length = gdf.loc[gdf.length <= max_length]
+
+    return pd.concat([under_max_length, over_max_length], ignore_index=ignore_index)
+
+
 def close_network_holes(
     lines: GeoDataFrame,
     max_dist: int,
@@ -227,24 +294,24 @@ def close_network_holes(
     nodes that are within a certain distance of each other
 
     Args:
-      lines (GeoDataFrame): GeoDataFrame with lines
-      max_dist (int): The maximum distance between two nodes to be considered a hole.
-      min_dist (int): minimum distance between nodes to be considered a hole. Defaults to 0
-      deadends_only (bool): If True, only lines that connect dead ends will be created. If False (the default),
-      deadends might be connected to nodes that are not deadends.
-      hole_col (str | None): If you want to keep track of which lines were added, you can add a column
+      lines: GeoDataFrame with lines
+      max_dist: The maximum distance between two nodes to be considered a hole.
+      min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
+      deadends_only: If True, only lines that connect dead ends will be created. If False (the default),
+        deadends might be connected to nodes that are not deadends.
+      hole_col: If you want to keep track of which lines were added, you can add a column
         with a value of 1. Defaults to 'hole'
 
     Returns:
-      A GeoDataFrame with the same columns as the input, but with new lines added.
+      The input GeoDataFrame with new lines added
     """
 
     lines, nodes = make_node_ids(lines)
 
     if deadends_only:
-        new_lines = find_holes_deadends(nodes, max_dist, min_dist)
+        new_lines = _find_holes_deadends(nodes, max_dist, min_dist)
     else:
-        new_lines = find_holes_all_lines(lines, nodes, max_dist, min_dist)
+        new_lines = _find_holes_all_lines(lines, nodes, max_dist, min_dist)
 
     if not len(new_lines):
         return lines
@@ -263,7 +330,7 @@ def close_network_holes(
     return gdf_concat([lines, new_lines])
 
 
-def find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10):
+def _find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10):
     """
     creates a straight line between deadends and the closest node in a
     forward-going direction, if the distance is between the max_dist and min_dist.
@@ -361,7 +428,7 @@ def find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10):
     return new_lines
 
 
-def find_holes_deadends(nodes, max_dist, min_dist=0):
+def _find_holes_deadends(nodes, max_dist, min_dist=0):
     """
     It takes a GeoDataFrame of nodes, chooses the deadends,
     and creates a straight line between the closest deadends
@@ -442,80 +509,14 @@ def find_holes_deadends(nodes, max_dist, min_dist=0):
     return new_lines
 
 
-def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataFrame:
-    """
-    It cuts lines of a GeoDataFrame into pieces of a given length
-
-    Args:
-      gdf (GeoDataFrame): GeoDataFrame
-      max_length (int): The maximum length of the lines in the output GeoDataFrame.
-      ignore_index: If True, the resulting GeoDataFrame will have a simple RangeIndex. If False, you will get a
-      MultiIndex. Defaults to True
-
-    Returns:
-      A GeoDataFrame with lines cut to the maximum distance.
-
-    """
-
-    gdf["geometry"] = force_2d(gdf.geometry)
-
-    gdf = gdf.explode(ignore_index=ignore_index)
-
-    over_max_length = gdf.loc[gdf.length > max_length]
-
-    if not len(over_max_length):
-        return gdf
-
-    def cut(line, distance):
-        """from the shapely docs"""
-        if distance <= 0.0 or distance >= line.length:
-            return line
-        coords = list(line.coords)
-        for i, p in enumerate(coords):
-            prd = line.project(Point(p))
-            if prd == distance:
-                return unary_union(
-                    [LineString(coords[: i + 1]), LineString(coords[i:])]
-                )
-            if prd > distance:
-                cp = line.interpolate(distance)
-                return unary_union(
-                    [
-                        LineString(coords[:i] + [(cp.x, cp.y)]),
-                        LineString([(cp.x, cp.y)] + coords[i:]),
-                    ]
-                )
-
-    cut_vektorisert = np.vectorize(cut)
-
-    for x in [10, 5, 1]:
-        max_ = max(over_max_length.length)
-        while max_ > max_length * x + 1:
-            max_ = max(over_max_length.length)
-
-            over_max_length["geometry"] = cut_vektorisert(
-                over_max_length.geometry, max_length
-            )
-
-            over_max_length = over_max_length.explode(ignore_index=ignore_index)
-
-            if max_ == max(over_max_length.length):
-                break
-
-    over_max_length = over_max_length.explode(ignore_index=ignore_index)
-
-    under_max_length = gdf.loc[gdf.length <= max_length]
-
-    return pd.concat([under_max_length, over_max_length], ignore_index=ignore_index)
-
-
 def make_node_ids(
     lines: GeoDataFrame,
     wkt: bool = True,
-) -> Tuple[GeoDataFrame, GeoDataFrame]:
-    """
-    Create an integer index for the unique endpoints (nodes) of the lines (edges),
-    then map this index to the 'source' and 'target' columns of the 'lines' GeoDataFrame.
+) -> tuple[GeoDataFrame, GeoDataFrame]:
+    """Create unique node_ids and assign it to the columns 'source' and 'target' of the lines
+
+    Creates an index for the unique endpoints (nodes) of the lines (edges) of a GeoDataFrame,
+    then maps this index to the 'source' and 'target' columns of the 'lines' GeoDataFrame.
     Returns both the lines and the nodes.
 
     Args:
@@ -613,7 +614,7 @@ def make_edge_wkt_cols(lines: GeoDataFrame) -> GeoDataFrame:
 
 def _prepare_make_edge_cols(
     lines: GeoDataFrame,
-) -> Tuple[GeoDataFrame, GeoDataFrame]:
+) -> tuple[GeoDataFrame, GeoDataFrame]:
     lines = lines.loc[lines.geom_type != "LinearRing"]
 
     if not all(lines.geom_type == "LineString"):

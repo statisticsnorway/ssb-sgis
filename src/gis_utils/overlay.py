@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -23,65 +21,48 @@ def overlay(
     how: str = "intersection",
     drop_dupcol: bool = True,
     keep_geom_type: bool = True,
-    geom_type: str | None = None,
-    geom_type_left: str | None = None,
-    geom_type_right: str | None = None,
+    geom_type: str | tuple[str, str] | list[str, str] | None = None,
     **kwargs,
 ) -> GeoDataFrame:
-    """
-    Try to do a geopandas overlay, then try to set common crs and clean geometries
+    """Try to do a geopandas.overlay, clean geometries if it fails, lastly try shapely
+
+    Try to do a geopandas overlay, then try to clean geometries
     before retrying the overlay. Then, last resort is to do the overlay in shapely,
     as suggested here: https://github.com/geopandas/geopandas/issues/2792
 
+
+
     """
 
-    if geom_type:
-        if geom_type_left or geom_type_right:
-            raise ValueError(
-                "Specify only geom_type or geom_type_left and geom_type_right"
-            )
-
-        geom_type_left, geom_type_right = geom_type, geom_type
-
-        left_gdf = to_single_geom_type(left_gdf, geom_type=geom_type)
-        right_gdf = to_single_geom_type(right_gdf, geom_type=geom_type)
-
-    elif geom_type_left or geom_type_right:
-        if not geom_type_left:
-            geom_type_left = geom_type_right
-        if not geom_type_right:
-            geom_type_right = geom_type_left
-        left_gdf = to_single_geom_type(left_gdf, geom_type=geom_type_left)
-        right_gdf = to_single_geom_type(right_gdf, geom_type=geom_type_right)
-    else:
-        geom_type_left, geom_type_right = None, None
-
-    if not is_single_geom_type(left_gdf):
-        raise ValueError(
-            "mixed geometry types in 'left_gdf'. Specify 'geom_type' to keep"
-        )
-    if not is_single_geom_type(right_gdf):
-        raise ValueError(
-            "mixed geometry types in 'right_gdf'. Specify 'geom_type' to keep"
-        )
-
-    if keep_geom_type:
-        geom_type_left = get_geom_type(left_gdf)
-
-    # Allowed operations
+    # Allowed operations (includes 'update')
     allowed_hows = [
         "intersection",
         "union",
         "identity",
         "symmetric_difference",
         "difference",  # aka erase
-        "update",
+        "update",  # not in geopandas
     ]
     # Error Messages
     if how not in allowed_hows:
         raise ValueError(
             f"`how` was '{how}' but is expected to be in {', '.join(allowed_hows)}"
         )
+
+    geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
+
+    if geom_type_left:
+        left_gdf = to_single_geom_type(left_gdf, geom_type=geom_type_left)
+    if geom_type_right:
+        right_gdf = to_single_geom_type(right_gdf, geom_type=geom_type_right)
+
+    if not is_single_geom_type(left_gdf):
+        raise ValueError("mixed geometry types in 'left_gdf'. Specify 'geom_type'.")
+    if not is_single_geom_type(right_gdf):
+        raise ValueError("mixed geometry types in 'right_gdf'. Specify 'geom_type'.")
+
+    if keep_geom_type and not geom_type_left:
+        geom_type_left = get_geom_type(left_gdf)
 
     left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains("index|level_")]
     right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains("index|level_")]
@@ -95,6 +76,7 @@ def overlay(
             ),
         ]
 
+    # determine what function to use
     if how == "update":
         overlayfunc = overlay_update
     else:
@@ -102,30 +84,29 @@ def overlay(
         kwargs = kwargs | {"how": how}
 
     try:
-        joined = overlayfunc(left_gdf, right_gdf, **kwargs)
+        overlayed = overlayfunc(left_gdf, right_gdf, **kwargs)
     except Exception:
         try:
-            right_gdf = right_gdf.to_crs(left_gdf.crs)
             left_gdf = clean_geoms(left_gdf, geom_type=geom_type_left)
             right_gdf = clean_geoms(right_gdf, geom_type=geom_type_right)
-            joined = overlayfunc(left_gdf, right_gdf, **kwargs)
+            overlayed = overlayfunc(left_gdf, right_gdf, **kwargs)
         except Exception as e:
             if how == "update":
                 raise e
-            joined = clean_shapely_overlay(left_gdf, right_gdf, how=how)
+            overlayed = clean_shapely_overlay(left_gdf, right_gdf, how=how)
 
-    joined = clean_geoms(joined)
+    overlayed = clean_geoms(overlayed)
 
     if keep_geom_type:
-        joined = to_single_geom_type(joined, geom_type_left)
+        overlayed = to_single_geom_type(overlayed, geom_type_left)
 
-    return joined.loc[:, ~joined.columns.str.contains("index|level_")]
+    return overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
 
 
 def overlay_update(
     left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, **kwargs
 ) -> GeoDataFrame:
-    """En overlay-variant som ikke finnes i geopandas."""
+    """Put left_gdf on top of right_gdf"""
 
     try:
         out = left_gdf.overlay(right_gdf, how="difference", **kwargs)
@@ -140,7 +121,22 @@ def clean_shapely_overlay(
     left_gdf: GeoDataFrame,
     right_gdf: GeoDataFrame,
     how: str = "intersection",
+    geom_type: str | tuple[str, str] | list[str, str] | None = None,
+    keep_geom_type: bool = True,
 ) -> GeoDataFrame:
+    """
+    It takes two GeoDataFrames, cleans their geometries, explodes them, and then performs a shapely
+    overlay operation on them
+
+    Args:
+        left_gdf (GeoDataFrame): GeoDataFrame
+        right_gdf (GeoDataFrame): GeoDataFrame
+        how: Defaults to intersection
+
+    Returns:
+      The updated GeoDataFrame
+    """
+
     # Allowed operations
     allowed_hows = [
         "intersection",
@@ -155,85 +151,144 @@ def clean_shapely_overlay(
             f"`how` was '{how}' but is expected to be in {', '.join(allowed_hows)}"
         )
 
-    left_gdf = clean_geoms(left_gdf)
-    right_gdf = clean_geoms(right_gdf)
+    geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
+
+    if keep_geom_type and not geom_type_left:
+        geom_type_left = get_geom_type(left_gdf)
+
+    left_gdf = clean_geoms(left_gdf, geom_type=geom_type_left)
+    right_gdf = clean_geoms(right_gdf, geom_type=geom_type_right)
 
     left_gdf = left_gdf.explode(ignore_index=True)
     right_gdf = right_gdf.explode(ignore_index=True)
 
-    unioned = (
+    overlayed = (
         _shapely_overlay(left_gdf, right_gdf, how=how)
-        .pipe(clean_geoms)
+        .pipe(clean_geoms, geom_type=geom_type_left)
         .reset_index(drop=True)
     )
 
-    return unioned
+    return overlayed
+
+
+def _get_geom_type_left_right(
+    geom_type: str | tuple | list | None,
+) -> tuple[str | None, str | None]:
+    if isinstance(geom_type, (tuple, list)):
+        if len(geom_type) == 1:
+            return geom_type[0], geom_type[0]
+        elif len(geom_type) == 2:
+            return geom_type
+        else:
+            raise ValueError(
+                "'geom_type' should be one or two strings for the left and right gdf"
+            )
+    elif isinstance(geom_type, str):
+        return geom_type, geom_type
+    elif geom_type is None:
+        return None, None
+    else:
+        raise ValueError(
+            "'geom_type' should be one or two strings for the left and right gdf"
+        )
+
+
+def _union(pairs, df1, df2, left, right):
+    merged = []
+    if len(left):
+        intersections = _intersection(pairs)
+        merged.append(intersections)
+    symmdiff = _symmetric_difference(pairs, df1, df2, left, right)
+    merged.append(symmdiff)
+    return gdf_concat(merged).pipe(push_geom_col)
+
+
+def _identity(pairs, df1, left):
+    merged = []
+    if len(left):
+        intersections = _intersection(pairs)
+        merged.append(intersections)
+    diff = _difference(pairs, df1, left)
+    merged.append(diff)
+    return gdf_concat(merged).pipe(push_geom_col)
+
+
+def _symmetric_difference(pairs, df1, df2, left, right):
+    merged = []
+    difference_left = _difference(pairs, df1, left)
+    merged.append(difference_left)
+    if len(left):
+        clip_right = _shapely_diffclip_right(pairs, df1, df2)
+        merged.append(clip_right)
+    diff_right = _add_from_right(df1, df2, right)
+    merged.append(diff_right)
+    return gdf_concat(merged).pipe(push_geom_col)
+
+
+def _difference(pairs, df1, left):
+    merged = []
+    if len(left):
+        clip_left = _shapely_diffclip_left(pairs, df1)
+        merged.append(clip_left)
+    diff_left = _add_from_left(df1, left)
+    merged.append(diff_left)
+    return gdf_concat(merged).pipe(push_geom_col)
 
 
 def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataFrame:
-    merged = []
-
     tree = STRtree(df2.geometry.values)
     left, right = tree.query(df1.geometry.values, predicate="intersects")
 
-    if len(left):
-        pairs = pd.concat(
-            [
-                df1.take(left),
-                (
-                    pd.DataFrame(
-                        {"index_right": right}, index=df1.index.values.take(left)
-                    )
-                ),
-            ],
-            axis=1,
-        ).join(
-            df2.rename(columns={"geometry": "geom_right"}),
-            on="index_right",
-            rsuffix="_2",
-        )
+    pairs = _get_intersects_pairs(df1, df2, left, right)
 
-        if how == "intersection":
-            return _shapely_intersection(pairs)
+    if how == "intersection":
+        return _intersection(pairs)
 
-        if how == "difference":
-            clip_left = _shapely_difference_left(pairs, df1)
-            return push_geom_col(clip_left)
+    if how == "difference":
+        return _difference(pairs, df1, left)
 
-        if how == "union" or how == "identity":
-            intersections = _shapely_intersection(pairs)
-            merged.append(intersections)
+    if how == "symmetric_difference":
+        return _symmetric_difference(pairs, df1, df2, left, right)
 
-        clip_left = _shapely_difference_left(pairs, df1)
-        merged.append(clip_left)
+    if how == "identity":
+        return _identity(pairs, df1, left)
 
-        if how == "union" or how == "symmetric_difference":
-            clip_right = _shapely_difference_right(pairs, df1, df2)
-            merged.append(clip_right)
-
-    # add any from left or right data frames that did not intersect
-    diff_left = df1.take(np.setdiff1d(np.arange(len(df1)), left))
-    merged.append(diff_left)
-
-    if how == "union" or how == "symmetric_difference":
-        diff_right = df2.take(np.setdiff1d(np.arange(len(df2)), right)).rename(
-            columns={
-                c: f"{c}_2" if c in df1.columns and c != "geometry" else c
-                for c in df2.columns
-            }
-        )
-        merged.append(diff_right)
-
-    # merge all data frames
-    merged = gdf_concat(merged, ignore_index=True)
-
-    # push geometry column to the end
-    merged = push_geom_col(merged)
-
-    return merged
+    if how == "union":
+        return _union(pairs, df1, df2, left, right)
 
 
-def _shapely_intersection(pairs: GeoDataFrame) -> GeoDataFrame:
+def _get_intersects_pairs(
+    df1: GeoDataFrame, df2: GeoDataFrame, left: np.ndarray, right: np.ndarray
+) -> GeoDataFrame:
+    return pd.concat(
+        [
+            df1.take(left),
+            (pd.DataFrame({"index_right": right}, index=df1.index.values.take(left))),
+        ],
+        axis=1,
+    ).join(
+        df2.rename(columns={"geometry": "geom_right"}),
+        on="index_right",
+        rsuffix="_2",
+    )
+
+
+def _add_from_left(df1, left):
+    return df1.take(np.setdiff1d(np.arange(len(df1)), left))
+
+
+def _add_from_right(
+    df1: GeoDataFrame, df2: GeoDataFrame, right: np.ndarray
+) -> GeoDataFrame:
+    return df2.take(np.setdiff1d(np.arange(len(df2)), right)).rename(
+        columns={
+            c: f"{c}_2" if c in df1.columns and c != "geometry" else c
+            for c in df2.columns
+        }
+    )
+
+
+def _intersection(pairs: GeoDataFrame) -> GeoDataFrame:
     intersections = pairs.copy()
     intersections["geometry"] = intersection(
         intersections.geometry.values, intersections.geom_right.values
@@ -242,7 +297,7 @@ def _shapely_intersection(pairs: GeoDataFrame) -> GeoDataFrame:
     return intersections
 
 
-def _shapely_difference_left(pairs, df1):
+def _shapely_diffclip_left(pairs, df1):
     """Aggregate areas in right by unique values of left, then use those to clip
     areas out of left"""
     clip_left = gpd.GeoDataFrame(
@@ -252,7 +307,7 @@ def _shapely_difference_left(pairs, df1):
                 **{
                     c: "first"
                     for c in df1.columns
-                    if not c in ["index_right", "geom_right"]
+                    if c not in ["index_right", "geom_right"]
                 },
             }
         ),
@@ -267,7 +322,7 @@ def _shapely_difference_left(pairs, df1):
     return clip_left
 
 
-def _shapely_difference_right(pairs, df1, df2):
+def _shapely_diffclip_right(pairs, df1, df2):
     clip_right = (
         gpd.GeoDataFrame(
             pairs.rename(columns={"geometry": "geom_left", "geom_right": "geometry"})
@@ -301,25 +356,12 @@ def try_overlay(
     gdf2: GeoDataFrame,
     presicion_col: bool = True,
     max_rounding: int = 3,
-    single_geom_type: bool = True,
+    geom_type: bool = True,
     **kwargs,
 ) -> GeoDataFrame:
-    """
-    Overlay, i hvert fall union, har gitt TopologyException: found non-noded
-    intersection error from overlay. https://github.com/geopandas/geopandas/issues/1724
-    En løsning er å avrunde koordinatene for å få valid polygon. Prøver først uten
-    avrunding, så runder av til 10 koordinatdesimaler, så 9, 8, ..., og så gir opp på 0
-
-    Args:
-      presisjonskolonne: om man skal inkludere en kolonne som angir hvilken avrunding
-        som måtte til.
-      max_avrunding: hvilken avrunding man stopper på. 0 betyr at man fortsetter fram
-        til 0 desimaler.
-    """
-
     try:
-        gdf1 = clean_geoms(gdf1, single_geom_type=single_geom_type)
-        gdf2 = clean_geoms(gdf2, single_geom_type=single_geom_type)
+        gdf1 = clean_geoms(gdf1, geom_type=geom_type)
+        gdf2 = clean_geoms(gdf2, geom_type=geom_type)
         return gdf1.overlay(gdf2, **kwargs)
 
     except Exception:
@@ -339,8 +381,8 @@ def try_overlay(
                     for geom in gdf2.geometry
                 ]
 
-                gdf1 = clean_geoms(gdf1, single_geom_type=single_geom_type)
-                gdf2 = clean_geoms(gdf2, single_geom_type=single_geom_type)
+                gdf1 = clean_geoms(gdf1, geom_type=geom_type)
+                gdf2 = clean_geoms(gdf2, geom_type=geom_type)
 
                 overlayet = gdf1.overlay(gdf2, **kwargs)
 

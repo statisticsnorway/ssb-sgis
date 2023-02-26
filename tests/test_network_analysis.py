@@ -27,13 +27,13 @@ def test_network_analysis():
     ### READ FILES
 
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
-    #    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
+    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
     p["idx"] = p.index
     p["idx2"] = p.index
     print(p.idx)
 
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
-    #   r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
+    r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
 
     ### MAKE THE ANALYSIS CLASS
 
@@ -79,27 +79,29 @@ def test_network_analysis():
     od = nwa.od_cost_matrix(p, p, rowwise=True)
     assert len(od) == len(p)
 
-    ### SHORTEST PATH
+    ### GET ROUTE
 
-    sp = nwa.get_route(p, p, id_col="idx", summarise=False)
-
-    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx", summarise=True)
-    gs.qtm(sp)
+    sp = nwa.get_route(p, p, id_col="idx")
 
     i = 1
     nwa.rules.search_factor = 0
     nwa.rules.split_lines = False
-    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx", summarise=False)
+    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
     gs.qtm(sp)
     nwa.rules.split_lines = True
-    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx", summarise=False)
+    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
     gs.qtm(sp)
 
     nwa.rules.split_lines = False
-    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx", summarise=False)
+    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
     gs.qtm(sp)
     nwa.rules.split_lines = True
-    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx", summarise=False)
+    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+    gs.qtm(sp)
+
+    ### GET ROUTE FREQUENCIES
+
+    sp = nwa.get_route_frequencies(p.iloc[[0]], p)
     gs.qtm(sp)
 
     ### SERVICE AREA
