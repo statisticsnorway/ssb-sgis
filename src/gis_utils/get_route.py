@@ -71,10 +71,6 @@ def _get_route(
 
         return roads.drop("source_target", axis=1)
 
-        return roads.merge(counted, on="source_target", how="inner").drop(
-            "source_target", axis=1
-        )
-
     try:
         results = gdf_concat(results)
     except Exception:
