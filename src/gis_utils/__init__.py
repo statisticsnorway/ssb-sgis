@@ -1,3 +1,4 @@
+# flake8: noqa: F401
 from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
 from .directednetwork import DirectedNetwork
 from .distances import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbors
