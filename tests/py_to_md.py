@@ -14,13 +14,13 @@ def py_to_md(
 ) -> None:
     """Converts .py to .ipynb, runs the notebook, saves to markdown, deletes ipynb
 
-    Optionally moves the markdown file and the pictures one folder up
+    Optionally moves the markdown file and the pictures up n folders.
     """
     py_file = file + ".py"
     nb_file = file + ".ipynb"
     md_file = file + ".md"
-
     png_folder = f"{file}{png_folder_suffix}/"
+
     if os.path.exists(png_folder):
         shutil.rmtree(png_folder)
     if os.path.exists("../" + png_folder):
@@ -45,5 +45,35 @@ def py_to_md(
     os.remove(nb_file)
 
 
-py_to_md("network_analysis_examples", move_n_folders_up=1)
-py_to_md("network_analysis_demo_template", move_n_folders_up=1)
+def clean_up_md(file: str):
+    unwanted_text = """
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+
+</style>
+"""
+
+    with open(file) as f:
+        filedata = f.read()
+        filedata = filedata.replace(unwanted_text, "")
+    with open(file, "w") as f:
+        f.write(filedata)
+
+
+file = "network_analysis_examples"
+py_to_md(file, move_n_folders_up=1)
+clean_up_md("../" + file + ".md")
+
+file = "network_analysis_demo_template"
+py_to_md(file, move_n_folders_up=1)
+clean_up_md("../" + file + ".md")

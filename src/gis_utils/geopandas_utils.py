@@ -526,6 +526,8 @@ def find_neighbours(
                 "will not be in meters, but degrees."
             )
         gdf = gdf.buffer(max_dist).to_frame()
+    else:
+        gdf = gdf.geometry.to_frame()
 
     possible_neighbours = possible_neighbours.to_crs(gdf.crs)
 

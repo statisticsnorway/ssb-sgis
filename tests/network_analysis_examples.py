@@ -27,19 +27,11 @@ os.chdir("..")
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
-plot_kwargs = {
-    "facecolor": "#0f0f0f",
-    "title_color": "#f7f7f7",
-}
 # -
-
-# The package offers functions that simplify and ... geopandas code for long, repetitive code.
-#
-# Also network analysis...
 
 # ## Network analysis
 #
-# The package supports three types of network analysis, and methods for customising and optimising your road data.
+# The package supports four types of network analysis, and methods for customising and optimising road or other line data.
 #
 # Analysis can start by initialising a NetworkAnalysis instance:
 
@@ -74,14 +66,13 @@ points = gpd.read_parquet("tests/testdata/random_points.parquet")
 # +
 od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
 
-print(od.head(3))
-
 gs.qtm(
     od,
     "minutes",
     title="Travel time (minutes) from 1 to 1000 points.",
-    **plot_kwargs,
 )
+
+od
 # -
 
 # ### get_route
@@ -92,11 +83,10 @@ gs.qtm(
 routes = nwa.get_route(points.iloc[[0]], points.sample(100), id_col="idx")
 
 gs.qtm(
-    gs.buff(routes, 12),
+    gs.buff(routes, 15),
     "minutes",
     cmap="plasma",
     title="Travel times (minutes)",
-    **plot_kwargs,
 )
 
 routes
@@ -114,12 +104,19 @@ gs.qtm(
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used.",
-    **plot_kwargs,
 )
 # -
 
 # ### Service area
-# Get the area that can be reached within one or more breaks
+# Get the area that can be reached within one or more breaks.
+
+# +
+sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
+sa
+# -
+
+# By setting dissolve to False, we get the individual road segments, and can remove
+# duplicate rows to not have overlapping service areas.
 
 # +
 sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), dissolve=False)
@@ -132,7 +129,6 @@ gs.qtm(
     k=10,
     title="Roads that can be reached within 1 to 10 minutes",
     legend=False,
-    **plot_kwargs,
 )
 # -
 

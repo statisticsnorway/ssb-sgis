@@ -19,16 +19,26 @@ def overlay(
     left_gdf: GeoDataFrame,
     right_gdf: GeoDataFrame,
     how: str = "intersection",
-    drop_dupcol: bool = True,
+    drop_dupcol: bool = False,
     keep_geom_type: bool = True,
     geom_type: str | tuple[str, str] | list[str, str] | None = None,
     **kwargs,
 ) -> GeoDataFrame:
-    """Try to do a geopandas.overlay, clean geometries if it fails, lastly try shapely
+    """Try geopandas.overlay, then try alternative function from geopandas issue #2792
 
-    Try to do a geopandas overlay, then try to clean geometries
-    before retrying the overlay. Then, last resort is to do the overlay in shapely,
-    as suggested here: https://github.com/geopandas/geopandas/issues/2792
+    Fixes geometries, then tries a regular geopandas.overlay. If it doesn't succeed,
+    tries a solution inspired by: https://github.com/geopandas/geopandas/issues/2792.
+    This solution avoids the reduce function and bypasses GEOSExceptions raised in the
+    regular geopandas.overlay.
+
+    Like in geopandas, the default is to keep only the geometry type of left_gdf. If
+    either 'left_gdf' or 'right_gdf' has mixed geometries, it will raise an
+    Exception if not 'geom_type' is specified. 'geom_type' can be a string or a tuple
+    of two strings for the geometry type of the left and right GeoDataFrame
+    respectfully.
+
+    Args:
+        left_gdf:
 
 
     """
@@ -48,6 +58,9 @@ def overlay(
             f"`how` was '{how}' but is expected to be in {', '.join(allowed_hows)}"
         )
 
+    left_gdf = clean_geoms(left_gdf)
+    right_gdf = clean_geoms(right_gdf)
+
     geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
 
     if geom_type_left:
@@ -56,9 +69,13 @@ def overlay(
         right_gdf = to_single_geom_type(right_gdf, geom_type=geom_type_right)
 
     if not is_single_geom_type(left_gdf):
-        raise ValueError("mixed geometry types in 'left_gdf'. Specify 'geom_type'.")
+        raise ValueError(
+            "mixed geometry types in 'left_gdf'. Specify 'geom_type' as 'polygon', 'line' or 'point'."
+        )
     if not is_single_geom_type(right_gdf):
-        raise ValueError("mixed geometry types in 'right_gdf'. Specify 'geom_type'.")
+        raise ValueError(
+            "mixed geometry types in 'right_gdf'. Specify 'geom_type' as 'polygon', 'line' or 'point'."
+        )
 
     if keep_geom_type and not geom_type_left:
         geom_type_left = get_geom_type(left_gdf)
@@ -84,15 +101,10 @@ def overlay(
 
     try:
         overlayed = overlayfunc(left_gdf, right_gdf, **kwargs)
-    except Exception:
-        try:
-            left_gdf = clean_geoms(left_gdf, geom_type=geom_type_left)
-            right_gdf = clean_geoms(right_gdf, geom_type=geom_type_right)
-            overlayed = overlayfunc(left_gdf, right_gdf, **kwargs)
-        except Exception as e:
-            if how == "update":
-                raise e
-            overlayed = clean_shapely_overlay(left_gdf, right_gdf, how=how)
+    except Exception as e:
+        if how == "update":
+            raise e
+        overlayed = clean_shapely_overlay(left_gdf, right_gdf, how=how)
 
     overlayed = clean_geoms(overlayed)
 
@@ -120,8 +132,8 @@ def clean_shapely_overlay(
     left_gdf: GeoDataFrame,
     right_gdf: GeoDataFrame,
     how: str = "intersection",
-    geom_type: str | tuple[str, str] | list[str, str] | None = None,
     keep_geom_type: bool = True,
+    geom_type: str | tuple[str, str] | list[str, str] | None = None,
 ) -> GeoDataFrame:
     """
     It takes two GeoDataFrames, cleans their geometries, explodes them, and then performs a shapely

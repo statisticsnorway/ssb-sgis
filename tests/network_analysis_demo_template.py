@@ -41,11 +41,6 @@ pd.options.mode.chained_assignment = None
 # warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 
-plot_kwargs = {
-    "facecolor": "#0f0f0f",
-    "title_color": "#f7f7f7",
-}
-
 # At the core of the network analysis, is the NetworkAnalysis class.
 #
 # It takes a network and a set of rules for the analysis:
@@ -128,7 +123,6 @@ gs.qtm(
     od,
     "minutes",
     title="Travel time (minutes) from 1 to 1000 addresses.",
-    **plot_kwargs,
 )
 # -
 
@@ -144,7 +138,6 @@ gs.qtm(
     "minutes",
     cmap="plasma",
     title="Travel times (minutes)",
-    **plot_kwargs,
 )
 
 routes
@@ -163,7 +156,6 @@ gs.qtm(
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used.",
-    **plot_kwargs,
 )
 # -
 
@@ -189,7 +181,6 @@ gs.qtm(
     k=10,
     title="Roads that can be reached within 1 to 10 minutes",
     legend=False,
-    **plot_kwargs,
 )
 # -
 
@@ -229,7 +220,6 @@ gs.clipmap(
     title="Connected and isolated networks",
     cmap="bwr",
     explore=False,
-    **plot_kwargs,
 )
 # -
 

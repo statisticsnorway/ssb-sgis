@@ -17,7 +17,7 @@ from .geopandas_utils import (
     to_multipoint,
     to_single_geom_type,
 )
-from .maps import chop_cmap, clipmap, concat_explore, qtm, samplemap
+from .maps import clipmap, concat_explore, qtm, samplemap
 from .network import Network
 from .network_functions import (
     close_network_holes,
@@ -31,3 +31,9 @@ from .network_functions import (
 from .networkanalysis import NetworkAnalysis
 from .networkanalysisrules import NetworkAnalysisRules
 from .overlay import clean_shapely_overlay, overlay, overlay_update
+
+
+try:
+    from .dapla import exists, read_geopandas, write_geopandas
+except ImportError:
+    pass
