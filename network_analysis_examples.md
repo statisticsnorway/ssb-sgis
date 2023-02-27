@@ -20,19 +20,11 @@ os.chdir("..")
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
-plot_kwargs = {
-    "facecolor": "#0f0f0f",
-    "title_color": "#f7f7f7",
-}
 ```
-
-The package offers functions that simplify and ... geopandas code for long, repetitive code.
-
-Also network analysis...
 
 ## Network analysis
 
-The package supports three types of network analysis, and methods for customising and optimising your road data.
+The package supports four types of network analysis, and methods for customising and optimising road or other line data.
 
 Analysis can start by initialising a NetworkAnalysis instance:
 
@@ -72,27 +64,110 @@ Fast many-to-many travel times/distances
 ```python
 od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
 
-print(od.head(3))
-
 gs.qtm(
     od,
     "minutes",
     title="Travel time (minutes) from 1 to 1000 points.",
-    **plot_kwargs,
 )
+
+od
 ```
 
-      origin destination    minutes  \
-    0  79166       79167   0.000000
-    1  79166       79168  12.930588
-    2  79166       79169  10.867076
+<div>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>origin</th>
+      <th>destination</th>
+      <th>minutes</th>
+      <th>geometry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>79166</td>
+      <td>79167</td>
+      <td>0.000000</td>
+      <td>LINESTRING (263122.700 6651184.900, 263122.700...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>79166</td>
+      <td>79168</td>
+      <td>12.930588</td>
+      <td>LINESTRING (263122.700 6651184.900, 272456.100...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>79166</td>
+      <td>79169</td>
+      <td>10.867076</td>
+      <td>LINESTRING (263122.700 6651184.900, 270082.300...</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>79166</td>
+      <td>79170</td>
+      <td>8.075722</td>
+      <td>LINESTRING (263122.700 6651184.900, 259804.800...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>79166</td>
+      <td>79171</td>
+      <td>14.659333</td>
+      <td>LINESTRING (263122.700 6651184.900, 272876.200...</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>995</th>
+      <td>79166</td>
+      <td>80162</td>
+      <td>10.858519</td>
+      <td>LINESTRING (263122.700 6651184.900, 266801.700...</td>
+    </tr>
+    <tr>
+      <th>996</th>
+      <td>79166</td>
+      <td>80163</td>
+      <td>7.461032</td>
+      <td>LINESTRING (263122.700 6651184.900, 261274.000...</td>
+    </tr>
+    <tr>
+      <th>997</th>
+      <td>79166</td>
+      <td>80164</td>
+      <td>10.698588</td>
+      <td>LINESTRING (263122.700 6651184.900, 263542.900...</td>
+    </tr>
+    <tr>
+      <th>998</th>
+      <td>79166</td>
+      <td>80165</td>
+      <td>10.109855</td>
+      <td>LINESTRING (263122.700 6651184.900, 269226.700...</td>
+    </tr>
+    <tr>
+      <th>999</th>
+      <td>79166</td>
+      <td>80166</td>
+      <td>14.657289</td>
+      <td>LINESTRING (263122.700 6651184.900, 264570.300...</td>
+    </tr>
+  </tbody>
+</table>
+<p>1000 rows × 4 columns</p>
+</div>
 
-                                                geometry
-    0  LINESTRING (263122.700 6651184.900, 263122.700...
-    1  LINESTRING (263122.700 6651184.900, 272456.100...
-    2  LINESTRING (263122.700 6651184.900, 270082.300...
-
-![png](network_analysis_examples_files/network_analysis_examples_7_1.png)
+![png](network_analysis_examples_files/network_analysis_examples_6_1.png)
 
 ### get_route
 
@@ -102,31 +177,16 @@ Get the actual paths:
 routes = nwa.get_route(points.iloc[[0]], points.sample(100), id_col="idx")
 
 gs.qtm(
-    gs.buff(routes, 12),
+    gs.buff(routes, 15),
     "minutes",
     cmap="plasma",
     title="Travel times (minutes)",
-    **plot_kwargs,
 )
 
 routes
 ```
 
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -141,37 +201,37 @@ routes
     <tr>
       <th>0</th>
       <td>1</td>
-      <td>253</td>
-      <td>8.997494</td>
-      <td>MULTILINESTRING Z ((263328.100 6648382.100 13....</td>
+      <td>636</td>
+      <td>19.412610</td>
+      <td>MULTILINESTRING Z ((264483.115 6641395.801 80....</td>
     </tr>
     <tr>
       <th>1</th>
       <td>1</td>
-      <td>140</td>
-      <td>8.467940</td>
-      <td>MULTILINESTRING Z ((266440.152 6649542.543 105...</td>
+      <td>807</td>
+      <td>7.396186</td>
+      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
     </tr>
     <tr>
       <th>2</th>
       <td>1</td>
-      <td>731</td>
-      <td>11.256682</td>
-      <td>MULTILINESTRING Z ((261276.828 6654115.849 146...</td>
+      <td>375</td>
+      <td>11.968866</td>
+      <td>MULTILINESTRING Z ((271536.782 6653211.344 133...</td>
     </tr>
     <tr>
       <th>3</th>
       <td>1</td>
-      <td>880</td>
-      <td>2.800987</td>
-      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
+      <td>75</td>
+      <td>15.943349</td>
+      <td>MULTILINESTRING Z ((266884.700 6643513.500 125...</td>
     </tr>
     <tr>
       <th>4</th>
       <td>1</td>
-      <td>115</td>
-      <td>21.531177</td>
-      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
+      <td>980</td>
+      <td>16.001604</td>
+      <td>MULTILINESTRING Z ((257040.874 6655187.835 179...</td>
     </tr>
     <tr>
       <th>...</th>
@@ -181,46 +241,46 @@ routes
       <td>...</td>
     </tr>
     <tr>
-      <th>94</th>
-      <td>1</td>
-      <td>587</td>
-      <td>19.764130</td>
-      <td>MULTILINESTRING Z ((265170.780 6640873.429 111...</td>
-    </tr>
-    <tr>
       <th>95</th>
       <td>1</td>
-      <td>861</td>
-      <td>8.411844</td>
-      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+      <td>228</td>
+      <td>2.902736</td>
+      <td>MULTILINESTRING Z ((262082.600 6651528.500 74....</td>
     </tr>
     <tr>
       <th>96</th>
       <td>1</td>
-      <td>460</td>
-      <td>2.745346</td>
-      <td>MULTILINESTRING Z ((262841.200 6651029.403 30....</td>
+      <td>725</td>
+      <td>13.695252</td>
+      <td>MULTILINESTRING Z ((261352.158 6649521.080 6.6...</td>
     </tr>
     <tr>
       <th>97</th>
       <td>1</td>
-      <td>487</td>
-      <td>10.561253</td>
-      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+      <td>457</td>
+      <td>13.142741</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>98</th>
       <td>1</td>
-      <td>964</td>
-      <td>8.840229</td>
-      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
+      <td>792</td>
+      <td>3.720288</td>
+      <td>MULTILINESTRING Z ((261950.506 6650636.992 52....</td>
+    </tr>
+    <tr>
+      <th>99</th>
+      <td>1</td>
+      <td>250</td>
+      <td>2.545756</td>
+      <td>MULTILINESTRING Z ((263486.400 6650553.200 30....</td>
     </tr>
   </tbody>
 </table>
-<p>99 rows × 4 columns</p>
+<p>100 rows × 4 columns</p>
 </div>
 
-![png](network_analysis_examples_files/network_analysis_examples_9_1.png)
+![png](network_analysis_examples_files/network_analysis_examples_8_1.png)
 
 ### get_route_frequencies
 
@@ -235,15 +295,97 @@ gs.qtm(
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used.",
-    **plot_kwargs,
 )
 ```
 
-![png](network_analysis_examples_files/network_analysis_examples_11_0.png)
+![png](network_analysis_examples_files/network_analysis_examples_10_0.png)
 
 ### Service area
 
-Get the area that can be reached within one or more breaks
+Get the area that can be reached within one or more breaks.
+
+```python
+sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
+sa
+```
+
+<div>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>minutes</th>
+      <th>idx</th>
+      <th>geometry</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((263405.137 6651352.537 56....</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>2</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((263273.605 6652079.666 67....</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>3</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((262750.930 6651840.320 63....</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>4</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((261870.921 6651358.348 77....</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>5</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((265378.000 6650581.600 85....</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>6</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((265262.829 6650519.242 78....</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>7</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>8</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>9</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>10</td>
+      <td>1</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+By setting dissolve to False, we get the individual road segments, and can remove
+duplicate rows to not have overlapping service areas.
 
 ```python
 sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), dissolve=False)
@@ -256,11 +398,10 @@ gs.qtm(
     k=10,
     title="Roads that can be reached within 1 to 10 minutes",
     legend=False,
-    **plot_kwargs,
 )
 ```
 
-![png](network_analysis_examples_files/network_analysis_examples_13_0.png)
+![png](network_analysis_examples_files/network_analysis_examples_14_0.png)
 
 Check the log:
 
@@ -269,27 +410,13 @@ nwa.log
 ```
 
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
       <th>endtime</th>
       <th>minutes_elapsed</th>
-      <th>function</th>
+      <th>method</th>
       <th>origins_count</th>
       <th>destinations_count</th>
       <th>percent_missing</th>
@@ -313,7 +440,7 @@ nwa.log
   <tbody>
     <tr>
       <th>0</th>
-      <td>2023-02-27 09:26:20</td>
+      <td>2023-02-27 20:46:36</td>
       <td>0.1</td>
       <td>od_cost_matrix</td>
       <td>1</td>
@@ -337,21 +464,21 @@ nwa.log
     </tr>
     <tr>
       <th>1</th>
-      <td>2023-02-27 09:26:43</td>
+      <td>2023-02-27 20:46:59</td>
       <td>0.4</td>
       <td>get_route</td>
       <td>1</td>
       <td>100.0</td>
       <td>0.0</td>
-      <td>11.562200</td>
+      <td>11.451304</td>
       <td>True</td>
       <td>46</td>
       <td>minutes</td>
       <td>...</td>
-      <td>8.645376</td>
-      <td>11.979878</td>
-      <td>14.941869</td>
-      <td>5.239173</td>
+      <td>7.380393</td>
+      <td>11.915321</td>
+      <td>15.200179</td>
+      <td>5.323508</td>
       <td>NaN</td>
       <td>None</td>
       <td>None</td>
@@ -361,8 +488,8 @@ nwa.log
     </tr>
     <tr>
       <th>2</th>
-      <td>2023-02-27 09:30:30</td>
-      <td>3.7</td>
+      <td>2023-02-27 20:51:53</td>
+      <td>4.8</td>
       <td>get_route_frequencies</td>
       <td>100</td>
       <td>100.0</td>
@@ -385,7 +512,31 @@ nwa.log
     </tr>
     <tr>
       <th>3</th>
-      <td>2023-02-27 09:31:04</td>
+      <td>2023-02-27 20:52:31</td>
+      <td>0.2</td>
+      <td>service_area</td>
+      <td>1</td>
+      <td>NaN</td>
+      <td>0.0</td>
+      <td>5.500000</td>
+      <td>True</td>
+      <td>46</td>
+      <td>minutes</td>
+      <td>...</td>
+      <td>3.250000</td>
+      <td>5.500000</td>
+      <td>7.750000</td>
+      <td>3.027650</td>
+      <td>NaN</td>
+      <td>None</td>
+      <td>None</td>
+      <td>NaN</td>
+      <td>1, 2, 3, 4, 5, 6, 7, 8, 9, 10</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>2023-02-27 20:52:42</td>
       <td>0.1</td>
       <td>service_area</td>
       <td>1</td>
@@ -409,5 +560,5 @@ nwa.log
     </tr>
   </tbody>
 </table>
-<p>4 rows × 26 columns</p>
+<p>5 rows × 26 columns</p>
 </div>
