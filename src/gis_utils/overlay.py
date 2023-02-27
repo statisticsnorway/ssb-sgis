@@ -31,7 +31,6 @@ def overlay(
     as suggested here: https://github.com/geopandas/geopandas/issues/2792
 
 
-
     """
 
     # Allowed operations (includes 'update')
@@ -193,6 +192,37 @@ def _get_geom_type_left_right(
         )
 
 
+def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataFrame:
+    tree = STRtree(df2.geometry.values)
+    left, right = tree.query(df1.geometry.values, predicate="intersects")
+
+    pairs = _get_intersects_pairs(df1, df2, left, right)
+
+    if how == "intersection":
+        return _intersection(pairs)
+
+    if how == "difference":
+        return _difference(pairs, df1, left)
+
+    if how == "symmetric_difference":
+        return _symmetric_difference(pairs, df1, df2, left, right)
+
+    if how == "identity":
+        return _identity(pairs, df1, left)
+
+    if how == "union":
+        return _union(pairs, df1, df2, left, right)
+
+
+def _intersection(pairs: GeoDataFrame) -> GeoDataFrame:
+    intersections = pairs.copy()
+    intersections["geometry"] = intersection(
+        intersections.geometry.values, intersections.geom_right.values
+    )
+    intersections = intersections.drop(columns=["index_right", "geom_right"])
+    return intersections
+
+
 def _union(pairs, df1, df2, left, right):
     merged = []
     if len(left):
@@ -235,28 +265,6 @@ def _difference(pairs, df1, left):
     return gdf_concat(merged).pipe(push_geom_col)
 
 
-def _shapely_overlay(df1: GeoDataFrame, df2: GeoDataFrame, how: str) -> GeoDataFrame:
-    tree = STRtree(df2.geometry.values)
-    left, right = tree.query(df1.geometry.values, predicate="intersects")
-
-    pairs = _get_intersects_pairs(df1, df2, left, right)
-
-    if how == "intersection":
-        return _intersection(pairs)
-
-    if how == "difference":
-        return _difference(pairs, df1, left)
-
-    if how == "symmetric_difference":
-        return _symmetric_difference(pairs, df1, df2, left, right)
-
-    if how == "identity":
-        return _identity(pairs, df1, left)
-
-    if how == "union":
-        return _union(pairs, df1, df2, left, right)
-
-
 def _get_intersects_pairs(
     df1: GeoDataFrame, df2: GeoDataFrame, left: np.ndarray, right: np.ndarray
 ) -> GeoDataFrame:
@@ -286,15 +294,6 @@ def _add_from_right(
             for c in df2.columns
         }
     )
-
-
-def _intersection(pairs: GeoDataFrame) -> GeoDataFrame:
-    intersections = pairs.copy()
-    intersections["geometry"] = intersection(
-        intersections.geometry.values, intersections.geom_right.values
-    )
-    intersections = intersections.drop(columns=["index_right", "geom_right"])
-    return intersections
 
 
 def _shapely_diffclip_left(pairs, df1):

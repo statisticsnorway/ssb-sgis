@@ -42,9 +42,6 @@ from gis_utils import DirectedNetwork, NetworkAnalysis, NetworkAnalysisRules
 
 roads = gpd.read_parquet("tests/testdata/roads_oslo_2022.parquet")
 
-points = gpd.read_parquet("tests/testdata/random_points.parquet")
-roads = gs.clean_clip(roads, points.geometry.iloc[0].buffer(1250))
-
 nw = (
     DirectedNetwork(roads)
     .remove_isolated()
@@ -62,17 +59,10 @@ nwa = NetworkAnalysis(network=nw, rules=rules)
 nwa
 ```
 
-    1 multi-geometry was split into single part geometries. Minute column(s) will be wrong for these rows.
-
-
-
-
-
-    NetworkAnalysis(network=DirectedNetwork(219 km, directed=True), rules=NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=10, split_lines, ...))
+    NetworkAnalysis(network=DirectedNetwork(6364 km, directed=True), rules=NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=10, split_lines, ...))
 
 ```python
 points = gpd.read_parquet("tests/testdata/random_points.parquet")
-p1 = points.iloc[[0]]
 ```
 
 ### od_cost_matrix
@@ -80,7 +70,7 @@ p1 = points.iloc[[0]]
 Fast many-to-many travel times/distances
 
 ```python
-od = nwa.od_cost_matrix(p1, points, lines=True)
+od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
 
 print(od.head(3))
 
@@ -92,17 +82,17 @@ gs.qtm(
 )
 ```
 
-      origin destination  minutes  \
-    0   2662        2663      0.0
-    1   2662        2664      NaN
-    2   2662        2665      NaN
+      origin destination    minutes  \
+    0  79166       79167   0.000000
+    1  79166       79168  12.930588
+    2  79166       79169  10.867076
 
                                                 geometry
     0  LINESTRING (263122.700 6651184.900, 263122.700...
     1  LINESTRING (263122.700 6651184.900, 272456.100...
     2  LINESTRING (263122.700 6651184.900, 270082.300...
 
-![png](examples_files/examples_7_1.png)
+![png](network_analysis_examples_files/network_analysis_examples_7_1.png)
 
 ### get_route
 
@@ -151,43 +141,86 @@ routes
     <tr>
       <th>0</th>
       <td>1</td>
-      <td>311</td>
-      <td>2.624607</td>
-      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
+      <td>253</td>
+      <td>8.997494</td>
+      <td>MULTILINESTRING Z ((263328.100 6648382.100 13....</td>
     </tr>
     <tr>
       <th>1</th>
       <td>1</td>
-      <td>935</td>
-      <td>3.346286</td>
-      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
+      <td>140</td>
+      <td>8.467940</td>
+      <td>MULTILINESTRING Z ((266440.152 6649542.543 105...</td>
     </tr>
     <tr>
       <th>2</th>
       <td>1</td>
-      <td>228</td>
-      <td>2.902736</td>
-      <td>MULTILINESTRING Z ((262058.100 6651556.100 74....</td>
+      <td>731</td>
+      <td>11.256682</td>
+      <td>MULTILINESTRING Z ((261276.828 6654115.849 146...</td>
     </tr>
     <tr>
       <th>3</th>
       <td>1</td>
-      <td>316</td>
-      <td>1.262305</td>
+      <td>880</td>
+      <td>2.800987</td>
       <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>4</th>
       <td>1</td>
-      <td>484</td>
-      <td>2.278675</td>
-      <td>MULTILINESTRING Z ((263033.800 6650711.600 25....</td>
+      <td>115</td>
+      <td>21.531177</td>
+      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>94</th>
+      <td>1</td>
+      <td>587</td>
+      <td>19.764130</td>
+      <td>MULTILINESTRING Z ((265170.780 6640873.429 111...</td>
+    </tr>
+    <tr>
+      <th>95</th>
+      <td>1</td>
+      <td>861</td>
+      <td>8.411844</td>
+      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+    </tr>
+    <tr>
+      <th>96</th>
+      <td>1</td>
+      <td>460</td>
+      <td>2.745346</td>
+      <td>MULTILINESTRING Z ((262841.200 6651029.403 30....</td>
+    </tr>
+    <tr>
+      <th>97</th>
+      <td>1</td>
+      <td>487</td>
+      <td>10.561253</td>
+      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+    </tr>
+    <tr>
+      <th>98</th>
+      <td>1</td>
+      <td>964</td>
+      <td>8.840229</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
   </tbody>
 </table>
+<p>99 rows × 4 columns</p>
 </div>
 
-![png](examples_files/examples_9_1.png)
+![png](network_analysis_examples_files/network_analysis_examples_9_1.png)
 
 ### get_route_frequencies
 
@@ -206,14 +239,14 @@ gs.qtm(
 )
 ```
 
-![png](examples_files/examples_11_0.png)
+![png](network_analysis_examples_files/network_analysis_examples_11_0.png)
 
 ### Service area
 
 Get the area that can be reached within one or more breaks
 
 ```python
-sa = nwa.service_area(p1, breaks=np.arange(1, 11), dissolve=False)
+sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), dissolve=False)
 
 sa = sa.drop_duplicates(["source", "target"])
 
@@ -227,7 +260,7 @@ gs.qtm(
 )
 ```
 
-![png](examples_files/examples_13_0.png)
+![png](network_analysis_examples_files/network_analysis_examples_13_0.png)
 
 Check the log:
 
@@ -280,21 +313,21 @@ nwa.log
   <tbody>
     <tr>
       <th>0</th>
-      <td>2023-02-27 00:36:46</td>
-      <td>0.0</td>
+      <td>2023-02-27 09:26:20</td>
+      <td>0.1</td>
       <td>od_cost_matrix</td>
       <td>1</td>
       <td>1000.0</td>
-      <td>93.7</td>
-      <td>2.429468</td>
+      <td>0.2</td>
+      <td>11.286299</td>
       <td>True</td>
-      <td>44</td>
+      <td>46</td>
       <td>minutes</td>
       <td>...</td>
-      <td>2.010145</td>
-      <td>2.644186</td>
-      <td>2.882840</td>
-      <td>0.815339</td>
+      <td>7.660459</td>
+      <td>11.573666</td>
+      <td>14.151198</td>
+      <td>5.091459</td>
       <td>True</td>
       <td>None</td>
       <td>None</td>
@@ -304,21 +337,21 @@ nwa.log
     </tr>
     <tr>
       <th>1</th>
-      <td>2023-02-27 00:36:48</td>
-      <td>0.0</td>
+      <td>2023-02-27 09:26:43</td>
+      <td>0.4</td>
       <td>get_route</td>
       <td>1</td>
       <td>100.0</td>
       <td>0.0</td>
-      <td>2.482922</td>
+      <td>11.562200</td>
       <td>True</td>
-      <td>44</td>
+      <td>46</td>
       <td>minutes</td>
       <td>...</td>
-      <td>2.278675</td>
-      <td>2.624607</td>
-      <td>2.902736</td>
-      <td>0.786343</td>
+      <td>8.645376</td>
+      <td>11.979878</td>
+      <td>14.941869</td>
+      <td>5.239173</td>
       <td>NaN</td>
       <td>None</td>
       <td>None</td>
@@ -328,15 +361,15 @@ nwa.log
     </tr>
     <tr>
       <th>2</th>
-      <td>2023-02-27 00:36:48</td>
-      <td>0.0</td>
+      <td>2023-02-27 09:30:30</td>
+      <td>3.7</td>
       <td>get_route_frequencies</td>
       <td>100</td>
       <td>100.0</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>True</td>
-      <td>44</td>
+      <td>46</td>
       <td>minutes</td>
       <td>...</td>
       <td>NaN</td>
@@ -352,21 +385,21 @@ nwa.log
     </tr>
     <tr>
       <th>3</th>
-      <td>2023-02-27 00:36:51</td>
-      <td>0.0</td>
+      <td>2023-02-27 09:31:04</td>
+      <td>0.1</td>
       <td>service_area</td>
       <td>1</td>
       <td>NaN</td>
       <td>0.0</td>
-      <td>6.371417</td>
+      <td>7.909540</td>
       <td>True</td>
-      <td>44</td>
+      <td>46</td>
       <td>minutes</td>
       <td>...</td>
-      <td>4.000000</td>
-      <td>6.000000</td>
+      <td>7.000000</td>
       <td>8.000000</td>
-      <td>2.420119</td>
+      <td>10.000000</td>
+      <td>1.907413</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>

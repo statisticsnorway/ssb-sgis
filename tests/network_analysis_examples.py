@@ -49,11 +49,6 @@ from gis_utils import DirectedNetwork, NetworkAnalysis, NetworkAnalysisRules
 
 roads = gpd.read_parquet("tests/testdata/roads_oslo_2022.parquet")
 
-points = gpd.read_parquet("tests/testdata/random_points.parquet")
-p1 = points.iloc[[0]]
-
-roads = gs.clean_clip(roads, points.geometry.iloc[0].buffer(500))
-
 nw = (
     DirectedNetwork(roads)
     .remove_isolated()
@@ -72,13 +67,12 @@ nwa
 # -
 
 points = gpd.read_parquet("tests/testdata/random_points.parquet")
-p1 = points.iloc[[0]]
 
 # ### od_cost_matrix
 # Fast many-to-many travel times/distances
 
 # +
-od = nwa.od_cost_matrix(p1, points, lines=True)
+od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
 
 print(od.head(3))
 
@@ -128,7 +122,7 @@ gs.qtm(
 # Get the area that can be reached within one or more breaks
 
 # +
-sa = nwa.service_area(p1, breaks=np.arange(1, 11), dissolve=False)
+sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), dissolve=False)
 
 sa = sa.drop_duplicates(["source", "target"])
 
