@@ -16,12 +16,12 @@ from .geopandas_utils import (
 
 
 def overlay(
-    left_gdf: GeoDataFrame,
-    right_gdf: GeoDataFrame,
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
     how: str = "intersection",
-    drop_dupcol: bool = False,
     keep_geom_type: bool = True,
     geom_type: str | tuple[str, str] | list[str, str] | None = None,
+    drop_dupcol: bool = False,
     **kwargs,
 ) -> GeoDataFrame:
     """Try geopandas.overlay, then try alternative function from geopandas issue #2792
@@ -31,14 +31,26 @@ def overlay(
     This solution avoids the reduce function and bypasses GEOSExceptions raised in the
     regular geopandas.overlay.
 
-    Like in geopandas, the default is to keep only the geometry type of left_gdf. If
-    either 'left_gdf' or 'right_gdf' has mixed geometries, it will raise an
+    Like in geopandas, the default is to keep only the geometry type of df1. If
+    either 'df1' or 'df2' has mixed geometries, it will raise an
     Exception if not 'geom_type' is specified. 'geom_type' can be a string or a tuple
     of two strings for the geometry type of the left and right GeoDataFrame
     respectfully.
 
     Args:
-        left_gdf:
+        df1: GeoDataFrame
+        df2: GeoDataFrame
+        how: Method of spatial overlay. Includes the 'update' method, plus the five
+            native geopandas methods 'intersection', 'union', 'identity',
+            'symmetric_difference' and 'difference'.
+        keep_geom_type: If True, return only geometries of the same geometry type as
+            df1 has, if False, return all resulting geometries. Default is None, which
+            will set keep_geom_type to True but warn upon dropping geometries.
+        geom_type: optionally specify what geometry type to keep before and after the
+            overlay.
+
+
+
 
 
     """
@@ -58,38 +70,36 @@ def overlay(
             f"`how` was '{how}' but is expected to be in {', '.join(allowed_hows)}"
         )
 
-    left_gdf = clean_geoms(left_gdf)
-    right_gdf = clean_geoms(right_gdf)
+    df1 = clean_geoms(df1)
+    df2 = clean_geoms(df2)
 
     geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
 
     if geom_type_left:
-        left_gdf = to_single_geom_type(left_gdf, geom_type=geom_type_left)
+        df1 = to_single_geom_type(df1, geom_type=geom_type_left)
     if geom_type_right:
-        right_gdf = to_single_geom_type(right_gdf, geom_type=geom_type_right)
+        df2 = to_single_geom_type(df2, geom_type=geom_type_right)
 
-    if not is_single_geom_type(left_gdf):
+    if not is_single_geom_type(df1):
         raise ValueError(
-            "mixed geometry types in 'left_gdf'. Specify 'geom_type' as 'polygon', 'line' or 'point'."
+            "mixed geometry types in 'df1'. Specify 'geom_type' as 'polygon', 'line' or 'point'."
         )
-    if not is_single_geom_type(right_gdf):
+    if not is_single_geom_type(df2):
         raise ValueError(
-            "mixed geometry types in 'right_gdf'. Specify 'geom_type' as 'polygon', 'line' or 'point'."
+            "mixed geometry types in 'df2'. Specify 'geom_type' as 'polygon', 'line' or 'point'."
         )
 
     if keep_geom_type and not geom_type_left:
-        geom_type_left = get_geom_type(left_gdf)
+        geom_type_left = get_geom_type(df1)
 
-    left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains("index|level_")]
-    right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains("index|level_")]
+    df1 = df1.loc[:, ~df1.columns.str.contains("index|level_")]
+    df2 = df2.loc[:, ~df2.columns.str.contains("index|level_")]
 
-    # remove columns in right_gdf that are in left_gdf (except for geometry column)
+    # remove columns in df2 that are in df1 (except for geometry column)
     if drop_dupcol:
-        right_gdf = right_gdf.loc[
+        df2 = df2.loc[
             :,
-            right_gdf.columns.difference(
-                left_gdf.columns.difference([left_gdf._geometry_column_name])
-            ),
+            df2.columns.difference(df1.columns.difference([df1._geometry_column_name])),
         ]
 
     # determine what function to use
@@ -100,11 +110,11 @@ def overlay(
         kwargs = kwargs | {"how": how}
 
     try:
-        overlayed = overlayfunc(left_gdf, right_gdf, **kwargs)
+        overlayed = overlayfunc(df1, df2, **kwargs)
     except Exception as e:
         if how == "update":
             raise e
-        overlayed = clean_shapely_overlay(left_gdf, right_gdf, how=how)
+        overlayed = clean_shapely_overlay(df1, df2, how=how)
 
     overlayed = clean_geoms(overlayed)
 
@@ -114,23 +124,21 @@ def overlay(
     return overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
 
 
-def overlay_update(
-    left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, **kwargs
-) -> GeoDataFrame:
-    """Put left_gdf on top of right_gdf"""
+def overlay_update(df1: GeoDataFrame, df2: GeoDataFrame, **kwargs) -> GeoDataFrame:
+    """Put df1 on top of df2"""
 
     try:
-        out = left_gdf.overlay(right_gdf, how="difference", **kwargs)
+        out = df1.overlay(df2, how="difference", **kwargs)
     except Exception:
-        out = clean_shapely_overlay(left_gdf, right_gdf, how="difference")
+        out = clean_shapely_overlay(df1, df2, how="difference")
     out = out.loc[:, ~out.columns.str.contains("index|level_")]
-    out = gdf_concat([out, right_gdf])
+    out = gdf_concat([out, df2])
     return out
 
 
 def clean_shapely_overlay(
-    left_gdf: GeoDataFrame,
-    right_gdf: GeoDataFrame,
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
     how: str = "intersection",
     keep_geom_type: bool = True,
     geom_type: str | tuple[str, str] | list[str, str] | None = None,
@@ -140,8 +148,8 @@ def clean_shapely_overlay(
     overlay operation on them
 
     Args:
-        left_gdf (GeoDataFrame): GeoDataFrame
-        right_gdf (GeoDataFrame): GeoDataFrame
+        df1 (GeoDataFrame): GeoDataFrame
+        df2 (GeoDataFrame): GeoDataFrame
         how: Defaults to intersection
 
     Returns:
@@ -165,16 +173,16 @@ def clean_shapely_overlay(
     geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
 
     if keep_geom_type and not geom_type_left:
-        geom_type_left = get_geom_type(left_gdf)
+        geom_type_left = get_geom_type(df1)
 
-    left_gdf = clean_geoms(left_gdf, geom_type=geom_type_left)
-    right_gdf = clean_geoms(right_gdf, geom_type=geom_type_right)
+    df1 = clean_geoms(df1, geom_type=geom_type_left)
+    df2 = clean_geoms(df2, geom_type=geom_type_right)
 
-    left_gdf = left_gdf.explode(ignore_index=True)
-    right_gdf = right_gdf.explode(ignore_index=True)
+    df1 = df1.explode(ignore_index=True)
+    df2 = df2.explode(ignore_index=True)
 
     overlayed = (
-        _shapely_overlay(left_gdf, right_gdf, how=how)
+        _shapely_overlay(df1, df2, how=how)
         .pipe(clean_geoms, geom_type=geom_type_left)
         .reset_index(drop=True)
     )
