@@ -3,10 +3,18 @@ import shutil
 import subprocess
 
 
-if "ssb-gis-utils" in os.listdir():
-    os.chdir("ssb-gis-utils/tests")
-elif "gis_utils" in os.listdir():
+if "gis_utils" in os.listdir():
     os.chdir("tests")
+elif "ssb-gis-utils" in os.listdir():
+    os.chdir("ssb-gis-utils/tests")
+else:
+    n = 0
+    while "ssb-gis-utils" not in os.listdir():
+        os.chdir("..")
+        n += 1
+        if n == 10:
+            break
+    os.chdir("ssb-gis-utils/tests")
 
 
 def py_to_md(
@@ -42,7 +50,8 @@ def py_to_md(
             print(md_file)
             print(png_folder)
 
-    os.remove(nb_file)
+
+#   os.remove(nb_file)
 
 
 def clean_up_md(file: str):
