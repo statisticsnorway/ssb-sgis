@@ -59,14 +59,12 @@ def not_test_network_analysis():
             gs.qtm(k, nwa.rules.weight)
         except Exception as e:
             raise e
-            print(e)
 
 
 def main():
-    not_test_network_analysis()
     import cProfile
 
-    # cProfile.run("not_test_network_analysis()", sort="cumtime")
+    cProfile.run("not_test_network_analysis()", sort="cumtime")
 
 
 if __name__ == "__main__":
