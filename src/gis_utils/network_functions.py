@@ -81,32 +81,6 @@ def get_component_size(lines: GeoDataFrame) -> GeoDataFrame:
     return lines
 
 
-"""
-poetry run jupytext --to md --metadata '{"jupytext":{"formats":"ipynb,md:light"}}' tests/examples.ipynb
-
-move examples.md ../examples.md
-
-jupyter nbconvert --to html examples.ipynb
-move examples.html ../examples.html
-
-
-
-poetry run jupytext --to ipynb demo.py
-
-jupyter nbconvert --execute --to notebook --inplace demo.py
-
-poetry run jupytext --to markdown demo.py
-
-move examples.md ../demo.md
-
-jupyter nbconvert --to html demo.ipynb
-move examples.html ../demo.html
-
-
-jupyter nbconvert --to markdown tests/examples.ipynb --TagRemovePreprocessor.enabled=True --TagRemovePreprocessor.remove_cell_tags remove_cell
-"""
-
-
 def split_lines_at_closest_point(
     lines: GeoDataFrame,
     points: GeoDataFrame,
@@ -170,7 +144,7 @@ def split_lines_at_closest_point(
 
     splitted_source = GeoDataFrame(
         {
-            "splitidx": splitted["splitidx"],
+            "splitidx": splitted["splitidx"].reset_index(drop=True),
             "geometry": GeoSeries(
                 [Point(geom) for geom in splitted["source_coords"]], crs=lines.crs
             ),
@@ -178,7 +152,7 @@ def split_lines_at_closest_point(
     )
     splitted_target = GeoDataFrame(
         {
-            "splitidx": splitted["splitidx"],
+            "splitidx": splitted["splitidx"].reset_index(drop=True),
             "geometry": GeoSeries(
                 [Point(geom) for geom in splitted["target_coords"]], crs=lines.crs
             ),
@@ -655,6 +629,7 @@ def _prepare_make_edge_cols(
                 "allowed in make_edge_wkt_cols."
             )
 
+    # some LinearRings are coded as LineStrings and need to be removed manually
     boundary = lines.geometry.boundary
     circles = boundary.loc[boundary.is_empty]
     lines = lines[~lines.index.isin(circles.index)]

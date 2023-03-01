@@ -80,7 +80,7 @@ def concat_explore(*gdfs: GeoDataFrame, **kwargs) -> None:
         *gdfs: one or more GeoDataFrames separated by a comma in the function call,
             with no keyword. If the last arg specified is a string, it will be used
             used as the 'column' parameter if this is not specified.
-         **kwargs
+         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore
 
     Returns:
         Displays the interactive map, but returns nothing.
@@ -162,7 +162,7 @@ def clipmap(
                 display(clipped.explore(column=column, **kwargs))
             qtm(clipped, column=column, **kwargs)
     else:
-        qtm(clipped, **kwargs)
+        qtm(clipped, column=column, **kwargs)
 
 
 def _chop_cmap(cmap: LinearSegmentedColormap, frac: float) -> LinearSegmentedColormap:

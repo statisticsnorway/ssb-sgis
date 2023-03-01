@@ -13,7 +13,6 @@ def _service_area(
     weight: str,
     lines: GeoDataFrame,
     breaks: int | list[int] | tuple[int],
-    dissolve: bool = True,
 ) -> GeoDataFrame:
     if isinstance(breaks, (str, int, float)):
         breaks = [float(breaks)]
@@ -37,11 +36,6 @@ def _service_area(
                 continue
 
             service_area = lines.loc[lines.target.isin(indices.node_id)]
-
-            if dissolve:
-                service_area = (
-                    service_area[["geometry"]].dissolve().reset_index(drop=True)
-                )
 
             service_area["origin"] = i
             service_area[weight] = imp

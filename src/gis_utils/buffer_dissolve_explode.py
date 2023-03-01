@@ -76,8 +76,8 @@ def diss(
 
     Args:
       gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be dissolved
-      reset_index: If True, the index is reset to the default integer index.
-          Defaults to True.
+      reset_index: If True, the 'by' columns become columns, not index, and the
+            resulting axis will be labeled 0, 1, …, n - 1. Defaults to True.
 
     Returns:
       A GeoDataFrame with the dissolved polygons.
@@ -212,10 +212,10 @@ def dissexp(
             dissolved and exploded
         id (str | None): if not None (the default), an id column will be created from
             the integer index (from 0 and up).
-        reset_index: If True, the index is reset to the default integer index
-            after dissolve. Defaults to True
-        ignore_index: If True, the row index will be reset to its default integer index
-            after explode. Defaults to True
+        reset_index: If True, the 'by' columns become columns, not index, and the
+            resulting axis will be labeled 0, 1, …, n - 1. Defaults to True.
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+            Defaults to True
 
     Returns:
         A GeoDataFrame, GeoSeries or shapely Geometry where overlapping geometries are
