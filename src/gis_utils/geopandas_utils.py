@@ -568,7 +568,7 @@ def find_neighbors(
 def gridish(
     gdf: GeoDataFrame, meters: int, x2: bool = False, minmax: bool = False
 ) -> GeoDataFrame:
-    """Creates the column 'gridish', grid categories based on rounded down coordinates
+    """Creates the column 'gridish': grid categories based on rounded down coordinates
 
     TODO: fix docstring
 

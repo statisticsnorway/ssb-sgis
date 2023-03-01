@@ -46,7 +46,8 @@ def overlay(
         keep_geom_type: If True (the default), return only geometries of the same
             geometry type as df1 has, if False, return all resulting geometries.
         geom_type: optionally specify what geometry type to keep before the overlay,
-            if there may be mixed geometry types.
+            if there may be mixed geometry types. Either a string with one geom_type
+            or a tuple/list with geom_type for df1 and df2 respectfully.
         drop_dupcol: optionally remove all columns in df2 that is in df1. Defaults to
             False, meaning no columns are dropped.
 
@@ -136,7 +137,8 @@ def overlay_update(
         df1: GeoDataFrame
         df2: GeoDataFrame
         geom_type: optionally specify what geometry type to keep before the overlay,
-            if there may be mixed geometry types.
+            if there may be mixed geometry types. Either a string with one geom_type
+            or a tuple/list with geom_type for df1 and df2 respectfully.
         drop_dupcol: optionally remove all columns in df2 that is in df1. Defaults to
             False, meaning no columns are dropped.
 
@@ -182,7 +184,8 @@ def clean_shapely_overlay(
         keep_geom_type: If True (the default), return only geometries of the same
             geometry type as df1 has, if False, return all resulting geometries.
         geom_type: optionally specify what geometry type to keep before the overlay,
-            if there may be mixed geometry types.
+            if there may be mixed geometry types. Either a string with one geom_type
+            or a tuple/list with geom_type for df1 and df2 respectfully.
 
     Returns:
         GeoDataFrame with overlayed and fixed geometries and columns from both

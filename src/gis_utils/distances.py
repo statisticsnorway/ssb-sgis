@@ -13,26 +13,28 @@ def get_k_nearest_neighbours(
     max_dist: int | None = None,
     strict: bool = False,
 ) -> DataFrame:
-    """Finds the k nearest neighbours for
-    It takes a GeoDataFrame of points, a GeoDataFrame of neighbours, and a number of
-    neighbours to find, and returns a DataFrame of the k nearest neighbours for each point
-    in the GeoDataFrame.
+    """Finds the k nearest neighbours for a GeoDataFrame of points
+
+    Uses the K-nearest neighbors algorithm method from sklearn.neighbors to find the
+    given number of neighbours for each point in 'gdf'.
 
     Args:
         gdf: a GeoDataFrame of points
         neighbours: a GeoDataFrame of points
-        k (int): number of neighbours to find
+        k: number of neighbours to find
         id_cols: column(s) to use as identifiers. Either a string if one column or a
             tuple/list for 'gdf' and 'neighbours' respectfully.
-        min_dist (int): The minimum distance between the two points. Defaults to 0.0000001
-            so that identical points aren't considered neighbours.
+        min_dist: The minimum distance between the two points. Defaults to
+            0.0000001, so that identical points aren't considered neighbours.
         max_dist: if specified, distances larger than this number will be removed.
-        strict (bool): If True, will raise an error if 'k' is greater than the number of
-            points in 'neighbours'. If False, will return all distances if there is less than
-            k points in to_array. Defaults to False.
+        strict: If False (the default), no exception is raised if k is larger than the
+            number of points in 'neighbours'. If True, 'k' must be less than or equal
+            to the number of points in 'neighbours'.
 
     Returns:
-      A DataFrame with the following columns:
+        A DataFrame with id columns and the distance from gdf to neighbour. Also
+        includes columns for the minumum distance for each point in 'gdf' and
+        the rank.
     """
 
     if gdf.crs != neighbours.crs:
@@ -125,21 +127,22 @@ def k_nearest_neighbours(
     k: int,
     strict: bool = False,
 ) -> tuple[np.ndarray[float]]:
-    """
-    Given a set of points, find the k nearest neighbors of each point in another
-    set of points.
+    """Finds the k nearest neighbours for an array of points
+
+    Uses the K-nearest neighbors algorithm method from sklearn.neighbors to find the
+    given number of neighbours for each point in 'from_array'.
 
     Args:
-      from_array: The array of points (coordinate tuples) you want to find the nearest
-        neighbors for.
-      to_array: The array of points that we want to find the nearest neighbors of.
-      k: the number of nearest neighbors to find.
-      strict: If True, will raise an error if k is greater than the number of points in
-        to_array. If False, will return all distances if there is less than k points in
-        to_array. Defaults to False
+        gdf: an np.ndarray of coordinates
+        neighbours: an np.ndarray of coordinates
+        k: number of neighbours to find
+        strict: If True, will raise an error if 'k' is greater than the number
+            of points in 'to_array'. If False, will return all distances if there
+            is less than k points in 'to_array'. Defaults to False.
 
     Returns:
-      The distances and indices of the nearest neighbors.
+        The distances and indices of the nearest neighbors. Both distances and neighbours
+        are np.ndarrays.
     """
 
     if not strict:

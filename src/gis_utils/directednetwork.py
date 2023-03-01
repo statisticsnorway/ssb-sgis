@@ -1,8 +1,6 @@
 import warnings
 
-import numpy as np
 from geopandas import GeoDataFrame
-from pandas import DataFrame
 from shapely.constructive import reverse
 
 from .geopandas_utils import gdf_concat
