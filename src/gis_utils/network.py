@@ -17,11 +17,36 @@ from .network_functions import (
 )
 
 
+# put this a better place
+def _edge_ids(
+    gdf: GeoDataFrame | list[tuple[int, int]], weight: str | list[float]
+) -> list[str]:
+    """Quite messy way to deal with different input types..."""
+    if isinstance(gdf, GeoDataFrame):
+        return _edge_id_template(
+            zip(gdf["source"], gdf["target"]), weight_arr=gdf[weight]
+        )
+    if isinstance(gdf, list):
+        return _edge_id_template(gdf, weight_arr=weight)
+
+
+def _edge_id_template(*source_target_arrs, weight_arr):
+    """edge identifiers represented with source and target ids and weight"""
+    #    return [f"{s}_{t}_{w}" for (s, t), w in zip(*source_target_arrs, weight_arr)]
+    return [
+        f"{s}_{t}_{round(w, 10)}" for (s, t), w in zip(*source_target_arrs, weight_arr)
+    ]
+
+
+#    Rounding down/up weight to 10 decimals because some very detailed floats did not match
+
+
 class Network:
     """Prepares a GeoDataFrame of lines for network analysis
 
-    Can be used as the 'network' parameter in the NetworkAnalysis class for undirected
-    network analysis.
+    The class can be used as the 'network' parameter in the NetworkAnalysis class for
+    undirected network analysis. For directed network analysis, use the DirectedNetwork
+    class.
 
     The geometries are made valid and into singlepart LineStrings, and given 'source'
     and 'target' ids based on the first and last point of the lines. The Network
@@ -50,26 +75,47 @@ class Network:
     therefore changes whenever the lines change, so they cannot be used as fixed
     identifiers.
 
-    Args:
-        gdf: a GeoDataFrame of line geometries.
-        merge_lines: if True (default), multilinestrings within the same row
-          will be merged if they overlap. if False, multilines will be split into
-          separate rows of singlepart lines.
-        allow_degree_units: If False (the default), it will raise an exception if the
-            coordinate reference system of 'gdf' is in degree units,
-            i.e. unprojected (4326). If set to True, all crs are allowed, but it might
-            raise exceptions and give erronous results.
-
     Attributes:
         gdf: the GeoDataFrame of lines
-        nodes (property): GeoDataFrame with the network nodes (line endpoints).
-            Node ids are always kept updated with the source and target ids of the lines.
-        directed: whether the network should be treated as directed in network analysis.
-            Set to False if the base Network class is instantiated, but is overwritten to
-            True if the DirectedNetwork is instantiated.
-            Note: this attribute concerns only if the network graph should be directed or not.
-                If you want directed analysis, use the DirectedNetwork class.
 
+    Examples
+    --------
+
+    >>> roads = gpd.read_parquet(filepath_roads)
+    >>> nw = Network(roads)
+    >>> nw
+    Network(3851 km, undirected)
+
+    Check for isolated network islands.
+
+    >>> nw = nw.get_largest_component()
+    >>> nw.gdf.connected.value_counts()
+    1.0    85638
+    0.0     7757
+    Name: connected, dtype: int64
+
+    Remove the network islands. The get_largest_component method is not needed beforehand.
+
+    >>> nw = nw.remove_isolated()
+    >>> nw.gdf.connected.value_counts()
+    1.0    85638
+    Name: connected, dtype: int64
+
+    Filling small gaps/holes in the network.
+
+    >>> len(nw.gdf)
+    85638
+    >>> nw = nw.close_network_holes(max_dist=1.5)
+    >>> len(nw.gdf)
+    86929
+
+    Cutting long lines into pieces. This is only relevant for service area analysis and similar analyses.
+
+    >>> nw.gdf.length.max()
+    5213.749177803526
+    >>> nw = nw.cut_lines(100)
+    >>> nw.gdf.length.max()
+    100.00000000046512
 
     """
 
@@ -80,8 +126,21 @@ class Network:
         merge_lines: bool = True,
         allow_degree_units: bool = False,
     ):
-        # the 'directed' attribute will be overridden when initialising the DirectedNetwork class
-        self.directed = False
+        """
+
+        Args:
+            gdf: a GeoDataFrame of line geometries.
+            merge_lines: if True (default), multilinestrings within the same row
+            will be merged if they overlap. if False, multilines will be split into
+            separate rows of singlepart lines.
+            allow_degree_units: If False (the default), it will raise an exception if the
+                coordinate reference system of 'gdf' is in degree units,
+                i.e. unprojected (4326). If set to True, all crs are allowed, but it might
+                raise exceptions and give erronous results.
+        """
+
+        # for the base Network class, the graph will be undirected in network analysis
+        self._as_directed = False
 
         if not isinstance(gdf, GeoDataFrame):
             raise TypeError(f"'lines' should be GeoDataFrame, got {type(gdf)}")
@@ -109,7 +168,7 @@ class Network:
         else:
             self._isolated_removed = False
 
-        self._percent_directional = self._check_percent_directional()
+        self._percent_bidirectional = self._check_percent_bidirectional()
 
     def close_network_holes(
         self, max_dist, min_dist=0, deadends_only=False, hole_col="hole"
@@ -121,7 +180,6 @@ class Network:
         minimum distance is set to 0, but can be changed with the min_dist parameter.
 
         Args:
-            lines: GeoDataFrame with lines
             max_dist: The maximum distance between two nodes to be considered a hole.
             min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
             deadends_only: If True, only holes between two deadends will be filled.
@@ -297,17 +355,23 @@ class Network:
                     f"Minute column(s) will be wrong for these rows."
                 )
 
+        gdf["meters"] = gdf.length
+
         return gdf
 
-    def _check_percent_directional(self) -> int:
+    def _check_percent_bidirectional(self) -> int:
         """Road data often have to be duplicated and flipped to make it directed.
         Here we check how"""
+        self.gdf["meters"] = self.gdf["meters"].astype(str)
         no_dups = DataFrame(
-            np.sort(self.gdf[["source", "target"]].values, axis=1),
-            columns=[["source", "target"]],
+            np.sort(self.gdf[["source", "target", "meters"]].values, axis=1),
+            columns=[["source", "target", "meters"]],
         ).drop_duplicates()
+        self.gdf["meters"] = self.gdf.length
 
-        return int((len(self.gdf) - len(no_dups)) / len(self.gdf) * 100)
+        percent_bidirectional = len(self.gdf) / len(no_dups) * 100 - 100
+
+        return int(round(percent_bidirectional, 0))
 
     def _nodes_are_up_to_date(self) -> bool:
         """
@@ -339,14 +403,33 @@ class Network:
 
     @property
     def nodes(self):
-        """Nodes cannot be altered directly because it has to follow the numeric
-        index."""
+        """GeoDataFrame with the network nodes (line endpoints).
+
+        Upon instantiation of the class, a GeoDataFrame of points is created from the
+        unique endpoints of the lines. The node ids are then used to make the 'source'
+        and 'target' columns of the line gdf. The nodes are remade every time the
+        geometries of the line gdf changes, since the 'source' and 'target' columns
+        must be up to date with the actual line geometries when making the graph.
+        """
         return self._nodes
+
+    @property
+    def as_directed(self):
+        """This attribute decides whether the graph should be made directed or not.
+        This depends on what network class is used. 'as_directed' is False for the
+        base Network class and True for the DirectedNetwork subclass.
+        """
+        return self._as_directed
+
+    @property
+    def percent_bidirectional(self):
+        """The percentage of lines that appear in both directions."""
+        return self._percent_bidirectional
 
     def __repr__(self) -> str:
         cl = self.__class__.__name__
         km = int(sum(self.gdf.length) / 1000)
-        return f"{cl}({km} km, directed={self.directed})"
+        return f"{cl}({km} km, undirected)"
 
     def __iter__(self):
         return iter(self.__dict__.values())

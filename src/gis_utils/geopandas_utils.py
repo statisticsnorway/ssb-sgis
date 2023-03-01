@@ -31,8 +31,9 @@ def clean_geoms(
 
     Args:
         gdf: GeoDataFrame or GeoSeries to be cleaned.
-        geom_type: the geometry type to keep. Both multi- and singlepart geometries are included.
-            GeometryCollections will be exploded first, so that no geometries are excluded.
+        geom_type: the geometry type to keep. Both multi- and singlepart geometries are
+            included. GeometryCollections will be exploded first, so that no geometries
+            of the correct type are excluded.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to False
 
@@ -69,16 +70,16 @@ def to_single_geom_type(
 ) -> GeoDataFrame | GeoSeries:
     """Returns only the specified geometry type in a GeoDataFrame or GeoSeries
 
-    Explodes GeometryCollections, then keeps only the given geometry_type,
-    either polygon, line or point. Both multipart and singlepart geometries
-    are kept. LinearRings are considered lines. GeometryCollections are exploded
-    to single-typed geometries before the selection.
+    GeometryCollections are first exploded, then only the rows with the given
+    geometry_type is kept. Both multipart and singlepart geometries are kept.
+    LinearRings are considered lines. GeometryCollections are exploded to
+    single-typed geometries before the selection.
 
     Args:
         gdf: GeoDataFrame or GeoSeries
         geom_type: the geometry type to keep. Either "polygon", "line" or "point"
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-        Defaults to False
+            Defaults to False
 
     Returns:
       A GeoDataFrame with a single geometry type
@@ -128,7 +129,7 @@ def is_single_geom_type(
       gdf: GeoDataFrame or GeoSeries
 
     Returns:
-      A boolean value.
+      True if all geometries are the same type, False if not
     """
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
@@ -172,8 +173,7 @@ def close_holes(
     max_km2: int | None = None,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries | Geometry:
-    """
-    It closes holes in polygons of a GeoDataFrame, GeoSeries or shapely Geometry.
+    """Closes holes in polygons, either all holes or holes smaller than 'max_km2'
 
     Args:
       polygons: GeoDataFrame, GeoSeries or shapely Geometry.
@@ -249,7 +249,8 @@ def gdf_concat(
         crs: common coordinate reference system each GeoDataFrames
             will be converted to before concatination. If None, it uses
             the crs of the first GeoDataFrame in the list or tuple.
-        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1. Defaults to True
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+            Defaults to True
         geometry: name of geometry column. Defaults to 'geometry'
         **kwargs: additional keyword argument taken by pandas.condat
 
@@ -309,7 +310,7 @@ def to_gdf(
         geom = loads(geom)
         gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
 
-    if isinstance(geom, bytes):
+    elif isinstance(geom, bytes):
         from shapely.wkb import loads
 
         geom = loads(geom)
@@ -343,7 +344,7 @@ def clean_clip(
         gdf: GeoDataFrame or GeoSeries to be clipped
         mask: the geometry to clip gdf
         geom_type (optional): geometry type to keep in 'gdf' before and after the clip
-        **kwargs: clip keyword arguments
+        **kwargs: Additional keyword arguments passed to GeoDataFrame.clip
 
     """
 
@@ -503,7 +504,7 @@ def find_neighbours(
     possible_neighbours: GeoDataFrame | GeoSeries,
     id_col: str,
     max_dist: int = 0,
-) -> list:
+) -> list[str]:
     """
     Finds all the geometries in another GeoDataFrame that intersects with the first geometry
 
@@ -541,7 +542,7 @@ def find_neighbors(
     possible_neighbors: GeoDataFrame | GeoSeries,
     id_col: str,
     max_dist: int = 0,
-):
+) -> list[str]:
     """American alias for find_neighbours"""
     return find_neighbours(gdf, possible_neighbors, id_col, max_dist)
 

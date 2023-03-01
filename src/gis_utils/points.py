@@ -157,31 +157,41 @@ class Origins(Points):
     def __init__(
         self,
         points: GeoDataFrame,
+        temp_idx_start: int,
         **kwargs,
     ) -> None:
-        super().__init__(points, **kwargs)
+        super().__init__(points, temp_idx_start, **kwargs)
 
         self._get_id_col(index=0)
         self._make_temp_idx()
 
-    def _get_edges_and_weights(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
-        return super()._get_edges_and_weights(
-            nodes, rules, from_col="temp_idx", to_col="node_id"
-        )
+    def _get_edges_and_weights(
+        self,
+        nodes: GeoDataFrame,
+        rules: NetworkAnalysisRules,
+        from_col="temp_idx",
+        to_col="node_id",
+    ):
+        return super()._get_edges_and_weights(nodes, rules, from_col, to_col)
 
 
 class Destinations(Points):
     def __init__(
         self,
         points: GeoDataFrame,
+        temp_idx_start: int,
         **kwargs,
     ) -> None:
-        super().__init__(points, **kwargs)
+        super().__init__(points, temp_idx_start, **kwargs)
 
         self._get_id_col(index=1)
         self._make_temp_idx()
 
-    def _get_edges_and_weights(self, nodes: GeoDataFrame, rules: NetworkAnalysisRules):
-        return super()._get_edges_and_weights(
-            nodes, rules, from_col="node_id", to_col="temp_idx"
-        )
+    def _get_edges_and_weights(
+        self,
+        nodes: GeoDataFrame,
+        rules: NetworkAnalysisRules,
+        from_col="node_id",
+        to_col="temp_idx",
+    ):
+        return super()._get_edges_and_weights(nodes, rules, from_col, to_col)

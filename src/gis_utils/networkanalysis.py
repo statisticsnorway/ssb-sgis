@@ -17,7 +17,7 @@ from pandas import DataFrame
 from .directednetwork import DirectedNetwork
 from .geopandas_utils import gdf_concat, push_geom_col
 from .get_route import _get_route
-from .network import Network
+from .network import Network, _edge_ids
 from .network_functions import split_lines_at_closest_point
 from .networkanalysisrules import NetworkAnalysisRules
 from .od_cost_matrix import _od_cost_matrix
@@ -30,47 +30,146 @@ class NetworkAnalysis:
 
     It takes a (Directed)Network and rules (NetworkAnalysisRules).
 
-    Args:
-        network: either the base Network class or a subclass, chiefly the DirectedNetwork
-            class. The network should be customized beforehand, but can also be accessed
-            through the 'network' attribute of this class.
-        rules: NetworkAnalysisRules class instance.
-
-        log: If True (the default), a DataFrame with information about each analysis run
-            will be stored in the 'log' attribute.
-        detailed_log: If True (the default), will include all arguments passed to the
-            analysis methods and the standard deviation, 25th, 50th and 75th percentile
-            of the weight column in the results.
-
     Attributes:
         network: the Network instance
         rules: the NetworkAnalysisRules instance
         log: A DataFrame with information about each analysis run
-        origins: the origins used in the latest analysis run,
-            contained in a origins class instance, with the GeoDataFrame stored
-            in the 'gdf' attribute.
+        origins: the origins used in the latest analysis run, in the form of an Origins
+            class instance. The GeoDataFrame is stored in the 'gdf' attribute, with a
+            column 'n_missing' that can be used for investigation/debugging.
+        destinations: the destinations used in the latest analysis run, in the form of a Destinations
+            class instance. The GeoDataFrame is stored in the 'gdf' attribute, with a
+            column 'n_missing' that can be used for investigation/debugging.
 
-    Examples:
+    Examples
+    --------
+    Creating a NetworkAnalysis class instance.
 
-    roads = gpd.read_parquet(filepath_roads)
-    points = gpd.read_parquet(filepath_points)
+    >>> roads = gpd.read_parquet(filepath_roads)
+    >>> points = gpd.read_parquet(filepath_points)
 
-    nw = (
-        DirectedNetwork(roads)
-        .remove_isolated()
-        .make_directed_network(
-            direction_col="oneway",
-            direction_vals_bft=("B", "FT", "TF"),
-            minute_cols=("drivetime_fw", "drivetime_bw"),
-        )
+
+    >>> nw = (
+    ...     DirectedNetwork(roads)
+    ...     .remove_isolated()
+    ...     .make_directed_network(
+    ...         direction_col="oneway",
+    ...         direction_vals_bft=("B", "FT", "TF"),
+    ...         minute_cols=("drivetime_fw", "drivetime_bw"),
+    ...     )
+    ... )
+    >>> rules = NetworkAnalysisRules(weight="minutes")
+    >>> nwa = NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+    >>> nwa
+    NetworkAnalysis(
+        network=DirectedNetwork(6364 km, percent_bidirectional=87),
+        rules=NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=10, split_lines=False, ...)
     )
 
-    rules = NetworkAnalysisRules(weight="minutes")
+    od_cost_matrix: fast many-to-many travel time/distance calculation.
 
-    nwa = NetworkAnalysis(network=nw, rules=rules)
+    >>> od = nwa.od_cost_matrix(points, points, id_col="idx")
+    >>> od
+            origin  destination    minutes
+    0            1            1   0.000000
+    1            1            2  11.983871
+    2            1            3   9.822048
+    3            1            4   7.838012
+    4            1            5  13.708064
+    ...        ...          ...        ...
+    999995    1000          996  10.315319
+    999996    1000          997  16.839220
+    999997    1000          998   6.539792
+    999998    1000          999  14.182613
+    999999    1000         1000   0.000000
 
-    od = nwa.od_cost_matrix(points, points)
+    [1000000 rows x 3 columns]
 
+    get_route: get the geometry of the routes.
+
+    >>> routes = nwa.get_route(points.sample(1), points, id_col="idx")
+    >>> routes
+        origin  destination    minutes                                           geometry
+    0       432            1   9.550767  MULTILINESTRING Z ((268999.800 6653318.400 186...
+    1       432            2   6.865927  MULTILINESTRING Z ((268999.800 6653318.400 186...
+    2       432            3   4.250621  MULTILINESTRING Z ((270054.367 6653367.774 144...
+    3       432            4  16.726048  MULTILINESTRING Z ((259735.774 6650362.886 24....
+    4       432            5   8.590120  MULTILINESTRING Z ((272816.062 6652789.578 163...
+    ..      ...          ...        ...                                                ...
+    995     432          996  14.356265  MULTILINESTRING Z ((266881.100 6647824.860 132...
+    996     432          997  11.840131  MULTILINESTRING Z ((268999.800 6653318.400 186...
+    997     432          998  17.317844  MULTILINESTRING Z ((263489.330 6645655.330 11....
+    998     432          999   8.577831  MULTILINESTRING Z ((269217.997 6650654.895 166...
+    999     432         1000  18.385282  MULTILINESTRING Z ((268999.800 6653318.400 186...
+
+    [1000 rows x 4 columns]
+
+    get_route_frequencies: get the number of times each line segment was used.
+
+    >>> freq = nwa.get_route_frequencies(points.sample(25), points.sample(25))
+    >>> freq
+        source target      n                                           geometry
+    137866  19095  44962    1.0  LINESTRING Z (265476.114 6645475.318 160.724, ...
+    138905  30597  16266    1.0  LINESTRING Z (272648.400 6652234.800 178.170, ...
+    138903  16266  45388    1.0  LINESTRING Z (272642.602 6652236.229 178.687, ...
+    138894  43025  30588    1.0  LINESTRING Z (272446.600 6652253.700 162.970, ...
+    138892  30588  16021    1.0  LINESTRING Z (272414.400 6652263.100 161.170, ...
+    ...       ...    ...    ...                                                ...
+    158287  78157  78156  176.0  LINESTRING Z (263975.482 6653605.092 132.739, ...
+    149697  72562  72563  180.0  LINESTRING Z (265179.202 6651549.723 81.532, 2...
+    149698  72563  72564  180.0  LINESTRING Z (265178.761 6651549.956 81.561, 2...
+    149695  72560  72561  180.0  LINESTRING Z (265457.755 6651249.238 76.502, 2...
+    149696  72561  72562  180.0  LINESTRING Z (265180.086 6651549.259 81.473, 2...
+
+    [12231 rows x 4 columns]
+
+    service_area: get the area that can be reached within one or more breaks.
+
+    >>> sa = nwa.service_area(
+    ...         points.iloc[:3],
+    ...         breaks=[5, 10, 15],
+    ...         id_col="idx",
+    ...     )
+    >>> sa
+    idx  minutes                                           geometry
+    0    1        5  MULTILINESTRING Z ((265378.000 6650581.600 85....
+    1    1       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
+    2    1       15  MULTILINESTRING Z ((263110.060 6658296.870 154...
+    3    2        5  MULTILINESTRING Z ((273330.930 6653248.870 208...
+    4    2       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
+    5    2       15  MULTILINESTRING Z ((264348.673 6648271.134 17....
+    6    3        5  MULTILINESTRING Z ((266909.769 6651075.250 114...
+    7    3       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
+    8    3       15  MULTILINESTRING Z ((273161.140 6654455.240 229...
+
+    get_k_routes: get the geometry of the k low-cost routes for each od pair.
+
+    >>> k_routes = nwa.get_k_routes(points.iloc[[0]], points.iloc[1:3], k=3, drop_middle_percent=50, id_col="idx")
+    >>> k_routes
+    origin  destination    minutes  k                                           geometry
+    0       1            2  12.930588  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
+    1       1            2  14.128866  2  MULTILINESTRING Z ((272281.367 6653079.745 160...
+    2       1            2  20.030052  3  MULTILINESTRING Z ((272281.367 6653079.745 160...
+    3       1            3  10.867076  1  MULTILINESTRING Z ((270054.367 6653367.774 144...
+    4       1            3  11.535946  2  MULTILINESTRING Z ((270074.933 6653001.553 118...
+    5       1            3  14.867076  3  MULTILINESTRING Z ((265313.000 6650960.400 97....
+
+    Check the log.
+
+    >>> nwa.log
+                endtime  minutes_elapsed                 method  origins_count  destinations_count  percent_missing  ...  search_tolerance  search_factor  split_lines weight_to_nodes_dist  weight_to_nodes_kmh  weight_to_nodes_mph
+    0 2023-03-01 16:58:37              0.4         od_cost_matrix           1000              1000.0           0.5987  ...               250             10        False                False                 None                 None
+    1 2023-03-01 17:05:26              6.7              get_route              1              1000.0           0.0000  ...               250             10        False                False                 None                 None
+    2 2023-03-01 17:06:21              0.3  get_route_frequencies             25                25.0           0.0000  ...               250             10        False                False                 None                 None
+    3 2023-03-01 17:07:25              0.2           service_area              3                 NaN           0.0000  ...               250             10        False                False                 None                 None
+    4 2023-03-01 17:07:46              0.1           get_k_routes              1                 2.0           0.0000  ...               250             10        False                False                 None                 None
+
+    [5 rows x 16 columns]
+
+    See also
+    --------
+    DirectedNetwork : for customising and optimising line data before directed network analysis
+    Network : for customising and optimising line data before undirected network analysis
     """
 
     def __init__(
@@ -80,6 +179,19 @@ class NetworkAnalysis:
         log: bool = True,
         detailed_log: bool = True,
     ):
+        """
+        Args:
+            network: either the base Network class or a subclass, chiefly the DirectedNetwork
+                class. The network should be customized beforehand, but can also be accessed
+                through the 'network' attribute of this class.
+            rules: NetworkAnalysisRules class instance.
+
+            log: If True (the default), a DataFrame with information about each analysis run
+                will be stored in the 'log' attribute.
+            detailed_log: If True (the default), will include all arguments passed to the
+                analysis methods and the standard deviation, 25th, 50th and 75th percentile
+                of the weight column in the results.
+        """
         self.network = network
         self.rules = rules
         self._log = log
@@ -269,6 +381,100 @@ class NetworkAnalysis:
 
         return results
 
+    def get_k_routes(
+        self,
+        origins: GeoDataFrame,
+        destinations: GeoDataFrame,
+        *,
+        k: int,
+        drop_middle_percent: int,
+        id_col: str | tuple[str, str] | None = None,
+        rowwise=False,
+        cutoff: int = None,
+        destination_count: int = None,
+    ) -> GeoDataFrame:
+        """Returns the geometry of 1 or more routes between origins and destinations.
+
+        Finds the route with the lowest cost (minutes, meters, etc.) from a set of
+        origins to a set of destinations. Then removes the middle part of the route
+        from the graph and gets the new shortest path. Repeats k times. How much of the
+
+        Args:
+            origins: GeoDataFrame of points from where the routes will originate
+            destinations: GeoDataFrame of points from where the routes will terminate
+            k: the number of low-cost routes to find
+            drop_middle_percent: how many percent of the middle part of the routes
+                that should be removed from the graph before the next k route is
+                calculated. If set to 100, only the median edge will be removed.
+                If set to 0, all but the first and last edge will be removed. The
+                graph is copied for each od pair.
+            id_col: optional column to be used as identifier of the service areas. If
+                None, an arbitrary id will be used.
+            rowwise: if False (the default), it will calculate the cost from each
+                origins to each destination. If true, it will calculate the cost from
+                origin 1 to destination 1, origin 2 to destination 2 and so on.
+            cutoff: the maximum cost (weight) for the trips. Defaults to None,
+                meaning all rows will be included. NaNs will also be removed if cutoff
+                is specified.
+            destination_count: number of closest destinations to keep for each origin.
+                If None (the default), all trips will be included. The number of
+                destinations might be higher than the destination count if trips have
+                equal cost.
+
+        Returns:
+            A GeoDataFrame with the columns 'origin', 'destination', the weight
+            column and the geometry of the route between origin and destination.
+
+        Raises:
+            ValueError if no paths were found.
+            ValueError if drop_middle_percent is not between 0 and 100.
+        """
+
+        if drop_middle_percent < 0 or drop_middle_percent > 100:
+            raise ValueError("'drop_middle_percent' should be between 0 and 100")
+
+        if self._log:
+            time_ = perf_counter()
+
+        self._prepare_network_analysis(origins, destinations, id_col)
+
+        results = _get_route(
+            graph=self.graph,
+            origins=self.origins.gdf,
+            destinations=self.destinations.gdf,
+            weight=self.rules.weight,
+            roads=self.network.gdf,
+            cutoff=cutoff,
+            destination_count=destination_count,
+            rowwise=rowwise,
+            k=k,
+            drop_middle_percent=drop_middle_percent,
+        )
+
+        self.origins._get_n_missing(results, "origin")
+        self.destinations._get_n_missing(results, "destination")
+
+        if id_col:
+            results["origin"] = results["origin"].map(self.origins.id_dict)
+            results["destination"] = results["destination"].map(
+                self.destinations.id_dict
+            )
+
+        results = push_geom_col(results)
+
+        if self._log:
+            minutes_elapsed = round((perf_counter() - time_) / 60, 1)
+            self._runlog(
+                "get_k_routes",
+                results,
+                minutes_elapsed,
+                cutoff=cutoff,
+                destination_count=destination_count,
+                rowwise=rowwise,
+            )
+
+        return results
+
     def get_route_frequencies(
         self,
         origins: GeoDataFrame,
@@ -308,6 +514,8 @@ class NetworkAnalysis:
 
         results = push_geom_col(results)
 
+        results = results.sort_values("n")
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -324,12 +532,14 @@ class NetworkAnalysis:
         breaks: int | float | list[int | float] | tuple[int | float],
         *,
         id_col: str | None = None,
+        drop_duplicates: bool = True,
         dissolve: bool = True,
     ) -> GeoDataFrame:
         """Returns the lines that can be reached within breaks (weight values).
 
         It finds all the network lines that can be reached within each weight
         impedance, given in the breaks argument as one or more integers/floats.
+        The breaks are sorted in ascending order, and duplicate lines from
 
         Args:
             origins: GeoDataFrame of points from where the service areas will
@@ -339,13 +549,21 @@ class NetworkAnalysis:
                 each origins if multiple breaks.
             id_col: optional column to be used as identifier of the service areas.
                 If None, an arbitrary id will be used.
+            drop_duplicates: If True (the default), duplicate lines from the same
+                origin will be removed. Priority is given to the lower break values,
+                meaning the highest break will only cover the outermost ring of the
+                total service area for the origin. If False, the higher breaks will
+                also cover the inner rings of the origin's service area.
             dissolve: If True (the default), each service area will be dissolved into
                 one long multilinestring. If False, the individual line segments will
                 be returned. Duplicate lines can then be removed, or occurences
                 counted.
 
         Returns:
-            A GeoDataFrame with the roads that can be reached within the break
+            A GeoDataFrame with one row per origin and break, with a dissolved line
+            geometry of the lines that can be reached within the break. Duplicate lines
+            from an origin will be removed, with priority given to the lower break.
+            the roads that can be reached within the break
             for each origin. If dissolve is False, the columns will be the weight
             column, which contains the relevant break, and the if_col if specified,
             or the column 'origin' if not. If dissolve is False, it will return all
@@ -359,14 +577,26 @@ class NetworkAnalysis:
 
         self._prepare_network_analysis(origins, id_col=id_col)
 
+        # sort the breaks as an np.ndarray
+        breaks = self._sort_breaks(breaks)
+
         results = _service_area(
             graph=self.graph,
             origins=self.origins.gdf,
             weight=self.rules.weight,
             lines=self.network.gdf,
             breaks=breaks,
-            dissolve=dissolve,
         )
+
+        if drop_duplicates:
+            results = results.drop_duplicates(["source", "target", "origin"])
+
+        if dissolve:
+            results = (
+                results.dissolve(by=["origin", self.rules.weight])
+                .reset_index()
+                .loc[:, ["origin", self.rules.weight, "geometry"]]
+            )
 
         # add missing rows as NaNs
         missing = self.origins.gdf.loc[
@@ -419,7 +649,7 @@ class NetworkAnalysis:
                 "percent_missing": np.nan,
                 "cost_mean": np.nan,
                 "isolated_removed": self.network._isolated_removed,
-                "percent_directional": self.network._percent_directional,
+                "percent_bidirectional": self.network.percent_bidirectional,
             },
             index=[0],
         )
@@ -502,7 +732,7 @@ class NetworkAnalysis:
             edges, weights = self._get_edges_and_weights()
 
             self.graph = self._make_graph(
-                edges=edges, weights=weights, directed=self.network.directed
+                edges=edges, weights=weights, directed=self.network.as_directed
             )
 
             self._add_missing_vertices()
@@ -540,7 +770,7 @@ class NetworkAnalysis:
             self.network.gdf = lines
             self.network._make_node_ids()
 
-            # remake the temp_idx
+            # remake the temp_idx to fit the new max of the node ids
             # TODO: consider changing how this thing works
             self.origins.temp_idx_start = (
                 max(self.network.nodes.node_id.astype(int)) + 1
@@ -562,7 +792,8 @@ class NetworkAnalysis:
         weights = list(self.network.gdf[self.rules.weight])
 
         edges_start, weights_start = self.origins._get_edges_and_weights(
-            nodes=self.network.nodes, rules=self.rules
+            nodes=self.network.nodes,
+            rules=self.rules,
         )
         edges = edges + edges_start
         weights = weights + weights_start
@@ -571,7 +802,8 @@ class NetworkAnalysis:
             return edges, weights
 
         edges_end, weights_end = self.destinations._get_edges_and_weights(
-            nodes=self.network.nodes, rules=self.rules
+            nodes=self.network.nodes,
+            rules=self.rules,
         )
 
         edges = edges + edges_end
@@ -615,6 +847,10 @@ class NetworkAnalysis:
         graph = igraph.Graph.TupleList(edges, directed=directed)
 
         graph.es["weight"] = weights
+        graph.es["source_target_weight"] = _edge_ids(edges, weights)
+        graph.es["edge_tuples"] = edges
+        graph.es["source"] = [edge[0] for edge in edges]
+        graph.es["target"] = [edge[1] for edge in edges]
 
         assert min(graph.es["weight"]) >= 0
 
@@ -668,6 +904,19 @@ class NetworkAnalysis:
                 geom.wkt for geom in self.destinations.gdf.geometry
             ]
 
+    @staticmethod
+    def _sort_breaks(breaks):
+        if isinstance(breaks, (list, tuple)):
+            breaks = np.array(breaks)
+
+        if isinstance(breaks, str):
+            breaks = float(breaks)
+
+        if not isinstance(breaks, (int, float)):
+            breaks = np.sort(breaks)
+
+        return breaks
+
     def __repr__(self) -> str:
         """The print representation."""
         # remove 'weight_to_nodes_' arguments in the repr of rules
@@ -678,7 +927,10 @@ class NetworkAnalysis:
             rules = rules.replace(txt, ")")
         rules = rules.strip(")")
 
-        rules = rules.replace("split_lines,", f"split_lines={self.rules.split_lines},")
+        if rules.endswith("split_lines"):
+            rules = rules.replace(
+                "split_lines", f"split_lines={self.rules.split_lines}"
+            )
 
         # add a 'weight_to_nodes_' argument if used,
         # else inform that there are more arguments with '...'
@@ -692,9 +944,9 @@ class NetworkAnalysis:
             x = ", ..."
 
         return (
-            f"{self.__class__.__name__}("
-            f"network={self.network.__repr__()}, "
-            f"rules={rules}{x}))"
+            f"{self.__class__.__name__}(\n"
+            f"    network={self.network.__repr__()},\n"
+            f"    rules={rules}{x})\n)"
         )
 
     def __getitem__(self, item):
