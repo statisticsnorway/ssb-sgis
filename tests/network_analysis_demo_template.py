@@ -336,16 +336,14 @@ nw.gdf["minutes"]
 # You can also calculate minutes from a speed limit column. But you might want to do some manual adjusting, since keeping the speed limit at all times is unrealistic in most cases.
 #
 # You can set a flat speed that will be used for the entire network. Decent if the travel mode is walking, bike, boat etc.
-
 # %%
-nw = nw.make_directed_network(
+bike_nw = nw.make_directed_network(
     direction_col="oneway",
     direction_vals_bft=("B", "FT", "TF"),
-    speed_col=None,
-    flat_speed=None,
+    flat_speed=20,
 )
 
-nw.gdf["minutes"]
+bike_nw.gdf["minutes"]
 # %% [markdown]
 # ## The NetworkAnalysisRules
 #

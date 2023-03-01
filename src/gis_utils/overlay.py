@@ -43,16 +43,16 @@ def overlay(
         how: Method of spatial overlay. Includes the 'update' method, plus the five
             native geopandas methods 'intersection', 'union', 'identity',
             'symmetric_difference' and 'difference'.
-        keep_geom_type: If True, return only geometries of the same geometry type as
-            df1 has, if False, return all resulting geometries. Default is None, which
-            will set keep_geom_type to True but warn upon dropping geometries.
-        geom_type: optionally specify what geometry type to keep before and after the
-            overlay.
+        keep_geom_type: If True (the default), return only geometries of the same
+            geometry type as df1 has, if False, return all resulting geometries.
+        geom_type: optionally specify what geometry type to keep before the overlay,
+            if there may be mixed geometry types.
+        drop_dupcol: optionally remove all columns in df2 that is in df1. Defaults to
+            False, meaning no columns are dropped.
 
-
-
-
-
+    Returns:
+        GeoDataFrame with overlayed and fixed geometries and columns from both
+        GeoDataFrames.
     """
 
     # Allowed operations (includes 'update')
@@ -124,16 +124,39 @@ def overlay(
     return overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
 
 
-def overlay_update(df1: GeoDataFrame, df2: GeoDataFrame, **kwargs) -> GeoDataFrame:
-    """Put df1 on top of df2"""
+def overlay_update(
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
+    keep_geom_type: bool = True,
+    geom_type: str | tuple[str, str] | list[str, str] | None = None,
+    **kwargs,
+) -> GeoDataFrame:
+    """
+    Args:
+        df1: GeoDataFrame
+        df2: GeoDataFrame
+        geom_type: optionally specify what geometry type to keep before the overlay,
+            if there may be mixed geometry types.
+        drop_dupcol: optionally remove all columns in df2 that is in df1. Defaults to
+            False, meaning no columns are dropped.
+
+    Returns:
+        GeoDataFrame with overlayed geometries and columns from both GeoDataFrames.
+
+    """
 
     try:
-        out = df1.overlay(df2, how="difference", **kwargs)
+        overlayed = df1.overlay(df2, how="difference", **kwargs)
     except Exception:
-        out = clean_shapely_overlay(df1, df2, how="difference")
-    out = out.loc[:, ~out.columns.str.contains("index|level_")]
-    out = gdf_concat([out, df2])
-    return out
+        overlayed = clean_shapely_overlay(
+            df1,
+            df2,
+            how="difference",
+            keep_geom_type=keep_geom_type,
+            geom_type=geom_type,
+        )
+    overlayed = overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
+    return gdf_concat([overlayed, df2])
 
 
 def clean_shapely_overlay(
@@ -143,17 +166,28 @@ def clean_shapely_overlay(
     keep_geom_type: bool = True,
     geom_type: str | tuple[str, str] | list[str, str] | None = None,
 ) -> GeoDataFrame:
-    """
-    It takes two GeoDataFrames, cleans their geometries, explodes them, and then performs a shapely
-    overlay operation on them
+    """Fixes and explodes geometries before doing a shapely overlay, then cleans up
+
+    Fixes geometries, then does a shapely overlay operation inspired by:
+    https://github.com/geopandas/geopandas/issues/2792.
+
+    This solution dodges a GEOSException raised in the regular geopandas.overlay.
 
     Args:
-        df1 (GeoDataFrame): GeoDataFrame
-        df2 (GeoDataFrame): GeoDataFrame
-        how: Defaults to intersection
+        df1: GeoDataFrame
+        df2: GeoDataFrame
+        how: Method of spatial overlay. Includes the 'update' method, plus the five
+            native geopandas methods 'intersection', 'union', 'identity',
+            'symmetric_difference' and 'difference'.
+        keep_geom_type: If True (the default), return only geometries of the same
+            geometry type as df1 has, if False, return all resulting geometries.
+        geom_type: optionally specify what geometry type to keep before the overlay,
+            if there may be mixed geometry types.
 
     Returns:
-      The updated GeoDataFrame
+        GeoDataFrame with overlayed and fixed geometries and columns from both
+        GeoDataFrames.
+
     """
 
     # Allowed operations

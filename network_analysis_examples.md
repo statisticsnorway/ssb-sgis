@@ -117,7 +117,9 @@ gs.qtm(od, "minutes", title="Travel time (minutes) from 1 to 1000 points.")
 ### get_route and get_k_routes: get one or more route per origin-destination pair
 
 ```python
-routes = nwa.get_k_routes(points.iloc[[0]], points.iloc[[1]], k=5, drop_middle_percent=50)
+routes = nwa.get_k_routes(
+    points.iloc[[0]], points.iloc[[1]], k=5, drop_middle_percent=50
+)
 
 gs.qtm(gs.buff(routes, 15), "k", title="k=5 low-cost routes", legend=False)
 ```

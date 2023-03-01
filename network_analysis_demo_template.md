@@ -21,8 +21,8 @@ The package supports four types of network analysis:
 - service_area: returns the roads/lines that can be reached within one or more breaks.
 
 ```python
-import warnings
 import os
+import warnings
 
 import geopandas as gpd
 import numpy as np
@@ -121,12 +121,7 @@ roads.head(3)
 The road data can be made into a Network instance like this:
 
 ```python
-nw = (
-    gs.Network(roads)
-    .close_network_holes(1.5)
-    .remove_isolated()
-    .cut_lines(100)
-)
+nw = gs.Network(roads).close_network_holes(1.5).remove_isolated().cut_lines(100)
 
 nw = gs.Network(roads)
 nw
@@ -477,8 +472,8 @@ nwa.log
   <tbody>
     <tr>
       <th>0</th>
-      <td>2023-03-01 19:23:00</td>
-      <td>0.4</td>
+      <td>2023-03-01 20:18:58</td>
+      <td>0.6</td>
       <td>od_cost_matrix</td>
       <td>1000</td>
       <td>1000</td>
@@ -501,8 +496,8 @@ nwa.log
     </tr>
     <tr>
       <th>1</th>
-      <td>2023-03-01 19:23:05</td>
-      <td>0.1</td>
+      <td>2023-03-01 20:19:09</td>
+      <td>0.2</td>
       <td>od_cost_matrix</td>
       <td>1</td>
       <td>1000</td>
@@ -574,36 +569,36 @@ routes
     <tr>
       <th>0</th>
       <td>1</td>
-      <td>242</td>
-      <td>13.438282</td>
-      <td>MULTILINESTRING Z ((257008.125 6652944.944 146...</td>
+      <td>665</td>
+      <td>5.741593</td>
+      <td>MULTILINESTRING Z ((264822.621 6652289.866 125...</td>
     </tr>
     <tr>
       <th>1</th>
       <td>1</td>
-      <td>830</td>
-      <td>2.685822</td>
-      <td>MULTILINESTRING Z ((262841.200 6651029.403 30....</td>
+      <td>285</td>
+      <td>17.053776</td>
+      <td>MULTILINESTRING Z ((273597.950 6652941.630 198...</td>
     </tr>
     <tr>
       <th>2</th>
       <td>1</td>
-      <td>71</td>
-      <td>3.704975</td>
-      <td>MULTILINESTRING Z ((263107.300 6650127.200 11....</td>
+      <td>15</td>
+      <td>14.734647</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>3</th>
       <td>1</td>
-      <td>61</td>
-      <td>12.778830</td>
-      <td>MULTILINESTRING Z ((261352.158 6649521.080 6.6...</td>
+      <td>392</td>
+      <td>14.155139</td>
+      <td>MULTILINESTRING Z ((265675.300 6645750.199 144...</td>
     </tr>
     <tr>
       <th>4</th>
       <td>1</td>
-      <td>788</td>
-      <td>15.435205</td>
+      <td>281</td>
+      <td>12.328688</td>
       <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
@@ -614,43 +609,43 @@ routes
       <td>...</td>
     </tr>
     <tr>
-      <th>93</th>
-      <td>1</td>
-      <td>528</td>
-      <td>12.976178</td>
-      <td>MULTILINESTRING Z ((257985.870 6653946.209 138...</td>
-    </tr>
-    <tr>
-      <th>94</th>
-      <td>1</td>
-      <td>405</td>
-      <td>6.500752</td>
-      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
-    </tr>
-    <tr>
       <th>95</th>
       <td>1</td>
-      <td>589</td>
-      <td>17.108065</td>
-      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
+      <td>476</td>
+      <td>8.006030</td>
+      <td>MULTILINESTRING Z ((268091.187 6652321.443 134...</td>
     </tr>
     <tr>
       <th>96</th>
       <td>1</td>
-      <td>99</td>
-      <td>14.114965</td>
-      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
+      <td>352</td>
+      <td>19.546321</td>
+      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
     </tr>
     <tr>
       <th>97</th>
       <td>1</td>
-      <td>178</td>
-      <td>9.629403</td>
-      <td>MULTILINESTRING Z ((266889.687 6647449.413 108...</td>
+      <td>64</td>
+      <td>7.665240</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
+    </tr>
+    <tr>
+      <th>98</th>
+      <td>1</td>
+      <td>460</td>
+      <td>2.745346</td>
+      <td>MULTILINESTRING Z ((262841.200 6651029.403 30....</td>
+    </tr>
+    <tr>
+      <th>99</th>
+      <td>1</td>
+      <td>104</td>
+      <td>6.374744</td>
+      <td>MULTILINESTRING Z ((265611.900 6651045.190 94....</td>
     </tr>
   </tbody>
 </table>
-<p>98 rows × 4 columns</p>
+<p>100 rows × 4 columns</p>
 </div>
 
 ![png](network_analysis_demo_template_files/network_analysis_demo_template_29_1.png)
@@ -736,92 +731,92 @@ sa
     <tr>
       <th>0</th>
       <td>5</td>
-      <td>296</td>
-      <td>MULTILINESTRING Z ((258018.154 6650524.353 16....</td>
+      <td>42</td>
+      <td>MULTILINESTRING Z ((261699.300 6650469.800 37....</td>
     </tr>
     <tr>
       <th>1</th>
       <td>10</td>
-      <td>296</td>
-      <td>MULTILINESTRING Z ((257935.700 6651969.000 80....</td>
+      <td>42</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>2</th>
       <td>15</td>
-      <td>296</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>42</td>
+      <td>MULTILINESTRING Z ((266903.800 6651086.560 114...</td>
     </tr>
     <tr>
       <th>3</th>
       <td>5</td>
-      <td>743</td>
-      <td>MULTILINESTRING Z ((267022.130 6646592.170 135...</td>
+      <td>816</td>
+      <td>MULTILINESTRING Z ((258314.423 6653716.416 128...</td>
     </tr>
     <tr>
       <th>4</th>
       <td>10</td>
-      <td>743</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>816</td>
+      <td>MULTILINESTRING Z ((257636.090 6655993.340 388...</td>
     </tr>
     <tr>
       <th>5</th>
       <td>15</td>
-      <td>743</td>
-      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
+      <td>816</td>
+      <td>MULTILINESTRING Z ((255703.040 6661235.800 176...</td>
     </tr>
     <tr>
       <th>6</th>
       <td>5</td>
-      <td>322</td>
-      <td>MULTILINESTRING Z ((261416.340 6653760.610 108...</td>
+      <td>592</td>
+      <td>MULTILINESTRING Z ((259185.676 6652656.707 76....</td>
     </tr>
     <tr>
       <th>7</th>
       <td>10</td>
-      <td>322</td>
-      <td>MULTILINESTRING Z ((257922.652 6655163.375 336...</td>
+      <td>592</td>
+      <td>MULTILINESTRING Z ((256747.750 6655744.370 182...</td>
     </tr>
     <tr>
       <th>8</th>
       <td>15</td>
-      <td>322</td>
+      <td>592</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>9</th>
       <td>5</td>
-      <td>25</td>
-      <td>MULTILINESTRING Z ((261416.340 6653760.610 108...</td>
+      <td>208</td>
+      <td>MULTILINESTRING Z ((267287.202 6646656.305 155...</td>
     </tr>
     <tr>
       <th>10</th>
       <td>10</td>
-      <td>25</td>
-      <td>MULTILINESTRING Z ((264242.071 6648335.139 18....</td>
+      <td>208</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>11</th>
       <td>15</td>
-      <td>25</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>208</td>
+      <td>MULTILINESTRING Z ((266903.800 6651086.560 114...</td>
     </tr>
     <tr>
       <th>12</th>
       <td>5</td>
-      <td>916</td>
-      <td>MULTILINESTRING Z ((258998.250 6649650.090 15....</td>
+      <td>906</td>
+      <td>MULTILINESTRING Z ((258314.423 6653716.416 128...</td>
     </tr>
     <tr>
       <th>13</th>
       <td>10</td>
-      <td>916</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>906</td>
+      <td>MULTILINESTRING Z ((256747.750 6655744.370 182...</td>
     </tr>
     <tr>
       <th>14</th>
       <td>15</td>
-      <td>916</td>
-      <td>MULTILINESTRING Z ((266668.900 6650768.500 108...</td>
+      <td>906</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
   </tbody>
 </table>
@@ -956,12 +951,8 @@ sa = sa.drop_duplicates(["source", "target"])
 print("rows after drop_duplicates:", len(sa))
 ```
 
-    c:\Users\ort\AppData\Local\Programs\Python\Python311\Lib\site-packages\geopandas\array.py:1406: UserWarning: CRS not set for some of the concatenation inputs. Setting output's CRS as ETRS89 / UTM zone 33N (the single non-null crs provided).
-      warnings.warn(
-
-
-    rows before drop_duplicates: 684815
-    rows after drop_duplicates: 141180
+    rows before drop_duplicates: 612026
+    rows after drop_duplicates: 142986
 
 Let's check the log:
 
@@ -1014,12 +1005,12 @@ nwa.log
   <tbody>
     <tr>
       <th>0</th>
-      <td>2023-03-01 19:23:00</td>
-      <td>0.4</td>
+      <td>2023-03-01 20:18:58</td>
+      <td>0.6</td>
       <td>od_cost_matrix</td>
       <td>1000</td>
       <td>1000.0</td>
-      <td>0.598700</td>
+      <td>0.5987</td>
       <td>15.063283</td>
       <td>True</td>
       <td>87</td>
@@ -1038,12 +1029,12 @@ nwa.log
     </tr>
     <tr>
       <th>1</th>
-      <td>2023-03-01 19:23:05</td>
-      <td>0.1</td>
+      <td>2023-03-01 20:19:09</td>
+      <td>0.2</td>
       <td>od_cost_matrix</td>
       <td>1</td>
       <td>1000.0</td>
-      <td>0.200000</td>
+      <td>0.2000</td>
       <td>11.286299</td>
       <td>True</td>
       <td>87</td>
@@ -1062,21 +1053,21 @@ nwa.log
     </tr>
     <tr>
       <th>2</th>
-      <td>2023-03-01 19:23:42</td>
-      <td>0.6</td>
+      <td>2023-03-01 20:19:50</td>
+      <td>0.7</td>
       <td>get_route</td>
       <td>1</td>
       <td>100.0</td>
-      <td>0.000000</td>
-      <td>11.928486</td>
+      <td>0.0000</td>
+      <td>11.298471</td>
       <td>True</td>
       <td>87</td>
       <td>minutes</td>
       <td>...</td>
-      <td>8.818364</td>
-      <td>12.772216</td>
-      <td>15.090384</td>
-      <td>4.769787</td>
+      <td>7.916974</td>
+      <td>11.455953</td>
+      <td>14.137341</td>
+      <td>4.632490</td>
       <td>NaN</td>
       <td>None</td>
       <td>None</td>
@@ -1086,21 +1077,21 @@ nwa.log
     </tr>
     <tr>
       <th>3</th>
-      <td>2023-03-01 19:27:55</td>
-      <td>4.2</td>
+      <td>2023-03-01 20:24:36</td>
+      <td>4.7</td>
       <td>get_route_frequencies</td>
       <td>100</td>
       <td>100.0</td>
-      <td>0.000000</td>
-      <td>0.082265</td>
+      <td>0.0000</td>
+      <td>0.074777</td>
       <td>True</td>
       <td>87</td>
       <td>minutes</td>
       <td>...</td>
-      <td>0.016916</td>
-      <td>0.048223</td>
-      <td>0.099562</td>
-      <td>0.251234</td>
+      <td>0.016905</td>
+      <td>0.047149</td>
+      <td>0.097674</td>
+      <td>0.091438</td>
       <td>NaN</td>
       <td>None</td>
       <td>None</td>
@@ -1110,21 +1101,21 @@ nwa.log
     </tr>
     <tr>
       <th>4</th>
-      <td>2023-03-01 19:30:57</td>
-      <td>3.0</td>
+      <td>2023-03-01 20:28:59</td>
+      <td>4.3</td>
       <td>get_route_frequencies</td>
       <td>100</td>
       <td>100.0</td>
-      <td>0.000000</td>
-      <td>40.267548</td>
+      <td>0.0000</td>
+      <td>39.394569</td>
       <td>True</td>
       <td>87</td>
       <td>meters</td>
       <td>...</td>
-      <td>9.849403</td>
-      <td>25.005000</td>
-      <td>48.124222</td>
-      <td>63.981975</td>
+      <td>9.645208</td>
+      <td>24.764460</td>
+      <td>47.777602</td>
+      <td>54.211882</td>
       <td>NaN</td>
       <td>None</td>
       <td>None</td>
@@ -1134,12 +1125,12 @@ nwa.log
     </tr>
     <tr>
       <th>5</th>
-      <td>2023-03-01 19:31:10</td>
-      <td>0.1</td>
+      <td>2023-03-01 20:29:18</td>
+      <td>0.2</td>
       <td>service_area</td>
       <td>5</td>
       <td>NaN</td>
-      <td>0.000000</td>
+      <td>0.0000</td>
       <td>10.000000</td>
       <td>True</td>
       <td>87</td>
@@ -1158,12 +1149,12 @@ nwa.log
     </tr>
     <tr>
       <th>6</th>
-      <td>2023-03-01 19:31:19</td>
+      <td>2023-03-01 20:29:30</td>
       <td>0.1</td>
       <td>service_area</td>
       <td>1</td>
       <td>NaN</td>
-      <td>0.000000</td>
+      <td>0.0000</td>
       <td>5.500000</td>
       <td>True</td>
       <td>87</td>
@@ -1182,12 +1173,12 @@ nwa.log
     </tr>
     <tr>
       <th>7</th>
-      <td>2023-03-01 19:31:34</td>
-      <td>0.2</td>
+      <td>2023-03-01 20:29:53</td>
+      <td>0.3</td>
       <td>service_area</td>
       <td>100</td>
       <td>NaN</td>
-      <td>0.000146</td>
+      <td>0.0000</td>
       <td>5.000000</td>
       <td>True</td>
       <td>87</td>
@@ -1494,34 +1485,26 @@ You can also calculate minutes from a speed limit column. But you might want to 
 You can set a flat speed that will be used for the entire network. Decent if the travel mode is walking, bike, boat etc.
 
 ```python
-nw = nw.make_directed_network(
+bike_nw = nw.make_directed_network(
     direction_col="oneway",
     direction_vals_bft=("B", "FT", "TF"),
-    speed_col=None,
-    flat_speed=None,
+    flat_speed=20,
 )
 
-nw.gdf["minutes"]
+bike_nw.gdf["minutes"]
 ```
 
-    c:\Users\ort\git\ssb-gis-utils\src\gis_utils\directednetwork.py:118: UserWarning: Minute column will not be calculated when both 'minute_cols', 'speed_col' and 'flat_speed' is None
-      warnings.warn(
-
-
-
-
-
-    0         0.216611
-    1         0.028421
-    2         0.047592
-    3         0.026180
-    4         0.023978
+    0         30.698795
+    1          8.055821
+    2         13.489731
+    3          7.420639
+    4          6.796531
                 ...
-    339912    0.007564
-    339913    0.020246
-    339914    0.036810
-    339915    0.003019
-    339916    0.036975
+    339912     5.252557
+    339913     5.778109
+    339914    10.505145
+    339915     0.861647
+    339916    10.552264
     Name: minutes, Length: 339917, dtype: float64
 
 ## The NetworkAnalysisRules

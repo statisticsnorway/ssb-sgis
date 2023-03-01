@@ -1,8 +1,6 @@
 import warnings
-from random import random
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
@@ -86,7 +84,6 @@ def to_single_geom_type(
 
     Raises:
         TypeError if incorrect gdf type. ValueError if incorrect geom_type.
-
     """
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
@@ -177,10 +174,10 @@ def close_holes(
 
     Args:
       polygons: GeoDataFrame, GeoSeries or shapely Geometry.
-      max_km2 (int | None): if None (default), all holes are closed.
+      max_km2: if None (default), all holes are closed.
         Otherwise, closes holes with an area below the specified number in
         square kilometers if the crs unit is in meters.
-      copy (bool): if True (default), the input GeoDataFrame or GeoSeries is copied.
+      copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
         Defaults to True
 
     Returns:
@@ -239,9 +236,8 @@ def gdf_concat(
     geometry: str = "geometry",
     **kwargs,
 ) -> GeoDataFrame:
-    """
-    concatinates GeoDataFrames rowwise.
-    Ignores index and changes to common crs.
+    """Sets common crs and concatinates GeoDataFrames rowwise while ignoring index
+
     If no crs is given, chooses the first crs in the list of GeoDataFrames.
 
     Args:
@@ -284,18 +280,19 @@ def gdf_concat(
 def to_gdf(
     geom: GeoSeries | Geometry | str | bytes, crs=None, **kwargs
 ) -> GeoDataFrame:
-    """
-    Converts a GeoSeries, shapely Geometry, wkt string or wkb bytes object to a
-    GeoDataFrame.
+    """Converts GeoSeries, shapely Geometry, wkt string or wkb bytes to a GeoDataFrame.
 
     Args:
         geom: the object to be converted to a GeoDataFrame
-        crs: if None (default), it uses the crs of the GeoSeries if GeoSeries
+        crs: if None (the default), it uses the crs of the GeoSeries if GeoSeries
             is the input type. Otherwise, an exception is raised, saying that
-            crs has to be specified.
+            crs must be specified.
 
     Returns:
         A GeoDataFrame
+
+    Raises:
+        ValueError if 'crs' is not specified and the input type is not GeoSeries
 
     """
 
@@ -323,7 +320,14 @@ def to_gdf(
 
 
 def push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:
-    """Makes the geometry column the leftmost column in the GeoDataFrame."""
+    """Makes the geometry column the rightmost column in the GeoDataFrame.
+
+    Args:
+        gdf: GeoDataFrame
+
+    Returns:
+        The GeoDataFrame with the geometry column pushed all the way to the right
+    """
     geom_col = gdf._geometry_column_name
     return gdf.reindex(columns=[c for c in gdf.columns if c != geom_col] + [geom_col])
 
@@ -360,33 +364,46 @@ def clean_clip(
 
 
 def sjoin(
-    left_gdf: GeoDataFrame, right_gdf: GeoDataFrame, drop_dupcol: bool = False, **kwargs
+    left_df: GeoDataFrame, right_df: GeoDataFrame, drop_dupcol: bool = False, **kwargs
 ) -> GeoDataFrame:
     """geopandas.sjoin that removes index columns before and after
 
     geopandas.sjoin returns the column 'index_right', which throws
     an error the next time.
+
+    Args:
+        left_df: GeoDataFrame
+        right_df: GeoDataFrame
+        drop_dupcol: optionally remove all columns in right_df that is in left_df.
+            Defaults to False, meaning no columns are dropped.
+        **kwargs: keyword arguments taken by geopandas.sjoin
+
+    Returns:
+        A GeoDataFrame with the geometries of left_df duplicated one time for each
+        geometry from right_gdf that intersects. The GeoDataFrame also gets all
+        columns from left_gdf and right_gdf, unless drop_dupcol is True.
+
     """
 
     INDEX_COLS = "index|level_"
 
-    left_gdf = left_gdf.loc[:, ~left_gdf.columns.str.contains(INDEX_COLS)]
-    right_gdf = right_gdf.loc[:, ~right_gdf.columns.str.contains(INDEX_COLS)]
+    left_df = left_df.loc[:, ~left_df.columns.str.contains(INDEX_COLS)]
+    right_df = right_df.loc[:, ~right_df.columns.str.contains(INDEX_COLS)]
 
     if drop_dupcol:
-        right_gdf = right_gdf.loc[
+        right_df = right_df.loc[
             :,
-            right_gdf.columns.difference(
-                left_gdf.columns.difference([left_gdf._geometry_column_name])
+            right_df.columns.difference(
+                left_df.columns.difference([left_df._geometry_column_name])
             ),
         ]
 
     try:
-        joined = left_gdf.sjoin(right_gdf, **kwargs)
+        joined = left_df.sjoin(right_df, **kwargs)
     except Exception:
-        left_gdf = clean_geoms(left_gdf)
-        right_gdf = clean_geoms(right_gdf)
-        joined = left_gdf.sjoin(right_gdf, **kwargs)
+        left_df = clean_geoms(left_df)
+        right_df = clean_geoms(right_df)
+        joined = left_df.sjoin(right_df, **kwargs)
 
     return joined.loc[:, ~joined.columns.str.contains(INDEX_COLS)]
 
@@ -394,14 +411,16 @@ def sjoin(
 def snap_to(
     points: GeoDataFrame | GeoSeries,
     snap_to: GeoDataFrame | GeoSeries,
+    *,
     max_dist: int | None = None,
     to_node: bool = False,
     snap_to_id: str | None = None,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
-    """
-    It takes a GeoDataFrame or GeoSeries of points and snaps them to the nearest point in a second
-    GeoDataFrame or GeoSeries
+    """Snaps a set of points to the nearest geometry
+
+    It takes a GeoDataFrame or GeoSeries of points and snaps them to the nearest
+    geometry in a second GeoDataFrame or GeoSeries.
 
     Args:
         points (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries of points to snap
@@ -413,11 +432,11 @@ def snap_to(
         snap_to_id: name of a column in the snap_to data to use as an identifier for the geometry it was snapped to.
             Defaults to None.
         copy (bool): If True, a copy of the GeoDataFrame is returned. Otherwise, the original
-        GeoDataFrame. Defaults to True
+            GeoDataFrame. Defaults to True
 
     Returns:
-      A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the snap_to
-    GeoDataFrame or GeoSeries.
+        A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the snap_to
+        GeoDataFrame or GeoSeries.
     """
 
     if copy:
@@ -509,12 +528,11 @@ def find_neighbours(
     Finds all the geometries in another GeoDataFrame that intersects with the first geometry
 
     Args:
-        gdf (GeoDataFrame | GeoSeries): the geometry
-        possible_neighbours (GeoDataFrame | GeoSeries): the geometries that you want to find neighbours
-            for
-        id_col (str): The column in the GeoDataFrame that contains the unique identifier for each
+        gdf: GeoDataFrame or GeoSeries
+        possible_neighbours: GeoDataFrame or GeoSeries
+        id_col: The column in the GeoDataFrame that contains the unique identifier for each
             geometry.
-        max_dist (int): The maximum distance between the two geometries. Defaults to 0
+        max_dist: The maximum distance between the two geometries. Defaults to 0
 
     Returns:
       A list of unique values from the id_col column in the joined dataframe.
