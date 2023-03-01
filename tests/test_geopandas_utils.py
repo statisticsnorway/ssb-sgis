@@ -180,19 +180,6 @@ def test_neighbors(gdf_fixture):
     assert naboer == [4, 5, 7, 8, 9], "feil i find_neighbors"
 
 
-def test_gridish(gdf_fixture):
-    copy = gdf_fixture.copy()
-    copy = gs.gridish(copy, 2000)
-    assert len(copy.gridish.unique()) == 4
-
-    copy = gs.gridish(copy, 5000)
-    assert len(copy.gridish.unique()) == 2
-
-    copy = gs.gridish(copy, 1000, x2=True)
-    assert len(copy.gridish.unique()) == 7
-    assert len(copy.gridish2.unique()) == 7
-
-
 def test_snap(gdf_fixture):
     punkter = gdf_fixture[gdf_fixture.length == 0]
     annet = gdf_fixture[gdf_fixture.length != 0]
@@ -209,15 +196,6 @@ def test_snap(gdf_fixture):
         geom in list(gs.to_multipoint(annet).explode().geometry)
         for geom in snapped.geometry
     )
-
-
-def test_count_within_distance(gdf_fixture):
-    innen = gs.count_within_distance(gdf_fixture, gdf_fixture)
-    assert innen.n.sum() == 11
-    innen = gs.count_within_distance(gdf_fixture, gdf_fixture, 50)
-    assert innen.n.sum() == 21
-    innen = gs.count_within_distance(gdf_fixture, gdf_fixture, 10000)
-    assert innen.n.sum() == 81
 
 
 def test_to_multipoint(gdf_fixture):

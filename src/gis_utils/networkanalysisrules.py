@@ -44,23 +44,26 @@ class NetworkAnalysisRules:
             DirectedNetwork class.
         search_tolerance: distance to search for nodes in the network.
             Points further away than the search_tolerance will not find any paths
-        search_factor: number of meters and percent to add to the closest distance to a node.
-            So if the closest node is 1 meter away, paths will be created from the point and
-            all nodes within 11.1 meters. If the closest node is 100 meters away, paths will be created
-            with all nodes within 120 meters.
-        split_lines: If False (the default), points will be connected to the nodes of the network,
-            i.e. the destinations of the lines. If True, the closest line to each point will be split in two at the
-            closest part of the line to the point. The weight of the split lines are then adjusted to the ratio
-            to the original length. Defaults to False because it's faster and doesn't make a huge difference in
-            most cases. Note: the split lines stays with the network until it is re-instantiated.
-        weight_to_nodes_dist: If the weight is 'meters', setting this to True will make the
-            edge between origins/destinations and the network count equal to its straight line distance.
+        search_factor: number of meters and percent to add to the closest distance to a
+            node. So if the closest node is 1 meter away, paths will be created from
+            the point and all nodes within 11.1 meters. If the closest node is 100
+            meters away, paths will be created with all nodes within 120 meters.
+        split_lines: If False (the default), points will be connected to the nodes of
+            the network, i.e. the destinations of the lines. If True, the closest line
+            to each point will be split in two at the closest part of the line to the
+            point. The weight of the split lines are then adjusted to the ratio to the
+            original length. Defaults to False because it's faster and doesn't make a
+            huge difference in most cases. Note: the split lines stays with the network
+            until it is re-instantiated.
+        weight_to_nodes_dist: If the weight is 'meters', setting this to True will make
+            the edge between origins/destinations and the network count equal to its
+            straight line distance.
         weight_to_nodes_kmh: if the weight is 'minutes', this will give a weight for
             the edge between the origins/destinations and the network nodes,
             where the weight will be its straight-line distance converted to minutes
             in the speed specified.
-        weight_to_nodes_mph: same as weight_to_nodes_kmh, only that you speficy the speed
-            in miles per hour
+        weight_to_nodes_mph: same as weight_to_nodes_kmh, only that you speficy the
+            speed in miles per hour
     """
 
     def _update_rules(self):
@@ -107,7 +110,8 @@ class NetworkAnalysisRules:
         elif "meter" in self.weight or "metre" in self.weight:
             if gdf.crs.axis_info[0].unit_name != "metre":
                 raise ValueError(
-                    "the crs of the roads have to have units in 'meters' when the weight is 'meters'."
+                    "the crs of the roads have to have units in 'meters' when the "
+                    "weight is 'meters'."
                 )
 
             gdf[self.weight] = gdf.length
@@ -144,7 +148,8 @@ class NetworkAnalysisRules:
         nans = sum(df[col].isna())
         if nans:
             warnings.warn(
-                f"Warning: {nans} rows have missing values in the '{col}' column. Removing these rows."
+                f"Warning: {nans} rows have missing values in the '{col}' column. "
+                "Removing these rows."
             )
             df = df.loc[df[col].notna()]
 
@@ -155,7 +160,8 @@ class NetworkAnalysisRules:
         negative = sum(df[col] < 0)
         if negative:
             warnings.warn(
-                f"Warning: {negative} rows have a 'col' less than 0. Removing these rows."
+                f"Warning: {negative} rows have a 'col' less than 0. Removing these "
+                "rows."
             )
             df = df.loc[df[col] >= 0]
 
@@ -167,6 +173,7 @@ class NetworkAnalysisRules:
             df[col] = df[col].astype(float)
         except ValueError:
             raise ValueError(
-                f"The '{col}' column must be numeric. Got characters that couldn't be interpreted as numbers."
+                f"The '{col}' column must be numeric. Got characters that couldn't be "
+                "interpreted as numbers."
             )
         return df

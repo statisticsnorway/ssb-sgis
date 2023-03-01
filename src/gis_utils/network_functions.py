@@ -10,7 +10,7 @@ from shapely.ops import unary_union
 from sklearn.neighbors import NearestNeighbors
 
 from .buffer_dissolve_explode import buff
-from .distances import get_k_nearest_neighbors
+from .distances import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbours
 from .geopandas_utils import gdf_concat, push_geom_col, snap_to
 
 
@@ -22,10 +22,10 @@ def get_largest_component(lines: GeoDataFrame) -> GeoDataFrame:
     and maps this as the value '1' in the column 'connected'.
 
     Args:
-      lines: GeoDataFrame
+      lines: A GeoDataFrame of lines
 
     Returns:
-      A GeoDataFrame with a new boolean column "connected"
+      A GeoDataFrame with a new column "connected"
     """
 
     if "source" not in lines.columns or "target" not in lines.columns:
@@ -49,15 +49,14 @@ def get_largest_component(lines: GeoDataFrame) -> GeoDataFrame:
 
 
 def get_component_size(lines: GeoDataFrame) -> GeoDataFrame:
-    """
-    It takes a GeoDataFrame of lines, and returns a GeoDataFrame of lines with a new column called
-    "component_size" that indicates the size of the component that each line is a part of
+    """Creates the column "component_size", which indicates the size of the network
+    component the line is a part of.
 
     Args:
-      lines (GeoDataFrame): GeoDataFrame
+        lines: GeoDataFrame
 
     Returns:
-      A GeoDataFrame with the size of the component that each line is in
+        A GeoDataFrame with a new column "component_size"
     """
 
     if "source" not in lines.columns or "target" not in lines.columns:
@@ -86,18 +85,18 @@ def split_lines_at_closest_point(
     points: GeoDataFrame,
     max_dist: int | None = None,
 ) -> DataFrame:
-    """Snaps points to lines, then splits the lines in two as the snap point
+    """Snaps points to lines and splits the lines in two at the snap point
 
     Args:
-      lines: GeoDataFrame of lines that will be split
-      points: GeoDataFrame of points to split the lines with
-      max_dist: the maximum distance between the point and the line.
-        Points further away than max_dist will not split any lines.
-        Defaults to None.
+        lines: GeoDataFrame of lines that will be split
+        points: GeoDataFrame of points to split the lines with
+        max_dist: the maximum distance between the point and the line.
+            Points further away than max_dist will not split any lines.
+            Defaults to None.
 
     Returns:
-      A GeoDataFrame with the same columns as the input lines, but with the lines split at the closest
-    point to the points.
+        A GeoDataFrame with the same columns as the input lines, but with the lines split at the closest
+        point to the points.
 
     Raises:
         ValueError if the crs of the input data differs.
@@ -109,9 +108,10 @@ def split_lines_at_closest_point(
     if points.crs != lines.crs:
         raise ValueError("crs mismatch:", points.crs, "and", lines.crs)
 
-    # move the points to the closest exact point of the line
-    # and get the line index
     lines["temp_idx_"] = lines.index
+
+    # move the points to the nearest exact point of the line (to_node=False)
+    # and get the line index ('snap_to_id')
     snapped = snap_to(
         points,
         lines,
@@ -124,24 +124,28 @@ def split_lines_at_closest_point(
     relevant_lines = lines.loc[condition]
     the_other_lines = lines.loc[~condition]
 
-    snapped["point_coords"] = [(geom.x, geom.y) for geom in snapped.geometry]
-
-    # need consistent coordinate dimensions.
+    # we need consistent coordinate dimensions later
     # doing it down here to not overwrite the original data
     relevant_lines.geometry = force_2d(relevant_lines.geometry)
     snapped.geometry = force_2d(snapped.geometry)
 
-    # splitting geometry doesn't work, so doing a buffer and difference
-    # this means we have to move the new of the lines to the actual points later
+    # split the lines with buffer + difference, since shaply.split usually doesn't work
     splitted = relevant_lines.overlay(
         buff(snapped, BUFFDIST), how="difference"
     ).explode(ignore_index=True)
 
+    # the endpoints of the new lines are now sligtly off. To get the exact snapped
+    # point coordinates, using get_k_nearest_neighbors. This will map the sligtly
+    # off line endpoints with the point the line was split by.
+
+    # columns that will be used as id_cols in get_k_nearest_neighbors
     splitted["splitidx"] = splitted.index
+    snapped["point_coords"] = [(geom.x, geom.y) for geom in snapped.geometry]
 
     # get the endpoints of the lines as columns
     splitted = make_edge_coords_cols(splitted)
 
+    # create geodataframes with the source and target points as geometries
     splitted_source = GeoDataFrame(
         {
             "splitidx": splitted["splitidx"].reset_index(drop=True),
@@ -159,10 +163,8 @@ def split_lines_at_closest_point(
         }
     )
 
-    # matching the snapped points with the new sources and targets
-    # low max_dist makes sure we only get either source or target
-    #  get only the sources/targets where the lines were split
-    # use the point coordinates as id
+    # find the nearest snapped point for each source and target of the lines
+    # low 'max_dist' makes sure we only get either source or target of the split lines
     dists_source = get_k_nearest_neighbors(
         splitted_source,
         snapped,
@@ -178,28 +180,29 @@ def split_lines_at_closest_point(
         id_cols=("splitidx", "point_coords"),
     )
 
-    # using the
-    # dictionaries that map the split lines with the point it was split by
+    # use the id columns from k-neighbours to map line id with snapped point
     splitdict_source = {
         idx: coords
-        for idx, coords in zip(dists_source.splitidx, dists_source.point_coords)
+        for idx, coords in zip(dists_source["splitidx"], dists_source["point_coords"])
     }
     splitdict_target = {
         idx: coords
-        for idx, coords in zip(dists_target.splitidx, dists_target.point_coords)
+        for idx, coords in zip(dists_target["splitidx"], dists_target["point_coords"])
     }
 
-    # for each line where it was the source that was split,
-    # change the first point of the line to the point coordinate it was split by
-    # and for the lines where the target was split, change the last point of the line
+    # now, we can finally replace the source/target coordinate with the coordinates of
+    # the snapped points.
 
+    # loop for each line where the source is the endpoint that was split
+    # change the first point of the line to the point it was split by
     for idx in dists_source.splitidx:
         line = splitted.loc[idx, "geometry"]
         coordslist = list(line.coords)
         coordslist[0] = splitdict_source[idx]
         splitted.loc[splitted.splitidx == idx, "geometry"] = LineString(coordslist)
 
-    # change the last point of each line that has a target by the point
+    # same for the lines where the target was split, but change the last point of the
+    # line
     for idx in dists_target.splitidx:
         line = splitted.loc[idx, "geometry"]
         coordslist = list(line.coords)
@@ -222,7 +225,8 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
     Args:
       gdf (GeoDataFrame): GeoDataFrame
       max_length (int): The maximum length of the lines in the output GeoDataFrame.
-      ignore_index: If True, the resulting GeoDataFrame will have a simple RangeIndex. If False, you will get a
+      ignore_index: If True, the resulting GeoDataFrame will have a simple RangeIndex.
+        If False, you will get a
       MultiIndex. Defaults to True
 
     Returns:
@@ -234,13 +238,13 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
 
     gdf = gdf.explode(ignore_index=ignore_index)
 
-    over_max_length = gdf.loc[gdf.length > max_length]
+    long_lines = gdf.loc[gdf.length > max_length]
 
-    if not len(over_max_length):
+    if not len(long_lines):
         return gdf
 
     def cut(line, distance):
-        """from the shapely docs"""
+        """from the shapely docs, but returns unary_union."""
         if distance <= 0.0 or distance >= line.length:
             return line
         coords = list(line.coords)
@@ -259,27 +263,25 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
                     ]
                 )
 
-    cut_vektorisert = np.vectorize(cut)
+    cut_vectorised = np.vectorize(cut)
 
     for x in [10, 5, 1]:
-        max_ = max(over_max_length.length)
+        max_ = max(long_lines.length)
         while max_ > max_length * x + 1:
-            max_ = max(over_max_length.length)
+            max_ = max(long_lines.length)
 
-            over_max_length["geometry"] = cut_vektorisert(
-                over_max_length.geometry, max_length
-            )
+            long_lines["geometry"] = cut_vectorised(long_lines.geometry, max_length)
 
-            over_max_length = over_max_length.explode(ignore_index=ignore_index)
+            long_lines = long_lines.explode(ignore_index=ignore_index)
 
-            if max_ == max(over_max_length.length):
+            if max_ == max(long_lines.length):
                 break
 
-    over_max_length = over_max_length.explode(ignore_index=ignore_index)
+    long_lines = long_lines.explode(ignore_index=ignore_index)
 
-    under_max_length = gdf.loc[gdf.length <= max_length]
+    short_lines = gdf.loc[gdf.length <= max_length]
 
-    return pd.concat([under_max_length, over_max_length], ignore_index=ignore_index)
+    return pd.concat([short_lines, long_lines], ignore_index=ignore_index)
 
 
 def close_network_holes(
@@ -289,21 +291,23 @@ def close_network_holes(
     deadends_only: bool = False,
     hole_col: str | None = "hole",
 ):
-    """
-    It fills holes in the network by finding the nearest neighbors of each node, and then connecting the
-    nodes that are within a certain distance of each other
+    """Fills gaps shorter than 'max_dist' in a GeoDataFrame of lines
+
+    Fills holes in the network by finding the nearest neighbors of each node, and
+    connecting the nodes that are within a certain distance from each other.
 
     Args:
-      lines: GeoDataFrame with lines
-      max_dist: The maximum distance between two nodes to be considered a hole.
-      min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
-      deadends_only: If True, only lines that connect dead ends will be created. If False (the default),
-        deadends might be connected to nodes that are not deadends.
-      hole_col: If you want to keep track of which lines were added, you can add a column
-        with a value of 1. Defaults to 'hole'
+        lines: GeoDataFrame with lines
+        max_dist: The maximum distance between two nodes to be considered a hole.
+        min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
+        deadends_only: If True, only lines that connect dead ends will be created. If
+            False (the default), deadends might be connected to nodes that are not
+            deadends.
+        hole_col: If you want to keep track of which lines were added, you can add a
+            column with a value of 1. Defaults to 'hole'
 
     Returns:
-      The input GeoDataFrame with new lines added
+        The input GeoDataFrame with new lines added
     """
 
     lines, nodes = make_node_ids(lines)
@@ -330,21 +334,26 @@ def close_network_holes(
     return gdf_concat([lines, new_lines])
 
 
-def _find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10):
+def _find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10, length_factor=0.25):
     """
     creates a straight line between deadends and the closest node in a
     forward-going direction, if the distance is between the max_dist and min_dist.
 
     Args:
-      lines: the lines you want to find holes in
-      nodes: a GeoDataFrame of nodes
-      max_dist: The maximum distance between the dead end and the node it should be connected to.
-      min_dist: The minimum distance between the dead end and the node. Defaults to 0
-      k: number of nearest neighbors to consider. Defaults to 10
+        lines: the lines you want to find holes in
+        nodes: a GeoDataFrame of nodes
+        max_dist: The maximum distance between the dead end and the node it should be
+            connected to.
+        min_dist: The minimum distance between the dead end and the node. Defaults to 0
+        k: number of nearest neighbors to consider. Defaults to 10
+        length_factor:
 
     Returns:
-      A GeoDataFrame with the shortest line between the two points.
+        A GeoDataFrame with the shortest line between the two points.
     """
+
+    # wkt: well-known text, e.g. "POINT (60 10)"
+
     crs = nodes.crs
 
     # velger ut nodene som kun finnes i én lenke. Altså blindveier i en networksanalyse.
@@ -371,53 +380,57 @@ def _find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10):
         deadends_other_end["wkt_other_end"], crs=crs
     )
 
-    deadends_array = np.array(
-        [(x, y) for x, y in zip(deadends.geometry.x, deadends.geometry.y)]
-    )
+    deadends_array = coordinate_array(deadends)
 
-    nodes_array = np.array([(x, y) for x, y in zip(nodes.geometry.x, nodes.geometry.y)])
+    nodes_array = coordinate_array(nodes)
 
-    # finn nærmeste naboer
-    k = k if len(deadends) >= k else len(deadends)
-    nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(nodes_array)
-    all_dists, all_indices = nbr.kneighbors(deadends_array)
+    all_dists, all_indices = k_nearest_neighbours(deadends_array, nodes_array, k=k)
 
-    fra = []
-    til = []
+    # now to find the lines that go in the right direction. Collecting the startpoints
+    # and endpoints of the new lines in lists, looping through the k neighbour points
+    startpoints = []
+    endpoints = []
     for i in np.arange(1, k):
-        len_naa = len(fra)
+        # to break out of the loop if no endpoints that meet the condition are found
+        len_now = len(startpoints)
 
+        # selecting the arrays for the k neighbour
         indices = all_indices[:, i]
         dists = all_dists[:, i]
 
+        # get the distance from the other end of the deadends to the k neighbours
         dists_other_end = deadends_other_end.distance(nodes.loc[indices], align=False)
 
-        # get the deadend wkt and the node wkt if the distance is
-        # between max_dist and min_dist and the distance is (considerably) shorter
-        # than the distance from the other end of the line.
-        fratil = [
-            (geom, nodes.loc[idx, "wkt"])
-            for geom, idx, dist, dist_andre, length in zip(
-                deadends["wkt"],
-                indices,
-                dists,
-                dists_other_end,
-                deadends_lengths,
-                strict=True,
-            )
-            if dist < max_dist and dist > min_dist and dist < dist_andre - length * 0.25
+        # select the distances between min_dist and max_dist that are also shorter than
+        # the distance from the other side of the line, meaning the new line will go
+        # forward. All arrays have the same shape, and can be easily filtered by index
+        # The node wkts have to be extracted after indexing 'indices'
+        condition = (
+            (dists < max_dist)
+            & (dists > min_dist)
+            & (dists < dists_other_end - deadends_lengths * length_factor)
+        )
+        from_wkt = deadends.loc[condition, "wkt"]
+        to_idx = indices[condition]
+        to_wkt = nodes.loc[to_idx, "wkt"]
+
+        # now add the wkts to the lists of startpoints and endpoints. If the startpoint
+        # is already added, the new wks will not be added again
+        endpoints = endpoints + [
+            t for f, t in zip(from_wkt, to_wkt) if f not in startpoints
+        ]
+        startpoints = startpoints + [
+            f for f, _ in zip(from_wkt, to_wkt) if f not in startpoints
         ]
 
-        til = til + [t for f, t in fratil if f not in fra]
-        fra = fra + [f for f, _ in fratil if f not in fra]
-
-        if len_naa == len(fra):
+        # break out of the loop when no new endpoints meet the condition
+        if len_now == len(startpoints):
             break
 
     # make GeoDataFrame with straight lines
-    fra = gpd.GeoSeries.from_wkt(fra, crs=crs)
-    til = gpd.GeoSeries.from_wkt(til, crs=crs)
-    new_lines = shortest_line(fra, til)
+    startpoints = gpd.GeoSeries.from_wkt(startpoints, crs=crs)
+    endpoints = gpd.GeoSeries.from_wkt(endpoints, crs=crs)
+    new_lines = shortest_line(startpoints, endpoints)
     new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
 
     if not len(new_lines):
@@ -435,70 +448,44 @@ def _find_holes_deadends(nodes, max_dist, min_dist=0):
     if the distance is between the specifies max_dist and min_dist.
 
     Args:
-      nodes: the nodes of the network
-      max_dist: The maximum distance between two nodes to be connected.
-      min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
+        nodes: the nodes of the network
+        max_dist: The maximum distance between two nodes to be connected.
+        min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
 
     Returns:
-      A GeoDataFrame with the new lines.
+        A GeoDataFrame with the new lines.
     """
 
     crs = nodes.crs
 
-    # velger ut nodene som kun finnes i én lenke. Altså blindveier i en networksanalyse.
+    # deadends are nodes that appear only once
     deadends = nodes[nodes["n"] == 1]
 
-    # viktig å nullstille index siden sklearn kneighbors gir oss en numpy.array
-    # med indekser
+    # have to reset index to be able to integrate with numpy/scikit-learn
     deadends = deadends.reset_index(drop=True)
 
     if len(deadends) <= 1:
-        deadends["minutter"] = -1
-        return deadends
+        return []
 
-    # koordinater i tuple som numpy array
-    deadends_array = np.array(
-        [(x, y) for x, y in zip(deadends.geometry.x, deadends.geometry.y)]
-    )
+    deadends_array = coordinate_array(deadends)
 
-    # finn nærmeste to naboer
-    nbr = NearestNeighbors(n_neighbors=2, algorithm="ball_tree").fit(deadends_array)
-    dists, indices = nbr.kneighbors(deadends_array)
+    dists, indices = k_nearest_neighbours(deadends_array, deadends_array, k=2)
 
-    # velg ut nest nærmeste (nærmeste er fra og til samme punkt)
+    # choose the second column (the closest neighbour)
     dists = dists[:, 1]
     indices = indices[:, 1]
 
-    """
-    Nå har vi 1d-numpy arrays av lik lengde som blindvegene.
-    'indices' inneholder numpy-indeksen for vegen som er nærmest, altså endepunktene for de
-    nye lenkene. For å konvertere dette fra numpy til geopandas, trengs geometri og
-    node-id.
-    """
+    # get the geometry of the distances between min_dist and max_dist
+    # the from geometries can be taken directly from the deadends index,
+    # since 'dists' has the same index. 'to_geom' must be selected through the index
+    # of the neighbours ('indices')
+    condition = (dists < max_dist) & (dists > min_dist)
+    from_geom = deadends.loc[condition, "geometry"].reset_index(drop=True)
+    to_idx = indices[condition]
+    to_geom = deadends.loc[to_idx, "geometry"].reset_index(drop=True)
 
-    # fra-geometrien kan hentes direkte siden avstandene og blindvegene har samme
-    # rekkefølge
-    fra = np.array(
-        [
-            geom.wkt
-            for dist, geom in zip(dists, deadends.geometry)
-            if dist < max_dist and dist > min_dist
-        ]
-    )
-
-    # til-geometrien må hentes via index-en
-    til = np.array(
-        [
-            deadends.loc[idx, "wkt"]
-            for dist, idx in zip(dists, indices)
-            if dist < max_dist and dist > min_dist
-        ]
-    )
-
-    # lag GeoDataFrame med rette linjer
-    fra = gpd.GeoSeries.from_wkt(fra, crs=crs)
-    til = gpd.GeoSeries.from_wkt(til, crs=crs)
-    new_lines = shortest_line(fra, til)
+    # GeoDataFrame with straight lines
+    new_lines = shortest_line(from_geom, to_geom)
     new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
 
     if not len(new_lines):
@@ -513,17 +500,20 @@ def make_node_ids(
     lines: GeoDataFrame,
     wkt: bool = True,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
-    """Create unique node_ids and assign it to the columns 'source' and 'target' of the lines
+    """Gives the lines node ids and return lines (edges) and nodes.
 
-    Creates an index for the unique endpoints (nodes) of the lines (edges) of a GeoDataFrame,
-    then maps this index to the 'source' and 'target' columns of the 'lines' GeoDataFrame.
-    Returns both the lines and the nodes.
+    Takes the first and last point of each line and creates a GeoDataFrame of
+    nodes (points) with a column 'node_id'. The node ids are then assigned to the
+    input GeoDataFrame of lines as the columns 'source' and 'target'.
 
     Args:
-      lines (GeoDataFrame): GeoDataFrame with line geometries
+        lines: GeoDataFrame with line geometries
+
+    Note:
+        The lines must be singlepart linestrings
 
     Returns:
-      A tuple of two GeoDataFrames, one with the lines and one with the nodes.
+        A tuple of two GeoDataFrames, one with the lines and one with the nodes.
     """
 
     if wkt:

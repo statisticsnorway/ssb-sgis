@@ -7,17 +7,16 @@ from .networkanalysisrules import NetworkAnalysisRules
 
 
 """
-These are internal classes used in the NetworkAnalysis class.
+These are internal classes used in the NetworkAnalysis class. The classes used in
+NetworkAnalysis are Origins and Destinations, which are subclasses of Points. The
+Origins and Destinations classes are the same, except that the order of the id_cols
+parameter in the NetworkAnalysis methods is different (0 for Origins, 1 for
+Destinations) and the order of the edge ids (the edges from the Origins go from origin
+to node and the Destination edges go from node to Destination).
 """
 
 
 class Points:
-    """Base class of the Origins and Destinations classes
-
-    These are internal classes used in the NetworkAnalysis class.
-
-    """
-
     def __init__(
         self,
         points: GeoDataFrame,

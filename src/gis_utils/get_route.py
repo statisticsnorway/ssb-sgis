@@ -1,7 +1,5 @@
 import warnings
 
-import geopandas as gpd
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
@@ -81,8 +79,8 @@ def _get_route(
         results = gdf_concat(results)
     except Exception:
         raise ValueError(
-            f"No paths were found. Try larger search_tolerance or search_factor. "
-            f"Or close_network_holes() or remove_isolated()."
+            "No paths were found. Try larger search_tolerance or search_factor. "
+            "Or close_network_holes() or remove_isolated()."
         )
 
     if cutoff:
