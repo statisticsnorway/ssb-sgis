@@ -37,9 +37,10 @@ class NetworkAnalysis:
         origins: the origins used in the latest analysis run, in the form of an Origins
             class instance. The GeoDataFrame is stored in the 'gdf' attribute, with a
             column 'n_missing' that can be used for investigation/debugging.
-        destinations: the destinations used in the latest analysis run, in the form of a Destinations
-            class instance. The GeoDataFrame is stored in the 'gdf' attribute, with a
-            column 'n_missing' that can be used for investigation/debugging.
+        destinations: the destinations used in the latest analysis run, in the form of
+            a Destinations class instance. The GeoDataFrame is stored in the 'gdf'
+            attribute, with a column 'n_missing' that can be used for
+            investigation/debugging.
 
     Examples
     --------
@@ -179,18 +180,22 @@ class NetworkAnalysis:
         log: bool = True,
         detailed_log: bool = True,
     ):
-        """
-        Args:
-            network: either the base Network class or a subclass, chiefly the DirectedNetwork
-                class. The network should be customized beforehand, but can also be accessed
-                through the 'network' attribute of this class.
-            rules: NetworkAnalysisRules class instance.
+        """Checks types and does some validation.
 
-            log: If True (the default), a DataFrame with information about each analysis run
-                will be stored in the 'log' attribute.
-            detailed_log: If True (the default), will include all arguments passed to the
-                analysis methods and the standard deviation, 25th, 50th and 75th percentile
-                of the weight column in the results.
+        Args:
+            network: either the base Network class or a subclass, chiefly the
+                DirectedNetwork class. The network should be customized beforehand, but
+                can also be accessed through the 'network' attribute of this class.
+            rules: NetworkAnalysisRules class instance.
+            log: If True (the default), a DataFrame with information about each
+                analysis run will be stored in the 'log' attribute.
+            detailed_log: If True (the default), will include all arguments passed to
+                the analysis methods and the standard deviation, 25th, 50th and 75th
+                percentile of the weight column in the results.
+
+        Raises:
+            TypeError: if 'rules' is not of type NetworkAnalysisRules
+            TypeError: if 'network' is not of type Network (subclasses are)
         """
         self.network = network
         self.rules = rules
@@ -198,13 +203,14 @@ class NetworkAnalysis:
         self.detailed_log = detailed_log
 
         if not isinstance(rules, NetworkAnalysisRules):
-            raise ValueError(
+            raise TypeError(
                 f"'rules' should be of type NetworkAnalysisRules. Got {type(rules)}"
             )
 
         if not isinstance(network, Network):
-            raise ValueError(
-                f"'network' should of type DirectedNetwork or Network. Got {type(network)}"
+            raise TypeError(
+                "'network' should of type DirectedNetwork or Network. "
+                f"Got {type(network)}"
             )
 
         self.network.gdf = self.rules._validate_weight(
@@ -259,7 +265,6 @@ class NetworkAnalysis:
             and destination.
 
         """
-
         if self._log:
             time_ = perf_counter()
 
@@ -339,7 +344,7 @@ class NetworkAnalysis:
             column and the geometry of the route between origin and destination.
 
         Raises:
-            ValueError if no paths were found.
+            ValueError: if no paths were found.
         """
         if self._log:
             time_ = perf_counter()
@@ -426,10 +431,9 @@ class NetworkAnalysis:
             column and the geometry of the route between origin and destination.
 
         Raises:
-            ValueError if no paths were found.
-            ValueError if drop_middle_percent is not between 0 and 100.
+            ValueError: if no paths were found.
+            ValueError: if drop_middle_percent is not between 0 and 100.
         """
-
         if drop_middle_percent < 0 or drop_middle_percent > 100:
             raise ValueError("'drop_middle_percent' should be between 0 and 100")
 
@@ -496,7 +500,7 @@ class NetworkAnalysis:
             for all the trips.
 
         Raises:
-            ValueError if no paths were found.
+            ValueError: if no paths were found.
         """
         if self._log:
             time_ = perf_counter()
@@ -571,7 +575,6 @@ class NetworkAnalysis:
             can be used to remove duplicates, or count occurences.
 
         """
-
         if self._log:
             time_ = perf_counter()
 
@@ -638,7 +641,6 @@ class NetworkAnalysis:
             The 'isolated_removed' column does not account for
             preperation done before initialising the (Directed)Network class.
         """
-
         df = DataFrame(
             {
                 "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
@@ -705,7 +707,6 @@ class NetworkAnalysis:
         has changed. this method is run inside od_cost_matrix, get_route and
         service_area.
         """
-
         self.network.gdf = self.rules._validate_weight(
             self.network.gdf, raise_error=True
         )
@@ -745,7 +746,6 @@ class NetworkAnalysis:
         Edges and weights between origins and nodes and nodes and destinations are
         also added.
         """
-
         if self.rules.split_lines:
             if self.destinations is not None:
                 points = gdf_concat([self.origins.gdf, self.destinations.gdf])
@@ -841,7 +841,6 @@ class NetworkAnalysis:
         directed: bool,
     ) -> Graph:
         """Creates an igraph Graph from a list of edges and weights."""
-
         assert len(edges) == len(weights)
 
         graph = igraph.Graph.TupleList(edges, directed=directed)

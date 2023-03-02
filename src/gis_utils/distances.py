@@ -141,8 +141,8 @@ def k_nearest_neighbours(
             is less than k points in 'to_array'. Defaults to False.
 
     Returns:
-        The distances and indices of the nearest neighbors. Both distances and neighbours
-        are np.ndarrays.
+        The distances and indices of the nearest neighbors. Both distances and
+        neighbours are np.ndarrays.
     """
 
     if not strict:

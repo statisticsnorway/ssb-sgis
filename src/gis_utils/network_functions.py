@@ -10,7 +10,7 @@ from shapely.ops import unary_union
 from sklearn.neighbors import NearestNeighbors
 
 from .buffer_dissolve_explode import buff
-from .distances import get_k_nearest_neighbors
+from .distances import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbours
 from .geopandas_utils import gdf_concat, push_geom_col, snap_to
 
 
@@ -183,11 +183,11 @@ def split_lines_at_closest_point(
     # use the id columns from k-neighbours to map line id with snapped point
     splitdict_source = {
         idx: coords
-        for idx, coords in zip(dists_source.splitidx, dists_source.point_coords)
+        for idx, coords in zip(dists_source["splitidx"], dists_source["point_coords"])
     }
     splitdict_target = {
         idx: coords
-        for idx, coords in zip(dists_target.splitidx, dists_target.point_coords)
+        for idx, coords in zip(dists_target["splitidx"], dists_target["point_coords"])
     }
 
     # now, we can finally replace the source/target coordinate with the coordinates of
@@ -225,7 +225,8 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
     Args:
       gdf (GeoDataFrame): GeoDataFrame
       max_length (int): The maximum length of the lines in the output GeoDataFrame.
-      ignore_index: If True, the resulting GeoDataFrame will have a simple RangeIndex. If False, you will get a
+      ignore_index: If True, the resulting GeoDataFrame will have a simple RangeIndex.
+        If False, you will get a
       MultiIndex. Defaults to True
 
     Returns:
@@ -290,21 +291,23 @@ def close_network_holes(
     deadends_only: bool = False,
     hole_col: str | None = "hole",
 ):
-    """
-    It fills holes in the network by finding the nearest neighbors of each node, and then connecting the
-    nodes that are within a certain distance of each other
+    """Fills gaps shorter than 'max_dist' in a GeoDataFrame of lines
+
+    Fills holes in the network by finding the nearest neighbors of each node, and
+    connecting the nodes that are within a certain distance from each other.
 
     Args:
-      lines: GeoDataFrame with lines
-      max_dist: The maximum distance between two nodes to be considered a hole.
-      min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
-      deadends_only: If True, only lines that connect dead ends will be created. If False (the default),
-        deadends might be connected to nodes that are not deadends.
-      hole_col: If you want to keep track of which lines were added, you can add a column
-        with a value of 1. Defaults to 'hole'
+        lines: GeoDataFrame with lines
+        max_dist: The maximum distance between two nodes to be considered a hole.
+        min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
+        deadends_only: If True, only lines that connect dead ends will be created. If
+            False (the default), deadends might be connected to nodes that are not
+            deadends.
+        hole_col: If you want to keep track of which lines were added, you can add a
+            column with a value of 1. Defaults to 'hole'
 
     Returns:
-      The input GeoDataFrame with new lines added
+        The input GeoDataFrame with new lines added
     """
 
     lines, nodes = make_node_ids(lines)
@@ -331,21 +334,26 @@ def close_network_holes(
     return gdf_concat([lines, new_lines])
 
 
-def _find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10):
+def _find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10, length_factor=0.25):
     """
     creates a straight line between deadends and the closest node in a
     forward-going direction, if the distance is between the max_dist and min_dist.
 
     Args:
-      lines: the lines you want to find holes in
-      nodes: a GeoDataFrame of nodes
-      max_dist: The maximum distance between the dead end and the node it should be connected to.
-      min_dist: The minimum distance between the dead end and the node. Defaults to 0
-      k: number of nearest neighbors to consider. Defaults to 10
+        lines: the lines you want to find holes in
+        nodes: a GeoDataFrame of nodes
+        max_dist: The maximum distance between the dead end and the node it should be
+            connected to.
+        min_dist: The minimum distance between the dead end and the node. Defaults to 0
+        k: number of nearest neighbors to consider. Defaults to 10
+        length_factor:
 
     Returns:
-      A GeoDataFrame with the shortest line between the two points.
+        A GeoDataFrame with the shortest line between the two points.
     """
+
+    # wkt: well-known text, e.g. "POINT (60 10)"
+
     crs = nodes.crs
 
     # velger ut nodene som kun finnes i én lenke. Altså blindveier i en networksanalyse.
@@ -372,53 +380,57 @@ def _find_holes_all_lines(lines, nodes, max_dist, min_dist=0, k=10):
         deadends_other_end["wkt_other_end"], crs=crs
     )
 
-    deadends_array = np.array(
-        [(x, y) for x, y in zip(deadends.geometry.x, deadends.geometry.y)]
-    )
+    deadends_array = coordinate_array(deadends)
 
-    nodes_array = np.array([(x, y) for x, y in zip(nodes.geometry.x, nodes.geometry.y)])
+    nodes_array = coordinate_array(nodes)
 
-    # finn nærmeste naboer
-    k = k if len(deadends) >= k else len(deadends)
-    nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(nodes_array)
-    all_dists, all_indices = nbr.kneighbors(deadends_array)
+    all_dists, all_indices = k_nearest_neighbours(deadends_array, nodes_array, k=k)
 
-    fra = []
-    til = []
+    # now to find the lines that go in the right direction. Collecting the startpoints
+    # and endpoints of the new lines in lists, looping through the k neighbour points
+    startpoints = []
+    endpoints = []
     for i in np.arange(1, k):
-        len_naa = len(fra)
+        # to break out of the loop if no endpoints that meet the condition are found
+        len_now = len(startpoints)
 
+        # selecting the arrays for the k neighbour
         indices = all_indices[:, i]
         dists = all_dists[:, i]
 
+        # get the distance from the other end of the deadends to the k neighbours
         dists_other_end = deadends_other_end.distance(nodes.loc[indices], align=False)
 
-        # get the deadend wkt and the node wkt if the distance is
-        # between max_dist and min_dist and the distance is (considerably) shorter
-        # than the distance from the other end of the line.
-        fratil = [
-            (geom, nodes.loc[idx, "wkt"])
-            for geom, idx, dist, dist_andre, length in zip(
-                deadends["wkt"],
-                indices,
-                dists,
-                dists_other_end,
-                deadends_lengths,
-                strict=True,
-            )
-            if dist < max_dist and dist > min_dist and dist < dist_andre - length * 0.25
+        # select the distances between min_dist and max_dist that are also shorter than
+        # the distance from the other side of the line, meaning the new line will go
+        # forward. All arrays have the same shape, and can be easily filtered by index
+        # The node wkts have to be extracted after indexing 'indices'
+        condition = (
+            (dists < max_dist)
+            & (dists > min_dist)
+            & (dists < dists_other_end - deadends_lengths * length_factor)
+        )
+        from_wkt = deadends.loc[condition, "wkt"]
+        to_idx = indices[condition]
+        to_wkt = nodes.loc[to_idx, "wkt"]
+
+        # now add the wkts to the lists of startpoints and endpoints. If the startpoint
+        # is already added, the new wks will not be added again
+        endpoints = endpoints + [
+            t for f, t in zip(from_wkt, to_wkt) if f not in startpoints
+        ]
+        startpoints = startpoints + [
+            f for f, _ in zip(from_wkt, to_wkt) if f not in startpoints
         ]
 
-        til = til + [t for f, t in fratil if f not in fra]
-        fra = fra + [f for f, _ in fratil if f not in fra]
-
-        if len_naa == len(fra):
+        # break out of the loop when no new endpoints meet the condition
+        if len_now == len(startpoints):
             break
 
     # make GeoDataFrame with straight lines
-    fra = gpd.GeoSeries.from_wkt(fra, crs=crs)
-    til = gpd.GeoSeries.from_wkt(til, crs=crs)
-    new_lines = shortest_line(fra, til)
+    startpoints = gpd.GeoSeries.from_wkt(startpoints, crs=crs)
+    endpoints = gpd.GeoSeries.from_wkt(endpoints, crs=crs)
+    new_lines = shortest_line(startpoints, endpoints)
     new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
 
     if not len(new_lines):
@@ -436,12 +448,12 @@ def _find_holes_deadends(nodes, max_dist, min_dist=0):
     if the distance is between the specifies max_dist and min_dist.
 
     Args:
-      nodes: the nodes of the network
-      max_dist: The maximum distance between two nodes to be connected.
-      min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
+        nodes: the nodes of the network
+        max_dist: The maximum distance between two nodes to be connected.
+        min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
 
     Returns:
-      A GeoDataFrame with the new lines.
+        A GeoDataFrame with the new lines.
     """
 
     crs = nodes.crs
@@ -514,11 +526,11 @@ def make_node_ids(
     lines: GeoDataFrame,
     wkt: bool = True,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
-    """Create unique node_ids and assign it to the columns 'source' and 'target' of the lines
+    """Create node_ids and assign them to the lines' columns 'source' and 'target'
 
-    Creates an index for the unique endpoints (nodes) of the lines (edges) of a GeoDataFrame,
-    then maps this index to the 'source' and 'target' columns of the 'lines' GeoDataFrame.
-    Returns both the lines and the nodes.
+    Creates an index for the unique endpoints (nodes) of the lines (edges) of a
+    GeoDataFrame, then maps this index to the 'source' and 'target' columns of the
+    'lines' GeoDataFrame. Returns both the lines and the nodes.
 
     Args:
       lines (GeoDataFrame): GeoDataFrame with line geometries
