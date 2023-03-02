@@ -1,12 +1,11 @@
 # %%
+import sys
 from pathlib import Path
 
 import geopandas as gpd
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
-
-import sys
 
 
 sys.path.insert(0, src)

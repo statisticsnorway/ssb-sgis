@@ -3,6 +3,7 @@ import warnings
 import geopandas as gpd
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
+from numpy.random import random as np_random
 from shapely import (
     Geometry,
     area,
@@ -12,10 +13,8 @@ from shapely import (
     get_parts,
     polygons,
 )
+from shapely.geometry import Point
 from shapely.ops import nearest_points, snap, unary_union
-from shapely.wkt import loads
-
-from .buffer_dissolve_explode import buff
 
 
 def clean_geoms(
@@ -423,20 +422,21 @@ def snap_to(
     geometry in a second GeoDataFrame or GeoSeries.
 
     Args:
-        points (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries of points to snap
-        snap_to (GeoDataFrame | GeoSeries): The GeoDataFrame or GeoSeries to snap to
-        max_dist (int): The maximum distance to snap to. Defaults to None.
-        to_node (bool): If True, the points will snap to the nearest node of the snap_to geometry. If
-            False, the points will snap to the nearest point on the snap_to geometry, which can be between two vertices
-            if the snap_to geometry is line or polygon. Defaults to False
-        snap_to_id: name of a column in the snap_to data to use as an identifier for the geometry it was snapped to.
-            Defaults to None.
-        copy (bool): If True, a copy of the GeoDataFrame is returned. Otherwise, the original
+        points: The GeoDataFrame or GeoSeries of points to snap
+        snap_to: The GeoDataFrame or GeoSeries to snap to
+        max_dist: The maximum distance to snap to. Defaults to None.
+        to_node: If False (the default), the points will snap to the nearest point on
+            the snap_to geometry, which can be between two vertices if the snap_to
+            geometry is line or polygon. If True, the points will snap to the nearest
+            node of the snap_to geometry.
+        snap_to_id: name of a column in the snap_to data to use as an identifier for
+            the geometry it was snapped to. Defaults to None.
+        copy: If True, a copy of the GeoDataFrame is returned. Otherwise, the original
             GeoDataFrame. Defaults to True
 
     Returns:
-        A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the snap_to
-        GeoDataFrame or GeoSeries.
+        A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the
+        'snap_to' GeoDataFrame or GeoSeries.
     """
 
     if copy:
@@ -477,7 +477,8 @@ def to_multipoint(gdf: GeoDataFrame | GeoSeries | Geometry, copy: bool = False):
     geometries will be multipoints if more than one point in the original geometry.
 
     Args:
-      gdf: The geometry to be converted. Can be a GeoDataFrame, GeoSeries or a shapely geometry.
+      gdf: The geometry to be converted. Can be a GeoDataFrame, GeoSeries or a shapely
+        geometry.
       copy: If True, the geometry will be copied. Defaults to False
 
     Returns:
@@ -524,14 +525,16 @@ def find_neighbours(
     id_col: str,
     max_dist: int = 0,
 ) -> list[str]:
-    """
-    Finds all the geometries in another GeoDataFrame that intersects with the first geometry
+    """Returns a list of neigbours for a GeoDataFrame
+
+    Finds all the geometries in 'possible_neighbours' that intersects with the first
+    geometry.
 
     Args:
         gdf: GeoDataFrame or GeoSeries
         possible_neighbours: GeoDataFrame or GeoSeries
-        id_col: The column in the GeoDataFrame that contains the unique identifier for each
-            geometry.
+        id_col: The column in the GeoDataFrame that contains the unique identifier for
+            each geometry.
         max_dist: The maximum distance between the two geometries. Defaults to 0
 
     Returns:
@@ -565,99 +568,17 @@ def find_neighbors(
     return find_neighbours(gdf, possible_neighbors, id_col, max_dist)
 
 
-def gridish(
-    gdf: GeoDataFrame, meters: int, x2: bool = False, minmax: bool = False
-) -> GeoDataFrame:
-    """Creates the column 'gridish': grid categories based on rounded down coordinates
-
-    TODO: fix docstring
-
-    Takes a GeoDataFrame and a number of meters, and creates the column 'gridish', which
-    consists of the x and y coordinates rounded down to the specified number of meters.
-
-    So if 'meters' is 1000 and the crs is in meter units, it will categorise the data
-    based on its location in a 1000x1000 meter grid.
-
-    Polygons and lines will get gridish category based on the southwesternmost corner of
-    the geometry.
-    meter grid
-    It takes a GeoDataFrame, a number of meters, and two optional boolean arguments, and returns a
-    GeoDataFrame with a new column called "gridish" that contains a string of the form "x_y" where x and
-    y are the rounded down coordinates of the bounding box of the geometry in the GeoDataFrame
+def random_points(n: int) -> GeoDataFrame:
+    """Creates a GeoDataFrame with n random points.
 
     Args:
-      gdf (GeoDataFrame): GeoDataFrame
-      meters (int): the size of the grid in meters
-      x2 (bool): If True, the function will also create a gridish2 column, which is a grid with a
-    different origin. Defaults to False
-      minmax (bool): If True, will also create a column with the max coordinates of the bounding box.
-    Defaults to False
+        n: number of points/rows to create
 
     Returns:
-      A GeoDataFrame with a new column called 'gridish'
+        A GeoDataFrame of points with n rows
     """
-    # rund ned koordinatene og sett sammen til kolonne
-    gdf["gridish"] = [
-        f"{round(minx/meters)}_{round(miny/meters)}"
-        for minx, miny in zip(gdf.geometry.bounds.minx, gdf.geometry.bounds.miny)
-    ]
 
-    if minmax:
-        gdf["gridish_max"] = [
-            f"{round(maxx/meters)}_{round(maxy/meters)}"
-            for maxx, maxy in zip(gdf.geometry.bounds.maxx, gdf.geometry.bounds.maxy)
-        ]
+    x = np_random(n)
+    y = np_random(n)
 
-    if x2:
-        gdf["gridish_x"] = gdf.geometry.bounds.minx / meters
-
-        unike_x = gdf["gridish_x"].astype(int).unique()
-        unike_x.sort()
-
-        for x in unike_x:
-            gdf.loc[
-                (gdf["gridish_x"] >= x - 0.5) & (gdf["gridish_x"] < x + 0.5),
-                "gridish_x2",
-            ] = (
-                x + 0.5
-            )
-
-        # samme for y
-        gdf["gridish_y"] = gdf.geometry.bounds.miny / meters
-        unike_y = gdf["gridish_y"].astype(int).unique()
-        unike_y.sort()
-        for y in unike_y:
-            gdf.loc[
-                (gdf["gridish_y"] >= y - 0.5) & (gdf["gridish_y"] < y + 0.5),
-                "gridish_y2",
-            ] = (
-                y + 0.5
-            )
-
-        gdf["gridish2"] = (
-            gdf["gridish_x2"].astype(str) + "_" + gdf["gridish_y2"].astype(str)
-        )
-
-        gdf = gdf.drop(["gridish_x", "gridish_y", "gridish_x2", "gridish_y2"], axis=1)
-
-    return gdf
-
-
-def count_within_distance(
-    gdf1: GeoDataFrame, gdf2: GeoDataFrame, max_dist=0, col_name="n"
-) -> GeoDataFrame:
-    gdf1["temp_idx"] = range(len(gdf1))
-    gdf2["temp_idx2"] = range(len(gdf2))
-
-    if max_dist > 0:
-        gdf2 = buff(gdf2[["geometry"]], max_dist)
-
-    joined = (
-        gdf1[["temp_idx", "geometry"]]
-        .sjoin(gdf2[["geometry"]], how="inner")["temp_idx"]
-        .value_counts()
-    )
-
-    gdf1[col_name] = gdf1["temp_idx"].map(joined).fillna(0)
-
-    return gdf1.drop("temp_idx", axis=1)
+    return GeoDataFrame((Point(geom) for geom in zip(x, y)), columns=["geometry"])

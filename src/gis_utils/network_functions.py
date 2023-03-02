@@ -458,43 +458,33 @@ def _find_holes_deadends(nodes, max_dist, min_dist=0):
 
     crs = nodes.crs
 
-    # velger ut nodene som kun finnes i én lenke. Altså blindveier i en networksanalyse.
+    # deadends are nodes that appear only once
     deadends = nodes[nodes["n"] == 1]
 
-    # viktig å nullstille index siden sklearn kneighbors gir oss en numpy.array
-    # med indekser
+    # have to reset index to be able to integrate with numpy/scikit-learn
     deadends = deadends.reset_index(drop=True)
 
     if len(deadends) <= 1:
-        deadends["minutter"] = -1
-        return deadends
+        return []
 
-    # koordinater i tuple som numpy array
-    deadends_array = np.array(
-        [(x, y) for x, y in zip(deadends.geometry.x, deadends.geometry.y)]
-    )
+    deadends_array = coordinate_array(deadends)
 
-    # finn nærmeste to naboer
-    nbr = NearestNeighbors(n_neighbors=2, algorithm="ball_tree").fit(deadends_array)
-    dists, indices = nbr.kneighbors(deadends_array)
+    dists, indices = k_nearest_neighbours(deadends_array, deadends_array, k=2)
 
-    # velg ut nest nærmeste (nærmeste er fra og til samme punkt)
+    # choose the second column (the closest neighbour)
     dists = dists[:, 1]
     indices = indices[:, 1]
 
-    """
-    Nå har vi 1d-numpy arrays av lik lengde som blindvegene.
-    'indices' inneholder numpy-indeksen for vegen som er nærmest, altså endepunktene for de
-    nye lenkene. For å konvertere dette fra numpy til geopandas, trengs geometri og
-    node-id.
-    """
-
+    # get the geometry of the distances between min_dist and max_dist
+    # the from geometries can be taken directly from the deadends index,
+    # since 'dists' has the same index. 'to_geom' must be selected through the index
+    # of the neighbours ('indices')
     condition = (dists < max_dist) & (dists > min_dist)
     from_geom = deadends.loc[condition, "geometry"].reset_index(drop=True)
     to_idx = indices[condition]
     to_geom = deadends.loc[to_idx, "geometry"].reset_index(drop=True)
 
-    # lag GeoDataFrame med rette linjer
+    # GeoDataFrame with straight lines
     new_lines = shortest_line(from_geom, to_geom)
     new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
 
@@ -510,17 +500,20 @@ def make_node_ids(
     lines: GeoDataFrame,
     wkt: bool = True,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
-    """Create node_ids and assign them to the lines' columns 'source' and 'target'
+    """Gives the lines node ids and return lines (edges) and nodes.
 
-    Creates an index for the unique endpoints (nodes) of the lines (edges) of a
-    GeoDataFrame, then maps this index to the 'source' and 'target' columns of the
-    'lines' GeoDataFrame. Returns both the lines and the nodes.
+    Takes the first and last point of each line and creates a GeoDataFrame of
+    nodes (points) with a column 'node_id'. The node ids are then assigned to the
+    input GeoDataFrame of lines as the columns 'source' and 'target'.
 
     Args:
-      lines (GeoDataFrame): GeoDataFrame with line geometries
+        lines: GeoDataFrame with line geometries
+
+    Note:
+        The lines must be singlepart linestrings
 
     Returns:
-      A tuple of two GeoDataFrames, one with the lines and one with the nodes.
+        A tuple of two GeoDataFrames, one with the lines and one with the nodes.
     """
 
     if wkt:

@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from shapely import STRtree, difference, intersection, union_all
-from shapely.wkt import dumps, loads
 
 from .geopandas_utils import (
     clean_geoms,
@@ -405,65 +404,3 @@ def _shapely_diffclip_right(pairs, df1, df2):
     )
     clip_right = clip_right.drop(columns=["geom_left"])
     return clip_right
-
-
-def try_overlay(
-    gdf1: GeoDataFrame,
-    gdf2: GeoDataFrame,
-    presicion_col: bool = True,
-    max_rounding: int = 3,
-    geom_type: bool = True,
-    **kwargs,
-) -> GeoDataFrame:
-    try:
-        gdf1 = clean_geoms(gdf1, geom_type=geom_type)
-        gdf2 = clean_geoms(gdf2, geom_type=geom_type)
-        return gdf1.overlay(gdf2, **kwargs)
-
-    except Exception:
-        # loop through list from 10 to 'max_rounding'
-
-        roundings = list(range(max_rounding, 11))
-        roundings.reverse()
-
-        for rounding in roundings:
-            try:
-                gdf1.geometry = [
-                    loads(dumps(gdf1, rounding_precision=rounding))
-                    for geom in gdf1.geometry
-                ]
-                gdf2.geometry = [
-                    loads(dumps(gdf2, rounding_precision=rounding))
-                    for geom in gdf2.geometry
-                ]
-
-                gdf1 = clean_geoms(gdf1, geom_type=geom_type)
-                gdf2 = clean_geoms(gdf2, geom_type=geom_type)
-
-                overlayet = gdf1.overlay(gdf2, **kwargs)
-
-                if presicion_col:
-                    overlayet["avrunding"] = rounding
-
-                return overlayet
-
-            except Exception:
-                rounding -= 1
-
-        # returnerer feilmeldingen hvis det fortsatt ikke funker
-        gdf1.overlay(gdf2, **kwargs)
-
-
-def make_valid_with_equal_precision(gdf, precision: int = 10):
-    while True:
-        gdf.geometry = [
-            loads(dumps(geom, rounding_precision=precision)) for geom in gdf.geometry
-        ]
-
-        if all(gdf.geometry.is_valid):
-            gdf = behold_vanligste_geomtype(gdf)
-            break
-
-        gdf = fiks_geometrier(gdf, to_single_geomtype=False)
-
-    return gdf

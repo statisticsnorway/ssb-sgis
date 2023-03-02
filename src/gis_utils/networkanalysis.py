@@ -145,7 +145,13 @@ class NetworkAnalysis:
 
     get_k_routes: get the geometry of the k low-cost routes for each od pair.
 
-    >>> k_routes = nwa.get_k_routes(points.iloc[[0]], points.iloc[1:3], k=3, drop_middle_percent=50, id_col="idx")
+    >>> k_routes = nwa.get_k_routes(
+    ...    points.iloc[[0]],
+    ...    points.iloc[1:3],
+    ...    k=3,
+    ...    drop_middle_percent=50,
+    ...    id_col="idx"
+    ...    )
     >>> k_routes
     origin  destination    minutes  k                                           geometry
     0       1            2  12.930588  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
@@ -239,6 +245,10 @@ class NetworkAnalysis:
     ) -> DataFrame | GeoDataFrame:
         """Fast calculation of many-to-many travel costs.
 
+        Finds the the lowest cost (minutes, meters, etc.) from a set of origins to a
+        set of destinations. If the weight is meters, the shortest route will be
+        found. If the weight is minutes, the fastest route will be found.
+
         Args:
             origins: GeoDataFrame of points from where the trips will originate
             destinations: GeoDataFrame of points from where the trips will terminate
@@ -263,6 +273,88 @@ class NetworkAnalysis:
             A DataFrame with the columns 'origin', 'destination' and the weight column.
             If lines is True, adds a geometry column with straight lines between origin
             and destination.
+
+        Examples
+        --------
+        Travel time from 1000 to 1000 points. Rows where origin and destination is the
+        the same has 0 in cost.
+
+        >>> od = nwa.od_cost_matrix(points, points, id_col="idx")
+        >>> od
+                origin  destination    minutes
+        0            1            1   0.000000
+        1            1            2  11.983871
+        2            1            3   9.822048
+        3            1            4   7.838012
+        4            1            5  13.708064
+        ...        ...          ...        ...
+        999995    1000          996  10.315319
+        999996    1000          997  16.839220
+        999997    1000          998   6.539792
+        999998    1000          999  14.182613
+        999999    1000         1000   0.000000
+
+        [1000000 rows x 3 columns]
+
+        Travel time from 1000 to 1000 points rowwise.
+
+        >>> points_reversed = points.iloc[::-1]
+        >>> od = nwa.od_cost_matrix(points, points_reversed, rowwise=True, id_col="idx")
+        >>> od
+            origin  destination    minutes
+        0         1         1000  14.657289
+        1         2          999   8.378826
+        2         3          998  15.147861
+        3         4          997   8.889927
+        4         5          996  16.371447
+        ..      ...          ...        ...
+        995     996            5  16.644710
+        996     997            4   9.015495
+        997     998            3  18.342336
+        998     999            2   9.410509
+        999    1000            1  14.892648
+
+        [1000 rows x 3 columns]
+
+        Get only five lowest costs for each origin. The rows don't add up to 5000
+        because some origins cannot find (m)any destinations with the default
+        NetworkAnalysisRules.
+
+        >>> od = nwa.od_cost_matrix(points, points, destination_count=5, id_col="idx")
+        >>> od
+            origin  destination   minutes
+        0          1            1  0.000000
+        1          1           98  0.810943
+        2          1          136  0.966702
+        3          1          318  1.075858
+        4          1          675  1.176377
+        ...      ...          ...       ...
+        4962    1000           95  0.000000
+        4963    1000          304  1.065610
+        4964    1000          334  1.180584
+        4965    1000          400  0.484851
+        4966    1000         1000  0.000000
+
+        [4967 rows x 3 columns]
+
+        Get costs less than ten minutes.
+
+        >>> od = nwa.od_cost_matrix(points, points, cutoff=10, id_col="idx")
+        >>> od
+                origin  destination   minutes
+        0            1            1  0.000000
+        1            1            4  8.075722
+        2            1            8  4.037207
+        3            1           10  8.243380
+        4            1           11  5.486970
+        ...        ...          ...       ...
+        228574    1000          985  7.725878
+        228575    1000          988  9.801021
+        228576    1000          989  2.446085
+        228577    1000          990  7.968874
+        228578    1000         1000  0.000000
+
+        [228579 rows x 3 columns]
 
         """
         if self._log:
@@ -345,6 +437,28 @@ class NetworkAnalysis:
 
         Raises:
             ValueError: if no paths were found.
+
+        Examples
+        --------
+        Calculate routes from 1 to 1000 points.
+
+        >>> routes = nwa.get_route(points.iloc[[0]], points, id_col="idx")
+        >>> routes
+            origin  destination    minutes                                           geometry
+        0         1            2  12.930588  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        1         1            3  10.867076  MULTILINESTRING Z ((270054.367 6653367.774 144...
+        2         1            4   8.075722  MULTILINESTRING Z ((259735.774 6650362.886 24....
+        3         1            5  14.659333  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        4         1            6  14.406460  MULTILINESTRING Z ((257034.948 6652685.595 156...
+        ..      ...          ...        ...                                                ...
+        992       1          996  10.858519  MULTILINESTRING Z ((266881.100 6647824.860 132...
+        993       1          997   7.461032  MULTILINESTRING Z ((262623.190 6652506.640 79....
+        994       1          998  10.698588  MULTILINESTRING Z ((263489.330 6645655.330 11....
+        995       1          999  10.109855  MULTILINESTRING Z ((269217.997 6650654.895 166...
+        996       1         1000  14.657289  MULTILINESTRING Z ((264475.675 6644245.782 114...
+
+        [997 rows x 4 columns]
+
         """
         if self._log:
             time_ = perf_counter()
@@ -401,8 +515,8 @@ class NetworkAnalysis:
         """Returns the geometry of 1 or more routes between origins and destinations.
 
         Finds the route with the lowest cost (minutes, meters, etc.) from a set of
-        origins to a set of destinations. Then removes the middle part of the route
-        from the graph and gets the new shortest path. Repeats k times. How much of the
+        origins to a set of destinations. Then the middle part of the route is removed
+        from the graph the new low-cost path is found. Repeats k times. How much of the
 
         Args:
             origins: GeoDataFrame of points from where the routes will originate
@@ -433,6 +547,59 @@ class NetworkAnalysis:
         Raises:
             ValueError: if no paths were found.
             ValueError: if drop_middle_percent is not between 0 and 100.
+
+        k_routes = nwa.get_k_routes(
+            points.iloc[[0]],
+            points.iloc[[1]],
+            k=10,
+            drop_middle_percent=50
+            )
+
+        Examples
+        --------
+        Let's compare the results for one origin and one destination with different
+        amounts of the route removed from the graph for each k iteration.
+
+        >>> k_routes = nwa.get_k_routes(
+        ...             points.iloc[[0]],
+        ...             points.iloc[[1]],
+        ...             k=10,
+        ...             drop_middle_percent=50
+        ...         )
+        >>> k_routes
+        origin destination    minutes  k                                           geometry
+        0  79166       79167  12.930588  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        1  79166       79167  14.128866  2  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        2  79166       79167  20.030052  3  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        3  79166       79167  23.397536  4  MULTILINESTRING Z ((265226.515 6650674.617 88....
+        >>> k_routes = nwa.get_k_routes(
+        ...             points.iloc[[0]],
+        ...             points.iloc[[1]],
+        ...             k=10,
+        ...             drop_middle_percent=1
+        ...         )
+        >>> k_routes
+        origin destination    minutes   k                                           geometry
+        0  79166       79167  12.930588   1  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        1  79166       79167  13.975082   2  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        2  79166       79167  14.128866   3  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        3  79166       79167  14.788440   4  MULTILINESTRING Z ((263171.800 6651250.200 46....
+        4  79166       79167  14.853351   5  MULTILINESTRING Z ((263171.800 6651250.200 46....
+        5  79166       79167  15.314692   6  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        6  79166       79167  16.108029   7  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        7  79166       79167  16.374740   8  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        8  79166       79167  16.404011   9  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        9  79166       79167  17.677964  10  MULTILINESTRING Z ((272281.367 6653079.745 160...
+
+        >>> k_routes = nwa.get_k_routes(
+        ...             points.iloc[[0]],
+        ...             points.iloc[[1]],
+        ...             k=10,
+        ...             drop_middle_percent=100)
+        >>> k_routes
+        origin destination    minutes  k                                           geometry
+        0  79166       79167  12.930588  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
+
         """
         if drop_middle_percent < 0 or drop_middle_percent > 100:
             raise ValueError("'drop_middle_percent' should be between 0 and 100")
@@ -501,6 +668,27 @@ class NetworkAnalysis:
 
         Raises:
             ValueError: if no paths were found.
+
+        Examples
+        --------
+        Get number of times each road was visited for trips from 25 to 25 points.
+
+        >>> freq = nwa.get_route_frequencies(points.sample(25), points.sample(25))
+        >>> freq
+            source target      n                                           geometry
+        137866  19095  44962    1.0  LINESTRING Z (265476.114 6645475.318 160.724, ...
+        138905  30597  16266    1.0  LINESTRING Z (272648.400 6652234.800 178.170, ...
+        138903  16266  45388    1.0  LINESTRING Z (272642.602 6652236.229 178.687, ...
+        138894  43025  30588    1.0  LINESTRING Z (272446.600 6652253.700 162.970, ...
+        138892  30588  16021    1.0  LINESTRING Z (272414.400 6652263.100 161.170, ...
+        ...       ...    ...    ...                                                ...
+        158287  78157  78156  176.0  LINESTRING Z (263975.482 6653605.092 132.739, ...
+        149697  72562  72563  180.0  LINESTRING Z (265179.202 6651549.723 81.532, 2...
+        149698  72563  72564  180.0  LINESTRING Z (265178.761 6651549.956 81.561, 2...
+        149695  72560  72561  180.0  LINESTRING Z (265457.755 6651249.238 76.502, 2...
+        149696  72561  72562  180.0  LINESTRING Z (265180.086 6651549.259 81.473, 2...
+
+        [12231 rows x 4 columns]
         """
         if self._log:
             time_ = perf_counter()
@@ -574,6 +762,27 @@ class NetworkAnalysis:
             the columns of the network.gdf as well. The columns 'source' and 'target'
             can be used to remove duplicates, or count occurences.
 
+        Examples
+        --------
+        Service areas of 5, 10 and 15 minutes from 3 origin points.
+
+        >>> sa = nwa.service_area(
+        ...         points.iloc[:3],
+        ...         breaks=[5, 10, 15],
+        ...         id_col="idx",
+        ...     )
+        >>> sa
+        idx  minutes                                           geometry
+        0    1        5  MULTILINESTRING Z ((265378.000 6650581.600 85....
+        1    1       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
+        2    1       15  MULTILINESTRING Z ((263110.060 6658296.870 154...
+        3    2        5  MULTILINESTRING Z ((273330.930 6653248.870 208...
+        4    2       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
+        5    2       15  MULTILINESTRING Z ((264348.673 6648271.134 17....
+        6    3        5  MULTILINESTRING Z ((266909.769 6651075.250 114...
+        7    3       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
+        8    3       15  MULTILINESTRING Z ((273161.140 6654455.240 229...
+
         """
         if self._log:
             time_ = perf_counter()
@@ -636,6 +845,9 @@ class NetworkAnalysis:
         Args:
             method: the name of the network analysis method used
             minutes_elapsed: time use of the method
+
+        Returns:
+            A one-row DataFrame with log info columns
 
         Note:
             The 'isolated_removed' column does not account for
@@ -874,8 +1086,11 @@ class NetworkAnalysis:
         return True
 
     def _points_have_changed(self, points: GeoDataFrame, what: str) -> bool:
-        """This method is best stored in the NetworkAnalysis class,
-        since the point classes are instantiated each time an analysis is run."""
+        """Check if the origins or destinations have changed
+
+        This method is best stored in the NetworkAnalysis class,
+        since the point classes are instantiated each time an analysis is run.
+        """
         if self.wkts[what] != [geom.wkt for geom in points.geometry]:
             return True
 
@@ -885,7 +1100,9 @@ class NetworkAnalysis:
         return False
 
     def _update_wkts(self) -> None:
-        """Creates a dict of wkt lists. This method is run after the graph is created.
+        """Creates a dict of wkt lists.
+
+        This method is run after the graph is created.
         If the wkts haven't updated since the last run, the graph doesn't have to be
         remade.
         """
