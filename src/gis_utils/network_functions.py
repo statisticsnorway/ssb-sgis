@@ -489,29 +489,13 @@ def _find_holes_deadends(nodes, max_dist, min_dist=0):
     node-id.
     """
 
-    # fra-geometrien kan hentes direkte siden avstandene og blindvegene har samme
-    # rekkefølge
-    fra = np.array(
-        [
-            geom.wkt
-            for dist, geom in zip(dists, deadends.geometry)
-            if dist < max_dist and dist > min_dist
-        ]
-    )
-
-    # til-geometrien må hentes via index-en
-    til = np.array(
-        [
-            deadends.loc[idx, "wkt"]
-            for dist, idx in zip(dists, indices)
-            if dist < max_dist and dist > min_dist
-        ]
-    )
+    condition = (dists < max_dist) & (dists > min_dist)
+    from_geom = deadends.loc[condition, "geometry"]
+    to_idx = indices[condition]
+    to_geom = deadends.loc[to_idx, "geometry"]
 
     # lag GeoDataFrame med rette linjer
-    fra = gpd.GeoSeries.from_wkt(fra, crs=crs)
-    til = gpd.GeoSeries.from_wkt(til, crs=crs)
-    new_lines = shortest_line(fra, til)
+    new_lines = shortest_line(from_geom, to_geom)
     new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
 
     if not len(new_lines):
