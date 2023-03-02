@@ -24,11 +24,19 @@ def test_network_methods():
     gs.qtm(nw.gdf, column="connected", scheme="equalinterval", title="connected")
 
     nw = nw.close_network_holes(1.1).remove_isolated().cut_lines(250)
-    gs.qtm(nw.gdf, column="connected", title="after removing isolated")
-    gs.qtm(gs.Network(r).close_network_holes(1.1).gdf, column="hole", title="holes")
 
     if (l := max(nw.gdf.length)) > 250 + 1:
         raise ValueError(f"cut_lines did not cut lines. max line length: {l}")
+
+    gs.qtm(nw.gdf, column="connected", title="after removing isolated")
+
+    holes_closed = gs.Network(r).close_network_holes(10.1).gdf
+    print(holes_closed.hole.value_counts())
+    gs.qtm(holes_closed, column="hole", title="holes")
+
+    holes_closed = gs.Network(r).close_network_holes(10.1, deadends_only=True).gdf
+    print(holes_closed.hole.value_counts())
+    gs.qtm(holes_closed, column="hole", title="holes, deadends_only")
 
 
 def main():

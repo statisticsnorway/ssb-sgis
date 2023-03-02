@@ -490,9 +490,9 @@ def _find_holes_deadends(nodes, max_dist, min_dist=0):
     """
 
     condition = (dists < max_dist) & (dists > min_dist)
-    from_geom = deadends.loc[condition, "geometry"]
+    from_geom = deadends.loc[condition, "geometry"].reset_index(drop=True)
     to_idx = indices[condition]
-    to_geom = deadends.loc[to_idx, "geometry"]
+    to_geom = deadends.loc[to_idx, "geometry"].reset_index(drop=True)
 
     # lag GeoDataFrame med rette linjer
     new_lines = shortest_line(from_geom, to_geom)
