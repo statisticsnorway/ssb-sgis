@@ -49,6 +49,7 @@ def overlay(
             or a tuple/list with geom_type for df1 and df2 respectfully.
         drop_dupcol: optionally remove all columns in df2 that is in df1. Defaults to
             False, meaning no columns are dropped.
+        **kwargs: Additional keyword arguments passed to geopandas.overlay
 
     Returns:
         GeoDataFrame with overlayed and fixed geometries and columns from both
@@ -140,6 +141,7 @@ def overlay_update(
             or a tuple/list with geom_type for df1 and df2 respectfully.
         drop_dupcol: optionally remove all columns in df2 that is in df1. Defaults to
             False, meaning no columns are dropped.
+        **kwargs: Additional keyword arguments passed to geopandas.overlay
 
     Returns:
         GeoDataFrame with overlayed geometries and columns from both GeoDataFrames.

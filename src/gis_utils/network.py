@@ -137,7 +137,7 @@ class Network:
             gdf: a GeoDataFrame of line geometries.
             merge_lines: if True (default), multilinestrings within the same row will
                 be merged if they overlap. if False, multilines will be split into
-            separate rows of singlepart lines.
+                separate rows of singlepart lines.
             allow_degree_units: If False (the default), it will raise an exception if
                 the coordinate reference system of 'gdf' is in degree units, i.e.
                 unprojected (4326). If set to True, all crs are allowed, but it might
@@ -199,6 +199,7 @@ class Network:
 
         Examples
         --------
+        >>> nw = Network(roads)
         >>> len(nw.gdf)
         93395
         >>> nw = nw.remove_isolated()
@@ -253,13 +254,8 @@ class Network:
         return self
 
     def get_component_size(self):
-        """Create column 'connected' in the network.gdf, where '1' means connected.
-
-        that the line is part of the largest
-        component of the network.
-
-        It takes the lines of the network, creates a graph, finds the largest component,
-        and maps this as the value '1' in the column 'connected'.
+        """Creates the column "component_size", which indicates the size of the network
+        component the line is a part of.
 
         Returns:
             self
@@ -285,7 +281,11 @@ class Network:
         return self
 
     def close_network_holes(
-        self, max_dist, min_dist=0, deadends_only=False, hole_col="hole"
+        self,
+        max_dist: int,
+        min_dist: int = 0,
+        deadends_only: bool = False,
+        hole_col: str = "hole",
     ):
         """Fills holes in the network lines shorter than the max_dist.
 
@@ -313,7 +313,7 @@ class Network:
         Let's compare the number of isolated/unconnected lines before and after closing
         holes.
 
-        >>> nw = gs.Network(roads)
+        >>> nw = Network(roads)
         >>> nw = nw.get_largest_component()
         >>> nw.gdf.connected.value_counts()
         1.0    85638
@@ -325,7 +325,6 @@ class Network:
         1.0    100315
         0.0       180
         Name: connected, dtype: int64
-
         """
         self._update_nodes_if()
         self.gdf = close_network_holes(
@@ -352,7 +351,7 @@ class Network:
 
         Examples
         --------
-        >>> nw = gs.Network(roads)
+        >>> nw = Network(roads)
         >>> nw.gdf.length.describe().round(1)
         count    93395.0
         mean        41.2

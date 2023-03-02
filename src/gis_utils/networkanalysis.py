@@ -279,6 +279,7 @@ class NetworkAnalysis:
         Travel time from 1000 to 1000 points. Rows where origin and destination is the
         the same has 0 in cost.
 
+        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> od = nwa.od_cost_matrix(points, points, id_col="idx")
         >>> od
                 origin  destination    minutes
@@ -442,6 +443,7 @@ class NetworkAnalysis:
         --------
         Calculate routes from 1 to 1000 points.
 
+        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> routes = nwa.get_route(points.iloc[[0]], points, id_col="idx")
         >>> routes
             origin  destination    minutes                                           geometry
@@ -458,7 +460,6 @@ class NetworkAnalysis:
         996       1         1000  14.657289  MULTILINESTRING Z ((264475.675 6644245.782 114...
 
         [997 rows x 4 columns]
-
         """
         if self._log:
             time_ = perf_counter()
@@ -516,7 +517,15 @@ class NetworkAnalysis:
 
         Finds the route with the lowest cost (minutes, meters, etc.) from a set of
         origins to a set of destinations. Then the middle part of the route is removed
-        from the graph the new low-cost path is found. Repeats k times. How much of the
+        from the graph the new low-cost path is found. Repeats k times. If k=1, it is
+        identical to the get_route method.
+
+        Note:
+            How many percent of the route to drop from the graph, will determine how
+            many k routes will be found. If 100 percent of the route is dropped, it is
+            very hard to find more than one path for each OD pair. If
+            'drop_middle_percent' is 1, the resulting routes might be very similar,
+            depending on the layout of the network.
 
         Args:
             origins: GeoDataFrame of points from where the routes will originate
@@ -560,6 +569,7 @@ class NetworkAnalysis:
         Let's compare the results for one origin and one destination with different
         amounts of the route removed from the graph for each k iteration.
 
+        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> k_routes = nwa.get_k_routes(
         ...             points.iloc[[0]],
         ...             points.iloc[[1]],
@@ -666,6 +676,9 @@ class NetworkAnalysis:
             with the column 'n', which is the number of times the segment was visited
             for all the trips.
 
+        Note:
+            The resulting lines will keep all columns of the 'gdf' of the Network.
+
         Raises:
             ValueError: if no paths were found.
 
@@ -673,6 +686,7 @@ class NetworkAnalysis:
         --------
         Get number of times each road was visited for trips from 25 to 25 points.
 
+        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> freq = nwa.get_route_frequencies(points.sample(25), points.sample(25))
         >>> freq
             source target      n                                           geometry
@@ -764,8 +778,9 @@ class NetworkAnalysis:
 
         Examples
         --------
-        Service areas of 5, 10 and 15 minutes from 3 origin points.
+        Service areas of 5, 10 and 15 minutes from three origin points.
 
+        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> sa = nwa.service_area(
         ...         points.iloc[:3],
         ...         breaks=[5, 10, 15],
