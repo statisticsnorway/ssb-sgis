@@ -27,7 +27,7 @@ from .service_area import _service_area
 
 
 class NetworkAnalysis:
-    """Class that holds the network analysis methods.
+    """Class for doing network analysis.
 
     It takes a (Directed)Network and rules (NetworkAnalysisRules).
 

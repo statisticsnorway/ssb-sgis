@@ -19,10 +19,15 @@ def test_network_methods():
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
     r = gs.clean_clip(r, p.buffer(1000))
 
-    nw = gs.Network(r).get_largest_component()
-    gs.qtm(nw.gdf, column="connected", scheme="equalinterval", title="connected")
+    nw1 = gs.Network(r).get_largest_component()
+    gs.qtm(nw1.gdf, column="connected", scheme="equalinterval", title="connected")
 
-    nw = nw.close_network_holes(1.1).remove_isolated().cut_lines(250)
+    len_now = len(nw1.gdf)
+
+    nw = nw1.copy().close_network_holes(1.1).remove_isolated().cut_lines(250)
+
+    # check that the copy method works
+    assert len(nw1.gdf) == len_now
 
     if (l := max(nw.gdf.length)) > 250 + 1:
         raise ValueError(f"cut_lines did not cut lines. max line length: {l}")

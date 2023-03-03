@@ -30,26 +30,25 @@ class Network:
     undirected network analysis. For directed network analysis, use the DirectedNetwork
     class.
 
-    The geometries are made valid and into singlepart LineStrings, and given 'source'
-    and 'target' ids based on the first and last point of the lines. The Network
-    instance can immediately be used in the NetworkAnalysis class. But the Network
-    class also contains methods for optimizing the network further. The most
-    important, is the remove_isolated method. It will remove network islands, meaning
-    higher success rate in the network analyses. The network islands can be found and
-    inspected with the get_largest_component method, or get_component_size to find the
-    actual length of each network.
+    The Network class also contains methods for optimizing the network further. The
+    remove_isolated method will remove network islands not part of the main network.
+    This will usually increase the success rate of the network analyses substantially.
+    The network islands can also be inspected, but not removed, with the
+    get_largest_component method, or get_component_size to find the actual size of
+    each network.
 
-    If the network has a lot of unconnected parts, that are supposed to be
-    connected, network holes can be filled with close_network_holes method.
-    Often, this should be run before removing the isolated network components.
+    If the network contains holes/gaps that are not supposed to be there, the
+    close_network_holes method can be used. This will fill any network holes
+    shorter than a given distance. Often, this should be run before removing the
+    isolated network components.
 
     Long lines can be cut into equal length pieces with the cut_lines method.
-    This is mostly relevant for service_area analysis, since shorter lines
-    will give more accurate results.
+    This is mainly relevant for service_area analysis, since shorter lines
+    will give more accurate results here.
 
-    All methods return self, and can therefore be chained together. However,
-    all methods also overwrite the instance to save memory. Take a copy with the copy
-    or deepcopy methods before using another method if you want to save the previous
+    All methods can be chained together like in pandas. However, all methods also
+    overwrite the prevous object to save memory. Take a copy with the 'copy' or
+    'deepcopy' methods before using another method if you want to save the previous
     instance.
 
     The 'source' and 'target' ids are also stored as points in the 'nodes' attribute,
@@ -59,6 +58,7 @@ class Network:
 
     Attributes:
         gdf: the GeoDataFrame of lines
+        nodes: GeoDataFrame of points
 
     See also:
         DirectedNetwork: subclass of Network for directed network analysis
@@ -462,9 +462,9 @@ class Network:
         return int(round(percent_bidirectional, 0))
 
     def _nodes_are_up_to_date(self) -> bool:
-        """
-        Returns False if there are any source or target values not in the node-ids,
-        or any superfluous node-ids (meaning rows have been removed from the lines gdf).
+        """Returns False if there are any source or target values not in the node-ids,
+        or any superfluous node-ids (meaning rows have been removed from the lines
+        gdf).
 
         """
 
