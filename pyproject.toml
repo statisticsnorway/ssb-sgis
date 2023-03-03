@@ -17,38 +17,40 @@ classifiers = [
 Changelog = "https://github.com/statisticsnorway/ssb-gis-utils/releases"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<4.0"
+python = ">=3.10,<3.12"
 geopandas = "^0.12.2"
 shapely = "^2.0.1"
-pyogrio = "^0.5.1"
 pandas = "^1.5.3"
 scikit-learn = "^1.2.1"
-requests = "^2.28.2"
 pyarrow = "^11.0.0"
 igraph = "^0.10.4"
 networkx = "^3.0"
 matplotlib = "^3.7.0"
-mapclassify = "^2.5.0"
-folium = "^0.14.0"
+numpy = "^1.24.2"
 
 [tool.poetry.group.dev.dependencies]
 black = {extras = ["d", "jupyter"], version = "^23.1.0"}
 coverage = {extras = ["toml"], version = "^7.2.1"}
 darglint = "^1.8.1"
+deptry = "^0.8.0"
 flake8 = "^6.0.0"
 flake8-bandit = "^4.1.1"
 flake8-bugbear = "^23.2.13"
 flake8-docstrings = "^1.7.0"
 flake8-rst-docstrings = "^0.3.0"
+folium = "^0.14.0"
 furo = "^2022.12.7"
 isort = "^5.12.0"
 jupyterlab = "^3.6.1"
 jupytext = "^1.14.5"
+mapclassify = "^2.5.0"
 mypy = "^1.0.1"
 myst-parser = {version = "^0.19.1"}
+pandas-stubs = "^1.5.3.230227"
 pep8-naming = "^0.13.3"
 pre-commit = "^3.1.1"
 pre-commit-hooks = "^4.4.0"
+pyogrio = "^0.5.1"
 pytest = "^7.2.1"
 pytest-cov = "^4.0.0"
 pytest-mock = "^3.10.0"
@@ -82,6 +84,26 @@ treat_comments_as_code = ["# %%"]
 formats = "ipynb,auto:percent"
 notebook_metadata_filter = "jupytext.text_representation,-jupytext.text_representation.jupytext_version,-widgets,-varInspector,-kernelspec"
 cell_metadata_filter = "-all"
+
+[tool.mypy]
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "dapla.*",
+    "geopandas.*",
+    "igraph",
+    "matplotlib.*",
+    "pyarrow",
+    "shapely.*",
+    "sklearn.*",
+]
+ignore_missing_imports = true
+
 
 [tool.pytest.ini_options]
   pythonpath = [
