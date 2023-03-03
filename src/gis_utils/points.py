@@ -49,9 +49,11 @@ class Points:
             )
 
     def _make_temp_idx(self) -> None:
-        """Make a temporary id column that is not present in the node ids of the network.
-        The original ids are stored in a dict and mapped back to the results in the end.
-        This method has to be run after _get_id_col, because this determines the id column differently for origins and destinations.
+        """Make a temporary id column thad don't overlap with the node ids.
+
+        The original ids are stored in a dict and mapped back to the results in the
+        end. This method has to be run after _get_id_col, because this determines the
+        id column differently for origins and destinations.
         """
 
         self.gdf["temp_idx"] = np.arange(
@@ -62,7 +64,9 @@ class Points:
         if self.id_col:
             self.id_dict = {
                 temp_idx: idx
-                for temp_idx, idx in zip(self.gdf.temp_idx, self.gdf[self.id_col])
+                for temp_idx, idx in zip(
+                    self.gdf.temp_idx, self.gdf[self.id_col], strict=True
+                )
             }
 
     def _get_n_missing(
@@ -74,7 +78,8 @@ class Points:
         Get number of missing values for each point after a network analysis.
 
         Args:
-            results: resulting (Geo)DataFrame of od_cost_matrix, get_route or service_area analysis.
+            results: resulting (Geo)DataFrame of od_cost_matrix, get_route or
+                service_area analysis.
             col: id column of the results. Either 'origin' or 'destination'.
 
         Returns:
@@ -108,7 +113,8 @@ class Points:
             > 1
         ):
             raise ValueError(
-                "Can only specify one of 'weight_to_nodes_dist', 'weight_to_nodes_kmh' and 'weight_to_nodes_mph'"
+                "Can only specify one of 'weight_to_nodes_dist', 'weight_to_nodes_kmh'"
+                " and 'weight_to_nodes_mph'"
             )
 
         if rules.weight_to_nodes_dist and rules.weight != "meters":
@@ -125,7 +131,7 @@ class Points:
         return dists
 
     def _make_edges(self, df, from_col, to_col):
-        return [(f, t) for f, t in zip(df[from_col], df[to_col])]
+        return [(f, t) for f, t in zip(df[from_col], df[to_col], strict=True)]
 
     def _get_edges_and_weights(
         self,

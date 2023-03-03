@@ -21,6 +21,7 @@ from .maps import clipmap, concat_explore, qtm, samplemap
 from .network import Network
 from .network_functions import (
     close_network_holes,
+    cut_lines,
     get_component_size,
     get_largest_component,
     make_edge_coords_cols,

@@ -1,4 +1,8 @@
-""""""
+"""Network class with methods for manipulating line geometries
+
+The module includes functions for cutting and splitting lines, filling holes in the
+network, finding and removing isolated network islands and creating unique node ids.
+"""
 
 import warnings
 from copy import copy, deepcopy
@@ -17,28 +21,6 @@ from .network_functions import (
     get_largest_component,
     make_node_ids,
 )
-
-
-# put this a better place
-def _edge_ids(
-    gdf: GeoDataFrame | list[tuple[int, int]], weight: str | list[float]
-) -> list[str]:
-    """Quite messy way to deal with different input types."""
-    if isinstance(gdf, GeoDataFrame):
-        return _edge_id_template(
-            zip(gdf["source"], gdf["target"], strict=True),
-            weight_arr=gdf[weight],
-        )
-    if isinstance(gdf, list):
-        return _edge_id_template(gdf, weight_arr=weight)
-
-
-def _edge_id_template(*source_target_arrs, weight_arr):
-    """Edge identifiers represented with source and target ids and the weight."""
-    return [
-        f"{s}_{t}_{w}"
-        for (s, t), w in zip(*source_target_arrs, weight_arr, strict=True)
-    ]
 
 
 class Network:
@@ -254,8 +236,10 @@ class Network:
         return self
 
     def get_component_size(self):
-        """Creates the column "component_size", which indicates the size of the network
-        component the line is a part of.
+        """Finds the size of each component in the network.
+
+        Creates the column "component_size" in the 'gdf' of the network, which
+        indicates the number of lines in the network component the line is a part of.
 
         Returns:
             self
@@ -348,6 +332,9 @@ class Network:
 
         Returns:
             Self
+
+        Note:
+            This method is time consuming for large networks and low 'max_length'.
 
         Examples
         --------
@@ -540,3 +527,25 @@ class Network:
 
     def deepcopy(self):
         return deepcopy(self)
+
+
+# put this a better place
+def _edge_ids(
+    gdf: GeoDataFrame | list[tuple[int, int]], weight: str | list[float]
+) -> list[str]:
+    """Quite messy way to deal with different input types."""
+    if isinstance(gdf, GeoDataFrame):
+        return _edge_id_template(
+            zip(gdf["source"], gdf["target"], strict=True),
+            weight_arr=gdf[weight],
+        )
+    if isinstance(gdf, list):
+        return _edge_id_template(gdf, weight_arr=weight)
+
+
+def _edge_id_template(*source_target_arrs, weight_arr):
+    """Edge identifiers represented with source and target ids and the weight."""
+    return [
+        f"{s}_{t}_{w}"
+        for (s, t), w in zip(*source_target_arrs, weight_arr, strict=True)
+    ]

@@ -1,18 +1,20 @@
+"""
+Functions that buffer, dissolve and/or explodes (multipart to singlepart)
+GeoDataFrames, GeoSeries or shapely geometries.
+
+Rules that apply to all functions in the module:
+ - higher buffer resolution (50) than the default (16) for accuracy's sake.
+ - fixes geometries after buffer and dissolve, but not after explode,
+  since fixing geometries might result in multipart geometries.
+ - ignoring and reseting index by default. Columns containing 'index' or 'level_' are
+ removed.
+"""
+
+
 import geopandas as gpd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry, get_parts, make_valid
 from shapely.ops import unary_union
-
-
-"""
-Functions that buffer, dissolve and/or explodes (multipart to singlepart) geodataframes.
-
-Rules that apply to all functions:
- - higher buffer-resolution (50) than the default (16) for accuracy's sake.
- - fixes geometries after buffer dissolve, but not after explode,
-  since fixing geometries might result in multipart geometries.
- - ignoring and reseting index. Columns containing 'index' or 'level_' are removed.
-"""
 
 
 def buff(

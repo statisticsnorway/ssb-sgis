@@ -30,7 +30,7 @@ def not_test_network_analysis():
     p["idx2"] = p.index
 
     r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
-    #   r = gs.clean_clip(r, p.geometry.iloc[0].buffer(5000))
+    r = gs.clean_clip(r, p.geometry.iloc[0].buffer(5000))
 
     ### MAKE THE ANALYSIS CLASS
 

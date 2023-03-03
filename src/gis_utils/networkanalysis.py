@@ -4,6 +4,7 @@ The class has four methods: od_cost_matrix,
 get_route, get_route_frequencies and service_area.
 """
 
+
 from datetime import datetime
 from time import perf_counter
 
@@ -175,8 +176,10 @@ class NetworkAnalysis:
 
     See also
     --------
-    DirectedNetwork : for customising and optimising line data before directed network analysis
-    Network : for customising and optimising line data before undirected network analysis
+    DirectedNetwork : for customising and optimising line data before directed network
+        analysis
+    Network : for customising and optimising line data before undirected network
+        analysis
     """
 
     def __init__(
@@ -557,13 +560,6 @@ class NetworkAnalysis:
             ValueError: if no paths were found.
             ValueError: if drop_middle_percent is not between 0 and 100.
 
-        k_routes = nwa.get_k_routes(
-            points.iloc[[0]],
-            points.iloc[[1]],
-            k=10,
-            drop_middle_percent=50
-            )
-
         Examples
         --------
         Let's compare the results for one origin and one destination with different
@@ -605,13 +601,14 @@ class NetworkAnalysis:
         ...             points.iloc[[0]],
         ...             points.iloc[[1]],
         ...             k=10,
-        ...             drop_middle_percent=100)
+        ...             drop_middle_percent=100
+        ...         )
         >>> k_routes
         origin destination    minutes  k                                           geometry
         0  79166       79167  12.930588  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
 
         """
-        if drop_middle_percent < 0 or drop_middle_percent > 100:
+        if not 0 <= drop_middle_percent <= 100:
             raise ValueError("'drop_middle_percent' should be between 0 and 100")
 
         if self._log:

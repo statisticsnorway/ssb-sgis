@@ -1,3 +1,11 @@
+"""Get K-nearest neighbours.
+
+The main function in the module is 'get_k_nearest_neighbours', which finds the k nearest
+neighbours for points in a GeoDataFrame. The function 'k_nearest_neighbours' is for use
+with numpy arrays.
+"""
+
+
 import numpy as np
 from geopandas import GeoDataFrame
 from pandas import DataFrame
@@ -13,7 +21,7 @@ def get_k_nearest_neighbours(
     max_dist: int | None = None,
     strict: bool = False,
 ) -> DataFrame:
-    """Finds the k nearest neighbours for a GeoDataFrame of points
+    """Finds the k nearest neighbours for a GeoDataFrame of points.
 
     Uses the K-nearest neighbors algorithm method from sklearn.neighbors to find the
     given number of neighbours for each point in 'gdf'.
@@ -35,16 +43,22 @@ def get_k_nearest_neighbours(
         A DataFrame with id columns and the distance from gdf to neighbour. Also
         includes columns for the minumum distance for each point in 'gdf' and
         the rank.
-    """
 
+    Raises:
+        ValueError: If the coordinate reference system of 'gdf' and 'neighbours' are
+        not the same.
+    """
     if gdf.crs != neighbours.crs:
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbours.crs)
 
     if id_cols:
         id_col1, id_col2 = _return_two_id_cols(id_cols)
-        id_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf[id_col1])}
+        id_dict_gdf = {
+            i: col for i, col in zip(range(len(gdf)), gdf[id_col1], strict=True)
+        }
         id_dict_neighbours = {
-            i: col for i, col in zip(range(len(neighbours)), neighbours[id_col2])
+            i: col
+            for i, col in zip(range(len(neighbours)), neighbours[id_col2], strict=True)
         }
     else:
         id_col1, id_col2 = "gdf_idx", "neighbours_idx"
@@ -109,8 +123,7 @@ def get_k_nearest_neighbors(
 
 
 def coordinate_array(gdf: GeoDataFrame) -> np.ndarray[np.ndarray[float]]:
-    """Takes a GeoDataFrame of point geometries and turns it into a 2d ndarray
-    of coordinates.
+    """Creates a 2d ndarray of coordinates from a GeoDataFrame of points.
 
     Args:
         gdf: GeoDataFrame of point geometries
@@ -118,7 +131,9 @@ def coordinate_array(gdf: GeoDataFrame) -> np.ndarray[np.ndarray[float]]:
     Returns:
         np.ndarray of np.ndarrays of coordinates
     """
-    return np.array([(x, y) for x, y in zip(gdf.geometry.x, gdf.geometry.y)])
+    return np.array(
+        [(x, y) for x, y in zip(gdf.geometry.x, gdf.geometry.y, strict=True)]
+    )
 
 
 def k_nearest_neighbours(
@@ -127,14 +142,14 @@ def k_nearest_neighbours(
     k: int,
     strict: bool = False,
 ) -> tuple[np.ndarray[float]]:
-    """Finds the k nearest neighbours for an array of points
+    """Finds the k nearest neighbours for an array of points.
 
     Uses the K-nearest neighbors algorithm method from sklearn.neighbors to find the
     given number of neighbours for each point in 'from_array'.
 
     Args:
-        gdf: an np.ndarray of coordinates
-        neighbours: an np.ndarray of coordinates
+        from_array: an np.ndarray of coordinates
+        to_array: an np.ndarray of coordinates
         k: number of neighbours to find
         strict: If True, will raise an error if 'k' is greater than the number
             of points in 'to_array'. If False, will return all distances if there
@@ -144,7 +159,6 @@ def k_nearest_neighbours(
         The distances and indices of the nearest neighbors. Both distances and
         neighbours are np.ndarrays.
     """
-
     if not strict:
         k = k if len(to_array) >= k else len(to_array)
 
@@ -185,7 +199,8 @@ def _get_edges(gdf: GeoDataFrame, indices: np.ndarray[float]) -> np.ndarray[tupl
 
 
 def _return_two_id_cols(id_cols: str | list[str, str] | tuple[str, str]) -> tuple[str]:
-    """
+    """Just some isinstance checks.
+
     Make sure the id_cols are a 2 length tuple.> If the input is a string, return
     a tuple of two strings. If the input is a list or tuple of two
     strings, return the list or tuple. Otherwise, raise a ValueError
@@ -196,7 +211,6 @@ def _return_two_id_cols(id_cols: str | list[str, str] | tuple[str, str]) -> tupl
     Returns:
       A tuple of two strings.
     """
-
     if isinstance(id_cols, (tuple, list)) and len(id_cols) == 2:
         return id_cols
     elif isinstance(id_cols, str):
