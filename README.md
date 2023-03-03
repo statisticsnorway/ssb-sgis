@@ -1,3 +1,7 @@
+# ssb-gis-utils
+
+GIS utility functions used in [Statistics Norway](https://www.ssb.no/en).
+
 ## Network analysis integrated with geopandas
 
 The package offers methods that makes it easy to customise and optimise road data and
