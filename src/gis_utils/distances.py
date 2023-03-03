@@ -17,7 +17,7 @@ def get_k_nearest_neighbours(
     neighbours: GeoDataFrame,
     k: int,
     id_cols: str | list[str, str] | tuple[str, str] | None = None,
-    min_dist: int = 0.0000001,
+    min_dist: float = 0.0000001,
     max_dist: int | None = None,
     strict: bool = False,
 ) -> DataFrame:

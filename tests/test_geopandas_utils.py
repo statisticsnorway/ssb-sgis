@@ -1,21 +1,18 @@
 # %%
 
+import sys
 from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from shapely.geometry import LineString
 from shapely.wkt import loads
-
-import gis_utils as gs
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
-import sys
-
-
-sys.path.append(src)
+sys.path.insert(0, src)
 
 import gis_utils as gs
 
@@ -178,6 +175,49 @@ def test_neighbors(gdf_fixture):
     )
     naboer.sort()
     assert naboer == [4, 5, 7, 8, 9], "feil i find_neighbors"
+
+    points = gs.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
+    points["idx"] = points.index
+    p1 = points.iloc[[0]]
+    assert gs.find_neighbours(p1, points, id_col="idx") == [0]
+    assert gs.find_neighbours(p1, points, id_col="idx", max_dist=1) == [0, 1]
+    assert gs.find_neighbours(p1, points, id_col="idx", max_dist=3) == [0, 1, 2]
+
+
+def test_to_gdf():
+    geom = 10, 60
+    print(gs.to_gdf(geom, crs=4326))
+    geom = (10, 60, 1)
+    print(gs.to_gdf(geom, crs=4326))
+
+    geom = ((10, 60), (1, 1))
+    print(gs.to_gdf(geom, crs=4326))
+
+    geom = [[10, 60], [1, 1]]
+    print(gs.to_gdf(geom, crs=4326))
+
+    geom = [(10, 60), (1, 1)]
+    gdf = gs.to_gdf(geom, crs=4326)
+
+    assert gs.to_gdf(gdf.geometry).crs == 4326
+    assert gs.to_gdf(gdf.geometry, crs=4326).crs == 4326
+
+    print(gs.to_gdf([gdf.geometry, gdf.geometry, gdf.geometry]))
+    coordsarray = gs.coordinate_array(gdf)
+    print(gs.to_gdf(coordsarray, crs=4326))
+
+    print(gs.to_gdf(LineString(geom), crs=4326))
+    print(gs.to_gdf(gs.to_gdf(geom, crs=4326).geometry))
+
+    geom = "POINT (60 10)"
+    print(gs.to_gdf(geom, crs=4326))
+    geom = b"\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00N@\x00\x00\x00\x00\x00\x00$@"
+    print(gs.to_gdf(geom, crs=4326))
+
+    geom = {1: (10, 60), 2: (11, 59)}
+    print(gs.to_gdf(geom, crs=4326))
+    geom = {(10, 60): "1", (11, 59): "2"}
+    print(gs.to_gdf(geom, crs=4326))
 
 
 def test_snap(gdf_fixture):

@@ -128,13 +128,13 @@ def split_lines_at_closest_point(
     lines["temp_idx_"] = lines.index
 
     # move the points to the nearest exact point of the line (to_node=False)
-    # and get the line index ('snap_to_id')
+    # and get the line index ('id_col')
     snapped = snap_to(
         points,
         lines,
         max_dist=max_dist,
         to_node=False,
-        snap_to_id="temp_idx_",
+        id_col="temp_idx_",
     )
 
     condition = lines["temp_idx_"].isin(snapped["temp_idx_"])

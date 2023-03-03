@@ -1,3 +1,4 @@
+# %%
 import sys
 import warnings
 from pathlib import Path
@@ -23,6 +24,11 @@ def test_overlay():
 
     p500 = gs.buff(p, 500)
     p1000 = gs.buff(p, 1000)
+
+    updated = gs.overlay_update(p500, p1000)
+    gs.qtm(updated)
+    updated = gs.overlay_update(p1000, p500)
+    gs.qtm(updated)
 
     for how in [
         "intersection",

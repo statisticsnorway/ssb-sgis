@@ -23,12 +23,12 @@ def overlay(
     drop_dupcol: bool = False,
     **kwargs,
 ) -> GeoDataFrame:
-    """Try geopandas.overlay, then try alternative function from geopandas issue #2792
+    """Overlay that bypasses a GEOSException raised by geopandas.overlay.
 
-    Fixes geometries, then tries a regular geopandas.overlay. If it doesn't succeed,
-    tries a solution inspired by: https://github.com/geopandas/geopandas/issues/2792.
-    This solution avoids the reduce function and bypasses GEOSExceptions raised in the
-    regular geopandas.overlay.
+    First fixes geometries and tries a regular geopandas.overlay. If it is
+    unsuccessful, tries a solution inspired by:
+    https://github.com/geopandas/geopandas/issues/2792. This solution avoids the reduce
+    function and bypasses GEOSExceptions raised in the regular geopandas.overlay.
 
     Like in geopandas, the default is to keep only the geometry type of df1. If
     either 'df1' or 'df2' has mixed geometries, it will raise an
@@ -132,7 +132,11 @@ def overlay_update(
     geom_type: str | tuple[str, str] | list[str, str] | None = None,
     **kwargs,
 ) -> GeoDataFrame:
-    """
+    """Updates df1 by putting df2 on top.
+
+    First runs a difference overlay of df1 and df2 to erase the parts of df1 that is in
+    df2. Then concatinates the overlayed geometries with df2.
+
     Args:
         df1: GeoDataFrame
         df2: GeoDataFrame

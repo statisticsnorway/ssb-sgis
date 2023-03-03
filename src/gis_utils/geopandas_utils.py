@@ -1,6 +1,8 @@
+# %%
 import warnings
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from numpy.random import random as np_random
@@ -12,6 +14,8 @@ from shapely import (
     get_num_interior_rings,
     get_parts,
     polygons,
+    wkb,
+    wkt,
 )
 from shapely.geometry import Point
 from shapely.ops import nearest_points, snap, unary_union
@@ -25,15 +29,45 @@ def close_holes(
     """Closes holes in polygons, either all holes or holes smaller than 'max_km2'
 
     Args:
-      polygons: GeoDataFrame, GeoSeries or shapely Geometry.
-      max_km2: if None (default), all holes are closed.
-        Otherwise, closes holes with an area below the specified number in
-        square kilometers if the crs unit is in meters.
-      copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
-        Defaults to True
+        polygons: GeoDataFrame, GeoSeries or shapely Geometry.
+        max_km2: if None (default), all holes are closed.
+            Otherwise, closes holes with an area below the specified number in
+            square kilometers if the crs unit is in meters.
+        copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
+            Defaults to True
 
     Returns:
-      A GeoDataFrame, GeoSeries or shapely Geometry with closed holes in the geometry column
+        A GeoDataFrame, GeoSeries or shapely Geometry with closed holes in the geometry
+        column
+
+    Examples
+    --------
+
+    Let's create a circle with a hole in it.
+
+    >>> from gis_utils import testgdf, buff, close_holes
+    >>> gdf = testgdf(cols="geometry")
+    >>> point = gdf.iloc[[0]]
+    >>> circle = buff(point, 1000)
+    >>> small_circle = buff(point, 500)
+    >>> circle_with_hole = circle.overlay(small_circle, how="difference")
+    >>> circle_with_hole.area
+    0    2.355807e+06
+    dtype: float64
+    >>> holes_closed = close_holes(circle_with_hole)
+    >>> holes_closed.area
+    0    3.141076e+06
+    dtype: float64
+
+    The hole will not be closed if it is larger than 'max_km2'.
+
+    >>> holes_closed = close_holes(
+    ...     circle_with_hole,
+    ...     max_km2=0.1
+    ... )
+    >>> holes_closed.area
+    0    2.355807e+06
+    dtype: float64
     """
 
     if copy:
@@ -74,7 +108,40 @@ def clean_geoms(
     Returns:
         GeoDataFrame or GeoSeries with fixed geometries and only the rows with valid,
         non-empty and not-NaN/-None geometries.
+
+    Examples
+    --------
+
+    Removing None and empty geometries.
+
+    >>> import pandas as pd
+    >>> from gis_utils import clean_geoms, testgdf, to_gdf, gdf_concat
+    >>> from shapely import wkt
+    >>> gdf = testgdf(cols="geometry").iloc[-3:]
+    >>> missing = pd.DataFrame({"geometry": [None]})
+    >>> empty = to_gdf(wkt.loads("POINT (0 0)").buffer(0))
+    >>> gdf = pd.concat([gdf, missing, empty])
+    >>> gdf
+                                                geometry
+    6                     POINT (261189.037 6648820.242)
+    7  LINESTRING (261189.031 6648820.231, 260702.516...
+    8  POLYGON ((261922.890 6650165.833, 261607.831 6...
+    0                                               None
+    0                                      POLYGON EMPTY
+    >>> clean_geoms(gdf, ignore_index=True)
+                                                geometry
+    0                     POINT (261189.037 6648820.242)
+    1  LINESTRING (261189.031 6648820.231, 260702.516...
+    2  POLYGON ((261922.890 6650165.833, 261607.831 6...
+
+    Specify geom_type to keep only one geometry type.
+
+    >>> clean_geoms(gdf, geom_type="polygon")
+                                                geometry
+    8  POLYGON ((261922.890 6650165.833, 261607.831 6...
+
     """
+    warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
 
     if isinstance(gdf, GeoDataFrame):
         geom_col = gdf._geometry_column_name
@@ -93,6 +160,9 @@ def clean_geoms(
     if geom_type:
         gdf = to_single_geom_type(gdf, geom_type=geom_type, ignore_index=ignore_index)
 
+    if ignore_index:
+        gdf = gdf.reset_index(drop=True)
+
     return gdf
 
 
@@ -102,7 +172,7 @@ def snap_to(
     *,
     max_dist: int | None = None,
     to_node: bool = False,
-    snap_to_id: str | None = None,
+    id_col: str | None = None,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
     """Snaps a set of points to the nearest geometry
@@ -118,7 +188,7 @@ def snap_to(
             the snap_to geometry, which can be between two vertices if the snap_to
             geometry is line or polygon. If True, the points will snap to the nearest
             node of the snap_to geometry.
-        snap_to_id: name of a column in the snap_to data to use as an identifier for
+        id_col: name of a column in the snap_to data to use as an identifier for
             the geometry it was snapped to. Defaults to None.
         copy: If True, a copy of the GeoDataFrame is returned. Otherwise, the original
             GeoDataFrame. Defaults to True
@@ -126,6 +196,57 @@ def snap_to(
     Returns:
         A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the
         'snap_to' GeoDataFrame or GeoSeries.
+
+    Examples
+    --------
+    >>> from gis_utils import testgdf, snap_to
+    >>> gdf = testgdf()
+    >>> gdf
+                                                geometry  numcol txtcol
+    0                     POINT (262523.813 6651036.250)       1      a
+    1                     POINT (262449.242 6650972.490)       2      a
+    2                     POINT (262424.766 6650940.562)       3      a
+    3                     POINT (261819.302 6649896.316)       4      a
+    4                     POINT (261756.291 6649788.704)       5      b
+    5                     POINT (261620.718 6652030.971)       6      b
+    6                     POINT (261189.037 6648820.242)       7      b
+    7  LINESTRING (261189.031 6648820.231, 260702.516...       8      c
+    8  POLYGON ((261922.890 6650165.833, 261607.831 6...       9      c
+    >>> points = gdf.loc[gdf.geom_type == "Point", ["geometry"]]
+    >>> points
+                            geometry
+    0  POINT (262523.813 6651036.250)
+    1  POINT (262449.242 6650972.490)
+    2  POINT (262424.766 6650940.562)
+    3  POINT (261819.302 6649896.316)
+    4  POINT (261756.291 6649788.704)
+    5  POINT (261620.718 6652030.971)
+    6  POINT (261189.037 6648820.242)
+
+    Snap the points to nearest line or polygon.
+
+    >>> other = gdf.loc[gdf.geom_type != "Point"]
+    >>> snap_to(points, other, id_col="numcol")
+                            geometry  numcol
+    0  POINT (261922.890 6650165.833)       9
+    1  POINT (261922.890 6650165.833)       9
+    2  POINT (261922.890 6650165.833)       9
+    3  POINT (261778.920 6649919.962)       9
+    4  POINT (261715.908 6649812.350)       9
+    5  POINT (261922.890 6650165.833)       9
+    6  POINT (261189.028 6648820.238)       8
+
+    Snap only to geometries within 100 meters.
+
+    >>> snap_to(points, other, id_col="numcol", max_dist=100)
+                            geometry  numcol
+    0  POINT (262523.813 6651036.250)     NaN
+    1  POINT (262449.242 6650972.490)     NaN
+    2  POINT (262424.766 6650940.562)     NaN
+    3  POINT (261778.920 6649919.962)     9.0
+    4  POINT (261715.908 6649812.350)     9.0
+    5  POINT (261620.718 6652030.971)     NaN
+    6  POINT (261189.028 6648820.238)     8.0
     """
 
     if copy:
@@ -151,10 +272,12 @@ def snap_to(
     if isinstance(points, gpd.GeoSeries):
         points = points.apply(lambda point: func(point, unioned))
 
-    if snap_to_id:
-        points = points.sjoin_nearest(snap_to[[snap_to_id, "geometry"]]).drop(
-            "index_right", axis=1, errors="ignore"
+    if id_col:
+        points = points.sjoin_nearest(
+            snap_to[[id_col, "geometry"]], distance_col="dist"
         )
+        points[id_col] = np.where(points["dist"] > max_dist, np.nan, points[id_col])
+        points = points.drop(["index_right", "dist"], axis=1, errors="ignore")
 
     return points
 
@@ -176,9 +299,24 @@ def to_multipoint(
     Returns:
         A GeoDataFrame with the geometry column as a MultiPoint, or Point if the
         original geometry was a point.
+
+    Examples
+    --------
+    >>> from gis_utils import testgdf, to_multipoint
+    >>> gdf = gs.testgdf(cols="geometry").iloc[-3:]
+    >>> gdf
+                                                geometry
+    6                     POINT (261189.037 6648820.242)
+    7  LINESTRING (261189.031 6648820.231, 260702.516...
+    8  POLYGON ((261922.890 6650165.833, 261607.831 6...
+    >>> to_multipoint(gdf)
+                                                geometry
+    6                     POINT (261189.037 6648820.242)
+    7  MULTIPOINT (260282.781 6649548.982, 260329.363...
+    8  MULTIPOINT (260662.164 6648013.752, 260734.174...
+
     """
     from shapely import force_2d
-    from shapely.wkt import loads
 
     if copy:
         gdf = gdf.copy()
@@ -189,7 +327,7 @@ def to_multipoint(
         ).strip()
 
         alle_punkter = [
-            loads(f"POINT ({punkt.strip()})") for punkt in koordinater.split(",")
+            wkt.loads(f"POINT ({punkt.strip()})") for punkt in koordinater.split(",")
         ]
 
         return unary_union(alle_punkter)
@@ -218,10 +356,10 @@ def find_neighbours(
     id_col: str,
     max_dist: int = 0,
 ) -> list[str]:
-    """Returns a list of neigbours for a GeoDataFrame
+    """Returns a list of neigbours for a GeoDataFrame.
 
-    Finds all the geometries in 'possible_neighbours' that intersects with the first
-    geometry.
+    Finds all the geometries in 'possible_neighbours' that intersect with 'gdf'. If
+    max_dist is specified, neighbours
 
     Args:
         gdf: GeoDataFrame or GeoSeries
@@ -231,7 +369,24 @@ def find_neighbours(
         max_dist: The maximum distance between the two geometries. Defaults to 0
 
     Returns:
-      A list of unique values from the id_col column in the joined dataframe.
+        A list of unique values from the id_col column in the joined dataframe.
+
+    Examples
+    --------
+    >>> points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
+    >>> points["idx"] = points.index
+    >>> points
+                    geometry  idx
+    0  POINT (0.00000 0.00000)    0
+    1  POINT (0.50000 0.50000)    1
+    2  POINT (2.00000 2.00000)    2
+    >>> p1 = points.iloc[[0]]
+    >>> find_neighbours(p1, points, id_col="idx")
+    [0]
+    >>> find_neighbours(p1, points, id_col="idx", max_dist=1)
+    [0, 1]
+    >>> find_neighbours(p1, points, id_col="idx", max_dist=3)
+    [0, 1, 2]
     """
 
     if max_dist:
@@ -244,7 +399,8 @@ def find_neighbours(
     else:
         gdf = gdf.geometry.to_frame()
 
-    possible_neighbours = possible_neighbours.to_crs(gdf.crs)
+    if gdf.crs:
+        possible_neighbours = possible_neighbours.to_crs(gdf.crs)
 
     joined = gdf.sjoin(possible_neighbours, how="inner")
 
@@ -277,6 +433,48 @@ def to_single_geom_type(
     Raises:
         TypeError: If incorrect gdf type. ValueError if incorrect geom_type.
         ValueError: If 'geom_type' is neither 'polygon', 'line' or 'point'.
+
+    See also:
+        clean_geoms: fixes geometries and returns single geometry type if
+            'geom_type' is specified.
+
+    Examples
+    --------
+    >>> from gis_utils import testgdf, to_single_geom_type
+    >>> gdf = testgdf()
+    >>> gdf
+                                                geometry  numcol txtcol
+    0                     POINT (262523.813 6651036.250)       1      a
+    1                     POINT (262449.242 6650972.490)       2      a
+    2                     POINT (262424.766 6650940.562)       3      a
+    3                     POINT (261819.302 6649896.316)       4      a
+    4                     POINT (261756.291 6649788.704)       5      b
+    5                     POINT (261620.718 6652030.971)       6      b
+    6                     POINT (261189.037 6648820.242)       7      b
+    7  LINESTRING (261189.031 6648820.231, 260702.516...       8      c
+    8  POLYGON ((261922.890 6650165.833, 261607.831 6...       9      c
+    >>> to_single_geom_type(gdf, "line")
+                                                geometry  numcol txtcol
+    7  LINESTRING (261189.031 6648820.231, 260702.516...       8      c
+    >>> to_single_geom_type(gdf, "polygon")
+                                                geometry  numcol txtcol
+    8  POLYGON ((261922.890 6650165.833, 261607.831 6...       9      c
+
+    Also keeps multigeometries and the correct geometry types in GeometryCollections.
+
+    >>> gdf = testgdf(cols="geometry").dissolve()
+    >>> gdf
+                                                geometry
+    0  GEOMETRYCOLLECTION (POINT (261189.037 6648820....
+    >>> to_single_geom_type(gdf, "point")
+                            geometry
+    1  POINT (261189.037 6648820.242)
+    2  POINT (261620.718 6652030.971)
+    3  POINT (261756.291 6649788.704)
+    4  POINT (261819.302 6649896.316)
+    5  POINT (262424.766 6650940.562)
+    6  POINT (262449.242 6650972.490)
+    7  POINT (262523.813 6651036.250)
     """
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
@@ -310,16 +508,16 @@ def to_single_geom_type(
 def is_single_geom_type(
     gdf: GeoDataFrame | GeoSeries,
 ) -> bool:
-    """
-    Returns True if all the geometries in the GeoDataFrame are of the same type,
-    either polygon, line or point. Multipart and singlepart are considered the same
-    type.
+    """Returns True if all geometries in a GeoDataFrame are of the same type.
+
+    The types are either polygon, line or point. Multipart and singlepart are
+    considered the same type.
 
     Args:
-      gdf: GeoDataFrame or GeoSeries
+        gdf: GeoDataFrame or GeoSeries
 
     Returns:
-      True if all geometries are the same type, False if not
+        True if all geometries are the same type, False if not
     """
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
@@ -436,7 +634,12 @@ def gdf_concat(
 def to_gdf(
     geom: GeoSeries | Geometry | str | bytes, crs=None, **kwargs
 ) -> GeoDataFrame:
-    """Converts GeoSeries, shapely Geometry, wkt string or wkb bytes to a GeoDataFrame.
+    """Converts any geometry object to a GeoDataFrame.
+
+    Constructs a GeoDataFrame from GeoSeries, shapely objects, coordinate
+    tuple/list/ndarray, wkt strings and wkb bytes. Also accepts lists/tuples/ndarrays
+    containing any of these objects. The geometry column is always named 'geometry'.
+    Can also create a GeoDataFrame with two columns if 'geom' is a dictionary.
 
     Args:
         geom: the object to be converted to a GeoDataFrame
@@ -449,31 +652,103 @@ def to_gdf(
         A GeoDataFrame with one column, the geometry column.
 
     Raises:
-        ValueError if 'crs' is not specified and the input type is not GeoSeries
+        TypeError: If geom is a GeoDataFrame
 
+    Examples
+    --------
+    >>> wkt = "POINT (10 60)"
+    >>> to_gdf(wkt, crs=4326)
+                        geometry
+    0  POINT (10.00000 60.00000)
+    >>> coords = (10, 60)
+    >>> to_gdf(coords, crs=4326)
+                        geometry
+    0  POINT (10.00000 60.00000)
+
+    Lists of tuples will be converted to Points, unless a line or polygon geometry is
+    constructed beforehand.
+
+    >>> coordslist = [(10, 60), (11, 59)]
+    >>> to_gdf(coordslist, crs=4326)
+                        geometry
+    0  POINT (10.00000 60.00000)
+    1  POINT (11.00000 59.00000)
+    >>> from shapely.geometry import LineString
+    >>> to_gdf(LineString(coordslist), crs=4326)
+                                                geometry
+    0  LINESTRING (10.00000 60.00000, 11.00000 59.00000)
     """
 
-    if not crs:
-        if not isinstance(geom, GeoSeries):
-            raise ValueError("'crs' have to be specified when the input is a string.")
-        crs = geom.crs
+    if isinstance(geom, GeoDataFrame):
+        raise TypeError("'to_gdf' doesn't accept GeoDataFrames as input type.")
 
+    if isinstance(geom, pd.DataFrame):
+        if hasattr(geom, "geometry"):
+            return GeoDataFrame(geom, geometry="geometry", crs=crs, **kwargs)
+
+    if isinstance(geom, GeoSeries):
+        crs = geom.crs if not crs else crs
+        return GeoDataFrame({"geometry": geom}, crs=crs, **kwargs)
+
+    # convert to list so that all types are passed to _make_shapely_geom
+    if isinstance(geom, (str, bytes)):
+        geom = [geom]
+
+    if not crs and hasattr(geom, "crs"):
+        crs = geom[0].crs
+
+    if isinstance(geom, (tuple, list, np.ndarray)):
+        if all(isinstance(i, (int, float)) for i in geom):
+            geom = Point(geom)
+        elif all(isinstance(i, GeoSeries) for i in geom):
+            return gdf_concat(
+                [
+                    GeoDataFrame(
+                        {"geometry": GeoSeries(x)},
+                        geometry="geometry",
+                        crs=crs,
+                        **kwargs,
+                    )
+                    for x in geom
+                ]
+            )
+        else:
+            geom = [_make_shapely_geom(x) for x in geom]
+
+    if isinstance(geom, dict):
+        try:
+            cols = [(key, _make_shapely_geom(value)) for key, value in geom.items()]
+            if not any(x for x in cols[1]):
+                raise TypeError
+        except Exception:
+            cols = [(value, _make_shapely_geom(key)) for key, value in geom.items()]
+            if not any(x for x in cols[1]):
+                raise TypeError
+        return GeoDataFrame(
+            cols, columns=["col", "geometry"], geometry="geometry", crs=crs, **kwargs
+        )
+
+    return GeoDataFrame(
+        {"geometry": GeoSeries(geom)}, geometry="geometry", crs=crs, **kwargs
+    )
+
+
+def _make_shapely_geom(geom):
+    if isinstance(geom, (tuple, list, np.ndarray)):
+        if len(geom) == 2 or len(geom) == 3:
+            return Point(geom)
+        else:
+            raise ValueError(
+                "If 'geom' is list/tuple/ndarray, each item should consist of "
+                "2 or 3 coordinates (x, y, z)."
+            )
     if isinstance(geom, str):
-        from shapely.wkt import loads
+        return wkt.loads(geom)
 
-        geom = loads(geom)
-        gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
+    if isinstance(geom, bytes):
+        return wkb.loads(geom)
 
-    elif isinstance(geom, bytes):
-        from shapely.wkb import loads
-
-        geom = loads(geom)
-        gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
-
-    else:
-        gdf = GeoDataFrame({"geometry": GeoSeries(geom)}, crs=crs, **kwargs)
-
-    return gdf
+    return geom
 
 
 def push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:
@@ -508,6 +783,8 @@ def clean_clip(
         geom_type (optional): geometry type to keep in 'gdf' before and after the clip
         **kwargs: Additional keyword arguments passed to GeoDataFrame.clip
 
+    Returns:
+        The cleanly clipped GeoDataFrame.
     """
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
@@ -566,24 +843,14 @@ def sjoin(
     return joined.loc[:, ~joined.columns.str.contains(INDEX_COLS)]
 
 
-def find_neighbors(
-    gdf: GeoDataFrame | GeoSeries,
-    possible_neighbors: GeoDataFrame | GeoSeries,
-    id_col: str,
-    max_dist: int = 0,
-) -> list[str]:
-    """American alias for find_neighbours"""
-    return find_neighbours(gdf, possible_neighbors, id_col, max_dist)
-
-
 def random_points(n: int) -> GeoDataFrame:
     """Creates a GeoDataFrame with 'n' random points.
 
     Args:
-        n: number of points/rows to create
+        n: number of points/rows to create.
 
     Returns:
-        A GeoDataFrame of points with n rows
+        A GeoDataFrame of points with n rows.
     """
 
     if isinstance(n, (str, float)):
@@ -593,3 +860,13 @@ def random_points(n: int) -> GeoDataFrame:
     y = np_random(n)
 
     return GeoDataFrame((Point(geom) for geom in zip(x, y)), columns=["geometry"])
+
+
+def find_neighbors(
+    gdf: GeoDataFrame | GeoSeries,
+    possible_neighbors: GeoDataFrame | GeoSeries,
+    id_col: str,
+    max_dist: int = 0,
+) -> list[str]:
+    """American alias for find_neighbours"""
+    return find_neighbours(gdf, possible_neighbors, id_col, max_dist)

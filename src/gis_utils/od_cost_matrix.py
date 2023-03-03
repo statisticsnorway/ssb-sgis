@@ -13,10 +13,10 @@ def _od_cost_matrix(
     destinations: GeoDataFrame,
     weight: str,
     *,
-    lines=False,
-    rowwise=False,
-    cutoff: int = None,
-    destination_count: int = None,
+    lines: bool = False,
+    rowwise: bool = False,
+    cutoff: int | None = None,
+    destination_count: int | None = None,
 ) -> DataFrame | GeoDataFrame:
     if rowwise and len(origins) != len(destinations):
         raise ValueError(

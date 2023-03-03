@@ -45,7 +45,7 @@ class Points:
 
         if self.id_col not in self.gdf.columns:
             raise KeyError(
-                f"'{self.__class__.__name__}' has no attribute '{self.id_col}'"
+                f"{self.__class__.__name__!r} has no attribute {self.id_col!r}"
             )
 
     def _make_temp_idx(self) -> None:
@@ -78,13 +78,9 @@ class Points:
         Get number of missing values for each point after a network analysis.
 
         Args:
-            results: resulting (Geo)DataFrame of od_cost_matrix, get_route or
-                service_area analysis.
+            results: (Geo)DataFrame resulting from od_cost_matrix, get_route,
+                get_k_routes, get_route_frequencies or service_area.
             col: id column of the results. Either 'origin' or 'destination'.
-
-        Returns:
-            None, but gives the points.gdf a column n_missing.
-
         """
         self.gdf["n_missing"] = self.gdf["temp_idx"].map(
             results.groupby(col).count().iloc[:, 0]
@@ -93,12 +89,7 @@ class Points:
 
     @staticmethod
     def _dist_to_weight(dists, rules):
-        """
-        Gjør om meter to minutter for lenkene mellom punktene og nabonodene.
-        og ganger luftlinjeavstanden med 1.5 siden det alltid er svinger i Norge.
-        Gjør ellers ingenting.
-        """
-
+        """Meters to minutes based on 'weight_to_nodes_' attribute of the rules."""
         if (
             not rules.weight_to_nodes_dist
             and not rules.weight_to_nodes_kmh
