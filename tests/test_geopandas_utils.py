@@ -199,12 +199,12 @@ def test_to_gdf():
     geom = [(10, 60), (1, 1)]
     gdf = gs.to_gdf(geom, crs=4326)
 
-    assert gs.to_gdf(gdf.geometry).crs == 4326
-    assert gs.to_gdf(gdf.geometry, crs=4326).crs == 4326
-
     print(gs.to_gdf([gdf.geometry, gdf.geometry, gdf.geometry]))
     coordsarray = gs.coordinate_array(gdf)
     print(gs.to_gdf(coordsarray, crs=4326))
+
+    assert gs.to_gdf(gdf.geometry).crs == 4326
+    assert gs.to_gdf(gdf.geometry, crs=4326).crs == 4326
 
     print(gs.to_gdf(LineString(geom), crs=4326))
     print(gs.to_gdf(gs.to_gdf(geom, crs=4326).geometry))

@@ -69,7 +69,7 @@ class Points:
                 )
             }
 
-    def _get_n_missing(
+    def _get_missing(
         self,
         results: GeoDataFrame | DataFrame,
         col: str,
@@ -82,7 +82,7 @@ class Points:
                 get_k_routes, get_route_frequencies or service_area.
             col: id column of the results. Either 'origin' or 'destination'.
         """
-        self.gdf["n_missing"] = self.gdf["temp_idx"].map(
+        self.gdf["missing"] = self.gdf["temp_idx"].map(
             results.groupby(col).count().iloc[:, 0]
             - results.dropna().groupby(col).count().iloc[:, 0]
         )

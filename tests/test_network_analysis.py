@@ -40,6 +40,7 @@ def test_network_analysis():
     nw = gs.DirectedNetwork(r).remove_isolated().make_directed_network_norway()
     rules = gs.NetworkAnalysisRules(weight="minutes", split_lines=split_lines)
     nwa = gs.NetworkAnalysis(nw, rules=rules)
+    print(nwa)
 
     ### OD COST MATRIX
 
@@ -59,10 +60,10 @@ def test_network_analysis():
 
     od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
 
-    print(nwa.origins.gdf.n_missing.value_counts())
+    print(nwa.origins.gdf.missing.value_counts())
 
     p1 = nwa.origins.gdf
-    p1 = p1.loc[[p1.n_missing.idxmin()]].sample(1).idx.values[0]
+    p1 = p1.loc[[p1.missing.idxmin()]].sample(1).idx.values[0]
 
     gs.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
 

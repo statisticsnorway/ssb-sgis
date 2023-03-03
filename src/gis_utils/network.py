@@ -79,8 +79,7 @@ class Network:
     0.0     7757
     Name: connected, dtype: int64
 
-    Remove the network islands. The get_largest_component method is not needed
-    beforehand.
+    Remove the network islands.
 
     >>> nw = nw.remove_isolated()
     >>> nw.gdf.connected.value_counts()
@@ -103,7 +102,6 @@ class Network:
     >>> nw = nw.cut_lines(100)
     >>> nw.gdf.length.max()
     100.00000000046512
-
     """
 
     def __init__(
@@ -181,6 +179,9 @@ class Network:
 
         Examples
         --------
+        Compare the number of rows.
+
+        >>> from gis_utils import Network
         >>> nw = Network(roads)
         >>> len(nw.gdf)
         93395
@@ -188,6 +189,20 @@ class Network:
         >>> len(nw.gdf)
         85638
 
+        Removing isolated can have a large inpact on the number of missing values in
+        network analyses.
+
+        >>> nwa = NetworkAnalysis(
+        ...     network=Network(roads),
+        ...     rules=NetworkAnalysisRules(weight="meters")
+        ... )
+        >>> od = nwa.od_cost_matrix(points, points)
+        >>> nwa.network = nwa.network.remove_isolated()
+        >>> od = nwa.od_cost_matrix(points, points)
+        >>> nwa.log[['isolated_removed', 'percent_missing']]
+        isolated_removed  percent_missing
+        0             False          23.2466
+        1              True           0.3994
         """
         if not self._nodes_are_up_to_date():
             self._make_node_ids()

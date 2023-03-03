@@ -37,20 +37,20 @@ class NetworkAnalysis:
         log: A DataFrame with information about each analysis run
         origins: the origins used in the latest analysis run, in the form of an Origins
             class instance. The GeoDataFrame is stored in the 'gdf' attribute, with a
-            column 'n_missing' that can be used for investigation/debugging.
+            column 'missing' that can be used for investigation/debugging. So, write
+            e.g.: nw.origins.gdf.missing.value_counts()
         destinations: the destinations used in the latest analysis run, in the form of
             a Destinations class instance. The GeoDataFrame is stored in the 'gdf'
-            attribute, with a column 'n_missing' that can be used for
-            investigation/debugging.
+            attribute, with a column 'missing' that can be used for
+            investigation/debugging. So, write e.g.:
+            nw.destinations.gdf.missing.value_counts()
 
     Examples
     --------
     Creating a NetworkAnalysis class instance.
 
+    >>> from gis_utils import DirectedNetwork, NetworkAnalysisRules, NetworkAnalysis
     >>> roads = gpd.read_parquet(filepath_roads)
-    >>> points = gpd.read_parquet(filepath_points)
-
-
     >>> nw = (
     ...     DirectedNetwork(roads)
     ...     .remove_isolated()
@@ -377,8 +377,8 @@ class NetworkAnalysis:
             rowwise=rowwise,
         )
 
-        self.origins._get_n_missing(results, "origin")
-        self.destinations._get_n_missing(results, "destination")
+        self.origins._get_missing(results, "origin")
+        self.destinations._get_missing(results, "destination")
 
         if id_col:
             results["origin"] = results["origin"].map(self.origins.id_dict)
@@ -480,8 +480,8 @@ class NetworkAnalysis:
             rowwise=rowwise,
         )
 
-        self.origins._get_n_missing(results, "origin")
-        self.destinations._get_n_missing(results, "destination")
+        self.origins._get_missing(results, "origin")
+        self.destinations._get_missing(results, "destination")
 
         if id_col:
             results["origin"] = results["origin"].map(self.origins.id_dict)
@@ -629,8 +629,8 @@ class NetworkAnalysis:
             drop_middle_percent=drop_middle_percent,
         )
 
-        self.origins._get_n_missing(results, "origin")
-        self.destinations._get_n_missing(results, "destination")
+        self.origins._get_missing(results, "origin")
+        self.destinations._get_missing(results, "destination")
 
         if id_col:
             results["origin"] = results["origin"].map(self.origins.id_dict)
@@ -1147,29 +1147,25 @@ class NetworkAnalysis:
 
     def __repr__(self) -> str:
         """The print representation."""
-        # remove 'weight_to_nodes_' arguments in the repr of rules
-        rules = self.rules.__repr__()
-        for txt in ["weight_to_nodes_", "dist", "kmh", "mph", "=None", "=False"]:
-            rules = rules.replace(txt, "")
-        for txt in [", )"] * 5:
-            rules = rules.replace(txt, ")")
-        rules = rules.strip(")")
 
-        if rules.endswith("split_lines"):
-            rules = rules.replace(
-                "split_lines", f"split_lines={self.rules.split_lines}"
-            )
+        # drop the 'weight_to_nodes_' parameters in the repr of rules to avoid clutter
+        rules = (
+            f"{self.rules.__class__.__name__}(weight={self.rules.weight}, "
+            f"search_tolerance={self.rules.search_tolerance}, "
+            f"search_factor={self.rules.search_factor}, "
+            f"split_lines={self.rules.split_lines}, "
+        )
 
-        # add a 'weight_to_nodes_' argument if used,
-        # else inform that there are more arguments with '...'
+        # add one 'weight_to_nodes_' parameter if used,
+        # else inform that there are more parameters with '...'
         if self.rules.weight_to_nodes_dist:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
+            x = f"weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
         elif self.rules.weight_to_nodes_kmh:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_kmh}"
+            x = f"weight_to_nodes_kmh={self.rules.weight_to_nodes_kmh}"
         elif self.rules.weight_to_nodes_mph:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_mph}"
+            x = f"weight_to_nodes_mph={self.rules.weight_to_nodes_mph}"
         else:
-            x = ", ..."
+            x = "..."
 
         return (
             f"{self.__class__.__name__}(\n"

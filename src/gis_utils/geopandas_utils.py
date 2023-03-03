@@ -9,6 +9,7 @@ from numpy.random import random as np_random
 from shapely import (
     Geometry,
     area,
+    force_2d,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
@@ -69,7 +70,6 @@ def close_holes(
     0    2.355807e+06
     dtype: float64
     """
-
     if copy:
         polygons = polygons.copy()
 
@@ -139,7 +139,6 @@ def clean_geoms(
     >>> clean_geoms(gdf, geom_type="polygon")
                                                 geometry
     8  POLYGON ((261922.890 6650165.833, 261607.831 6...
-
     """
     warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
 
@@ -248,7 +247,6 @@ def snap_to(
     5  POINT (261620.718 6652030.971)     NaN
     6  POINT (261189.028 6648820.238)     8.0
     """
-
     if copy:
         points = points.copy()
 
@@ -314,10 +312,7 @@ def to_multipoint(
     6                     POINT (261189.037 6648820.242)
     7  MULTIPOINT (260282.781 6649548.982, 260329.363...
     8  MULTIPOINT (260662.164 6648013.752, 260734.174...
-
     """
-    from shapely import force_2d
-
     if copy:
         gdf = gdf.copy()
 
@@ -388,7 +383,6 @@ def find_neighbours(
     >>> find_neighbours(p1, points, id_col="idx", max_dist=3)
     [0, 1, 2]
     """
-
     if max_dist:
         if gdf.crs == 4326:
             warnings.warn(
@@ -460,7 +454,7 @@ def to_single_geom_type(
                                                 geometry  numcol txtcol
     8  POLYGON ((261922.890 6650165.833, 261607.831 6...       9      c
 
-    Also keeps multigeometries and the correct geometry types in GeometryCollections.
+    Also keeps multigeometries and geometries within GeometryCollections.
 
     >>> gdf = testgdf(cols="geometry").dissolve()
     >>> gdf
@@ -476,7 +470,6 @@ def to_single_geom_type(
     6  POINT (262449.242 6650972.490)
     7  POINT (262523.813 6651036.250)
     """
-
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
@@ -519,7 +512,6 @@ def is_single_geom_type(
     Returns:
         True if all geometries are the same type, False if not
     """
-
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
@@ -583,60 +575,12 @@ def _close_holes_poly(poly, max_km2=None):
     return unary_union(holes_closed)
 
 
-def gdf_concat(
-    gdfs: list[GeoDataFrame],
-    crs: str | int | None = None,
-    ignore_index: bool = True,
-    geometry: str = "geometry",
-    **kwargs,
-) -> GeoDataFrame:
-    """Sets common crs and concatinates GeoDataFrames rowwise while ignoring index
-
-    If no crs is given, chooses the first crs in the list of GeoDataFrames.
-
-    Args:
-        gdfs: list or tuple of GeoDataFrames to be concatinated.
-        crs: common coordinate reference system each GeoDataFrames
-            will be converted to before concatination. If None, it uses
-            the crs of the first GeoDataFrame in the list or tuple.
-        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-            Defaults to True
-        geometry: name of geometry column. Defaults to 'geometry'
-        **kwargs: additional keyword argument taken by pandas.condat
-
-    Returns:
-        A GeoDataFrame.
-
-    """
-
-    gdfs = [gdf for gdf in gdfs if len(gdf)]
-
-    if not len(gdfs):
-        raise ValueError("All GeoDataFrames have 0 rows")
-
-    if not crs:
-        crs = gdfs[0].crs
-
-    try:
-        gdfs = [gdf.to_crs(crs) for gdf in gdfs]
-    except ValueError:
-        print(
-            "Not all your GeoDataFrames have crs. If you are concatenating "
-            "GeoDataFrames with different crs, the results will be wrong. First use "
-            "set_crs to set the correct crs then the crs can be changed with to_crs()"
-        )
-
-    return GeoDataFrame(
-        pd.concat(gdfs, ignore_index=ignore_index, **kwargs), geometry=geometry, crs=crs
-    )
-
-
 def to_gdf(
     geom: GeoSeries | Geometry | str | bytes, crs=None, **kwargs
 ) -> GeoDataFrame:
     """Converts any geometry object to a GeoDataFrame.
 
-    Constructs a GeoDataFrame from GeoSeries, shapely objects, coordinate
+    Constructs a GeoDataFrame from GeoSeries, DataFrame, shapely objects, coordinate
     tuple/list/ndarray, wkt strings and wkb bytes. Also accepts lists/tuples/ndarrays
     containing any of these objects. The geometry column is always named 'geometry'.
     Can also create a GeoDataFrame with two columns if 'geom' is a dictionary.
@@ -656,10 +600,12 @@ def to_gdf(
 
     Examples
     --------
+    from gis_utils import to_gdf
     >>> wkt = "POINT (10 60)"
     >>> to_gdf(wkt, crs=4326)
                         geometry
     0  POINT (10.00000 60.00000)
+
     >>> coords = (10, 60)
     >>> to_gdf(coords, crs=4326)
                         geometry
@@ -673,12 +619,12 @@ def to_gdf(
                         geometry
     0  POINT (10.00000 60.00000)
     1  POINT (11.00000 59.00000)
+
     >>> from shapely.geometry import LineString
     >>> to_gdf(LineString(coordslist), crs=4326)
                                                 geometry
     0  LINESTRING (10.00000 60.00000, 11.00000 59.00000)
     """
-
     if isinstance(geom, GeoDataFrame):
         raise TypeError("'to_gdf' doesn't accept GeoDataFrames as input type.")
 
@@ -690,10 +636,12 @@ def to_gdf(
         crs = geom.crs if not crs else crs
         return GeoDataFrame({"geometry": geom}, crs=crs, **kwargs)
 
-    # convert to list so that all types are passed to _make_shapely_geom
+    # convert to list so these are passed to _make_shapely_geom
     if isinstance(geom, (str, bytes)):
         geom = [geom]
 
+    # if geom has crs, use it. This should happen only if geom is an iterable of
+    # GeoSeries.
     if not crs and hasattr(geom, "crs"):
         crs = geom[0].crs
 
@@ -730,6 +678,52 @@ def to_gdf(
 
     return GeoDataFrame(
         {"geometry": GeoSeries(geom)}, geometry="geometry", crs=crs, **kwargs
+    )
+
+
+def gdf_concat(
+    gdfs: list[GeoDataFrame],
+    crs: str | int | None = None,
+    ignore_index: bool = True,
+    geometry: str = "geometry",
+    **kwargs,
+) -> GeoDataFrame:
+    """Sets common crs and concatinates GeoDataFrames rowwise while ignoring index.
+
+    If no crs is given, chooses the first crs in the list of GeoDataFrames.
+
+    Args:
+        gdfs: list or tuple of GeoDataFrames to be concatinated.
+        crs: common coordinate reference system each GeoDataFrames
+            will be converted to before concatination. If None, it uses
+            the crs of the first GeoDataFrame in the list or tuple.
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+            Defaults to True
+        geometry: name of geometry column. Defaults to 'geometry'
+        **kwargs: additional keyword argument taken by pandas.condat
+
+    Returns:
+        A GeoDataFrame.
+    """
+    gdfs = [gdf for gdf in gdfs if len(gdf)]
+
+    if not len(gdfs):
+        raise ValueError("All GeoDataFrames have 0 rows")
+
+    if not crs:
+        crs = gdfs[0].crs
+
+    try:
+        gdfs = [gdf.to_crs(crs) for gdf in gdfs]
+    except ValueError:
+        print(
+            "Not all your GeoDataFrames have crs. If you are concatenating "
+            "GeoDataFrames with different crs, the results will be wrong. First use "
+            "set_crs to set the correct crs then the crs can be changed with to_crs()"
+        )
+
+    return GeoDataFrame(
+        pd.concat(gdfs, ignore_index=ignore_index, **kwargs), geometry=geometry, crs=crs
     )
 
 
