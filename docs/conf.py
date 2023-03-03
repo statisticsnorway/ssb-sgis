@@ -64,3 +64,4 @@ html_static_path = []
 # -- Other configuration ---------------------------------------------------
 
 autodoc_typehints = "description"
+autodoc_mock_imports = ["dapla"]

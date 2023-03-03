@@ -22,7 +22,7 @@ class NetworkAnalysisRules:
     By default, the edges between the origins/destinations and closeby network
     nodes get a weight of 0. If you want to make the travel between the points
     and the network nodes count more than 0, you can specify one of the
-    'weight_to_nodes_' parameters. If the weight is 'meters', setting
+    ``weight_to_nodes_`` parameters. If the weight is 'meters', setting
     'weight_to_nodes_dist' to True will give these edges a weight equivelant to
     its length in a straight line. If the weight is 'minutes', you can set a speed
     for these edges in either kilometers or miles per hour. What speed to set depends

@@ -51,18 +51,18 @@ gis\_utils.exceptions module
    :undoc-members:
    :show-inheritance:
 
-gis\_utils.from\_geonorge module
---------------------------------
-
-.. automodule:: gis_utils.from_geonorge
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 gis\_utils.geopandas\_utils module
 ----------------------------------
 
 .. automodule:: gis_utils.geopandas_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+gis\_utils.get\_route module
+----------------------------
+
+.. automodule:: gis_utils.get_route
    :members:
    :undoc-members:
    :show-inheritance:
@@ -143,14 +143,6 @@ gis\_utils.service\_area module
 -------------------------------
 
 .. automodule:: gis_utils.service_area
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-gis\_utils.shortest\_path module
---------------------------------
-
-.. automodule:: gis_utils.shortest_path
    :members:
    :undoc-members:
    :show-inheritance:
