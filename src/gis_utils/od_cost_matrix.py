@@ -7,10 +7,10 @@ from pandas import DataFrame
 from shapely import shortest_line
 
 
-def od_cost_matrix(
+def _od_cost_matrix(
     graph: Graph,
-    startpoints: GeoDataFrame,
-    endpoints: GeoDataFrame,
+    origins: GeoDataFrame,
+    destinations: GeoDataFrame,
     weight: str,
     *,
     lines=False,
@@ -18,55 +18,37 @@ def od_cost_matrix(
     cutoff: int = None,
     destination_count: int = None,
 ) -> DataFrame | GeoDataFrame:
-    """
-    It takes a network, a GeoDataFrame of origins and a GeoDataFrame of destinations,
-    and returns a GeoDataFrame with the shortest path between each origin and
-    destination.
-
-    Args:
-      nw: the network object
-      startpoints (GeoDataFrame): GeoDataFrame
-      endpoints (GeoDataFrame): GeoDataFrame
-      lines: If True, the output will be a GeoDataFrame with straight lines between
-        origin and destination. Defaults to False.
-      rowwise: Defaults to False
-      cutoff (int): If you want to limit the maximum weight between origin and
-        destination, you can set a cutoff.
-      destination_count (int): int = None
-
-    Returns:
-      A dataframe with the origin, destination and costs.
-    """
-
-    if not rowwise:
-        results = graph.distances(
-            weights="weight",
-            source=startpoints["temp_idx"],
-            target=endpoints["temp_idx"],
+    if rowwise and len(origins) != len(destinations):
+        raise ValueError(
+            "'origins' and 'destinations' must have the same length when rowwise=True"
         )
 
-        ori_idx, des_idx, costs = [], [], []
-        for i, f_idx in enumerate(startpoints["temp_idx"]):
-            for ii, t_idx in enumerate(endpoints["temp_idx"]):
-                ori_idx.append(f_idx)
-                des_idx.append(t_idx)
-                costs.append(results[i][ii])
+    results = graph.distances(
+        weights="weight",
+        source=origins["temp_idx"],
+        target=destinations["temp_idx"],
+    )
 
-    else:
-        ori_idx, des_idx, costs = [], [], []
-        for f_idx, t_idx in zip(startpoints["temp_idx"], endpoints["temp_idx"]):
-            results = graph.distances(weights="weight", source=f_idx, target=t_idx)
+    ori_idx, des_idx, costs = [], [], []
+    for i, f_idx in enumerate(origins["temp_idx"]):
+        for ii, t_idx in enumerate(destinations["temp_idx"]):
             ori_idx.append(f_idx)
             des_idx.append(t_idx)
-            costs.append(results[0][0])
-
-    df = pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, weight: costs})
+            costs.append(results[i][ii])
 
     results = (
-        df.replace([np.inf, -np.inf], np.nan)
-        #    .loc[(df[weight] > 0) | (df[weight].isna())]
+        pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, weight: costs})
+        .replace([np.inf, -np.inf], np.nan)
         .reset_index(drop=True)
     )
+
+    # calculating all-to-all distances is much faster than looping rowwise,
+    # so doing the rowwise-filtering down here
+    if rowwise:
+        results_template = DataFrame(
+            {"origin": origins["temp_idx"], "destination": destinations["temp_idx"]}
+        )
+        results = results_template.merge(results, on=["origin", "destination"])
 
     if cutoff:
         results = results[results[weight] < cutoff]
@@ -77,11 +59,11 @@ def od_cost_matrix(
         results = results.loc[weight_ranked <= destination_count]
 
     wkt_dict_origin = {
-        idx: geom.wkt
-        for idx, geom in zip(startpoints["temp_idx"], startpoints.geometry)
+        idx: geom.wkt for idx, geom in zip(origins["temp_idx"], origins.geometry)
     }
     wkt_dict_destination = {
-        idx: geom.wkt for idx, geom in zip(endpoints["temp_idx"], endpoints.geometry)
+        idx: geom.wkt
+        for idx, geom in zip(destinations["temp_idx"], destinations.geometry)
     }
     results["wkt_ori"] = results["origin"].map(wkt_dict_origin)
     results["wkt_des"] = results["destination"].map(wkt_dict_destination)

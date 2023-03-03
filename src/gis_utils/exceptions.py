@@ -12,5 +12,5 @@ class NoPointsWithinSearchTolerance(Exception):
         )
 
 
-class ZeroRowsError(Exception):
+class ZeroLinesError(Exception):
     "DataFrame has 0 rows."

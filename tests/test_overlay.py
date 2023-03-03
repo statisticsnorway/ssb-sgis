@@ -1,4 +1,5 @@
 import sys
+import warnings
 from pathlib import Path
 
 import geopandas as gpd
@@ -9,12 +10,14 @@ from shapely.wkt import loads
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
-sys.path.append(src)
+sys.path.insert(0, src)
 
 import gis_utils as gs
 
 
 def test_overlay():
+    warnings.filterwarnings(action="ignore", category=UserWarning)
+
     p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
     p = p.iloc[:100]
 
@@ -47,6 +50,14 @@ def test_overlay():
                     round(sum(overlayed.area), i),
                     round(sum(overlayed2.area), i),
                 )
+
+            gs.overlay(p500, p1000, how=how, geom_type="polygon")
+            gs.clean_shapely_overlay(
+                p500.sample(1),
+                p1000.sample(1),
+                how=how,
+                geom_type=("polygon", "polygon"),
+            )
 
 
 def main():

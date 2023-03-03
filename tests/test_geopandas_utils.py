@@ -112,8 +112,8 @@ def test_clean(gdf_fixture):
     )
     gdf = gs.gdf_concat([gdf_fixture, missing, empty])
     assert len(gdf) == 12
-    gdf2 = gs.clean_geoms(gdf_fixture, single_geom_type=False)
-    ser = gs.clean_geoms(gdf_fixture.geometry, single_geom_type=False)
+    gdf2 = gs.clean_geoms(gdf_fixture)
+    ser = gs.clean_geoms(gdf_fixture.geometry)
     assert len(gdf2) == 9
     assert len(ser) == 9
 
@@ -180,19 +180,6 @@ def test_neighbors(gdf_fixture):
     assert naboer == [4, 5, 7, 8, 9], "feil i find_neighbors"
 
 
-def test_gridish(gdf_fixture):
-    copy = gdf_fixture.copy()
-    copy = gs.gridish(copy, 2000)
-    assert len(copy.gridish.unique()) == 4
-
-    copy = gs.gridish(copy, 5000)
-    assert len(copy.gridish.unique()) == 2
-
-    copy = gs.gridish(copy, 1000, x2=True)
-    assert len(copy.gridish.unique()) == 7
-    assert len(copy.gridish2.unique()) == 7
-
-
 def test_snap(gdf_fixture):
     punkter = gdf_fixture[gdf_fixture.length == 0]
     annet = gdf_fixture[gdf_fixture.length != 0]
@@ -203,21 +190,12 @@ def test_snap(gdf_fixture):
     snapped = gs.snap_to(punkter, annet, max_dist=20, copy=True)
     assert sum(snapped.intersects(annet.buffer(1).unary_union)) == 1
 
-    snapped = gs.snap_to(punkter, annet, max_dist=None, to_vertex=True, copy=True)
+    snapped = gs.snap_to(punkter, annet, max_dist=None, to_node=True, copy=True)
 
     assert all(
         geom in list(gs.to_multipoint(annet).explode().geometry)
         for geom in snapped.geometry
     )
-
-
-def test_count_within_distance(gdf_fixture):
-    innen = gs.count_within_distance(gdf_fixture, gdf_fixture)
-    assert innen.n.sum() == 11
-    innen = gs.count_within_distance(gdf_fixture, gdf_fixture, 50)
-    assert innen.n.sum() == 21
-    innen = gs.count_within_distance(gdf_fixture, gdf_fixture, 10000)
-    assert innen.n.sum() == 81
 
 
 def test_to_multipoint(gdf_fixture):

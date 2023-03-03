@@ -3,14 +3,24 @@ import os
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from dapla import FileClient, details
+from geopandas import GeoDataFrame
 from geopandas.io.arrow import _geopandas_to_arrow
 from pyarrow import parquet
 
 
 def exists(path: str) -> bool:
-    try:
-        from dapla import details
+    """Returns True if the path exists, and False if it doesn't
 
+    Works in dapla and outside of dapla
+
+    Args:
+      path (str): The path to the file or directory.
+
+    Returns:
+      A boolean value.
+    """
+    try:
         details(path)
         return True
     except FileNotFoundError:
@@ -19,22 +29,41 @@ def exists(path: str) -> bool:
         return os.path.exists(path)
 
 
-def read_geopandas(sti: str, **kwargs) -> gpd.GeoDataFrame:
-    from dapla import FileClient
+def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
+    """Reads geoparquet or other geodata* from a file on GCS
+
+    *does not read shapelfiles or filegeodatabases.
+
+    Args:
+      path: path to a file on Google Cloud Storage
+
+    Returns:
+      A GeoDataFrame
+
+    """
 
     fs = FileClient.get_gcs_file_system()
 
-    if "parquet" in sti:
-        with fs.open(sti, mode="rb") as file:
+    if "parquet" in path:
+        with fs.open(path, mode="rb") as file:
             return gpd.read_parquet(file, **kwargs)
     else:
-        with fs.open(sti, mode="rb") as file:
+        with fs.open(path, mode="rb") as file:
             return gpd.read_file(file, **kwargs)
 
 
 def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
-    """funker ikke for shp og gdb"""
-    from dapla import FileClient
+    """Writes a GeoDataFrame to the speficied format.
+
+    Does not work for .shp and .gdb.
+
+    Args:
+      df (gpd.GeoDataFrame): The GeoDataFrame to write
+      gcs_path (str): The path to the file you want to write to.
+
+    Returns:
+      None
+    """
 
     pd.io.parquet.BaseImpl.validate_dataframe(df)
 
