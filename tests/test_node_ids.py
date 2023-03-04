@@ -13,12 +13,12 @@ import gis_utils as gs
 
 
 def test_node_ids():
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = gpd.read_parquet(gs.pointpath)
     p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
     p["idx"] = p.index
     p["idx2"] = p.index
 
-    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    r = gpd.read_parquet(gs.roadpath)
     r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
 
     r, nodes = gs.make_node_ids(r)

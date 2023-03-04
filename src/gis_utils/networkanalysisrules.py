@@ -73,6 +73,12 @@ class NetworkAnalysisRules:
 
     Examples
     --------
+    Read testdata.
+
+    >>> import geopandas as gpd
+    >>> from gis_utils import roadpath, pointpath
+    >>> points = gpd.read_parquet(pointpath)
+    >>> roads = gpd.read_parquet(roadpath)
 
     Let's start by setting the default rules. 'weight' is the only parameter with no
     default.
@@ -132,10 +138,11 @@ class NetworkAnalysisRules:
     7           0.3994  13.680307               250            100
 
     The remaining 0.4 percent missing are from/to two points, one on an island with no
-    brigde and one at the edge of the road network (which require a larger network).
+    brigde and one at the edge of the road network (would require a larger network).
+    These two points only find themselves, and thus has 999 missing values.
 
     >>> nwa.origins.gdf.sort_values("missing").tail(3)
-        idx                        geometry temp_idx  n_missing
+        idx                        geometry temp_idx  missing
     999  1000  POINT (264570.300 6644239.500)    80165          2
     510   511  POINT (261319.300 6647824.800)    79676        999
     59     60  POINT (271816.400 6650812.500)    79225        999

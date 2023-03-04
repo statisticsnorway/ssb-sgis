@@ -2,7 +2,8 @@
 
 The module includes functions for cutting and splitting lines, filling holes in the
 network, finding isolated network islands and creating unique node ids. All the
-functions are also methods of the Network class.
+functions are also methods of the Network class. It is safest to use the class
+methods.
 
 Note:
     Most of the functions in this module require that all lines are singlepart

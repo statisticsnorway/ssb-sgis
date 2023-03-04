@@ -65,8 +65,11 @@ class Network:
 
     Examples
     --------
+    Read testdata.
 
-    >>> roads = gpd.read_parquet(filepath_roads)
+    >>> import geopandas as gpd
+    >>> from gis_utils import roadpath
+    >>> roads = gpd.read_parquet(roadpath)
     >>> nw = Network(roads)
     >>> nw
     Network(3851 km, undirected)

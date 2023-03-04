@@ -1,4 +1,6 @@
 # flake8: noqa: F401
+from pathlib import Path
+
 from geopandas import GeoDataFrame, GeoSeries
 
 from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
@@ -40,6 +42,14 @@ try:
     from .dapla import exists, read_geopandas, write_geopandas
 except ImportError:
     pass
+
+# testdata
+roadpath = (
+    str(Path(__file__).parent.parent.parent) + "/tests/testdata/roads_oslo_2022.parquet"
+)
+pointpath = (
+    str(Path(__file__).parent.parent.parent) + "/tests/testdata/random_points.parquet"
+)
 
 
 def testgdf(cols: str | None = None) -> GeoDataFrame:

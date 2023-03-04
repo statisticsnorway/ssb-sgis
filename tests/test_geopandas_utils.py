@@ -10,7 +10,7 @@ from shapely.geometry import LineString
 from shapely.wkt import loads
 
 
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
 

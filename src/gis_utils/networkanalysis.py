@@ -47,10 +47,16 @@ class NetworkAnalysis:
 
     Examples
     --------
+    Read testdata.
+
+    >>> import geopandas as gpd
+    >>> from gis_utils import roadpath, pointpath
+    >>> points = gpd.read_parquet(pointpath)
+    >>> roads = gpd.read_parquet(roadpath)
+
     Creating a NetworkAnalysis class instance.
 
     >>> from gis_utils import DirectedNetwork, NetworkAnalysisRules, NetworkAnalysis
-    >>> roads = gpd.read_parquet(filepath_roads)
     >>> nw = (
     ...     DirectedNetwork(roads)
     ...     .remove_isolated()

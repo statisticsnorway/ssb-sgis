@@ -31,8 +31,14 @@ class DirectedNetwork(Network):
 
     Examples
     --------
+    Read testdata.
 
-    >>> roads = gpd.read_parquet(filepath_roads)
+    >>> import geopandas as gpd
+    >>> from gis_utils import roadpath
+    >>> roads = gpd.read_parquet(roadpath)
+
+    Create a DirectedNetwork instance. Notice the percent_bidirectional.
+
     >>> nw = DirectedNetwork(roads).remove_isolated()
     >>> nw
     DirectedNetwork(3407 km, percent_bidirectional=0)
@@ -54,7 +60,6 @@ class DirectedNetwork(Network):
     >>> nw = nw.make_directed_network_norway()
     >>> nw
     DirectedNetwork(6364 km, percent_bidirectional=87)
-
     """
 
     def __init__(
