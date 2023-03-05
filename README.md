@@ -30,9 +30,12 @@ calculate travel times, routes, frequencies and service areas.
 
 All you need is a GeoDataFrame of roads or other line geometries.
 
-Here are some examples. More examples and info here: https://github.com/statisticsnorway/ssb-gis-utils/blob/main/network_analysis_demo_template.md
+Here are some examples. More examples and info
+[here](https://github.com/statisticsnorway/ssb-gis-utils/blob/main/network_analysis_demo_template.md).
 
-### get_route_frequencies: get the number of times each line segment was visited
+### get_route_frequencies
+
+Get the number of times each line segment was visited.
 
 ```python
 freq = nwa.get_route_frequencies(points.sample(75), points.sample(75))
@@ -48,7 +51,9 @@ gs.qtm(
 
 ![png](network_analysis_examples_files/network_analysis_examples_7_0.png)
 
-### od_cost_matrix: fast many-to-many travel times/distances
+### od_cost_matrix
+
+Fast many-to-many travel times/distances.
 
 ```python
 od = nwa.od_cost_matrix(points.iloc[[0]], points, id_col="idx", lines=True)
@@ -70,7 +75,9 @@ gs.qtm(od, "minutes", title="Travel time (minutes) from 1 to 1000 points.")
 
 ![png](network_analysis_examples_files/network_analysis_examples_9_1.png)
 
-### get_route and get_k_routes: get one or more route per origin-destination pair
+### get_route and get_k_routes
+
+Get one or more route per origin-destination pair.
 
 ```python
 routes = nwa.get_k_routes(points.iloc[[0]], points.iloc[[1]], k=5, drop_middle_percent=50)
@@ -80,7 +87,9 @@ gs.qtm(gs.buff(routes, 15), "k", title="k=5 low-cost routes", legend=False)
 
 ![png](network_analysis_examples_files/network_analysis_examples_11_0.png)
 
-### service_area: get the area that can be reached within one or more breaks
+### service_area
+
+Get the area that can be reached within one or more breaks.
 
 ```python
 sa = nwa.service_area(
