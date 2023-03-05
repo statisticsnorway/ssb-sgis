@@ -18,7 +18,7 @@ def get_k_nearest_neighbours(
     k: int,
     id_cols: str | tuple[str, str] | None = None,
     min_dist: float = 0.0000001,
-    max_dist: int | None = None,
+    max_dist: int | float | None = None,
     strict: bool = False,
 ) -> DataFrame:
     """Finds the k nearest neighbours for a GeoDataFrame of points.
@@ -122,7 +122,9 @@ def get_k_nearest_neighbors(
     )
 
 
-def coordinate_array(gdf: GeoDataFrame) -> np.ndarray[np.ndarray[float]]:
+def coordinate_array(
+    gdf: GeoDataFrame,
+) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
     """Creates a 2d ndarray of coordinates from a GeoDataFrame of points.
 
     Args:
@@ -141,7 +143,7 @@ def k_nearest_neighbours(
     to_array: np.ndarray[np.ndarray[float]],
     k: int,
     strict: bool = False,
-) -> tuple[np.ndarray[float]]:
+) -> tuple[np.ndarray[float], np.ndarray[int]]:
     """Finds the k nearest neighbours for an array of points.
 
     Uses the K-nearest neighbors algorithm method from sklearn.neighbors to find the

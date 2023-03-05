@@ -19,7 +19,7 @@ from shapely.ops import unary_union
 
 def buff(
     gdf: GeoDataFrame | GeoSeries | Geometry,
-    distance: int,
+    distance: int | float,
     resolution: int = 50,
     copy: bool = True,
     **kwargs,
@@ -154,7 +154,7 @@ def exp(
 
 def buffdissexp(
     gdf: GeoDataFrame | GeoSeries | Geometry,
-    distance: int,
+    distance: int | float,
     resolution: int = 50,
     id: str | None = None,
     ignore_index: bool = True,
@@ -240,12 +240,12 @@ def dissexp(
 
 
 def buffdiss(
-    gdf,
-    distance,
-    resolution=50,
-    id=None,
-    reset_index=True,
-    copy=True,
+    gdf: GeoDataFrame | GeoSeries | Geometry,
+    distance: int | float,
+    resolution: int = 50,
+    id: str | None = None,
+    reset_index: bool = True,
+    copy: bool = True,
     **dissolve_kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """Buffers and dissolves all geometries.

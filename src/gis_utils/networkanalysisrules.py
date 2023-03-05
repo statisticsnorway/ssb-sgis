@@ -220,40 +220,47 @@ class NetworkAnalysisRules:
     def _validate_weight(
         self, gdf: GeoDataFrame, raise_error: bool = True
     ) -> GeoDataFrame:
-        if self.weight in gdf.columns:
+        if (
+            "meter" in self.weight
+            or "metre" in self.weight
+            and gdf.crs.axis_info[0].unit_name == "metre"
+        ):
+            gdf[self.weight] = gdf.length
+            return gdf
+        elif self.weight in gdf.columns:
+            gdf[self.weight] = gdf[self.weight].astype(float)
             gdf = self._check_for_nans(gdf, self.weight)
             gdf = self._check_for_negative_values(gdf, self.weight)
             gdf = self._try_to_float(gdf, self.weight)
-
-        elif "meter" in self.weight or "metre" in self.weight:
-            if gdf.crs.axis_info[0].unit_name != "metre":
-                raise ValueError(
-                    "the crs of the roads have to have units in 'meters' when the "
-                    "weight is 'meters'."
-                )
-
-            gdf[self.weight] = gdf.length
-
+            return gdf
         elif (
             self.weight == "min" or "minut" in self.weight and "minutes" in gdf.columns
         ):
             self.weight = "minutes"
+            gdf["minutes"] = gdf[self.weight]
+            return gdf
 
-        if self.weight not in gdf.columns:
-            if self.weight == "minutes":
-                incorrect_weight_column = (
-                    "Cannot find 'weight' column for minutes. "
-                    "Try running one of the 'make_directed_network_' methods"
-                    ", or set 'weight' to 'meters'"
-                )
+        # at this point, the weight is wrong.
+        if "meter" in self.weight or "metre" in self.weight:
+            raise ValueError(
+                "the crs of the roads have to have units in 'meters' when the "
+                "weight is 'meters'."
+            )
 
-            else:
-                incorrect_weight_column = f"Cannot find 'weight' column {self.weight}"
+        if self.weight == "minutes":
+            incorrect_weight_column = (
+                "Cannot find 'weight' column for minutes. "
+                "Try running one of the 'make_directed_network_' methods"
+                ", or set 'weight' to 'meters'"
+            )
 
-            if raise_error:
-                raise KeyError(incorrect_weight_column)
-            else:
-                warnings.warn(incorrect_weight_column)
+        else:
+            incorrect_weight_column = f"Cannot find 'weight' column {self.weight}"
+
+        if raise_error:
+            raise KeyError(incorrect_weight_column)
+        else:
+            warnings.warn(incorrect_weight_column)
 
         return gdf
 

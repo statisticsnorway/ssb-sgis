@@ -1,4 +1,3 @@
-# %%
 import warnings
 
 import geopandas as gpd

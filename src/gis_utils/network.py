@@ -93,7 +93,7 @@ class Network:
 
     >>> len(nw.gdf)
     85638
-    >>> nw = nw.close_network_holes(max_dist=1.5)
+    >>> nw = nw.close_network_holes(max_dist=1.5, fillna=0)
     >>> len(nw.gdf)
     86929
 
@@ -168,11 +168,6 @@ class Network:
         connected component of the network. Then removes all lines not part of
         the largest component. Updates node ids if neccessary.
 
-        Note:
-            If the nodes are updated and the column already has a column named
-            'connected', the network will be filtered based on this column,
-            and no graph will be built.
-
         Returns:
             Self
 
@@ -209,9 +204,8 @@ class Network:
         """
         if not self._nodes_are_up_to_date():
             self._make_node_ids()
-            self.gdf = get_largest_component(self.gdf)
-        elif "connected" not in self.gdf.columns:
-            self.gdf = get_largest_component(self.gdf)
+
+        self.gdf = get_largest_component(self.gdf)
 
         self.gdf = self.gdf.loc[self.gdf.connected == 1]
 
@@ -285,6 +279,7 @@ class Network:
     def close_network_holes(
         self,
         max_dist: int,
+        fillna: float | int | None,
         min_dist: int = 0,
         deadends_only: bool = False,
         hole_col: str = "hole",
@@ -295,8 +290,16 @@ class Network:
         then connecting the nodes that are within the max_dist of each other. The
         minimum distance is set to 0, but can be changed with the min_dist parameter.
 
+        Note:
+            The 'fillna' parameter has no default value, but can be set to None if NaN
+            values should be preserved. Keep in mind that NaNs and negative values will
+            be removed from the network when doing network analysis.
+
         Args:
             max_dist: The maximum distance between two nodes to be considered a hole.
+            fillna: The value to give the holes in all columns with NaN, which are all
+                columns except for the hole_col and the source/target columns. If set
+                to None,
             min_dist: minimum distance between nodes to be considered a hole. Defaults
                 to 0
             deadends_only: If True, only holes between two deadends will be filled.
@@ -307,7 +310,7 @@ class Network:
                 will be added.
 
         Returns:
-            The input GeoDataFrame with new lines added
+            The input GeoDataFrame with new lines added.
 
         Examples
         --------
@@ -321,7 +324,7 @@ class Network:
         1.0    85638
         0.0     7757
         Name: connected, dtype: int64
-        >>> nw = nw.close_network_holes(max_dist=1.1)
+        >>> nw = nw.close_network_holes(max_dist=1.1, fillna=0)
         >>> nw = nw.get_largest_component()
         >>> nw.gdf.connected.value_counts()
         1.0    100315
@@ -332,6 +335,12 @@ class Network:
         self.gdf = close_network_holes(
             self.gdf, max_dist, min_dist, deadends_only, hole_col
         )
+
+        if fillna is not None:
+            self.gdf.loc[self.gdf[hole_col] == 1] = self.gdf.loc[
+                self.gdf[hole_col] == 1
+            ].fillna(fillna)
+
         return self
 
     def cut_lines(

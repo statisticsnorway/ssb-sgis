@@ -22,25 +22,41 @@ def test_network_analysis():
     #    warnings.filterwarnings(action="ignore", category=UserWarning)
     pd.options.mode.chained_assignment = None
 
-    split_lines = True
+    split_lines = False
 
     ### READ FILES
 
     p = gpd.read_parquet(gs.pointpath)
-    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
+    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(600))
     p["idx"] = p.index
     p["idx2"] = p.index
     print(p.idx)
 
     r = gpd.read_parquet(gs.roadpath)
-    r = gs.clean_clip(r, p.geometry.iloc[0].buffer(700))
+    r = gs.clean_clip(r, p.geometry.loc[0].buffer(700))
 
     ### MAKE THE ANALYSIS CLASS
+    nw = (
+        gs.DirectedNetwork(r)
+        .make_directed_network_norway()
+        .close_network_holes(1.1, fillna=0, deadends_only=True)
+        .get_largest_component()
+    )
+    gs.qtm(nw.gdf, "connected", scheme="equalinterval")
+    gs.qtm(nw.gdf, "hole")
+    print(nw.gdf.hole.value_counts())
 
-    nw = gs.DirectedNetwork(r).remove_isolated().make_directed_network_norway()
-    rules = gs.NetworkAnalysisRules(weight="minutes", split_lines=split_lines)
+    nw = nw.remove_isolated()
+
+    rules = gs.NetworkAnalysisRules(
+        weight="minutes",
+        split_lines=split_lines,
+    )
+
     nwa = gs.NetworkAnalysis(nw, rules=rules)
     print(nwa)
+    x = nwa.get_route_frequencies(p.loc[p.idx == 0], p.sample(13))
+    gs.qtm(x, "n")
 
     ### OD COST MATRIX
 
@@ -89,9 +105,12 @@ def test_network_analysis():
     i = 1
     nwa.rules.search_factor = 0
     nwa.rules.split_lines = False
+
     sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
     gs.qtm(sp)
     nwa.rules.split_lines = True
+    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
+    gs.qtm(sp)
     sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
     gs.qtm(sp)
 
@@ -113,14 +132,14 @@ def test_network_analysis():
         sp = nwa.get_k_routes(
             p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
         )
-        gs.qtm(sp)
+        gs.qtm(sp, "k")
 
     for x in [-1, 101]:
         try:
             sp = nwa.get_k_routes(
                 p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
             )
-            gs.qtm(sp)
+            gs.qtm(sp, "k")
         except ValueError:
             print("get_k_routes works as expected", x)
 
@@ -154,15 +173,17 @@ def test_network_analysis():
     gs.qtm(sa)
 
     sa = nwa.service_area(p.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
+    print(sa.columns)
     sa = sa.sort_values("minutes", ascending=False)
     gs.qtm(sa, "minutes", k=10)
 
 
 def main():
     test_network_analysis()
-    import cProfile
 
-    # cProfile.run("test_network_analysis()", sort="cumtime")
+
+# import cProfile
+# cProfile.run("test_network_analysis()", sort="cumtime")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from .network import Network
 
 
 class DirectedNetwork(Network):
-    """Network subclass with methods for making the network directed
+    """Subclass of Network with methods for making the network directed.
 
     Can be used as the 'network' parameter in the NetworkAnalysis class for directed
     network analysis.
@@ -230,8 +230,6 @@ class DirectedNetwork(Network):
         Runs the method make_directed_network with default arguments to fit
         Norwegian road data:
         https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
-
-
         """
 
         return self.make_directed_network(
@@ -272,6 +270,14 @@ class DirectedNetwork(Network):
             direction_vals_bft=direction_vals_bft,
             speed_col=speed_col,
         )
+
+    def check(self):
+        if hasattr(self, "_direction_col"):
+            if self._direction_col not in self.gdf:
+                raise ValueError(
+                    f"direction column {self._direction_col!r} has been removed "
+                    " from the DirectedNetwork, but is needed for..."
+                )
 
     def __repr__(self) -> str:
         cl = self.__class__.__name__

@@ -56,7 +56,12 @@ roads.head(3)
 # %% [markdown]
 # The road data can be made into a Network instance like this:
 # %%
-nw = gs.Network(roads).close_network_holes(1.5).remove_isolated().cut_lines(100)
+nw = (
+    gs.Network(roads)
+    .close_network_holes(1.5, fillna=0)
+    .remove_isolated()
+    .cut_lines(100)
+)
 
 nw = gs.Network(roads)
 nw
@@ -64,7 +69,7 @@ nw
 # The Network is now ready for undirected network analysis. The network can also be optimises with methods stored in the Network class. More about this further down in this notebook.
 # %%
 
-nw = nw.close_network_holes(1.5).remove_isolated().cut_lines(250)
+nw = nw.close_network_holes(1.5, fillna=0).remove_isolated().cut_lines(250)
 nw
 # %% [markdown]
 # For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.

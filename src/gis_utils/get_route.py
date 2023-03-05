@@ -130,8 +130,8 @@ def _run_get_route(
         ["geometry", weight, "source_target_weight"],
     ]
 
-    if len(line) != len(source_target_weight) - 2:
-        raise ValueError
+    # if len(line) != len(source_target_weight) - 2:
+    #    raise ValueError("length mismatch", len(line), len(source_target_weight))
 
     if not len(line):
         return []

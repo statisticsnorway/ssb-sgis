@@ -247,10 +247,10 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         id_col: str | tuple[str, str] | None = None,
         *,
-        lines=False,
-        rowwise=False,
-        cutoff: int = None,
-        destination_count: int = None,
+        lines: bool = False,
+        rowwise: bool = False,
+        cutoff: int | None = None,
+        destination_count: int | None = None,
     ) -> DataFrame | GeoDataFrame:
         """Fast calculation of many-to-many travel costs.
 
@@ -395,6 +395,9 @@ class NetworkAnalysis:
         if lines:
             results = push_geom_col(results)
 
+        if self.rules.split_lines:
+            self._unsplit_network()
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -415,9 +418,9 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         id_col: str | tuple[str, str] | None = None,
         *,
-        rowwise=False,
-        cutoff: int = None,
-        destination_count: int = None,
+        rowwise: bool = False,
+        cutoff: int | None = None,
+        destination_count: int | None = None,
     ) -> GeoDataFrame:
         """Returns the geometry of the low-cost route between origins and destinations.
 
@@ -496,6 +499,9 @@ class NetworkAnalysis:
             )
 
         results = push_geom_col(results)
+
+        if self.rules.split_lines:
+            self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -646,6 +652,9 @@ class NetworkAnalysis:
 
         results = push_geom_col(results)
 
+        if self.rules.split_lines:
+            self._unsplit_network()
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -725,6 +734,9 @@ class NetworkAnalysis:
 
         results = results.sort_values("n")
 
+        if self.rules.split_lines:
+            self._unsplit_network()
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -738,7 +750,7 @@ class NetworkAnalysis:
     def service_area(
         self,
         origins: GeoDataFrame,
-        breaks: int | float | list[int | float] | tuple[int | float],
+        breaks: int | float | tuple[int | float],
         *,
         id_col: str | None = None,
         drop_duplicates: bool = True,
@@ -800,7 +812,6 @@ class NetworkAnalysis:
         6    3        5  MULTILINESTRING Z ((266909.769 6651075.250 114...
         7    3       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
         8    3       15  MULTILINESTRING Z ((273161.140 6654455.240 229...
-
         """
         if self._log:
             time_ = perf_counter()
@@ -843,6 +854,9 @@ class NetworkAnalysis:
 
         results = push_geom_col(results)
 
+        if self.rules.split_lines:
+            self._unsplit_network()
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -855,7 +869,7 @@ class NetworkAnalysis:
 
         return results
 
-    def _log_df_template(self, method: str, minutes_elapsed: int) -> DataFrame:
+    def _log_df_template(self, method: str, minutes_elapsed: float) -> DataFrame:
         """Creates a DataFrame with one row and the main columns
 
         To be run after each network analysis.
@@ -897,7 +911,7 @@ class NetworkAnalysis:
         self,
         fun: str,
         results: DataFrame | GeoDataFrame,
-        minutes_elapsed: int,
+        minutes_elapsed: float,
         **kwargs,
     ) -> None:
         df = self._log_df_template(fun, minutes_elapsed)
@@ -971,46 +985,14 @@ class NetworkAnalysis:
         self._update_wkts()
         self.rules._update_rules()
 
-    def _get_edges_and_weights(self) -> tuple[list[tuple[str, ...]], list[float]]:
+    def _get_edges_and_weights(self) -> tuple[list[tuple[str, str]], list[float]]:
         """Creates lists of edges and weights which will be used to make the graph.
         Edges and weights between origins and nodes and nodes and destinations are
         also added.
         """
         if self.rules.split_lines:
-            if self.destinations is not None:
-                points = gdf_concat([self.origins.gdf, self.destinations.gdf])
-            else:
-                points = self.origins.gdf
-
-            points = points.drop_duplicates("geometry")
-
-            self.network.gdf["meters"] = self.network.gdf.length
-
-            lines = split_lines_at_closest_point(
-                lines=self.network.gdf,
-                points=points,
-                max_dist=self.rules.search_tolerance,
-            )
-
-            # adjust the weight to new splitted length
-            lines.loc[lines["splitted"] == 1, self.rules.weight] = lines[
-                self.rules.weight
-            ] * (lines.length / lines["meters"])
-
-            self.network.gdf = lines
+            self._split_lines()
             self.network._make_node_ids()
-
-            # remake the temp_idx to fit the new max of the node ids
-            # TODO: consider changing how this thing works
-            self.origins.temp_idx_start = (
-                max(self.network.nodes.node_id.astype(int)) + 1
-            )
-            self.origins._make_temp_idx()
-            if self.destinations is not None:
-                self.destinations.temp_idx_start = (
-                    max(self.origins.gdf.temp_idx.astype(int)) + 1
-                )
-                self.destinations._make_temp_idx()
 
         edges = [
             (str(source), str(target))
@@ -1040,6 +1022,40 @@ class NetworkAnalysis:
         weights = weights + weights_end
 
         return edges, weights
+
+    def _split_lines(self) -> None:
+        if self.destinations is not None:
+            points = gdf_concat([self.origins.gdf, self.destinations.gdf])
+        else:
+            points = self.origins.gdf
+
+        points = points.drop_duplicates("geometry")
+
+        self.network.gdf["meters"] = self.network.gdf.length
+
+        # create an id from before the split to be able to revert the split later
+        self.network.gdf["temp_idx__"] = range(len(self.network.gdf))
+
+        lines = split_lines_at_closest_point(
+            lines=self.network.gdf,
+            points=points,
+            max_dist=self.rules.search_tolerance,
+        )
+
+        # save the unsplit lines for later
+        splitted = lines.loc[lines["splitted"] == 1, "temp_idx__"]
+        self.network._not_splitted = self.network.gdf.loc[
+            self.network.gdf["temp_idx__"].isin(splitted)
+        ]
+
+        self.network.gdf = lines
+
+    def _unsplit_network(self):
+        """Remove the splitted lines and add the unsplitted ones."""
+        lines = self.network.gdf.loc[self.network.gdf.splitted != 1]
+        self.network.gdf = gdf_concat([lines, self.network._not_splitted]).drop(
+            "temp_idx__", axis=1
+        )
 
     def _add_missing_vertices(self):
         """Adds the points that had no nodes within the search_tolerance
