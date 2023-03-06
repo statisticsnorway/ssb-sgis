@@ -283,6 +283,7 @@ class Network:
         min_dist: int = 0,
         deadends_only: bool = False,
         hole_col: str = "hole",
+        length_factor: int = 25,
     ):
         """Fills holes in the network lines shorter than the max_dist.
 
@@ -308,6 +309,7 @@ class Network:
             hole_col: Holes will get the value 1 in a column named 'hole' by default,
                 or what is specified as hole_col. If set to None or False, no column
                 will be added.
+            length_factor: TODO
 
         Returns:
             The input GeoDataFrame with new lines added.
@@ -333,7 +335,12 @@ class Network:
         """
         self._update_nodes_if()
         self.gdf = close_network_holes(
-            self.gdf, max_dist, min_dist, deadends_only, hole_col
+            self.gdf,
+            max_dist,
+            min_dist=min_dist,
+            deadends_only=deadends_only,
+            hole_col=hole_col,
+            length_factor=length_factor,
         )
 
         if fillna is not None:

@@ -17,6 +17,7 @@ import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame
 from shapely import force_2d, shortest_line
+from shapely.constructive import reverse
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
@@ -327,6 +328,8 @@ def close_network_holes(
             deadends.
         hole_col: If you want to keep track of which lines were added, you can add a
             column with a value of 1. Defaults to 'hole'
+        length_factor: TODO! the percentage longer the distance from the deadend to the
+            compared to the distance from the other endpoint of the line
 
     Returns:
         The input GeoDataFrame with new lines added.
@@ -342,6 +345,8 @@ def close_network_holes(
 
     if not len(new_lines):
         return lines
+
+    new_lines = make_edge_wkt_cols(new_lines)
 
     wkt_id_dict = {
         wkt: id for wkt, id in zip(nodes["wkt"], nodes["node_id"], strict=True)
@@ -514,36 +519,41 @@ def _find_holes_all_lines(
         A GeoDataFrame with the shortest line between the two points.
     """
 
-    # TODO: shouldn't this make lines from only deadends_target to all source nodes?
-    # or simply make the holes two way?
-
     # wkt: well-known text, e.g. "POINT (60 10)"
 
     crs = nodes.crs
 
-    # velger ut nodene som kun finnes i én lenke. Altså blindveier i en networksanalyse.
-    deadends_source = lines.loc[lines.n_source == 1].rename(
-        columns={"source_wkt": "wkt", "target_wkt": "wkt_other_end"}
+    # remove duplicates of lines going both directions
+    lines["sorted"] = [
+        "_".join(sorted([s, t])) for s, t in zip(lines["source"], lines["target"])
+    ]
+
+    no_dups = lines.drop_duplicates("sorted")
+
+    # make new node ids without bidirectional lines
+    no_dups, nodes = make_node_ids(no_dups)
+
+    # deadends are the target endpoints of the lines appearing once
+    deadends_target = no_dups.loc[no_dups.n_target == 1].rename(
+        columns={"target_wkt": "wkt", "source_wkt": "wkt_other_end"}
     )
-    deadends_target = lines.loc[lines.n_target == 1].rename(
-        columns={"source_wkt": "wkt_other_end", "target_wkt": "wkt"}
+    deadends_source = no_dups.loc[no_dups.n_source == 1].rename(
+        columns={"source_wkt": "wkt", "target_wkt": "wkt_other_end"}
     )
 
     deadends = pd.concat([deadends_source, deadends_target], ignore_index=True)
 
     if len(deadends) <= 1:
-        deadends["minutes"] = -1
-        return deadends
+        return []
 
     deadends_lengths = deadends.length
 
     deadends_other_end = deadends.copy()
-
-    deadends["geometry"] = gpd.GeoSeries.from_wkt(deadends["wkt"], crs=crs)
-
     deadends_other_end["geometry"] = gpd.GeoSeries.from_wkt(
         deadends_other_end["wkt_other_end"], crs=crs
     )
+
+    deadends["geometry"] = gpd.GeoSeries.from_wkt(deadends["wkt"], crs=crs)
 
     deadends_array = coordinate_array(deadends)
 
@@ -553,8 +563,8 @@ def _find_holes_all_lines(
 
     # now to find the lines that go in the right direction. Collecting the startpoints
     # and endpoints of the new lines in lists, looping through the k neighbour points
-    new_sources = []
-    new_targets = []
+    new_sources: list[str] = []
+    new_targets: list[str] = []
     for i in np.arange(1, k):
         # to break out of the loop if no new_targets that meet the condition are found
         len_now = len(new_sources)
@@ -564,120 +574,7 @@ def _find_holes_all_lines(
         dists = all_dists[:, i]
 
         # get the distance from the other end of the deadends to the k neighbours
-        dists_other_end = deadends_other_end.distance(nodes.loc[indices], align=False)
-
-        # select the distances between min_dist and max_dist that are also shorter than
-        # the distance from the other side of the line, meaning the new line will go
-        # forward. All arrays have the same shape, and can be easily filtered by index
-        # The node wkts have to be extracted after indexing 'indices'
-        condition = (
-            (dists < max_dist)
-            & (dists > min_dist)
-            & (dists < dists_other_end - deadends_lengths * length_factor / 100)
-        )
-        from_wkt = deadends.loc[condition, "wkt"]
-        to_idx = indices[condition]
-        to_wkt = nodes.loc[to_idx, "wkt"]
-
-        # now add the wkts to the lists of new sources and targets. If the source
-        # is already added, the new wks will not be added again
-        new_targets = new_targets + [
-            to for fr, to in zip(from_wkt, to_wkt, strict=True) if fr not in new_sources
-        ]
-        new_sources = new_sources + [
-            fr for fr, _ in zip(from_wkt, to_wkt, strict=True) if fr not in new_sources
-        ]
-
-        # break out of the loop when no new new_targets meet the condition
-        if len_now == len(new_sources):
-            break
-
-    # make GeoDataFrame with straight lines
-    new_sources = gpd.GeoSeries.from_wkt(new_sources, crs=crs)
-    new_targets = gpd.GeoSeries.from_wkt(new_targets, crs=crs)
-    new_lines = shortest_line(new_sources, new_targets)
-    new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
-
-    if not len(new_lines):
-        return new_lines
-
-    new_lines = make_edge_wkt_cols(new_lines)
-
-    return new_lines
-
-
-def _find_holes_all_lines2(
-    lines: GeoDataFrame,
-    nodes: GeoDataFrame,
-    max_dist: int,
-    min_dist: int = 0,
-    k: int = 20,
-    length_factor: int = 25,
-    both_ways: bool = True,
-):
-    """
-    creates a straight line between deadends and the closest node in a
-    forward-going direction, if the distance is between the max_dist and min_dist.
-
-    Args:
-        lines: the lines you want to find holes in
-        nodes: a GeoDataFrame of nodes
-        max_dist: The maximum distance between the dead end and the node it should be
-            connected to.
-        min_dist: The minimum distance between the dead end and the node. Defaults to 0
-        k: number of nearest neighbors to consider. Defaults to 10
-        length_factor: how many percent longer the distance to node has to be..
-
-    Returns:
-        A GeoDataFrame with the shortest line between the two points.
-    """
-
-    # wkt: well-known text, e.g. "POINT (60 10)"
-
-    crs = nodes.crs
-
-    # the
-    deadends = lines.loc[lines.n_target == 1]
-
-    deadends_source = lines.loc[lines.n_source == 1]
-
-    if len(deadends) <= 1:
-        return []
-
-    deadends_lengths = deadends.length
-
-    deadends_source = deadends.copy()
-    deadends_source["geometry"] = gpd.GeoSeries.from_wkt(
-        deadends_source["source_wkt"], crs=crs
-    )
-
-    deadends["geometry"] = gpd.GeoSeries.from_wkt(deadends["target_wkt"], crs=crs)
-
-    deadends_array = coordinate_array(deadends)
-
-    nodes_source = lines.drop_duplicates("source_wkt").reset_index(drop=True)
-    nodes_source["geometry"] = gpd.GeoSeries.from_wkt(
-        nodes_source["source_wkt"], crs=crs
-    )
-
-    nodes_array = coordinate_array(nodes_source)
-
-    all_dists, all_indices = k_nearest_neighbours(deadends_array, nodes_array, k=k)
-
-    # now to find the lines that go in the right direction. Collecting the startpoints
-    # and endpoints of the new lines in lists, looping through the k neighbour points
-    new_sources: list[np.ndarray] = []
-    new_targets: list[np.ndarray] = []
-    for i in np.arange(1, k):
-        # to break out of the loop if no new_targets that meet the condition are found
-        len_now = len(new_sources)
-
-        # selecting the arrays for the k neighbour
-        indices = all_indices[:, i]
-        dists = all_dists[:, i]
-
-        # get the distance from the other end of the deadends to the k neighbours
-        dists_source = deadends_source.distance(nodes_source.loc[indices], align=False)
+        dists_source = deadends_other_end.distance(nodes.loc[indices], align=False)
 
         # select the distances between min_dist and max_dist that are also shorter than
         # the distance from the other side of the line, meaning the new line will go
@@ -688,9 +585,9 @@ def _find_holes_all_lines2(
             & (dists > min_dist)
             & (dists < dists_source - deadends_lengths * length_factor / 100)
         )
-        from_wkt = deadends.loc[condition, "target_wkt"]
+        from_wkt = deadends.loc[condition, "wkt"]
         to_idx = indices[condition]
-        to_wkt = nodes_source.loc[to_idx, "source_wkt"]
+        to_wkt = nodes.loc[to_idx, "wkt"]
 
         # now add the wkts to the lists of new sources and targets. If the source
         # is already added, the new wks will not be added again
@@ -719,7 +616,9 @@ def _find_holes_all_lines2(
     return new_lines
 
 
-def _find_holes_deadends(nodes, max_dist, min_dist=0, both_directions: bool = True):
+def _find_holes_deadends(
+    nodes: GeoDataFrame, max_dist: float | int, min_dist: float | int = 0
+):
     """
     It takes a GeoDataFrame of nodes, chooses the deadends,
     and creates a straight line between the closest deadends
@@ -767,15 +666,6 @@ def _find_holes_deadends(nodes, max_dist, min_dist=0, both_directions: bool = Tr
 
     if not len(new_lines):
         return new_lines
-
-    if both_directions:
-        new_lines2 = shortest_line(to_geom, from_geom)
-        new_lines2 = gpd.GeoDataFrame(
-            {"geometry": new_lines2}, geometry="geometry", crs=crs
-        )
-        new_lines = gdf_concat([new_lines, new_lines2])
-
-    new_lines = make_edge_wkt_cols(new_lines)
 
     return new_lines
 
