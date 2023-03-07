@@ -3,8 +3,10 @@ import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
 from matplotlib.colors import LinearSegmentedColormap
 from pandas.api.types import is_numeric_dtype
+from shapely import Geometry
 
-from .explore import Explore
+from .explore import Explore, _separate_args
+from .geopandas_utils import gdf_concat
 
 
 def explore(
@@ -13,7 +15,7 @@ def explore(
     popup: bool = True,
     **kwargs,
 ):
-    """Interactive map of GeoDataFrames with opportunity to toggle on/off layers.
+    """Interactive map of GeoDataFrames with layers can be toggles on/off.
 
     It takes all the GeoDataFrames specified and displays them together in an
     interactive map (the explore method). Each layer is added on top of the other.
@@ -31,6 +33,7 @@ def explore(
             with no keyword. If the last arg specified is a string, it will be used
             used as the 'column' parameter if this is not specified.
         labels: Names that will be shown in the toggle on/off menu.
+        popup: If True (default), clicking on a geometry will...
          **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore
 
     Returns:
@@ -66,14 +69,27 @@ def samplemap(
     Returns:
         Displays the map, but returns nothing.
     """
+    if not size and isinstance(gdfs[-1], (float, int)):
+        *gdfs, size = gdfs
+
+    gdfs, labels, kwargs = _separate_args(gdfs, labels, kwargs)
+
     try:
         display
     except NameError:
         for gdf in gdfs:
             if not isinstance(gdf, GeoDataFrame):
-                random_point = gdf.sample(1).assign(geometry=lambda x: x.centroid)
-                clipped = gdf.clip(random_point.buffer(size))
-                qtm(clipped, **kwargs)
+                random_point = (
+                    gdf.sample(1).assign(geometry=lambda x: x.centroid).buffer(size)
+                )
+                clipped_ = ()
+                for i, gdf in enumerate(gdfs):
+                    clipped_ = gdf.clip(random_point)
+                    clipped_["label"] = str(i)
+                    clipped = clipped + (clipped_,)
+                if "column" not in kwargs:
+                    kwargs["column"] = "label"
+                qtm(gdf_concat(clipped), **kwargs)
         return
 
     m = Explore(*gdfs, labels=labels, popup=popup, **kwargs)
@@ -81,22 +97,32 @@ def samplemap(
 
 
 def clipmap(
-    gdf,
-    mask,
+    *gdfs: GeoDataFrame,
+    mask: GeoDataFrame | None = None,
     labels: list[str] | None = None,
     popup: bool = True,
     **kwargs,
 ):
-    clipped = gdf.clip(mask)
+    clipped = ()
+
+    gdfs, labels, kwargs = _separate_args(gdfs, labels, kwargs)
+
+    if mask:
+        for gdf in gdfs:
+            clipped_ = gdf.clip(mask)
+            clipped = clipped + (clipped_,)
+
+    else:
+        for gdf in gdfs[:-1]:
+            clipped_ = gdf.clip(gdfs[-1])
+            clipped = clipped + (clipped_,)
 
     try:
         display
+        m = Explore(*clipped, labels=labels, popup=popup, **kwargs)
+        m.explore()
     except NameError:
-        qtm(clipped, **kwargs)
-        return
-
-    m = Explore(clipped, labels=labels, popup=popup, **kwargs)
-    m.explore()
+        qtm(gdf_concat(clipped), **kwargs)
 
 
 def qtm(

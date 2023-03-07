@@ -24,7 +24,7 @@ def buff(
     copy: bool = True,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
-    """Buffers and fixes geometries.
+    """Buffers with high resolution and fixes geometries.
 
     It buffers a GeoDataFrame, GeoSeries, or Geometry, and returns the same type of
     object. Returns a copy of the object unless 'copy' is set to False. The default

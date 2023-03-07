@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from mapclassify import classify
+from shapely import Geometry
 from shapely.geometry import LineString
 
 from .geopandas_utils import clean_geoms, gdf_concat
@@ -41,10 +42,9 @@ _MAP_KWARGS = [
     "max_bounds",
 ]
 
-# gray
-NAN_COLOR = "#969696"
-
-# default colors for categorical data
+# default colors for non-numeric data, because the geopandas default has very similar
+# colors. The palette is like the "Set2" cmap from matplotlib, but with more colors.
+# if more than 14 categories, the geopandas default cmap is used.
 _CATEGORICAL_CMAP = {
     0: "#4576ff",
     1: "#ff4545",
@@ -62,6 +62,43 @@ _CATEGORICAL_CMAP = {
     13: "#80ff00",
 }
 
+# gray
+NAN_COLOR = "#969696"
+
+
+def all_are_geom(gdfs):
+    return all(isinstance(gdf, (GeoDataFrame, GeoSeries, Geometry)) for gdf in gdfs)
+
+
+def _separate_args(gdfs, labels, kwargs):
+    if all_are_geom(gdfs):
+        return gdfs, labels, kwargs
+
+    column, labels_ = None, None
+
+    real_gdfs = ()
+    for gdf in gdfs:
+        if isinstance(gdf, str):
+            if column is None:
+                column = gdf
+            else:
+                raise ValueError("too many strings as gdfs")
+        elif isinstance(gdf, (list, tuple)):
+            if labels_ is None:
+                labels_ = gdf
+            else:
+                raise ValueError("too many tuple/list as gdfs")
+        elif isinstance(gdf, (GeoDataFrame, GeoSeries, Geometry)):
+            real_gdfs = real_gdfs + (gdf,)
+
+    if not labels:
+        labels = labels_
+
+    if column and "column" not in kwargs:
+        kwargs["column"] = column
+
+    return real_gdfs, labels, kwargs
+
 
 class Explore:
     def __init__(
@@ -71,13 +108,13 @@ class Explore:
         popup: bool = True,
         **kwargs,
     ) -> None:
-        self.kwargs: dict = {"popup": popup} | kwargs
+        kwargs: dict = {"popup": popup} | kwargs
+
+        gdfs, labels, kwargs = _separate_args(gdfs, labels, kwargs)
+
         self.gdfs: tuple[GeoDataFrame] = gdfs
         self.labels = labels
-
-        self._check_if_last_gdf_is_string()
-
-        self._check_if_last_gdf_is_tuplelist()
+        self.kwargs = kwargs
 
         if self.labels and "scheme" in self.kwargs:
             raise ValueError("Cannot speficy both 'scheme' and 'labels'.")
@@ -107,11 +144,56 @@ class Explore:
         self.sample_indices: list[int] = []
         self.sample_sizes: list[int] = []
 
-    def explore(self, **kwargs):
+    def explore(self, column: str | None = None, **kwargs):
+        """Interactive map of GeoDataFrames with layers can be toggles on/off.
+
+        It takes all the GeoDataFrames specified and displays them together in an
+        interactive map (the explore method). Each layer is added on top of the other.
+        The layers can be toggled on and off.
+
+        If the GeoDataFrames have name attributes (hint: write 'gdf.name = "gdf"'), these
+        will be used as labels. Otherwise, the layers will be labeled 0, 1 and so on, if
+        not 'labels' is specified.
+
+        The column to color by can be speficied by simply writing the string as an argument
+        right after the last GeoDataFrame. Or it can be speficied as column="colname".
+
+        Args:
+            *gdfs: one or more GeoDataFrames separated by a comma in the function call,
+                with no keyword. If the last arg specified is a string, it will be used
+                used as the 'column' parameter if this is not specified.
+            labels: Names that will be shown in the toggle on/off menu.
+            popup: If True (default), clicking on a geometry will...
+            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore
+
+        Returns:
+            Displays the interactive map, but returns nothing.
+        """
+        if column:
+            kwargs = kwargs | {"column": column}
         self.to_show = self.gdfs
         self._explore(**kwargs)
 
     def samplemap(self, size: int = 500, **kwargs):
+        """Shows an interactive map of GeoDataFrames in a random area of the gdfs.
+
+        The radius to plot can be changed with the 'size' parameter. By default, tries to
+        display interactive map, but falls back to static if not in Jupyter. Can be
+        changed to static by setting 'explore' to False. This will run the function 'qtm'.
+
+        Args:
+            gdf: the GeoDataFrame to plot
+            column: The column to color the map by
+            size: the radius to buffer the sample point by before clipping with the data
+            explore: If True (the default), it tries to display an interactive map.
+                If it raises a NameError because 'display' is not defined, it tries a
+                static plot. If False, uses the 'qtm' function to show a static map
+            **kwargs: keyword arguments taken by the geopandas' explore method or
+                the 'qtm' method if this library.
+
+        Returns:
+            Displays the map, but returns nothing.
+        """
         self.previous_sample_count = 0
         self.to_show = self.gdfs
         random_point = self.gdf.sample(1).assign(geometry=lambda x: x.centroid)
@@ -127,12 +209,12 @@ class Explore:
 
     def clipmap(
         self,
-        clip,
+        mask,
         **kwargs,
     ):
         to_show = []
         for gdf in self.gdfs:
-            gdf = gdf.clip(clip)
+            gdf = gdf.clip(mask)
             to_show.append(gdf)
         self.to_show = to_show
         self._explore(**kwargs)
@@ -144,31 +226,6 @@ class Explore:
         else:
             self._create_continous_map()
         display(self.m)
-
-    def _check_if_last_gdf_is_string(self) -> None:
-        if isinstance(self.gdfs[-1], str):
-            if "column" not in self.kwargs:
-                self.kwargs["column"] = self.gdfs[-1]
-            self.gdfs = self.gdfs[:-1]
-
-    def _check_if_last_gdf_is_tuplelist(self) -> None:
-        if not isinstance(self.gdfs[-1], (tuple, list)):
-            return
-        if self.labels:
-            raise TypeError(
-                f"gdfs cannot be {type(self.gdfs[-1])} when 'labels' is also "
-                "a keyword argument."
-            )
-        if len(self.gdfs[-1]) != len(self.gdfs) - 1:
-            raise ValueError(
-                "'labels' must be same length as the number of GeoDataFrames."
-            )
-        if "column" not in self.kwargs:
-            *self.gdfs, self.labels = self.gdfs
-            for gdf, label in zip(self.gdfs, self.labels):
-                gdf["label"] = label
-
-        self.kwargs["column"] = "label"
 
     def _create_labels_from_globals(self) -> None:
         self.labels: list[str] = []
