@@ -5,14 +5,102 @@ from matplotlib.colors import LinearSegmentedColormap
 from pandas.api.types import is_numeric_dtype
 from shapely import Geometry
 
+from .explore import Explore
 from .geopandas_utils import gdf_concat
+
+
+def explore(
+    *gdfs,
+    labels: tuple[str] | None = None,
+    popup: bool = True,
+    **kwargs,
+):
+    """Interactive map of one or more GeoDataFrames with different colors for each gdf
+
+    It takes all the GeoDataFrames specified and displays them together in an
+    interactive map (the explore method), with a different color for each GeoDataFrame.
+    The legend values is numbered in the order of the GeoDataFrames, if not column is
+    specified.
+
+    Uses the 'viridis' cmap if less than 6 GeoDataFrames, and a rainbow palette otherwise.
+
+    Args:
+        *gdfs: one or more GeoDataFrames separated by a comma in the function call,
+            with no keyword. If the last arg specified is a string, it will be used
+            used as the 'column' parameter if this is not specified.
+         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore
+
+    Returns:
+        Displays the interactive map, but returns nothing.
+    """
+    m = Explore(*gdfs, labels=labels, popup=popup, **kwargs)
+    m.explore()
+
+
+def samplemap(
+    *gdfs,
+    size: int = 500,
+    labels: list[str] | None = None,
+    popup: bool = True,
+    **kwargs,
+):
+    """Takes a random sample of a GeoDataFrame and plots all data within a 1 km radius.
+
+    The radius to plot can be changed with the 'size' parameter. By default, tries to
+    display interactive map, but falls back to static if not in Jupyter. Can be
+    changed to static by setting 'explore' to False. This will run the function 'qtm'.
+
+    Args:
+        gdf: the GeoDataFrame to plot
+        column: The column to color the map by
+        size: the radius to buffer the sample point by before clipping with the data
+        explore: If True (the default), it tries to display an interactive map.
+            If it raises a NameError because 'display' is not defined, it tries a
+            static plot. If False, uses the 'qtm' function to show a static map
+        **kwargs: keyword arguments taken by the geopandas' explore method or
+            the 'qtm' method if this library.
+
+    Returns:
+        Displays the map, but returns nothing.
+    """
+    try:
+        display
+    except NameError:
+        for gdf in gdfs:
+            if not isinstance(gdf, GeoDataFrame):
+                random_point = gdf.sample(1).assign(geometry=lambda x: x.centroid)
+                clipped = gdf.clip(random_point.buffer(size))
+                qtm(clipped, **kwargs)
+        return
+
+    m = Explore(*gdfs, labels=labels, popup=popup, **kwargs)
+    m.samplemap(size)
+
+
+def clipmap(
+    gdf,
+    mask,
+    labels: list[str] | None = None,
+    popup: bool = True,
+    **kwargs,
+):
+    clipped = gdf.clip(mask)
+
+    try:
+        display
+    except NameError:
+        qtm(clipped, **kwargs)
+        return
+
+    m = Explore(clipped, labels=labels, popup=popup, **kwargs)
+    m.explore()
 
 
 def qtm(
     gdf: GeoDataFrame,
-    column: bool = None,
+    column: str | None = None,
     *,
-    title: bool = None,
+    title: str | None = None,
     scheme: str = "quantiles",
     legend: bool = True,
     black: bool = True,
@@ -64,105 +152,6 @@ def qtm(
     if title:
         ax.set_title(title, fontsize=fontsize, color=title_color)
     gdf.plot(column, scheme=scheme, legend=legend, ax=ax, **kwargs)
-
-
-def concat_explore(*gdfs: GeoDataFrame, **kwargs) -> None:
-    """Interactive map of one or more GeoDataFrames with different colors for each gdf
-
-    It takes all the GeoDataFrames specified and displays them together in an
-    interactive map (the explore method), with a different color for each GeoDataFrame.
-    The legend values is numbered in the order of the GeoDataFrames, if not column is
-    specified.
-
-    Uses the 'viridis' cmap if less than 6 GeoDataFrames, and a rainbow palette otherwise.
-
-    Args:
-        *gdfs: one or more GeoDataFrames separated by a comma in the function call,
-            with no keyword. If the last arg specified is a string, it will be used
-            used as the 'column' parameter if this is not specified.
-         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore
-
-    Returns:
-        Displays the interactive map, but returns nothing.
-    """
-
-    if isinstance(gdfs[-1], str):
-        if "column" not in kwargs:
-            kwargs = kwargs | {"column": gdfs[-1]}
-        gdfs = gdfs[:-1]
-
-    if "column" not in kwargs:
-        for i, gdf in enumerate(gdfs):
-            gdf["nr"] = i
-        kwargs = kwargs | {"column": "nr"}
-
-    if "cmap" not in kwargs:
-        cmap = "viridis" if len(gdfs) < 6 else "rainbow"
-        kwargs = kwargs | {"cmap": cmap}
-
-    display(gdf_concat(gdfs).explore(**kwargs))
-
-
-def samplemap(
-    gdf: GeoDataFrame,
-    column: str | None = None,
-    size: int = 1000,
-    explore: bool = True,
-    **kwargs,
-) -> None:
-    """Takes a random sample of a GeoDataFrame and plots all data within a 1 km radius.
-
-    The radius to plot can be changed with the 'size' parameter. By default, tries to
-    display interactive map, but falls back to static if not in Jupyter. Can be
-    changed to static by setting 'explore' to False. This will run the function 'qtm'.
-
-    Args:
-        gdf: the GeoDataFrame to plot
-        column: The column to color the map by
-        size: the radius to buffer the sample point by before clipping with the data
-        explore: If True (the default), it tries to display an interactive map.
-            If it raises a NameError because 'display' is not defined, it tries a
-            static plot. If False, uses the 'qtm' function to show a static map
-        **kwargs: keyword arguments taken by the geopandas' explore method or
-            the 'qtm' method if this library.
-
-    Returns:
-        Displays the map, but returns nothing.
-    """
-    random_point = gdf.sample(1).assign(geometry=lambda x: x.centroid)
-
-    clipped = gdf.clip(random_point.buffer(size))
-
-    if explore:
-        try:
-            display(clipped.explore(column=column, **kwargs))
-        except NameError as e:
-            if "display" not in str(e):
-                display(clipped.explore(column=column, **kwargs))
-            qtm(clipped, column=column, **kwargs)
-    else:
-        qtm(clipped, column=column, **kwargs)
-
-
-def clipmap(
-    gdf: GeoDataFrame,
-    mask: GeoDataFrame | GeoSeries | Geometry,
-    column: str | None = None,
-    explore: bool = True,
-    **kwargs,
-) -> None:
-    """Clips a GeoDataFrame to mask and plots it"""
-    clipped = gdf.clip(mask.to_crs(gdf.crs))
-
-    if explore:
-        try:
-            display(clipped.explore(column=column, **kwargs))
-        except NameError as e:
-            if "display" not in str(e):
-                display(clipped.explore(column=column, **kwargs))
-            qtm(clipped, column=column, **kwargs)
-    else:
-        qtm(clipped, column=column, **kwargs)
 
 
 def _chop_cmap(cmap: LinearSegmentedColormap, frac: float) -> LinearSegmentedColormap:
