@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 from geopandas import GeoDataFrame
 
+from .helpers import unit_is_meters
+
 
 @dataclass
 class NetworkAnalysisRules:
@@ -220,11 +222,7 @@ class NetworkAnalysisRules:
     def _validate_weight(
         self, gdf: GeoDataFrame, raise_error: bool = True
     ) -> GeoDataFrame:
-        if (
-            "meter" in self.weight
-            or "metre" in self.weight
-            and gdf.crs.axis_info[0].unit_name == "metre"
-        ):
+        if "meter" in self.weight or "metre" in self.weight and unit_is_meters(gdf):
             gdf[self.weight] = gdf.length
             return gdf
         elif self.weight in gdf.columns:

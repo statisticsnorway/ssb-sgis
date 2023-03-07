@@ -3,6 +3,7 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 
 from .distances import get_k_nearest_neighbors
+from .helpers import return_two_vals
 from .networkanalysisrules import NetworkAnalysisRules
 
 
@@ -35,6 +36,10 @@ class Points:
         if not self.id_col:
             return
 
+        id_cols = return_two_vals(self.id_col)
+
+        self.id_col = id_cols[index]
+        """
         if isinstance(self.id_col, (list, tuple)) and len(self.id_col) == 2:
             self.id_col = self.id_col[index]
 
@@ -42,7 +47,7 @@ class Points:
             raise ValueError(
                 "'id_col' should be a string or a list/tuple with two strings."
             )
-
+        """
         if self.id_col not in self.gdf.columns:
             raise KeyError(
                 f"{self.__class__.__name__!r} has no attribute {self.id_col!r}"
@@ -69,7 +74,7 @@ class Points:
                 )
             }
 
-    def _get_missing(
+    def _get_n_missing(
         self,
         results: GeoDataFrame | DataFrame,
         col: str,

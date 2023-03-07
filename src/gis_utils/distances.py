@@ -11,14 +11,16 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 from sklearn.neighbors import NearestNeighbors
 
+from .helpers import return_two_vals
+
 
 def get_k_nearest_neighbours(
     gdf: GeoDataFrame,
     neighbours: GeoDataFrame,
     k: int,
     id_cols: str | tuple[str, str] | None = None,
-    min_dist: float = 0.0000001,
     max_dist: int | float | None = None,
+    min_dist: float | int = 0.0000001,
     strict: bool = False,
 ) -> DataFrame:
     """Finds the k nearest neighbours for a GeoDataFrame of points.
@@ -32,9 +34,9 @@ def get_k_nearest_neighbours(
         k: number of neighbours to find
         id_cols: column(s) to use as identifiers. Either a string if one column or a
             tuple/list for 'gdf' and 'neighbours' respectfully.
+        max_dist: if specified, distances larger than this number will be removed.
         min_dist: The minimum distance between the two points. Defaults to
             0.0000001, so that identical points aren't considered neighbours.
-        max_dist: if specified, distances larger than this number will be removed.
         strict: If False (the default), no exception is raised if k is larger than the
             number of points in 'neighbours'. If True, 'k' must be less than or equal
             to the number of points in 'neighbours'.
@@ -52,7 +54,7 @@ def get_k_nearest_neighbours(
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbours.crs)
 
     if id_cols:
-        id_col1, id_col2 = _return_two_id_cols(id_cols)
+        id_col1, id_col2 = return_two_vals(id_cols)
         id_dict_gdf = {
             i: col for i, col in zip(range(len(gdf)), gdf[id_col1], strict=True)
         }
@@ -106,7 +108,7 @@ def get_k_nearest_neighbors(
     neighbors: GeoDataFrame,
     k: int,
     id_cols: str | tuple[str, str] | None = None,
-    min_dist: int = 0.0000001,
+    min_dist: int | float = 0.0000001,
     max_dist: int | None = None,
     strict: bool = False,
 ) -> DataFrame:
@@ -198,26 +200,3 @@ def _get_edges(gdf: GeoDataFrame, indices: np.ndarray[float]) -> np.ndarray[tupl
     return np.array(
         [[(i, neighbor) for neighbor in indices[i]] for i in range(len(gdf))]
     )
-
-
-def _return_two_id_cols(id_cols: str | list[str, str] | tuple[str, str]) -> tuple[str]:
-    """Just some isinstance checks.
-
-    Make sure the id_cols are a 2 length tuple.> If the input is a string, return
-    a tuple of two strings. If the input is a list or tuple of two
-    strings, return the list or tuple. Otherwise, raise a ValueError
-
-    Args:
-      id_cols: one or two id columns (strings)
-
-    Returns:
-      A tuple of two strings.
-    """
-    if isinstance(id_cols, (tuple, list)) and len(id_cols) == 2:
-        return id_cols
-    elif isinstance(id_cols, str):
-        return id_cols, id_cols
-    if isinstance(id_cols, (tuple, list)) and len(id_cols) == 1:
-        return id_cols[0], id_cols[0]
-    else:
-        raise ValueError

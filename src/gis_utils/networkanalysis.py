@@ -383,8 +383,8 @@ class NetworkAnalysis:
             rowwise=rowwise,
         )
 
-        self.origins._get_missing(results, "origin")
-        self.destinations._get_missing(results, "destination")
+        self.origins._get_n_missing(results, "origin")
+        self.destinations._get_n_missing(results, "destination")
 
         if id_col:
             results["origin"] = results["origin"].map(self.origins.id_dict)
@@ -489,8 +489,8 @@ class NetworkAnalysis:
             rowwise=rowwise,
         )
 
-        self.origins._get_missing(results, "origin")
-        self.destinations._get_missing(results, "destination")
+        self.origins._get_n_missing(results, "origin")
+        self.destinations._get_n_missing(results, "destination")
 
         if id_col:
             results["origin"] = results["origin"].map(self.origins.id_dict)
@@ -641,8 +641,8 @@ class NetworkAnalysis:
             drop_middle_percent=drop_middle_percent,
         )
 
-        self.origins._get_missing(results, "origin")
-        self.destinations._get_missing(results, "destination")
+        self.origins._get_n_missing(results, "origin")
+        self.destinations._get_n_missing(results, "destination")
 
         if id_col:
             results["origin"] = results["origin"].map(self.origins.id_dict)
@@ -1056,6 +1056,7 @@ class NetworkAnalysis:
         self.network.gdf = gdf_concat([lines, self.network._not_splitted]).drop(
             "temp_idx__", axis=1
         )
+        del self.network._not_splitted
 
     def _add_missing_vertices(self):
         """Adds the points that had no nodes within the search_tolerance

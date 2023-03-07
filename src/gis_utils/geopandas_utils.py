@@ -681,7 +681,7 @@ def to_gdf(
 
 
 def gdf_concat(
-    gdfs: list[GeoDataFrame],
+    gdfs: list[GeoDataFrame] | tuple[GeoDataFrame],
     crs: str | int | None = None,
     ignore_index: bool = True,
     geometry: str = "geometry",

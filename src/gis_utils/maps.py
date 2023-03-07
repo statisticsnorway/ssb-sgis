@@ -3,10 +3,8 @@ import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
 from matplotlib.colors import LinearSegmentedColormap
 from pandas.api.types import is_numeric_dtype
-from shapely import Geometry
 
 from .explore import Explore
-from .geopandas_utils import gdf_concat
 
 
 def explore(
@@ -15,19 +13,24 @@ def explore(
     popup: bool = True,
     **kwargs,
 ):
-    """Interactive map of one or more GeoDataFrames with different colors for each gdf
+    """Interactive map of GeoDataFrames with opportunity to toggle on/off layers.
 
     It takes all the GeoDataFrames specified and displays them together in an
-    interactive map (the explore method), with a different color for each GeoDataFrame.
-    The legend values is numbered in the order of the GeoDataFrames, if not column is
-    specified.
+    interactive map (the explore method). Each layer is added on top of the other.
+    The layers can be toggled on and off.
 
-    Uses the 'viridis' cmap if less than 6 GeoDataFrames, and a rainbow palette otherwise.
+    If the GeoDataFrames have name attributes (hint: write 'gdf.name = "gdf"'), these
+    will be used as labels. Otherwise, the layers will be labeled 0, 1 and so on, if
+    not 'labels' is specified.
+
+    The column to color by can be speficied by simply writing the string as an argument
+    right after the last GeoDataFrame. Or it can be speficied as column="colname".
 
     Args:
         *gdfs: one or more GeoDataFrames separated by a comma in the function call,
             with no keyword. If the last arg specified is a string, it will be used
             used as the 'column' parameter if this is not specified.
+        labels: Names that will be shown in the toggle on/off menu.
          **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore
 
     Returns:
@@ -44,7 +47,7 @@ def samplemap(
     popup: bool = True,
     **kwargs,
 ):
-    """Takes a random sample of a GeoDataFrame and plots all data within a 1 km radius.
+    """Shows an interactive map of GeoDataFrames in a random area of the gdfs.
 
     The radius to plot can be changed with the 'size' parameter. By default, tries to
     display interactive map, but falls back to static if not in Jupyter. Can be
