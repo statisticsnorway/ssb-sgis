@@ -21,7 +21,9 @@ def not_test_explore():
     p = points.iloc[[0]]
     roads = roads[["geometry"]]
     roads["meters"] = roads.length
+    roads["km"] = roads.length / 1000
     points["meters"] = points.length
+    points["km"] = points.length / 1000
     roads = roads.sjoin(p.buffer(500).to_frame()).drop("index_right", axis=1)
     points = points.sjoin(p.buffer(500).to_frame())
     points["geometry"] = points.buffer(8)
@@ -47,10 +49,17 @@ def not_test_explore():
     x.clipmap(p.buffer(100))
     x.samplemap()
 
-    x = gs.Explore(r1, r2, r3, "meters", ("r100", "r200", "r300"))
-    x.explore()
+    x = gs.Explore(r1, r2, r3, column="meters", labels=("r100", "r200", "r300"))
     x.clipmap(p.buffer(100))
     x.samplemap()
+    r3.loc[0, "meters"] = None
+    x = gs.Explore(r1, r2, r3, labels=("r100", "r200", "r300"))
+    x.explore()
+    x.explore("meters", cmap="inferno")
+    x.samplemap(cmap="magma")
+    x.samplemap(100, "km")
+    x.clipmap(p.buffer(100), cmap="RdPu")
+    x.clipmap(p.buffer(100), "meters")
 
 
 def main():

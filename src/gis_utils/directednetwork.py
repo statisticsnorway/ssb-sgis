@@ -1,3 +1,5 @@
+"""DirectedNetwork class for directed network analysis."""
+
 import warnings
 
 from geopandas import GeoDataFrame
@@ -68,10 +70,11 @@ class DirectedNetwork(Network):
         gdf: GeoDataFrame,
         **kwargs,
     ):
-        """
+        """Initialiser passed to the Network base class.
+
         Args:
-            gdf: a GeoDataFrame of line geometries
-            **kwargs: keyword arguments taken by the base class Network
+            gdf: a GeoDataFrame of line geometries.
+            **kwargs: keyword arguments taken by the base class Network.
         """
         super().__init__(gdf, **kwargs)
 
@@ -84,7 +87,6 @@ class DirectedNetwork(Network):
         direction_vals_bft: tuple[str, str, str],
         minute_cols: tuple[str, str] | str | None = None,
         speed_col: str | None = None,
-        default_speed: str | None = None,
         flat_speed: int | None = None,
         reverse_tofrom: bool = True,
     ):
@@ -104,15 +106,19 @@ class DirectedNetwork(Network):
                 direction, and the second column for roads going backwards.
             flat_speed (optional): Speed in kilometers per hour to use as the speed for
                 all roads.
-            reverse_tofrom (optional): If the geometries of the lines going backwards
+            reverse_tofrom: If the geometries of the lines going backwards
                 (i.e. has the last value in 'direction_vals_bft'). Defaults to True.
 
         Returns:
-            The Network class, with the network attribute updated with flipped geometries for lines going backwards and both directions.
-            Adds the column 'minutes' if either 'speed_col', 'minute_col' or 'flat_speed' is specified.
+            The Network class, with the network attribute updated with flipped
+                geometries for lines going backwards and both directions.
+            Adds the column 'minutes' if either 'speed_col', 'minute_col' or
+                'flat_speed' is specified.
 
+        Raises:
+            ValueError: If 'flat_speed' or 'speed_col' is specified and the unit of the
+                coordinate reference system is not 'metre'
         """
-
         self._validate_minute_args(minute_cols, speed_col, flat_speed)
 
         self._validate_direction_args(direction_col, direction_vals_bft)
@@ -138,11 +144,11 @@ class DirectedNetwork(Network):
         if minute_cols:
             try:
                 min_f, min_t = return_two_vals(minute_cols)
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     "'minute_cols' should be column name (string) or tuple/list with "
                     "values of directions forwards and backwards, in that order."
-                )
+                ) from e
 
             # rename the two minute cols
             both_ways = both_ways.rename(columns={min_f: "minutes"})
@@ -163,7 +169,7 @@ class DirectedNetwork(Network):
         self.gdf = gdf_concat([both_ways, both_ways2, ft, tf])
 
         if speed_col:
-            self._get_speed_from_col(speed_col, default_speed)
+            self._get_speed_from_col(speed_col)
 
         if flat_speed:
             self.gdf["minutes"] = self.gdf.length / flat_speed * 16.6666666667
@@ -183,13 +189,12 @@ class DirectedNetwork(Network):
         direction_vals_bft: tuple[str, str, str] = ("B", "FT", "TF"),
         minute_cols: tuple[str, str] = ("drivetime_fw", "drivetime_bw"),
     ):
-        """Runs method make_directed_network for Norwegian road data
+        """Runs method make_directed_network for Norwegian road data.
 
         Runs the method make_directed_network with default arguments to fit
         Norwegian road data:
         https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
         """
-
         return self.make_directed_network(
             direction_col=direction_col,
             direction_vals_bft=direction_vals_bft,
@@ -221,7 +226,8 @@ class DirectedNetwork(Network):
         if not minute_cols and not speed_col and not flat_speed:
             warnings.warn(
                 "Minute column will not be calculated when both 'minute_cols', "
-                "'speed_col' and 'flat_speed' is None"
+                "'speed_col' and 'flat_speed' is None",
+                stacklevel=2,
             )
 
         if sum([bool(minute_cols), bool(speed_col), bool(flat_speed)]) > 1:
@@ -242,8 +248,8 @@ class DirectedNetwork(Network):
 
         if not all(gdf.loc[gdf[direction_col].isin(direction_vals_bft)]):
             raise ValueError(
-                f"direction_col '{direction_col}' should have only three unique values.",
-                f"unique values in {direction_col}: ",
+                f"direction_col '{direction_col}' should have only three unique",
+                f"values. unique values in {direction_col}:",
                 ", ".join(gdf[direction_col].fillna("nan").unique()),
                 f"Got {direction_vals_bft}.",
             )
@@ -251,26 +257,19 @@ class DirectedNetwork(Network):
         if "b" in t.lower() and "t" in b.lower() and "f" in f.lower():
             warnings.warn(
                 f"The 'direction_vals_bft' should be in the order 'both ways', "
-                f"'from', 'to'. Got {b, f, t}. Is this correct?"
+                f"'from', 'to'. Got {b, f, t}. Is this correct?",
+                stacklevel=2,
             )
 
-    def _get_speed_from_col(self, speed_col, default_speed):
-        if default_speed:
-            self.gdf.loc[
-                (self.gdf[speed_col].isna()) | (self.gdf[speed_col] == 0), speed_col
-            ] = default_speed
-        else:
-            if (
-                len(
-                    self.gdf.loc[
-                        (self.gdf[speed_col].isna()) | (self.gdf[speed_col] == 0)
-                    ]
-                )
-                > len(self.gdf) * 0.05
-            ):
-                raise ValueError(
-                    f"speed_col '{speed_col}' has a lot of missing or 0 values. Specify default_speed for these values."
-                )
+    def _get_speed_from_col(self, speed_col):
+        if (
+            len(self.gdf.loc[(self.gdf[speed_col].isna()) | (self.gdf[speed_col] == 0)])
+            > len(self.gdf) * 0.05
+        ):
+            raise ValueError(
+                f"speed_col {speed_col!r} has a lot of missing or 0 values. Fill these "
+                "with appropriate values"
+            )
         self.gdf["minutes"] = (
             self.gdf.length / self.gdf[speed_col].astype(float) * 16.6666666667
         )
@@ -278,11 +277,10 @@ class DirectedNetwork(Network):
     def _make_directed_network_osm(
         self,
         direction_col: str = "oneway",
-        direction_vals_bft: list | tuple = ("B", "F", "T"),
+        direction_vals_bft: tuple[str, str, str] = ("B", "F", "T"),
         speed_col: str = "maxspeed",
     ):
         """Currently not working."""
-
         return self.make_directed_network(
             direction_col=direction_col,
             direction_vals_bft=direction_vals_bft,
@@ -290,6 +288,7 @@ class DirectedNetwork(Network):
         )
 
     def __repr__(self) -> str:
+        """The print representation."""
         cl = self.__class__.__name__
         km = int(sum(self.gdf.length) / 1000)
         return f"{cl}({km} km, percent_bidirectional={self.percent_bidirectional})"

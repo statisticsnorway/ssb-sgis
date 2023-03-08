@@ -12,10 +12,11 @@ def test_close_network_holes():
     warnings.filterwarnings(action="ignore", category=UserWarning)
     warnings.filterwarnings(action="ignore", category=FutureWarning)
 
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    r = gpd.read_parquet(gs.roadpath)
+    p = gpd.read_parquet(gs.pointpath)
+
     p = p.iloc[[0]]
 
-    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
     r = gs.clean_clip(r, p.buffer(600))
 
     nw = gs.Network(r)

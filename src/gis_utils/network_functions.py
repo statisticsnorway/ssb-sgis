@@ -17,7 +17,6 @@ import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame
 from shapely import force_2d, shortest_line
-from shapely.constructive import reverse
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
@@ -78,7 +77,6 @@ def get_component_size(lines: GeoDataFrame) -> GeoDataFrame:
         If the lines have the columns 'source' and 'target', these will be used as
         node ids. If these columns are incorrect, run 'make_node_ids' first.
     """
-
     if "source" not in lines.columns or "target" not in lines.columns:
         lines, _ = make_node_ids(lines)
 
@@ -119,10 +117,9 @@ def split_lines_at_closest_point(
         split at the closest point to the points.
 
     Raises:
-        ValueError if the crs of the input data differs.
+        ValueError: If the crs of the input data differs.
     """
-
-    buffdist = 0.000001
+    BUFFDIST = 0.000001
 
     if points.crs != lines.crs:
         raise ValueError("crs mismatch:", points.crs, "and", lines.crs)
@@ -150,7 +147,7 @@ def split_lines_at_closest_point(
 
     # split the lines with buffer + difference, since shaply.split usually doesn't work
     splitted = relevant_lines.overlay(
-        buff(snapped, buffdist), how="difference"
+        buff(snapped, BUFFDIST), how="difference"
     ).explode(ignore_index=True)
 
     # the endpoints of the new lines are now sligtly off. To get the exact snapped
@@ -188,14 +185,14 @@ def split_lines_at_closest_point(
         splitted_source,
         snapped,
         k=1,
-        max_dist=buffdist * 2,
+        max_dist=BUFFDIST * 2,
         id_cols=("splitidx", "point_coords"),
     )
     dists_target = get_k_nearest_neighbors(
         splitted_target,
         snapped,
         k=1,
-        max_dist=buffdist * 2,
+        max_dist=BUFFDIST * 2,
         id_cols=("splitidx", "point_coords"),
     )
 
@@ -245,8 +242,8 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
     """Cuts lines of a GeoDataFrame into pieces of a given length.
 
     Args:
-        gdf (GeoDataFrame): GeoDataFrame
-        max_length (int): The maximum length of the lines in the output GeoDataFrame.
+        gdf: GeoDataFrame.
+        max_length: The maximum length of the lines in the output GeoDataFrame.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to True.
 
@@ -266,7 +263,7 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
         return gdf
 
     def cut(line, distance):
-        """from the shapely docs, but returns unary_union."""
+        """From the shapely docs, but added unary_union in the returns."""
         if distance <= 0.0 or distance >= line.length:
             return line
         coords = list(line.coords)
@@ -312,6 +309,7 @@ def close_network_holes(
     min_dist: int = 0,
     deadends_only: bool = False,
     hole_col: str | None = "hole",
+    k: int = 25,
     length_factor: int = 25,
 ):
     """Fills gaps shorter than 'max_dist' in a GeoDataFrame of lines.
@@ -328,8 +326,11 @@ def close_network_holes(
             deadends.
         hole_col: If you want to keep track of which lines were added, you can add a
             column with a value of 1. Defaults to 'hole'
-        length_factor: TODO! the percentage longer the distance from the deadend to the
-            compared to the distance from the other endpoint of the line
+        k: number of nearest neighbors to consider. Defaults to 25.
+        length_factor: The percentage longer the new lines have to be compared to the
+            distance from the other end of the deadend line relative to the line's
+            length. Or said (a bit) simpler: higher length_factor means the new lines
+            will have an angle more similar to the deadend line it originates from.
 
     Returns:
         The input GeoDataFrame with new lines added.
@@ -340,7 +341,12 @@ def close_network_holes(
         new_lines = _find_holes_deadends(nodes, max_dist, min_dist)
     else:
         new_lines = _find_holes_all_lines(
-            lines, nodes, max_dist, min_dist, length_factor=length_factor
+            lines,
+            nodes,
+            max_dist,
+            min_dist,
+            length_factor=length_factor,
+            k=k,
         )
 
     if not len(new_lines):
@@ -353,9 +359,6 @@ def close_network_holes(
     }
     new_lines["source"] = new_lines["source_wkt"].map(wkt_id_dict)
     new_lines["target"] = new_lines["target_wkt"].map(wkt_id_dict)
-
-    if any(new_lines.source.isna()) or any(new_lines.target.isna()):
-        raise ValueError("Missing source/target ids.")
 
     if hole_col:
         new_lines[hole_col] = 1
@@ -386,7 +389,6 @@ def make_node_ids(
     Note:
         The lines must be singlepart linestrings.
     """
-
     if wkt:
         lines = make_edge_wkt_cols(lines)
         geomcol1, geomcol2, geomcol_final = "source_wkt", "target_wkt", "wkt"
@@ -445,17 +447,17 @@ def make_node_ids(
 
 
 def make_edge_coords_cols(lines: GeoDataFrame) -> GeoDataFrame:
-    """Get the wkt of the first and last points of lines as columns
+    """Get the wkt of the first and last points of lines as columns.
 
     It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
     columns, source_coords and target_coords, which are the x and y coordinates of the
     first and last points of the LineStrings in a tuple. The lines all have to be
 
     Args:
-      lines (GeoDataFrame): the GeoDataFrame with the lines
+        lines (GeoDataFrame): the GeoDataFrame with the lines
 
     Returns:
-      A GeoDataFrame with new columns 'source_coords' and 'target_coords'
+        A GeoDataFrame with new columns 'source_coords' and 'target_coords'
     """
     lines, endpoints = _prepare_make_edge_cols(lines)
 
@@ -469,17 +471,17 @@ def make_edge_coords_cols(lines: GeoDataFrame) -> GeoDataFrame:
 
 
 def make_edge_wkt_cols(lines: GeoDataFrame) -> GeoDataFrame:
-    """Get coordinate tuples of the first and last points of lines as columns
+    """Get coordinate tuples of the first and last points of lines as columns.
 
     It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
     columns, source_wkt and target_wkt, which are the WKT representations of the first
     and last points of the LineStrings
 
     Args:
-      lines (GeoDataFrame): the GeoDataFrame with the lines
+        lines (GeoDataFrame): the GeoDataFrame with the lines
 
     Returns:
-      A GeoDataFrame with new columns 'source_wkt' and 'target_wkt'
+        A GeoDataFrame with new columns 'source_wkt' and 'target_wkt'
     """
     lines, endpoints = _prepare_make_edge_cols(lines)
 
@@ -499,11 +501,12 @@ def _find_holes_all_lines(
     nodes: GeoDataFrame,
     max_dist: int,
     min_dist: int = 0,
-    k: int = 20,
+    k: int = 25,
     length_factor: int = 25,
 ):
-    """
-    creates a straight line between deadends and the closest node in a
+    """Creates lines between deadends and closest node in forward-going direction.
+
+    Creates a straight line between deadends and the closest node in a
     forward-going direction, if the distance is between the max_dist and min_dist.
 
     Args:
@@ -512,20 +515,23 @@ def _find_holes_all_lines(
         max_dist: The maximum distance between the dead end and the node it should be
             connected to.
         min_dist: The minimum distance between the dead end and the node. Defaults to 0
-        k: number of nearest neighbors to consider. Defaults to 10
-        length_factor: how many percent longer the distance to node has to be..
+        k: number of nearest neighbors to consider. Defaults to 25
+        length_factor: The percentage longer the new lines have to be compared to the
+            distance from the other end of the deadend line relative to the line's
+            length. Or said (a bit) simpler: higher length_factor means the new lines
+            will have an angle more similar to the deadend line it originates from.
 
     Returns:
         A GeoDataFrame with the shortest line between the two points.
     """
-
     # wkt: well-known text, e.g. "POINT (60 10)"
 
     crs = nodes.crs
 
     # remove duplicates of lines going both directions
     lines["sorted"] = [
-        "_".join(sorted([s, t])) for s, t in zip(lines["source"], lines["target"])
+        "_".join(sorted([s, t]))
+        for s, t in zip(lines["source"], lines["target"], strict=True)
     ]
 
     no_dups = lines.drop_duplicates("sorted")
@@ -619,10 +625,11 @@ def _find_holes_all_lines(
 def _find_holes_deadends(
     nodes: GeoDataFrame, max_dist: float | int, min_dist: float | int = 0
 ):
-    """
-    It takes a GeoDataFrame of nodes, chooses the deadends,
-    and creates a straight line between the closest deadends
-    if the distance is between the specifies max_dist and min_dist.
+    """Creates lines between two deadends if between max_dist and min_dist.
+
+    It takes a GeoDataFrame of nodes, chooses the deadends, and creates a straight line
+    between the closest deadends if the distance is between the specifies max_dist and
+    min_dist.
 
     Args:
         nodes: the nodes of the network

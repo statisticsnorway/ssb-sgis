@@ -1,10 +1,16 @@
-# %%
+"""Interactive map of one or more GeoDataFrames with layers that can be toggles on/off.
+
+This module holds the Explore class, which is the basis for the explore, samplemap and
+clipmap functions from the 'maps' module.
+"""
 import warnings
 from statistics import mean
 
+import branca as bc
 import folium
 import geopandas
 import matplotlib
+import matplotlib.cm as cm
 import matplotlib.colors as colors
 import numpy as np
 import pandas as pd
@@ -16,11 +22,38 @@ from shapely.geometry import LineString
 from .geopandas_utils import clean_geoms, gdf_concat
 
 
+# the geopandas._explore
 warnings.filterwarnings(
     action="ignore", category=matplotlib.MatplotlibDeprecationWarning
 )
+pd.options.mode.chained_assignment = None
 
 
+# custom default colors for non-numeric data, because the geopandas default has very
+# similar colors. The palette is like the "Set2" cmap from matplotlib, but with more
+# colors. If more than 14 categories, the geopandas default cmap is used.
+_CATEGORICAL_CMAP = {
+    0: "#4576ff",
+    1: "#ff4545",
+    2: "#59d45f",
+    3: "#b51d8b",
+    4: "#fc8626",
+    5: "#f2dc4e",
+    6: "#ff8cc9",
+    7: "#6bf2eb",
+    8: "#916209",
+    9: "#008d94",
+    10: "#8a030a",
+    11: "#9c65db",
+    12: "#228000",
+    13: "#80ff00",
+}
+
+# gray for NaNs
+NAN_COLOR = "#969696"
+
+
+# from geopandas
 _MAP_KWARGS = [
     "location",
     "prefer_canvas",
@@ -42,36 +75,17 @@ _MAP_KWARGS = [
     "max_bounds",
 ]
 
-# default colors for non-numeric data, because the geopandas default has very similar
-# colors. The palette is like the "Set2" cmap from matplotlib, but with more colors.
-# if more than 14 categories, the geopandas default cmap is used.
-_CATEGORICAL_CMAP = {
-    0: "#4576ff",
-    1: "#ff4545",
-    2: "#59d45f",
-    3: "#b51d8b",
-    4: "#fc8626",
-    5: "#f2dc4e",
-    6: "#ff8cc9",
-    7: "#6bf2eb",
-    8: "#916209",
-    9: "#008d94",
-    10: "#8a030a",
-    11: "#9c65db",
-    12: "#228000",
-    13: "#80ff00",
-}
 
-# gray
-NAN_COLOR = "#969696"
-
-
-def all_are_geom(gdfs):
+def _all_are_geom(gdfs):
     return all(isinstance(gdf, (GeoDataFrame, GeoSeries, Geometry)) for gdf in gdfs)
 
 
-def _separate_args(gdfs, labels, kwargs):
-    if all_are_geom(gdfs):
+def _separate_args(
+    gdfs: tuple,
+    labels: tuple[str] | None,
+    kwargs: dict,
+) -> tuple[tuple[GeoDataFrame], tuple[str], dict]:
+    if _all_are_geom(gdfs):
         return gdfs, labels, kwargs
 
     column, labels_ = None, None
@@ -94,35 +108,78 @@ def _separate_args(gdfs, labels, kwargs):
     if not labels:
         labels = labels_
 
-    if column and "column" not in kwargs:
+    if column and not kwargs["column"]:
         kwargs["column"] = column
 
     return real_gdfs, labels, kwargs
 
 
 class Explore:
+    """Interactive map of GeoDataFrames with layers that can be toggles on/off.
+
+    It takes all the given GeoDataFrames and displays them together in an
+    interactive map with a common legend. The layers can be toggled on and off.
+
+    If 'column' is not specified, each GeoDataFrame is given a unique color. The
+    default colormap is a custom, strongly colored palette. If a numerical column
+    is given, the 'viridis' palette is used.
+
+    If the GeoDataFrames have name attributes (hint: write 'gdf.name = "gdf"'), these
+    will be used as labels. Alternatively, labels can be specified as a tuple of
+    strings of same length as the number of GeoDataFrames. Otherwise, the labels will
+    be 0, 1, …, n - 1.
+    """
+
     def __init__(
         self,
         *gdfs: GeoDataFrame,
+        column: str | None = None,
         labels: tuple[str] | None = None,
         popup: bool = True,
+        max_zoom: int = 30,
         **kwargs,
     ) -> None:
-        kwargs: dict = {"popup": popup} | kwargs
+        """Takes the GeoDataFrames and mapping rules and prepares the mapmaking.
 
-        gdfs, labels, kwargs = _separate_args(gdfs, labels, kwargs)
+        No map is displayed here. Use the methods to display the geometries.
+
+        Args:
+            *gdfs: one or more GeoDataFrames. Separated by a comma in the function call,
+                with no keyword.
+            column: The column to color the geometries by. Defaults to None, which means
+                each GeoDataFrame will get a unique color.
+            labels: Names that will be shown in the toggle on/off menu. Defaults to
+                None, meaning the GeoDataFrames will be labeled 0, 1, …, n - 1, unless
+                the GeoDataFrames have a 'name' attribute. In this case, the name will
+                be used as label.
+            popup: If True (default), clicking on a geometry will create a popup box
+                with column names and values for the given geometry. The box stays
+                until clicking elsewhere. If False (the geopandas default), the box
+                will only show when hovering over the geometry.
+            max_zoom: The maximum allowed level of zoom. Higher number means more zoom
+                allowed. Defaults to 30, which is higher than the geopandas default.
+            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
+                instance 'cmap' to change the colors, 'scheme' to change how the data
+                is grouped. This defaults to 'quantiles' for numeric data.
+        """
+        all_kwargs: dict = kwargs | {
+            "popup": popup,
+            "column": column,
+            "max_zoom": max_zoom,
+        }
+
+        gdfs, labels, all_kwargs = _separate_args(gdfs, labels, all_kwargs)
 
         self.gdfs: tuple[GeoDataFrame] = gdfs
         self.labels = labels
-        self.kwargs = kwargs
-
-        if self.labels and "scheme" in self.kwargs:
-            raise ValueError("Cannot speficy both 'scheme' and 'labels'.")
+        self.kwargs = all_kwargs
 
         if not self.labels:
             self._create_labels_from_globals()
-
-        if "column" not in self.kwargs:
+            self.kwargs["column"] = "label"
+        elif not self.kwargs["column"]:
+            for gdf, label in zip(self.gdfs, labels, strict=True):
+                gdf["label"] = label
             self.kwargs["column"] = "label"
 
         self._is_categorical = self._check_if_categorical()
@@ -134,93 +191,141 @@ class Explore:
         if "title" not in self.kwargs:
             self.kwargs["title"] = self.kwargs["column"]
 
-        if "categories" not in kwargs:
+        if "categories" not in self.kwargs:
             self._choose_cmap()
 
         if self._is_categorical:
             self._get_categorical_colors()
 
-        self.to_show = self.gdfs
-        self.sample_indices: list[int] = []
-        self.sample_sizes: list[int] = []
+        self.to_show: tuple[GeoDataFrame] = self.gdfs
 
-    def explore(self, column: str | None = None, **kwargs):
-        """Interactive map of GeoDataFrames with layers can be toggles on/off.
+    def explore(self, column: str | None = None, **kwargs) -> None:
+        """Interactive map of the GeoDataFrames with layers that can be toggles on/off.
 
-        It takes all the GeoDataFrames specified and displays them together in an
-        interactive map (the explore method). Each layer is added on top of the other.
-        The layers can be toggled on and off.
-
-        If the GeoDataFrames have name attributes (hint: write 'gdf.name = "gdf"'), these
-        will be used as labels. Otherwise, the layers will be labeled 0, 1 and so on, if
-        not 'labels' is specified.
-
-        The column to color by can be speficied by simply writing the string as an argument
-        right after the last GeoDataFrame. Or it can be speficied as column="colname".
+        It displays all the GeoDataFrames and displays them together in an interactive
+        map with a common legend. The layers can be toggled on and off.
 
         Args:
-            *gdfs: one or more GeoDataFrames separated by a comma in the function call,
-                with no keyword. If the last arg specified is a string, it will be used
-                used as the 'column' parameter if this is not specified.
-            labels: Names that will be shown in the toggle on/off menu.
-            popup: If True (default), clicking on a geometry will...
-            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore
+            column: The column to color the geometries by. Defaults to the column
+                that was specified last.
+            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
+                instance 'cmap' to change the colors, 'scheme' to change how the data
+                is grouped. This defaults to 'quantiles' for numeric data.
 
-        Returns:
-            Displays the interactive map, but returns nothing.
+        See also:
+            samplemap: same functionality, but shows only a random area of a given size.
+            clipmap: same functionality, but shows only the areas clipped by a given
+                mask.
+
+        Examples
+        --------
+        >>> import geopandas as gpd
+        >>> from gis_utils import roadpath, pointpath
+        >>> points = gpd.read_parquet(pointpath)
+        >>> roads = gpd.read_parquet(roadpath)
+
+        Simple explore of two GeoDataFrames.
+
+        >>> from gis_utils import Explore
+        >>> ex = Explore(roads, points)
+        >>> ex.explore()
+
+        With column and labels.
+
+        >>> roads["meters"] = roads.length
+        >>> points["meters"] = points.length
+        >>> ex = Explore(roads, points, column="meters", labels=("roads", "points"))
+        >>> ex.samplemap()
+
+        Alternatively, with names as labels. This will give the same results as
+        specifying labels.
+
+        >>> roads.name = "roads"
+        >>> points.name = "points"
+        >>> ex = Explore(roads, points, column="meters")
+        >>> ex.clipmap(points.iloc[[0]].buffer(100))
         """
         if column:
-            kwargs = kwargs | {"column": column}
+            kwargs["column"] = column
         self.to_show = self.gdfs
         self._explore(**kwargs)
 
-    def samplemap(self, size: int = 500, **kwargs):
-        """Shows an interactive map of GeoDataFrames in a random area of the gdfs.
+    def samplemap(self, size: int = 500, column: str | None = None, **kwargs) -> None:
+        """Shows an interactive map of a random area of the GeoDataFrames.
 
-        The radius to plot can be changed with the 'size' parameter. By default, tries to
-        display interactive map, but falls back to static if not in Jupyter. Can be
-        changed to static by setting 'explore' to False. This will run the function 'qtm'.
+        It takes a random sample point of the GeoDataFrames, and shows all geometries
+        within a given radius of this point. Displays an interactive map with a common
+        legend. The layers can be toggled on and off.
+
+        The radius to plot can be changed with the 'size' parameter.
+
+        For more info about the labeling and coloring of the map, see the explore
+        method.
 
         Args:
-            gdf: the GeoDataFrame to plot
-            column: The column to color the map by
             size: the radius to buffer the sample point by before clipping with the data
-            explore: If True (the default), it tries to display an interactive map.
-                If it raises a NameError because 'display' is not defined, it tries a
-                static plot. If False, uses the 'qtm' function to show a static map
-            **kwargs: keyword arguments taken by the geopandas' explore method or
-                the 'qtm' method if this library.
+            column: The column to color the geometries by. Defaults to the column
+                that was specified last.
+            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
+                instance 'cmap' to change the colors, 'scheme' to change how the data
+                is grouped. This defaults to 'quantiles' for numeric data.
 
-        Returns:
-            Displays the map, but returns nothing.
+        See also:
+            explore: same functionality, but shows the entire area of the geometries.
+            clipmap: same functionality, but shows only the areas clipped by a given
+                mask.
         """
+        if column:
+            kwargs["column"] = column
         self.previous_sample_count = 0
         self.to_show = self.gdfs
         random_point = self.gdf.sample(1).assign(geometry=lambda x: x.centroid)
-        to_show = []
+        to_show: tuple[GeoDataFrame] = ()
         for gdf in self.to_show:
             gdf = gdf.clip(random_point.buffer(size))
-            to_show.append(gdf)
+            to_show = to_show + (gdf,)
         self.to_show = to_show
         self._explore(**kwargs)
-
-        self.sample_indices.append(random_point.index[0])
-        self.sample_sizes.append(size)
 
     def clipmap(
         self,
         mask,
+        column: str | None = None,
         **kwargs,
-    ):
-        to_show = []
+    ) -> None:
+        """Shows an interactive map of a of the GeoDataFrames clipped by the mask.
+
+        It clips all the GeoDataFrames in the Explore instance to the mask extent,
+        and displays the resulting geometries in an interactive map with a common
+        legends. The layers can be toggled on and off.
+
+        For more info about the labeling and coloring of the map, see the explore
+        method.
+
+        Args:
+            mask: the geometry to clip the data by.
+            column: The column to color the geometries by. Defaults to the column
+                that was specified last.
+            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
+                instance 'cmap' to change the colors, 'scheme' to change how the data
+                is grouped. This defaults to 'quantiles' for numeric data.
+
+        See also:
+            explore: same functionality, but shows the entire area of the geometries.
+            samplemap: same functionality, but shows only a random area of a given size.
+        """
+        if column:
+            kwargs["column"] = column
+        to_show: tuple[GeoDataFrame] = ()
         for gdf in self.gdfs:
             gdf = gdf.clip(mask)
-            to_show.append(gdf)
+            to_show = to_show + (gdf,)
         self.to_show = to_show
         self._explore(**kwargs)
 
     def _explore(self, **kwargs):
         self.kwargs = self.kwargs | kwargs
+        self._is_categorical = self._check_if_categorical()
         if self._is_categorical:
             self._create_categorical_map()
         else:
@@ -251,6 +356,8 @@ class Explore:
                 gdf[self.kwargs["column"]] = np.nan
 
     def _check_if_categorical(self) -> bool:
+        if not self.kwargs["column"]:
+            return True
         n_categorical = 0
         for gdf in self.gdfs:
             if self.kwargs["column"] not in gdf:
@@ -275,21 +382,24 @@ class Explore:
         self._unique_categories = sorted(
             list(self.gdf.loc[self.gdf[cat_col] != "missing", cat_col].unique())
         )
-        if len(self._unique_categories) > len(_CATEGORICAL_CMAP):
+        if len(self._unique_categories) <= len(_CATEGORICAL_CMAP):
+            self.kwargs["cmap"] = None
+            self._categories_colors_dict = {
+                category: _CATEGORICAL_CMAP[i]
+                for i, category in enumerate(self._unique_categories)
+            }
+        else:
             cmap = matplotlib.colormaps.get_cmap(self.kwargs["cmap"])
 
             self._categories_colors_dict = {
                 category: colors.to_hex(cmap(int(i)))
                 for i, category in enumerate(self._unique_categories)
             }
-        else:
-            self.kwargs["cmap"] = "custom"
-            self._categories_colors_dict = {
-                category: _CATEGORICAL_CMAP[i]
-                for i, category in enumerate(self._unique_categories)
-            }
 
-        self._categories_colors_dict["missing"] = NAN_COLOR
+        if any(self.gdf[self.kwargs["column"]].isna()) or any(
+            self.gdf[self.kwargs["column"]] == "missing"
+        ):
+            self._categories_colors_dict["missing"] = NAN_COLOR
 
         for gdf in self.gdfs:
             gdf["colors"] = gdf[self.kwargs["column"]].map(self._categories_colors_dict)
@@ -321,6 +431,8 @@ class Explore:
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
+        folium.TileLayer("stamentoner").add_to(self.m)
+        folium.TileLayer("cartodbdark_matter").add_to(self.m)
         self.m.add_child(folium.LayerControl())
 
     def _create_continous_map(self):
@@ -344,6 +456,8 @@ class Explore:
             f.add_child(gjs)
             self.m.add_child(f)
         self.m.add_child(colorbar)
+        folium.TileLayer("stamentoner").add_to(self.m)
+        folium.TileLayer("cartodbdark_matter").add_to(self.m)
         self.m.add_child(folium.LayerControl())
 
     def _create_bins(self, gdf, column, scheme):
@@ -386,28 +500,19 @@ class Explore:
         map_kwds={},
         **kwargs,
     ):
-        try:
-            import branca as bc
-            import folium
-            import matplotlib.cm as cm
-            import matplotlib.colors as colors
-            import matplotlib.pyplot as plt
-            from mapclassify import classify
-        except ImportError:
-            raise ImportError(
-                "The 'folium', 'matplotlib' and 'mapclassify' packages are required for "
-                "'explore()'. You can install them using "
-                "'conda install -c conda-forge folium matplotlib mapclassify' "
-                "or 'pip install folium matplotlib mapclassify'."
-            )
+        """Contains the nessecary parts of the geopandas _explore function.
+
+        Also has a return_ parameter that controls what is returned. This should be
+        replaced by separate functions, and irrelevant parameters should be removed.
+        """
 
         # xyservices is an optional dependency
         try:
             import xyzservices
 
-            HAS_XYZSERVICES = True
+            has_xyzservices = True
         except ImportError:
-            HAS_XYZSERVICES = False
+            has_xyzservices = False
 
         gdf = df.copy()
 
@@ -452,7 +557,7 @@ class Explore:
                 **{i: kwargs[i] for i in kwargs.keys() if i in _MAP_KWARGS},
             }
 
-            if HAS_XYZSERVICES:
+            if has_xyzservices:
                 # match provider name string to xyzservices.TileProvider
                 if isinstance(tiles, str):
                     try:
@@ -483,45 +588,42 @@ class Explore:
         for map_kwd in _MAP_KWARGS:
             kwargs.pop(map_kwd, None)
 
-        nan_idx = None
+        if pd.api.types.is_list_like(column):
+            if len(column) != gdf.shape[0]:
+                raise ValueError(
+                    "The GeoDataFrame and given column have different number of rows."
+                )
+            else:
+                column_name = "__plottable_column"
+                gdf[column_name] = column
+                column = column_name
+        elif pd.api.types.is_categorical_dtype(gdf[column]):
+            if categories is not None:
+                raise ValueError(
+                    "Cannot specify 'categories' when column has categorical dtype"
+                )
 
-        if column is not None:
-            if pd.api.types.is_list_like(column):
-                if len(column) != gdf.shape[0]:
-                    raise ValueError(
-                        "The GeoDataFrame and given column have different number of rows."
-                    )
-                else:
-                    column_name = "__plottable_column"
-                    gdf[column_name] = column
-                    column = column_name
-            elif pd.api.types.is_categorical_dtype(gdf[column]):
-                if categories is not None:
-                    raise ValueError(
-                        "Cannot specify 'categories' when column has categorical dtype"
-                    )
+        nan_idx = pd.isna(gdf[column])
 
-            nan_idx = pd.isna(gdf[column])
+        if not self._is_categorical:
+            vmin = gdf[column].min() if vmin is None else vmin
+            vmax = gdf[column].max() if vmax is None else vmax
 
-            if not self._is_categorical:
-                vmin = gdf[column].min() if vmin is None else vmin
-                vmax = gdf[column].max() if vmax is None else vmax
+            if len(gdf[column][~nan_idx]):
+                bins = classification_kwds["bins"]
 
-                if len(gdf[column][~nan_idx]):
-                    bins = classification_kwds["bins"]
+                binning = classify(
+                    np.asarray(gdf[column][~nan_idx]), "UserDefined", bins=bins
+                )
 
-                    binning = classify(
-                        np.asarray(gdf[column][~nan_idx]), "UserDefined", bins=bins
-                    )
+                color = np.apply_along_axis(
+                    colors.to_hex,
+                    1,
+                    cm.get_cmap(cmap, k)(binning.yb),  # ! changed 256 to k
+                )
 
-                    color = np.apply_along_axis(
-                        colors.to_hex,
-                        1,
-                        cm.get_cmap(cmap, k)(binning.yb),  # ! changed 256 to k
-                    )
-
-                else:
-                    color = NAN_COLOR
+            else:
+                color = NAN_COLOR
 
         # set default style
         if "fillOpacity" not in style_kwds:
@@ -661,7 +763,7 @@ class Explore:
             tooltip = None
             popup = None
 
-        if "empty_map" not in return_:
+        if "geojson" in return_:
             # add dataframe to map
             gjs = folium.GeoJson(
                 gdf.__geo_interface__,

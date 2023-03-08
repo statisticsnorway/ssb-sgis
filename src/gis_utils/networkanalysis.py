@@ -15,15 +15,15 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
 
+from ._get_route import _get_route
+from ._od_cost_matrix import _od_cost_matrix
+from ._points import Destinations, Origins
+from ._service_area import _service_area
 from .directednetwork import DirectedNetwork
 from .geopandas_utils import gdf_concat, push_geom_col
-from .get_route import _get_route
 from .network import Network, _edge_ids
 from .network_functions import split_lines_at_closest_point
 from .networkanalysisrules import NetworkAnalysisRules
-from .od_cost_matrix import _od_cost_matrix
-from .points import Destinations, Origins
-from .service_area import _service_area
 
 
 class NetworkAnalysis:
@@ -870,7 +870,7 @@ class NetworkAnalysis:
         return results
 
     def _log_df_template(self, method: str, minutes_elapsed: float) -> DataFrame:
-        """Creates a DataFrame with one row and the main columns
+        """Creates a DataFrame with one row and the main columns.
 
         To be run after each network analysis.
 
@@ -946,8 +946,9 @@ class NetworkAnalysis:
     def _prepare_network_analysis(
         self, origins, destinations=None, id_col: str | None = None
     ) -> None:
-        """Prepares the weight column, node ids and origins and destinations.
-        Also updates the graph if it is not yet created and no parts of the analysis
+        """Prepares the weight column, node ids, origins, destinations and graph.
+
+        Updates the graph only if it is not yet created and no parts of the analysis
         has changed. this method is run inside od_cost_matrix, get_route and
         service_area.
         """
@@ -977,7 +978,7 @@ class NetworkAnalysis:
             edges, weights = self._get_edges_and_weights()
 
             self.graph = self._make_graph(
-                edges=edges, weights=weights, directed=self.network.as_directed
+                edges=edges, weights=weights, directed=self.network._as_directed
             )
 
             self._add_missing_vertices()
@@ -987,6 +988,7 @@ class NetworkAnalysis:
 
     def _get_edges_and_weights(self) -> tuple[list[tuple[str, str]], list[float]]:
         """Creates lists of edges and weights which will be used to make the graph.
+
         Edges and weights between origins and nodes and nodes and destinations are
         also added.
         """
@@ -997,7 +999,7 @@ class NetworkAnalysis:
         edges = [
             (str(source), str(target))
             for source, target in zip(
-                self.network.gdf["source"], self.network.gdf["target"]
+                self.network.gdf["source"], self.network.gdf["target"], strict=True
             )
         ]
 
@@ -1059,8 +1061,10 @@ class NetworkAnalysis:
         del self.network._not_splitted
 
     def _add_missing_vertices(self):
-        """Adds the points that had no nodes within the search_tolerance
-        to the graph. To prevent error when running the distance calculation.
+        """Adds the missing points.
+
+        Nodes that had no nodes within the search_tolerance are added to the graph.
+        To not get an error when running the distance calculation.
         """
         # TODO: either check if any() beforehand, or add fictional edges before
         # making the graph, to make things faster
@@ -1103,9 +1107,11 @@ class NetworkAnalysis:
         return graph
 
     def _graph_is_up_to_date(self) -> bool:
-        """Returns False if the rules of the graphmaking has changed,
-        or if the points have changed"""
+        """Checks if the network or rules have changed.
 
+        Returns False if the rules of the graphmaking has changed,
+        or if the points have changed.
+        """
         if not hasattr(self, "graph") or not hasattr(self, "wkts"):
             return False
 
@@ -1121,7 +1127,7 @@ class NetworkAnalysis:
         return True
 
     def _points_have_changed(self, points: GeoDataFrame, what: str) -> bool:
-        """Check if the origins or destinations have changed
+        """Check if the origins or destinations have changed.
 
         This method is best stored in the NetworkAnalysis class,
         since the point classes are instantiated each time an analysis is run.

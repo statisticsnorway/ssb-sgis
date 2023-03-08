@@ -19,7 +19,7 @@ import gis_utils as gs
 def test_overlay():
     warnings.filterwarnings(action="ignore", category=UserWarning)
 
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = gpd.read_parquet(gs.pointpath)
     p = p.iloc[:100]
 
     p500 = gs.buff(p, 500)

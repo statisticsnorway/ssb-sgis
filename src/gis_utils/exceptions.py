@@ -1,4 +1,9 @@
-class NoPointsWithinSearchTolerance(Exception):
+"""Some small exception classes."""
+
+
+class NoPointsWithinSearchToleranceError(Exception):
+    """Exception for when the points are too far away from the network."""
+
     def __init__(
         self, what: str | None = None, search_tolerance: str | None = None
     ) -> None:

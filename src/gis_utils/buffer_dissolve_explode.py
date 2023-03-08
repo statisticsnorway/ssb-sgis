@@ -1,13 +1,14 @@
-"""
-Functions that buffer, dissolve and/or explodes (multipart to singlepart)
-GeoDataFrames, GeoSeries or shapely geometries.
+"""Functions that buffer, dissolve and/or explodes geometries.
 
 Rules that apply to all functions in the module:
- - higher buffer resolution (50) than the default (16) for accuracy's sake.
- - fixes geometries after buffer and dissolve, but not after explode,
-  since fixing geometries might result in multipart geometries.
- - ignoring and reseting index by default. Columns containing 'index' or 'level_' are
- removed.
+ - higher buffer resolution (50) than the geopandas default (16) for accuracy's sake.
+
+ - Fixes geometries after buffer and dissolve, but not after explode,
+    since fixing geometries might result in multipart geometries.
+ - Ignoring and reseting index by default. Columns containing 'index' or 'level_' are
+    removed.
+ - Input type can be GeoDataFrames, GeoSeries or shapely geometries, and the output
+    type will be the same as the input.
 """
 
 
@@ -45,7 +46,7 @@ def buff(
          A GeoDataFrame with the buffered geometry.
 
     Raises:
-        TypeError: Wrong argument types.
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
     if copy and not isinstance(gdf, Geometry):
         gdf = gdf.copy()
@@ -87,8 +88,10 @@ def diss(
 
     Returns:
         A GeoDataFrame with the dissolved polygons.
-    """
 
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
     if isinstance(gdf, GeoSeries):
         return gpd.GeoSeries(gdf.unary_union)
 
@@ -132,8 +135,10 @@ def exp(
 
     Returns:
         A GeoDataFrame, GeoSeries or shapely Geometry with singlepart geometries.
-    """
 
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
     if isinstance(gdf, GeoDataFrame):
         gdf["geometry"] = gdf.make_valid()
         return gdf.explode(ignore_index=ignore_index, **kwargs)
@@ -187,8 +192,10 @@ def buffdissexp(
     Returns:
         A buffered GeoDataFrame, GeoSeries or shapely Geometry where overlapping
         geometries are dissolved.
-    """
 
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
     if isinstance(gdf, Geometry):
         return exp(diss(buff(gdf, distance, resolution=resolution)))
 
@@ -209,7 +216,7 @@ def dissexp(
     id: str | None = None,
     reset_index: bool = True,
     ignore_index: bool = True,
-    **kwargs,
+    **dissolve_kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """Dissolves overlapping geometries. So dissolve and explode (to singlepart).
 
@@ -227,9 +234,11 @@ def dissexp(
     Returns:
         A GeoDataFrame, GeoSeries or shapely Geometry where overlapping geometries are
         dissolved.
-    """
 
-    gdf = diss(gdf, reset_index=reset_index, **kwargs).pipe(
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
+    gdf = diss(gdf, reset_index=reset_index, **dissolve_kwargs).pipe(
         exp, ignore_index=ignore_index
     )
 
@@ -268,8 +277,10 @@ def buffdiss(
     Returns:
           A buffered GeoDataFrame, GeoSeries or shapely Geometry where all geometries
           are dissolved.
-    """
 
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
     gdf = buff(gdf, distance, resolution=resolution, copy=copy).pipe(
         diss, reset_index=reset_index, **dissolve_kwargs
     )

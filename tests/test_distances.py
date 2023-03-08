@@ -12,7 +12,8 @@ import gis_utils as gs
 
 
 def test_distances():
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = gpd.read_parquet(gs.pointpath)
+
     p["idx"] = p.index
     p["idx2"] = p.index
 

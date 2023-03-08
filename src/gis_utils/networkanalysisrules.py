@@ -1,3 +1,8 @@
+"""The NetworkAnalysisRules class sets the rules for the network analysis.
+
+The class is to be used as the 'rules' parameter in the NetworkAnalysis
+class.
+"""
 import warnings
 from dataclasses import dataclass
 
@@ -8,14 +13,6 @@ from .helpers import unit_is_meters
 
 @dataclass
 class NetworkAnalysisRules:
-    weight: str
-    search_tolerance: int = 250
-    search_factor: int = 0
-    split_lines: bool = False
-    weight_to_nodes_dist: bool = False
-    weight_to_nodes_kmh: int | None = None
-    weight_to_nodes_mph: int | None = None
-
     """Sets the rules for the network analysis.
 
     To be used as the 'rules' parameter in the NetworkAnalysis class. The 'weight'
@@ -186,11 +183,19 @@ class NetworkAnalysisRules:
     1                  True  10277.926186
     """
 
-    def _update_rules(self):
-        """Stores the rules as separate attributes
-        used for checking whether the rules have changed.
-        """
+    weight: str
+    search_tolerance: int = 250
+    search_factor: int = 0
+    split_lines: bool = False
+    weight_to_nodes_dist: bool = False
+    weight_to_nodes_kmh: int | None = None
+    weight_to_nodes_mph: int | None = None
 
+    def _update_rules(self):
+        """Stores the rules as separate attributes.
+
+        Used for checking whether the rules have changed.
+        """
         self._weight = self.weight
         self._search_tolerance = self.search_tolerance
         self._search_factor = self.search_factor
@@ -201,6 +206,7 @@ class NetworkAnalysisRules:
 
     def _rules_have_changed(self):
         """Checks if any of the rules have changed since the graph was last created.
+
         If no rules have changed, time can be saved by not remaking the graph
         (the network and the points have to be unchanged as well).
         """

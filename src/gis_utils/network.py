@@ -416,28 +416,28 @@ class Network:
         input GeoDataFrame of lines as the columns 'source' and 'target'.
 
         Note:
-            The lines must be singlepart linestrings
+            The lines must be singlepart linestrings.
         """
         self.gdf, self._nodes = make_node_ids(self.gdf)
 
     @staticmethod
     def _prepare_network(gdf: GeoDataFrame, merge_lines: bool = True) -> GeoDataFrame:
         """Make sure there are only singlepart LineStrings in the network.
+
         This is needed when making node-ids based on the lines' endpoints, because
         MultiLineStrings have more than two endpoints, and LinearRings have zero.
         Rename geometry column to 'geometry',
-        merge Linestrings rowwise.
-        keep only (Multi)LineStrings, then split MultiLineStrings into LineStrings.
-        Remove LinearRings, split into singlepart LineStrings
 
         Args:
             gdf: GeoDataFrame with (multi)line geometries. MultiLineStrings will be
-              merged, then split if not possible to merge.
+                merged, then split if not possible to merge.
             merge_lines (bool): merge MultiLineStrings into LineStrings rowwise. No
-              rows will be dissolved. If false, the network might get more and shorter
-              lines, making network analysis more accurate, but possibly slower.
-              Might also make minute column wrong.
+                rows will be dissolved. If false, the network might get more and shorter
+                lines, making network analysis more accurate, but possibly slower.
+                Might also make minute column wrong.
 
+        Returns:
+            A GeoDataFrame of line geometries.
         """
 
         gdf["idx_orig"] = gdf.index
@@ -468,13 +468,13 @@ class Network:
         if diff := len(gdf) - rows_now:
             if diff == 1:
                 print(
-                    f"1 multi-geometry was split into single part geometries. "
-                    f"Minute column(s) will be wrong for these rows."
+                    "1 multi-geometry was split into single part geometries. "
+                    "Minute column(s) will be wrong for these rows."
                 )
             else:
                 print(
                     f"{diff} multi-geometries were split into single part geometries. "
-                    f"Minute column(s) will be wrong for these rows."
+                    "Minute column(s) will be wrong for these rows."
                 )
 
         gdf["meters"] = gdf.length
@@ -483,7 +483,9 @@ class Network:
 
     def _check_percent_bidirectional(self) -> int:
         """Road data often have to be duplicated and flipped to make it directed.
-        Here we check how"""
+
+        Here we check how.
+        """
         self.gdf["meters"] = self.gdf["meters"].astype(str)
         no_dups = DataFrame(
             np.sort(self.gdf[["source", "target", "meters"]].values, axis=1),
@@ -536,17 +538,17 @@ class Network:
         return self._nodes
 
     @property
-    def as_directed(self):
-        """This attribute decides whether the graph should be made directed or not.
-        This depends on what network class is used. 'as_directed' is False for the
-        base Network class and True for the DirectedNetwork subclass.
-        """
-        return self._as_directed
-
-    @property
     def percent_bidirectional(self):
         """The percentage of lines that appear in both directions."""
         return self._percent_bidirectional
+
+    def copy(self):
+        """Returns a shallow copy of the class instance."""
+        return copy(self)
+
+    def deepcopy(self):
+        """Returns a deep copy of the class instance."""
+        return deepcopy(self)
 
     def __repr__(self) -> str:
         cl = self.__class__.__name__
@@ -556,14 +558,8 @@ class Network:
     def __iter__(self):
         return iter(self.__dict__.values())
 
-    def copy(self):
-        return copy(self)
 
-    def deepcopy(self):
-        return deepcopy(self)
-
-
-# put this a better place
+# TODO: put these a better place
 def _edge_ids(
     gdf: GeoDataFrame | list[tuple[int, int]], weight: str | list[float]
 ) -> list[str]:

@@ -13,10 +13,10 @@ import gis_utils as gs
 
 
 def test_network_methods():
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = gpd.read_parquet(gs.pointpath)
     p = p.iloc[[0]]
 
-    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    r = gpd.read_parquet(gs.roadpath)
     r = gs.clean_clip(r, p.buffer(1000)).explode(ignore_index=True)
 
     r2 = gs.get_largest_component(r)

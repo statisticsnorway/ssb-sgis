@@ -48,7 +48,7 @@ def get_k_nearest_neighbours(
 
     Raises:
         ValueError: If the coordinate reference system of 'gdf' and 'neighbours' are
-        not the same.
+            not the same.
     """
     if gdf.crs != neighbours.crs:
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbours.crs)
@@ -176,7 +176,7 @@ def k_nearest_neighbors(
     to_array: np.ndarray[np.ndarray[float]],
     k: int,
     strict: bool = False,
-) -> tuple[np.ndarray[float]]:
+) -> tuple[np.ndarray[float], np.ndarray[int]]:
     """American alias of k_nearest_neighbours."""
     return k_nearest_neighbours(
         from_array=from_array,
