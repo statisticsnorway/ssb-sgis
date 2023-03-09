@@ -2506,14 +2506,14 @@ files = [
 
 [[package]]
 name = "myst-parser"
-version = "0.19.1"
+version = "0.19.2"
 description = "An extended [CommonMark](https://spec.commonmark.org/) compliant parser,"
 category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "myst-parser-0.19.1.tar.gz", hash = "sha256:f2dc168ed380e01d77973ad22a64fff1377cc72a3d1ac4bced423f28258d0a42"},
-    {file = "myst_parser-0.19.1-py3-none-any.whl", hash = "sha256:356b38aef29ed09144285ad222e5c3cb7a8e7fae8015d53dba40dbb8b9f73e2c"},
+    {file = "myst-parser-0.19.2.tar.gz", hash = "sha256:043540aecc6d9cffbc17109afab21c024c2a9b7d32cdada28b6e9735fd7fce3a"},
+    {file = "myst_parser-0.19.2-py3-none-any.whl", hash = "sha256:593afb8fa5566406f7ebd37a6167195f17327ee165398fa9806747e6f68a2729"},
 ]
 
 [package.dependencies]
