@@ -1,3 +1,4 @@
+# %%
 import sys
 import warnings
 from pathlib import Path
@@ -15,14 +16,19 @@ sys.path.insert(0, src)
 import gis_utils as gs
 
 
-def test_overlay():
+def test_overlay(points_oslo):
     warnings.filterwarnings(action="ignore", category=UserWarning)
 
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = points_oslo
     p = p.iloc[:100]
 
     p500 = gs.buff(p, 500)
     p1000 = gs.buff(p, 1000)
+
+    updated = gs.overlay_update(p500, p1000)
+    gs.qtm(updated)
+    updated = gs.overlay_update(p1000, p500)
+    gs.qtm(updated)
 
     for how in [
         "intersection",
@@ -61,7 +67,9 @@ def test_overlay():
 
 
 def main():
-    test_overlay()
+    from oslo import points_oslo
+
+    test_overlay(points_oslo)
 
 
 if __name__ == "__main__":

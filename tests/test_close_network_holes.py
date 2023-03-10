@@ -8,14 +8,15 @@ import geopandas as gpd
 import gis_utils as gs
 
 
-def test_close_network_holes():
+def test_close_network_holes(roads_oslo, points_oslo):
     warnings.filterwarnings(action="ignore", category=UserWarning)
     warnings.filterwarnings(action="ignore", category=FutureWarning)
 
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    r = roads_oslo
+    p = points_oslo
+
     p = p.iloc[[0]]
 
-    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
     r = gs.clean_clip(r, p.buffer(600))
 
     nw = gs.Network(r)
@@ -25,12 +26,12 @@ def test_close_network_holes():
 
     for meters in [1.1, 3, 10]:
         _time = perf_counter()
-        nw = nw.close_network_holes(meters, deadends_only=False)
+        nw = nw.close_network_holes(meters, fillna=0, deadends_only=False)
         print("n", sum(nw.gdf.hole == 1))
         print("time close_network_holes, all roads: ", perf_counter() - _time)
 
         _time = perf_counter()
-        nw = nw.close_network_holes(meters, deadends_only=True)
+        nw = nw.close_network_holes(meters, fillna=0, deadends_only=True)
         print("n", sum(nw.gdf.hole == 1))
         print("time close_network_holes, deadends_only: ", perf_counter() - _time)
 
@@ -39,7 +40,9 @@ def test_close_network_holes():
 
 
 def main():
-    test_close_network_holes()
+    from oslo import points_oslo, roads_oslo
+
+    test_close_network_holes(roads_oslo(), points_oslo())
 
 
 if __name__ == "__main__":

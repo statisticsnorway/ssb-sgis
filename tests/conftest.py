@@ -1,19 +1,48 @@
-import geopandas as gpd
+from pathlib import Path
+
 import pytest
-from shapely.wkt import loads
+from geopandas import GeoDataFrame, GeoSeries, read_parquet
 
 from gis_utils import to_gdf
 
 
 @pytest.fixture(scope="module")
-def gdf_fixture() -> gpd.GeoDataFrame:
-    """Calling the make_gdf function here so that make_gdf can be
+def gdf_fixture() -> GeoDataFrame:
+    """Calling the testgdf function here so that testgdf can be
     imported when running test outside of pytest."""
-    return make_gdf()
+    return testgdf()
 
 
-def make_gdf() -> gpd.GeoDataFrame:
-    """Making a small geodataframe of points, a line and a polygon."""
+@pytest.fixture(scope="module")
+def points_oslo() -> GeoDataFrame:
+    return read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+
+
+@pytest.fixture(scope="module")
+def roads_oslo() -> GeoDataFrame:
+    return read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+
+
+def testgdf(cols: str | None = None) -> GeoDataFrame:
+    """GeoDataFrame with 9 rows consisting of points, a line and a polygon.
+
+    Args:
+        cols: What columns to include. Defaults to None, meaning all. These are
+        'txtcol', 'numcol' and 'geometry'.
+
+    Returns:
+        GeoDataFrame
+    """
+
+    if isinstance(cols, str):
+        cols = [cols]
+
+    if cols:
+        if not all(col in ["txtcol", "numcol", "geometry"] for col in cols):
+            raise ValueError(
+                "Wrong 'cols' value. Should be any of 'txtcol', 'numcol', "
+                f"'geometry'. Got {', '.join(cols)}"
+            )
 
     xs = [
         10.7497196,
@@ -53,13 +82,13 @@ def make_gdf() -> gpd.GeoDataFrame:
         "10.72 59.91, 10.74 59.92))"
     ]
 
-    geoms = [loads(x) for x in points + line + polygon]
+    geoms = points + line + polygon
 
-    gdf = gpd.GeoDataFrame(
-        {"geometry": gpd.GeoSeries(geoms)}, geometry="geometry", crs=4326
+    gdf = GeoDataFrame(
+        {"geometry": GeoSeries.from_wkt(geoms)}, geometry="geometry", crs=4326
     ).to_crs(25833)
 
-    gdf2 = to_gdf(geoms, crs=4326).to_crs(25833)
+    gdf2 = to_gdf(points + line + polygon, crs=4326).to_crs(25833)
 
     assert gdf.equals(
         gdf2
@@ -76,4 +105,7 @@ def make_gdf() -> gpd.GeoDataFrame:
         f"POINT ({x} {y})" == "POINT (261106.48628 6649101.81219)"
     ), "wrong centerpoints. Have the testdata changed?"
 
-    return gdf
+    if cols:
+        return gdf[cols]
+    else:
+        return gdf

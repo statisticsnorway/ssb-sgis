@@ -1,4 +1,8 @@
-""""""
+"""Network class with methods for manipulating line geometries.
+
+The module includes functions for cutting and splitting lines, filling holes in the
+network, finding and removing isolated network islands and creating unique node ids.
+"""
 
 import warnings
 from copy import copy, deepcopy
@@ -19,28 +23,6 @@ from .network_functions import (
 )
 
 
-# put this a better place
-def _edge_ids(
-    gdf: GeoDataFrame | list[tuple[int, int]], weight: str | list[float]
-) -> list[str]:
-    """Quite messy way to deal with different input types."""
-    if isinstance(gdf, GeoDataFrame):
-        return _edge_id_template(
-            zip(gdf["source"], gdf["target"], strict=True),
-            weight_arr=gdf[weight],
-        )
-    if isinstance(gdf, list):
-        return _edge_id_template(gdf, weight_arr=weight)
-
-
-def _edge_id_template(*source_target_arrs, weight_arr):
-    """Edge identifiers represented with source and target ids and the weight."""
-    return [
-        f"{s}_{t}_{w}"
-        for (s, t), w in zip(*source_target_arrs, weight_arr, strict=True)
-    ]
-
-
 class Network:
     """Prepares a GeoDataFrame of lines for network analysis.
 
@@ -48,26 +30,25 @@ class Network:
     undirected network analysis. For directed network analysis, use the DirectedNetwork
     class.
 
-    The geometries are made valid and into singlepart LineStrings, and given 'source'
-    and 'target' ids based on the first and last point of the lines. The Network
-    instance can immediately be used in the NetworkAnalysis class. But the Network
-    class also contains methods for optimizing the network further. The most
-    important, is the remove_isolated method. It will remove network islands, meaning
-    higher success rate in the network analyses. The network islands can be found and
-    inspected with the get_largest_component method, or get_component_size to find the
-    actual length of each network.
+    The Network class also contains methods for optimizing the network further. The
+    remove_isolated method will remove network islands not part of the main network.
+    This will usually increase the success rate of the network analyses substantially.
+    The network islands can also be inspected, but not removed, with the
+    get_largest_component method, or get_component_size to find the actual size of
+    each network.
 
-    If the network has a lot of unconnected parts, that are supposed to be
-    connected, network holes can be filled with close_network_holes method.
-    Often, this should be run before removing the isolated network components.
+    If the network contains holes/gaps that are not supposed to be there, the
+    close_network_holes method can be used. This will fill any network holes
+    shorter than a given distance. Often, this should be run before removing the
+    isolated network components.
 
     Long lines can be cut into equal length pieces with the cut_lines method.
-    This is mostly relevant for service_area analysis, since shorter lines
-    will give more accurate results.
+    This is mainly relevant for service_area analysis, since shorter lines
+    will give more accurate results here.
 
-    All methods return self, and can therefore be chained together. However,
-    all methods also overwrite the instance to save memory. Take a copy with the copy
-    or deepcopy methods before using another method if you want to save the previous
+    All methods can be chained together like in pandas. However, all methods also
+    overwrite the prevous object to save memory. Take a copy with the 'copy' or
+    'deepcopy' methods before using another method if you want to save the previous
     instance.
 
     The 'source' and 'target' ids are also stored as points in the 'nodes' attribute,
@@ -77,14 +58,17 @@ class Network:
 
     Attributes:
         gdf: the GeoDataFrame of lines
+        nodes: GeoDataFrame of points
 
     See also:
         DirectedNetwork: subclass of Network for directed network analysis
 
     Examples
     --------
+    Read testdata.
 
-    >>> roads = gpd.read_parquet(filepath_roads)
+    >>> from gis_utils import read_parquet_url
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
     >>> nw = Network(roads)
     >>> nw
     Network(3851 km, undirected)
@@ -97,8 +81,7 @@ class Network:
     0.0     7757
     Name: connected, dtype: int64
 
-    Remove the network islands. The get_largest_component method is not needed
-    beforehand.
+    Remove the network islands.
 
     >>> nw = nw.remove_isolated()
     >>> nw.gdf.connected.value_counts()
@@ -109,7 +92,7 @@ class Network:
 
     >>> len(nw.gdf)
     85638
-    >>> nw = nw.close_network_holes(max_dist=1.5)
+    >>> nw = nw.close_network_holes(max_dist=1.5, fillna=0)
     >>> len(nw.gdf)
     86929
 
@@ -121,7 +104,6 @@ class Network:
     >>> nw = nw.cut_lines(100)
     >>> nw.gdf.length.max()
     100.00000000046512
-
     """
 
     def __init__(
@@ -148,10 +130,6 @@ class Network:
             ZeroLinesError: If 'gdf' has zero rows
             ValueError: If the coordinate reference system is in degree units
         """
-
-        # for the base Network class, the graph will be undirected in network analysis
-        self._as_directed = False
-
         if not isinstance(gdf, GeoDataFrame):
             raise TypeError(f"'lines' should be GeoDataFrame, got {type(gdf)}")
 
@@ -178,17 +156,15 @@ class Network:
 
         self._percent_bidirectional = self._check_percent_bidirectional()
 
+        # for the base Network class, the graph will be undirected in network analysis
+        self._as_directed = False
+
     def remove_isolated(self):
         """Removes lines not connected to the largest network component.
 
         It creates a graph and finds the edges that are part of the largest
         connected component of the network. Then removes all lines not part of
         the largest component. Updates node ids if neccessary.
-
-        Note:
-            If the nodes are updated and the column already has a column named
-            'connected', the network will be filtered based on this column,
-            and no graph will be built.
 
         Returns:
             Self
@@ -199,6 +175,9 @@ class Network:
 
         Examples
         --------
+        Compare the number of rows.
+
+        >>> from gis_utils import Network
         >>> nw = Network(roads)
         >>> len(nw.gdf)
         93395
@@ -206,12 +185,25 @@ class Network:
         >>> len(nw.gdf)
         85638
 
+        Removing isolated can have a large inpact on the number of missing values in
+        network analyses.
+
+        >>> nwa = NetworkAnalysis(
+        ...     network=Network(roads),
+        ...     rules=NetworkAnalysisRules(weight="meters")
+        ... )
+        >>> od = nwa.od_cost_matrix(points, points)
+        >>> nwa.network = nwa.network.remove_isolated()
+        >>> od = nwa.od_cost_matrix(points, points)
+        >>> nwa.log[['isolated_removed', 'percent_missing']]
+        isolated_removed  percent_missing
+        0             False          23.2466
+        1              True           0.3994
         """
         if not self._nodes_are_up_to_date():
             self._make_node_ids()
-            self.gdf = get_largest_component(self.gdf)
-        elif "connected" not in self.gdf.columns:
-            self.gdf = get_largest_component(self.gdf)
+
+        self.gdf = get_largest_component(self.gdf)
 
         self.gdf = self.gdf.loc[self.gdf.connected == 1]
 
@@ -247,15 +239,18 @@ class Network:
             warnings.warn(
                 "There is already a column 'connected' in the network. Run "
                 ".remove_isolated() if you want to remove the isolated networks."
-                "And write nw.gdf.connected... if you want to access the column"
+                "And write nw.gdf.connected... if you want to access the column",
+                stacklevel=2,
             )
         self.gdf = get_largest_component(self.gdf)
 
         return self
 
     def get_component_size(self):
-        """Creates the column "component_size", which indicates the size of the network
-        component the line is a part of.
+        """Finds the size of each component in the network.
+
+        Creates the column "component_size" in the 'gdf' of the network, which
+        indicates the number of lines in the network component the line is a part of.
 
         Returns:
             self
@@ -283,9 +278,11 @@ class Network:
     def close_network_holes(
         self,
         max_dist: int,
+        fillna: float | int | None,
         min_dist: int = 0,
         deadends_only: bool = False,
         hole_col: str = "hole",
+        length_factor: int = 25,
     ):
         """Fills holes in the network lines shorter than the max_dist.
 
@@ -293,8 +290,16 @@ class Network:
         then connecting the nodes that are within the max_dist of each other. The
         minimum distance is set to 0, but can be changed with the min_dist parameter.
 
+        Note:
+            The 'fillna' parameter has no default value, but can be set to None if NaN
+            values should be preserved. Keep in mind that NaNs and negative values will
+            be removed from the network when doing network analysis.
+
         Args:
             max_dist: The maximum distance between two nodes to be considered a hole.
+            fillna: The value to give the holes in all columns with NaN, which are all
+                columns except for the hole_col and the source/target columns. If set
+                to None,
             min_dist: minimum distance between nodes to be considered a hole. Defaults
                 to 0
             deadends_only: If True, only holes between two deadends will be filled.
@@ -303,9 +308,13 @@ class Network:
             hole_col: Holes will get the value 1 in a column named 'hole' by default,
                 or what is specified as hole_col. If set to None or False, no column
                 will be added.
+            length_factor: The percentage longer the new lines have to be compared to the
+                distance from the other end of the deadend line relative to the line's
+                length. Or said (a bit) simpler: higher length_factor means the new lines
+                will have an angle more similar to the deadend line it originates from.
 
         Returns:
-            The input GeoDataFrame with new lines added
+            The input GeoDataFrame with new lines added.
 
         Examples
         --------
@@ -319,7 +328,7 @@ class Network:
         1.0    85638
         0.0     7757
         Name: connected, dtype: int64
-        >>> nw = nw.close_network_holes(max_dist=1.1)
+        >>> nw = nw.close_network_holes(max_dist=1.1, fillna=0)
         >>> nw = nw.get_largest_component()
         >>> nw.gdf.connected.value_counts()
         1.0    100315
@@ -328,8 +337,19 @@ class Network:
         """
         self._update_nodes_if()
         self.gdf = close_network_holes(
-            self.gdf, max_dist, min_dist, deadends_only, hole_col
+            self.gdf,
+            max_dist,
+            min_dist=min_dist,
+            deadends_only=deadends_only,
+            hole_col=hole_col,
+            length_factor=length_factor,
         )
+
+        if fillna is not None:
+            self.gdf.loc[self.gdf[hole_col] == 1] = self.gdf.loc[
+                self.gdf[hole_col] == 1
+            ].fillna(fillna)
+
         return self
 
     def cut_lines(
@@ -348,6 +368,13 @@ class Network:
 
         Returns:
             Self
+
+        Raises:
+            KeyError: If the specified 'adjust_weight_col' column is not present in the
+                GeoDataFrame of the network.
+
+        Note:
+            This method is time consuming for large networks and low 'max_length'.
 
         Examples
         --------
@@ -395,30 +422,32 @@ class Network:
         input GeoDataFrame of lines as the columns 'source' and 'target'.
 
         Note:
-            The lines must be singlepart linestrings
+            The lines must be singlepart linestrings.
         """
         self.gdf, self._nodes = make_node_ids(self.gdf)
 
     @staticmethod
     def _prepare_network(gdf: GeoDataFrame, merge_lines: bool = True) -> GeoDataFrame:
         """Make sure there are only singlepart LineStrings in the network.
+
         This is needed when making node-ids based on the lines' endpoints, because
         MultiLineStrings have more than two endpoints, and LinearRings have zero.
         Rename geometry column to 'geometry',
-        merge Linestrings rowwise.
-        keep only (Multi)LineStrings, then split MultiLineStrings into LineStrings.
-        Remove LinearRings, split into singlepart LineStrings
 
         Args:
             gdf: GeoDataFrame with (multi)line geometries. MultiLineStrings will be
-              merged, then split if not possible to merge.
+                merged, then split if not possible to merge.
             merge_lines (bool): merge MultiLineStrings into LineStrings rowwise. No
-              rows will be dissolved. If false, the network might get more and shorter
-              lines, making network analysis more accurate, but possibly slower.
-              Might also make minute column wrong.
+                rows will be dissolved. If false, the network might get more and shorter
+                lines, making network analysis more accurate, but possibly slower.
+                Might also make minute column wrong.
 
+        Returns:
+            A GeoDataFrame of line geometries.
+
+        Raises:
+            ZeroLinesError: If the GeoDataFrame has 0 rows.
         """
-
         gdf["idx_orig"] = gdf.index
 
         if gdf._geometry_column_name != "geometry":
@@ -447,13 +476,13 @@ class Network:
         if diff := len(gdf) - rows_now:
             if diff == 1:
                 print(
-                    f"1 multi-geometry was split into single part geometries. "
-                    f"Minute column(s) will be wrong for these rows."
+                    "1 multi-geometry was split into single part geometries. "
+                    "Minute column(s) will be wrong for these rows."
                 )
             else:
                 print(
                     f"{diff} multi-geometries were split into single part geometries. "
-                    f"Minute column(s) will be wrong for these rows."
+                    "Minute column(s) will be wrong for these rows."
                 )
 
         gdf["meters"] = gdf.length
@@ -462,7 +491,9 @@ class Network:
 
     def _check_percent_bidirectional(self) -> int:
         """Road data often have to be duplicated and flipped to make it directed.
-        Here we check how"""
+
+        Here we check how.
+        """
         self.gdf["meters"] = self.gdf["meters"].astype(str)
         no_dups = DataFrame(
             np.sort(self.gdf[["source", "target", "meters"]].values, axis=1),
@@ -475,12 +506,12 @@ class Network:
         return int(round(percent_bidirectional, 0))
 
     def _nodes_are_up_to_date(self) -> bool:
-        """
+        """Check if nodes need to be updated.
+
         Returns False if there are any source or target values not in the node-ids,
-        or any superfluous node-ids (meaning rows have been removed from the lines gdf).
-
+        or any superfluous node-ids (meaning rows have been removed from the lines
+        gdf).
         """
-
         new_or_missing = (~self.gdf.source.isin(self._nodes.node_id)) | (
             ~self.gdf.target.isin(self._nodes.node_id)
         )
@@ -515,28 +546,48 @@ class Network:
         return self._nodes
 
     @property
-    def as_directed(self):
-        """This attribute decides whether the graph should be made directed or not.
-        This depends on what network class is used. 'as_directed' is False for the
-        base Network class and True for the DirectedNetwork subclass.
-        """
-        return self._as_directed
-
-    @property
     def percent_bidirectional(self):
         """The percentage of lines that appear in both directions."""
         return self._percent_bidirectional
 
+    def copy(self):
+        """Returns a shallow copy of the class instance."""
+        return copy(self)
+
+    def deepcopy(self):
+        """Returns a deep copy of the class instance."""
+        return deepcopy(self)
+
     def __repr__(self) -> str:
+        """The print representation."""
         cl = self.__class__.__name__
         km = int(sum(self.gdf.length) / 1000)
         return f"{cl}({km} km, undirected)"
 
     def __iter__(self):
-        return iter(self.__dict__.values())
+        """So the attributes can be iterated through."""
+        return iter(self.__dict__.items())
 
-    def copy(self):
-        return copy(self)
 
-    def deepcopy(self):
-        return deepcopy(self)
+# TODO: put these a better place:
+
+
+def _edge_ids(
+    gdf: GeoDataFrame | list[tuple[int, int]], weight: str | list[float]
+) -> list[str]:
+    """Quite messy way to deal with different input types."""
+    if isinstance(gdf, GeoDataFrame):
+        return _edge_id_template(
+            zip(gdf["source"], gdf["target"], strict=True),
+            weight_arr=gdf[weight],
+        )
+    if isinstance(gdf, list):
+        return _edge_id_template(gdf, weight_arr=weight)
+
+
+def _edge_id_template(*source_target_arrs, weight_arr):
+    """Edge identifiers represented with source and target ids and the weight."""
+    return [
+        f"{s}_{t}_{w}"
+        for (s, t), w in zip(*source_target_arrs, weight_arr, strict=True)
+    ]

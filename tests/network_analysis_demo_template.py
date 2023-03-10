@@ -56,7 +56,12 @@ roads.head(3)
 # %% [markdown]
 # The road data can be made into a Network instance like this:
 # %%
-nw = gs.Network(roads).close_network_holes(1.5).remove_isolated().cut_lines(100)
+nw = (
+    gs.Network(roads)
+    .close_network_holes(1.5, fillna=0)
+    .remove_isolated()
+    .cut_lines(100)
+)
 
 nw = gs.Network(roads)
 nw
@@ -64,7 +69,7 @@ nw
 # The Network is now ready for undirected network analysis. The network can also be optimises with methods stored in the Network class. More about this further down in this notebook.
 # %%
 
-nw = nw.close_network_holes(1.5).remove_isolated().cut_lines(250)
+nw = nw.close_network_holes(1.5, fillna=0).remove_isolated().cut_lines(250)
 nw
 # %% [markdown]
 # For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.
@@ -401,8 +406,6 @@ nwa.network.gdf.length.describe()
 # It has a minimal impact on the results. Here comes one example (get_route) and the average travel minutes (od_cost_matrix).
 
 # %%
-nwa.rules.search_factor = 0
-
 nwa.rules.split_lines = False
 
 od = nwa.od_cost_matrix(points, points)
@@ -427,19 +430,19 @@ nwa.log.loc[
     nwa.log.method == "od_cost_matrix",
     ["split_lines", "cost_mean", "cost_p25", "cost_median", "cost_p75", "cost_std"],
 ]
-
+# %%
 nwa.rules.split_lines = False
 # %% [markdown]
 # If the point is located in the middle of a very long line, it has to travel all the way to the end of the line and then, half the time, traverse the whole line.
 #
 # #### search_factor
-# Since the closest node might be intraversable, the points are connected to all nodes within a given search_factor. The default is 10, which means that 10 meters and 10 percent is added to the closest distance to a node.
+# Since the closest node might be intraversable, the points can be connected to all nodes within a given search_factor.
+# The default is 0, which means the origins and destinations are only connected to the closest node.
+# Setting the search_factor to for instance 10, would mean that 10 meters and 10 percent is added to the closest distance to a node.
 #
 # So if the closest node is 1 meter away, the point will be connected to all nodes within 11.1 meters.
 #
 # If the closest node is 100 meters away, the point will be connected to all nodes within 120 meters.
-#
-# And 0 means that only the closest node will be used.
 #
 # Let's check how the search_factor influences the number of missing values:
 
@@ -448,7 +451,7 @@ for search_factor in [0, 10, 50, 100]:
     nwa.rules.search_factor = search_factor
     od = nwa.od_cost_matrix(points, points)
 
-nwa.rules.search_factor = 10  # back to default
+nwa.rules.search_factor = 0  # back to default
 
 nwa.log.iloc[-4:][["search_factor", "percent_missing"]]
 # %% [markdown]
@@ -485,7 +488,7 @@ nwa.log.iloc[[-1]][["search_tolerance", "percent_missing"]]
 # %%
 # back to default:
 nwa.rules.search_tolerance = 250
-nwa.rules.search_factor = 10
+nwa.rules.search_factor = 0
 # %% [markdown]
 # Note: one of the points that had all missing values at a search_tolerance of 500, is on an island without a car ferry (but a regular ferry). With a search_tolerance of 5000, trips from this point will originate at the mainland with 0 weight penalty. If you want to include trips like this, it might be a good idea to give a weight for the trip to the mainland. this can be done with one of the 'weight_to_nodes_' parameters.
 

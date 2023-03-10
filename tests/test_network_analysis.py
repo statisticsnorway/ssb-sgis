@@ -1,4 +1,5 @@
 # %%
+import sys
 import warnings
 from pathlib import Path
 
@@ -9,159 +10,195 @@ import pandas as pd
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
-import sys
-
-
 sys.path.insert(0, src)
 
 import gis_utils as gs
 
 
-def test_network_analysis():
+def test_network_analysis(points_oslo, roads_oslo):
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     #    warnings.filterwarnings(action="ignore", category=UserWarning)
     pd.options.mode.chained_assignment = None
 
-    split_lines = True
+    split_lines = False
 
     ### READ FILES
 
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
-    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
+    p = points_oslo
+    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(550))
     p["idx"] = p.index
     p["idx2"] = p.index
-    print(p.idx)
 
-    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
-    r = gs.clean_clip(r, p.geometry.iloc[0].buffer(700))
+    r = roads_oslo
+    r = gs.clean_clip(r, p.geometry.loc[0].buffer(650))
 
-    ### MAKE THE ANALYSIS CLASS
+    def run_analyses(nwa, p):
+        x = nwa.get_route_frequencies(p.loc[p.idx == 0], p.sample(7))
+        gs.qtm(x, "n")
 
-    nw = gs.DirectedNetwork(r).remove_isolated().make_directed_network_norway()
-    rules = gs.NetworkAnalysisRules(weight="minutes", split_lines=split_lines)
-    nwa = gs.NetworkAnalysis(nw, rules=rules)
+        ### OD COST MATRIX
 
-    ### OD COST MATRIX
+        for search_factor in [0, 25, 50]:
+            nwa.rules.search_factor = search_factor
+            od = nwa.od_cost_matrix(p, p)
 
-    for search_factor in [0, 25, 50]:
-        nwa.rules.search_factor = search_factor
-        od = nwa.od_cost_matrix(p, p)
+        nwa.rules.search_factor = 10
 
-    nwa.rules.search_factor = 10
+        for search_tolerance in [100, 250, 1000]:
+            nwa.rules.search_tolerance = search_tolerance
+            od = nwa.od_cost_matrix(p, p)
 
-    for search_tolerance in [100, 250, 1000]:
-        nwa.rules.search_tolerance = search_tolerance
-        od = nwa.od_cost_matrix(p, p)
-
-    print(
-        nwa.log[["search_tolerance", "search_factor", "percent_missing", "cost_mean"]]
-    )
-
-    od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
-
-    print(nwa.origins.gdf.n_missing.value_counts())
-
-    p1 = nwa.origins.gdf
-    p1 = p1.loc[[p1.n_missing.idxmin()]].sample(1).idx.values[0]
-
-    gs.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
-
-    od2 = nwa.od_cost_matrix(p, p, destination_count=3)
-
-    assert (od2.groupby("origin")["destination"].count() <= 3).mean() > 0.6
-
-    if len(od2) != len(od):
-        assert np.mean(od2[nwa.rules.weight]) < np.mean(od[nwa.rules.weight])
-
-    od = nwa.od_cost_matrix(p, p, cutoff=5)
-    assert (od[nwa.rules.weight] <= 5).all()
-
-    od = nwa.od_cost_matrix(p, p, rowwise=True)
-    assert len(od) == len(p)
-
-    ### GET ROUTE
-
-    sp = nwa.get_route(p, p, id_col="idx")
-
-    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
-
-    i = 1
-    nwa.rules.search_factor = 0
-    nwa.rules.split_lines = False
-    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
-    gs.qtm(sp)
-    nwa.rules.split_lines = True
-    sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
-    gs.qtm(sp)
-
-    nwa.rules.split_lines = False
-    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
-    gs.qtm(sp)
-    nwa.rules.split_lines = True
-    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
-    gs.qtm(sp)
-
-    sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
-    gs.qtm(sp)
-
-    ### GET K ROUTES
-
-    i = 1
-
-    for x in [0, 50, 100]:
-        sp = nwa.get_k_routes(
-            p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
+        print(
+            nwa.log[
+                ["search_tolerance", "search_factor", "percent_missing", "cost_mean"]
+            ]
         )
+
+        od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
+
+        p1 = nwa.origins.gdf
+        p1 = p1.loc[[p1.missing.idxmin()]].sample(1).idx.values[0]
+
+        gs.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
+
+        od2 = nwa.od_cost_matrix(p, p, destination_count=3)
+
+        assert (od2.groupby("origin")["destination"].count() <= 3).mean() > 0.6
+
+        if len(od2) != len(od):
+            assert np.mean(od2[nwa.rules.weight]) < np.mean(od[nwa.rules.weight])
+
+        od = nwa.od_cost_matrix(p, p, cutoff=5)
+        assert (od[nwa.rules.weight] <= 5).all()
+
+        od = nwa.od_cost_matrix(p, p, rowwise=True)
+        assert len(od) == len(p)
+
+        ### GET ROUTE
+
+        sp = nwa.get_route(p, p, id_col="idx")
+
+        sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+
+        i = 1
+        nwa.rules.search_factor = 0
+        nwa.rules.split_lines = False
+
+        sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
+        gs.qtm(sp)
+        nwa.rules.split_lines = True
+        sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
+        gs.qtm(sp)
+        sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
         gs.qtm(sp)
 
-    for x in [-1, 101]:
-        try:
+        nwa.rules.split_lines = False
+        sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+        gs.qtm(sp)
+        nwa.rules.split_lines = True
+        sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+        gs.qtm(sp)
+
+        sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+        gs.qtm(sp)
+
+        ### GET K ROUTES
+
+        i = 1
+
+        for x in [0, 50, 100]:
             sp = nwa.get_k_routes(
                 p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
             )
-            gs.qtm(sp)
-        except ValueError:
-            print("get_k_routes works as expected", x)
+            gs.qtm(sp, "k")
 
-    i += 1
-    sp = nwa.get_k_routes(
-        p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=50, id_col="idx"
+        for x in [-1, 101]:
+            try:
+                sp = nwa.get_k_routes(
+                    p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
+                )
+                gs.qtm(sp, "k")
+            except ValueError:
+                print("get_k_routes works as expected", x)
+
+        i += 1
+        sp = nwa.get_k_routes(
+            p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=50, id_col="idx"
+        )
+        print(sp)
+        gs.qtm(sp)
+
+        sp = nwa.get_k_routes(p.iloc[[0]], p, k=5, drop_middle_percent=50, id_col="idx")
+        gs.qtm(sp)
+
+        ### GET ROUTE FREQUENCIES
+        print(len(p))
+        print(len(p))
+        print(len(p))
+        sp = nwa.get_route_frequencies(p.iloc[[0]], p)
+        gs.qtm(sp)
+
+        ### SERVICE AREA
+
+        sa = nwa.service_area(p, breaks=5, dissolve=False)
+
+        print(len(sa))
+
+        sa = sa.drop_duplicates(["source", "target"])
+
+        print(len(sa))
+        gs.qtm(sa)
+
+        sa = nwa.service_area(p.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
+        print(sa.columns)
+        sa = sa.sort_values("minutes", ascending=False)
+        gs.qtm(sa, "minutes", k=10)
+
+    ### MAKE THE ANALYSIS CLASS
+    nw = (
+        gs.DirectedNetwork(r)
+        .make_directed_network_norway(minute_cols=("drivetime_fw", "drivetime_bw"))
+        .close_network_holes(1.1, fillna=0, deadends_only=False)
+        .get_largest_component()
     )
-    print(sp)
-    gs.qtm(sp)
+    gs.qtm(nw.gdf, "connected", scheme="equalinterval")
+    gs.qtm(nw.gdf, "hole")
+    print(nw.gdf.hole.value_counts())
 
-    sp = nwa.get_k_routes(p.iloc[[0]], p, k=5, drop_middle_percent=50, id_col="idx")
-    gs.qtm(sp)
+    nw = nw.remove_isolated()
 
-    ### GET ROUTE FREQUENCIES
-    print(len(p))
-    print(len(p))
-    print(len(p))
-    print(len(p))
-    sp = nwa.get_route_frequencies(p.iloc[[0]], p)
-    gs.qtm(sp)
+    rules = gs.NetworkAnalysisRules(
+        weight="minutes",
+        split_lines=split_lines,
+    )
 
-    ### SERVICE AREA
+    nwa = gs.NetworkAnalysis(nw, rules=rules)
+    print(nwa)
 
-    sa = nwa.service_area(p, breaks=5, dissolve=False)
+    run_analyses(nwa, p)
 
-    print(len(sa))
+    nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
 
-    sa = sa.drop_duplicates(["source", "target"])
+    rules = gs.NetworkAnalysisRules(
+        weight="minutes",
+        split_lines=split_lines,
+    )
 
-    print(len(sa))
-    gs.qtm(sa)
+    nwa = gs.NetworkAnalysis(nw, rules=rules)
+    print(nwa)
 
-    sa = nwa.service_area(p.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
-    sa = sa.sort_values("minutes", ascending=False)
-    gs.qtm(sa, "minutes", k=10)
+    run_analyses(nwa, p)
 
 
 def main():
-    test_network_analysis()
-    import cProfile
+    from oslo import points_oslo, roads_oslo
 
-    # cProfile.run("test_network_analysis()", sort="cumtime")
+    test_network_analysis(points_oslo(), roads_oslo())
+
+
+#    import cProfile
+
+#   cProfile.run("test_network_analysis()", sort="cumtime")
 
 
 if __name__ == "__main__":

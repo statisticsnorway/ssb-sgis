@@ -2,6 +2,7 @@
 from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
 from .directednetwork import DirectedNetwork
 from .distances import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbors
+from .explore import Explore
 from .geopandas_utils import (
     clean_clip,
     clean_geoms,
@@ -11,16 +12,18 @@ from .geopandas_utils import (
     gdf_concat,
     push_geom_col,
     random_points,
+    series_snap_to,
     sjoin,
     snap_to,
     to_gdf,
     to_multipoint,
     to_single_geom_type,
 )
-from .maps import clipmap, concat_explore, qtm, samplemap
+from .maps import clipmap, explore, qtm, samplemap
 from .network import Network
 from .network_functions import (
     close_network_holes,
+    cut_lines,
     get_component_size,
     get_largest_component,
     make_edge_coords_cols,
@@ -31,6 +34,7 @@ from .network_functions import (
 from .networkanalysis import NetworkAnalysis
 from .networkanalysisrules import NetworkAnalysisRules
 from .overlay import clean_shapely_overlay, overlay, overlay_update
+from .read_parquet import read_parquet_url
 
 
 try:

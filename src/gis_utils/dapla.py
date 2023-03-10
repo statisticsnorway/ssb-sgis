@@ -1,7 +1,10 @@
+"""Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla.
+
+It currently does not work in Esri FileGeoDataBase (.gdb) or Esri Shapefile (.shp).
+"""
 import os
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 from dapla import FileClient, details
 from geopandas import GeoDataFrame
@@ -10,15 +13,15 @@ from pyarrow import parquet
 
 
 def exists(path: str) -> bool:
-    """Returns True if the path exists, and False if it doesn't
+    """Returns True if the path exists, and False if it doesn't.
 
-    Works in dapla and outside of dapla
+    Works in dapla and outside of dapla.
 
     Args:
-      path (str): The path to the file or directory.
+        path (str): The path to the file or directory.
 
     Returns:
-      A boolean value.
+        Boolean. True if the path exists, False if not.
     """
     try:
         details(path)
@@ -30,18 +33,19 @@ def exists(path: str) -> bool:
 
 
 def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
-    """Reads geoparquet or other geodata* from a file on GCS
+    """Reads geoparquet or other geodata* from a file on GCS.
 
-    *does not read shapelfiles or filegeodatabases.
+    Does not currently read shapelfiles or filegeodatabases.
 
     Args:
-      path: path to a file on Google Cloud Storage
+        path: path to a file on Google Cloud Storage.
+        **kwargs: additional keyword arguments passed to geopandas' read_parquet
+            or read_file, depending on the file type.
 
-    Returns:
-      A GeoDataFrame
+     Returns:
+         A GeoDataFrame.
 
     """
-
     fs = FileClient.get_gcs_file_system()
 
     if "parquet" in path:
@@ -55,16 +59,17 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
 def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
     """Writes a GeoDataFrame to the speficied format.
 
-    Does not work for .shp and .gdb.
+    Does not currently write to shapelfile or filegeodatabase.
 
     Args:
-      df (gpd.GeoDataFrame): The GeoDataFrame to write
-      gcs_path (str): The path to the file you want to write to.
+        df: The GeoDataFrame to write
+        gcs_path: The path to the file you want to write to.
+        **kwargs: additional keyword arguments passed to parquet.write_table
+            (for parquet) or geopandas' to_file method (if not parquet).
 
     Returns:
-      None
+        None
     """
-
     pd.io.parquet.BaseImpl.validate_dataframe(df)
 
     fs = FileClient.get_gcs_file_system()

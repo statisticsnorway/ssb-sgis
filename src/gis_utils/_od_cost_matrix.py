@@ -13,10 +13,10 @@ def _od_cost_matrix(
     destinations: GeoDataFrame,
     weight: str,
     *,
-    lines=False,
-    rowwise=False,
-    cutoff: int = None,
-    destination_count: int = None,
+    lines: bool = False,
+    rowwise: bool = False,
+    cutoff: int | None = None,
+    destination_count: int | None = None,
 ) -> DataFrame | GeoDataFrame:
     if rowwise and len(origins) != len(destinations):
         raise ValueError(
@@ -59,11 +59,14 @@ def _od_cost_matrix(
         results = results.loc[weight_ranked <= destination_count]
 
     wkt_dict_origin = {
-        idx: geom.wkt for idx, geom in zip(origins["temp_idx"], origins.geometry)
+        idx: geom.wkt
+        for idx, geom in zip(origins["temp_idx"], origins.geometry, strict=True)
     }
     wkt_dict_destination = {
         idx: geom.wkt
-        for idx, geom in zip(destinations["temp_idx"], destinations.geometry)
+        for idx, geom in zip(
+            destinations["temp_idx"], destinations.geometry, strict=True
+        )
     }
     results["wkt_ori"] = results["origin"].map(wkt_dict_origin)
     results["wkt_des"] = results["destination"].map(wkt_dict_destination)

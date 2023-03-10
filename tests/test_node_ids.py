@@ -1,19 +1,30 @@
 # %%
+import sys
 from pathlib import Path
 
 import geopandas as gpd
 
+
+src = str(Path(__file__).parent).strip("tests") + "src"
+
+sys.path.insert(0, src)
+
 import gis_utils as gs
 
 
-def test_node_ids():
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+def test_node_ids(points_oslo, roads_oslo):
+    p = points_oslo
     p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
     p["idx"] = p.index
     p["idx2"] = p.index
 
-    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    r = roads_oslo
     r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
+
+    r, nodes = gs.make_node_ids(r)
+    print(nodes)
+    r, nodes = gs.make_node_ids(r, wkt=False)
+    print(nodes)
 
     nw = gs.DirectedNetwork(r)
     rules = gs.NetworkAnalysisRules(weight="meters")
@@ -21,7 +32,7 @@ def test_node_ids():
 
     nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")
 
-    nwa.network = nwa.network.close_network_holes(2)
+    nwa.network = nwa.network.close_network_holes(2, fillna=0)
     nwa.network = nwa.network.get_component_size()
     nwa.network = nwa.network.remove_isolated()
     nwa.network.gdf["col"] = 1
@@ -48,6 +59,10 @@ def main():
     """Check how many times make_node_ids is run."""
     import cProfile
 
+    from oslo import points_oslo, roads_oslo
+
+    test_node_ids(points_oslo(), roads_oslo())
+    quit()
     cProfile.run("test_node_ids()", sort="cumtime")
 
 

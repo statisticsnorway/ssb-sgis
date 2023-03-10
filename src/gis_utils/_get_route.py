@@ -8,8 +8,9 @@ from .geopandas_utils import gdf_concat
 from .network import _edge_ids
 
 
-# TODO: clean up this mess, make smaller base functions and three nicely separated
 # run functions for get_route, get_k_routes and get_route_frequencies
+
+# TODO: clean up this mess, make smaller base functions and three nicely separated
 
 
 def _get_route(
@@ -18,16 +19,15 @@ def _get_route(
     destinations: GeoDataFrame,
     weight: str,
     roads: GeoDataFrame,
-    summarise=False,
-    cutoff: int = None,
-    destination_count: int = None,
+    summarise: bool = False,
+    cutoff: int | None = None,
+    destination_count: int | None = None,
     rowwise: bool = False,
-    k=1,
-    drop_middle_percent=0,
+    k: int = 1,
+    drop_middle_percent: int = 0,
 ):
     """big, ugly super function that is used in the get_route, get_k_routes
     and get_route_frequencies methods of the NetworkAnalysis class
-
     """
 
     warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -37,16 +37,16 @@ def _get_route(
     else:
         func = _run_get_route
 
-    results = []
+    resultlist: list[GeoDataFrame] = []
     if rowwise:
         for ori_id, des_id in zip(origins["temp_idx"], destinations["temp_idx"]):
-            results = results + func(
+            resultlist = resultlist + func(
                 ori_id, des_id, graph, roads, summarise, weight, k, drop_middle_percent
             )
     else:
         for ori_id in origins["temp_idx"]:
             for des_id in destinations["temp_idx"]:
-                results = results + func(
+                resultlist = resultlist + func(
                     ori_id,
                     des_id,
                     graph,
@@ -59,7 +59,7 @@ def _get_route(
 
     if summarise:
         counted = (
-            pd.concat(results, ignore_index=True)
+            pd.concat(resultlist, ignore_index=True)
             .assign(n=1)
             .groupby("source_target_weight")["n"]
             .count()
@@ -76,7 +76,7 @@ def _get_route(
         return roads_visited
 
     try:
-        results = gdf_concat(results)
+        results: GeoDataFrame = gdf_concat(resultlist)
     except Exception:
         raise ValueError(
             "No paths were found. Try larger search_tolerance or search_factor. "
@@ -84,7 +84,7 @@ def _get_route(
         )
 
     if cutoff:
-        results = results[results[weight] < cutoff]
+        results = results.loc[results[weight] < cutoff]
 
     if destination_count:
         results = results.loc[~results[weight].isna()]
@@ -101,8 +101,8 @@ def _get_route(
 
 
 def _run_get_route(
-    ori_id,
-    des_id,
+    ori_id: str,
+    des_id: str,
     graph: Graph,
     roads: GeoDataFrame,
     summarise: bool,
@@ -122,16 +122,14 @@ def _run_get_route(
     if summarise:
         return [pd.DataFrame({"source_target_weight": source_target_weight})]
 
-    roads["source_target_weight"] = _edge_ids(
-        roads, weight
-    )  # [f"{s}_{t}_{1}" for s, t, w in zip(roads["source"], roads["target"], roads[weight])]
+    roads["source_target_weight"] = _edge_ids(roads, weight)
     line = roads.loc[
         roads["source_target_weight"].isin(source_target_weight),
         ["geometry", weight, "source_target_weight"],
     ]
 
-    if len(line) != len(source_target_weight) - 2:
-        raise ValueError
+    # if len(line) != len(source_target_weight) - 2:
+    #    raise ValueError("length mismatch", len(line), len(source_target_weight))
 
     if not len(line):
         return []
@@ -150,13 +148,13 @@ def _run_get_route(
 
 
 def _run_get_k_routes(
-    ori_id,
-    des_id,
+    ori_id: str,
+    des_id: str,
     graph: Graph,
     roads: GeoDataFrame,
     summarise: bool,
-    weight,
-    k,
+    weight: str,
+    k: int,
     drop_middle_percent,
 ) -> list[GeoDataFrame]:
     """igraph's get_k_shorest_paths doesn't seem to work (gives just the same path k

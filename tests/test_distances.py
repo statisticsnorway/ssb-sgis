@@ -6,13 +6,14 @@ import geopandas as gpd
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
-sys.path.append(src)
+sys.path.insert(0, src)
 
 import gis_utils as gs
 
 
-def test_distances():
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+def test_distances(points_oslo, roads_oslo):
+    p = points_oslo
+
     p["idx"] = p.index
     p["idx2"] = p.index
 
@@ -31,9 +32,10 @@ def test_distances():
         neighbors=p,
         k=50,
         id_cols="idx",
-        min_dist=0,
+        min_dist=-1,
         max_dist=None,
     )
+
     assert len(df) == len(p) * 50
 
     df = gs.get_k_nearest_neighbors(
@@ -70,7 +72,9 @@ def test_distances():
 
 
 def main():
-    test_distances()
+    from oslo import points_oslo, roads_oslo
+
+    test_distances(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":

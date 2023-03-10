@@ -1,32 +1,36 @@
+"""Functions that buffer, dissolve and/or explodes geometries.
+
+Rules that apply to all functions in the module:
+ - higher buffer resolution (50) than the geopandas default (16) for accuracy's sake.
+
+ - Fixes geometries after buffer and dissolve, but not after explode,
+    since fixing geometries might result in multipart geometries.
+ - Ignoring and reseting index by default. Columns containing 'index' or 'level_' are
+    removed.
+ - Input type can be GeoDataFrames, GeoSeries or shapely geometries, and the output
+    type will be the same as the input.
+"""
+
+
 import geopandas as gpd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry, get_parts, make_valid
 from shapely.ops import unary_union
 
 
-"""
-Functions that buffer, dissolve and/or explodes (multipart to singlepart) geodataframes.
-
-Rules that apply to all functions:
- - higher buffer-resolution (50) than the default (16) for accuracy's sake.
- - fixes geometries after buffer dissolve, but not after explode,
-  since fixing geometries might result in multipart geometries.
- - ignoring and reseting index. Columns containing 'index' or 'level_' are removed.
-"""
-
-
 def buff(
     gdf: GeoDataFrame | GeoSeries | Geometry,
-    distance: int,
+    distance: int | float,
     resolution: int = 50,
     copy: bool = True,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
-    """Buffers a GeoDataFrame, GeoSeries, or Geometry.
+    """Buffers with high resolution and fixes geometries.
 
     It buffers a GeoDataFrame, GeoSeries, or Geometry, and returns the same type of
-    object buffers with higher resolution than the geopandas default.
-    Repairs geometry afterwards.
+    object. Returns a copy of the object unless 'copy' is set to False. The default
+    buffer resolution of 50 is higher than the geopandas default of 16 for the sake of
+    accuaracy. Geometries are fixed after the buffer.
 
     Args:
         gdf: GeoDataFrame, GeoSeries or shapely Geometry
@@ -42,7 +46,7 @@ def buff(
          A GeoDataFrame with the buffered geometry.
 
     Raises:
-        TypeError: Wrong argument types.
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
     if copy and not isinstance(gdf, Geometry):
         gdf = gdf.copy()
@@ -70,19 +74,24 @@ def diss(
     reset_index=True,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
-    """
+    """Dissolves, fixes geometries, resets index tuple columns to string.
+
     It dissolves a GeoDataFrame, GeoSeries or Geometry, fixes the geometry,
-    resets the index and makes columns from tuple to string if multiple aggfuncs.
+    resets the index and makes columns from tuple to string if there are multiple
+    aggfuncs (so the resulting columns will not be ('col', 'sum'), but 'col_sum').
 
     Args:
-      gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be dissolved
-      reset_index: If True, the 'by' columns become columns, not index, and the
+        gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be dissolved
+        reset_index: If True, the 'by' columns become columns, not index, and the
             resulting axis will be labeled 0, 1, …, n - 1. Defaults to True.
+        **kwargs: keyword arguments passed to geopandas' dissolve.
 
     Returns:
-      A GeoDataFrame with the dissolved polygons.
-    """
+        A GeoDataFrame with the dissolved polygons.
 
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
     if isinstance(gdf, GeoSeries):
         return gpd.GeoSeries(gdf.unary_union)
 
@@ -116,20 +125,20 @@ def exp(
     ignore_index=True,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
-    """
-    It takes a GeoDataFrame, GeoSeries or Geometry,
-    makes the geometry valid, and then explodes it from
-    multipart to singlepart geometries.
+    """Fixes geometries before exploding from multipart to singlepart geometries.
 
     Args:
         gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be exploded
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to True
+        **kwargs: keyword arguments passed to geopandas' ecplode.
 
     Returns:
         A GeoDataFrame, GeoSeries or shapely Geometry with singlepart geometries.
-    """
 
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
     if isinstance(gdf, GeoDataFrame):
         gdf["geometry"] = gdf.make_valid()
         return gdf.explode(ignore_index=ignore_index, **kwargs)
@@ -150,7 +159,7 @@ def exp(
 
 def buffdissexp(
     gdf: GeoDataFrame | GeoSeries | Geometry,
-    distance: int,
+    distance: int | float,
     resolution: int = 50,
     id: str | None = None,
     ignore_index: bool = True,
@@ -158,9 +167,10 @@ def buffdissexp(
     copy: bool = True,
     **dissolve_kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
-    """
-    Buffers and dissolves overlapping geometries.
-    So buffer, dissolve and explode (to singlepart).
+    """Buffers and dissolves overlapping geometries.
+
+    It takes a GeoDataFrame, GeoSeries or shapely geometry, and buffer, dissolves and
+    explodes (to singlepart). It uses the functions buff, diss and exp.
 
     Args:
         gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be
@@ -177,12 +187,15 @@ def buffdissexp(
             after dissolve. Defaults to True
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to True
+        **dissolve_kwargs: keyword arguments passed to geopandas' dissolve.
 
     Returns:
         A buffered GeoDataFrame, GeoSeries or shapely Geometry where overlapping
         geometries are dissolved.
-    """
 
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
     if isinstance(gdf, Geometry):
         return exp(diss(buff(gdf, distance, resolution=resolution)))
 
@@ -203,7 +216,7 @@ def dissexp(
     id: str | None = None,
     reset_index: bool = True,
     ignore_index: bool = True,
-    **kwargs,
+    **dissolve_kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """Dissolves overlapping geometries. So dissolve and explode (to singlepart).
 
@@ -216,13 +229,16 @@ def dissexp(
             resulting axis will be labeled 0, 1, …, n - 1. Defaults to True.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to True
+        **dissolve_kwargs: keyword arguments passed to geopandas' dissolve.
 
     Returns:
         A GeoDataFrame, GeoSeries or shapely Geometry where overlapping geometries are
         dissolved.
-    """
 
-    gdf = diss(gdf, reset_index=reset_index, **kwargs).pipe(
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
+    gdf = diss(gdf, reset_index=reset_index, **dissolve_kwargs).pipe(
         exp, ignore_index=ignore_index
     )
 
@@ -233,12 +249,12 @@ def dissexp(
 
 
 def buffdiss(
-    gdf,
-    distance,
-    resolution=50,
-    id=None,
-    reset_index=True,
-    copy=True,
+    gdf: GeoDataFrame | GeoSeries | Geometry,
+    distance: int | float,
+    resolution: int = 50,
+    id: str | None = None,
+    reset_index: bool = True,
+    copy: bool = True,
     **dissolve_kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """Buffers and dissolves all geometries.
@@ -256,12 +272,15 @@ def buffdiss(
             the integer index (from 0 and up).
         reset_index: If True, the index is reset to the default integer index after
             dissolve. Defaults to True
+        **dissolve_kwargs: keyword arguments passed to geopandas' dissolve.
 
     Returns:
           A buffered GeoDataFrame, GeoSeries or shapely Geometry where all geometries
           are dissolved.
-    """
 
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
     gdf = buff(gdf, distance, resolution=resolution, copy=copy).pipe(
         diss, reset_index=reset_index, **dissolve_kwargs
     )

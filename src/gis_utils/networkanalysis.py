@@ -1,8 +1,9 @@
 """Contains the NetworkAnalysis class.
 
-The class has four methods: od_cost_matrix,
-get_route, get_route_frequencies and service_area.
+The class has five methods: od_cost_matrix, get_route, get_k_routes,
+get_route_frequencies and service_area.
 """
+
 
 from datetime import datetime
 from time import perf_counter
@@ -14,19 +15,19 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
 
+from ._get_route import _get_route
+from ._od_cost_matrix import _od_cost_matrix
+from ._points import Destinations, Origins
+from ._service_area import _service_area
 from .directednetwork import DirectedNetwork
 from .geopandas_utils import gdf_concat, push_geom_col
-from .get_route import _get_route
 from .network import Network, _edge_ids
 from .network_functions import split_lines_at_closest_point
 from .networkanalysisrules import NetworkAnalysisRules
-from .od_cost_matrix import _od_cost_matrix
-from .points import Destinations, Origins
-from .service_area import _service_area
 
 
 class NetworkAnalysis:
-    """Class that holds the network analysis methods.
+    """Class for doing network analysis.
 
     It takes a (Directed)Network and rules (NetworkAnalysisRules).
 
@@ -36,20 +37,25 @@ class NetworkAnalysis:
         log: A DataFrame with information about each analysis run
         origins: the origins used in the latest analysis run, in the form of an Origins
             class instance. The GeoDataFrame is stored in the 'gdf' attribute, with a
-            column 'n_missing' that can be used for investigation/debugging.
+            column 'missing' that can be used for investigation/debugging. So, write
+            e.g.: nw.origins.gdf.missing.value_counts()
         destinations: the destinations used in the latest analysis run, in the form of
             a Destinations class instance. The GeoDataFrame is stored in the 'gdf'
-            attribute, with a column 'n_missing' that can be used for
-            investigation/debugging.
+            attribute, with a column 'missing' that can be used for
+            investigation/debugging. So, write e.g.:
+            nw.destinations.gdf.missing.value_counts()
 
     Examples
     --------
+    Read testdata.
+
+    >>> from gis_utils import read_parquet_url
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
+    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/random_points.parquet")
+
     Creating a NetworkAnalysis class instance.
 
-    >>> roads = gpd.read_parquet(filepath_roads)
-    >>> points = gpd.read_parquet(filepath_points)
-
-
+    >>> from gis_utils import DirectedNetwork, NetworkAnalysisRules, NetworkAnalysis
     >>> nw = (
     ...     DirectedNetwork(roads)
     ...     .remove_isolated()
@@ -175,8 +181,10 @@ class NetworkAnalysis:
 
     See also
     --------
-    DirectedNetwork : for customising and optimising line data before directed network analysis
-    Network : for customising and optimising line data before undirected network analysis
+    DirectedNetwork : for customising and optimising line data before directed network
+        analysis
+    Network : for customising and optimising line data before undirected network
+        analysis
     """
 
     def __init__(
@@ -238,10 +246,10 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         id_col: str | tuple[str, str] | None = None,
         *,
-        lines=False,
-        rowwise=False,
-        cutoff: int = None,
-        destination_count: int = None,
+        lines: bool = False,
+        rowwise: bool = False,
+        cutoff: int | None = None,
+        destination_count: int | None = None,
     ) -> DataFrame | GeoDataFrame:
         """Fast calculation of many-to-many travel costs.
 
@@ -386,6 +394,9 @@ class NetworkAnalysis:
         if lines:
             results = push_geom_col(results)
 
+        if self.rules.split_lines:
+            self._unsplit_network()
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -406,9 +417,9 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         id_col: str | tuple[str, str] | None = None,
         *,
-        rowwise=False,
-        cutoff: int = None,
-        destination_count: int = None,
+        rowwise: bool = False,
+        cutoff: int | None = None,
+        destination_count: int | None = None,
     ) -> GeoDataFrame:
         """Returns the geometry of the low-cost route between origins and destinations.
 
@@ -488,6 +499,9 @@ class NetworkAnalysis:
 
         results = push_geom_col(results)
 
+        if self.rules.split_lines:
+            self._unsplit_network()
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -557,13 +571,6 @@ class NetworkAnalysis:
             ValueError: if no paths were found.
             ValueError: if drop_middle_percent is not between 0 and 100.
 
-        k_routes = nwa.get_k_routes(
-            points.iloc[[0]],
-            points.iloc[[1]],
-            k=10,
-            drop_middle_percent=50
-            )
-
         Examples
         --------
         Let's compare the results for one origin and one destination with different
@@ -605,13 +612,14 @@ class NetworkAnalysis:
         ...             points.iloc[[0]],
         ...             points.iloc[[1]],
         ...             k=10,
-        ...             drop_middle_percent=100)
+        ...             drop_middle_percent=100
+        ...         )
         >>> k_routes
         origin destination    minutes  k                                           geometry
         0  79166       79167  12.930588  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
 
         """
-        if drop_middle_percent < 0 or drop_middle_percent > 100:
+        if not 0 <= drop_middle_percent <= 100:
             raise ValueError("'drop_middle_percent' should be between 0 and 100")
 
         if self._log:
@@ -642,6 +650,9 @@ class NetworkAnalysis:
             )
 
         results = push_geom_col(results)
+
+        if self.rules.split_lines:
+            self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -722,6 +733,9 @@ class NetworkAnalysis:
 
         results = results.sort_values("n")
 
+        if self.rules.split_lines:
+            self._unsplit_network()
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -735,7 +749,7 @@ class NetworkAnalysis:
     def service_area(
         self,
         origins: GeoDataFrame,
-        breaks: int | float | list[int | float] | tuple[int | float],
+        breaks: int | float | tuple[int | float],
         *,
         id_col: str | None = None,
         drop_duplicates: bool = True,
@@ -797,7 +811,6 @@ class NetworkAnalysis:
         6    3        5  MULTILINESTRING Z ((266909.769 6651075.250 114...
         7    3       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
         8    3       15  MULTILINESTRING Z ((273161.140 6654455.240 229...
-
         """
         if self._log:
             time_ = perf_counter()
@@ -840,6 +853,9 @@ class NetworkAnalysis:
 
         results = push_geom_col(results)
 
+        if self.rules.split_lines:
+            self._unsplit_network()
+
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -852,8 +868,8 @@ class NetworkAnalysis:
 
         return results
 
-    def _log_df_template(self, method: str, minutes_elapsed: int) -> DataFrame:
-        """Creates a DataFrame with one row and the main columns
+    def _log_df_template(self, method: str, minutes_elapsed: float) -> DataFrame:
+        """Creates a DataFrame with one row and the main columns.
 
         To be run after each network analysis.
 
@@ -894,7 +910,7 @@ class NetworkAnalysis:
         self,
         fun: str,
         results: DataFrame | GeoDataFrame,
-        minutes_elapsed: int,
+        minutes_elapsed: float,
         **kwargs,
     ) -> None:
         df = self._log_df_template(fun, minutes_elapsed)
@@ -929,8 +945,9 @@ class NetworkAnalysis:
     def _prepare_network_analysis(
         self, origins, destinations=None, id_col: str | None = None
     ) -> None:
-        """Prepares the weight column, node ids and origins and destinations.
-        Also updates the graph if it is not yet created and no parts of the analysis
+        """Prepares the weight column, node ids, origins, destinations and graph.
+
+        Updates the graph only if it is not yet created and no parts of the analysis
         has changed. this method is run inside od_cost_matrix, get_route and
         service_area.
         """
@@ -960,7 +977,7 @@ class NetworkAnalysis:
             edges, weights = self._get_edges_and_weights()
 
             self.graph = self._make_graph(
-                edges=edges, weights=weights, directed=self.network.as_directed
+                edges=edges, weights=weights, directed=self.network._as_directed
             )
 
             self._add_missing_vertices()
@@ -968,51 +985,20 @@ class NetworkAnalysis:
         self._update_wkts()
         self.rules._update_rules()
 
-    def _get_edges_and_weights(self) -> tuple[list[tuple[str, ...]], list[float]]:
+    def _get_edges_and_weights(self) -> tuple[list[tuple[str, str]], list[float]]:
         """Creates lists of edges and weights which will be used to make the graph.
+
         Edges and weights between origins and nodes and nodes and destinations are
         also added.
         """
         if self.rules.split_lines:
-            if self.destinations is not None:
-                points = gdf_concat([self.origins.gdf, self.destinations.gdf])
-            else:
-                points = self.origins.gdf
-
-            points = points.drop_duplicates("geometry")
-
-            self.network.gdf["meters"] = self.network.gdf.length
-
-            lines = split_lines_at_closest_point(
-                lines=self.network.gdf,
-                points=points,
-                max_dist=self.rules.search_tolerance,
-            )
-
-            # adjust the weight to new splitted length
-            lines.loc[lines["splitted"] == 1, self.rules.weight] = lines[
-                self.rules.weight
-            ] * (lines.length / lines["meters"])
-
-            self.network.gdf = lines
+            self._split_lines()
             self.network._make_node_ids()
-
-            # remake the temp_idx to fit the new max of the node ids
-            # TODO: consider changing how this thing works
-            self.origins.temp_idx_start = (
-                max(self.network.nodes.node_id.astype(int)) + 1
-            )
-            self.origins._make_temp_idx()
-            if self.destinations is not None:
-                self.destinations.temp_idx_start = (
-                    max(self.origins.gdf.temp_idx.astype(int)) + 1
-                )
-                self.destinations._make_temp_idx()
 
         edges = [
             (str(source), str(target))
             for source, target in zip(
-                self.network.gdf["source"], self.network.gdf["target"]
+                self.network.gdf["source"], self.network.gdf["target"], strict=True
             )
         ]
 
@@ -1038,9 +1024,46 @@ class NetworkAnalysis:
 
         return edges, weights
 
+    def _split_lines(self) -> None:
+        if self.destinations is not None:
+            points = gdf_concat([self.origins.gdf, self.destinations.gdf])
+        else:
+            points = self.origins.gdf
+
+        points = points.drop_duplicates("geometry")
+
+        self.network.gdf["meters"] = self.network.gdf.length
+
+        # create an id from before the split to be able to revert the split later
+        self.network.gdf["temp_idx__"] = range(len(self.network.gdf))
+
+        lines = split_lines_at_closest_point(
+            lines=self.network.gdf,
+            points=points,
+            max_dist=self.rules.search_tolerance,
+        )
+
+        # save the unsplit lines for later
+        splitted = lines.loc[lines["splitted"] == 1, "temp_idx__"]
+        self.network._not_splitted = self.network.gdf.loc[
+            self.network.gdf["temp_idx__"].isin(splitted)
+        ]
+
+        self.network.gdf = lines
+
+    def _unsplit_network(self):
+        """Remove the splitted lines and add the unsplitted ones."""
+        lines = self.network.gdf.loc[self.network.gdf.splitted != 1]
+        self.network.gdf = gdf_concat([lines, self.network._not_splitted]).drop(
+            "temp_idx__", axis=1
+        )
+        del self.network._not_splitted
+
     def _add_missing_vertices(self):
-        """Adds the points that had no nodes within the search_tolerance
-        to the graph. To prevent error when running the distance calculation.
+        """Adds the missing points.
+
+        Nodes that had no nodes within the search_tolerance are added to the graph.
+        To not get an error when running the distance calculation.
         """
         # TODO: either check if any() beforehand, or add fictional edges before
         # making the graph, to make things faster
@@ -1083,9 +1106,11 @@ class NetworkAnalysis:
         return graph
 
     def _graph_is_up_to_date(self) -> bool:
-        """Returns False if the rules of the graphmaking has changed,
-        or if the points have changed"""
+        """Checks if the network or rules have changed.
 
+        Returns False if the rules of the graphmaking has changed,
+        or if the points have changed.
+        """
         if not hasattr(self, "graph") or not hasattr(self, "wkts"):
             return False
 
@@ -1101,7 +1126,7 @@ class NetworkAnalysis:
         return True
 
     def _points_have_changed(self, points: GeoDataFrame, what: str) -> bool:
-        """Check if the origins or destinations have changed
+        """Check if the origins or destinations have changed.
 
         This method is best stored in the NetworkAnalysis class,
         since the point classes are instantiated each time an analysis is run.
@@ -1117,9 +1142,8 @@ class NetworkAnalysis:
     def _update_wkts(self) -> None:
         """Creates a dict of wkt lists.
 
-        This method is run after the graph is created.
-        If the wkts haven't updated since the last run, the graph doesn't have to be
-        remade.
+        This method is run after the graph is created. If the wkts haven't updated
+        since the last run, the graph doesn't have to be remade.
         """
         self.wkts = {}
 
@@ -1150,29 +1174,24 @@ class NetworkAnalysis:
 
     def __repr__(self) -> str:
         """The print representation."""
-        # remove 'weight_to_nodes_' arguments in the repr of rules
-        rules = self.rules.__repr__()
-        for txt in ["weight_to_nodes_", "dist", "kmh", "mph", "=None", "=False"]:
-            rules = rules.replace(txt, "")
-        for txt in [", )"] * 5:
-            rules = rules.replace(txt, ")")
-        rules = rules.strip(")")
+        # drop the 'weight_to_nodes_' parameters in the repr of rules to avoid clutter
+        rules = (
+            f"{self.rules.__class__.__name__}(weight={self.rules.weight}, "
+            f"search_tolerance={self.rules.search_tolerance}, "
+            f"search_factor={self.rules.search_factor}, "
+            f"split_lines={self.rules.split_lines}, "
+        )
 
-        if rules.endswith("split_lines"):
-            rules = rules.replace(
-                "split_lines", f"split_lines={self.rules.split_lines}"
-            )
-
-        # add a 'weight_to_nodes_' argument if used,
-        # else inform that there are more arguments with '...'
+        # add one 'weight_to_nodes_' parameter if used,
+        # else inform that there are more parameters with '...'
         if self.rules.weight_to_nodes_dist:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
+            x = f"weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
         elif self.rules.weight_to_nodes_kmh:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_kmh}"
+            x = f"weight_to_nodes_kmh={self.rules.weight_to_nodes_kmh}"
         elif self.rules.weight_to_nodes_mph:
-            x = f", weight_to_nodes_dist={self.rules.weight_to_nodes_mph}"
+            x = f"weight_to_nodes_mph={self.rules.weight_to_nodes_mph}"
         else:
-            x = ", ..."
+            x = "..."
 
         return (
             f"{self.__class__.__name__}(\n"

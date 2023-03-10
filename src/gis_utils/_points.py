@@ -3,6 +3,7 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 
 from .distances import get_k_nearest_neighbors
+from .helpers import return_two_vals
 from .networkanalysisrules import NetworkAnalysisRules
 
 
@@ -35,6 +36,10 @@ class Points:
         if not self.id_col:
             return
 
+        id_cols = return_two_vals(self.id_col)
+
+        self.id_col = id_cols[index]
+        """
         if isinstance(self.id_col, (list, tuple)) and len(self.id_col) == 2:
             self.id_col = self.id_col[index]
 
@@ -42,16 +47,18 @@ class Points:
             raise ValueError(
                 "'id_col' should be a string or a list/tuple with two strings."
             )
-
+        """
         if self.id_col not in self.gdf.columns:
             raise KeyError(
-                f"'{self.__class__.__name__}' has no attribute '{self.id_col}'"
+                f"{self.__class__.__name__!r} has no attribute {self.id_col!r}"
             )
 
     def _make_temp_idx(self) -> None:
-        """Make a temporary id column that is not present in the node ids of the network.
-        The original ids are stored in a dict and mapped back to the results in the end.
-        This method has to be run after _get_id_col, because this determines the id column differently for origins and destinations.
+        """Make a temporary id column thad don't overlap with the node ids.
+
+        The original ids are stored in a dict and mapped back to the results in the
+        end. This method has to be run after _get_id_col, because this determines the
+        id column differently for origins and destinations.
         """
 
         self.gdf["temp_idx"] = np.arange(
@@ -62,7 +69,9 @@ class Points:
         if self.id_col:
             self.id_dict = {
                 temp_idx: idx
-                for temp_idx, idx in zip(self.gdf.temp_idx, self.gdf[self.id_col])
+                for temp_idx, idx in zip(
+                    self.gdf.temp_idx, self.gdf[self.id_col], strict=True
+                )
             }
 
     def _get_n_missing(
@@ -74,26 +83,18 @@ class Points:
         Get number of missing values for each point after a network analysis.
 
         Args:
-            results: resulting (Geo)DataFrame of od_cost_matrix, get_route or service_area analysis.
+            results: (Geo)DataFrame resulting from od_cost_matrix, get_route,
+                get_k_routes, get_route_frequencies or service_area.
             col: id column of the results. Either 'origin' or 'destination'.
-
-        Returns:
-            None, but gives the points.gdf a column n_missing.
-
         """
-        self.gdf["n_missing"] = self.gdf["temp_idx"].map(
+        self.gdf["missing"] = self.gdf["temp_idx"].map(
             results.groupby(col).count().iloc[:, 0]
             - results.dropna().groupby(col).count().iloc[:, 0]
         )
 
     @staticmethod
     def _dist_to_weight(dists, rules):
-        """
-        Gjør om meter to minutter for lenkene mellom punktene og nabonodene.
-        og ganger luftlinjeavstanden med 1.5 siden det alltid er svinger i Norge.
-        Gjør ellers ingenting.
-        """
-
+        """Meters to minutes based on 'weight_to_nodes_' attribute of the rules."""
         if (
             not rules.weight_to_nodes_dist
             and not rules.weight_to_nodes_kmh
@@ -108,7 +109,8 @@ class Points:
             > 1
         ):
             raise ValueError(
-                "Can only specify one of 'weight_to_nodes_dist', 'weight_to_nodes_kmh' and 'weight_to_nodes_mph'"
+                "Can only specify one of 'weight_to_nodes_dist', 'weight_to_nodes_kmh'"
+                " and 'weight_to_nodes_mph'"
             )
 
         if rules.weight_to_nodes_dist and rules.weight != "meters":
@@ -125,7 +127,7 @@ class Points:
         return dists
 
     def _make_edges(self, df, from_col, to_col):
-        return [(f, t) for f, t in zip(df[from_col], df[to_col])]
+        return [(f, t) for f, t in zip(df[from_col], df[to_col], strict=True)]
 
     def _get_edges_and_weights(
         self,

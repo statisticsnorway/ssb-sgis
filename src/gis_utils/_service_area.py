@@ -1,4 +1,3 @@
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
@@ -12,13 +11,13 @@ def _service_area(
     origins: GeoDataFrame,
     weight: str,
     lines: GeoDataFrame,
-    breaks: int | list[int] | tuple[int],
+    breaks: int | float | tuple[int | float],
 ) -> GeoDataFrame:
     if isinstance(breaks, (str, int, float)):
-        breaks = [float(breaks)]
+        breaks = (float(breaks),)
 
-    # loop through every origin and every breaks
-    results = []
+    # loop through every origin and every break
+    results: list[GeoDataFrame] = []
     for i in origins["temp_idx"]:
         result = graph.distances(weights="weight", source=i)
 
