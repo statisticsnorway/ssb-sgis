@@ -46,5 +46,7 @@ except ImportError:
     pass
 
 # paths to example data
-roadpath = str(Path(__file__).parent) + "/datasets/roads_oslo_2022.parquet"
-pointpath = str(Path(__file__).parent) + "/datasets/random_points.parquet"
+# roadpath = str(Path(__file__).parent) + "/datasets/roads_oslo_2022.parquet"
+# pointpath = str(Path(__file__).parent) + "/datasets/random_points.parquet"
+roadpath = str(Path(__file__).parent.parent) + "/tests/testdata/roads_oslo_2022.parquet"
+pointpath = str(Path(__file__).parent.parent) + "/tests/testdata/random_points.parquet"
