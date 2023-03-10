@@ -34,6 +34,7 @@ from .network_functions import (
 from .networkanalysis import NetworkAnalysis
 from .networkanalysisrules import NetworkAnalysisRules
 from .overlay import clean_shapely_overlay, overlay, overlay_update
+from .read_parquet import read_parquet_url
 
 
 try:

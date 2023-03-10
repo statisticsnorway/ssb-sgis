@@ -67,9 +67,8 @@ class Network:
     --------
     Read testdata.
 
-    >>> import geopandas as gpd
-    >>> from gis_utils import roadpath
-    >>> roads = gpd.read_parquet(roadpath)
+    >>> from gis_utils import read_parquet_url
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
     >>> nw = Network(roads)
     >>> nw
     Network(3851 km, undirected)

@@ -11,10 +11,28 @@ import sys
 
 sys.path.insert(0, src)
 
+import pandas as pd
+
 import gis_utils as gs
 
 
-def not_test_explore():
+gdf = pd.read_parquet(
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/random_points.parquet",
+)
+display(gdf)
+gdf["geometry"] = gdf.geometry.from_wkb()
+display(gdf)
+
+display(
+    gpd.read_file(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet",
+        driver="pyogrio",
+    ).explore()
+)
+ss
+
+
+def not_test_explore(points_oslo, roads_oslo):
     roads = roads_oslo
     points = points_oslo
 
@@ -61,7 +79,9 @@ def not_test_explore():
 
 
 def main():
-    not_test_explore()
+    from oslo import points_oslo, roads_oslo
+
+    not_test_explore(points_oslo, roads_oslo)
 
 
 if __name__ == "__main__":
