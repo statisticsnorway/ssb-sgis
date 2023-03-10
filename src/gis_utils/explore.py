@@ -227,10 +227,9 @@ class Explore:
 
         Examples
         --------
-        >>> import geopandas as gpd
-        >>> from gis_utils import roadpath, pointpath
-        >>> points = gpd.read_parquet(pointpath)
-        >>> roads = gpd.read_parquet(roadpath)
+        >>> from gis_utils import read_parquet_url
+        >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
+        >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/random_points.parquet")
 
         Simple explore of two GeoDataFrames.
 
