@@ -13,7 +13,7 @@ class NetworkDaplaCar(DirectedNetwork):
         gdf: GeoDataFrame | str = "daplasti_nyeste",
         turn_restrictions: bool = True,
         fill_holes: bool = False,
-        kommuner: str | list | tuple | None = None,
+        kommuner: str | tuple[str] | None = None,
         **kwargs,
     ):
         if isinstance(gdf, str):

@@ -264,21 +264,22 @@ class NetworkAnalysisRules:
         if raise_error:
             raise KeyError(incorrect_weight_column)
         else:
-            warnings.warn(incorrect_weight_column)
+            warnings.warn(incorrect_weight_column, stacklevel=2)
 
         return gdf
 
     @staticmethod
     def _check_for_nans(df, col):
-        """Remove NaNs and give warning if there are any"""
+        """Remove NaNs and give warning if there are any."""
         if all(df[col].isna()):
-            raise ValueError(f"All values in the '{col}' column are NaN.")
+            raise ValueError(f"All values in the {col!r} column are NaN.")
 
         nans = sum(df[col].isna())
         if nans:
             warnings.warn(
-                f"Warning: {nans} rows have missing values in the '{col}' column. "
-                "Removing these rows."
+                f"Warning: {nans} rows have missing values in the {col!r} column. "
+                "Removing these rows.",
+                stacklevel=2,
             )
             df = df.loc[df[col].notna()]
 
@@ -286,11 +287,13 @@ class NetworkAnalysisRules:
 
     @staticmethod
     def _check_for_negative_values(df, col):
+        """Remove negative values and give warning if there are any."""
         negative = sum(df[col] < 0)
         if negative:
             warnings.warn(
                 f"Warning: {negative} rows have a 'col' less than 0. Removing these "
-                "rows."
+                "rows.",
+                stacklevel=2,
             )
             df = df.loc[df[col] >= 0]
 
@@ -298,11 +301,12 @@ class NetworkAnalysisRules:
 
     @staticmethod
     def _try_to_float(df, col):
+        """Try to convert weight column to float, raise ValueError if it fails."""
         try:
             df[col] = df[col].astype(float)
-        except ValueError:
+        except ValueError as e:
             raise ValueError(
-                f"The '{col}' column must be numeric. Got characters that couldn't be "
+                f"The {col!r} column must be numeric. Got characters that couldn't be "
                 "interpreted as numbers."
-            )
+            ) from e
         return df

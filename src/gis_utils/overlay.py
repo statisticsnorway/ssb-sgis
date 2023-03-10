@@ -61,7 +61,6 @@ def overlay(
         ValueError: If the geometries have mixed geometry types and 'geom_type' is not
             specified.
     """
-
     # Allowed operations (includes 'update')
     allowed_hows = [
         "intersection",
@@ -89,11 +88,13 @@ def overlay(
 
     if not is_single_geom_type(df1):
         raise ValueError(
-            "mixed geometry types in 'df1'. Specify 'geom_type' as 'polygon', 'line' or 'point'."
+            "mixed geometry types in 'df1'. Specify 'geom_type' as "
+            "'polygon', 'line' or 'point'."
         )
     if not is_single_geom_type(df2):
         raise ValueError(
-            "mixed geometry types in 'df2'. Specify 'geom_type' as 'polygon', 'line' or 'point'."
+            "mixed geometry types in 'df2'. Specify 'geom_type' as "
+            "'polygon', 'line' or 'point'."
         )
 
     if keep_geom_type and not geom_type_left:
@@ -157,7 +158,6 @@ def overlay_update(
         GeoDataFrame with overlayed geometries and columns from both GeoDataFrames.
 
     """
-
     try:
         overlayed = df1.overlay(df2, how="difference", **kwargs)
     except GEOSException:
@@ -202,8 +202,10 @@ def clean_shapely_overlay(
         GeoDataFrame with overlayed and fixed geometries and columns from both
         GeoDataFrames.
 
+    Raises:
+        ValueError: If 'how' is not one of 'intersection', 'union', 'identity',
+            'symmetric_difference', 'difference' or 'update'.
     """
-
     # Allowed operations
     allowed_hows = [
         "intersection",

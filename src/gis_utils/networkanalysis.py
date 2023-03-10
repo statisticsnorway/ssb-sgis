@@ -1,7 +1,7 @@
 """Contains the NetworkAnalysis class.
 
-The class has four methods: od_cost_matrix,
-get_route, get_route_frequencies and service_area.
+The class has five methods: od_cost_matrix, get_route, get_k_routes,
+get_route_frequencies and service_area.
 """
 
 
@@ -1143,9 +1143,8 @@ class NetworkAnalysis:
     def _update_wkts(self) -> None:
         """Creates a dict of wkt lists.
 
-        This method is run after the graph is created.
-        If the wkts haven't updated since the last run, the graph doesn't have to be
-        remade.
+        This method is run after the graph is created. If the wkts haven't updated
+        since the last run, the graph doesn't have to be remade.
         """
         self.wkts = {}
 
@@ -1176,7 +1175,6 @@ class NetworkAnalysis:
 
     def __repr__(self) -> str:
         """The print representation."""
-
         # drop the 'weight_to_nodes_' parameters in the repr of rules to avoid clutter
         rules = (
             f"{self.rules.__class__.__name__}(weight={self.rules.weight}, "

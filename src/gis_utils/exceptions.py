@@ -12,10 +12,14 @@ class NoPointsWithinSearchToleranceError(Exception):
 
     def __str__(self):
         return (
-            f"No {self.what}points within specified 'search_tolerance' "
+            f"No {self.what} within specified 'search_tolerance' "
             f"of {self.search_tolerance}"
         )
 
 
 class ZeroLinesError(Exception):
-    "DataFrame has 0 rows."
+    """DataFrame has 0 rows."""
+
+
+class NotInJupyterError(Exception):
+    """This functionality only works in Jupyter."""

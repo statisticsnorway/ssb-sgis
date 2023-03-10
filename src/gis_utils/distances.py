@@ -5,7 +5,6 @@ neighbours for points in a GeoDataFrame. The function 'k_nearest_neighbours' is 
 with numpy arrays.
 """
 
-
 import numpy as np
 from geopandas import GeoDataFrame
 from pandas import DataFrame
@@ -20,7 +19,7 @@ def get_k_nearest_neighbours(
     k: int,
     id_cols: str | tuple[str, str] | None = None,
     max_dist: int | float | None = None,
-    min_dist: float | int = 0.0000001,
+    min_dist: float | int = 0,
     strict: bool = False,
 ) -> DataFrame:
     """Finds the k nearest neighbours for a GeoDataFrame of points.
@@ -36,7 +35,7 @@ def get_k_nearest_neighbours(
             tuple/list for 'gdf' and 'neighbours' respectfully.
         max_dist: if specified, distances larger than this number will be removed.
         min_dist: The minimum distance between the two points. Defaults to
-            0.0000001, so that identical points aren't considered neighbours.
+            0, meaning identical points aren't considered neighbours.
         strict: If False (the default), no exception is raised if k is larger than the
             number of points in 'neighbours'. If True, 'k' must be less than or equal
             to the number of points in 'neighbours'.
@@ -75,9 +74,9 @@ def get_k_nearest_neighbours(
     edges = _get_edges(gdf, neighbor_indices)
 
     if max_dist:
-        condition = (dists <= max_dist) & (dists >= min_dist)
+        condition = (dists <= max_dist) & (dists > min_dist)
     else:
-        condition = dists >= min_dist
+        condition = dists > min_dist
 
     edges = edges[condition]
     if len(edges.shape) == 3:
@@ -108,7 +107,7 @@ def get_k_nearest_neighbors(
     neighbors: GeoDataFrame,
     k: int,
     id_cols: str | tuple[str, str] | None = None,
-    min_dist: int | float = 0.0000001,
+    min_dist: int | float = 0,
     max_dist: int | None = None,
     strict: bool = False,
 ) -> DataFrame:
@@ -186,7 +185,7 @@ def k_nearest_neighbors(
     )
 
 
-def _get_edges(gdf: GeoDataFrame, indices: np.ndarray[float]) -> np.ndarray[tuple[int]]:
+def _get_edges(gdf: GeoDataFrame, indices: np.ndarray[int]) -> np.ndarray[tuple[int]]:
     """Takes a GeoDataFrame and a list of indices, and returns a list of edges.
 
     Args:

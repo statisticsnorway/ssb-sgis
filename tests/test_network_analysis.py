@@ -1,4 +1,5 @@
 # %%
+import sys
 import warnings
 from pathlib import Path
 
@@ -8,9 +9,6 @@ import pandas as pd
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
-
-import sys
-
 
 sys.path.insert(0, src)
 
@@ -27,15 +25,15 @@ def test_network_analysis():
     ### READ FILES
 
     p = gpd.read_parquet(gs.pointpath)
-    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(600))
+    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(550))
     p["idx"] = p.index
     p["idx2"] = p.index
 
     r = gpd.read_parquet(gs.roadpath)
-    r = gs.clean_clip(r, p.geometry.loc[0].buffer(700))
+    r = gs.clean_clip(r, p.geometry.loc[0].buffer(650))
 
     def run_analyses(nwa, p):
-        x = nwa.get_route_frequencies(p.loc[p.idx == 0], p.sample(13))
+        x = nwa.get_route_frequencies(p.loc[p.idx == 0], p.sample(7))
         gs.qtm(x, "n")
 
         ### OD COST MATRIX
@@ -134,7 +132,6 @@ def test_network_analysis():
         gs.qtm(sp)
 
         ### GET ROUTE FREQUENCIES
-        print(len(p))
         print(len(p))
         print(len(p))
         print(len(p))

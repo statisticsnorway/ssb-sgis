@@ -16,6 +16,7 @@ from .geopandas_utils import (
     gdf_concat,
     push_geom_col,
     random_points,
+    series_snap_to,
     sjoin,
     snap_to,
     to_gdf,

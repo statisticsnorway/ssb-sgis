@@ -28,20 +28,18 @@ def not_test_explore():
     points = points.sjoin(p.buffer(500).to_frame())
     points["geometry"] = points.buffer(8)
     roads["geometry"] = roads.buffer(3)
-    roads.name = "roads"
-    points.name = "points"
-    r1 = roads.sjoin(p.buffer(300).to_frame())
-    r2 = roads.sjoin(p.buffer(200).to_frame())
-    r3 = roads.sjoin(p.buffer(100).to_frame())
+    r1 = roads.clip(p.buffer(300).to_frame())
+    r2 = roads.clip(p.buffer(200).to_frame())
+    r3 = roads.clip(p.buffer(100).to_frame())
 
-    gs.clipmap(r1, r2, r3, p.buffer(100), "meters", ("r100", "r200", "r300"))
-    gs.samplemap(r1, r2, r3, "meters", ("r100", "r200", "r300"))
+    gs.clipmap(r1, r2, r3, "meters", p.buffer(100))
+    gs.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
 
     print("static mapping finished")
 
-    gs.explore(roads, points, "meters", ("roads", "points"), cmap="plasma")
+    gs.explore(roads, points, "meters")
 
-    x = gs.Explore(roads, points, p, "meters", ("roads", "points", "p"))
+    x = gs.Explore(roads, points, p, "meters", labels=("roads", "points", "p"))
     assert not x._is_categorical
     x = gs.Explore(roads, points)
     assert x._is_categorical
@@ -49,11 +47,11 @@ def not_test_explore():
     x.clipmap(p.buffer(100))
     x.samplemap()
 
-    x = gs.Explore(r1, r2, r3, column="meters", labels=("r100", "r200", "r300"))
+    x = gs.Explore(r1, r2, r3, column="meters")
     x.clipmap(p.buffer(100))
     x.samplemap()
     r3.loc[0, "meters"] = None
-    x = gs.Explore(r1, r2, r3, labels=("r100", "r200", "r300"))
+    x = gs.Explore(r1, r2, r3)
     x.explore()
     x.explore("meters", cmap="inferno")
     x.samplemap(cmap="magma")

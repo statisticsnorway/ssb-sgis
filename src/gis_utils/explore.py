@@ -20,6 +20,7 @@ from shapely import Geometry
 from shapely.geometry import LineString
 
 from .geopandas_utils import clean_geoms, gdf_concat
+from .helpers import get_name
 
 
 # the geopandas._explore
@@ -53,6 +54,10 @@ _CATEGORICAL_CMAP = {
 NAN_COLOR = "#969696"
 
 
+# cols to not show when hovering over geometries (tooltip)
+COLS_TO_DROP = ["color", "geometry"]
+
+
 # from geopandas
 _MAP_KWARGS = [
     "location",
@@ -76,42 +81,36 @@ _MAP_KWARGS = [
 ]
 
 
-def _all_are_geom(gdfs):
+def _all_are_geom(gdfs: tuple) -> bool:
+    """Returns True if all elements in the tuple are geopandas/shapely geometries."""
     return all(isinstance(gdf, (GeoDataFrame, GeoSeries, Geometry)) for gdf in gdfs)
 
 
 def _separate_args(
-    gdfs: tuple,
-    labels: tuple[str] | None,
+    args: tuple,
+    column: str | None,
     kwargs: dict,
-) -> tuple[tuple[GeoDataFrame], tuple[str], dict]:
-    if _all_are_geom(gdfs):
-        return gdfs, labels, kwargs
+) -> tuple[tuple[GeoDataFrame], str, dict]:
+    """Separate GeoDataFrames from string (column)."""
+    if _all_are_geom(args):
+        return args, column, kwargs
 
-    column, labels_ = None, None
-
-    real_gdfs = ()
-    for gdf in gdfs:
-        if isinstance(gdf, str):
+    gdfs: tuple[GeoDataFrame] = ()
+    for arg in args:
+        if isinstance(arg, str):
             if column is None:
-                column = gdf
+                column = arg
             else:
-                raise ValueError("too many strings as gdfs")
-        elif isinstance(gdf, (list, tuple)):
-            if labels_ is None:
-                labels_ = gdf
-            else:
-                raise ValueError("too many tuple/list as gdfs")
-        elif isinstance(gdf, (GeoDataFrame, GeoSeries, Geometry)):
-            real_gdfs = real_gdfs + (gdf,)
-
-    if not labels:
-        labels = labels_
+                raise ValueError(
+                    "Can specify at most one string as a positional argument."
+                )
+        elif isinstance(arg, (GeoDataFrame, GeoSeries, Geometry)):
+            gdfs = gdfs + (arg,)
 
     if column and not kwargs["column"]:
         kwargs["column"] = column
 
-    return real_gdfs, labels, kwargs
+    return gdfs, column, kwargs
 
 
 class Explore:
@@ -122,12 +121,10 @@ class Explore:
 
     If 'column' is not specified, each GeoDataFrame is given a unique color. The
     default colormap is a custom, strongly colored palette. If a numerical column
-    is given, the 'viridis' palette is used.
+    is given, the 'viridis' palette is the default.
 
-    If the GeoDataFrames have name attributes (hint: write 'gdf.name = "gdf"'), these
-    will be used as labels. Alternatively, labels can be specified as a tuple of
-    strings of same length as the number of GeoDataFrames. Otherwise, the labels will
-    be 0, 1, …, n - 1.
+    Note:
+        The maximum zoom level only works on the OpenStreetMap background map.
     """
 
     def __init__(
@@ -137,45 +134,56 @@ class Explore:
         labels: tuple[str] | None = None,
         popup: bool = True,
         max_zoom: int = 30,
+        show_in_browser: bool = False,
         **kwargs,
     ) -> None:
         """Takes the GeoDataFrames and mapping rules and prepares the mapmaking.
 
-        No map is displayed here. Use the methods to display the geometries.
+        The maps are displayed with the methods explore, samplemap and clipmap.
+
+        Note:
+            The maximum zoom level only works on the OpenStreetMap background map.
 
         Args:
             *gdfs: one or more GeoDataFrames. Separated by a comma in the function call,
                 with no keyword.
             column: The column to color the geometries by. Defaults to None, which means
                 each GeoDataFrame will get a unique color.
-            labels: Names that will be shown in the toggle on/off menu. Defaults to
-                None, meaning the GeoDataFrames will be labeled 0, 1, …, n - 1, unless
-                the GeoDataFrames have a 'name' attribute. In this case, the name will
-                be used as label.
+            labels: By default, the GeoDataFrames will be labeled by their object names.
+                Alternatively, labels can be specified as a tuple of strings the same
+                length as the number of gdfs.
             popup: If True (default), clicking on a geometry will create a popup box
                 with column names and values for the given geometry. The box stays
                 until clicking elsewhere. If False (the geopandas default), the box
                 will only show when hovering over the geometry.
             max_zoom: The maximum allowed level of zoom. Higher number means more zoom
                 allowed. Defaults to 30, which is higher than the geopandas default.
+            show_in_browser: If False (the default), the maps will be shown in Jupyter.
+                If True the maps will be opened in a browser folder.
             **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
                 instance 'cmap' to change the colors, 'scheme' to change how the data
                 is grouped. This defaults to 'quantiles' for numeric data.
         """
+        self.show_in_browser = show_in_browser
         all_kwargs: dict = kwargs | {
             "popup": popup,
             "column": column,
             "max_zoom": max_zoom,
         }
 
-        gdfs, labels, all_kwargs = _separate_args(gdfs, labels, all_kwargs)
+        gdfs, column, all_kwargs = _separate_args(gdfs, column, all_kwargs)
+
+        if "namedict" in all_kwargs:
+            for i, gdf in enumerate(gdfs):
+                gdf.name = all_kwargs["namedict"][i]
+            all_kwargs.pop("namedict")
 
         self.gdfs: tuple[GeoDataFrame] = gdfs
         self.labels = labels
         self.kwargs = all_kwargs
 
         if not self.labels:
-            self._create_labels_from_globals()
+            self._create_labels()
             self.kwargs["column"] = "label"
         elif not self.kwargs["column"]:
             for gdf, label in zip(self.gdfs, labels, strict=True):
@@ -230,20 +238,12 @@ class Explore:
         >>> ex = Explore(roads, points)
         >>> ex.explore()
 
-        With column and labels.
+        With column.
 
         >>> roads["meters"] = roads.length
         >>> points["meters"] = points.length
-        >>> ex = Explore(roads, points, column="meters", labels=("roads", "points"))
-        >>> ex.samplemap()
-
-        Alternatively, with names as labels. This will give the same results as
-        specifying labels.
-
-        >>> roads.name = "roads"
-        >>> points.name = "points"
         >>> ex = Explore(roads, points, column="meters")
-        >>> ex.clipmap(points.iloc[[0]].buffer(100))
+        >>> ex.samplemap()
         """
         if column:
             kwargs["column"] = column
@@ -330,18 +330,19 @@ class Explore:
             self._create_categorical_map()
         else:
             self._create_continous_map()
-        display(self.m)
+        if self.show_in_browser:
+            self.map.show_in_browser()
+        else:
+            display(self.map)
 
-    def _create_labels_from_globals(self) -> None:
+    def _create_labels(self) -> None:
         self.labels: list[str] = []
-        global_gdfs = [x for x in globals() if isinstance(globals()[x], GeoDataFrame)]
         for i, gdf in enumerate(self.gdfs):
-            try:
-                name = [x for x in global_gdfs if globals()[x].equals(gdf)][0]
-            except IndexError:
-                if hasattr(gdf, "name"):
-                    name = gdf.name
-                else:
+            if hasattr(gdf, "name"):
+                name = gdf.name
+            else:
+                name = get_name(gdf)
+                if not name:
                     name = str(i)
             self.labels.append(name)
             gdf["label"] = name
@@ -402,21 +403,22 @@ class Explore:
             self._categories_colors_dict["missing"] = NAN_COLOR
 
         for gdf in self.gdfs:
-            gdf["colors"] = gdf[self.kwargs["column"]].map(self._categories_colors_dict)
+            gdf["color"] = gdf[self.kwargs["column"]].map(self._categories_colors_dict)
 
     def _create_categorical_map(self):
         gdfs = gdf_concat(self.to_show)
 
-        self.m = self._explore_return(gdfs, return_="empty_map", **self.kwargs)
+        self.map = self._explore_return(gdfs, return_="empty_map", **self.kwargs)
 
-        for gdf, label in zip(self.to_show, self.labels):
+        for gdf, label in zip(self.to_show, self.labels, strict=True):
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)
             gjs = self._explore_return(
                 gdf,
-                color=gdf["colors"],
+                color=gdf["color"],
                 return_="geojson",
+                tooltip=self._tooltip_cols(gdf),
                 **{
                     key: value
                     for key, value in self.kwargs.items()
@@ -424,41 +426,51 @@ class Explore:
                 },
             )
             f.add_child(gjs)
-            self.m.add_child(f)
+            self.map.add_child(f)
         _categorical_legend(
-            self.m,
+            self.map,
             self.kwargs["title"],
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
-        folium.TileLayer("stamentoner").add_to(self.m)
-        folium.TileLayer("cartodbdark_matter").add_to(self.m)
-        self.m.add_child(folium.LayerControl())
+        folium.TileLayer("stamentoner").add_to(self.map)
+        folium.TileLayer("cartodbdark_matter").add_to(self.map)
+        self.map.add_child(folium.LayerControl())
 
     def _create_continous_map(self):
         gdfs = gdf_concat(self.to_show)
 
         bins = self._create_bins(gdfs, self.kwargs["column"], self.kwargs["scheme"])
         self.kwargs["classification_kwds"] = {"bins": bins}
-        self.m, colorbar = self._explore_return(
+        self.map, colorbar = self._explore_return(
             gdfs, return_="empty_map_and_colorbar", **self.kwargs
         )
 
-        for gdf, label in zip(self.to_show, self.labels):
+        for gdf, label in zip(self.to_show, self.labels, strict=True):
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)
             gjs = self._explore_return(
                 gdf,
+                tooltip=self._tooltip_cols(gdf),
                 return_="geojson",
                 **{key: value for key, value in self.kwargs.items() if key != "title"},
             )
             f.add_child(gjs)
-            self.m.add_child(f)
-        self.m.add_child(colorbar)
-        folium.TileLayer("stamentoner").add_to(self.m)
-        folium.TileLayer("cartodbdark_matter").add_to(self.m)
-        self.m.add_child(folium.LayerControl())
+            self.map.add_child(f)
+        self.map.add_child(colorbar)
+        folium.TileLayer("stamentoner").add_to(self.map)
+        folium.TileLayer("cartodbdark_matter").add_to(self.map)
+        self.map.add_child(folium.LayerControl())
+
+    def _tooltip_cols(self, gdf: GeoDataFrame) -> list:
+        if "tooltip" in self.kwargs:
+            tooltip = self.kwargs["tooltip"]
+            self.kwargs.pop("tooltip")
+            print(tooltip)
+            print([col for col in gdf.columns if col not in COLS_TO_DROP])
+            return tooltip
+        return [col for col in gdf.columns if col not in COLS_TO_DROP]
 
     def _create_bins(self, gdf, column, scheme):
         binning = classify(
@@ -505,7 +517,6 @@ class Explore:
         Also has a return_ parameter that controls what is returned. This should be
         replaced by separate functions, and irrelevant parameters should be removed.
         """
-
         # xyservices is an optional dependency
         try:
             import xyzservices
@@ -991,7 +1002,7 @@ def _categorical_legend(m, title, categories, colors):
             <ul class='legend-labels'>"""
 
     # Loop Categories
-    for label, color in zip(categories, colors):
+    for label, color in zip(categories, colors, strict=True):
         body += f"""
                 <li><span style='background:{color}'></span>{label}</li>"""
 

@@ -1,4 +1,4 @@
-"""Network class with methods for manipulating line geometries
+"""Network class with methods for manipulating line geometries.
 
 The module includes functions for cutting and splitting lines, filling holes in the
 network, finding and removing isolated network islands and creating unique node ids.
@@ -131,10 +131,6 @@ class Network:
             ZeroLinesError: If 'gdf' has zero rows
             ValueError: If the coordinate reference system is in degree units
         """
-
-        # for the base Network class, the graph will be undirected in network analysis
-        self._as_directed = False
-
         if not isinstance(gdf, GeoDataFrame):
             raise TypeError(f"'lines' should be GeoDataFrame, got {type(gdf)}")
 
@@ -160,6 +156,9 @@ class Network:
             self._isolated_removed = False
 
         self._percent_bidirectional = self._check_percent_bidirectional()
+
+        # for the base Network class, the graph will be undirected in network analysis
+        self._as_directed = False
 
     def remove_isolated(self):
         """Removes lines not connected to the largest network component.
@@ -241,7 +240,8 @@ class Network:
             warnings.warn(
                 "There is already a column 'connected' in the network. Run "
                 ".remove_isolated() if you want to remove the isolated networks."
-                "And write nw.gdf.connected... if you want to access the column"
+                "And write nw.gdf.connected... if you want to access the column",
+                stacklevel=2,
             )
         self.gdf = get_largest_component(self.gdf)
 
@@ -309,7 +309,10 @@ class Network:
             hole_col: Holes will get the value 1 in a column named 'hole' by default,
                 or what is specified as hole_col. If set to None or False, no column
                 will be added.
-            length_factor: TODO
+            length_factor: The percentage longer the new lines have to be compared to the
+                distance from the other end of the deadend line relative to the line's
+                length. Or said (a bit) simpler: higher length_factor means the new lines
+                will have an angle more similar to the deadend line it originates from.
 
         Returns:
             The input GeoDataFrame with new lines added.
@@ -366,6 +369,10 @@ class Network:
 
         Returns:
             Self
+
+        Raises:
+            KeyError: If the specified 'adjust_weight_col' column is not present in the
+                GeoDataFrame of the network.
 
         Note:
             This method is time consuming for large networks and low 'max_length'.
@@ -438,8 +445,10 @@ class Network:
 
         Returns:
             A GeoDataFrame of line geometries.
-        """
 
+        Raises:
+            ZeroLinesError: If the GeoDataFrame has 0 rows.
+        """
         gdf["idx_orig"] = gdf.index
 
         if gdf._geometry_column_name != "geometry":
@@ -498,12 +507,12 @@ class Network:
         return int(round(percent_bidirectional, 0))
 
     def _nodes_are_up_to_date(self) -> bool:
-        """Returns False if there are any source or target values not in the node-ids,
+        """Check if nodes need to be updated.
+
+        Returns False if there are any source or target values not in the node-ids,
         or any superfluous node-ids (meaning rows have been removed from the lines
         gdf).
-
         """
-
         new_or_missing = (~self.gdf.source.isin(self._nodes.node_id)) | (
             ~self.gdf.target.isin(self._nodes.node_id)
         )
@@ -551,15 +560,19 @@ class Network:
         return deepcopy(self)
 
     def __repr__(self) -> str:
+        """The print representation."""
         cl = self.__class__.__name__
         km = int(sum(self.gdf.length) / 1000)
         return f"{cl}({km} km, undirected)"
 
     def __iter__(self):
-        return iter(self.__dict__.values())
+        """So the attributes can be iterated through."""
+        return iter(self.__dict__.items())
 
 
-# TODO: put these a better place
+# TODO: put these a better place:
+
+
 def _edge_ids(
     gdf: GeoDataFrame | list[tuple[int, int]], weight: str | list[float]
 ) -> list[str]:

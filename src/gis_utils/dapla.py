@@ -37,8 +37,8 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
 
     Does not currently read shapelfiles or filegeodatabases.
 
-     Args:
-         path: path to a file on Google Cloud Storage.
+    Args:
+        path: path to a file on Google Cloud Storage.
         **kwargs: additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
@@ -46,7 +46,6 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
          A GeoDataFrame.
 
     """
-
     fs = FileClient.get_gcs_file_system()
 
     if "parquet" in path:
@@ -71,7 +70,6 @@ def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
     Returns:
         None
     """
-
     pd.io.parquet.BaseImpl.validate_dataframe(df)
 
     fs = FileClient.get_gcs_file_system()

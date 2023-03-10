@@ -141,7 +141,7 @@ def split_lines_at_closest_point(
     the_other_lines = lines.loc[~condition]
 
     # we need consistent coordinate dimensions later
-    # doing it down here to not overwrite the original data
+    # (doing it down here to not overwrite the original data)
     relevant_lines.geometry = force_2d(relevant_lines.geometry)
     snapped.geometry = force_2d(snapped.geometry)
 
@@ -162,22 +162,19 @@ def split_lines_at_closest_point(
     splitted = make_edge_coords_cols(splitted)
 
     # create geodataframes with the source and target points as geometries
-    splitted_source = GeoDataFrame(
-        {
-            "splitidx": splitted["splitidx"].reset_index(drop=True),
-            "geometry": GeoSeries(
-                [Point(geom) for geom in splitted["source_coords"]], crs=lines.crs
-            ),
-        }
-    )
-    splitted_target = GeoDataFrame(
-        {
-            "splitidx": splitted["splitidx"].reset_index(drop=True),
-            "geometry": GeoSeries(
-                [Point(geom) for geom in splitted["target_coords"]], crs=lines.crs
-            ),
-        }
-    )
+    def _splitgdf(gdf, lines, col):
+        return GeoDataFrame(
+            {
+                "splitidx": gdf["splitidx"].reset_index(drop=True),
+                "geometry": GeoSeries(
+                    map(Point, gdf[col]),
+                    crs=lines.crs,
+                ),
+            }
+        )
+
+    splitted_source = _splitgdf(splitted, lines, "source_coords")
+    splitted_target = _splitgdf(splitted, lines, "target_coords")
 
     # find the nearest snapped point for each source and target of the lines
     # low 'max_dist' makes sure we only get either source or target of the split lines
@@ -724,7 +721,8 @@ def _roundabouts_to_intersections(roads, query="ROADTYPE=='Rundkjøring'"):
 
     border_to = roundabouts.overlay(not_roundabouts, how="intersection")
 
-    # for hver rundkjøring: lag linjer mellom rundkjøringens mitdpunkt og hver linje som grenser til rundkjøringen
+    # for hver rundkjøring: lag linjer mellom rundkjøringens mitdpunkt og hver linje
+    # som grenser til rundkjøringen
     as_intersections = []
     for idx in roundabouts.roundidx:
         this = roundabouts.loc[roundabouts.roundidx == idx]

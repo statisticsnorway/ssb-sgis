@@ -17,6 +17,55 @@ sys.path.insert(0, src)
 import gis_utils as gs
 
 
+def test_snap_to():
+    points = gs.to_gdf([(0, 0), (1, 1)])
+    to = gs.to_gdf([(2, 2), (3, 3)])
+    to["snap_to_idx"] = to.index
+
+    # snap all points
+    snapped = gs.snap_to(points, to)
+    assert len(snapped) == 2
+    assert all([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
+
+    # with id col
+    snapped = gs.snap_to(points, to, id_col="snap_to_idx")
+    assert len(snapped) == 2
+    assert all(snapped.snap_to_idx == 0)
+
+    # with max_dist
+    snapped = gs.snap_to(points, to, id_col="snap_to_idx", max_dist=1.5)
+    assert len(snapped) == 2
+    assert not all([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
+    assert any([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
+
+    # with identical distances
+    point = gs.to_gdf([0, 0])
+    to = gs.to_gdf([(0, 1), (1, 0)])
+    to["snap_to_idx"] = to.index
+    snapped = gs.snap_to(point, to, id_col="snap_to_idx")
+    assert len(snapped) == 1
+    assert all(snapped.snap_to_idx == 0)
+    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
+
+    # opposite order of to coords
+    to = gs.to_gdf([(1, 0), (0, 1)])
+    to["snap_to_idx"] = to.index
+    snapped = gs.snap_to(point, to, id_col="snap_to_idx")
+    assert len(snapped) == 1
+    assert all(snapped.snap_to_idx == 1)
+    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
+
+    # duplicate geometries in 'to'
+    point = gs.to_gdf([0, 0])
+    to = gs.to_gdf([(0, 1), (0, 1)])
+    to["snap_to_idx"] = to.index
+    snapped = gs.snap_to(point, to, id_col="snap_to_idx")
+    assert len(snapped) == 2
+    assert any(snapped.snap_to_idx == 0)
+    assert any(snapped.snap_to_idx == 1)
+    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
+
+
 def test_buffdissexp(gdf_fixture):
     for distance in [1, 10, 100, 1000, 10000]:
         copy = gdf_fixture.copy()[["geometry"]]
@@ -215,9 +264,19 @@ def test_to_gdf():
     print(gs.to_gdf(geom, crs=4326))
 
     geom = {1: (10, 60), 2: (11, 59)}
-    print(gs.to_gdf(geom, crs=4326))
-    geom = {(10, 60): "1", (11, 59): "2"}
-    print(gs.to_gdf(geom, crs=4326))
+    gdf = gs.to_gdf(geom, crs=4326)
+    print(gdf)
+    assert list(gdf.index) == [1, 2]
+
+    geom = {1: (10, 60), 2: (11, 59)}
+    gdf = gs.to_gdf(geom, crs=4326)
+    print(gdf)
+    assert gdf.index.to_list() == [1, 2]
+
+
+g = {1: (10, 60), 3: (11, 59)}
+print(gs.to_gdf(g))
+print(gs.to_gdf(pd.Series(g)))
 
 
 def test_snap(gdf_fixture):

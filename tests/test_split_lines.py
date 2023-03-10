@@ -23,7 +23,6 @@ def test_split_lines():
     ### READ FILES
 
     points = gpd.read_parquet(gs.pointpath)
-
     r = gpd.read_parquet(gs.roadpath)
 
     r = gs.clean_clip(r, points.geometry.loc[0].buffer(700))

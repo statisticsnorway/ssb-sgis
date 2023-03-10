@@ -203,7 +203,6 @@ class DirectedNetwork(Network):
 
     def _warn_if_undirected(self):
         """Road data often have to be duplicated and flipped to make it directed."""
-
         if self.percent_bidirectional > 5:
             return
 
@@ -219,7 +218,7 @@ class DirectedNetwork(Network):
         else:
             mess = mess + "Try running 'make_directed_network'"
 
-        warnings.warn(mess)
+        warnings.warn(mess, stacklevel=2)
 
     @staticmethod
     def _validate_minute_args(minute_cols, speed_col, flat_speed):

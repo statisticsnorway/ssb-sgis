@@ -6,7 +6,7 @@ import geopandas as gpd
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
-sys.path.append(src)
+sys.path.insert(0, src)
 
 import gis_utils as gs
 
@@ -32,9 +32,10 @@ def test_distances():
         neighbors=p,
         k=50,
         id_cols="idx",
-        min_dist=0,
+        min_dist=-1,
         max_dist=None,
     )
+
     assert len(df) == len(p) * 50
 
     df = gs.get_k_nearest_neighbors(
