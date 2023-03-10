@@ -274,11 +274,6 @@ def test_to_gdf():
     assert gdf.index.to_list() == [1, 2]
 
 
-g = {1: (10, 60), 3: (11, 59)}
-print(gs.to_gdf(g))
-print(gs.to_gdf(pd.Series(g)))
-
-
 def test_snap(gdf_fixture):
     punkter = gdf_fixture[gdf_fixture.length == 0]
     annet = gdf_fixture[gdf_fixture.length != 0]

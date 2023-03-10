@@ -12,12 +12,12 @@ sys.path.insert(0, src)
 import gis_utils as gs
 
 
-def test_network_methods():
-    points = gpd.read_parquet(gs.pointpath)
+def test_network_methods(points_oslo, roads_oslo):
+    points = points_oslo
     p = points.iloc[[0]]
     points = gs.clean_clip(points, p.buffer(700))
 
-    r = gpd.read_parquet(gs.roadpath)
+    r = roads_oslo
     r = gs.clean_clip(r, p.buffer(1000))
 
     nw1 = gs.Network(r).get_largest_component()
@@ -68,7 +68,9 @@ def test_network_methods():
 
 
 def main():
-    test_network_methods()
+    from oslo import points_oslo, roads_oslo
+
+    test_network_methods(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":

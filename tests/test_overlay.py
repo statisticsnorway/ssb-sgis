@@ -16,10 +16,10 @@ sys.path.insert(0, src)
 import gis_utils as gs
 
 
-def test_overlay():
+def test_overlay(points_oslo):
     warnings.filterwarnings(action="ignore", category=UserWarning)
 
-    p = gpd.read_parquet(gs.pointpath)
+    p = points_oslo
     p = p.iloc[:100]
 
     p500 = gs.buff(p, 500)

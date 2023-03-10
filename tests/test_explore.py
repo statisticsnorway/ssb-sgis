@@ -15,8 +15,8 @@ import gis_utils as gs
 
 
 def not_test_explore():
-    roads = gpd.read_parquet(gs.roadpath)
-    points = gpd.read_parquet(gs.pointpath)
+    roads = roads_oslo
+    points = points_oslo
 
     p = points.iloc[[0]]
     roads = roads[["geometry"]]

@@ -11,8 +11,8 @@ sys.path.insert(0, src)
 import gis_utils as gs
 
 
-def test_distances():
-    p = gpd.read_parquet(gs.pointpath)
+def test_distances(points_oslo, roads_oslo):
+    p = points_oslo
 
     p["idx"] = p.index
     p["idx2"] = p.index
@@ -72,7 +72,9 @@ def test_distances():
 
 
 def main():
-    test_distances()
+    from oslo import points_oslo, roads_oslo
+
+    test_distances(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":

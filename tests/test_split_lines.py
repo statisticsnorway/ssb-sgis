@@ -15,15 +15,15 @@ sys.path.insert(0, src)
 import gis_utils as gs
 
 
-def test_split_lines():
+def test_split_lines(points_oslo, roads_oslo):
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     #    warnings.filterwarnings(action="ignore", category=UserWarning)
     pd.options.mode.chained_assignment = None
 
     ### READ FILES
 
-    points = gpd.read_parquet(gs.pointpath)
-    r = gpd.read_parquet(gs.roadpath)
+    points = points_oslo
+    r = roads_oslo
 
     r = gs.clean_clip(r, points.geometry.loc[0].buffer(700))
     points = gs.clean_clip(points, points.geometry.loc[0].buffer(700))
@@ -56,7 +56,9 @@ def test_split_lines():
 
 
 def main():
-    test_split_lines()
+    from oslo import points_oslo, roads_oslo
+
+    test_split_lines(points_oslo(), roads_oslo())
 
 
 # import cProfile

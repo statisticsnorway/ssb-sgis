@@ -12,13 +12,13 @@ sys.path.insert(0, src)
 import gis_utils as gs
 
 
-def test_node_ids():
-    p = gpd.read_parquet(gs.pointpath)
+def test_node_ids(points_oslo, roads_oslo):
+    p = points_oslo
     p = gs.clean_clip(p, p.geometry.iloc[0].buffer(500))
     p["idx"] = p.index
     p["idx2"] = p.index
 
-    r = gpd.read_parquet(gs.roadpath)
+    r = roads_oslo
     r = gs.clean_clip(r, p.geometry.iloc[0].buffer(600))
 
     r, nodes = gs.make_node_ids(r)
@@ -59,7 +59,9 @@ def main():
     """Check how many times make_node_ids is run."""
     import cProfile
 
-    test_node_ids()
+    from oslo import points_oslo, roads_oslo
+
+    test_node_ids(points_oslo(), roads_oslo())
     quit()
     cProfile.run("test_node_ids()", sort="cumtime")
 

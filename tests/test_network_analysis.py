@@ -15,7 +15,7 @@ sys.path.insert(0, src)
 import gis_utils as gs
 
 
-def test_network_analysis():
+def test_network_analysis(points_oslo, roads_oslo):
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     #    warnings.filterwarnings(action="ignore", category=UserWarning)
     pd.options.mode.chained_assignment = None
@@ -24,12 +24,12 @@ def test_network_analysis():
 
     ### READ FILES
 
-    p = gpd.read_parquet(gs.pointpath)
+    p = points_oslo
     p = gs.clean_clip(p, p.geometry.iloc[0].buffer(550))
     p["idx"] = p.index
     p["idx2"] = p.index
 
-    r = gpd.read_parquet(gs.roadpath)
+    r = roads_oslo
     r = gs.clean_clip(r, p.geometry.loc[0].buffer(650))
 
     def run_analyses(nwa, p):
@@ -191,11 +191,14 @@ def test_network_analysis():
 
 
 def main():
-    # test_network_analysis()
+    from oslo import points_oslo, roads_oslo
 
-    import cProfile
+    test_network_analysis(points_oslo(), roads_oslo())
 
-    cProfile.run("test_network_analysis()", sort="cumtime")
+
+#    import cProfile
+
+#   cProfile.run("test_network_analysis()", sort="cumtime")
 
 
 if __name__ == "__main__":

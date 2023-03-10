@@ -1,5 +1,7 @@
+from pathlib import Path
+
 import pytest
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame, GeoSeries, read_parquet
 
 from gis_utils import to_gdf
 
@@ -9,6 +11,16 @@ def gdf_fixture() -> GeoDataFrame:
     """Calling the testgdf function here so that testgdf can be
     imported when running test outside of pytest."""
     return testgdf()
+
+
+@pytest.fixture(scope="module")
+def points_oslo() -> GeoDataFrame:
+    return read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+
+
+@pytest.fixture(scope="module")
+def roads_oslo() -> GeoDataFrame:
+    return read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
 
 
 def testgdf(cols: str | None = None) -> GeoDataFrame:

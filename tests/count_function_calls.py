@@ -7,13 +7,13 @@ import geopandas as gpd
 import gis_utils as gs
 
 
-def count_function_calls():
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+def count_function_calls(points_oslo, roads_oslo):
+    p = points_oslo
     p = p.iloc[:50]
     p["idx"] = p.index
     p["idx2"] = p.index
 
-    r = gpd.read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    r = roads_oslo
 
     nw = gs.DirectedNetwork(r)
 
@@ -38,7 +38,9 @@ def count_function_calls():
 
 
 def main():
-    count_function_calls()
+    from oslo import points_oslo, roads_oslo
+
+    count_function_calls(points_oslo, roads_oslo)
     cProfile.run("count_function_calls()", sort="cumtime")
 
 

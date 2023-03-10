@@ -8,12 +8,12 @@ import geopandas as gpd
 import gis_utils as gs
 
 
-def test_close_network_holes():
+def test_close_network_holes(roads_oslo, points_oslo):
     warnings.filterwarnings(action="ignore", category=UserWarning)
     warnings.filterwarnings(action="ignore", category=FutureWarning)
 
-    r = gpd.read_parquet(gs.roadpath)
-    p = gpd.read_parquet(gs.pointpath)
+    r = roads_oslo
+    p = points_oslo
 
     p = p.iloc[[0]]
 
@@ -40,7 +40,9 @@ def test_close_network_holes():
 
 
 def main():
-    test_close_network_holes()
+    from oslo import points_oslo, roads_oslo
+
+    test_close_network_holes(roads_oslo(), points_oslo())
 
 
 if __name__ == "__main__":
