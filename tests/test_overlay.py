@@ -67,7 +67,9 @@ def test_overlay(points_oslo):
 
 
 def main():
-    test_overlay()
+    from oslo import points_oslo
+
+    test_overlay(points_oslo)
 
 
 if __name__ == "__main__":
