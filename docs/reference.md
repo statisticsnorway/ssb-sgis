@@ -51,6 +51,14 @@ gis\_utils.exceptions module
    :undoc-members:
    :show-inheritance:
 
+gis\_utils.explore module
+-------------------------
+
+.. automodule:: gis_utils.explore
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 gis\_utils.geopandas\_utils module
 ----------------------------------
 
@@ -59,10 +67,10 @@ gis\_utils.geopandas\_utils module
    :undoc-members:
    :show-inheritance:
 
-gis\_utils.get\_route module
-----------------------------
+gis\_utils.helpers module
+-------------------------
 
-.. automodule:: gis_utils.get_route
+.. automodule:: gis_utils.helpers
    :members:
    :undoc-members:
    :show-inheritance:
@@ -115,14 +123,6 @@ gis\_utils.networkanalysisrules module
    :undoc-members:
    :show-inheritance:
 
-gis\_utils.od\_cost\_matrix module
-----------------------------------
-
-.. automodule:: gis_utils.od_cost_matrix
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 gis\_utils.overlay module
 -------------------------
 
@@ -131,18 +131,10 @@ gis\_utils.overlay module
    :undoc-members:
    :show-inheritance:
 
-gis\_utils.points module
-------------------------
-
-.. automodule:: gis_utils.points
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-gis\_utils.service\_area module
+gis\_utils.read\_parquet module
 -------------------------------
 
-.. automodule:: gis_utils.service_area
+.. automodule:: gis_utils.read_parquet
    :members:
    :undoc-members:
    :show-inheritance:

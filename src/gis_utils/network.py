@@ -58,7 +58,7 @@ class Network:
 
     Attributes:
         gdf: the GeoDataFrame of lines
-        nodes: GeoDataFrame of points
+        gdf_nodes: GeoDataFrame of points
 
     See also:
         DirectedNetwork: subclass of Network for directed network analysis

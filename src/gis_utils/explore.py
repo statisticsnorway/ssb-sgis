@@ -223,7 +223,7 @@ class Explore:
         See also:
             samplemap: same functionality, but shows only a random area of a given size.
             clipmap: same functionality, but shows only the areas clipped by a given
-                mask.
+            mask.
 
         Examples
         --------
@@ -272,7 +272,7 @@ class Explore:
         See also:
             explore: same functionality, but shows the entire area of the geometries.
             clipmap: same functionality, but shows only the areas clipped by a given
-                mask.
+            mask.
         """
         if column:
             kwargs["column"] = column

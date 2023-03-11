@@ -148,7 +148,7 @@ class NetworkAnalysisRules:
     By default, the distance from origin/destination to the network nodes is given a
     weight of 0. This means, if the search_tolerance is high, points far away from the
     network will get unrealisticly low travel times/distances. This can be changed with
-    one of the 'weight_to_nodes_' parameters.
+    one of the ``weight_to_nodes_`` parameters.
 
     If the weight is 'minutes', you can set the speed for the travel between
     origin/destination and nodes, either in kilometers or miles per hour. What speed to

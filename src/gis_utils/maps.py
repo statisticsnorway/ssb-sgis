@@ -118,7 +118,7 @@ def samplemap(
 
     It takes all the GeoDataFrames specified, takes a random sample point, and shows
     all geometries within a given radius of this point. Displays an interactive map
-     with a common legend. The layers can be toggled on and off.
+    with a common legend. The layers can be toggled on and off.
 
     The radius to plot can be changed with the 'size' parameter.
 

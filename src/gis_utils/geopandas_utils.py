@@ -48,7 +48,6 @@ def close_holes(
 
     Examples
     --------
-
     Let's create a circle with a hole in it.
 
     >>> from gis_utils import close_holes, buff
@@ -119,9 +118,11 @@ def clean_geoms(
         GeoDataFrame or GeoSeries with fixed geometries and only the rows with valid,
         non-empty and not-NaN/-None geometries.
 
+    Raises:
+        TypeError: If incorrect gdf type.
+
     Examples
     --------
-
     Removing None and empty geometries.
 
     >>> from gis_utils import clean_geoms, to_gdf, gdf_concat
@@ -256,7 +257,6 @@ def snap_to(
 
     Examples
     --------
-
     Create som points.
 
     >>> from gis_utils import snap_to, to_gdf
@@ -410,7 +410,6 @@ def to_multipoint(
 
     Examples
     --------
-
     Let's create a GeoDataFrame with a point, a line and a polygon.
 
     >>> from gis_utils import to_multipoint, to_gdf
@@ -553,7 +552,6 @@ def to_single_geom_type(
 
     Examples
     --------
-
     Create a GeoDataFrame of mixed geometries.
 
     >>> from gis_utils import to_gdf, to_single_geom_type
@@ -697,7 +695,7 @@ def to_gdf(
 
     Examples
     --------
-    from gis_utils import to_gdf
+    >>> from gis_utils import to_gdf
     >>> wkt = "POINT (10 60)"
     >>> to_gdf(wkt, crs=4326)
                         geometry
