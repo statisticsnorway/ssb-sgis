@@ -177,7 +177,8 @@ class Network:
         --------
         Compare the number of rows.
 
-        >>> from gis_utils import Network
+        >>> from gis_utils import Network, read_parquet_url
+        >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
         >>> nw = Network(roads)
         >>> len(nw.gdf)
         93395

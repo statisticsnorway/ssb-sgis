@@ -12,10 +12,14 @@
 *.feather
 *.gz
 *.orig
+*.parquet
 *.sas7bdat
 *.xls
 *.xlsx
 *.zip
+
+# Allow .parquet files below the testdata directory
+!tests/testdata/**/*.parquet
 
 # Blaise
 *.bdix

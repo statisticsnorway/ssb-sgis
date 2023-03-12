@@ -181,6 +181,12 @@ poetry run sphinx-build docs docs/_build
 
 Then open the file `docs/_build/index.html`.
 
+To check and run the docstrings examples, run this command:
+
+```shell
+poetry run xdoctest --command=all ./src/gis_utils
+```
+
 <!-- github-only -->
 
 [license]: https://github.com/statisticsnorway/ssb-gis-utils/blob/main/LICENSE
