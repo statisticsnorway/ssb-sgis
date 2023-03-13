@@ -19,5 +19,5 @@ reference
 contributing
 Code of Conduct <codeofconduct>
 License <license>
-Changelog <https://github.com/statisticsnorway/ssb-gis-utils/releases>
+Changelog <https://github.com/statisticsnorway/ssb-sgis/releases>
 ```

@@ -82,13 +82,13 @@ def explore(
 
     Examples
     --------
-    >>> from gis_utils import read_parquet_url
-    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
-    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/random_points.parquet")
+    >>> from sgis import read_parquet_url
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
+    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/random_points.parquet")
 
     Simple explore of two GeoDataFrames.
 
-    >>> from gis_utils import explore
+    >>> from sgis import explore
     >>> explore(roads, points)
 
     With additional arguments.

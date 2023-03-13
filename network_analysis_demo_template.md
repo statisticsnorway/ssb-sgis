@@ -7,7 +7,7 @@
 #       format_name: percent
 ```
 
-## Network analysis in ssb-gis-utils
+## Network analysis in ssb-sgis
 
 ##### igraph integrated with geopandas
 
@@ -31,7 +31,7 @@ import pandas as pd
 
 os.chdir("../src")
 
-import gis_utils as gs
+import sgis as gs
 
 
 os.chdir("..")
@@ -1382,7 +1382,7 @@ rules = gs.NetworkAnalysisRules(weight="metres")
 nwa = gs.NetworkAnalysis(nw, rules=rules)
 ```
 
-    c:\Users\ort\git\ssb-gis-utils\src\gis_utils\directednetwork.py:257: UserWarning: Your network is likely not directed. Only 0.0 percent of the lines go both ways. Try setting direction_col='oneway' in the 'make_directed_network' method
+    c:\Users\ort\git\ssb-sgis\src\sgis\directednetwork.py:257: UserWarning: Your network is likely not directed. Only 0.0 percent of the lines go both ways. Try setting direction_col='oneway' in the 'make_directed_network' method
       warnings.warn(mess)
 
 To make this network bidirectional, roads going both ways have to be duplicated and flipped. Roads going the opposite way also need to be flipped.

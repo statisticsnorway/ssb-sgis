@@ -18,7 +18,7 @@ import pandas as pd
 
 
 os.chdir("../src")
-import gis_utils as gs
+import sgis as gs
 
 
 os.chdir("..")
@@ -30,7 +30,7 @@ warnings.filterwarnings(action="ignore", category=FutureWarning)
 # %%
 
 # %%
-from gis_utils import DirectedNetwork, NetworkAnalysis, NetworkAnalysisRules
+from sgis import DirectedNetwork, NetworkAnalysis, NetworkAnalysisRules
 
 
 roads = gpd.read_parquet("tests/testdata/roads_oslo_2022.parquet")
@@ -62,7 +62,7 @@ points = gpd.read_parquet("tests/testdata/random_points.parquet")
 #
 # All you need is a GeoDataFrame of roads or other line geometries.
 #
-# Here are some examples. More examples and info here: https://github.com/statisticsnorway/ssb-gis-utils/blob/main/network_analysis_demo_template.md
+# Here are some examples. More examples and info here: https://github.com/statisticsnorway/ssb-sgis/blob/main/network_analysis_demo_template.md
 
 # %% [markdown]
 # #### get_route_frequencies: get the number of times each line segment was visited

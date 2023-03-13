@@ -16,8 +16,8 @@ def read_parquet_url(url: str) -> GeoDataFrame:
 
     Examples
     --------
-    >>> from gis_utils import read_parquet_url
-    >>> url = "https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/random_points.parquet"
+    >>> from sgis import read_parquet_url
+    >>> url = "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/random_points.parquet"
     >>> points = read_parquet_url(url)
     >>> points
           idx                        geometry
@@ -35,7 +35,7 @@ def read_parquet_url(url: str) -> GeoDataFrame:
     <BLANKLINE>
     [1000 rows x 2 columns]
 
-    >>> url = "https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet"
+    >>> url = "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
     >>> roads = read_parquet_url(url)
     >>> roads
               linkid fromnode   tonode         streetname fromangle  ... estimateddrivetimebus_fw estimateddrivetimebus_bw lengde SHAPE_Length                                           geometry

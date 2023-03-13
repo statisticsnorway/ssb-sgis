@@ -4,7 +4,7 @@ from time import perf_counter
 
 import geopandas as gpd
 
-import gis_utils as gs
+import sgis as gs
 
 
 def not_test_get_components(roads_oslo, points_oslo):

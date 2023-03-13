@@ -13,7 +13,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
-import gis_utils as gs
+import sgis as gs
 
 
 def test_overlay(points_oslo):

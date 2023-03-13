@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, src)
 
-import gis_utils as gs
+import sgis as gs
 
 
 def not_test_explore(points_oslo, roads_oslo):

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import geopandas as gpd
 
-import gis_utils as gs
+import sgis as gs
 
 
 def count_function_calls(points_oslo, roads_oslo):

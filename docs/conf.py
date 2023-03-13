@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath("../src"))
 
 # -- Project information -----------------------------------------------------
 
-project = "ssb-gis-utils"
+project = "ssb-sgis"
 copyright = "2023, Statistics Norway"
 author = "Statistics Norway"
 

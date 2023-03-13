@@ -49,13 +49,13 @@ class NetworkAnalysis:
     --------
     Read testdata.
 
-    >>> from gis_utils import read_parquet_url
-    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
-    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/random_points.parquet")
+    >>> from sgis import read_parquet_url
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
+    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/random_points.parquet")
 
     Creating a NetworkAnalysis class instance.
 
-    >>> from gis_utils import DirectedNetwork, NetworkAnalysisRules, NetworkAnalysis
+    >>> from sgis import DirectedNetwork, NetworkAnalysisRules, NetworkAnalysis
     >>> nw = (
     ...     DirectedNetwork(roads)
     ...     .remove_isolated()

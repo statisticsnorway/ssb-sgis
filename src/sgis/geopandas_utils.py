@@ -50,7 +50,7 @@ def close_holes(
     --------
     Let's create a circle with a hole in it.
 
-    >>> from gis_utils import close_holes, buff
+    >>> from sgis import close_holes, buff
     >>> point = to_gdf([260000, 6650000], crs=25833)
     >>> point
                             geometry
@@ -125,7 +125,7 @@ def clean_geoms(
     --------
     Removing None and empty geometries.
 
-    >>> from gis_utils import clean_geoms, to_gdf, gdf_concat
+    >>> from sgis import clean_geoms, to_gdf, gdf_concat
     >>> import pandas as pd
     >>> from shapely import wkt
     >>> gdf = to_gdf([
@@ -259,7 +259,7 @@ def snap_to(
     --------
     Create som points.
 
-    >>> from gis_utils import snap_to, to_gdf
+    >>> from sgis import snap_to, to_gdf
     >>> points = to_gdf([(0, 0), (1, 1)])
     >>> points
                     geometry
@@ -412,7 +412,7 @@ def to_multipoint(
     --------
     Let's create a GeoDataFrame with a point, a line and a polygon.
 
-    >>> from gis_utils import to_multipoint, to_gdf
+    >>> from sgis import to_multipoint, to_gdf
     >>> from shapely.geometry import LineString, Polygon
     >>> gdf = to_gdf([
     ...     (0, 0),
@@ -554,7 +554,7 @@ def to_single_geom_type(
     --------
     Create a GeoDataFrame of mixed geometries.
 
-    >>> from gis_utils import to_gdf, to_single_geom_type
+    >>> from sgis import to_gdf, to_single_geom_type
     >>> from shapely.geometry import LineString, Polygon
     >>> gdf = to_gdf([
     ...     (0, 0),
@@ -695,7 +695,7 @@ def to_gdf(
 
     Examples
     --------
-    >>> from gis_utils import to_gdf
+    >>> from sgis import to_gdf
     >>> wkt = "POINT (10 60)"
     >>> to_gdf(wkt, crs=4326)
                         geometry

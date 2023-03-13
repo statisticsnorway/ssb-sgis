@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from geopandas import GeoDataFrame, GeoSeries, read_parquet
 
-from gis_utils import to_gdf
+from sgis import to_gdf
 
 
 @pytest.fixture(scope="module")
