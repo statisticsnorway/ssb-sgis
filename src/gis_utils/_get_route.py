@@ -26,10 +26,11 @@ def _get_route(
     k: int = 1,
     drop_middle_percent: int = 0,
 ):
-    """big, ugly super function that is used in the get_route, get_k_routes
-    and get_route_frequencies methods of the NetworkAnalysis class
-    """
+    """Super function used in the NetworkAnalysis class.
 
+    Big, ugly super function that is used in the get_route, get_k_routes
+    and get_route_frequencies methods of the NetworkAnalysis class.
+    """
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
     if k > 1:
@@ -157,11 +158,11 @@ def _run_get_k_routes(
     k: int,
     drop_middle_percent,
 ) -> list[GeoDataFrame]:
-    """igraph's get_k_shorest_paths doesn't seem to work (gives just the same path k
-    times), so doing it manually.
+    """Workaround for igraph's get_k_shortest_paths.
 
-    Run _run_get_route, then remove the edges in the middle of the route, given with
-    drop_middle_percent, repeat k times.
+    igraph's get_k_shorest_paths doesn't seem to work (gives just the same path k
+    times), so doing it manually. Run _run_get_route, then remove the edges in the
+    middle of the route, given with drop_middle_percent, repeat k times.
     """
     graph = graph.copy()
     lines = []

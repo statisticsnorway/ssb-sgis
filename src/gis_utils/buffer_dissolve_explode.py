@@ -5,8 +5,8 @@ Rules that apply to all functions in the module:
 
  - Fixes geometries after buffer and dissolve, but not after explode,
     since fixing geometries might result in multipart geometries.
- - Ignoring and reseting index by default. Columns containing 'index' or 'level_' are
-    removed.
+ - Ignoring and reseting index by default. Columns containing  ``index`` or ``level_``
+    are removed.
  - Input type can be GeoDataFrames, GeoSeries or shapely geometries, and the output
     type will be the same as the input.
 """
@@ -192,9 +192,6 @@ def buffdissexp(
     Returns:
         A buffered GeoDataFrame, GeoSeries or shapely Geometry where overlapping
         geometries are dissolved.
-
-    Raises:
-        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
     if isinstance(gdf, Geometry):
         return exp(diss(buff(gdf, distance, resolution=resolution)))
@@ -234,9 +231,6 @@ def dissexp(
     Returns:
         A GeoDataFrame, GeoSeries or shapely Geometry where overlapping geometries are
         dissolved.
-
-    Raises:
-        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
     gdf = diss(gdf, reset_index=reset_index, **dissolve_kwargs).pipe(
         exp, ignore_index=ignore_index
@@ -277,9 +271,6 @@ def buffdiss(
     Returns:
           A buffered GeoDataFrame, GeoSeries or shapely Geometry where all geometries
           are dissolved.
-
-    Raises:
-        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
     gdf = buff(gdf, distance, resolution=resolution, copy=copy).pipe(
         diss, reset_index=reset_index, **dissolve_kwargs

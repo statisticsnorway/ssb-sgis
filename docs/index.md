@@ -1,6 +1,8 @@
 ```{include} ../README.md
 ---
 end-before: <!-- github-only -->
+relative-docs: network_analysis_examples_files/
+relative-images:
 ---
 ```
 
@@ -10,7 +12,7 @@ end-before: <!-- github-only -->
 ```{toctree}
 ---
 hidden:
-maxdepth: 3
+maxdepth: 1
 ---
 
 reference

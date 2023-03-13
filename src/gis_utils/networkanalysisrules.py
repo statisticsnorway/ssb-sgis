@@ -22,7 +22,7 @@ class NetworkAnalysisRules:
     By default, the edges between the origins/destinations and closeby network
     nodes get a weight of 0. If you want to make the travel between the points
     and the network nodes count more than 0, you can specify one of the
-    'weight_to_nodes_' parameters. If the weight is 'meters', setting
+    ``weight_to_nodes_`` parameters. If the weight is 'meters', setting
     'weight_to_nodes_dist' to True will give these edges a weight equivelant to
     its length in a straight line. If the weight is 'minutes', you can set a speed
     for these edges in either kilometers or miles per hour. What speed to set depends
@@ -91,7 +91,7 @@ class NetworkAnalysisRules:
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=0, split_lines=False, ...)
+        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...)
     )
 
     Setting 'split_lines' to True, means the points will be connected to the closest
@@ -102,10 +102,10 @@ class NetworkAnalysisRules:
     >>> od = nwa.od_cost_matrix(points, points)
     >>> nwa.rules.split_lines = True
     >>> od = nwa.od_cost_matrix(points, points)
-    >>> nwa.log['split_lines', 'percent_missing', 'cost_mean']]
-    split_lines  percent_missing  cost_mean
+    >>> nwa.log[['split_lines', 'percent_missing', 'cost_mean']]
+       split_lines  percent_missing  cost_mean
     0        False           0.9966  15.270462
-    1         True           0.8973  15.327187
+    1         True           0.2995   3.306094
 
     Setting a high search_tolerance will make faraway points find their way to the
     network.
@@ -114,11 +114,11 @@ class NetworkAnalysisRules:
     ...     nwa.rules.search_tolerance = i
     ...     od = nwa.od_cost_matrix(points, points)
     >>> nwa.log.iloc[-4:][['percent_missing', 'cost_mean', 'search_tolerance', 'search_factor']]
-    percent_missing  cost_mean  search_tolerance  search_factor
-    0           2.3840  15.235559               100              0
-    1           0.9966  15.270462               250              0
-    2           0.5984  15.268614              1000              0
-    3           0.5984  15.268614              5000              0
+       percent_missing  cost_mean  search_tolerance  search_factor
+    2           2.2854  15.538083               100              0
+    3           0.7977  15.178683               250              0
+    4           0.6982  15.570546               500              0
+    5           0.4989  15.565538              1000              0
 
     High search_tolerance won't affect how the points close to the network are
     connected to network nodes. Points trapped behind deadend oneway streets, can find
@@ -129,26 +129,26 @@ class NetworkAnalysisRules:
     ...     nwa.rules.search_factor = i
     ...     od = nwa.od_cost_matrix(points, points)
     >>> nwa.log.iloc[-4:][['percent_missing', 'cost_mean', 'search_tolerance', 'search_factor']]
-    percent_missing  cost_mean  search_tolerance  search_factor
-    4           0.9966  15.270462               250              0
-    5           0.5987  15.063283               250             10
-    6           0.4991  14.636172               250             35
-    7           0.3994  13.680307               250            100
+       percent_missing  cost_mean  search_tolerance  search_factor
+    6           0.8973  15.566827               250              0
+    7           0.6983  15.375234               250             10
+    8           0.4991  14.890791               250             35
+    9           0.3994  13.910521               250            100
 
     The remaining 0.4 percent missing are from/to two points, one on an island with no
     brigde and one at the edge of the road network (would require a larger network).
     These two points only find themselves, and thus has 999 missing values.
 
     >>> nwa.origins.gdf.sort_values("missing").tail(3)
-        idx                        geometry temp_idx  missing
-    999  1000  POINT (264570.300 6644239.500)    80165          2
-    510   511  POINT (261319.300 6647824.800)    79676        999
-    59     60  POINT (271816.400 6650812.500)    79225        999
+          idx                        geometry temp_idx  missing
+    999  1000  POINT (264570.300 6644239.500)    80957        2
+    510   511  POINT (261319.300 6647824.800)    80468      999
+    59     60  POINT (271816.400 6650812.500)    80017      999
 
     By default, the distance from origin/destination to the network nodes is given a
     weight of 0. This means, if the search_tolerance is high, points far away from the
     network will get unrealisticly low travel times/distances. This can be changed with
-    one of the 'weight_to_nodes_' parameters.
+    one of the ``weight_to_nodes_`` parameters.
 
     If the weight is 'minutes', you can set the speed for the travel between
     origin/destination and nodes, either in kilometers or miles per hour. What speed to
@@ -160,10 +160,10 @@ class NetworkAnalysisRules:
     ...     od = nwa.od_cost_matrix(points, points)
     ...
     >>> nwa.log.iloc[-3:][['weight_to_nodes_kmh', 'cost_mean']]
-    weight_to_nodes_kmh  cost_mean
-    0                    3  16.259133
-    1                   10  15.565770
-    2                   50  15.328045
+       weight_to_nodes_kmh  cost_mean
+    10                   3  15.898794
+    11                  10  14.945977
+    12                  50  14.164665
 
     If the weight is 'meters', setting weight_to_nodes_dist=True will make the distance
     to nodes count as its straight line distance.
@@ -177,7 +177,7 @@ class NetworkAnalysisRules:
     >>> nwa.rules.weight_to_nodes_dist = True
     >>> od = nwa.od_cost_matrix(points, points)
     >>> nwa.log[['weight_to_nodes_dist', 'cost_mean']]
-    weight_to_nodes_dist     cost_mean
+       weight_to_nodes_dist     cost_mean
     0                 False  10228.400228
     1                  True  10277.926186
     """

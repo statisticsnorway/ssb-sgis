@@ -12,9 +12,9 @@ Here is a list of important resources for contributors:
 - [Code of Conduct]
 
 [mit license]: https://opensource.org/licenses/MIT
-[source code]: https://github.com/arneso-ssb/arneso-poetry-publish-test
+[source code]: https://github.com/statisticsnorway/ssb-gis-utils
 [documentation]: https://arneso-poetry-publish-test.readthedocs.io/
-[issue tracker]: https://github.com/arneso-ssb/arneso-poetry-publish-test/issues
+[issue tracker]: https://github.com/statisticsnorway/ssb-gis-utils/issues
 
 ## How to report a bug
 
@@ -37,7 +37,7 @@ Request features on the [Issue Tracker].
 
 ## How to set up your development environment
 
-You need Python 3.7+ and the following tools:
+You need Python 3.10+ and the following tools:
 
 - [Poetry]
 - [Nox]
@@ -108,7 +108,7 @@ $ nox --session=pre-commit -- install
 It is recommended to open an issue before starting work on anything.
 This will allow a chance to talk it over with the owners and validate your approach.
 
-[pull request]: https://github.com/arneso-ssb/arneso-poetry-publish-test/pulls
+[pull request]: https://github.com/statisticsnorway/ssb-gis-utils/pulls
 
 <!-- github-only -->
 
