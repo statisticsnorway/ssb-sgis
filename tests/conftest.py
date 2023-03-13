@@ -37,12 +37,11 @@ def testgdf(cols: str | None = None) -> GeoDataFrame:
     if isinstance(cols, str):
         cols = [cols]
 
-    if cols:
-        if not all(col in ["txtcol", "numcol", "geometry"] for col in cols):
-            raise ValueError(
-                "Wrong 'cols' value. Should be any of 'txtcol', 'numcol', "
-                f"'geometry'. Got {', '.join(cols)}"
-            )
+    if cols and not all(col in ["txtcol", "numcol", "geometry"] for col in cols):
+        raise ValueError(
+            "Wrong 'cols' value. Should be any of 'txtcol', 'numcol', "
+            f"'geometry'. Got {', '.join(cols)}"
+        )
 
     xs = [
         10.7497196,

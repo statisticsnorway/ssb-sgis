@@ -13,7 +13,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
-import sgis as gs
+import sgis as sg
 
 
 def test_overlay(points_oslo):
@@ -22,13 +22,17 @@ def test_overlay(points_oslo):
     p = points_oslo
     p = p.iloc[:100]
 
-    p500 = gs.buff(p, 500)
-    p1000 = gs.buff(p, 1000)
+    p500 = sg.buff(p, 500)
+    p1000 = sg.buff(p, 1000)
 
-    updated = gs.overlay_update(p500, p1000)
-    gs.qtm(updated)
-    updated = gs.overlay_update(p1000, p500)
-    gs.qtm(updated)
+    updated = sg.overlay_update(p500, p1000)
+    if __name__ == "__main__":
+        updated["area_"] = updated.area
+        sg.qtm(updated, "area_")
+    updated = sg.overlay_update(p1000, p500)
+    if __name__ == "__main__":
+        updated["area_"] = updated.area
+        sg.qtm(updated, "area_")
 
     for how in [
         "intersection",
@@ -38,11 +42,11 @@ def test_overlay(points_oslo):
         "identity",
     ]:
         overlayed = (
-            gs.clean_geoms(p500)
+            sg.clean_geoms(p500)
             .explode(ignore_index=True)
-            .overlay(gs.clean_geoms(p1000).explode(ignore_index=True), how=how)
+            .overlay(sg.clean_geoms(p1000).explode(ignore_index=True), how=how)
         )
-        overlayed2 = gs.clean_shapely_overlay(p500, p1000, how=how)
+        overlayed2 = sg.clean_shapely_overlay(p500, p1000, how=how)
 
         if len(overlayed) != len(overlayed2):
             raise ValueError(how, len(overlayed), len(overlayed2))
@@ -57,8 +61,8 @@ def test_overlay(points_oslo):
                     round(sum(overlayed2.area), i),
                 )
 
-            gs.overlay(p500, p1000, how=how, geom_type="polygon")
-            gs.clean_shapely_overlay(
+            sg.overlay(p500, p1000, how=how, geom_type="polygon")
+            sg.clean_shapely_overlay(
                 p500.sample(1),
                 p1000.sample(1),
                 how=how,
@@ -69,7 +73,7 @@ def test_overlay(points_oslo):
 def main():
     from oslo import points_oslo
 
-    test_overlay(points_oslo)
+    test_overlay(points_oslo())
 
 
 if __name__ == "__main__":

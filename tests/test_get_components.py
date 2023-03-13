@@ -4,7 +4,7 @@ from time import perf_counter
 
 import geopandas as gpd
 
-import sgis as gs
+import sgis as sg
 
 
 def not_test_get_components(roads_oslo, points_oslo):
@@ -13,12 +13,12 @@ def not_test_get_components(roads_oslo, points_oslo):
     p["idx2"] = p.index
 
     r = roads_oslo
-    nw = gs.DirectedNetwork(r)
+    nw = sg.DirectedNetwork(r)
 
     nw = nw.get_component_size()
-    gs.qtm(
+    sg.qtm(
         nw.gdf.loc[nw.gdf.component_size != max(nw.gdf.component_size)].sjoin(
-            gs.buff(p, 1000)
+            sg.buff(p, 1000)
         ),
         "component_size",
         scheme="quantiles",
@@ -30,8 +30,8 @@ def not_test_get_components(roads_oslo, points_oslo):
     print("n", sum(nw.gdf.connected == 0))
     print("time get_largest_component: ", perf_counter() - _time)
 
-    gs.qtm(
-        nw.gdf.sjoin(gs.buff(p, 1000)), "connected", cmap="bwr", scheme="equalinterval"
+    sg.qtm(
+        nw.gdf.sjoin(sg.buff(p, 1000)), "connected", cmap="bwr", scheme="equalinterval"
     )
 
 

@@ -2,7 +2,7 @@ import numpy as np
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 
-from .distances import get_k_nearest_neighbors
+from .neighbours import get_k_nearest_neighbors
 from .helpers import return_two_vals
 from .networkanalysisrules import NetworkAnalysisRules
 

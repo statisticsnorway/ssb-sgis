@@ -8,7 +8,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
-import sgis as gs
+import sgis as sg
 
 
 def test_distances(points_oslo, roads_oslo):
@@ -17,7 +17,7 @@ def test_distances(points_oslo, roads_oslo):
     p["idx"] = p.index
     p["idx2"] = p.index
 
-    df = gs.get_k_nearest_neighbors(
+    df = sg.get_k_nearest_neighbors(
         gdf=p,
         neighbors=p,
         k=50,
@@ -27,7 +27,7 @@ def test_distances(points_oslo, roads_oslo):
 
     assert len(df) == len(p) * 50 - len(p)
 
-    df = gs.get_k_nearest_neighbors(
+    df = sg.get_k_nearest_neighbors(
         gdf=p,
         neighbors=p,
         k=50,
@@ -38,7 +38,7 @@ def test_distances(points_oslo, roads_oslo):
 
     assert len(df) == len(p) * 50
 
-    df = gs.get_k_nearest_neighbors(
+    df = sg.get_k_nearest_neighbors(
         gdf=p,
         neighbors=p,
         k=10_000,
@@ -49,7 +49,7 @@ def test_distances(points_oslo, roads_oslo):
     assert len(df) == len(p) * len(p) - len(p)
 
     try:
-        df = gs.get_k_nearest_neighbors(
+        df = sg.get_k_nearest_neighbors(
             gdf=p,
             neighbors=p,
             k=10_000,
@@ -60,7 +60,7 @@ def test_distances(points_oslo, roads_oslo):
     except ValueError:
         pass
 
-    df = gs.get_k_nearest_neighbors(
+    df = sg.get_k_nearest_neighbors(
         gdf=p,
         neighbors=p,
         k=100,

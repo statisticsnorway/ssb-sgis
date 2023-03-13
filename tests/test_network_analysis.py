@@ -12,7 +12,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
-import sgis as gs
+import sgis as sg
 
 
 def test_network_analysis(points_oslo, roads_oslo):
@@ -25,16 +25,16 @@ def test_network_analysis(points_oslo, roads_oslo):
     ### READ FILES
 
     p = points_oslo
-    p = gs.clean_clip(p, p.geometry.iloc[0].buffer(550))
+    p = sg.clean_clip(p, p.geometry.iloc[0].buffer(700))
     p["idx"] = p.index
     p["idx2"] = p.index
 
     r = roads_oslo
-    r = gs.clean_clip(r, p.geometry.loc[0].buffer(650))
+    r = sg.clean_clip(r, p.geometry.loc[0].buffer(750))
 
     def run_analyses(nwa, p):
         x = nwa.get_route_frequencies(p.loc[p.idx == 0], p.sample(7))
-        gs.qtm(x, "n")
+        sg.qtm(x, "n")
 
         ### OD COST MATRIX
 
@@ -54,12 +54,16 @@ def test_network_analysis(points_oslo, roads_oslo):
             ]
         )
 
+        assert all(nwa.log["percent_missing"] == 0)
+        assert all(nwa.log["cost_mean"] < 3)
+        assert all(nwa.log["cost_mean"] > 0)
+
         od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
 
         p1 = nwa.origins.gdf
         p1 = p1.loc[[p1.missing.idxmin()]].sample(1).idx.values[0]
 
-        gs.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
+        sg.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
 
         od2 = nwa.od_cost_matrix(p, p, destination_count=3)
 
@@ -85,22 +89,22 @@ def test_network_analysis(points_oslo, roads_oslo):
         nwa.rules.split_lines = False
 
         sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
-        gs.qtm(sp)
+        sg.qtm(sp)
         nwa.rules.split_lines = True
         sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
-        gs.qtm(sp)
+        sg.qtm(sp)
         sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
-        gs.qtm(sp)
+        sg.qtm(sp)
 
         nwa.rules.split_lines = False
         sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
-        gs.qtm(sp)
+        sg.qtm(sp)
         nwa.rules.split_lines = True
         sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
-        gs.qtm(sp)
+        sg.qtm(sp)
 
         sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
-        gs.qtm(sp)
+        sg.qtm(sp)
 
         ### GET K ROUTES
 
@@ -110,33 +114,37 @@ def test_network_analysis(points_oslo, roads_oslo):
             sp = nwa.get_k_routes(
                 p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
             )
-            gs.qtm(sp, "k")
+            sg.qtm(sp, "k")
 
+        n = 0
         for x in [-1, 101]:
             try:
                 sp = nwa.get_k_routes(
                     p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
                 )
-                gs.qtm(sp, "k")
+                sg.qtm(sp, "k")
             except ValueError:
-                print("get_k_routes works as expected", x)
+                n += 1
+                print("drop_middle_percent works as expected", x)
+
+        assert n == 2
 
         i += 1
         sp = nwa.get_k_routes(
             p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=50, id_col="idx"
         )
         print(sp)
-        gs.qtm(sp)
+        sg.qtm(sp)
 
         sp = nwa.get_k_routes(p.iloc[[0]], p, k=5, drop_middle_percent=50, id_col="idx")
-        gs.qtm(sp)
+        sg.qtm(sp)
 
         ### GET ROUTE FREQUENCIES
         print(len(p))
         print(len(p))
         print(len(p))
         sp = nwa.get_route_frequencies(p.iloc[[0]], p)
-        gs.qtm(sp)
+        sg.qtm(sp)
 
         ### SERVICE AREA
 
@@ -147,59 +155,61 @@ def test_network_analysis(points_oslo, roads_oslo):
         sa = sa.drop_duplicates(["source", "target"])
 
         print(len(sa))
-        gs.qtm(sa)
+        sg.qtm(sa)
 
         sa = nwa.service_area(p.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
         print(sa.columns)
         sa = sa.sort_values("minutes", ascending=False)
-        gs.qtm(sa, "minutes", k=10)
+        sg.qtm(sa, "minutes", k=10)
 
     ### MAKE THE ANALYSIS CLASS
     nw = (
-        gs.DirectedNetwork(r)
+        sg.DirectedNetwork(r)
         .make_directed_network_norway(minute_cols=("drivetime_fw", "drivetime_bw"))
         .close_network_holes(1.1, fillna=0, deadends_only=False)
         .get_largest_component()
     )
-    gs.qtm(nw.gdf, "connected", scheme="equalinterval")
-    gs.qtm(nw.gdf, "hole")
+    sg.qtm(nw.gdf, "connected", scheme="equalinterval")
+    sg.qtm(nw.gdf, "hole")
     print(nw.gdf.hole.value_counts())
 
     nw = nw.remove_isolated()
 
-    rules = gs.NetworkAnalysisRules(
+    rules = sg.NetworkAnalysisRules(
         weight="minutes",
         split_lines=split_lines,
     )
 
-    nwa = gs.NetworkAnalysis(nw, rules=rules)
+    nwa = sg.NetworkAnalysis(nw, rules=rules)
     print(nwa)
 
     run_analyses(nwa, p)
 
-    nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
+    nw = sg.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
 
-    rules = gs.NetworkAnalysisRules(
+    rules = sg.NetworkAnalysisRules(
         weight="minutes",
         split_lines=split_lines,
     )
 
-    nwa = gs.NetworkAnalysis(nw, rules=rules)
+    nwa = sg.NetworkAnalysis(nw, rules=rules)
     print(nwa)
 
     run_analyses(nwa, p)
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    roads_oslo = sg.read_parquet_url(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet"
+    )
+    points_oslo = sg.read_parquet_url(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/random_points.parquet"
+    )
 
-    test_network_analysis(points_oslo(), roads_oslo())
-
-
-#    import cProfile
-
-#   cProfile.run("test_network_analysis()", sort="cumtime")
+    test_network_analysis(points_oslo, roads_oslo)
 
 
 if __name__ == "__main__":
+    # import cProfile
+    # cProfile.run("main()", sort="cumtime")
     main()

@@ -21,8 +21,8 @@ from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
 from .buffer_dissolve_explode import buff
-from .distances import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbours
-from .geopandas_utils import gdf_concat, push_geom_col, snap_to
+from .neighbours import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbours
+from .geopandas_utils import gdf_concat, push_geom_col, snap_to, to_gdf
 
 
 def get_largest_component(lines: GeoDataFrame) -> GeoDataFrame:
@@ -140,7 +140,7 @@ def split_lines_at_closest_point(
     relevant_lines = lines.loc[condition]
     the_other_lines = lines.loc[~condition]
 
-    # we need consistent coordinate dimensions later
+    # need consistent coordinate dimensions later
     # (doing it down here to not overwrite the original data)
     relevant_lines.geometry = force_2d(relevant_lines.geometry)
     snapped.geometry = force_2d(snapped.geometry)
@@ -162,19 +162,20 @@ def split_lines_at_closest_point(
     splitted = make_edge_coords_cols(splitted)
 
     # create geodataframes with the source and target points as geometries
-    def _splitgdf(gdf, lines, col):
-        return GeoDataFrame(
-            {
-                "splitidx": gdf["splitidx"].reset_index(drop=True),
-                "geometry": GeoSeries(
-                    map(Point, gdf[col]),
-                    crs=lines.crs,
-                ),
-            }
-        )
-
-    splitted_source = _splitgdf(splitted, lines, "source_coords")
-    splitted_target = _splitgdf(splitted, lines, "target_coords")
+    splitted_source = to_gdf(
+        {
+            "splitidx": splitted["splitidx"],
+            "geometry": splitted["source_coords"],
+        },
+        crs=lines.crs,
+    )
+    splitted_target = to_gdf(
+        {
+            "splitidx": splitted["splitidx"],
+            "geometry": splitted["target_coords"],
+        },
+        crs=lines.crs,
+    )
 
     # find the nearest snapped point for each source and target of the lines
     # low 'max_dist' makes sure we only get either source or target of the split lines
@@ -216,7 +217,7 @@ def split_lines_at_closest_point(
         line = splitted.loc[idx, "geometry"]
         coordslist = list(line.coords)
         coordslist[0] = splitdict_source[idx]
-        splitted.loc[splitted.splitidx == idx, "geometry"] = LineString(coordslist)
+        splitted.loc[idx, "geometry"] = LineString(coordslist)
 
     # same for the lines where the target was split, but change the last point of the
     # line
@@ -224,7 +225,7 @@ def split_lines_at_closest_point(
         line = splitted.loc[idx, "geometry"]
         coordslist = list(line.coords)
         coordslist[-1] = splitdict_target[idx]
-        splitted.loc[splitted.splitidx == idx, "geometry"] = LineString(coordslist)
+        splitted.loc[idx, "geometry"] = LineString(coordslist)
 
     splitted["splitted"] = 1
 

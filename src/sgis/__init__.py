@@ -1,14 +1,20 @@
 # flake8: noqa: F401
 from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
 from .directednetwork import DirectedNetwork
-from .distances import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbors
+from .neighbours import (
+    coordinate_array,
+    get_neighbours,
+    get_k_nearest_neighbours,
+    k_nearest_neighbours,
+    get_neighbors,
+    get_k_nearest_neighbors,
+    k_nearest_neighbors,
+)
 from .explore import Explore
 from .geopandas_utils import (
     clean_clip,
     clean_geoms,
     close_holes,
-    find_neighbors,
-    find_neighbours,
     gdf_concat,
     push_geom_col,
     random_points,
