@@ -1,20 +1,20 @@
 [tool.poetry]
-name = "ssb-gis-utils"
+name = "ssb-sgis"
 version = "0.1.0"
 description = "GIS utility functions used at Statistics Norway."
 authors = ["Statistics Norway <ort@ssb.no>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "gis_utils", from = "src"}]
-homepage = "https://github.com/statisticsnorway/ssb-gis-utils"
-repository = "https://github.com/statisticsnorway/ssb-gis-utils"
+packages = [{include = "sgis", from = "src"}]
+homepage = "https://github.com/statisticsnorway/ssb-sgis"
+repository = "https://github.com/statisticsnorway/ssb-sgis"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Topic :: Scientific/Engineering :: GIS",
 ]
 
 [tool.poetry.urls]
-Changelog = "https://github.com/statisticsnorway/ssb-gis-utils/releases"
+Changelog = "https://github.com/statisticsnorway/ssb-sgis/releases"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
@@ -69,7 +69,7 @@ tests = ["tests", "*/tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["gis_utils", "tests"]
+source = ["sgis", "tests"]
 
 [tool.coverage.report]
 show_missing = true

@@ -36,8 +36,8 @@ class DirectedNetwork(Network):
     --------
     Read testdata.
 
-    >>> from gis_utils import read_parquet_url
-    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
+    >>> from sgis import read_parquet_url
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
 
     Create a DirectedNetwork instance. Notice the percent_bidirectional.
 

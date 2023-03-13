@@ -1,25 +1,25 @@
-# ssb-gis-utils
+# ssb-sgis
 
 GIS utility functions used in [Statistics Norway](https://www.ssb.no/en).
 
-[![PyPI](https://img.shields.io/pypi/v/ssb-gis-utils.svg)][pypi_]
-[![Status](https://img.shields.io/pypi/status/ssb-gis-utils.svg)][status]
-[![Python Version](https://img.shields.io/pypi/pyversions/ssb-gis-utils)][python version]
-[![License](https://img.shields.io/pypi/l/ssb-gis-utils)][license]
+[![PyPI](https://img.shields.io/pypi/v/ssb-sgis.svg)][pypi_]
+[![Status](https://img.shields.io/pypi/status/ssb-sgis.svg)][status]
+[![Python Version](https://img.shields.io/pypi/pyversions/ssb-sgis)][python version]
+[![License](https://img.shields.io/pypi/l/ssb-sgis)][license]
 
-[![Read the documentation at https://ssb-gis-utils.readthedocs.io/](https://img.shields.io/readthedocs/ssb-gis-utils/latest.svg?label=Read%20the%20Docs)][read the docs]
-[![Tests](https://github.com/statisticsnorway/ssb-gis-utils/workflows/Tests/badge.svg)][tests]
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=statisticsnorway_ssb-gis-utils&metric=coverage)][coverage]
+[![Read the documentation at https://ssb-sgis.readthedocs.io/](https://img.shields.io/readthedocs/ssb-sgis/latest.svg?label=Read%20the%20Docs)][read the docs]
+[![Tests](https://github.com/statisticsnorway/ssb-sgis/workflows/Tests/badge.svg)][tests]
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=statisticsnorway_ssb-sgis&metric=coverage)][coverage]
 
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)][pre-commit]
 [![Black](https://img.shields.io/badge/code%20style-black-000000.svg)][black]
 
-[pypi_]: https://pypi.org/project/ssb-gis-utils/
-[status]: https://pypi.org/project/ssb-gis-utils/
-[python version]: https://pypi.org/project/ssb-gis-utils
-[read the docs]: https://ssb-gis-utils.readthedocs.io/
-[tests]: https://github.com/statisticsnorway/ssb-gis-utils/actions?workflow=Tests
-[coverage]: https://sonarcloud.io/component_measures?metric=coverage&id=statisticsnorway_ssb-gis-utils
+[pypi_]: https://pypi.org/project/ssb-sgis/
+[status]: https://pypi.org/project/ssb-sgis/
+[python version]: https://pypi.org/project/ssb-sgis
+[read the docs]: https://ssb-sgis.readthedocs.io/
+[tests]: https://github.com/statisticsnorway/ssb-sgis/actions?workflow=Tests
+[coverage]: https://sonarcloud.io/component_measures?metric=coverage&id=statisticsnorway_ssb-sgis
 [pre-commit]: https://github.com/pre-commit/pre-commit
 [black]: https://github.com/psf/black
 
@@ -31,7 +31,7 @@ calculate travel times, routes, frequencies and service areas.
 All you need is a GeoDataFrame of roads or other line geometries.
 
 Here are some examples. More examples and info
-[here](https://github.com/statisticsnorway/ssb-gis-utils/blob/main/network_analysis_demo_template.md).
+[here](https://github.com/statisticsnorway/ssb-sgis/blob/main/network_analysis_demo_template.md).
 
 ### get_route_frequencies
 
@@ -184,10 +184,10 @@ Then open the file `docs/_build/index.html`.
 To check and run the docstrings examples, run this command:
 
 ```shell
-poetry run xdoctest --command=all ./src/gis_utils
+poetry run xdoctest --command=all ./src/sgis
 ```
 
 <!-- github-only -->
 
-[license]: https://github.com/statisticsnorway/ssb-gis-utils/blob/main/LICENSE
-[contributor guide]: https://github.com/statisticsnorway/ssb-gis-utils/blob/main/CONTRIBUTING.md
+[license]: https://github.com/statisticsnorway/ssb-sgis/blob/main/LICENSE
+[contributor guide]: https://github.com/statisticsnorway/ssb-sgis/blob/main/CONTRIBUTING.md

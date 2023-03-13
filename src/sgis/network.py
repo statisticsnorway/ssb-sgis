@@ -67,8 +67,8 @@ class Network:
     --------
     Read testdata.
 
-    >>> from gis_utils import read_parquet_url
-    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
+    >>> from sgis import read_parquet_url
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
     >>> nw = Network(roads)
     >>> nw
     Network(3851 km, undirected)
@@ -177,8 +177,8 @@ class Network:
         --------
         Compare the number of rows.
 
-        >>> from gis_utils import Network, read_parquet_url
-        >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-gis-utils/main/tests/testdata/roads_oslo_2022.parquet")
+        >>> from sgis import Network, read_parquet_url
+        >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
         >>> nw = Network(roads)
         >>> len(nw.gdf)
         93395

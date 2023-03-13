@@ -3,18 +3,18 @@ import shutil
 import subprocess
 
 
-if "gis_utils" in os.listdir():
+if "sgis" in os.listdir():
     os.chdir("tests")
-elif "ssb-gis-utils" in os.listdir():
-    os.chdir("ssb-gis-utils/tests")
+elif "ssb-sgis" in os.listdir():
+    os.chdir("ssb-sgis/tests")
 else:
     n = 0
-    while "ssb-gis-utils" not in os.listdir():
+    while "ssb-sgis" not in os.listdir():
         os.chdir("..")
         n += 1
         if n == 10:
             break
-    os.chdir("ssb-gis-utils/tests")
+    os.chdir("ssb-sgis/tests")
 
 
 def py_to_md(

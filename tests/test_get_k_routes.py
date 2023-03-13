@@ -12,7 +12,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
-import gis_utils as gs
+import sgis as gs
 
 
 def not_test_network_analysis(roads_oslo, points_oslo):

@@ -5,7 +5,7 @@ from time import perf_counter
 
 import geopandas as gpd
 
-import gis_utils as gs
+import sgis as gs
 
 
 def test_close_network_holes(roads_oslo, points_oslo):

@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 # %% [markdown]
-# ## Network analysis in ssb-gis-utils
+# ## Network analysis in ssb-sgis
 # ##### igraph integrated with geopandas
 
 # The package supports three types of network analysis, and methods for customising and optimising your road data.
@@ -27,7 +27,7 @@ import pandas as pd
 
 os.chdir("../src")
 
-import gis_utils as gs
+import sgis as gs
 
 
 os.chdir("..")
