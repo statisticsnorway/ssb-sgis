@@ -5,7 +5,7 @@ from time import perf_counter
 
 import geopandas as gpd
 
-import sgis as gs
+import sgis as sg
 
 
 def test_close_network_holes(roads_oslo, points_oslo):
@@ -17,9 +17,9 @@ def test_close_network_holes(roads_oslo, points_oslo):
 
     p = p.iloc[[0]]
 
-    r = gs.clean_clip(r, p.buffer(600))
+    r = sg.clean_clip(r, p.buffer(600))
 
-    nw = gs.Network(r)
+    nw = sg.Network(r)
 
     nw = nw.get_largest_component()
     len_now = len(nw.gdf)

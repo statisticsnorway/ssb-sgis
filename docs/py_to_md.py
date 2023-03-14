@@ -4,9 +4,9 @@ import subprocess
 
 
 if "sgis" in os.listdir():
-    os.chdir("tests")
+    os.chdir("docs")
 elif "ssb-sgis" in os.listdir():
-    os.chdir("ssb-sgis/tests")
+    os.chdir("ssb-sgis/docs")
 else:
     n = 0
     while "ssb-sgis" not in os.listdir():
@@ -14,7 +14,7 @@ else:
         n += 1
         if n == 10:
             break
-    os.chdir("ssb-sgis/tests")
+    os.chdir("ssb-sgis/docs")
 
 
 def py_to_md(
@@ -50,8 +50,7 @@ def py_to_md(
             print(md_file)
             print(png_folder)
 
-
-#   os.remove(nb_file)
+    os.remove(nb_file)
 
 
 def clean_up_md(file: str):
@@ -80,9 +79,9 @@ def clean_up_md(file: str):
 
 
 file = "network_analysis_examples"
-py_to_md(file, move_n_folders_up=1)
+py_to_md(file, move_n_folders_up=0)
 clean_up_md("../" + file + ".md")
 
 file = "network_analysis_demo_template"
-py_to_md(file, move_n_folders_up=1)
+py_to_md(file, move_n_folders_up=0)
 clean_up_md("../" + file + ".md")

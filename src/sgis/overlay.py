@@ -28,8 +28,7 @@ def overlay(
     """Overlay that bypasses a GEOSException raised by geopandas.overlay.
 
     First fixes geometries and tries a regular geopandas.overlay. If it is
-    unsuccessful, tries a solution inspired by:
-    https://github.com/geopandas/geopandas/issues/2792. This solution avoids the reduce
+    unsuccessful, tries a solution from GH 2792. This solution avoids the reduce
     function and bypasses GEOSExceptions raised in the regular geopandas.overlay.
 
     Like in geopandas, the default is to keep only the geometry type of df1. If

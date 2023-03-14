@@ -1,10 +1,7 @@
 # %%
 import cProfile
-from pathlib import Path
 
-import geopandas as gpd
-
-import sgis as gs
+import sgis as sg
 
 
 def count_function_calls(points_oslo, roads_oslo):
@@ -15,7 +12,7 @@ def count_function_calls(points_oslo, roads_oslo):
 
     r = roads_oslo
 
-    nw = gs.DirectedNetwork(r)
+    nw = sg.DirectedNetwork(r)
 
     nw = nw.remove_isolated()
     nw.make_directed_network_norway()
@@ -28,8 +25,8 @@ def count_function_calls(points_oslo, roads_oslo):
         .cut_lines(250)
     )
 
-    rules = gs.NetworkAnalysisRules(weight="minutes")
-    nwa = gs.NetworkAnalysis(nw, rules=rules)
+    rules = sg.NetworkAnalysisRules(weight="minutes")
+    nwa = sg.NetworkAnalysis(nw, rules=rules)
     nwa.network = nwa.network.get_component_size()
     nwa.network = nwa.network.remove_isolated()
 

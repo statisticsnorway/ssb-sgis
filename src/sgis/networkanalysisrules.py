@@ -76,7 +76,7 @@ class NetworkAnalysisRules:
 
     >>> from sgis import read_parquet_url
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/random_points.parquet")
+    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
 
     Let's start by setting the default rules. 'weight' is the only parameter with no
     default.

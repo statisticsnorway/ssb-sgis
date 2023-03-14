@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, src)
 
-import sgis as gs
+import sgis as sg
 
 
 def osm_api():
@@ -46,7 +46,7 @@ def not_test_osm():
     r = gpd.read_file(osm_path, engine="pyogrio", bbox=oslo)
     r = r.to_crs(25833)
 
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "points_oslo.parquet")
     p["idx"] = p.index
     p["idx2"] = p.index
     print(p.idx)
@@ -60,7 +60,7 @@ def not_test_osm():
     for t1 in [True, False]:
         for t2 in [True, False]:
             nw = (
-                gs.DirectedNetwork(r)
+                sg.DirectedNetwork(r)
                 .remove_isolated()
                 .make_directed_network(
                     direction_col="oneway",
@@ -71,15 +71,15 @@ def not_test_osm():
                     reverse2=t2,
                 )
             )
-            rules = gs.NetworkAnalysisRules(weight="meters", split_lines=split_lines)
-            nwa = gs.NetworkAnalysis(nw, rules=rules)
+            rules = sg.NetworkAnalysisRules(weight="meters", split_lines=split_lines)
+            nwa = sg.NetworkAnalysis(nw, rules=rules)
 
             ### OD COST MATRIX
 
             freq = nwa.get_route_frequencies(p.sample(75), p.sample(75))
 
-            gs.qtm(
-                gs.buff(freq, 15),
+            sg.qtm(
+                sg.buff(freq, 15),
                 "n",
                 scheme="naturalbreaks",
                 cmap="plasma",

@@ -27,7 +27,7 @@ import pandas as pd
 
 os.chdir("../src")
 
-import sgis as gs
+import sgis as sg
 
 
 os.chdir("..")
@@ -44,26 +44,28 @@ warnings.filterwarnings(action="ignore", category=FutureWarning)
 # The rules can be instantiated like this:
 # %%
 
-rules = gs.NetworkAnalysisRules(weight="minutes")
+rules = sg.NetworkAnalysisRules(weight="minutes")
 rules
 # %% [markdown]
 # To create the network, we need some road data:
 # %%
 
-roads = gpd.read_parquet("tests/testdata/roads_oslo_2022.parquet")
+roads = sg.read_parquet_url(
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
+)
 roads = roads[["oneway", "drivetime_fw", "drivetime_bw", "geometry"]]
 roads.head(3)
 # %% [markdown]
 # The road data can be made into a Network instance like this:
 # %%
 nw = (
-    gs.Network(roads)
+    sg.Network(roads)
     .close_network_holes(1.5, fillna=0)
     .remove_isolated()
     .cut_lines(100)
 )
 
-nw = gs.Network(roads)
+nw = sg.Network(roads)
 nw
 # %% [markdown]
 # The Network is now ready for undirected network analysis. The network can also be optimises with methods stored in the Network class. More about this further down in this notebook.
@@ -75,7 +77,7 @@ nw
 # For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.
 # %%
 
-nw = gs.DirectedNetwork(roads).remove_isolated()
+nw = sg.DirectedNetwork(roads).remove_isolated()
 nw
 # %% [markdown]
 # We now have a DirectedNetwork instance. However, the network isn't actually directed yet, as indicated by the percent_bidirectional attribute above.
@@ -99,7 +101,7 @@ nw
 # Norwegian road data can be made directional with a custom method:
 # %%
 
-nw = gs.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
 nw
 # %% [markdown]
 # ## NetworkAnalysis
@@ -107,13 +109,15 @@ nw
 # To start the network analysis, we put our network and our rules into the NetworkAnalysis class:
 # %%
 
-nwa = gs.NetworkAnalysis(network=nw, rules=rules)
+nwa = sg.NetworkAnalysis(network=nw, rules=rules)
 nwa
 # %% [markdown]
 # We also need some points that will be our origins and destinations:
 # %%
 
-points = gpd.read_parquet("tests/testdata/random_points.parquet")
+points = sg.read_parquet_url(
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+)
 points
 # %% [markdown]
 # ### OD cost matrix
@@ -150,7 +154,7 @@ nwa.log
 routes = nwa.get_route(points.iloc[[0]], points.sample(100), id_col="idx")
 
 gs.qtm(
-    gs.buff(routes, 12),
+    sg.buff(routes, 12),
     "minutes",
     cmap="plasma",
     title="Travel times (minutes)",
@@ -167,7 +171,7 @@ pointsample = points.sample(100)
 freq = nwa.get_route_frequencies(pointsample, pointsample)
 
 gs.qtm(
-    gs.buff(freq, 15),
+    sg.buff(freq, 15),
     "n",
     scheme="naturalbreaks",
     cmap="plasma",
@@ -182,7 +186,7 @@ nwa.rules.weight = "meters"
 freq = nwa.get_route_frequencies(pointsample, pointsample)
 
 gs.qtm(
-    gs.buff(freq, 15),
+    sg.buff(freq, 15),
     "n",
     scheme="naturalbreaks",
     cmap="plasma",
@@ -242,7 +246,7 @@ nwa.log
 # ### Customising the network
 
 # %%
-nw = gs.Network(roads)
+nw = sg.Network(roads)
 nw
 # %% [markdown]
 # If you want to manipulate the roads after instantiating the Network, you can access the GeoDataFrame in the 'gdf' attribute:
@@ -277,7 +281,7 @@ gs.clipmap(
 # Use the remove_isolated method to remove the unconnected roads:
 # %%
 
-nwa = gs.NetworkAnalysis(network=nw, rules=gs.NetworkAnalysisRules(weight="meters"))
+nwa = sg.NetworkAnalysis(network=nw, rules=gs.NetworkAnalysisRules(weight="meters"))
 od = nwa.od_cost_matrix(points, points)
 percent_missing = od[nwa.rules.weight].isna().mean() * 100
 print(f"Before removing isolated: {percent_missing=:.2f}")
@@ -309,9 +313,9 @@ nw.gdf.length.max()
 # But if we use it directly in the NetworkAnalysis, we see that 0 percent of the lines go in both directions:
 # %%
 
-nw = gs.DirectedNetwork(roads)
-rules = gs.NetworkAnalysisRules(weight="metres")
-nwa = gs.NetworkAnalysis(nw, rules=rules)
+nw = sg.DirectedNetwork(roads)
+rules = sg.NetworkAnalysisRules(weight="metres")
+nwa = sg.NetworkAnalysis(nw, rules=rules)
 # %% [markdown]
 # To make this network bidirectional, roads going both ways have to be duplicated and flipped. Roads going the opposite way also need to be flipped.
 #
@@ -357,21 +361,21 @@ bike_nw.gdf["minutes"]
 #
 # Or, if the weight is 'meters' or 'metres', a meter column will be created. The coordinate reference system of the network has to be meters as well.
 # %%
-rules = gs.NetworkAnalysisRules(weight="metres")
+rules = sg.NetworkAnalysisRules(weight="metres")
 gs.NetworkAnalysis(nw, rules=rules).network.gdf["metres"]
 # %% [markdown]
 # If you want other distance units, create the column beforehand.
 # %%
 
 nw.gdf = nw.gdf.to_crs(6576).assign(feet=lambda x: x.length)
-rules = gs.NetworkAnalysisRules(weight="feet")
+rules = sg.NetworkAnalysisRules(weight="feet")
 gs.NetworkAnalysis(nw, rules=rules).network.gdf.feet
 # %% [markdown]
 # A minute column can be created through the 'make_directed_network' or 'make_directed_network_norway' methods.
 
 # %%
 nw = (
-    gs.DirectedNetwork(roads)
+    sg.DirectedNetwork(roads)
     .remove_isolated()
     .make_directed_network(
         direction_col="oneway",
@@ -380,9 +384,9 @@ nw = (
     )
 )
 
-rules = gs.NetworkAnalysisRules(weight="minutes")
+rules = sg.NetworkAnalysisRules(weight="minutes")
 
-nwa = gs.NetworkAnalysis(network=nw, rules=rules)
+nwa = sg.NetworkAnalysis(network=nw, rules=rules)
 
 nwa
 # %% [markdown]
@@ -421,7 +425,7 @@ sp2["split_lines"] = "Splitted"
 # In the get_route example, when the lines are split, the trip starts a bit further up in the bottom-right corner (when the search_factor is 0). The trip also ends in a roundtrip, since the line that is split is a oneway street. So you're allowed to go to the intersection where the blue line goes, but not to the point where the line is cut.
 # %%
 
-gs.qtm(gs.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
+gs.qtm(sg.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
 # %% [markdown]
 # But these kinds of deviations doesn't have much of an impact on the results in total here, where the mean is about 15 minutes. For shorter trips, the difference will be relatively larger, of course.
 # %%

@@ -35,18 +35,10 @@ sgis.directednetwork module
    :undoc-members:
    :show-inheritance:
 
-sgis.distances module
+sgis.neighbors module
 ---------------------
 
-.. automodule:: sgis.distances
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-sgis.exceptions module
-----------------------
-
-.. automodule:: sgis.exceptions
+.. automodule:: sgis.neighbors
    :members:
    :undoc-members:
    :show-inheritance:
@@ -63,14 +55,6 @@ sgis.geopandas\_utils module
 ----------------------------
 
 .. automodule:: sgis.geopandas_utils
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-sgis.helpers module
--------------------
-
-.. automodule:: sgis.helpers
    :members:
    :undoc-members:
    :show-inheritance:
@@ -95,14 +79,6 @@ sgis.network\_functions module
 ------------------------------
 
 .. automodule:: sgis.network_functions
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-sgis.network\_norway module
----------------------------
-
-.. automodule:: sgis.network_norway
    :members:
    :undoc-members:
    :show-inheritance:

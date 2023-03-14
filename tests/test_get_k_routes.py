@@ -12,7 +12,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
-import sgis as gs
+import sgis as sg
 
 
 def not_test_network_analysis(roads_oslo, points_oslo):
@@ -28,14 +28,14 @@ def not_test_network_analysis(roads_oslo, points_oslo):
     p = points.iloc[[0]]
 
     r = roads_oslo
-    #    r = gs.clean_clip(r, p.buffer(1000))
-    #   points = gs.clean_clip(points, p.buffer(800))
+    #    r = sg.clean_clip(r, p.buffer(1000))
+    #   points = sg.clean_clip(points, p.buffer(800))
 
     ### MAKE THE ANALYSIS CLASS
 
-    nw = gs.DirectedNetwork(r).remove_isolated().make_directed_network_norway()
-    rules = gs.NetworkAnalysisRules(weight="minutes", split_lines=split_lines)
-    nwa = gs.NetworkAnalysis(nw, rules=rules)
+    nw = sg.DirectedNetwork(r).remove_isolated().make_directed_network_norway()
+    rules = sg.NetworkAnalysisRules(weight="minutes", split_lines=split_lines)
+    nwa = sg.NetworkAnalysis(nw, rules=rules)
 
     ### GET ROUTE
     for i in range(10):
@@ -43,11 +43,11 @@ def not_test_network_analysis(roads_oslo, points_oslo):
         p1 = points.sample(1)
         try:
             k = nwa.get_k_routes(p, p1, k=5, id_col="idx", drop_middle_percent=50)
-            gs.qtm(k, nwa.rules.weight)
+            sg.qtm(k, nwa.rules.weight)
             k = nwa.get_k_routes(p, p1, k=5, id_col="idx", drop_middle_percent=25)
-            gs.qtm(k, nwa.rules.weight)
+            sg.qtm(k, nwa.rules.weight)
             k = nwa.get_k_routes(p, p1, k=5, id_col="idx", drop_middle_percent=10)
-            gs.qtm(k, nwa.rules.weight)
+            sg.qtm(k, nwa.rules.weight)
         except Exception as e:
             raise e
 

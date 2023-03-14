@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, src)
 
-import sgis as gs
+import sgis as sg
 
 
 def not_test_explore(points_oslo, roads_oslo):
@@ -32,26 +32,26 @@ def not_test_explore(points_oslo, roads_oslo):
     r2 = roads.clip(p.buffer(200).to_frame())
     r3 = roads.clip(p.buffer(100).to_frame())
 
-    gs.clipmap(r1, r2, r3, "meters", p.buffer(100))
-    gs.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
+    sg.clipmap(r1, r2, r3, "meters", p.buffer(100))
+    sg.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
 
     print("static mapping finished")
 
-    gs.explore(roads, points, "meters")
+    sg.explore(roads, points, "meters")
 
-    x = gs.Explore(roads, points, p, "meters", labels=("roads", "points", "p"))
+    x = sg.Explore(roads, points, p, "meters", labels=("roads", "points", "p"))
     assert not x._is_categorical
-    x = gs.Explore(roads, points)
+    x = sg.Explore(roads, points)
     assert x._is_categorical
     x.explore("meters")
     x.clipmap(p.buffer(100))
     x.samplemap()
 
-    x = gs.Explore(r1, r2, r3, column="meters")
+    x = sg.Explore(r1, r2, r3, column="meters")
     x.clipmap(p.buffer(100))
     x.samplemap()
     r3.loc[0, "meters"] = None
-    x = gs.Explore(r1, r2, r3)
+    x = sg.Explore(r1, r2, r3)
     x.explore()
     x.explore("meters", cmap="inferno")
     x.samplemap(cmap="magma")

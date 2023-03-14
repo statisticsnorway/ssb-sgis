@@ -12,7 +12,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
-import sgis as gs
+import sgis as sg
 
 
 def test_split_lines(points_oslo, roads_oslo):
@@ -25,16 +25,16 @@ def test_split_lines(points_oslo, roads_oslo):
     points = points_oslo
     r = roads_oslo
 
-    r = gs.clean_clip(r, points.geometry.loc[0].buffer(700))
-    points = gs.clean_clip(points, points.geometry.loc[0].buffer(700))
+    r = sg.clean_clip(r, points.geometry.loc[0].buffer(700))
+    points = sg.clean_clip(points, points.geometry.loc[0].buffer(700))
 
     ### MAKE THE ANALYSIS CLASS
-    nw = gs.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
-    rules = gs.NetworkAnalysisRules(
+    nw = sg.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
+    rules = sg.NetworkAnalysisRules(
         weight="minutes",
     )
 
-    nwa = gs.NetworkAnalysis(nw, rules=rules, detailed_log=False)
+    nwa = sg.NetworkAnalysis(nw, rules=rules, detailed_log=False)
     print(nwa)
 
     nwa.rules.split_lines = False
@@ -52,7 +52,10 @@ def test_split_lines(points_oslo, roads_oslo):
         sp2 = nwa.get_route(points.loc[[97]], points.loc[[135]])
     sp2["split_lines"] = "Splitted"
 
-    gs.qtm(gs.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
+    assert sp1[rules.weight].sum() != sp2[rules.weight].sum()
+    assert sp1[rules.weight].sum() < sp2[rules.weight].sum() * 0.7
+
+    sg.qtm(sg.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
 
 
 def main():
@@ -61,11 +64,8 @@ def main():
     test_split_lines(points_oslo(), roads_oslo())
 
 
-# import cProfile
-# cProfile.run("test_network_analysis()", sort="cumtime")
-
-
 if __name__ == "__main__":
-    main()
-# %%
-""
+    import cProfile
+
+    cProfile.run("main()", sort="cumtime")
+    # main()
