@@ -1,9 +1,9 @@
-"""Get neighbours and K-nearest neighbours.
+"""Get neighbors and K-nearest neighbors.
 
-Includes the function 'get_neighbours', which returns a list of neighbours.
+Includes the function 'get_neighbors', which returns a list of neighbors.
 
-The main function in the module is 'get_k_nearest_neighbours', which finds the k nearest
-neighbours for points in a GeoDataFrame. The function 'k_nearest_neighbours' is for use
+The main function in the module is 'get_k_nearest_neighbors', which finds the k nearest
+neighbors for points in a GeoDataFrame. The function 'k_nearest_neighbors' is for use
 with numpy arrays.
 """
 import warnings
@@ -14,36 +14,37 @@ from pandas import DataFrame
 from sklearn.neighbors import NearestNeighbors
 
 from .helpers import return_two_vals
+from .geopandas_utils import coordinate_array
 
 
-def get_neighbours(
+def get_neighbors(
     gdf: GeoDataFrame | GeoSeries,
-    neighbours: GeoDataFrame | GeoSeries,
+    neighbors: GeoDataFrame | GeoSeries,
     id_col: str = "index",
     max_dist: int = 0,
 ) -> list[str]:
     """Returns a list of neigbours for a GeoDataFrame.
 
-    Finds all the geometries in 'neighbours' that intersect with 'gdf'. If
-    max_dist is specified, neighbours
+    Finds all the geometries in 'neighbors' that intersect with 'gdf'. If
+    max_dist is specified, neighbors
 
     Args:
         gdf: GeoDataFrame or GeoSeries
-        neighbours: GeoDataFrame or GeoSeries
+        neighbors: GeoDataFrame or GeoSeries
         id_col: Optionally a column in the GeoDataFrame to use as identifier for the
-            neighbours. Defaults to the index of the GeoDataFrame.
+            neighbors. Defaults to the index of the GeoDataFrame.
         max_dist: The maximum distance between the two geometries. Defaults to 0.
 
     Returns:
         A list of unique values from the id_col column in the joined dataframe.
 
     Raises:
-        ValueError: If gdf and neighbours do not have the same coordinate reference
+        ValueError: If gdf and neighbors do not have the same coordinate reference
             system.
 
     Examples
     --------
-    >>> from gis_utils import get_neighbours, to_gdf
+    >>> from gis_utils import get_neighbors, to_gdf
     >>> points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
     >>> points
                     geometry
@@ -51,11 +52,11 @@ def get_neighbours(
     1  POINT (0.50000 0.50000)
     2  POINT (2.00000 2.00000)
     >>> p1 = points.iloc[[0]]
-    >>> get_neighbours(p1, points)
+    >>> get_neighbors(p1, points)
     [0]
-    >>> get_neighbours(p1, points, max_dist=1)
+    >>> get_neighbors(p1, points, max_dist=1)
     [0, 1]
-    >>> get_neighbours(p1, points, max_dist=3)
+    >>> get_neighbors(p1, points, max_dist=3)
     [0, 1, 2]
 
     The pandas index is used by default, but an id column can be specified.
@@ -66,16 +67,16 @@ def get_neighbours(
     0  POINT (0.00000 0.00000)      a
     1  POINT (0.50000 0.50000)      b
     2  POINT (2.00000 2.00000)      c
-    >>> get_neighbours(p1, points, id_col="id_col")
+    >>> get_neighbors(p1, points, id_col="id_col")
     ['a']
-    >>> get_neighbours(p1, points, max_dist=1, id_col="id_col")
+    >>> get_neighbors(p1, points, max_dist=1, id_col="id_col")
     ['a', 'b']
-    >>> get_neighbours(p1, points, max_dist=3, id_col="id_col")
+    >>> get_neighbors(p1, points, max_dist=3, id_col="id_col")
     ['a', 'b', 'c']
     """
 
-    if gdf.crs != neighbours.crs:
-        raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbours.crs}")
+    if gdf.crs != neighbors.crs:
+        raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
     # if index, use the column returned by geopandas.sjoin
     if id_col == "index":
@@ -92,39 +93,39 @@ def get_neighbours(
     else:
         gdf = gdf.geometry.to_frame()
 
-    joined = gdf.sjoin(neighbours, how="inner")
+    joined = gdf.sjoin(neighbors, how="inner")
 
     return [x for x in joined[id_col].unique()]
 
 
-def get_k_nearest_neighbours(
+def get_k_nearest_neighbors(
     gdf: GeoDataFrame,
-    neighbours: GeoDataFrame,
+    neighbors: GeoDataFrame,
     k: int,
     id_cols: str | tuple[str, str] = ("gdf_idx", "neighbour_idx"),
     max_dist: int | float | None = None,
     min_dist: float | int = 0,
     strict: bool = False,
 ) -> DataFrame:
-    """Finds the k nearest neighbours for a GeoDataFrame of points.
+    """Finds the k nearest neighbors for a GeoDataFrame of points.
 
     Uses the K-nearest neighbors algorithm method from sklearn.neighbors to find the
-    given number of neighbours for each point in 'gdf'.
+    given number of neighbors for each point in 'gdf'.
 
     Args:
         gdf: a GeoDataFrame of points
-        neighbours: a GeoDataFrame of points
-        k: number of neighbours to find
+        neighbors: a GeoDataFrame of points
+        k: number of neighbors to find
         id_cols: column(s) to use as identifiers. Either a string if one column or a
-            tuple/list for 'gdf' and 'neighbours' respectfully. Defaults to "gdf_idx"
-                and "neighbour_idx".
+            tuple/list for 'gdf' and 'neighbors' respectfully. Defaults to "gdf_idx"
+            and "neighbour_idx".
         max_dist: if specified, rows with greater distances than max_dist will be
             removed.
-        min_dist: The minimum distance for points to be considered neighbours. Defaults to
-            0, meaning identical points aren't considered neighbours.
+        min_dist: The minimum distance for points to be considered neighbors. Defaults to
+            0, meaning identical points aren't considered neighbors.
         strict: If False (the default), no exception is raised if k is larger than the
-            number of points in 'neighbours'. If True, 'k' must be less than or equal
-            to the number of points in 'neighbours'.
+            number of points in 'neighbors'. If True, 'k' must be less than or equal
+            to the number of points in 'neighbors'.
 
     Returns:
         A DataFrame with id columns and the distance from gdf to neighbour. Also
@@ -132,16 +133,16 @@ def get_k_nearest_neighbours(
         the rank.
 
     Raises:
-        ValueError: If the coordinate reference system of 'gdf' and 'neighbours' are
+        ValueError: If the coordinate reference system of 'gdf' and 'neighbors' are
             not the same.
 
     Examples
     --------
 
-    >>> from gis_utils import get_k_nearest_neighbours, random_points
+    >>> from gis_utils import get_k_nearest_neighbors, random_points
     >>> points = random_points(10)
-    >>> neighbours = random_points(10)
-    >>> get_k_nearest_neighbours(points, neighbours, k=10)
+    >>> neighbors = random_points(10)
+    >>> get_k_nearest_neighbors(points, neighbors, k=10)
         gdf_idx  neighbour_idx      dist  dist_min     k
     0         0              9  0.329634  0.329634   1.0
     1         0              6  0.457103  0.329634   2.0
@@ -160,10 +161,10 @@ def get_k_nearest_neighbours(
     Setting id columns.
 
     >>> points["from_id"] = [*"abcdefghij"]
-    >>> neighbours["to_id"] = neighbours.index
-    >>> get_k_nearest_neighbours(
+    >>> neighbors["to_id"] = neighbors.index
+    >>> get_k_nearest_neighbors(
     ...      points,
-    ...      neighbours,
+    ...      neighbors,
     ...      k=10,
     ...      id_cols=("from_id", "to_id")
     ... )
@@ -184,9 +185,9 @@ def get_k_nearest_neighbours(
 
     Setting maximum and minimum distance.
 
-    >>> get_k_nearest_neighbours(
+    >>> get_k_nearest_neighbors(
     ...      points,
-    ...      neighbours,
+    ...      neighbors,
     ...      k=10,
     ...      max_dist=0.5,
     ...      min_dist=0.4,
@@ -204,8 +205,8 @@ def get_k_nearest_neighbours(
     Note that the 'k' value is calculated based on the remaining distances after
     filtering out distances below 'min_dist'.
     """
-    if gdf.crs != neighbours.crs:
-        raise ValueError("crs mismatch:", gdf.crs, "and", neighbours.crs)
+    if gdf.crs != neighbors.crs:
+        raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 
     id_col1, id_col2 = return_two_vals(id_cols)
     if not id_col1:
@@ -213,23 +214,20 @@ def get_k_nearest_neighbours(
         gdf[id_col1] = range(len(gdf))
     if not id_col2:
         id_col2 = "neighbour_idx", "gdf_idx"
-        neighbours[id_col2] = range(len(neighbours))
+        neighbors[id_col2] = range(len(neighbors))
 
     id_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf[id_col1], strict=True)}
-    id_dict_neighbours = {
-        i: col
-        for i, col in zip(range(len(neighbours)), neighbours[id_col2], strict=True)
+    id_dict_neighbors = {
+        i: col for i, col in zip(range(len(neighbors)), neighbors[id_col2], strict=True)
     }
 
     if id_col1 == id_col2:
         id_col2 = id_col2 + "_right"
 
     gdf_array = coordinate_array(gdf)
-    neighbours_array = coordinate_array(neighbours)
+    neighbors_array = coordinate_array(neighbors)
 
-    dists, neighbor_indices = k_nearest_neighbours(
-        gdf_array, neighbours_array, k, strict
-    )
+    dists, neighbor_indices = k_nearest_neighbors(gdf_array, neighbors_array, k, strict)
 
     edges = _get_edges(gdf, neighbor_indices)
 
@@ -253,66 +251,33 @@ def get_k_nearest_neighbours(
     )
 
     df[id_col1] = df[id_col1].map(id_dict_gdf)
-    df[id_col2] = df[id_col2].map(id_dict_neighbours)
+    df[id_col2] = df[id_col2].map(id_dict_neighbors)
 
     return df
 
 
-def coordinate_array(
-    gdf: GeoDataFrame,
-) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
-    """Creates a 2d ndarray of coordinates from a GeoDataFrame of points.
-
-    Args:
-        gdf: GeoDataFrame of point geometries.
-
-    Returns:
-        np.ndarray of np.ndarrays of coordinates.
-
-    Examples
-    --------
-    >>> from gis_utils import coordinate_array, random_points
-    >>> points = random_points(5)
-    >>> points
-                    geometry
-    0  POINT (0.59376 0.92577)
-    1  POINT (0.34075 0.91650)
-    2  POINT (0.74841 0.10627)
-    3  POINT (0.00966 0.87868)
-    4  POINT (0.38046 0.87879)
-    >>> coordinate_array(points)
-    array([[0.59376221, 0.92577159],
-        [0.34074678, 0.91650446],
-        [0.74840912, 0.10626954],
-        [0.00965935, 0.87867915],
-        [0.38045827, 0.87878816]])
-
-    """
-    return np.array([(geom.x, geom.y) for geom in gdf.geometry])
-
-
-def k_nearest_neighbours(
+def k_nearest_neighbors(
     from_array: np.ndarray[np.ndarray[float]],
     to_array: np.ndarray[np.ndarray[float]],
     k: int,
     strict: bool = False,
 ) -> tuple[np.ndarray[float], np.ndarray[int]]:
-    """Finds the k nearest neighbours for an array of points.
+    """Finds the k nearest neighbors for an array of points.
 
     Uses the K-nearest neighbors algorithm method from sklearn.neighbors to find the
-    given number of neighbours for each point in 'from_array'.
+    given number of neighbors for each point in 'from_array'.
 
     Args:
         from_array: an np.ndarray of coordinates
         to_array: an np.ndarray of coordinates
-        k: number of neighbours to find
+        k: number of neighbors to find
         strict: If True, will raise an error if 'k' is greater than the number
             of points in 'to_array'. If False, will return all distances if there
             is less than k points in 'to_array'. Defaults to False.
 
     Returns:
         The distances and indices of the nearest neighbors. Both distances and
-        neighbours are np.ndarrays.
+        neighbors are np.ndarrays.
     """
     if not strict:
         k = k if len(to_array) >= k else len(to_array)
@@ -338,29 +303,29 @@ def _get_edges(gdf: GeoDataFrame, indices: np.ndarray[int]) -> np.ndarray[tuple[
     )
 
 
-def get_neighbors(
+def get_neighbours(
     gdf: GeoDataFrame | GeoSeries,
-    possible_neighbors: GeoDataFrame | GeoSeries,
+    neighbours: GeoDataFrame | GeoSeries,
     id_col: str = "index",
     max_dist: int = 0,
 ) -> list[str]:
-    """American alias for get_neighbours."""
-    return get_neighbours(gdf, possible_neighbors, id_col, max_dist)
+    """American alias for get_neighbors."""
+    return get_neighbors(gdf, neighbours, id_col, max_dist)
 
 
-def get_k_nearest_neighbors(
+def get_k_nearest_neighbours(
     gdf: GeoDataFrame,
-    neighbors: GeoDataFrame,
+    neighbours: GeoDataFrame,
     k: int,
     id_cols: str | tuple[str, str] | None = None,
     min_dist: int | float = 0,
     max_dist: int | None = None,
     strict: bool = False,
 ) -> DataFrame:
-    """American alias of get_k_nearest_neighbours."""
-    return get_k_nearest_neighbours(
+    """American alias of get_k_nearest_neighbors."""
+    return get_k_nearest_neighbors(
         gdf=gdf,
-        neighbours=neighbors,
+        neighbors=neighbours,
         k=k,
         id_cols=id_cols,
         min_dist=min_dist,
@@ -369,14 +334,14 @@ def get_k_nearest_neighbors(
     )
 
 
-def k_nearest_neighbors(
+def k_nearest_neighbours(
     from_array: np.ndarray[np.ndarray[float]],
     to_array: np.ndarray[np.ndarray[float]],
     k: int,
     strict: bool = False,
 ) -> tuple[np.ndarray[float], np.ndarray[int]]:
-    """American alias of k_nearest_neighbours."""
-    return k_nearest_neighbours(
+    """American alias of k_nearest_neighbors."""
+    return k_nearest_neighbors(
         from_array=from_array,
         to_array=to_array,
         k=k,

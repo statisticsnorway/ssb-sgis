@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_dict_like
-from numpy.random import random as np_random
+from numpy.random import random as _np_random
 from shapely import (
     Geometry,
     area,
@@ -365,7 +365,7 @@ def snap_to(
     # geometries.
 
     # if there are no duplicates, the ids can be mapped directly
-    if len(unsnapped) == len(points):
+    if len(unsnapped) == len(points) and unsnapped.index.is_unique:
         points[id_col] = points.index.map(unsnapped[id_col])
         return points
 
@@ -438,6 +438,11 @@ def to_multipoint(
     """
     if copy:
         gdf = gdf.copy()
+
+    if isinstance(gdf, (GeoDataFrame, GeoSeries)) and gdf.is_empty.any():
+        raise ValueError("Cannot create multipoints from empty geometry.")
+    if isinstance(gdf, Geometry) and gdf.is_empty:
+        raise ValueError("Cannot create multipoints from empty geometry.")
 
     def _to_multipoint(gdf):
         koordinater = "".join(
@@ -753,7 +758,8 @@ def to_gdf(
 
     # first the iterators that get consumed by 'all' statements
     if isinstance(geom, Iterator) and not isinstance(geom, Sized):
-        geom = GeoSeries(map(_make_shapely_geom, geom))
+        # geom = GeoSeries(map(_make_shapely_geom, geom))
+        geom = GeoSeries(_make_shapely_geom(x) for x in geom)
         return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
 
     # dataframes and dicts with geometry/xyz key(s)
@@ -772,7 +778,8 @@ def to_gdf(
             index_ = geom.index
         else:
             index_ = None
-        geom = GeoSeries(map(_make_shapely_geom, geom))
+        geom = GeoSeries(_make_shapely_geom(x) for x in geom)
+        #  geom = GeoSeries(map(_make_shapely_geom, geom))
         gdf = GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
         if index_ is not None:
             gdf.index = index_
@@ -785,7 +792,8 @@ def to_gdf(
 
         # single geometry objects like wkt, wkb, shapely geometry or iterable of numbers
     if hasattr(geom, "__iter__"):
-        geom = GeoSeries(map(_make_shapely_geom, geom))
+        geom = GeoSeries(_make_shapely_geom(x) for x in geom)
+        # geom = GeoSeries(map(_make_shapely_geom, geom))
         return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
 
     raise TypeError(f"Got unexpected type {type(geom)}")
@@ -1005,6 +1013,39 @@ def gdf_concat(
     )
 
 
+def coordinate_array(
+    gdf: GeoDataFrame,
+) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
+    """Creates a 2d ndarray of coordinates from a GeoDataFrame of points.
+
+    Args:
+        gdf: GeoDataFrame of point geometries.
+
+    Returns:
+        np.ndarray of np.ndarrays of coordinates.
+
+    Examples
+    --------
+    >>> from gis_utils import coordinate_array, random_points
+    >>> points = random_points(5)
+    >>> points
+                    geometry
+    0  POINT (0.59376 0.92577)
+    1  POINT (0.34075 0.91650)
+    2  POINT (0.74841 0.10627)
+    3  POINT (0.00966 0.87868)
+    4  POINT (0.38046 0.87879)
+    >>> coordinate_array(points)
+    array([[0.59376221, 0.92577159],
+        [0.34074678, 0.91650446],
+        [0.74840912, 0.10626954],
+        [0.00965935, 0.87867915],
+        [0.38045827, 0.87878816]])
+
+    """
+    return np.array([(geom.x, geom.y) for geom in gdf.geometry])
+
+
 def push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:
     """Makes the geometry column the rightmost column in the GeoDataFrame.
 
@@ -1129,9 +1170,12 @@ def random_points(n: int) -> GeoDataFrame:
     if isinstance(n, (str, float)):
         n = int(n)
 
-    x = np_random(n)
-    y = np_random(n)
+    x = _np_random(n)
+    y = _np_random(n)
 
+    return GeoDataFrame(
+        (Point(x, y) for x, y in zip(x, y, strict=True)), columns=["geometry"]
+    )
     return GeoDataFrame(map(Point, zip(x, y, strict=True)), columns=["geometry"])
 
 

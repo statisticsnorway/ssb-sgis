@@ -15,7 +15,7 @@ def gdf_fixture() -> GeoDataFrame:
 
 @pytest.fixture(scope="module")
 def points_oslo() -> GeoDataFrame:
-    return read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    return read_parquet(Path(__file__).parent / "testdata" / "points_oslo.parquet")
 
 
 @pytest.fixture(scope="module")

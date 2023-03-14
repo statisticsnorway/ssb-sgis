@@ -218,27 +218,27 @@ def test_copy(gdf_fixture):
 def test_neighbors(gdf_fixture):
     naboer = sg.get_neighbors(
         gdf_fixture.iloc[[0]],
-        possible_neighbors=gdf_fixture,
+        neighbors=gdf_fixture,
         id_col="numcol",
         max_dist=100,
     )
     naboer.sort()
-    assert naboer == [1, 2], "feil i get_neighbors"
+    assert naboer == [1, 2], naboer
     naboer = sg.get_neighbors(
         gdf_fixture.iloc[[8]],
-        possible_neighbors=gdf_fixture,
+        neighbors=gdf_fixture,
         id_col="numcol",
         max_dist=100,
     )
     naboer.sort()
-    assert naboer == [4, 5, 7, 8, 9], "feil i get_neighbors"
+    assert naboer == [4, 5, 7, 8, 9], naboer
 
     points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
     points["idx"] = points.index
     p1 = points.iloc[[0]]
-    assert sg.get_neighbours(p1, points, id_col="idx") == [0]
-    assert sg.get_neighbours(p1, points, id_col="idx", max_dist=1) == [0, 1]
-    assert sg.get_neighbours(p1, points, id_col="idx", max_dist=3) == [0, 1, 2]
+    assert sg.get_neighbors(p1, points, id_col="idx") == [0]
+    assert sg.get_neighbors(p1, points, id_col="idx", max_dist=1) == [0, 1]
+    assert sg.get_neighbors(p1, points, id_col="idx", max_dist=3) == [0, 1, 2]
 
 
 def test_snap(gdf_fixture):

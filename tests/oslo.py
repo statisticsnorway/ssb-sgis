@@ -4,7 +4,7 @@ from geopandas import GeoDataFrame, read_parquet
 
 
 def points_oslo() -> GeoDataFrame:
-    return read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    return read_parquet(Path(__file__).parent / "testdata" / "points_oslo.parquet")
 
 
 def roads_oslo() -> GeoDataFrame:

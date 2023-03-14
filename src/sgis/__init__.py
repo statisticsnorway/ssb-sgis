@@ -1,8 +1,7 @@
 # flake8: noqa: F401
 from .buffer_dissolve_explode import buff, buffdiss, buffdissexp, diss, dissexp, exp
 from .directednetwork import DirectedNetwork
-from .neighbours import (
-    coordinate_array,
+from .neighbors import (
     get_neighbours,
     get_k_nearest_neighbours,
     k_nearest_neighbours,
@@ -24,6 +23,7 @@ from .geopandas_utils import (
     to_gdf,
     to_multipoint,
     to_single_geom_type,
+    coordinate_array,
 )
 from .maps import clipmap, explore, qtm, samplemap
 from .network import Network

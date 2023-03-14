@@ -46,7 +46,7 @@ def not_test_osm():
     r = gpd.read_file(osm_path, engine="pyogrio", bbox=oslo)
     r = r.to_crs(25833)
 
-    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "random_points.parquet")
+    p = gpd.read_parquet(Path(__file__).parent / "testdata" / "points_oslo.parquet")
     p["idx"] = p.index
     p["idx2"] = p.index
     print(p.idx)

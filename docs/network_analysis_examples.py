@@ -23,14 +23,28 @@ os.chdir("..")
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
-# %%
 import geopandas as gpd
 
 r = gpd.read_file(
     r"C:\Users\ort\Downloads\vegnettRuteplan_FGDB_20230109.gdb",
     layer="ruttger_link_geom",
+    engine="pyogrio",
+    where="municipality in ('3416')",
 )
-r
+r.to_parquet(r"C:\Users\ort\git\ssb-sgis\tests\testdata\roads_eidskog_2022.parquet")
+
+r2 = (
+    r.sample(40)
+    .assign(geometry=lambda x: x.centroid.buffer(np.arange(1, 41)))
+    .pipe(sg.to_multipoint)
+    .explode()
+    .sample(100)
+    .reset_index()
+    .assign(idx=range(100))[["idx", "geometry"]]
+)
+
+r2.to_parquet(r"C:\Users\ort\git\ssb-sgis\tests\testdata\points_eidskog.parquet")
+r2.explore()
 # %%
 import sgis as sg
 
@@ -56,35 +70,19 @@ nwa
 # %%
 
 points = sg.read_parquet_url(
-    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/random_points.parquet"
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
 )
 
 # %% [markdown]
 # # sgis
 # sgis builds on the geopandas package, providing functions for making it easier to do advanced, high quality GIS in python.
 #
-# This includes vector operations like finding k nearest neighbours, splitting lines by points, snapping geometries
-# and closing holes in polygons by area.
-# vector operations
-# A core feature is network analysis, with methods for preparing road data and getting travel times, routes, route frequencies and service
-# areas.
-#  geopandas for easy, high quality GIS in python in science and production of statistics.
+# A core feature is network analysis. Other features include vector operations like finding k nearest neighbours, splitting
+# lines by points, snapping geometries and closing holes in polygons by area.
 #
-# It builds on the geopandas package by integrating the GeoDataFrame with, and provides tools for network analysis
+# Another feature is exploring multiple GeoDataFrames in a layered interactive map.
 #
-# for GIS in python in science and production of statistics.
-# This includes classes for preparing road data
-# The package is an extension to geopandas.
-# It provides functions for exploring multiple
-#
-# ## Network analysis integrated with geopandas
-#
-# The package offers methods that makes it easy to customise and optimise road data and
-# calculate travel times, routes, frequencies and service areas.
-#
-# All you need is a GeoDataFrame of roads or other line geometries.
-#
-# Here are some examples. More examples and info here: https://github.com/statisticsnorway/ssb-sgis/blob/main/network_analysis_demo_template.md
+# ### Network analysis
 #
 # Road data can be prepared for network analysis like this:
 #
@@ -154,3 +152,7 @@ routes = nwa.get_k_routes(
 )
 
 sg.qtm(sg.buff(routes, 15), "k", title="k=5 low-cost routes", legend=False)
+
+# %% [markdown]
+# More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/network_analysis_demo_template.md
+# And in the docs: TODO

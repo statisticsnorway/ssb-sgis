@@ -21,8 +21,14 @@ from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
 from .buffer_dissolve_explode import buff
-from .neighbours import coordinate_array, get_k_nearest_neighbors, k_nearest_neighbours
-from .geopandas_utils import gdf_concat, push_geom_col, snap_to, to_gdf
+from .neighbors import get_k_nearest_neighbors, k_nearest_neighbors
+from .geopandas_utils import (
+    gdf_concat,
+    push_geom_col,
+    snap_to,
+    to_gdf,
+    coordinate_array,
+)
 
 
 def get_largest_component(lines: GeoDataFrame) -> GeoDataFrame:
@@ -563,7 +569,7 @@ def _find_holes_all_lines(
 
     nodes_array = coordinate_array(nodes)
 
-    all_dists, all_indices = k_nearest_neighbours(deadends_array, nodes_array, k=k)
+    all_dists, all_indices = k_nearest_neighbors(deadends_array, nodes_array, k=k)
 
     # now to find the lines that go in the right direction. Collecting the startpoints
     # and endpoints of the new lines in lists, looping through the k neighbour points
@@ -650,7 +656,7 @@ def _find_holes_deadends(
 
     deadends_array = coordinate_array(deadends)
 
-    dists, indices = k_nearest_neighbours(deadends_array, deadends_array, k=2)
+    dists, indices = k_nearest_neighbors(deadends_array, deadends_array, k=2)
 
     # choose the second column (the closest neighbour)
     dists = dists[:, 1]
