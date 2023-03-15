@@ -19,7 +19,7 @@ from mapclassify import classify
 from shapely import Geometry
 from shapely.geometry import LineString
 
-from .geopandas_utils import clean_geoms, gdf_concat
+from .geopandas_tools.general import clean_geoms, gdf_concat
 from .helpers import get_name
 
 
@@ -184,14 +184,13 @@ class Explore:
 
         if not self.labels:
             self._create_labels()
-            self.kwargs["column"] = "label"
-        elif not self.kwargs["column"]:
-            for gdf, label in zip(self.gdfs, labels, strict=True):
+
+        if not self.kwargs["column"]:
+            for gdf, label in zip(self.gdfs, self.labels, strict=True):
                 gdf["label"] = label
             self.kwargs["column"] = "label"
 
         self._is_categorical = self._check_if_categorical()
-
         self._fill_missings()
 
         self.gdf = gdf_concat(self.gdfs)
@@ -249,7 +248,7 @@ class Explore:
         self.to_show = self.gdfs
         self._explore(**kwargs)
 
-    def samplemap(self, size: int = 500, column: str | None = None, **kwargs) -> None:
+    def samplemap(self, size: int = 1000, column: str | None = None, **kwargs) -> None:
         """Shows an interactive map of a random area of the GeoDataFrames.
 
         It takes a random sample point of the GeoDataFrames, and shows all geometries
@@ -403,6 +402,10 @@ class Explore:
 
         for gdf in self.gdfs:
             gdf["color"] = gdf[self.kwargs["column"]].map(self._categories_colors_dict)
+
+        self.gdf["color"] = self.gdf[self.kwargs["column"]].map(
+            self._categories_colors_dict
+        )
 
     def _create_categorical_map(self):
         gdfs = gdf_concat(self.to_show)

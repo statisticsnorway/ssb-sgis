@@ -34,11 +34,11 @@ def py_to_md(
     if os.path.exists("../" + png_folder):
         shutil.rmtree("../" + png_folder)
 
-    subprocess.call(["poetry", "run", "jupytext", "--to", "ipynb", py_file])
+    subprocess.call(f"poetry run jupytext --to ipynb {py_file}".split())
     subprocess.call(
-        ["jupyter", "nbconvert", "--execute", "--to", "notebook", "--inplace", nb_file]
+        f"jupyter nbconvert --execute --to notebook --inplace {nb_file}".split()
     )
-    subprocess.call(["jupyter", "nbconvert", "--to", "markdown", nb_file])
+    subprocess.call(f"jupyter nbconvert --to markdown {nb_file}".split())
 
     if move_n_folders_up:
         for _ in range(move_n_folders_up):
@@ -50,7 +50,8 @@ def py_to_md(
             print(md_file)
             print(png_folder)
 
-    os.remove(nb_file)
+
+# os.remove(nb_file)
 
 
 def clean_up_md(file: str):
@@ -80,8 +81,8 @@ def clean_up_md(file: str):
 
 file = "network_analysis_examples"
 py_to_md(file, move_n_folders_up=0)
-clean_up_md("../" + file + ".md")
+clean_up_md(file + ".md")
 
 file = "network_analysis_demo_template"
 py_to_md(file, move_n_folders_up=0)
-clean_up_md("../" + file + ".md")
+clean_up_md(file + ".md")

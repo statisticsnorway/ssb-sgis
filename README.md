@@ -23,25 +23,64 @@ GIS utility functions used in [Statistics Norway](https://www.ssb.no/en).
 [pre-commit]: https://github.com/pre-commit/pre-commit
 [black]: https://github.com/psf/black
 
-## Network analysis integrated with geopandas
+# sgis
+Simplifying GIS in python for science and statistics.
 
-The package offers methods that makes it easy to customise and optimise road data and
-calculate travel times, routes, frequencies and service areas.
+sgis builds on the geopandas package and provides functions that simplify and extend GIS in python. Features include network
+analysis, functions for exploring multiple GeoDataFrames in a layered interactive map, and vector operations like finding k
+nearest neighbours, splitting lines by points, snapping geometries and closing holes in polygons by size.
+by area.
 
-All you need is a GeoDataFrame of roads or other line geometries.
+### Network analysis
 
-Here are some examples. More examples and info
-[here](https://github.com/statisticsnorway/ssb-sgis/blob/main/network_analysis_demo_template.md).
+Road data can be prepared for network analysis like this:
 
-### get_route_frequencies
 
-Get the number of times each line segment was visited.
+
+```python
+import sgis as sg
+
+roads = sg.read_parquet_url(
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
+)
+
+nw = (
+    sg.DirectedNetwork(roads)
+    .remove_isolated()
+    .make_directed_network(
+        direction_col="oneway",
+        direction_vals_bft=("B", "FT", "TF"),
+        minute_cols=("drivetime_fw", "drivetime_bw"),
+    )
+)
+
+rules = sg.NetworkAnalysisRules(weight="minutes")
+
+nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+
+nwa
+```
+
+
+
+
+    NetworkAnalysis(
+        network=DirectedNetwork(6364 km, percent_bidirectional=87),
+        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...)
+    )
+
+
+
+Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
+
+#### get_route_frequencies: get the number of times each line segment was visited
+
 
 ```python
 freq = nwa.get_route_frequencies(points.sample(75), points.sample(75))
 
-gs.qtm(
-    gs.buff(freq, 15),
+sg.qtm(
+    sg.buff(freq, 15),
     "n",
     scheme="naturalbreaks",
     cmap="plasma",
@@ -49,47 +88,42 @@ gs.qtm(
 )
 ```
 
-![png](network_analysis_examples_files/network_analysis_examples_7_0.png)
 
-### od_cost_matrix
+    
+![png](docs/network_analysis_examples_files/network_analysis_examples_6_0.png)
+    
 
-Fast many-to-many travel times/distances.
+
+#### od_cost_matrix: fast many-to-many travel times/distances
+
 
 ```python
 od = nwa.od_cost_matrix(points.iloc[[0]], points, id_col="idx", lines=True)
 
 print(od.head(3))
 
-gs.qtm(od, "minutes", title="Travel time (minutes) from 1 to 1000 points.")
+sg.qtm(od, "minutes", title="Travel time (minutes) from 1 to 1000 points.")
 ```
 
        origin  destination    minutes  \
-    0       1            1   0.000000
-    1       1            2  12.930588
-    2       1            3  10.867076
+    0       1            1   0.000000   
+    1       1            2  13.039830   
+    2       1            3  10.902453   
+    
+                                                geometry  
+    0  LINESTRING (263122.700 6651184.900, 263122.700...  
+    1  LINESTRING (263122.700 6651184.900, 272456.100...  
+    2  LINESTRING (263122.700 6651184.900, 270082.300...  
+    
 
-                                                geometry
-    0  LINESTRING (263122.700 6651184.900, 263122.700...
-    1  LINESTRING (263122.700 6651184.900, 272456.100...
-    2  LINESTRING (263122.700 6651184.900, 270082.300...
 
-![png](network_analysis_examples_files/network_analysis_examples_9_1.png)
+    
+![png](docs/network_analysis_examples_files/network_analysis_examples_8_1.png)
+    
 
-### get_route and get_k_routes
 
-Get one or more route per origin-destination pair.
+#### service_area: get the area that can be reached within one or more breaks
 
-```python
-routes = nwa.get_k_routes(points.iloc[[0]], points.iloc[[1]], k=5, drop_middle_percent=50)
-
-gs.qtm(gs.buff(routes, 15), "k", title="k=5 low-cost routes", legend=False)
-```
-
-![png](network_analysis_examples_files/network_analysis_examples_11_0.png)
-
-### service_area
-
-Get the area that can be reached within one or more breaks.
 
 ```python
 sa = nwa.service_area(
@@ -97,10 +131,35 @@ sa = nwa.service_area(
     breaks=np.arange(1, 11),
 )
 
-gs.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minutes")
+sg.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minutes")
 ```
 
-![png](network_analysis_examples_files/network_analysis_examples_13_0.png)
+
+    
+![png](docs/network_analysis_examples_files/network_analysis_examples_10_0.png)
+    
+
+
+#### get_route and get_k_routes: get one or more route per origin-destination pair
+
+
+```python
+routes = nwa.get_k_routes(
+    points.iloc[[0]], points.iloc[[1]], k=5, drop_middle_percent=50
+)
+
+sg.qtm(sg.buff(routes, 15), "k", title="k=5 low-cost routes", legend=False)
+```
+
+
+    
+![png](docs/network_analysis_examples_files/network_analysis_examples_12_0.png)
+    
+
+
+More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/network_analysis_demo_template.md
+And in the docs: TODO
+
 
 ## Developer information
 

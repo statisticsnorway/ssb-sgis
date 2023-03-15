@@ -32,6 +32,18 @@ def not_test_explore(points_oslo, roads_oslo):
     r2 = roads.clip(p.buffer(200).to_frame())
     r3 = roads.clip(p.buffer(100).to_frame())
 
+    sg.clipmap(r1, r2, r3, "meters", p.buffer(100), explore=False)
+    sg.samplemap(
+        r1,
+        r2,
+        r3,
+        "meters",
+        labels=("r100", "r200", "r300"),
+        cmap="plasma",
+        explore=False,
+        size=100,
+    )
+
     sg.clipmap(r1, r2, r3, "meters", p.buffer(100))
     sg.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
 
@@ -63,7 +75,7 @@ def not_test_explore(points_oslo, roads_oslo):
 def main():
     from oslo import points_oslo, roads_oslo
 
-    not_test_explore(points_oslo, roads_oslo)
+    not_test_explore(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":

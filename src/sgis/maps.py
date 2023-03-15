@@ -1,26 +1,21 @@
-"""Functions for interactive and static mapping of multiple GeoDataFrames.
+"""Interactive and static mapping of multiple GeoDataFrames.
 
-This module builds on the geopandas explore and plot methods. The explore function
-displays one of more GeoDataFrames together in an interactive map with layers that can
-be toggled on and off. The samplemap function does the same, but shows only a random
-sample area of the data. Size can be specified. The clipmap has the same functionality,
-but clips the geometries to a mask extent.
+The main function is 'explore', which displays one of more GeoDataFrames together in an 
+interactive map with layers that can be toggled on and off. The 'samplemap' and
+'clipmap' functions do the same, but displays a random and chosen area respectfully.
 
-In addition, there is the qtm function, which shows a static map with some additional
+In addition, there is the 'qtm' function, which shows a static map with some additional
 functionality compared to the geopandas plot method.
-
-The three interactive map functions build on the Explore class, which has the same
-functionality, but the parameters are stored in the class, making it easier and faster
-to display many maps.
 """
 import matplotlib.pyplot as plt
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_numeric_dtype
 from shapely import Geometry
+from matplotlib.lines import Line2D
 
 from .exceptions import NotInJupyterError
 from .explore import Explore, _separate_args
-from .geopandas_utils import gdf_concat
+from .geopandas_tools.general import gdf_concat
 from .helpers import make_namedict
 
 
@@ -57,8 +52,7 @@ def explore(
         The maximum zoom level only works on the OpenStreetMap background map.
 
     Args:
-        *gdfs: one or more GeoDataFrames. Separated by a comma in the function call,
-            with no keyword.
+        *gdfs: one or more GeoDataFrames.
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
         labels: By default, the GeoDataFrames will be labeled by their object names.
@@ -76,19 +70,19 @@ def explore(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'quantiles' for numeric data.
 
-    See also:
-        samplemap: same functionality, but shows only a random area of a given size.
-        clipmap: same functionality, but shows only the areas clipped by a given mask.
+    See also
+    --------
+    samplemap: same functionality, but shows only a random area of a given size.
+    clipmap: same functionality, but shows only the areas clipped by a given mask.
 
     Examples
     --------
-    >>> from sgis import read_parquet_url
-    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
+    >>> from sgis import read_parquet_url, explore
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
 
     Simple explore of two GeoDataFrames.
 
-    >>> from sgis import explore
     >>> explore(roads, points)
 
     With additional arguments.
@@ -105,7 +99,7 @@ def explore(
 
 def samplemap(
     *gdfs: GeoDataFrame,
-    size: int = 500,
+    size: int = 1000,
     column: str | None = None,
     labels: tuple[str] | None = None,
     popup: bool = True,
@@ -132,8 +126,7 @@ def samplemap(
         The maximum zoom level only works on the OpenStreetMap background map.
 
     Args:
-        *gdfs: one or more GeoDataFrames. Separated by a comma in the function call,
-            with no keyword.
+        *gdfs: one or more GeoDataFrames.
         size: the radius to buffer the sample point by before clipping with the data
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
@@ -154,9 +147,25 @@ def samplemap(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'quantiles' for numeric data.
 
-    See also:
-        explore: same functionality, but shows the entire area of the geometries.
-        clipmap: same functionality, but shows only the areas clipped by a given mask.
+    See also
+    --------
+    explore: same functionality, but shows the entire area of the geometries.
+    clipmap: same functionality, but shows only the areas clipped by a given mask.
+
+    Examples
+    --------
+    >>> from sgis import read_parquet_url, samplemap
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
+
+    With default sample size. To get a new sample area, simply re-run the line.
+
+    >>> samplemap(roads, points)
+
+    Sample area with a radius of 5 kilometers.
+
+    >>> samplemap(roads, points, size=5_000, column="meters")
+
     """
     kwargs: dict = kwargs | {"popup": popup, "column": column, "max_zoom": max_zoom}
 
@@ -167,32 +176,21 @@ def samplemap(
 
     gdfs, column, kwargs = _separate_args(gdfs, column, kwargs)
 
+    m = Explore(*gdfs, labels=labels, show_in_browser=show_in_browser, **kwargs)
+
     if explore:
-        m = Explore(*gdfs, labels=labels, show_in_browser=show_in_browser, **kwargs)
         m.samplemap(size)
     else:
-        for gdf in gdfs:
-            if not isinstance(gdf, GeoDataFrame):
-                random_point = (
-                    gdf.sample(1).assign(geometry=lambda x: x.centroid).buffer(size)
-                )
-                namedict = make_namedict(gdfs)
-
-                clipped: tuple[GeoDataFrame] = ()
-                for i, gdf in enumerate(gdfs):
-                    clipped_ = gdf.clip(random_point)
-                    clipped_["label"] = namedict[i]
-                    clipped = clipped + (clipped_,)
-                if "column" not in kwargs:
-                    kwargs["column"] = "label"
-                qtm(
-                    gdf_concat(clipped),
-                    **{
-                        key: value
-                        for key, value in kwargs.items()
-                        if key not in ["popup", "max_zoom"]
-                    },
-                )
+        random_point = m.gdf.sample(1).centroid.buffer(size)
+        m.gdf = m.gdf.clip(random_point)
+        qtm(
+            m.gdf,
+            **{
+                key: value
+                for key, value in m.kwargs.items()
+                if key not in ["popup", "max_zoom"]
+            },
+        )
 
 
 def clipmap(
@@ -218,8 +216,7 @@ def clipmap(
         The maximum zoom level only works on the OpenStreetMap background map.
 
     Args:
-        *gdfs: one or more GeoDataFrames. Separated by a comma in the function call,
-            with no keyword.
+        *gdfs: one or more GeoDataFrames.
         mask: the geometry to clip the data by.
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
@@ -240,9 +237,10 @@ def clipmap(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'quantiles' for numeric data.
 
-    See also:
-        explore: same functionality, but shows the entire area of the geometries.
-        samplemap: same functionality, but shows only a random area of a given size.
+    See also
+    --------
+    explore: same functionality, but shows the entire area of the geometries.
+    samplemap: same functionality, but shows only a random area of a given size.
     """
     kwargs: dict = kwargs | {"popup": popup, "column": column, "max_zoom": max_zoom}
 
@@ -267,24 +265,24 @@ def clipmap(
             clipped_ = gdf.clip(gdfs[-1])
             clipped = clipped + (clipped_,)
 
+    m = Explore(*clipped, labels=labels, show_in_browser=show_in_browser, **kwargs)
+
     if explore:
-        m = Explore(*clipped, labels=labels, show_in_browser=show_in_browser, **kwargs)
         m.explore()
     else:
         qtm(
-            gdf_concat(clipped),
+            m.gdf,
             **{
                 key: value
-                for key, value in kwargs.items()
+                for key, value in m.kwargs.items()
                 if key not in ["popup", "max_zoom"]
             },
         )
 
 
 def qtm(
-    gdf: GeoDataFrame,
+    *gdfs: GeoDataFrame,
     column: str | None = None,
-    *,
     title: str | None = None,
     scheme: str | None = "quantiles",
     legend: bool = True,
@@ -293,15 +291,15 @@ def qtm(
     fontsize: int = 15,
     **kwargs,
 ) -> None:
-    """Quick, thematic map (name stolen from the tmap package in R).
+    """Quick, thematic map (name taken from the tmap package in R).
 
     Like geopandas' plot method, with some different default parameter values:
-    - includes legend by default
-    - no axis labels
-    - a bit larger
-    - quantiles scheme as default if numeric column
-    - can include a title with the title parameter
-    - black background color to go with the default 'viridis' cmap, and to make
+    1) a bit larger
+    2) quantiles scheme as default if numeric column
+    3) includes legend by default
+    4) no axis labels (coordinates)
+    5) can include a title
+    6) black background color to go with the default 'viridis' cmap, and to make
     geometries more visible
 
     Args:
@@ -322,11 +320,40 @@ def qtm(
     else:
         facecolor, title_color = "#f7f7f7", "#0f0f0f"
 
-    if column and not is_numeric_dtype(gdf[column]):
+    kwargs["column"] = column
+    gdfs, column, kwargs = _separate_args(gdfs, column, kwargs)
+    m = Explore(*gdfs, **kwargs)
+    kwargs["column"] = m.kwargs.pop("column")
+
+    if column and not is_numeric_dtype(m.gdf[column]):
         scheme = None
+
     fig, ax = plt.subplots(1, figsize=(size, size))
     fig.patch.set_facecolor(facecolor)
     ax.set_axis_off()
+
+    # manually add legend if categorical
+    if not column and "color" not in kwargs:
+        kwargs["color"] = m.gdf.color
+        kwargs.pop("column")
+        patches, categories = [], []
+        for category, color in m._categories_colors_dict.items():
+            categories.append(category)
+            patches.append(
+                Line2D(
+                    [0],
+                    [0],
+                    linestyle="none",
+                    marker="o",
+                    alpha=kwargs.get("alpha", 1),
+                    markersize=10,
+                    markerfacecolor=color,
+                    markeredgewidth=0,
+                )
+            )
+            ax.legend(patches, categories)
+
     if title:
         ax.set_title(title, fontsize=fontsize, color=title_color)
-    gdf.plot(column, scheme=scheme, legend=legend, ax=ax, **kwargs)
+
+    m.gdf.plot(scheme=scheme, legend=legend, ax=ax, **kwargs)

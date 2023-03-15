@@ -1,8 +1,8 @@
 ```{include} ../README.md
 ---
 end-before: <!-- github-only -->
-relative-docs: network_analysis_examples_files/
-relative-images:
+relative-docs: docs/network_analysis_examples_files
+relative-images: 
 ---
 ```
 
@@ -12,12 +12,7 @@ relative-images:
 ```{toctree}
 ---
 hidden:
-maxdepth: 1
+maxdepth: 3
 ---
-
-reference
-contributing
-Code of Conduct <codeofconduct>
-License <license>
-Changelog <https://github.com/statisticsnorway/ssb-sgis/releases>
+reference/index
 ```
