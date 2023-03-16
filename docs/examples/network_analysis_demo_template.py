@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 
-os.chdir("../src")
+os.chdir("../../src")
 
 import sgis as sg
 
@@ -80,7 +80,7 @@ nw
 #
 # To start the network analysis, we put our network and our rules into the NetworkAnalysis class:
 # %%
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
 nwa
 # %% [markdown]
 # We also need some points that will be our origins and destinations:
@@ -97,12 +97,11 @@ points
 od = nwa.od_cost_matrix(origins=points, destinations=points, id_col="idx")
 od
 # %% [markdown]
-# Set 'lines' to True to get straight lines between origin and destination:
+# Set 'lines' to True to get a geometry column with straight lines between origin and
+# destination:
 
 # %%
 od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
-
-print(od.head(3))
 
 sg.qtm(
     od,
@@ -110,9 +109,9 @@ sg.qtm(
     title="Travel time (minutes) from 1 to 1000 addresses.",
 )
 # %% [markdown]
-# Information about the analyses are stored in a DataFrame in the 'log' attribute:
+# Information about the analyses are stored in a DataFrame in the 'log' attribute.
 # %%
-nwa.log
+print(nwa.log)
 # %% [markdown]
 # ### Get route
 
@@ -206,10 +205,10 @@ print("rows before drop_duplicates:", len(sa))
 sa = sa.drop_duplicates(["source", "target"])
 print("rows after drop_duplicates:", len(sa))
 # %% [markdown]
-# Let's check the log:
+# Let's check the log.
 
 # %%
-nwa.log
+print(nwa.log)
 # %% [markdown]
 # ## Customising the network
 

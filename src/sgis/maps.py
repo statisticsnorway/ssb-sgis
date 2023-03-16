@@ -1,11 +1,10 @@
 """Interactive and static mapping of multiple GeoDataFrames.
 
-The main function is 'explore', which displays one of more GeoDataFrames together in an 
+The main function is 'explore', which displays one of more GeoDataFrames together in an
 interactive map with layers that can be toggled on and off. The 'samplemap' and
 'clipmap' functions do the same, but displays a random and chosen area respectfully.
 
-In addition, there is the 'qtm' function, which shows a static map with some additional
-functionality compared to the geopandas plot method.
+The 'qtm' function shows a static map of one or more GeoDataFrames.
 """
 import matplotlib.pyplot as plt
 from geopandas import GeoDataFrame, GeoSeries
@@ -291,38 +290,41 @@ def qtm(
     fontsize: int = 15,
     **kwargs,
 ) -> None:
-    """Quick, thematic map (name taken from the tmap package in R).
+    """Quick, thematic map of one or more GeoDataFrames.
 
-    Like geopandas' plot method, with some different default parameter values:
-    1) a bit larger
-    2) quantiles scheme as default if numeric column
-    3) includes legend by default
-    4) no axis labels (coordinates)
-    5) can include a title
-    6) black background color to go with the default 'viridis' cmap, and to make
-    geometries more visible
+    Shows one or more GeoDataFrames in the same plot, with a common color scheme if
+    column is specified, or with unique colors for each GeoDataFrame if not. The
+    function uses the geopandas 'plot' method, with some different default values to
+    make the map prettier and more informative.
+
+    The 'qtm' name is taken from the tmap package in R.
 
     Args:
-        gdf: The GeoDataFrame to plot.
-        column: The column to color the map by.
+        *gdfs: One or more GeoDataFrames to plot.
+        column: The column to color the map by. Defaults to None, meaning each
+            GeoDataFrame is given a unique color.
         title: Text to use as the map's heading.
-        scheme: how to group the column values. Defaults to 'quantiles' if numeric
-            column
-        legend: whether to include a legend explaining the colors and their values
-        black: if True (the default), the background color will be black and the title
-            white. If False, it will be the other way around.
-        size: size of the plot. Defaults to 10
-        fontsize: size of the title.
-        **kwargs: additional keyword arguments taken by the geopandas plot method.
+        scheme: How to group the column values. Defaults to 'quantiles' if numeric
+            column.
+        legend: Whether to include a legend explaining the colors and their values.
+        black: If True (the default), the background color will be black and the title
+            white. If False, it will be the opposite.
+        size: Size of the plot. Defaults to 10.
+        fontsize: Size of the title.
+        **kwargs: Additional keyword arguments passed to the geopandas plot method.
     """
     if black:
         facecolor, title_color = "#0f0f0f", "#f7f7f7"
     else:
         facecolor, title_color = "#f7f7f7", "#0f0f0f"
 
+    # run the gdfs through the __init__ of the Explore class
+    # this gives us a custom categorical cmap and labels to be used in the legend
     kwargs["column"] = column
     gdfs, column, kwargs = _separate_args(gdfs, column, kwargs)
     m = Explore(*gdfs, **kwargs)
+    # the 'column' in the kwargs has to be updated to the custom categorical column (if
+    # column was not specified).
     kwargs["column"] = m.kwargs.pop("column")
 
     if column and not is_numeric_dtype(m.gdf[column]):
@@ -332,7 +334,7 @@ def qtm(
     fig.patch.set_facecolor(facecolor)
     ax.set_axis_off()
 
-    # manually add legend if categorical
+    # manually add legend if categorical, since geopandas.plot removes it otherwise.
     if not column and "color" not in kwargs:
         kwargs["color"] = m.gdf.color
         kwargs.pop("column")

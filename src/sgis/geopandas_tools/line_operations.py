@@ -129,15 +129,15 @@ def split_lines_at_closest_point(
     points: GeoDataFrame,
     max_dist: int | None = None,
 ) -> DataFrame:
-    """Split lines
+    """Split lines where nearest to a set of points.
 
-    Snaps points to lines and splits the lines in two at the snap point. Only the rows
-    closest to each point is split. So if there is one point, only one line is split,
-    unless there are equal distances.
+    Snaps points to lines and splits the lines in two at the snap point. The splitting
+    is done pointwise, meaning each point splits one line in two. The line will not be
+    split if the point is closest to the endpoint of the line.
 
     Args:
-        lines: GeoDataFrame of lines that will be split
-        points: GeoDataFrame of points to split the lines with
+        lines: GeoDataFrame of lines that will be split.
+        points: GeoDataFrame of points to split the lines with.
         max_dist: the maximum distance between the point and the line.
             Points further away than max_dist will not split any lines.
             Defaults to None.

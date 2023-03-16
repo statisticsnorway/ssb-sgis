@@ -38,8 +38,9 @@ class NetworkAnalysis:
         rules: NetworkAnalysisRules class instance.
         log: If True (the default), a DataFrame with information about each
             analysis run will be stored in the 'log' attribute.
-        detailed_log: If True (the default), will include all arguments passed to
-            the analysis methods and the standard deviation, 25th, 50th and 75th
+        detailed_log: If True (the default), the log DataFrame will include columns for
+            all arguments held by the NetworkAnalysisRules class and the analysis
+            method used. Will also include standard deviation, 25th, 50th and 75th
             percentile of the weight column in the results.
 
     Attributes:
@@ -898,20 +899,25 @@ class NetworkAnalysis:
             The 'isolated_removed' column does not account for
             preperation done before initialising the (Directed)Network class.
         """
-        df = DataFrame(
-            {
-                "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
-                "minutes_elapsed": minutes_elapsed,
-                "method": method,
-                "origins_count": np.nan,
-                "destinations_count": np.nan,
-                "percent_missing": np.nan,
-                "cost_mean": np.nan,
+        data = {
+            "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
+            "minutes_elapsed": minutes_elapsed,
+            "method": method,
+            "origins_count": np.nan,
+            "destinations_count": np.nan,
+            "percent_missing": np.nan,
+            "cost_mean": np.nan,
+        }
+        if self.detailed_log:
+            data = data | {
                 "isolated_removed": self.network._isolated_removed,
                 "percent_bidirectional": self.network.percent_bidirectional,
-            },
-            index=[0],
-        )
+            }
+
+        df = DataFrame(data, index=[0])
+
+        if not self.detailed_log:
+            return df
 
         for key, value in self.rules.__dict__.items():
             if key.startswith("_") or key.endswith("_"):

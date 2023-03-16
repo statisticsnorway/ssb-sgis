@@ -4,9 +4,9 @@ import subprocess
 
 
 if "sgis" in os.listdir():
-    os.chdir("docs")
+    os.chdir("docs/examples")
 elif "ssb-sgis" in os.listdir():
-    os.chdir("ssb-sgis/docs")
+    os.chdir("ssb-sgis/docs/examples")
 else:
     n = 0
     while "ssb-sgis" not in os.listdir():
@@ -14,7 +14,7 @@ else:
         n += 1
         if n == 10:
             break
-    os.chdir("ssb-sgis/docs")
+    os.chdir("ssb-sgis/docs/examples")
 
 
 def py_to_md(
@@ -50,39 +50,11 @@ def py_to_md(
             print(md_file)
             print(png_folder)
 
-
-# os.remove(nb_file)
-
-
-def clean_up_md(file: str):
-    unwanted_text = """
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-
-</style>
-"""
-
-    with open(file) as f:
-        filedata = f.read()
-        filedata = filedata.replace(unwanted_text, "")
-    with open(file, "w") as f:
-        f.write(filedata)
+    os.remove(nb_file)
 
 
-file = "network_analysis_examples"
-py_to_md(file, move_n_folders_up=0)
-clean_up_md(file + ".md")
+# file = "network_analysis_examples"
+# py_to_md(file, move_n_folders_up=0)
 
 file = "network_analysis_demo_template"
 py_to_md(file, move_n_folders_up=0)
-clean_up_md(file + ".md")

@@ -38,7 +38,11 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
     "myst_parser",
+    #  "nbsphinx",
 ]
+# nbsphinx_custom_formats = {
+#   ".md": ["jupytext.reads", {"fmt": "mystnb"}],
+# }
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = []
@@ -100,12 +104,13 @@ autodoc_typehints = "description"
 numpydoc_show_class_members = False
 
 source_suffix = [".rst", ".md"]
-master_doc = "reference/index"
+# master_doc = "reference/index"
 
 # List of source files, relative to this directory.
 source_files = [
     "index.md",
-    "reference/index.rst",  # make sure this matches the name of the referenced document
+    "reference/index.rst",
+    "examples/index.rst",
 ]
 
 add_module_names = False

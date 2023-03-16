@@ -7,11 +7,9 @@ import numpy as np
 import pandas as pd
 
 
-os.chdir("../src")
+os.chdir("../../src")
 import sgis as sg
 
-
-os.chdir("..")
 
 # ignore some warnings to make it cleaner
 pd.options.mode.chained_assignment = None
@@ -95,13 +93,10 @@ points = sg.read_parquet_url(
 ### !!!
 ```
 
-# sgis
-Simplifying GIS in python for science and statistics.
-
-sgis builds on the geopandas package and provides functions that simplify and extend GIS in python. Features include network
-analysis, functions for exploring multiple GeoDataFrames in a layered interactive map, and vector operations like finding k
-nearest neighbours, splitting lines by points, snapping geometries and closing holes in polygons by size.
-by area.
+sgis builds on the geopandas package and provides functions that make it easier to do advanced GIS in python.
+Features include network analysis, functions for exploring multiple GeoDataFrames in a layered interactive map,
+and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
+in polygons by size.
 
 ### Network analysis examples
 Preparing for network analysis:
@@ -142,9 +137,7 @@ nwa
 
 
 
-Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
-
-### get_route_frequencies: get the number of times each line segment was visited
+Get number of times each line segment was visited
 
 
 ```python
@@ -165,22 +158,32 @@ sg.qtm(
     
 
 
-### od_cost_matrix: fast many-to-many travel times/distances
+Fast many-to-many travel times/distances
 
 
 ```python
-od = nwa.od_cost_matrix(points.iloc[[0]], points, id_col="idx")
+od = nwa.od_cost_matrix(points, points, id_col="idx")
 
-print(od.head(3))
+print(od)
 ```
 
-       origin  destination    minutes
-    0       1            1   0.000000
-    1       1            2  13.039830
-    2       1            3  10.902453
+            origin  destination    minutes
+    0            1            1   0.000000
+    1            1            2  13.039830
+    2            1            3  10.902453
+    3            1            4   8.297021
+    4            1            5  14.742294
+    ...        ...          ...        ...
+    999995    1000          996  11.038673
+    999996    1000          997  17.820664
+    999997    1000          998  10.288465
+    999998    1000          999  14.798257
+    999999    1000         1000   0.000000
+    
+    [1000000 rows x 3 columns]
     
 
-### service_area: get the area that can be reached within one or more breaks
+Get the area that can be reached within one or more breaks
 
 
 ```python
@@ -198,7 +201,7 @@ sg.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minu
     
 
 
-### get_route and get_k_routes: get one or more route per origin-destination pair
+Get one or more route per origin-destination pair
 
 
 ```python
@@ -206,7 +209,7 @@ routes = nwa.get_k_routes(
     points.iloc[[0]], points.iloc[[1]], k=5, drop_middle_percent=50
 )
 
-sg.qtm(sg.buff(routes, 15), "k", title="5 fastest routes from A to B", legend=False)
+sg.qtm(sg.buff(routes, 15), "k", title="Five fastest routes from A to B", legend=False)
 ```
 
 
@@ -216,3 +219,5 @@ sg.qtm(sg.buff(routes, 15), "k", title="5 fastest routes from A to B", legend=Fa
 
 
 More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
+
+Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313

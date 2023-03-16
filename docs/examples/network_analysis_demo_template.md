@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 
-os.chdir("../src")
+os.chdir("../../src")
 
 import sgis as sg
 
@@ -195,7 +195,7 @@ To start the network analysis, we put our network and our rules into the Network
 
 
 ```python
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
 nwa
 ```
 
@@ -417,13 +417,12 @@ od
 
 
 
-Set 'lines' to True to get straight lines between origin and destination:
+Set 'lines' to True to get a geometry column with straight lines between origin and
+destination:
 
 
 ```python
 od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
-
-print(od.head(3))
 
 sg.qtm(
     od,
@@ -432,129 +431,27 @@ sg.qtm(
 )
 ```
 
-      origin destination    minutes  \
-    0  79166       79167   0.000000   
-    1  79166       79168  13.039830   
-    2  79166       79169  10.902453   
+
     
-                                                geometry  
-    0  LINESTRING (263122.700 6651184.900, 263122.700...  
-    1  LINESTRING (263122.700 6651184.900, 272456.100...  
-    2  LINESTRING (263122.700 6651184.900, 270082.300...  
+![png](network_analysis_demo_template_files/network_analysis_demo_template_23_0.png)
     
 
 
-    
-![png](network_analysis_demo_template_files/network_analysis_demo_template_23_1.png)
-    
-
-
-Information about the analyses are stored in a DataFrame in the 'log' attribute:
+Information about the analyses are stored in a DataFrame in the 'log' attribute.
 
 
 ```python
-nwa.log
+print(nwa.log)
 ```
 
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>endtime</th>
-      <th>minutes_elapsed</th>
-      <th>method</th>
-      <th>origins_count</th>
-      <th>destinations_count</th>
-      <th>percent_missing</th>
-      <th>cost_mean</th>
-      <th>isolated_removed</th>
-      <th>percent_bidirectional</th>
-      <th>weight</th>
-      <th>...</th>
-      <th>weight_to_nodes_kmh</th>
-      <th>weight_to_nodes_mph</th>
-      <th>cost_p25</th>
-      <th>cost_median</th>
-      <th>cost_p75</th>
-      <th>cost_std</th>
-      <th>lines</th>
-      <th>cutoff</th>
-      <th>destination_count</th>
-      <th>rowwise</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>2023-03-15 11:49:59</td>
-      <td>0.4</td>
-      <td>od_cost_matrix</td>
-      <td>1000</td>
-      <td>1000</td>
-      <td>0.9966</td>
-      <td>15.270462</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>None</td>
-      <td>None</td>
-      <td>10.565738</td>
-      <td>14.772737</td>
-      <td>19.337235</td>
-      <td>6.654981</td>
-      <td>False</td>
-      <td>None</td>
-      <td>None</td>
-      <td>False</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>2023-03-15 11:50:06</td>
-      <td>0.1</td>
-      <td>od_cost_matrix</td>
-      <td>1</td>
-      <td>1000</td>
-      <td>0.4000</td>
-      <td>11.476453</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>None</td>
-      <td>None</td>
-      <td>7.874808</td>
-      <td>11.768197</td>
-      <td>14.326512</td>
-      <td>5.093483</td>
-      <td>True</td>
-      <td>None</td>
-      <td>None</td>
-      <td>False</td>
-    </tr>
-  </tbody>
-</table>
-<p>2 rows × 24 columns</p>
-</div>
-
-
+                  endtime  minutes_elapsed          method  origins_count  \
+    0 2023-03-16 09:10:16              0.4  od_cost_matrix           1000   
+    1 2023-03-16 09:10:22              0.1  od_cost_matrix              1   
+    
+       destinations_count  percent_missing  cost_mean  
+    0                1000           0.9966  15.270462  
+    1                1000           0.4000  11.476453  
+    
 
 ### Get route
 
@@ -605,37 +502,37 @@ routes
     <tr>
       <th>0</th>
       <td>1</td>
-      <td>59</td>
-      <td>10.926424</td>
-      <td>MULTILINESTRING Z ((264565.122 6647553.938 143...</td>
+      <td>394</td>
+      <td>16.836225</td>
+      <td>MULTILINESTRING Z ((262562.590 6644123.600 22....</td>
     </tr>
     <tr>
       <th>1</th>
       <td>1</td>
-      <td>721</td>
-      <td>15.725519</td>
-      <td>MULTILINESTRING Z ((266846.300 6642142.600 128...</td>
+      <td>442</td>
+      <td>16.066930</td>
+      <td>MULTILINESTRING Z ((266192.560 6641791.850 158...</td>
     </tr>
     <tr>
       <th>2</th>
       <td>1</td>
-      <td>327</td>
-      <td>11.918054</td>
-      <td>MULTILINESTRING Z ((264381.100 6646156.100 149...</td>
+      <td>234</td>
+      <td>2.963185</td>
+      <td>MULTILINESTRING Z ((264187.561 6651225.213 75....</td>
     </tr>
     <tr>
       <th>3</th>
       <td>1</td>
-      <td>842</td>
-      <td>18.982484</td>
-      <td>MULTILINESTRING Z ((266999.100 6640759.200 133...</td>
+      <td>651</td>
+      <td>12.343242</td>
+      <td>MULTILINESTRING Z ((266099.900 6648597.000 84....</td>
     </tr>
     <tr>
       <th>4</th>
       <td>1</td>
-      <td>719</td>
-      <td>7.970759</td>
-      <td>MULTILINESTRING Z ((263160.000 6651034.600 36....</td>
+      <td>104</td>
+      <td>6.410121</td>
+      <td>MULTILINESTRING Z ((265611.900 6651045.190 94....</td>
     </tr>
     <tr>
       <th>...</th>
@@ -647,37 +544,37 @@ routes
     <tr>
       <th>95</th>
       <td>1</td>
-      <td>439</td>
-      <td>21.596017</td>
-      <td>MULTILINESTRING Z ((266984.240 6639182.670 177...</td>
+      <td>21</td>
+      <td>5.152193</td>
+      <td>MULTILINESTRING Z ((264668.300 6653049.700 141...</td>
     </tr>
     <tr>
       <th>96</th>
       <td>1</td>
-      <td>657</td>
-      <td>11.284345</td>
-      <td>MULTILINESTRING Z ((258385.992 6653000.243 101...</td>
+      <td>36</td>
+      <td>11.431826</td>
+      <td>MULTILINESTRING Z ((259261.081 6653357.426 125...</td>
     </tr>
     <tr>
       <th>97</th>
       <td>1</td>
-      <td>954</td>
-      <td>5.306990</td>
-      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+      <td>311</td>
+      <td>2.845905</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>98</th>
       <td>1</td>
-      <td>828</td>
-      <td>15.409857</td>
-      <td>MULTILINESTRING Z ((271257.900 6654378.100 193...</td>
+      <td>562</td>
+      <td>11.565014</td>
+      <td>MULTILINESTRING Z ((269623.211 6654373.568 196...</td>
     </tr>
     <tr>
       <th>99</th>
       <td>1</td>
-      <td>819</td>
-      <td>11.435919</td>
-      <td>MULTILINESTRING Z ((270339.200 6652403.600 137...</td>
+      <td>814</td>
+      <td>9.322026</td>
+      <td>MULTILINESTRING Z ((266099.900 6648597.000 84....</td>
     </tr>
   </tbody>
 </table>
@@ -787,92 +684,92 @@ sa
     <tr>
       <th>0</th>
       <td>5</td>
-      <td>73</td>
-      <td>MULTILINESTRING Z ((268013.773 6647547.535 189...</td>
+      <td>883</td>
+      <td>MULTILINESTRING Z ((259185.676 6652656.707 76....</td>
     </tr>
     <tr>
       <th>1</th>
       <td>10</td>
-      <td>73</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>883</td>
+      <td>MULTILINESTRING Z ((262676.260 6647737.230 1.0...</td>
     </tr>
     <tr>
       <th>2</th>
       <td>15</td>
-      <td>73</td>
-      <td>MULTILINESTRING Z ((269100.290 6654598.780 237...</td>
+      <td>883</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>3</th>
       <td>5</td>
-      <td>130</td>
-      <td>MULTILINESTRING Z ((262676.260 6647737.230 1.0...</td>
+      <td>289</td>
+      <td>MULTILINESTRING Z ((260390.270 6651212.750 44....</td>
     </tr>
     <tr>
       <th>4</th>
       <td>10</td>
-      <td>130</td>
+      <td>289</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>5</th>
       <td>15</td>
-      <td>130</td>
-      <td>MULTILINESTRING Z ((263186.050 6657441.280 157...</td>
+      <td>289</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
     <tr>
       <th>6</th>
       <td>5</td>
-      <td>928</td>
-      <td>MULTILINESTRING Z ((261416.340 6653760.610 108...</td>
+      <td>243</td>
+      <td>MULTILINESTRING Z ((267287.202 6646656.305 155...</td>
     </tr>
     <tr>
       <th>7</th>
       <td>10</td>
-      <td>928</td>
-      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
+      <td>243</td>
+      <td>MULTILINESTRING Z ((264357.960 6648303.190 18....</td>
     </tr>
     <tr>
       <th>8</th>
       <td>15</td>
-      <td>928</td>
+      <td>243</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>9</th>
       <td>5</td>
-      <td>733</td>
-      <td>MULTILINESTRING Z ((268013.773 6647547.535 189...</td>
+      <td>226</td>
+      <td>MULTILINESTRING Z ((265894.871 6643331.708 113...</td>
     </tr>
     <tr>
       <th>10</th>
       <td>10</td>
-      <td>733</td>
+      <td>226</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>11</th>
       <td>15</td>
-      <td>733</td>
-      <td>MULTILINESTRING Z ((269100.290 6654598.780 237...</td>
+      <td>226</td>
+      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
     </tr>
     <tr>
       <th>12</th>
       <td>5</td>
-      <td>316</td>
-      <td>MULTILINESTRING Z ((264990.250 6650276.370 76....</td>
+      <td>713</td>
+      <td>MULTILINESTRING Z ((261416.340 6653760.610 108...</td>
     </tr>
     <tr>
       <th>13</th>
       <td>10</td>
-      <td>316</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>713</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
     <tr>
       <th>14</th>
       <td>15</td>
-      <td>316</td>
-      <td>MULTILINESTRING Z ((263385.810 6658487.100 168...</td>
+      <td>713</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
   </tbody>
 </table>
@@ -917,6 +814,7 @@ sa
       <th>minutes</th>
       <th>idx</th>
       <th>geometry</th>
+      <th>label</th>
     </tr>
   </thead>
   <tbody>
@@ -925,60 +823,70 @@ sa
       <td>1</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((263122.461 6651267.381 46....</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>1</th>
       <td>2</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((263889.223 6651115.545 63....</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>2</th>
       <td>3</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((262750.930 6651840.320 63....</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>3</th>
       <td>4</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((261870.921 6651358.348 77....</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>4</th>
       <td>5</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((265378.000 6650581.600 85....</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>5</th>
       <td>6</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((265262.829 6650519.242 78....</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>6</th>
       <td>7</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>7</th>
       <td>8</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((266903.800 6651086.560 114...</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>8</th>
       <td>9</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((263683.620 6648172.520 20....</td>
+      <td>sa</td>
     </tr>
     <tr>
       <th>9</th>
       <td>10</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((265657.500 6654844.860 296...</td>
+      <td>sa</td>
     </tr>
   </tbody>
 </table>
@@ -1004,9 +912,13 @@ sg.qtm(
 )
 ```
 
+    c:\Users\ort\AppData\Local\Programs\Python\Python311\Lib\site-packages\geopandas\plotting.py:656: UserWarning: Only specify one of 'column' or 'color'. Using 'color'.
+      warnings.warn(
+    
+
 
     
-![png](network_analysis_demo_template_files/network_analysis_demo_template_37_0.png)
+![png](network_analysis_demo_template_files/network_analysis_demo_template_37_1.png)
     
 
 
@@ -1024,260 +936,37 @@ sa = sa.drop_duplicates(["source", "target"])
 print("rows after drop_duplicates:", len(sa))
 ```
 
-    rows before drop_duplicates: 664421
-    rows after drop_duplicates: 140120
+    rows before drop_duplicates: 632497
+    rows after drop_duplicates: 143421
     
 
-Let's check the log:
+Let's check the log.
 
 
 ```python
-nwa.log
+print(nwa.log)
 ```
 
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>endtime</th>
-      <th>minutes_elapsed</th>
-      <th>method</th>
-      <th>origins_count</th>
-      <th>destinations_count</th>
-      <th>percent_missing</th>
-      <th>cost_mean</th>
-      <th>isolated_removed</th>
-      <th>percent_bidirectional</th>
-      <th>weight</th>
-      <th>...</th>
-      <th>cost_p25</th>
-      <th>cost_median</th>
-      <th>cost_p75</th>
-      <th>cost_std</th>
-      <th>lines</th>
-      <th>cutoff</th>
-      <th>destination_count</th>
-      <th>rowwise</th>
-      <th>breaks</th>
-      <th>dissolve</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>2023-03-15 11:49:59</td>
-      <td>0.4</td>
-      <td>od_cost_matrix</td>
-      <td>1000</td>
-      <td>1000.0</td>
-      <td>0.9966</td>
-      <td>15.270462</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>10.565738</td>
-      <td>14.772737</td>
-      <td>19.337235</td>
-      <td>6.654981</td>
-      <td>False</td>
-      <td>None</td>
-      <td>None</td>
-      <td>False</td>
-      <td>NaN</td>
-      <td>NaN</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>2023-03-15 11:50:06</td>
-      <td>0.1</td>
-      <td>od_cost_matrix</td>
-      <td>1</td>
-      <td>1000.0</td>
-      <td>0.4000</td>
-      <td>11.476453</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>7.874808</td>
-      <td>11.768197</td>
-      <td>14.326512</td>
-      <td>5.093483</td>
-      <td>True</td>
-      <td>None</td>
-      <td>None</td>
-      <td>False</td>
-      <td>NaN</td>
-      <td>NaN</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>2023-03-15 11:50:39</td>
-      <td>0.6</td>
-      <td>get_route</td>
-      <td>1</td>
-      <td>100.0</td>
-      <td>0.0000</td>
-      <td>12.098711</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>8.355258</td>
-      <td>11.798688</td>
-      <td>15.103620</td>
-      <td>5.366963</td>
-      <td>NaN</td>
-      <td>None</td>
-      <td>None</td>
-      <td>False</td>
-      <td>NaN</td>
-      <td>NaN</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>2023-03-15 11:54:15</td>
-      <td>3.6</td>
-      <td>get_route_frequencies</td>
-      <td>100</td>
-      <td>100.0</td>
-      <td>0.0000</td>
-      <td>0.071921</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>0.016342</td>
-      <td>0.045446</td>
-      <td>0.094026</td>
-      <td>0.085818</td>
-      <td>NaN</td>
-      <td>None</td>
-      <td>None</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>NaN</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>2023-03-15 11:58:08</td>
-      <td>3.8</td>
-      <td>get_route_frequencies</td>
-      <td>100</td>
-      <td>100.0</td>
-      <td>0.0000</td>
-      <td>39.451861</td>
-      <td>True</td>
-      <td>87</td>
-      <td>meters</td>
-      <td>...</td>
-      <td>9.504153</td>
-      <td>24.493249</td>
-      <td>47.981250</td>
-      <td>54.780657</td>
-      <td>NaN</td>
-      <td>None</td>
-      <td>None</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>NaN</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>2023-03-15 11:58:35</td>
-      <td>0.3</td>
-      <td>service_area</td>
-      <td>5</td>
-      <td>NaN</td>
-      <td>0.0000</td>
-      <td>10.000000</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>5.000000</td>
-      <td>10.000000</td>
-      <td>15.000000</td>
-      <td>4.225771</td>
-      <td>NaN</td>
-      <td>None</td>
-      <td>None</td>
-      <td>NaN</td>
-      <td>5, 10, 15</td>
-      <td>True</td>
-    </tr>
-    <tr>
-      <th>6</th>
-      <td>2023-03-15 11:58:53</td>
-      <td>0.1</td>
-      <td>service_area</td>
-      <td>1</td>
-      <td>NaN</td>
-      <td>0.0000</td>
-      <td>5.500000</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>3.250000</td>
-      <td>5.500000</td>
-      <td>7.750000</td>
-      <td>3.027650</td>
-      <td>NaN</td>
-      <td>None</td>
-      <td>None</td>
-      <td>NaN</td>
-      <td>1, 2, 3, 4, 5, 6, 7, 8, 9, 10</td>
-      <td>True</td>
-    </tr>
-    <tr>
-      <th>7</th>
-      <td>2023-03-15 11:59:16</td>
-      <td>0.3</td>
-      <td>service_area</td>
-      <td>100</td>
-      <td>NaN</td>
-      <td>0.0000</td>
-      <td>5.000000</td>
-      <td>True</td>
-      <td>87</td>
-      <td>minutes</td>
-      <td>...</td>
-      <td>5.000000</td>
-      <td>5.000000</td>
-      <td>5.000000</td>
-      <td>0.000000</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>5</td>
-      <td>False</td>
-    </tr>
-  </tbody>
-</table>
-<p>8 rows × 26 columns</p>
-</div>
-
-
+                  endtime  minutes_elapsed                 method  origins_count  \
+    0 2023-03-16 09:10:16              0.4         od_cost_matrix           1000   
+    1 2023-03-16 09:10:22              0.1         od_cost_matrix              1   
+    2 2023-03-16 09:10:58              0.6              get_route              1   
+    3 2023-03-16 09:15:32              4.5  get_route_frequencies            100   
+    4 2023-03-16 09:21:34              5.9  get_route_frequencies            100   
+    5 2023-03-16 09:21:59              0.3           service_area              5   
+    6 2023-03-16 09:22:14              0.1           service_area              1   
+    7 2023-03-16 09:22:39              0.4           service_area            100   
+    
+       destinations_count  percent_missing  cost_mean  
+    0              1000.0           0.9966  15.270462  
+    1              1000.0           0.4000  11.476453  
+    2               100.0           0.0000  11.714403  
+    3               100.0           0.0000   0.073649  
+    4               100.0           0.0000  39.437185  
+    5                 NaN           0.0000  10.000000  
+    6                 NaN           0.0000   5.500000  
+    7                 NaN           0.0000   5.000000  
+    
 
 ## Customising the network
 
@@ -1493,7 +1182,7 @@ rules = sg.NetworkAnalysisRules(weight="metres")
 nwa = sg.NetworkAnalysis(nw, rules=rules)
 ```
 
-    c:\Users\ort\git\ssb-sgis\src\sgis\networkanalysis\networkanalysis.py:234: UserWarning: Your network is likely not directed. Only 0.0 percent of the lines go both ways. Try setting direction_col='oneway' in the 'make_directed_network' method
+    c:\Users\ort\git\ssb-sgis\src\sgis\networkanalysis\networkanalysis.py:235: UserWarning: Your network is likely not directed. Only 0.0 percent of the lines go both ways. Try setting direction_col='oneway' in the 'make_directed_network' method
       self.network._warn_if_undirected()
     
 
