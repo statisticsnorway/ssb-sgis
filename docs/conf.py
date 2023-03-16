@@ -38,11 +38,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
     "myst_parser",
-    #  "nbsphinx",
 ]
-# nbsphinx_custom_formats = {
-#   ".md": ["jupytext.reads", {"fmt": "mystnb"}],
-# }
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = []
@@ -61,8 +57,6 @@ pygments_style = "monokai"
 # a list of builtin themes.
 #
 html_theme = "furo"
-# html_theme = "sphinx_book_theme"
-# html_theme = "pydata_sphinx_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -75,28 +69,6 @@ html_theme = "furo"
 autodoc_typehints = "description"
 autodoc_mock_imports = ["dapla"]
 
-# html_logo = "_static/python-logo-generic.svg"
-html_static_path = ["_static"]
-html_css_files = [
-    "custom.css",
-    "css/pandas.css",
-]
-"""
-html_theme_options = {
-    "rightsidebar": True,
-    "header_inverse": True,
-    "relbar_inverse": True,
-    "noresponsive": False,
-}
-
-html_theme_options = {
-    "light_css_variables": {
-        "color-brand-primary": "red",
-        "color-brand-content": "#CC3333",
-        "color-admonition-background": "orange",
-    },
-}
-"""
 
 # Show typehints as content of the function or method
 autodoc_typehints = "description"
@@ -104,7 +76,6 @@ autodoc_typehints = "description"
 numpydoc_show_class_members = False
 
 source_suffix = [".rst", ".md"]
-# master_doc = "reference/index"
 
 # List of source files, relative to this directory.
 source_files = [

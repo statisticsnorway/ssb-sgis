@@ -12,7 +12,7 @@ relative-images:
 ```{toctree}
 ---
 hidden:
-maxdepth: 4
+maxdepth: 3
 ---
 reference/index
 examples/index
