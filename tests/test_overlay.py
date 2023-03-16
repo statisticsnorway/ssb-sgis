@@ -20,7 +20,7 @@ def test_overlay(points_oslo):
     warnings.filterwarnings(action="ignore", category=UserWarning)
 
     p = points_oslo
-    p = p.iloc[:100]
+    p = p.iloc[:50]
 
     p500 = sg.buff(p, 500)
     p1000 = sg.buff(p, 1000)

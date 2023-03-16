@@ -54,9 +54,9 @@ def test_network_analysis(points_oslo, roads_oslo):
             ]
         )
 
-        #    assert all(nwa.log["percent_missing"] == 0)
-        #   assert all(nwa.log["cost_mean"] < 3)
-        #  assert all(nwa.log["cost_mean"] > 0)
+        assert all(nwa.log["percent_missing"] == 0)
+        assert all(nwa.log["cost_mean"] < 3)
+        assert all(nwa.log["cost_mean"] > 0)
 
         od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
 
@@ -199,7 +199,6 @@ def test_network_analysis(points_oslo, roads_oslo):
 
 
 def main():
-    """
     roads_oslo = sg.read_parquet_url(
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
     )
@@ -208,12 +207,12 @@ def main():
     )
     """
     roads_oslo = gpd.read_parquet(
-        r"C:\Users\ort\git\ssb-sgis\tests\testdata\roads_eidskog_2022.parquet"
+        r"C:/Users/ort/git/ssb-sgis/tests/testdata/roads_eidskog_2022.parquet"
     )
     points_oslo = gpd.read_parquet(
-        r"C:\Users\ort\git\ssb-sgis\tests\testdata\points_eidskog.parquet"
+        r"C:/Users/ort/git/ssb-sgis/tests/testdata/points_eidskog.parquet"
     )
-
+    """
     test_network_analysis(points_oslo, roads_oslo)
 
 

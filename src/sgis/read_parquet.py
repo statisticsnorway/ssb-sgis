@@ -6,7 +6,7 @@ from geopandas import GeoDataFrame
 
 
 def read_parquet_url(url: str) -> GeoDataFrame:
-    """Reads geoparquet from url.
+    """Reads geoparquet from a URL.
 
     Args:
         url: url to a geoparquet file
