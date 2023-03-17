@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-
+import pytest
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -257,6 +257,19 @@ def test_snap(gdf_fixture):
         geom in list(sg.to_multipoint(annet).explode().geometry)
         for geom in snapped.geometry
     )
+
+    print(snapped)
+    snapped = sg.snap_to(snapped, annet, max_dist=20, copy=True)
+    assert "snap_distance_left" in snapped.columns
+    assert "snap_distance_right" in snapped.columns
+    print(snapped)
+
+    # it should fail when snap_distance_left and snap_distance_right exists in the df
+    with pytest.raises(ValueError):
+        snapped = sg.snap_to(snapped, punkter, max_dist=20, copy=True)
+
+    snapped = sg.snap_to(snapped, punkter, distance_col="different_name")
+    print(snapped)
 
 
 def test_to_multipoint(gdf_fixture):

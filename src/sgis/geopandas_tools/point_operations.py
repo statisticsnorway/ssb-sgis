@@ -60,7 +60,7 @@ def snap_to(
 
     Create som points.
 
-    >>> from gis_utils import snap_to, to_gdf
+    >>> from sgis import snap_to, to_gdf
     >>> points = to_gdf([(0, 0), (1, 1)])
     >>> points
                     geometry
@@ -118,6 +118,21 @@ def snap_to(
     geom1 = points._geometry_column_name
     geom2 = to._geometry_column_name
 
+    if distance_col and distance_col in points:
+        points = points.rename(columns={distance_col: distance_col + "_left"})
+        _rename = True
+    elif (
+        distance_col
+        and distance_col + "_left" in points
+        and distance_col + "_right" in points
+    ):
+        raise ValueError(
+            f"Too many {distance_col!r} columns in the axis. "
+            f"Choose a different distance_col string value or set distance_col=None."
+        )
+    else:
+        _rename = False
+
     if distance_col or id_col:
         unsnapped = points.copy()
 
@@ -151,6 +166,9 @@ def snap_to(
     # map distances from non-duplicate indices
     distances = unsnapped.loc[~unsnapped.index.duplicated(), distance_col]
     points[distance_col] = points.index.map(distances)
+
+    if _rename:
+        points = points.rename(columns={distance_col: distance_col + "_right"})
 
     if not id_col:
         return points
@@ -237,7 +255,7 @@ def to_multipoint(
 
     Let's create a GeoDataFrame with a point, a line and a polygon.
 
-    >>> from gis_utils import to_multipoint, to_gdf
+    >>> from sgis import to_multipoint, to_gdf
     >>> from shapely.geometry import LineString, Polygon
     >>> gdf = to_gdf([
     ...     (0, 0),

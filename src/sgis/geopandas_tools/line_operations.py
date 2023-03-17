@@ -21,9 +21,7 @@ from shapely.ops import unary_union
 from .buffer_dissolve_explode import buff
 from .neighbors import get_k_nearest_neighbors, k_nearest_neighbors
 from .general import gdf_concat, to_gdf, _push_geom_col, coordinate_array
-from .point_operations import (
-    snap_to,
-)
+from .point_operations import snap_to
 
 
 def get_largest_component(lines: GeoDataFrame) -> GeoDataFrame:
@@ -124,7 +122,7 @@ def get_component_size(lines: GeoDataFrame) -> GeoDataFrame:
     return lines
 
 
-def split_lines_at_closest_point(
+def split_lines_by_nearest_point(
     lines: GeoDataFrame,
     points: GeoDataFrame,
     max_dist: int | None = None,
@@ -134,6 +132,8 @@ def split_lines_at_closest_point(
     Snaps points to lines and splits the lines in two at the snap point. The splitting
     is done pointwise, meaning each point splits one line in two. The line will not be
     split if the point is closest to the endpoint of the line.
+
+    This function is used in network analysis if split_lines is set to True.
 
     Args:
         lines: GeoDataFrame of lines that will be split.
@@ -151,7 +151,7 @@ def split_lines_at_closest_point(
 
     Examples
     --------
-    >>> from sgis import read_parquet_url, split_lines_at_closest_point
+    >>> from sgis import read_parquet_url, split_lines_by_nearest_point
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
     >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
     >>> rows = len(roads)
@@ -160,13 +160,13 @@ def split_lines_at_closest_point(
 
     Splitting lines for points closer than 10 meters from the lines.
 
-    >>> roads = split_lines_at_closest_point(roads, points, max_dist=10)
+    >>> roads = split_lines_by_nearest_point(roads, points, max_dist=10)
     >>> print("number of lines that were split:", len(roads) - rows)
     number of lines that were split: 380
 
     Splitting lines by all points.
 
-    >>> roads = split_lines_at_closest_point(roads, points)
+    >>> roads = split_lines_by_nearest_point(roads, points)
     >>> print("number of lines that were split:", len(roads) - rows)
     number of lines that were split: 848
 
@@ -181,18 +181,13 @@ def split_lines_at_closest_point(
     lines["temp_idx_"] = lines.index
 
     # move the points to the nearest exact point of the line (to_node=False)
-    # and get the line index ('id_col')
-    snapped = snap_to(
-        points,
-        lines,
-        max_dist=max_dist,
-        to_node=False,
-        id_col="temp_idx_",
-    )
+    snapped = snap_to(points, lines, max_dist=max_dist, to_node=False)
 
-    condition = lines["temp_idx_"].isin(snapped["temp_idx_"])
-    relevant_lines = lines.loc[condition]
-    the_other_lines = lines.loc[~condition]
+    # find the lines that were snapped to (or are very close)
+    snapped_buff = buff(snapped, BUFFDIST)
+    intersect = lines.intersects(snapped_buff.unary_union)
+    relevant_lines = lines.loc[intersect]
+    the_other_lines = lines.loc[~intersect]
 
     # need consistent coordinate dimensions later
     # (doing it down here to not overwrite the original data)
@@ -200,9 +195,9 @@ def split_lines_at_closest_point(
     snapped.geometry = force_2d(snapped.geometry)
 
     # split the lines with buffer + difference, since shaply.split usually doesn't work
-    splitted = relevant_lines.overlay(
-        buff(snapped, BUFFDIST), how="difference"
-    ).explode(ignore_index=True)
+    splitted = relevant_lines.overlay(snapped_buff, how="difference").explode(
+        ignore_index=True
+    )
 
     # the endpoints of the new lines are now sligtly off. To get the exact snapped
     # point coordinates, using get_k_nearest_neighbors. This will map the sligtly
@@ -330,36 +325,12 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
     if not len(long_lines):
         return gdf
 
-    def cut(line, distance):
-        """From the shapely docs, but added unary_union in the returns."""
-        if distance <= 0.0 or distance >= line.length:
-            return line
-        coords = list(line.coords)
-        for i, p in enumerate(coords):
-            prd = line.project(Point(p))
-            if prd == distance:
-                return unary_union(
-                    [LineString(coords[: i + 1]), LineString(coords[i:])]
-                )
-            if prd > distance:
-                cp = line.interpolate(distance)
-                return unary_union(
-                    [
-                        LineString(coords[:i] + [(cp.x, cp.y)]),
-                        LineString([(cp.x, cp.y)] + coords[i:]),
-                    ]
-                )
-
-    cut_vectorised = np.vectorize(cut)
-
     for x in [10, 5, 1]:
         max_ = max(long_lines.length)
         while max_ > max_length * x + 1:
             max_ = max(long_lines.length)
 
-            long_lines["geometry"] = cut_vectorised(long_lines.geometry, max_length)
-
-            long_lines = long_lines.explode(ignore_index=ignore_index)
+            long_lines = cut_lines_once(long_lines, max_length)
 
             if max_ == max(long_lines.length):
                 break
@@ -369,6 +340,39 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
     short_lines = gdf.loc[gdf.length <= max_length]
 
     return pd.concat([short_lines, long_lines], ignore_index=ignore_index)
+
+
+def cut_lines_once(
+    lines: GeoDataFrame, distances: int | float | str, ignore_index: bool = True
+) -> GeoDataFrame:
+    def _cut(line: LineString, distance: int | float) -> list[LineString]:
+        """From the shapely docs"""
+        if distance <= 0.0 or distance >= line.length:
+            return line
+        coords = list(line.coords)
+        for i, p in enumerate(coords):
+            prd = line.project(Point(p))
+            if prd == distance:
+                return [LineString(coords[: i + 1]), LineString(coords[i:])]
+            if prd > distance:
+                cp = line.interpolate(distance)
+                return [
+                    LineString(coords[:i] + [(cp.x, cp.y)]),
+                    LineString([(cp.x, cp.y)] + coords[i:]),
+                ]
+
+    crs = lines.crs
+    geom_col = lines._geometry_column_name
+
+    try:
+        lines[geom_col] = np.vectorize(_cut)(lines[geom_col], lines[distances])
+    except KeyError:
+        lines[geom_col] = np.vectorize(_cut)(lines[geom_col], distances)
+
+    # explode will give pd.df if not gpd.gdf is constructed
+    return GeoDataFrame(
+        lines.explode(ignore_index=ignore_index), geometry=geom_col, crs=crs
+    )
 
 
 def close_network_holes(
@@ -560,7 +564,10 @@ def make_edge_coords_cols(lines: GeoDataFrame) -> GeoDataFrame:
     Returns:
         A GeoDataFrame with new columns 'source_coords' and 'target_coords'
     """
-    lines, endpoints = _prepare_make_edge_cols(lines)
+    try:
+        lines, endpoints = _prepare_make_edge_cols_simple(lines)
+    except ValueError:
+        lines, endpoints = _prepare_make_edge_cols(lines)
 
     coords = [(geom.x, geom.y) for geom in endpoints.geometry]
     lines["source_coords"], lines["target_coords"] = (
@@ -584,7 +591,10 @@ def make_edge_wkt_cols(lines: GeoDataFrame) -> GeoDataFrame:
     Returns:
         A GeoDataFrame with new columns 'source_wkt' and 'target_wkt'
     """
-    lines, endpoints = _prepare_make_edge_cols(lines)
+    try:
+        lines, endpoints = _prepare_make_edge_cols_simple(lines)
+    except ValueError:
+        lines, endpoints = _prepare_make_edge_cols(lines)
 
     wkt_geom = [
         f"POINT ({x} {y})" for x, y in zip(endpoints.x, endpoints.y, strict=True)
@@ -797,12 +807,30 @@ def _prepare_make_edge_cols(
                 "Try using: to_single_geom_type(gdf, 'lines')."
             )
 
+    geom_col = lines._geometry_column_name
+
     # some LinearRings are coded as LineStrings and need to be removed manually
-    boundary = lines.geometry.boundary
+    boundary = lines[geom_col].boundary
     circles = boundary.loc[boundary.is_empty]
     lines = lines[~lines.index.isin(circles.index)]
 
-    endpoints = lines.geometry.boundary.explode(ignore_index=True)
+    endpoints = lines[geom_col].boundary.explode(ignore_index=True)
+
+    if len(endpoints) / len(lines) != 2:
+        raise ValueError(
+            "The lines should have only two endpoints each. "
+            "Try splitting multilinestrings with explode."
+        )
+
+    return lines, endpoints
+
+
+def _prepare_make_edge_cols_simple(
+    lines: GeoDataFrame,
+) -> tuple[GeoDataFrame, GeoDataFrame]:
+    """Faster version of _prepare_make_edge_cols."""
+
+    endpoints = lines[lines._geometry_column_name].boundary.explode(ignore_index=True)
 
     if len(endpoints) / len(lines) != 2:
         raise ValueError(

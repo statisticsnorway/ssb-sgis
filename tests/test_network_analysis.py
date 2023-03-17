@@ -205,14 +205,7 @@ def main():
     points_oslo = sg.read_parquet_url(
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
     )
-    """
-    roads_oslo = gpd.read_parquet(
-        r"C:/Users/ort/git/ssb-sgis/tests/testdata/roads_eidskog_2022.parquet"
-    )
-    points_oslo = gpd.read_parquet(
-        r"C:/Users/ort/git/ssb-sgis/tests/testdata/points_eidskog.parquet"
-    )
-    """
+
     test_network_analysis(points_oslo, roads_oslo)
 
 

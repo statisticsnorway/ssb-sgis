@@ -1,6 +1,7 @@
 """Check and set geometry type."""
 
 from geopandas import GeoDataFrame, GeoSeries
+import pandas as pd
 
 
 def to_single_geom_type(
@@ -39,7 +40,7 @@ def to_single_geom_type(
 
     Create a GeoDataFrame of mixed geometries.
 
-    >>> from gis_utils import to_gdf, to_single_geom_type
+    >>> from sgis import to_gdf, to_single_geom_type
     >>> from shapely.geometry import LineString, Polygon
     >>> gdf = to_gdf([
     ...     (0, 0),
@@ -76,7 +77,7 @@ def to_single_geom_type(
     collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
     if len(collections):
         collections = collections.explode(ignore_index=ignore_index)
-        gdf = gdf_concat([gdf, collections])
+        gdf = pd.concat([gdf, collections], ignore_index=ignore_index)
 
     if "poly" in geom_type:
         gdf = gdf.loc[gdf.geom_type.isin(["Polygon", "MultiPolygon"])]

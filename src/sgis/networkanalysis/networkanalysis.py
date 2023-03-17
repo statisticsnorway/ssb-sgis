@@ -22,7 +22,7 @@ from ._service_area import _service_area
 from .directednetwork import DirectedNetwork
 from ..geopandas_tools.general import gdf_concat, _push_geom_col
 from .network import Network, _edge_ids
-from ..geopandas_tools.line_operations import split_lines_at_closest_point
+from ..geopandas_tools.line_operations import split_lines_by_nearest_point
 from .networkanalysisrules import NetworkAnalysisRules
 
 
@@ -430,7 +430,7 @@ class NetworkAnalysis:
         Args:
             origins: GeoDataFrame of points from where the routes will originate
             destinations: GeoDataFrame of points from where the routes will terminate
-            id_col: optional column to be used as identifier of the service areas. If
+            id_col: optional column to be used as identifier of the routes. If
                 None, an arbitrary id will be used.
             rowwise: if False (the default), it will calculate the cost from each
                 origins to each destination. If true, it will calculate the cost from
@@ -760,6 +760,7 @@ class NetworkAnalysis:
         id_col: str | None = None,
         drop_duplicates: bool = True,
         dissolve: bool = True,
+        precice: bool = False,
     ) -> GeoDataFrame:
         """Returns the lines that can be reached within breaks (weight values).
 
@@ -784,6 +785,9 @@ class NetworkAnalysis:
                 one long multilinestring. If False, the individual line segments will
                 be returned. Duplicate lines can then be removed, or occurences
                 counted.
+            precice: If True, lines that are partly within the break will be split so
+                that the . Defaults to False since the precice calculation takes more
+                time.
 
         Returns:
             A GeoDataFrame with one row per origin and break, with a dissolved line
@@ -835,38 +839,47 @@ class NetworkAnalysis:
         # sort the breaks as an np.ndarray
         breaks = self._sort_breaks(breaks)
 
+        if drop_duplicates:
+            self.network.gdf["source_target_weight"] = _edge_ids(
+                self.network.gdf, self.rules.weight
+            )
+
         results = _service_area(
             graph=self.graph,
             origins=self.origins.gdf,
+            breaks=breaks,
             weight=self.rules.weight,
             lines=self.network.gdf,
-            breaks=breaks,
+            nodes=self.network.nodes,
+            directed=self.network._as_directed,
+            precice=precice,
         )
 
-        if drop_duplicates:
-            results = results.drop_duplicates(["source", "target", "origin"])
+        if not all(results.geometry.isna()):
+            if drop_duplicates:
+                results = results.drop_duplicates(["source_target_weight", "origin"])
 
-        if dissolve:
-            results = (
-                results.dissolve(by=["origin", self.rules.weight])
-                .reset_index()
-                .loc[:, ["origin", self.rules.weight, "geometry"]]
-            )
+            if dissolve:
+                results = results.dissolve(by=["origin", self.rules.weight]).loc[
+                    :, ["geometry"]
+                ]
 
-        # add missing rows as NaNs
-        missing = self.origins.gdf.loc[
-            ~self.origins.gdf["temp_idx"].isin(results["origin"])
-        ].rename(columns={"temp_idx": "origin"})[["origin"]]
+            results = results.reset_index()
 
-        if len(missing):
-            missing["geometry"] = np.nan
-            results = pd.concat([results, missing], ignore_index=True)
+            # add missing rows as NaNs
+            missing = self.origins.gdf.loc[
+                ~self.origins.gdf["temp_idx"].isin(results["origin"])
+            ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
-        if id_col:
-            results[id_col] = results["origin"].map(self.origins.id_dict)
-            results = results.drop("origin", axis=1)
+            if len(missing):
+                missing["geometry"] = np.nan
+                results = pd.concat([results, missing], ignore_index=True)
 
-        results = _push_geom_col(results)
+            if id_col:
+                results[id_col] = results["origin"].map(self.origins.id_dict)
+                results = results.drop("origin", axis=1)
+
+            results = _push_geom_col(results)
 
         if self.rules.split_lines:
             self._unsplit_network()
@@ -975,17 +988,15 @@ class NetworkAnalysis:
             self.network.gdf, raise_error=True
         )
 
-        self.origins = Origins(
-            origins,
-            id_col=id_col,
-            temp_idx_start=max(self.network.nodes.node_id.astype(int)) + 1,
+        self.origins = Origins(origins, id_col=id_col)
+        self.origins._make_temp_idx(
+            start=max(self.network.nodes.node_id.astype(int)) + 1
         )
 
         if destinations is not None:
-            self.destinations = Destinations(
-                destinations,
-                id_col=id_col,
-                temp_idx_start=max(self.origins.gdf.temp_idx.astype(int)) + 1,
+            self.destinations = Destinations(destinations, id_col=id_col)
+            self.destinations._make_temp_idx(
+                start=max(self.origins.gdf.temp_idx.astype(int)) + 1
             )
 
         else:
@@ -1014,6 +1025,13 @@ class NetworkAnalysis:
         if self.rules.split_lines:
             self._split_lines()
             self.network._make_node_ids()
+            self.origins._make_temp_idx(
+                start=max(self.network.nodes.node_id.astype(int)) + 1
+            )
+            if self.destinations is not None:
+                self.destinations._make_temp_idx(
+                    start=max(self.origins.gdf.temp_idx.astype(int)) + 1
+                )
 
         edges = [
             (str(source), str(target))
@@ -1028,6 +1046,7 @@ class NetworkAnalysis:
             nodes=self.network.nodes,
             rules=self.rules,
         )
+
         edges = edges + edges_start
         weights = weights + weights_start
 
@@ -1052,12 +1071,12 @@ class NetworkAnalysis:
 
         points = points.drop_duplicates("geometry")
 
-        self.network.gdf["meters"] = self.network.gdf.length
+        self.network.gdf["meters_"] = self.network.gdf.length
 
-        # create an id from before the split to be able to revert the split later
+        # create an id from before the split, used to revert the split later
         self.network.gdf["temp_idx__"] = range(len(self.network.gdf))
 
-        lines = split_lines_at_closest_point(
+        lines = split_lines_by_nearest_point(
             lines=self.network.gdf,
             points=points,
             max_dist=self.rules.search_tolerance,
@@ -1068,6 +1087,11 @@ class NetworkAnalysis:
         self.network._not_splitted = self.network.gdf.loc[
             self.network.gdf["temp_idx__"].isin(splitted)
         ]
+
+        # adjust weight to new length
+        lines[self.rules.weight] = lines[self.rules.weight] * (
+            lines.length / lines["meters_"]
+        )
 
         self.network.gdf = lines
 
@@ -1181,16 +1205,17 @@ class NetworkAnalysis:
 
     @staticmethod
     def _sort_breaks(breaks):
-        if isinstance(breaks, (list, tuple)):
-            breaks = np.array(breaks)
 
         if isinstance(breaks, str):
             breaks = float(breaks)
 
-        if not isinstance(breaks, (int, float)):
-            breaks = np.sort(breaks)
+        if hasattr(breaks, "__iter__"):
+            return list(sorted(list(breaks)))
 
-        return breaks
+        if isinstance(breaks, (int, float)):
+            return [breaks]
+
+        raise ValueError("")
 
     def __repr__(self) -> str:
         """The print representation."""
@@ -1216,7 +1241,8 @@ class NetworkAnalysis:
         return (
             f"{self.__class__.__name__}(\n"
             f"    network={self.network.__repr__()},\n"
-            f"    rules={rules}{x})\n)"
+            f"    rules={rules}{x}),\n"
+            f"    log={self._log}, detailed_log={self.detailed_log})"
         )
 
     def __getitem__(self, item):

@@ -8,6 +8,8 @@ from sklearn.neighbors import NearestNeighbors
 
 from ..helpers import return_two_vals
 from .general import coordinate_array
+from .geometry_types import get_geom_type
+from .point_operations import to_multipoint
 
 
 def get_neighbors(
@@ -37,7 +39,7 @@ def get_neighbors(
 
     Examples
     --------
-    >>> from gis_utils import get_neighbors, to_gdf
+    >>> from sgis import get_neighbors, to_gdf
     >>> points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
     >>> points
                     geometry
@@ -132,7 +134,7 @@ def get_k_nearest_neighbors(
     Examples
     --------
 
-    >>> from gis_utils import get_k_nearest_neighbors, random_points
+    >>> from sgis import get_k_nearest_neighbors, random_points
     >>> points = random_points(10)
     >>> neighbors = random_points(10)
     >>> get_k_nearest_neighbors(points, neighbors, k=10)
@@ -202,11 +204,11 @@ def get_k_nearest_neighbors(
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 
     id_col1, id_col2 = return_two_vals(id_cols)
-    if not id_col1:
+    if not id_col1 or id_col1 and id_col1 not in gdf.columns:
         id_col1 = "gdf_idx"
         gdf[id_col1] = range(len(gdf))
-    if not id_col2:
-        id_col2 = "neighbour_idx", "gdf_idx"
+    if not id_col2 or id_col2 and id_col2 not in neighbors.columns:
+        id_col2 = "neighbour_idx"
         neighbors[id_col2] = range(len(neighbors))
 
     id_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf[id_col1], strict=True)}
@@ -302,7 +304,7 @@ def get_neighbours(
     id_col: str = "index",
     max_dist: int = 0,
 ) -> list[str]:
-    """American alias for get_neighbors."""
+    """Alias for get_neighbors."""
     return get_neighbors(gdf, neighbours, id_col, max_dist)
 
 
@@ -315,7 +317,7 @@ def get_k_nearest_neighbours(
     max_dist: int | None = None,
     strict: bool = False,
 ) -> DataFrame:
-    """American alias of get_k_nearest_neighbors."""
+    """Alias of get_k_nearest_neighbors."""
     return get_k_nearest_neighbors(
         gdf=gdf,
         neighbors=neighbours,
@@ -333,7 +335,7 @@ def k_nearest_neighbours(
     k: int,
     strict: bool = False,
 ) -> tuple[np.ndarray[float], np.ndarray[int]]:
-    """American alias of k_nearest_neighbors."""
+    """Alias of k_nearest_neighbors."""
     return k_nearest_neighbors(
         from_array=from_array,
         to_array=to_array,

@@ -43,7 +43,7 @@ from .geopandas_tools.line_operations import (
     make_edge_coords_cols,
     make_edge_wkt_cols,
     make_node_ids,
-    split_lines_at_closest_point,
+    split_lines_by_nearest_point,
 )
 from .networkanalysis.networkanalysis import NetworkAnalysis
 from .networkanalysis.networkanalysisrules import NetworkAnalysisRules

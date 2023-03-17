@@ -42,7 +42,7 @@ def close_holes(
 
     Let's create a circle with a hole in it.
 
-    >>> from gis_utils import close_holes, buff
+    >>> from sgis import close_holes, buff
     >>> point = to_gdf([260000, 6650000], crs=25833)
     >>> point
                             geometry

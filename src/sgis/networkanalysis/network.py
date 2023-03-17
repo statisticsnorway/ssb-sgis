@@ -576,6 +576,9 @@ class Network:
         """So the attributes can be iterated through."""
         return iter(self.__dict__.items())
 
+    def __len__(self):
+        return len(self.gdf)
+
 
 # TODO: put these a better place:
 

@@ -18,8 +18,12 @@ from geopandas import GeoDataFrame, GeoSeries
 from mapclassify import classify
 from shapely import Geometry
 from shapely.geometry import LineString
-
-from .geopandas_tools.general import clean_geoms, gdf_concat
+from .geopandas_tools.general import (
+    clean_geoms,
+    gdf_concat,
+    drop_inactive_geometry_columns,
+    rename_geometry_if,
+)
 from .helpers import get_name
 
 
@@ -35,10 +39,10 @@ pd.options.mode.chained_assignment = None
 # colors. If more than 14 categories, the geopandas default cmap is used.
 _CATEGORICAL_CMAP = {
     0: "#4576ff",
-    1: "#ff4545",
+    1: "#ff455e",
     2: "#59d45f",
     3: "#b51d8b",
-    4: "#fc8626",
+    4: "#ffa514",
     5: "#f2dc4e",
     6: "#ff8cc9",
     7: "#6bf2eb",
@@ -173,6 +177,12 @@ class Explore:
 
         gdfs, column, all_kwargs = _separate_args(gdfs, column, all_kwargs)
 
+        if not any(len(gdf) for gdf in gdfs):
+            raise ValueError("None of the GeoDataFrames have rows.")
+
+        if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
+            raise ValueError("gdfs must be GeoDataFrames.")
+
         if "namedict" in all_kwargs:
             for i, gdf in enumerate(gdfs):
                 gdf.name = all_kwargs["namedict"][i]
@@ -189,6 +199,14 @@ class Explore:
             for gdf, label in zip(self.gdfs, self.labels, strict=True):
                 gdf["label"] = label
             self.kwargs["column"] = "label"
+
+        # cannot have more than one geometry column
+        new_gdfs = []
+        for gdf in self.gdfs:
+            gdf = drop_inactive_geometry_columns(gdf)
+            gdf = rename_geometry_if(gdf)
+            new_gdfs.append(gdf)
+            self.gdfs = new_gdfs
 
         self._is_categorical = self._check_if_categorical()
         self._fill_missings()
@@ -357,13 +375,16 @@ class Explore:
     def _check_if_categorical(self) -> bool:
         if not self.kwargs["column"]:
             return True
-        n_categorical = 0
+        all_nan = 0
         for gdf in self.gdfs:
             if self.kwargs["column"] not in gdf:
+                all_nan += 1
                 continue
             if not pd.api.types.is_numeric_dtype(gdf[self.kwargs["column"]]):
-                n_categorical += 1
-        if n_categorical:
+                if all(gdf[self.kwargs["column"]].isna()):
+                    all_nan += 1
+                return True
+        if all_nan == len(self.gdfs):
             return True
         return False
 
@@ -469,8 +490,6 @@ class Explore:
         if "tooltip" in self.kwargs:
             tooltip = self.kwargs["tooltip"]
             self.kwargs.pop("tooltip")
-            print(tooltip)
-            print([col for col in gdf.columns if col not in COLS_TO_DROP])
             return tooltip
         return [col for col in gdf.columns if col not in COLS_TO_DROP]
 
@@ -798,7 +817,7 @@ class Explore:
                 colormap_kwds = {}
                 if "max_labels" in legend_kwds:
                     colormap_kwds["max_labels"] = legend_kwds.pop("max_labels")
-                if scheme:
+                if scheme and len(gdf[column][~nan_idx]):
                     cb_colors = np.apply_along_axis(
                         colors.to_hex, 1, cm.get_cmap(cmap, binning.k)(range(binning.k))
                     )

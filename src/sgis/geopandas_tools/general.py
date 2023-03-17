@@ -14,6 +14,7 @@ from shapely import (
     wkt,
 )
 from shapely.geometry import Point
+from geopandas.array import GeometryDtype
 from shapely.ops import unary_union
 from .geometry_types import to_single_geom_type
 
@@ -31,7 +32,7 @@ def coordinate_array(
 
     Examples
     --------
-    >>> from gis_utils import coordinate_array, random_points
+    >>> from sgis import coordinate_array, random_points
     >>> points = random_points(5)
     >>> points
                     geometry
@@ -64,6 +65,23 @@ def _push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:
     return gdf.reindex(columns=[c for c in gdf.columns if c != geom_col] + [geom_col])
 
 
+def drop_inactive_geometry_columns(gdf: GeoDataFrame) -> GeoDataFrame:
+    for col in gdf.columns:
+        if (
+            isinstance(gdf[col].dtype, GeometryDtype)
+            and col != gdf._geometry_column_name
+        ):
+            gdf = gdf.drop(col, axis=1)
+    return gdf
+
+
+def rename_geometry_if(gdf):
+    geom_col = gdf._geometry_column_name
+    if geom_col == "geometry":
+        return gdf
+    return gdf.rename_geometry("geometry")
+
+
 def clean_geoms(
     gdf: GeoDataFrame | GeoSeries,
     geom_type: str | None = None,
@@ -87,7 +105,7 @@ def clean_geoms(
 
     Examples
     --------
-    >>> from gis_utils import clean_geoms, to_gdf, gdf_concat
+    >>> from sgis import clean_geoms, to_gdf, gdf_concat
     >>> import pandas as pd
     >>> from shapely import wkt
     >>> gdf = to_gdf([
@@ -161,7 +179,7 @@ def random_points(n: int) -> GeoDataFrame:
 
     Examples
     --------
-    >>> from gis_utils import random_points
+    >>> from sgis import random_points
     >>> points = random_points(10_000)
     >>> points
                         geometry
@@ -214,12 +232,9 @@ def gdf_concat(
     Returns:
         A GeoDataFrame.
 
-    Raises:
-        ValueError: If all GeoDataFrames have 0 rows.
-
     Examples
     --------
-    >>> from gis_utils import gdf_concat, to_gdf
+    >>> from sgis import gdf_concat, to_gdf
     >>> points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
     >>> points
                     geometry
@@ -227,7 +242,7 @@ def gdf_concat(
     1  POINT (0.50000 0.50000)
     2  POINT (2.00000 2.00000)
     >>> gdf_concat([points, points])
-    C:/Users/ort/git/ssb-gis-utils/src/gis_utils/geopandas_utils.py:828: UserWarning: None of your GeoDataFrames have crs.
+    C:/Users/ort/git/ssb-gis-utils/src/sgis/geopandas_utils.py:828: UserWarning: None of your GeoDataFrames have crs.
     warnings.warn("None of your GeoDataFrames have crs.")
                     geometry
     0  POINT (0.00000 0.00000)
@@ -251,10 +266,16 @@ def gdf_concat(
     if not hasattr(gdfs, "__iter__"):
         raise TypeError("'gdfs' must be an iterable.")
 
+    # to list
+    gdfs = [gdf for gdf in gdfs]
+
+    columns = list(set(col for gdf in gdfs for col in gdf.columns))
     gdfs = [gdf for gdf in gdfs if len(gdf)]
 
-    if not len(gdfs):
-        raise ValueError("All GeoDataFrames have 0 rows")
+    if not gdfs:
+        return pd.DataFrame(columns=columns)
+
+    gdfs = [rename_geometry_if(gdf) for gdf in gdfs]
 
     if not crs:
         crs = gdfs[0].crs
@@ -272,6 +293,8 @@ def gdf_concat(
                 stacklevel=2,
             )
 
+    # ignoring erronous warning
+    warnings.filterwarnings(action="ignore", category=UserWarning)
     return GeoDataFrame(
         pd.concat(gdfs, ignore_index=ignore_index, **kwargs), geometry=geometry, crs=crs
     )
@@ -287,8 +310,7 @@ def to_gdf(
     | GeoSeries
     | pd.Series
     | pd.DataFrame
-    | Iterator
-    | zip,
+    | Iterator,
     crs: str | tuple[str] | None = None,
     geometry: str = "geometry",
     copy: bool = True,
@@ -323,7 +345,7 @@ def to_gdf(
 
     Examples
     --------
-    >>> from gis_utils import to_gdf
+    >>> from sgis import to_gdf
     >>> coords = (10, 60)
     >>> to_gdf(coords, crs=4326)
                         geometry

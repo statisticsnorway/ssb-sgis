@@ -21,13 +21,10 @@ class Points:
     def __init__(
         self,
         points: GeoDataFrame,
-        temp_idx_start: int,
         id_col: str | list[str, str] | tuple[str, str] | None = None,
     ) -> None:
         self.gdf = points.reset_index(drop=True)
-
         self.id_col = id_col
-        self.temp_idx_start = temp_idx_start
 
     def _get_id_col(
         self,
@@ -39,21 +36,13 @@ class Points:
         id_cols = return_two_vals(self.id_col)
 
         self.id_col = id_cols[index]
-        """
-        if isinstance(self.id_col, (list, tuple)) and len(self.id_col) == 2:
-            self.id_col = self.id_col[index]
 
-        elif not isinstance(self.id_col, str):
-            raise ValueError(
-                "'id_col' should be a string or a list/tuple with two strings."
-            )
-        """
         if self.id_col not in self.gdf.columns:
             raise KeyError(
                 f"{self.__class__.__name__!r} has no attribute {self.id_col!r}"
             )
 
-    def _make_temp_idx(self) -> None:
+    def _make_temp_idx(self, start: int) -> None:
         """Make a temporary id column thad don't overlap with the node ids.
 
         The original ids are stored in a dict and mapped back to the results in the
@@ -61,9 +50,7 @@ class Points:
         id column differently for origins and destinations.
         """
 
-        self.gdf["temp_idx"] = np.arange(
-            start=self.temp_idx_start, stop=self.temp_idx_start + len(self.gdf)
-        )
+        self.gdf["temp_idx"] = np.arange(start=start, stop=start + len(self.gdf))
         self.gdf["temp_idx"] = self.gdf["temp_idx"].astype(str)
 
         if self.id_col:
@@ -158,13 +145,11 @@ class Origins(Points):
     def __init__(
         self,
         points: GeoDataFrame,
-        temp_idx_start: int,
         **kwargs,
     ) -> None:
-        super().__init__(points, temp_idx_start, **kwargs)
+        super().__init__(points, **kwargs)
 
         self._get_id_col(index=0)
-        self._make_temp_idx()
 
     def _get_edges_and_weights(
         self,
@@ -180,13 +165,11 @@ class Destinations(Points):
     def __init__(
         self,
         points: GeoDataFrame,
-        temp_idx_start: int,
         **kwargs,
     ) -> None:
-        super().__init__(points, temp_idx_start, **kwargs)
+        super().__init__(points, **kwargs)
 
         self._get_id_col(index=1)
-        self._make_temp_idx()
 
     def _get_edges_and_weights(
         self,
