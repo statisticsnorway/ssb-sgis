@@ -288,3 +288,50 @@ def buffdiss(
         gdf[id] = list(range(len(gdf)))
 
     return gdf
+
+
+def buffexp(
+    gdf: GeoDataFrame | GeoSeries | Geometry,
+    distance: int | float,
+    resolution: int = 50,
+    id: str | None = None,
+    ignore_index: bool = True,
+    copy: bool = True,
+) -> GeoDataFrame | GeoSeries | Geometry:
+    """Buffers and explodes non-overlapping geometries.
+
+    It takes a GeoDataFrame, GeoSeries or shapely geometry, and buffer and
+    explodes (to singlepart). It uses the functions buff and exp.
+
+    Args:
+        gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be
+            buffered, dissolved and exploded
+        distance: the distance (meters, degrees, depending on the crs) to buffer
+            the geometry by
+        resolution: The number of segments used to approximate a quarter circle.
+            Here defaults to 50, as opposed to the default 16 in geopandas.
+        copy: if True (the default), the input geometry will not be buffered.
+            Setting copy to False will save memory.
+        id: if not None (the default), an id column will be created
+            from the integer index (from 0 and up).
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+            Defaults to True
+
+    Returns:
+        A buffered GeoDataFrame, GeoSeries or shapely Geometry where overlapping
+        geometries are exploded.
+
+    Raises:
+        TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
+    """
+    if isinstance(gdf, Geometry):
+        return exp(buff(gdf, distance, resolution=resolution))
+
+    gdf = buff(gdf, distance, resolution=resolution, copy=copy).pipe(
+        exp, ignore_index=ignore_index
+    )
+
+    if id:
+        gdf[id] = list(range(len(gdf)))
+
+    return gdf
