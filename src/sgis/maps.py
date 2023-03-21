@@ -288,6 +288,8 @@ def qtm(
     black: bool = True,
     size: int = 10,
     fontsize: int = 15,
+    legend_title: str | None = None,
+    legend_position: str = "lower right",
     **kwargs,
 ) -> None:
     """Quick, thematic map of one or more GeoDataFrames.
@@ -353,9 +355,25 @@ def qtm(
                     markeredgewidth=0,
                 )
             )
-            ax.legend(patches, categories)
+        ax.legend(
+            patches,
+            categories,
+            title=legend_title if legend_title else column,
+            title_fontsize=size,
+            bbox_to_anchor=(1, 0.2),
+            loc=legend_position,
+            prop={"size": size},
+            #            markerscale=5,
+        )
 
     if title:
         ax.set_title(title, fontsize=fontsize, color=title_color)
 
     m.gdf.plot(scheme=scheme, legend=legend, ax=ax, **kwargs)
+
+    if legend_title:
+        legend = plt.gca().get_legend()
+        legend.set_title(legend_title)
+        plt.show()
+
+    return ax

@@ -188,12 +188,17 @@ class Explore:
                 gdf.name = all_kwargs["namedict"][i]
             all_kwargs.pop("namedict")
 
-        self.gdfs: tuple[GeoDataFrame] = gdfs
+        # need to get the object names of the gdfs before copying
         self.labels = labels
+        if not self.labels:
+            self._get_labels(gdfs)
+
+        self.gdfs: list[GeoDataFrame] = [gdf.copy() for gdf in gdfs]
         self.kwargs = all_kwargs
 
+        # setting labels here to not get the column on the input gdfs
         if not self.labels:
-            self._create_labels()
+            self._set_labels()
 
         if not self.kwargs["column"]:
             for gdf, label in zip(self.gdfs, self.labels, strict=True):
@@ -351,9 +356,10 @@ class Explore:
         else:
             display(self.map)
 
-    def _create_labels(self) -> None:
+    def _get_labels(self, gdfs: tuple[GeoDataFrame]) -> None:
+        """Putting the labels/names in a list before copying the gdfs"""
         self.labels: list[str] = []
-        for i, gdf in enumerate(self.gdfs):
+        for i, gdf in enumerate(gdfs):
             if hasattr(gdf, "name"):
                 name = gdf.name
             else:
@@ -361,7 +367,11 @@ class Explore:
                 if not name:
                     name = str(i)
             self.labels.append(name)
-            gdf["label"] = name
+
+    def _set_labels(self) -> None:
+        """Setting the labels after copying the gdfs."""
+        for i, gdf in enumerate(self.gdfs):
+            gdf["label"] = self.labels[i]
 
     def _fill_missings(self) -> None:
         for gdf in self.gdfs:
