@@ -9,6 +9,7 @@ from shapely import (
     wkt,
 )
 from shapely.ops import nearest_points, snap, unary_union
+from .general import to_multipoint
 
 
 def snap_to(
@@ -230,82 +231,3 @@ def _series_snap_to(
         unioned = unary_union(snap_to)
 
     return points.apply(lambda point: snapfunc(point, unioned))
-
-
-def to_multipoint(
-    gdf: GeoDataFrame | GeoSeries | Geometry, copy: bool = False
-) -> GeoDataFrame | GeoSeries | Geometry:
-    """Creates a multipoint geometry of any geometry object.
-
-    Takes a GeoDataFrame, GeoSeries or Shapely geometry and turns it into a MultiPoint.
-    If the input is a GeoDataFrame or GeoSeries, the rows and columns will be preserved,
-    but with a geometry column of MultiPoints.
-
-    Args:
-        gdf: The geometry to be converted to MultiPoint. Can be a GeoDataFrame,
-            GeoSeries or a shapely geometry.
-        copy: If True, the geometry will be copied. Defaults to False
-
-    Returns:
-        A GeoDataFrame with the geometry column as a MultiPoint, or Point if the
-        original geometry was a point.
-
-    Examples
-    --------
-
-    Let's create a GeoDataFrame with a point, a line and a polygon.
-
-    >>> from sgis import to_multipoint, to_gdf
-    >>> from shapely.geometry import LineString, Polygon
-    >>> gdf = to_gdf([
-    ...     (0, 0),
-    ...     LineString([(1, 1), (2, 2)]),
-    ...     Polygon([(3, 3), (4, 4), (3, 4), (3, 3)])
-    ...     ])
-    >>> gdf
-                                                geometry
-    0                            POINT (0.00000 0.00000)
-    1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
-    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
-
-    >>> to_multipoint(gdf)
-                                                geometry
-    0                            POINT (0.00000 0.00000)
-    1      MULTIPOINT (1.00000 1.00000, 2.00000 2.00000)
-    2  MULTIPOINT (3.00000 3.00000, 3.00000 4.00000, ...
-    """
-    if copy:
-        gdf = gdf.copy()
-
-    if isinstance(gdf, (GeoDataFrame, GeoSeries)) and gdf.is_empty.any():
-        raise ValueError("Cannot create multipoints from empty geometry.")
-    if isinstance(gdf, Geometry) and gdf.is_empty:
-        raise ValueError("Cannot create multipoints from empty geometry.")
-
-    def _to_multipoint(gdf):
-        koordinater = "".join(
-            [x for x in gdf.wkt if x.isdigit() or x.isspace() or x == "." or x == ","]
-        ).strip()
-
-        alle_punkter = [
-            wkt.loads(f"POINT ({punkt.strip()})") for punkt in koordinater.split(",")
-        ]
-
-        return unary_union(alle_punkter)
-
-    if isinstance(gdf, GeoDataFrame):
-        gdf[gdf._geometry_column_name] = (
-            gdf[gdf._geometry_column_name]
-            .pipe(force_2d)
-            .apply(lambda x: _to_multipoint(x))
-        )
-
-    elif isinstance(gdf, gpd.GeoSeries):
-        gdf = force_2d(gdf)
-        gdf = gdf.apply(lambda x: _to_multipoint(x))
-
-    else:
-        gdf = force_2d(gdf)
-        gdf = _to_multipoint(unary_union(gdf))
-
-    return gdf

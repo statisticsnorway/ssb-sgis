@@ -1,22 +1,26 @@
-import warnings
 import numbers
+import warnings
 from collections.abc import Iterator, Sized
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from pandas.api.types import is_dict_like
-from numpy.random import random as _np_random
-from shapely import (
-    Geometry,
-    wkb,
-    wkt,
-)
-from shapely.geometry import Point
 from geopandas.array import GeometryDtype
+from numpy.random import random as _np_random
+from pandas.api.types import is_dict_like
+from shapely import Geometry, wkb, wkt
+from shapely.geometry import Point, LineString
 from shapely.ops import unary_union
+from shapely import (
+    get_exterior_ring,
+    get_interior_ring,
+    get_num_interior_rings,
+    get_parts,
+)
+
 from .geometry_types import to_single_geom_type
+from .buffer_dissolve_explode import exp
 
 
 def coordinate_array(
@@ -300,6 +304,182 @@ def gdf_concat(
     )
 
 
+def to_lines(
+    *gdfs: GeoDataFrame, ignore_index: bool = True, copy: bool = True
+) -> GeoDataFrame:
+    """Makes lines out of one or more GeoDataFrames.
+
+    The GeoDataFrames' geometries are converted to LineStrings, then unioned and
+    exploded. The lines are split at the intersections. Mimics 'feature to line' in
+    ArcGIS.
+
+    Args:
+        *gdfs: one or more GeoDataFrames.
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+            Defaults to True
+        copy: whether to take a copy of the incoming GeoDataFrames. Defaults to True.
+
+    Returns:
+        A GeoDataFrame with singlepart line geometries and columns of all input
+            GeoDataFrames.
+
+    Examples
+    --------
+
+    Convert single polygon to linestring.
+
+    >>> import sgis as sg
+    >>> from shapely.geometry import Polygon
+    >>> poly1 = sg.to_gdf(Polygon([(0, 0), (0, 1), (1, 1), (1, 0)]))
+    >>> poly1["poly1"] = 1
+    >>> line = sg.to_lines(poly1)
+    >>> line
+        poly1                                           geometry
+    0      1  LINESTRING (0.00000 0.00000, 0.00000 1.00000, ...
+
+    Convert two overlapping polygons to linestrings.
+
+    >>> poly2 = sg.to_gdf(Polygon([(0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5)]))
+    >>> poly2["poly2"] = 1
+    >>> lines = sg.to_lines(poly1, poly2)
+    >>> lines
+    poly1  poly2                                           geometry
+    0    1.0    NaN  LINESTRING (0.00000 0.00000, 0.00000 1.00000, ...
+    1    1.0    NaN  LINESTRING (0.50000 1.00000, 1.00000 1.00000, ...
+    2    1.0    NaN  LINESTRING (1.00000 0.50000, 1.00000 0.00000, ...
+    3    NaN    1.0      LINESTRING (0.50000 0.50000, 0.50000 1.00000)
+    4    NaN    1.0  LINESTRING (0.50000 1.00000, 0.50000 1.50000, ...
+    5    NaN    1.0      LINESTRING (1.00000 0.50000, 0.50000 0.50000)
+
+    Plot before and after (plots not showing in terminal).
+
+    >>> sg.qtm(poly1, poly2)
+    <Axes: >
+    >>> lines["l"] = lines.length
+    >>> sg.qtm(lines, "l")
+    <Axes: >
+    """
+
+    def _to_lines(geom):
+        singlepart = get_parts(geom)
+        lines = []
+        for part in singlepart:
+
+            exterior_ring = get_exterior_ring(part)
+            lines.append(exterior_ring)
+
+            n_interior_rings = get_num_interior_rings(part)
+            if not (n_interior_rings):
+                continue
+
+            interior_rings = [
+                LineString(get_interior_ring(part, n)) for n in range(n_interior_rings)
+            ]
+
+            lines = lines + interior_rings
+
+        return unary_union(lines)
+
+    lines = []
+    for gdf in gdfs:
+        if copy:
+            gdf = gdf.copy()
+
+        gdf[gdf._geometry_column_name] = gdf[gdf._geometry_column_name].map(_to_lines)
+
+        lines.append(gdf)
+
+    if len(lines) == 1:
+        return exp(lines[0], ignore_index=ignore_index)
+
+    unioned = lines[0].overlay(lines[1], how="union", keep_geom_type=True)
+
+    if len(lines) > 2:
+        for line_gdf in lines[2:]:
+            unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
+
+    return exp(unioned, ignore_index=ignore_index)
+
+
+def to_multipoint(
+    gdf: GeoDataFrame | GeoSeries | Geometry, copy: bool = False
+) -> GeoDataFrame | GeoSeries | Geometry:
+    """Creates a multipoint geometry of any geometry object.
+
+    Takes a GeoDataFrame, GeoSeries or Shapely geometry and turns it into a MultiPoint.
+    If the input is a GeoDataFrame or GeoSeries, the rows and columns will be preserved,
+    but with a geometry column of MultiPoints.
+
+    Args:
+        gdf: The geometry to be converted to MultiPoint. Can be a GeoDataFrame,
+            GeoSeries or a shapely geometry.
+        copy: If True, the geometry will be copied. Defaults to False
+
+    Returns:
+        A GeoDataFrame with the geometry column as a MultiPoint, or Point if the
+        original geometry was a point.
+
+    Examples
+    --------
+
+    Let's create a GeoDataFrame with a point, a line and a polygon.
+
+    >>> from sgis import to_multipoint, to_gdf
+    >>> from shapely.geometry import LineString, Polygon
+    >>> gdf = to_gdf([
+    ...     (0, 0),
+    ...     LineString([(1, 1), (2, 2)]),
+    ...     Polygon([(3, 3), (4, 4), (3, 4), (3, 3)])
+    ...     ])
+    >>> gdf
+                                                geometry
+    0                            POINT (0.00000 0.00000)
+    1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
+    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
+
+    >>> to_multipoint(gdf)
+                                                geometry
+    0                            POINT (0.00000 0.00000)
+    1      MULTIPOINT (1.00000 1.00000, 2.00000 2.00000)
+    2  MULTIPOINT (3.00000 3.00000, 3.00000 4.00000, ...
+    """
+    if copy:
+        gdf = gdf.copy()
+
+    if isinstance(gdf, (GeoDataFrame, GeoSeries)) and gdf.is_empty.any():
+        raise ValueError("Cannot create multipoints from empty geometry.")
+    if isinstance(gdf, Geometry) and gdf.is_empty:
+        raise ValueError("Cannot create multipoints from empty geometry.")
+
+    def _to_multipoint(gdf):
+        koordinater = "".join(
+            [x for x in gdf.wkt if x.isdigit() or x.isspace() or x == "." or x == ","]
+        ).strip()
+
+        alle_punkter = [
+            wkt.loads(f"POINT ({punkt.strip()})") for punkt in koordinater.split(",")
+        ]
+
+        return unary_union(alle_punkter)
+
+    if isinstance(gdf, GeoDataFrame):
+        gdf[gdf._geometry_column_name] = (
+            gdf[gdf._geometry_column_name]
+            .pipe(force_2d)
+            .apply(lambda x: _to_multipoint(x))
+        )
+
+    elif isinstance(gdf, gpd.GeoSeries):
+        gdf = force_2d(gdf)
+        gdf = gdf.apply(lambda x: _to_multipoint(x))
+
+    else:
+        gdf = force_2d(gdf)
+        gdf = _to_multipoint(unary_union(gdf))
+
+    return gdf
+
+
 def to_gdf(
     geom: Geometry
     | str
@@ -577,6 +757,8 @@ def _make_geomcol_df_like(
             )
         geom["geometry"] = gpd.GeoSeries.from_xy(x=geom[x], y=geom[y], z=z)
     elif geometry in geom:
+        if not hasattr(geom[geometry], "__iter__"):
+            geom[geometry] = [geom[geometry]]
         geom["geometry"] = GeoSeries(
             map(_make_shapely_geom, geom[geometry]), index=index
         )

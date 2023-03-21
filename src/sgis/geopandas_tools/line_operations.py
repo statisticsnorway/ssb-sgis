@@ -7,13 +7,14 @@ creating unique node ids.
 The functions are also methods of the Network class, where some checks and
 preperation is done before each method is run, making sure the lines are correct.
 """
+import warnings
 
 import geopandas as gpd
 import networkx as nx
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from pandas import DataFrame
+from pandas import DataFrame, Series
 from shapely import force_2d, shortest_line
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
@@ -343,8 +344,68 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=True) -> GeoDataF
 
 
 def cut_lines_once(
-    lines: GeoDataFrame, distances: int | float | str, ignore_index: bool = True
+    lines: GeoDataFrame,
+    distances: int | float | str | Series,
+    ignore_index: bool = True,
 ) -> GeoDataFrame:
+    """Cuts lines of a GeoDataFrame in two at the given distance or distances.
+
+    Takes a GeoDataFrame of lines and cuts each line in two. If distances is a number,
+    all lines will be cut at the same length.
+
+    Args:
+        gdf: GeoDataFrame.
+        distances: The distance from the start of the lines to cut at. Either a number,
+            the name of a column or array-like of same length as the line GeoDataFrame.
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+            Defaults to True.
+
+    Examples
+    --------
+    >>> from sgis import cut_lines_once, to_gdf
+    >>> import pandas as pd
+    >>> from shapely.geometry import LineString
+    >>> gdf = to_gdf(LineString([(0, 0), (1, 1), (2, 2)]))
+    >>> gdf = pd.concat([gdf, gdf, gdf])
+    >>> gdf
+                                                geometry
+    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...
+    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...
+    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...
+
+    Cut all lines at 1 unit from the start of the lines.
+
+    >>> cut_lines_once(gdf, 1)
+                                                geometry
+    0      LINESTRING (0.00000 0.00000, 0.70711 0.70711)
+    1  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...
+    2      LINESTRING (0.00000 0.00000, 0.70711 0.70711)
+    3  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...
+    4      LINESTRING (0.00000 0.00000, 0.70711 0.70711)
+    5  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...
+
+    Cut distance as column.
+
+    >>> gdf["dist"] = [1, 2, 3]
+    >>> cut_lines_once(gdf, "dist")
+                                                geometry  dist
+    0      LINESTRING (0.00000 0.00000, 0.70711 0.70711)     1
+    1  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...     1
+    2  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     2
+    3      LINESTRING (1.41421 1.41421, 2.00000 2.00000)     2
+    4  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     3
+
+    Cut distance as list (same result as above).
+
+    >>> cut_lines_once(gdf, [1, 2, 3])
+                                                geometry  dist
+    0      LINESTRING (0.00000 0.00000, 0.70711 0.70711)     1
+    1  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...     1
+    2  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     2
+    3      LINESTRING (1.41421 1.41421, 2.00000 2.00000)     2
+    4  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     3
+    """
+
     def _cut(line: LineString, distance: int | float) -> list[LineString]:
         """From the shapely docs"""
         if distance <= 0.0 or distance >= line.length:
@@ -364,15 +425,25 @@ def cut_lines_once(
     crs = lines.crs
     geom_col = lines._geometry_column_name
 
-    try:
+    lines = lines.copy()
+
+    # cutting lines will give lists of linestrings in the geometry column. Ignoring
+    # the warning it triggers
+    warnings.filterwarnings(
+        "ignore", message="Geometry column does not contain geometry."
+    )
+
+    if isinstance(distances, str):
         lines[geom_col] = np.vectorize(_cut)(lines[geom_col], lines[distances])
-    except KeyError:
+    else:
         lines[geom_col] = np.vectorize(_cut)(lines[geom_col], distances)
 
-    # explode will give pd.df if not gpd.gdf is constructed
-    return GeoDataFrame(
+    # explode will give pandas df if not gdf is constructed
+    lines = GeoDataFrame(
         lines.explode(ignore_index=ignore_index), geometry=geom_col, crs=crs
     )
+
+    return lines
 
 
 def close_network_holes(

@@ -6,6 +6,7 @@ from .geopandas_tools.buffer_dissolve_explode import (
     diss,
     dissexp,
     exp,
+    buffexp,
 )
 from .networkanalysis.directednetwork import DirectedNetwork
 from .geopandas_tools.neighbors import (
@@ -24,10 +25,12 @@ from .geopandas_tools.general import (
     random_points,
     to_gdf,
     coordinate_array,
+    to_lines,
+    to_multipoint,
     _push_geom_col,
 )
 from .geopandas_tools.polygon_operations import close_holes
-from .geopandas_tools.point_operations import snap_to, to_multipoint
+from .geopandas_tools.point_operations import snap_to
 from .geopandas_tools.geometry_types import (
     is_single_geom_type,
     get_geom_type,
@@ -38,6 +41,7 @@ from .networkanalysis.network import Network
 from .geopandas_tools.line_operations import (
     close_network_holes,
     cut_lines,
+    cut_lines_once,
     get_component_size,
     get_largest_component,
     make_edge_coords_cols,
