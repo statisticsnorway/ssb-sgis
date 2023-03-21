@@ -145,12 +145,12 @@ def main():
     roads_oslo = roads_oslo()
     points_oslo = points_oslo()
 
-    test_service_area(points_oslo, roads_oslo)
+    # test_service_area(points_oslo, roads_oslo)
     not_test_service_area(points_oslo, roads_oslo)
 
 
 if __name__ == "__main__":
     import cProfile
 
-    cProfile.run("main()", sort="cumtime")
-    # main()
+    # cProfile.run("main()", sort="cumtime")
+    main()

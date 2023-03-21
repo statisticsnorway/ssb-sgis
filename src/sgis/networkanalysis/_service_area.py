@@ -8,8 +8,6 @@ from ..geopandas_tools.general import gdf_concat
 from ..geopandas_tools.line_operations import (
     cut_lines_once,
     make_edge_wkt_cols,
-    make_edge_coords_cols,
-    make_node_ids,
 )
 
 
@@ -23,7 +21,6 @@ def _service_area(
     directed: bool,
     precice: bool,
 ) -> GeoDataFrame:
-
     # make sure the nodes are alligned with the vertices in the graph
     node_df = pd.DataFrame(index=np.array(graph.vs["name"]))
     nodes = nodes.set_index("node_id").drop("geometry", axis=1)
@@ -55,10 +52,10 @@ def _service_area(
 
             nodes_within_break = nodes.loc[nodes[weight] <= break_]
 
-            whole_edge_within = (edge_df.source.isin(nodes_within_break.index)) & (
+            whole_edge_is_within = (edge_df.source.isin(nodes_within_break.index)) & (
                 edge_df.target.isin(nodes_within_break.index)
             )
-            edges_within = edge_df.loc[whole_edge_within]
+            edges_within = edge_df.loc[whole_edge_is_within]
 
             if not precice:
                 if not len(edges_within):
@@ -76,13 +73,12 @@ def _service_area(
             )
 
             if not len(edges_within) and not len(partly_within):
-                service_areas.append(
-                    GeoDataFrame(
-                        {"origin": [idx], weight: [break_], "geometry": [None]},
-                        geometry="geometry",
-                        crs=lines.crs,
-                    )
+                nan_gdf = GeoDataFrame(
+                    {"origin": [idx], weight: [break_], "geometry": [None]},
+                    geometry="geometry",
+                    crs=lines.crs,
                 )
+                service_areas.append(nan_gdf)
                 continue
 
             if not len(partly_within):
@@ -97,8 +93,8 @@ def _service_area(
 
             split_lines = make_edge_wkt_cols(split_lines)
 
-            # select the cutted lines shorter than the cut distance
-            # that intersects with the nodes
+            # select the cutted lines shorter than the cut distance that intersects
+            # with the nodes
             within = split_lines.loc[
                 lambda df: (df.length <= df.remaining_distance * 1.01)
                 & (df.source_wkt.isin(nodes.wkt) | df.target_wkt.isin(nodes.wkt))
@@ -134,5 +130,5 @@ def _split_lines(partly_within, directed):
         rev.geometry = reverse(partly_within.geometry)
         partly_within = pd.concat([partly_within, rev])
 
-    # not assigning back to geometry column to avoid UserWarning
-    return cut_lines_once(partly_within, partly_within["remaining_distance"])
+    lines_cut = cut_lines_once(partly_within, "remaining_distance")
+    return lines_cut
