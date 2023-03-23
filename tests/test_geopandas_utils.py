@@ -2,11 +2,12 @@
 
 import sys
 from pathlib import Path
-import pytest
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import LineString
+import pytest
+from shapely.geometry import LineString, Polygon
 from shapely.wkt import loads
 
 
@@ -155,21 +156,28 @@ def test_concat():
     assert len(sg.gdf_concat(x for x in (points, points2))) == 200
 
 
-def test_clean(gdf_fixture):
-    missing = gpd.GeoDataFrame(
-        {"geometry": [None, np.nan]}, geometry="geometry", crs=25833
+def test_clean():
+    invalid_geometry = sg.to_gdf(
+        Polygon([(0, 1), (0, 0), (0, 1), (1, 1), (1, 2), (0, 2), (0, 0)])
     )
-    empty = gpd.GeoDataFrame(
-        {"geometry": gpd.GeoSeries(loads("POINT (0 0)")).buffer(0)},
-        geometry="geometry",
-        crs=25833,
+
+    empty_geometry = sg.to_gdf("POINT (0 0)").pipe(sg.buff, 0)
+
+    missing_geometry = gpd.GeoDataFrame(
+        {"geometry": [None]}, geometry="geometry", crs=25833
     )
-    gdf = sg.gdf_concat([gdf_fixture, missing, empty])
-    assert len(gdf) == 12
-    gdf2 = sg.clean_geoms(gdf_fixture)
-    ser = sg.clean_geoms(gdf_fixture.geometry)
-    assert len(gdf2) == 9
-    assert len(ser) == 9
+
+    problematic_geometries = sg.gdf_concat(
+        [invalid_geometry, missing_geometry, empty_geometry]
+    )
+
+    assert len(problematic_geometries) == 3
+    gdf = sg.clean_geoms(problematic_geometries, geom_type="polygon")
+    assert len(gdf) == 1
+    assert sg.get_geom_type(gdf) == "polygon"
+    ser = sg.clean_geoms(problematic_geometries.geometry, geom_type="polygon")
+    assert len(ser) == 1
+    assert sg.get_geom_type(ser) == "polygon"
 
 
 def sjoin_overlay(gdf_fixture):
@@ -282,7 +290,6 @@ def test_to_multipoint(gdf_fixture):
 
 
 def main():
-
     info = """
     The test was created 08.01.2023 with the following package versions.
     From C++: GEOS 3.11.1, PROJ 9.1.0, GDAL 3.6.1.

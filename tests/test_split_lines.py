@@ -55,7 +55,8 @@ def test_split_lines(points_oslo, roads_oslo):
     assert sp1[rules.weight].sum() != sp2[rules.weight].sum()
     assert sp1[rules.weight].sum() < sp2[rules.weight].sum() * 0.7
 
-    sg.qtm(sg.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
+    if __name__ == "__main__":
+        sg.qtm(sg.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
 
 
 def main():

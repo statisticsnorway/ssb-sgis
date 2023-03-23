@@ -9,18 +9,21 @@ from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
 from numpy.random import random as _np_random
 from pandas.api.types import is_dict_like
-from shapely import Geometry, wkb, wkt
-from shapely.geometry import Point, LineString
-from shapely.ops import unary_union
 from shapely import (
+    Geometry,
+    force_2d,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
+    wkb,
+    wkt,
 )
+from shapely.geometry import LineString, Point
+from shapely.ops import unary_union
 
-from .geometry_types import to_single_geom_type
 from .buffer_dissolve_explode import exp
+from .geometry_types import to_single_geom_type
 
 
 def coordinate_array(
@@ -273,7 +276,7 @@ def gdf_concat(
     # to list
     gdfs = [gdf for gdf in gdfs]
 
-    columns = list(set(col for gdf in gdfs for col in gdf.columns))
+    columns = list({col for gdf in gdfs for col in gdf.columns})
     gdfs = [gdf for gdf in gdfs if len(gdf)]
 
     if not gdfs:
@@ -364,7 +367,6 @@ def to_lines(
         singlepart = get_parts(geom)
         lines = []
         for part in singlepart:
-
             exterior_ring = get_exterior_ring(part)
             lines.append(exterior_ring)
 
@@ -698,7 +700,6 @@ def _is_one_geometry(geom) -> bool:
 
 
 def _is_df_like(geom, geometry) -> bool:
-
     if not is_dict_like(geom):
         return False
 

@@ -21,7 +21,8 @@ def test_network_methods(points_oslo, roads_oslo):
     r = sg.clean_clip(r, p.buffer(1000))
 
     nw1 = sg.Network(r).get_largest_component()
-    sg.qtm(nw1.gdf, column="connected", scheme="equalinterval", title="connected")
+    if __name__ == "__main__":
+        sg.qtm(nw1.gdf, column="connected", scheme="equalinterval", title="connected")
 
     len_now = len(nw1.gdf)
 
@@ -33,17 +34,20 @@ def test_network_methods(points_oslo, roads_oslo):
     if (l := max(nw.gdf.length)) > 250 + 1:
         raise ValueError(f"cut_lines did not cut lines. max line length: {l}")
 
-    sg.qtm(nw.gdf, column="connected", title="after removing isolated")
+    if __name__ == "__main__":
+        sg.qtm(nw.gdf, column="connected", title="after removing isolated")
 
     holes_closed = sg.Network(r).close_network_holes(10.1, fillna=0).gdf
     print(holes_closed.hole.value_counts())
-    sg.qtm(holes_closed, column="hole", title="holes")
+    if __name__ == "__main__":
+        sg.qtm(holes_closed, column="hole", title="holes")
 
     holes_closed2 = (
         sg.Network(r).close_network_holes(10.1, fillna=0, deadends_only=True).gdf
     )
     print(holes_closed2.hole.value_counts())
-    sg.qtm(holes_closed2, column="hole", title="holes, deadends_only")
+    if __name__ == "__main__":
+        sg.qtm(holes_closed2, column="hole", title="holes, deadends_only")
 
     """
     holes = holes_closed.query("hole==1").assign(hole=1)[["hole", "geometry"]]
@@ -56,7 +60,8 @@ def test_network_methods(points_oslo, roads_oslo):
         .close_network_holes(1.1, fillna=0, deadends_only=False)
         .remove_isolated()
     )
-    sg.qtm(nw.gdf)
+    if __name__ == "__main__":
+        sg.qtm(nw.gdf)
     rules = sg.NetworkAnalysisRules(
         weight="meters",
     )
@@ -64,7 +69,8 @@ def test_network_methods(points_oslo, roads_oslo):
     nwa = sg.NetworkAnalysis(nw, rules=rules)
     print(nwa)
     x = nwa.get_route_frequencies(p, points.sample(10))
-    sg.qtm(x, "n")
+    if __name__ == "__main__":
+        sg.qtm(x, "frequency")
 
 
 def main():

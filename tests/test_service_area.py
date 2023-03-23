@@ -1,8 +1,8 @@
 # %%
 import sys
+import timeit
 import warnings
 from pathlib import Path
-import timeit
 
 import geopandas as gpd
 import numpy as np
@@ -42,26 +42,30 @@ def test_service_area(points_oslo, roads_oslo):
     x = nwa.service_area(point, breaks=30, precice=False, dissolve=False)
     assert all(x.geometry.isna()) and len(x) == 1
     x = nwa.service_area(point, breaks=125, precice=False, dissolve=False)
-    sg.qtm(r100, x, point, title="undirected 125, precice=False")
+    if __name__ == "__main__":
+        sg.qtm(r100, x, point, title="undirected 125, precice=False")
     assert len(x) == 8
 
     x = nwa.service_area(point, breaks=30, precice=True, dissolve=False)
-    sg.qtm(r100, x, point, title="undirected 30, precice=True")
+    if __name__ == "__main__":
+        sg.qtm(r100, x, point, title="undirected 30, precice=True")
     assert len(x) == 4
 
     x = nwa.service_area(point, breaks=125, precice=True, dissolve=False)
-    sg.qtm(r100, x, point, title="undirected 125, precice=True")
+    if __name__ == "__main__":
+        sg.qtm(r100, x, point, title="undirected 125, precice=True")
     assert len(x) == 19
 
     nwa.rules.split_lines = True
     x = nwa.service_area(point, breaks=125, precice=True, dissolve=False)
-    sg.qtm(
-        r100,
-        x,
-        point,
-        title="undirected 125, precice=True,\n split_lines=True",
-        fontsize=10,
-    )
+    if __name__ == "__main__":
+        sg.qtm(
+            r100,
+            x,
+            point,
+            title="undirected 125, precice=True,\n split_lines=True",
+            fontsize=10,
+        )
     assert len(x) == 10, x
 
     nwa.rules.split_lines = False
@@ -73,24 +77,28 @@ def test_service_area(points_oslo, roads_oslo):
     assert all(x.geometry.isna()) and len(x) == 1
     x = nwa.service_area(point, breaks=125, precice=False, dissolve=False)
     assert len(x) == 3
-    sg.qtm(r100, x, point, title="directed 125, precice=False")
+    if __name__ == "__main__":
+        sg.qtm(r100, x, point, title="directed 125, precice=False")
 
     x = nwa.service_area(point, breaks=30, precice=True, dissolve=False)
     assert len(x) == 2
-    sg.qtm(r100, x, point, title="directed 30, precice=True")
+    if __name__ == "__main__":
+        sg.qtm(r100, x, point, title="directed 30, precice=True")
     x = nwa.service_area(point, breaks=125, precice=True, dissolve=False)
     assert len(x) == 7
-    sg.qtm(r100, x, point, title="directed 125, precice=True")
+    if __name__ == "__main__":
+        sg.qtm(r100, x, point, title="directed 125, precice=True")
 
     nwa.rules.split_lines = True
     x = nwa.service_area(point, breaks=125, precice=True, dissolve=False)
-    sg.qtm(
-        r100,
-        x,
-        point,
-        title="directed 125, precice=True,\n split_lines=True",
-        fontsize=10,
-    )
+    if __name__ == "__main__":
+        sg.qtm(
+            r100,
+            x,
+            point,
+            title="directed 125, precice=True,\n split_lines=True",
+            fontsize=10,
+        )
     assert len(x) == 7, x
 
 
@@ -140,7 +148,7 @@ def not_test_service_area(points_oslo, roads_oslo):
 
 
 def main():
-    from oslo import roads_oslo, points_oslo
+    from oslo import points_oslo, roads_oslo
 
     roads_oslo = roads_oslo()
     points_oslo = points_oslo()

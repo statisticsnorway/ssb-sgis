@@ -80,14 +80,14 @@ class Points:
         )
 
     @staticmethod
-    def _dist_to_weight(dists, rules):
+    def _convert_distance_to_weight(distances, rules):
         """Meters to minutes based on 'weight_to_nodes_' attribute of the rules."""
         if (
             not rules.weight_to_nodes_dist
             and not rules.weight_to_nodes_kmh
             and not rules.weight_to_nodes_mph
         ):
-            return [0 for _ in dists]
+            return [0 for _ in distances]
 
         if (
             bool(rules.weight_to_nodes_dist)
@@ -106,12 +106,12 @@ class Points:
             )
 
         if rules.weight_to_nodes_kmh:
-            return [x / (16.666667 * rules.weight_to_nodes_kmh) for x in dists]
+            return [x / (16.666667 * rules.weight_to_nodes_kmh) for x in distances]
 
         if rules.weight_to_nodes_mph:
-            return [x / (26.8224 * rules.weight_to_nodes_mph) for x in dists]
+            return [x / (26.8224 * rules.weight_to_nodes_mph) for x in distances]
 
-        return dists
+        return distances
 
     def _make_edges(self, df, from_col, to_col):
         return [(f, t) for f, t in zip(df[from_col], df[to_col], strict=True)]
@@ -132,11 +132,15 @@ class Points:
         )
 
         search_factor_mult = 1 + rules.search_factor / 100
-        df = df.loc[df.dist <= df.dist_min * search_factor_mult + rules.search_factor]
+        df = df.loc[
+            df.distance <= df.distance_min * search_factor_mult + rules.search_factor
+        ]
 
         edges = self._make_edges(df, from_col=from_col, to_col=to_col)
 
-        weighs = self._dist_to_weight(dists=list(df.dist), rules=rules)
+        weighs = self._convert_distance_to_weight(
+            distances=list(df.distance), rules=rules
+        )
 
         return edges, weighs
 

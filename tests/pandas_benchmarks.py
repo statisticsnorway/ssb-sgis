@@ -1,11 +1,12 @@
 # %%
-import sys
-from pathlib import Path
-import timeit
 import cProfile
+import sys
+import timeit
+from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
@@ -29,6 +30,13 @@ def not_test_pandas():
     df_multi = df.set_index(["idx", "rev"])
     df2_multi = df2.set_index(["idx", "rev"])
 
+    def _indexing():
+        df3 = df.copy()
+        df3["num"] = df2.num
+        assert len(df3) == n
+        assert not any(df3.num.isna())
+        return df3
+
     def _map():
         res = df.index.map(df2.num)
         assert len(res) == n
@@ -48,6 +56,20 @@ def not_test_pandas():
         res = pd.concat([df, df2], axis=1)
         assert len(res) == n
         return res
+
+    def _indexing_multi():
+        df3 = df_multi.copy()
+        df3["num"] = df2_multi.num
+        assert len(df3) == n
+        assert not any(df3.num.isna())
+        return df3
+
+    def _indexing_set_index1():
+        df3 = df_multi.copy()
+        df3["num"] = df2.set_index(["idx", "rev"]).num
+        assert len(df3) == n
+        assert not any(df3.num.isna())
+        return df3
 
     def _concat_multi():
         res = pd.concat([df_multi, df2_multi], axis=1)
@@ -92,6 +114,9 @@ def not_test_pandas():
         return res
 
     print(
+        _indexing(),
+        _indexing_multi(),
+        _indexing_set_index1(),
         _map(),
         _join(),
         _merge(),
@@ -106,13 +131,18 @@ def not_test_pandas():
         _concat_set_index2(),
     )
 
+    print("_indexing", timeit.timeit(lambda: _indexing(), number=20))
     print("_map", timeit.timeit(lambda: _map(), number=20))
     print("_join", timeit.timeit(lambda: _join(), number=20))
     print("_merge", timeit.timeit(lambda: _merge(), number=20))
     print("_concat", timeit.timeit(lambda: _concat(), number=20))
+    print("_indexing_multi", timeit.timeit(lambda: _indexing_multi(), number=20))
     print("_concat_multi", timeit.timeit(lambda: _concat_multi(), number=20))
     print("_map_multi", timeit.timeit(lambda: _map_multi(), number=20))
     print("_join_multi", timeit.timeit(lambda: _join_multi(), number=20))
+    print(
+        "_indexing_set_index1", timeit.timeit(lambda: _indexing_set_index1(), number=20)
+    )
     print("_map_set_index1", timeit.timeit(lambda: _map_set_index1(), number=20))
     print("_join_set_index1", timeit.timeit(lambda: _join_set_index1(), number=20))
     print("_map_set_index2", timeit.timeit(lambda: _map_set_index2(), number=20))

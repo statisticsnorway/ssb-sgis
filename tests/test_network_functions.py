@@ -20,7 +20,8 @@ def test_network_functions(points_oslo, roads_oslo):
     r = sg.clean_clip(r, p.buffer(1000)).explode(ignore_index=True)
 
     r2 = sg.get_largest_component(r)
-    sg.qtm(r2, column="connected", scheme="equalinterval", title="connected")
+    if __name__ == "__main__":
+        sg.qtm(r2, column="connected", scheme="equalinterval", title="connected")
 
     r2 = sg.close_network_holes(r2, 1.1).pipe(sg.cut_lines, 250)
 
@@ -28,15 +29,18 @@ def test_network_functions(points_oslo, roads_oslo):
         raise ValueError(f"cut_lines did not cut lines. max line length: {l}")
 
     r2 = r2.loc[r2.connected == 1]
-    sg.qtm(r2, column="connected", title="after removing isolated")
+    if __name__ == "__main__":
+        sg.qtm(r2, column="connected", title="after removing isolated")
 
     holes_closed = sg.close_network_holes(r, 10.1)
     print(holes_closed.hole.value_counts())
-    sg.qtm(holes_closed, column="hole", title="holes")
+    if __name__ == "__main__":
+        sg.qtm(holes_closed, column="hole", title="holes")
 
     holes_closed = sg.close_network_holes(r, 10.1, deadends_only=True)
     print(holes_closed.hole.value_counts())
-    sg.qtm(holes_closed, column="hole", title="holes, deadends_only")
+    if __name__ == "__main__":
+        sg.qtm(holes_closed, column="hole", title="holes, deadends_only")
 
 
 def main():
