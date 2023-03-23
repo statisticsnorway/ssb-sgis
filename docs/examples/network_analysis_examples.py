@@ -24,9 +24,10 @@ warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 import geopandas as gpd
 
+
 """
 r = gpd.read_file(
-    r"C:/Users\ort\Downloads\vegnettRuteplan_FGDB_20230109.gdb",
+    r"C:/Users\\ort\\Downloads\vegnettRuteplan_FGDB_20230109.gdb",
     layer="ruttger_link_geom",
     engine="pyogrio",
     where="municipality in ('3416')",
@@ -92,6 +93,7 @@ points = sg.read_parquet_url(
 # %%
 import sgis as sg
 
+
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
 )
@@ -119,7 +121,7 @@ freq = nwa.get_route_frequencies(points.sample(75), points.sample(75))
 
 sg.qtm(
     sg.buff(freq, 15),
-    "n",
+    "frequency",
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used.",

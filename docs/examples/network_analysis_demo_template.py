@@ -19,6 +19,7 @@ os.chdir("../../src")
 
 import sgis as sg
 
+
 # ignore some warnings to make it cleaner
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=FutureWarning)
@@ -107,6 +108,7 @@ sg.qtm(
     od,
     "minutes",
     title="Travel time (minutes) from 1 to 1000 addresses.",
+    scheme="quantiles",
 )
 # %% [markdown]
 # Information about the analyses are stored in a DataFrame in the 'log' attribute.
@@ -139,7 +141,7 @@ freq = nwa.get_route_frequencies(pointsample, pointsample)
 
 sg.qtm(
     sg.buff(freq, 15),
-    "n",
+    "frequency",
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used (weight='minutes')",
@@ -154,7 +156,7 @@ freq = nwa.get_route_frequencies(pointsample, pointsample)
 
 sg.qtm(
     sg.buff(freq, 15),
-    "n",
+    "frequency",
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used (weight='meters')",
