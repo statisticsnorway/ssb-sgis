@@ -18,10 +18,11 @@ from geopandas import GeoDataFrame, GeoSeries
 from mapclassify import classify
 from shapely import Geometry
 from shapely.geometry import LineString
+
 from .geopandas_tools.general import (
     clean_geoms,
-    gdf_concat,
     drop_inactive_geometry_columns,
+    gdf_concat,
     rename_geometry_if,
 )
 from .helpers import get_name
@@ -166,7 +167,7 @@ class Explore:
                 If True the maps will be opened in a browser folder.
             **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
                 instance 'cmap' to change the colors, 'scheme' to change how the data
-                is grouped. This defaults to 'quantiles' for numeric data.
+                is grouped. This defaults to 'fisherjenks' for numeric data.
         """
         self.show_in_browser = show_in_browser
         all_kwargs: dict = kwargs | {
@@ -177,11 +178,11 @@ class Explore:
 
         gdfs, column, all_kwargs = _separate_args(gdfs, column, all_kwargs)
 
-        if not any(len(gdf) for gdf in gdfs):
-            raise ValueError("None of the GeoDataFrames have rows.")
-
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
             raise ValueError("gdfs must be GeoDataFrames.")
+
+        if not any(len(gdf) for gdf in gdfs):
+            raise ValueError("None of the GeoDataFrames have rows.")
 
         if "namedict" in all_kwargs:
             for i, gdf in enumerate(gdfs):
@@ -240,7 +241,7 @@ class Explore:
                 that was specified last.
             **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
                 instance 'cmap' to change the colors, 'scheme' to change how the data
-                is grouped. This defaults to 'quantiles' for numeric data.
+                is grouped. This defaults to 'fisherjenks' for numeric data.
 
         See also:
             samplemap: same functionality, but shows only a random area of a given size.
@@ -289,7 +290,7 @@ class Explore:
                 that was specified last.
             **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
                 instance 'cmap' to change the colors, 'scheme' to change how the data
-                is grouped. This defaults to 'quantiles' for numeric data.
+                is grouped. This defaults to 'fisherjenks' for numeric data.
 
         See also:
             explore: same functionality, but shows the entire area of the geometries.
@@ -329,7 +330,7 @@ class Explore:
                 that was specified last.
             **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
                 instance 'cmap' to change the colors, 'scheme' to change how the data
-                is grouped. This defaults to 'quantiles' for numeric data.
+                is grouped. This defaults to 'fisherjenks' for numeric data.
 
         See also:
             explore: same functionality, but shows the entire area of the geometries.
@@ -386,26 +387,29 @@ class Explore:
         if not self.kwargs["column"]:
             return True
         all_nan = 0
+        col_not_present = 0
         for gdf in self.gdfs:
             if self.kwargs["column"] not in gdf:
-                all_nan += 1
+                col_not_present += 1
                 continue
             if not pd.api.types.is_numeric_dtype(gdf[self.kwargs["column"]]):
                 if all(gdf[self.kwargs["column"]].isna()):
                     all_nan += 1
                 return True
         if all_nan == len(self.gdfs):
-            return True
+            raise ValueError(f"All values are NaN in column {self.kwargs['column']!r}.")
+        if col_not_present == len(self.gdfs):
+            raise ValueError(f"{self.kwargs['column']} not found.")
         return False
 
     def _choose_cmap(self) -> None:
         if "cmap" not in self.kwargs:
             if self._is_categorical:
-                self.kwargs["cmap"] = "tab20"
+                self.kwargs["cmap"] = None
             else:
                 self.kwargs["cmap"] = "viridis"
         if "scheme" not in self.kwargs:
-            self.kwargs["scheme"] = "quantiles"
+            self.kwargs["scheme"] = "fisherjenks"
 
     def _get_categorical_colors(self) -> None:
         cat_col = self.kwargs["column"]
@@ -419,7 +423,7 @@ class Explore:
                 for i, category in enumerate(self._unique_categories)
             }
         else:
-            cmap = matplotlib.colormaps.get_cmap(self.kwargs["cmap"])
+            cmap = matplotlib.colormaps.get_cmap("tab20")
 
             self._categories_colors_dict = {
                 category: colors.to_hex(cmap(int(i)))
@@ -447,6 +451,7 @@ class Explore:
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)
+
             gjs = self._explore_return(
                 gdf,
                 color=gdf["color"],
@@ -473,8 +478,14 @@ class Explore:
     def _create_continous_map(self):
         gdfs = gdf_concat(self.to_show)
 
-        bins = self._create_bins(gdfs, self.kwargs["column"], self.kwargs["scheme"])
-        self.kwargs["classification_kwds"] = {"bins": bins}
+        unique_bins = self._create_bins(
+            gdfs, self.kwargs["column"], self.kwargs["scheme"]
+        )
+
+        self.kwargs["classification_kwds"] = {"bins": unique_bins}
+        if len(unique_bins) < self.kwargs.get("k", 5):
+            self.kwargs["k"] = len(unique_bins)
+
         self.map, colorbar = self._explore_return(
             gdfs, return_="empty_map_and_colorbar", **self.kwargs
         )
@@ -483,6 +494,7 @@ class Explore:
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)
+
             gjs = self._explore_return(
                 gdf,
                 tooltip=self._tooltip_cols(gdf),
@@ -491,6 +503,7 @@ class Explore:
             )
             f.add_child(gjs)
             self.map.add_child(f)
+
         self.map.add_child(colorbar)
         folium.TileLayer("stamentoner").add_to(self.map)
         folium.TileLayer("cartodbdark_matter").add_to(self.map)
@@ -498,16 +511,36 @@ class Explore:
 
     def _tooltip_cols(self, gdf: GeoDataFrame) -> list:
         if "tooltip" in self.kwargs:
-            tooltip = self.kwargs["tooltip"]
-            self.kwargs.pop("tooltip")
+            tooltip = self.kwargs.pop("tooltip")
             return tooltip
         return [col for col in gdf.columns if col not in COLS_TO_DROP]
 
     def _create_bins(self, gdf, column, scheme):
+        n_unique = len(gdf[column].unique())
+        self.kwargs["k"] = self.kwargs.get("k", 5) if n_unique >= 5 else n_unique
+
         binning = classify(
-            np.asarray(gdf.loc[gdf[column].notna(), column]), scheme=scheme
+            np.asarray(gdf.loc[gdf[column].notna(), column]),
+            scheme=scheme,
+            k=self.kwargs["k"],
         )
-        return list(binning.bins)
+
+        unique_bins = list({round(bin, 5) for bin in binning.bins})
+        unique_bins.sort()
+
+        # adding a small amount to get the colors correct. Weird that this is
+        # nessecary...
+        return [bin + bin / 10_000 for bin in unique_bins]
+
+    @staticmethod
+    def _get_continous_color_idx(gdf, column, bins):
+        gdf.loc[gdf[column] < bins[0], "color_idx"] = 0
+        for i, (prev_bin, this_bin) in enumerate(zip(bins[:-1], bins[1:], strict=True)):
+            gdf.loc[
+                (gdf[column] >= prev_bin) & (gdf[column] < this_bin), "color_idx"
+            ] = i
+
+        return gdf
 
     def _explore_return(
         self,
@@ -655,7 +688,10 @@ class Explore:
                 bins = classification_kwds["bins"]
 
                 binning = classify(
-                    np.asarray(gdf[column][~nan_idx]), "UserDefined", bins=bins
+                    np.asarray(gdf[column][~nan_idx]),
+                    "UserDefined",
+                    bins=bins,
+                    k=k,
                 )
 
                 color = np.apply_along_axis(
@@ -663,7 +699,6 @@ class Explore:
                     1,
                     cm.get_cmap(cmap, k)(binning.yb),  # ! changed 256 to k
                 )
-
             else:
                 color = NAN_COLOR
 
@@ -857,7 +892,6 @@ class Explore:
                         if nan_idx.any() and nan_color:
                             categories.append(missing_kwds.pop("label", "NaN"))
                             cb_colors = np.append(cb_colors, nan_color)
-                        # _categorical_legend(m, caption, categories, cb_colors)
 
                 else:
                     if isinstance(cmap, bc.colormap.ColorMap):

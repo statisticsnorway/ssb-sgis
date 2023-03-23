@@ -8,14 +8,16 @@ The 'qtm' function shows a static map of one or more GeoDataFrames.
 """
 import matplotlib.pyplot as plt
 from geopandas import GeoDataFrame, GeoSeries
+from matplotlib import rcParams
+from matplotlib.axes._axes import Axes
+from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from pandas.api.types import is_numeric_dtype
 from shapely import Geometry
-from matplotlib.lines import Line2D
 
 from .exceptions import NotInJupyterError
 from .explore import Explore, _separate_args
-from .geopandas_tools.general import gdf_concat
-from .helpers import make_namedict
+from .helpers import make_namedict, return_two_vals
 
 
 def _check_if_jupyter_is_needed(explore, show_in_browser):
@@ -67,7 +69,7 @@ def explore(
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
-            is grouped. This defaults to 'quantiles' for numeric data.
+            is grouped. This defaults to 'fisherjenks' for numeric data.
 
     See also
     --------
@@ -98,7 +100,7 @@ def explore(
 
 def samplemap(
     *gdfs: GeoDataFrame,
-    size: int = 1000,
+    size: int = 2000,
     column: str | None = None,
     labels: tuple[str] | None = None,
     popup: bool = True,
@@ -126,7 +128,8 @@ def samplemap(
 
     Args:
         *gdfs: one or more GeoDataFrames.
-        size: the radius to buffer the sample point by before clipping with the data
+        size: the radius to buffer the sample point by before clipping with the data.
+            Defaults to 2000 (meters).
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
         labels: By default, the GeoDataFrames will be labeled by their object names.
@@ -144,7 +147,7 @@ def samplemap(
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
-            is grouped. This defaults to 'quantiles' for numeric data.
+            is grouped. This defaults to 'fisherjenks' for numeric data.
 
     See also
     --------
@@ -234,7 +237,7 @@ def clipmap(
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
-            is grouped. This defaults to 'quantiles' for numeric data.
+            is grouped. This defaults to 'fisherjenks' for numeric data.
 
     See also
     --------
@@ -282,62 +285,81 @@ def clipmap(
 def qtm(
     *gdfs: GeoDataFrame,
     column: str | None = None,
+    bg_gdf: GeoDataFrame | None = None,
     title: str | None = None,
-    scheme: str | None = "quantiles",
+    scheme: str | None = "fisherjenks",
     legend: bool = True,
     black: bool = True,
     size: int = 10,
-    fontsize: int = 15,
     legend_title: str | None = None,
-    legend_position: str = "lower right",
+    bbox_to_anchor: tuple[float | int, float | int] = (1, 0.2),
+    fonttype: str = "Calibri",
     **kwargs,
-) -> None:
+) -> tuple[Figure, Axes]:
     """Quick, thematic map of one or more GeoDataFrames.
 
     Shows one or more GeoDataFrames in the same plot, with a common color scheme if
     column is specified, or with unique colors for each GeoDataFrame if not. The
-    function uses the geopandas 'plot' method, with some different default values to
-    make the map prettier and more informative.
+    function simplifies the manual construction of a basic matplotlib plot. It also
+    returns the matplotlib figure and axis, so the plot can be changed afterwards.
 
-    The 'qtm' name is taken from the tmap package in R.
+    Disclaimer: the 'qtm' name is taken from the tmap package in R.
 
     Args:
         *gdfs: One or more GeoDataFrames to plot.
         column: The column to color the map by. Defaults to None, meaning each
             GeoDataFrame is given a unique color.
         title: Text to use as the map's heading.
-        scheme: How to group the column values. Defaults to 'quantiles' if numeric
+        scheme: How to group the column values. Defaults to 'fisherjenks' if numeric
             column.
         legend: Whether to include a legend explaining the colors and their values.
         black: If True (the default), the background color will be black and the title
             white. If False, it will be the opposite.
         size: Size of the plot. Defaults to 10.
-        fontsize: Size of the title.
+        title_fontsize: Size of the title.
         **kwargs: Additional keyword arguments passed to the geopandas plot method.
+
+    Returns:
+        The matplotlib figure and axis.
+
+    Examples
+    --------
+
     """
+
+    rcParams["font.sans-serif"] = [fonttype]
+
     if black:
-        facecolor, title_color = "#0f0f0f", "#f7f7f7"
+        facecolor, title_color, bg_gdf_color = "#0f0f0f", "#fefefe", "#383834"
     else:
-        facecolor, title_color = "#f7f7f7", "#0f0f0f"
+        facecolor, title_color, bg_gdf_color = "#fefefe", "#0f0f0f", "#d1d1cd"
 
     # run the gdfs through the __init__ of the Explore class
-    # this gives us a custom categorical cmap and labels to be used in the legend
+    # this gives a custom categorical cmap and labels to be used in the legend
     kwargs["column"] = column
     gdfs, column, kwargs = _separate_args(gdfs, column, kwargs)
     m = Explore(*gdfs, **kwargs)
+
     # the 'column' in the kwargs has to be updated to the custom categorical column (if
     # column was not specified).
     kwargs["column"] = m.kwargs.pop("column")
 
+    if m._is_categorical and any(
+        kwarg in kwargs for kwarg in ("cmap", "color", "column")
+    ):
+        kwargs["color"] = m.gdf["color"]
+
     if column and not is_numeric_dtype(m.gdf[column]):
         scheme = None
 
-    fig, ax = plt.subplots(1, figsize=(size, size))
+    size_x, size_y = return_two_vals(size)
+    fig, ax = _get_matplotlib_figure_and_axix(figsize=(size_x, size_y))
+
     fig.patch.set_facecolor(facecolor)
     ax.set_axis_off()
 
     # manually add legend if categorical, since geopandas.plot removes it otherwise.
-    if not column and "color" not in kwargs:
+    if legend and m._is_categorical:
         kwargs["color"] = m.gdf.color
         kwargs.pop("column")
         patches, categories = [], []
@@ -355,25 +377,47 @@ def qtm(
                     markeredgewidth=0,
                 )
             )
-        ax.legend(
-            patches,
-            categories,
-            title=legend_title if legend_title else column,
-            title_fontsize=size,
-            bbox_to_anchor=(1, 0.2),
-            loc=legend_position,
-            prop={"size": size},
-            #            markerscale=5,
-        )
+        ax.legend(patches, categories, fontsize=size_x)
+
+    if not m._is_categorical:
+        # making unique bins manually so that all equal values get same color
+        unique_bins = m._create_bins(m.gdf, column, scheme)
+        kwargs["classification_kwds"] = {"bins": unique_bins}
+        if len(unique_bins) < kwargs.get("k", 5):
+            kwargs["k"] = len(unique_bins)
 
     if title:
-        ax.set_title(title, fontsize=fontsize, color=title_color)
+        ax.set_title(title, fontsize=size_x * 2, color=title_color)
+
+    if bg_gdf is not None:
+        minx, miny, maxx, maxy = m.gdf.total_bounds
+        diffx = maxx - minx
+        diffy = maxy - miny
+        ax.set_xlim([minx - diffx * 0.03, maxx + diffx * 0.03])
+        ax.set_ylim([miny - diffy * 0.03, maxy + diffy * 0.03])
+        bg_gdf.plot(ax=ax, color=bg_gdf_color)
 
     m.gdf.plot(scheme=scheme, legend=legend, ax=ax, **kwargs)
 
-    if legend_title:
-        legend = plt.gca().get_legend()
-        legend.set_title(legend_title)
-        plt.show()
+    if not legend:
+        return fig, ax
 
-    return ax
+    the_legend = plt.gca().get_legend()
+
+    for text in the_legend.get_texts():
+        text.set_fontsize(size_x)
+
+    the_legend.set_bbox_to_anchor(bbox_to_anchor)
+
+    legend_title = column if not legend_title else legend_title
+    the_legend.set_title(legend_title, prop={"size": size_x * 1.25})
+
+    plt.show()
+
+    return fig, ax
+
+
+def _get_matplotlib_figure_and_axix(figsize):
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(1, 1, 1)
+    return fig, ax

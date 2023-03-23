@@ -51,6 +51,16 @@ def not_test_explore(points_oslo, roads_oslo):
 
     sg.explore(roads, points, "meters")
 
+    sg.explore(
+        roads.assign(meters_cat=lambda x: (x.meters / 40).astype(int).astype(str)),
+        points.assign(meters_cat=lambda x: (x.meters / 40).astype(int).astype(str)),
+        "meters_cat",
+    )
+    sg.qtm(
+        roads.assign(meters_cat=lambda x: (x.meters / 40).astype(int).astype(str)),
+        points.assign(meters_cat=lambda x: (x.meters / 40).astype(int).astype(str)),
+        "meters_cat",
+    )
     x = sg.Explore(roads, points, p, "meters", labels=("roads", "points", "p"))
     assert not x._is_categorical
     x = sg.Explore(roads, points)
