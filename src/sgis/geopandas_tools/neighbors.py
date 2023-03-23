@@ -8,8 +8,6 @@ from sklearn.neighbors import NearestNeighbors
 
 from ..helpers import return_two_vals
 from .general import coordinate_array
-from .geometry_types import get_geom_type
-from .point_operations import to_multipoint
 
 
 def get_neighbors(
@@ -17,6 +15,7 @@ def get_neighbors(
     neighbors: GeoDataFrame | GeoSeries,
     id_col: str = "index",
     max_dist: int = 0,
+    predicate: str = "intersects",
 ) -> list[str]:
     """Returns a list of a GeoDataFrame's neigbours.
 
@@ -29,6 +28,9 @@ def get_neighbors(
         id_col: Optionally a column in the GeoDataFrame to use as identifier for the
             neighbors. Defaults to the index of the GeoDataFrame.
         max_dist: The maximum distance between the two geometries. Defaults to 0.
+        predicate: Spatial predicate to use. Defaults to "intersects", meaning the
+            geometry itself and geometries within will be considered neighbors if they
+            are part of the 'neighbors' GeoDataFrame.
 
     Returns:
         A list of unique values from the id_col column in the joined dataframe.
@@ -88,7 +90,7 @@ def get_neighbors(
     else:
         gdf = gdf.geometry.to_frame()
 
-    joined = gdf.sjoin(neighbors, how="inner")
+    joined = gdf.sjoin(neighbors, how="inner", predicate=predicate)
 
     return [x for x in joined[id_col].unique()]
 
@@ -96,9 +98,9 @@ def get_neighbors(
 def get_k_nearest_neighbors(
     gdf: GeoDataFrame,
     neighbors: GeoDataFrame,
-    k: int,
-    id_cols: str | tuple[str, str] = ("gdf_idx", "neighbour_idx"),
+    k: int | None = None,
     max_dist: int | float | None = None,
+    id_cols: str | tuple[str, str] = ("gdf_idx", "neighbour_idx"),
     min_dist: float | int = 0,
     strict: bool = False,
 ) -> DataFrame:
@@ -110,14 +112,15 @@ def get_k_nearest_neighbors(
     Args:
         gdf: a GeoDataFrame of points
         neighbors: a GeoDataFrame of points
-        k: number of neighbors to find
+        k: number of neighbors to find. If not specified, all neighbors will be
+            returned.
+        max_dist: if specified, rows with greater distances than max_dist will be
+            removed.
         id_cols: column(s) to use as identifiers. Either a string if one column or a
             tuple/list for 'gdf' and 'neighbors' respectfully. Defaults to "gdf_idx"
             and "neighbour_idx".
-        max_dist: if specified, rows with greater distances than max_dist will be
-            removed.
-        min_dist: The minimum distance for points to be considered neighbors. Defaults to
-            0, meaning identical points aren't considered neighbors.
+        min_dist: The minimum distance for points to be considered neighbors. Defaults
+            to 0, meaning identical points are considered neighbors.
         strict: If False (the default), no exception is raised if k is larger than the
             number of points in 'neighbors'. If True, 'k' must be less than or equal
             to the number of points in 'neighbors'.
@@ -204,12 +207,11 @@ def get_k_nearest_neighbors(
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 
     id_col1, id_col2 = return_two_vals(id_cols)
-    if not id_col1 or id_col1 and id_col1 not in gdf.columns:
-        id_col1 = "gdf_idx"
-        gdf[id_col1] = range(len(gdf))
-    if not id_col2 or id_col2 and id_col2 not in neighbors.columns:
-        id_col2 = "neighbour_idx"
-        neighbors[id_col2] = range(len(neighbors))
+
+    gdf, id_col1 = _add_id_col_if_missing(gdf, id_col1, default="gdf_idx")
+    neighbors, id_col2 = _add_id_col_if_missing(
+        neighbors, id_col2, default="neighbour_idx"
+    )
 
     id_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf[id_col1], strict=True)}
     id_dict_neighbors = {
@@ -226,23 +228,23 @@ def get_k_nearest_neighbors(
 
     edges = _get_edges(gdf, neighbor_indices)
 
-    if max_dist is not None:
-        condition = (dists <= max_dist) & (dists > min_dist)
-    else:
-        condition = dists > min_dist
+    distance_condition = dists >= min_dist
 
-    edges = edges[condition]
+    if max_dist is not None:
+        distance_condition = distance_condition & (dists <= max_dist)
+
+    edges = edges[distance_condition]
     if len(edges.shape) == 3:
         edges = edges[0]
 
-    dists = dists[condition]
+    dists = dists[distance_condition]
 
     df = DataFrame(edges, columns=[id_col1, id_col2])
 
     df = df.assign(
-        dist=dists,
-        dist_min=lambda df: df.groupby(id_col1)["dist"].transform("min"),
-        k=lambda df: df.groupby(id_col1)["dist"].transform("rank"),
+        distance=dists,
+        distance_min=lambda df: df.groupby(id_col1)["distance"].transform("min"),
+        k=lambda df: df.groupby(id_col1)["distance"].transform("rank"),
     )
 
     df[id_col1] = df[id_col1].map(id_dict_gdf)
@@ -251,10 +253,19 @@ def get_k_nearest_neighbors(
     return df
 
 
+def _add_id_col_if_missing(
+    gdf: GeoDataFrame, id_col: str | None, default: str
+) -> tuple[GeoDataFrame, str]:
+    if (not id_col) or (id_col and id_col not in gdf.columns):
+        id_col = default
+        gdf[id_col] = range(len(gdf))
+    return gdf, id_col
+
+
 def k_nearest_neighbors(
     from_array: np.ndarray[np.ndarray[float]],
     to_array: np.ndarray[np.ndarray[float]],
-    k: int,
+    k: int | None = None,
     strict: bool = False,
 ) -> tuple[np.ndarray[float], np.ndarray[int]]:
     """Finds the k nearest neighbors for arrays of points.
@@ -274,6 +285,9 @@ def k_nearest_neighbors(
         The distances and indices of the nearest neighbors. Both distances and
         neighbors are np.ndarrays.
     """
+    if not k:
+        k = len(to_array)
+
     if not strict:
         k = k if len(to_array) >= k else len(to_array)
 
