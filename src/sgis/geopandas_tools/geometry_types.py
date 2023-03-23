@@ -1,7 +1,8 @@
 """Check and set geometry type."""
+import warnings
 
-from geopandas import GeoDataFrame, GeoSeries
 import pandas as pd
+from geopandas import GeoDataFrame, GeoSeries
 
 
 def to_single_geom_type(
@@ -76,7 +77,13 @@ def to_single_geom_type(
     # explode collections to single-typed geometries
     collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
     if len(collections):
+        warnings.filterwarnings("ignore", category=FutureWarning)
         collections = collections.explode(ignore_index=ignore_index)
+
+        # avoid multiindex if ignore_index is False
+        if isinstance(collections.index, pd.MultiIndex):
+            collections.index = collections.index.get_level_values(0)
+
         gdf = pd.concat([gdf, collections], ignore_index=ignore_index)
 
     if "poly" in geom_type:
