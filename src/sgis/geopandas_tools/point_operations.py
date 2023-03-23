@@ -1,15 +1,11 @@
 """Functions for point geometries."""
 
-import geopandas as gpd
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from shapely import (
-    Geometry,
-    force_2d,
-    wkt,
-)
+from shapely import Geometry
 from shapely.ops import nearest_points, snap, unary_union
-from .general import to_multipoint
+
+from .general import to_lines, to_multipoint
 
 
 def snap_to(
@@ -117,7 +113,9 @@ def snap_to(
     0  POINT (0.00000 1.00000)            1.0            1
     """
     geom1 = points._geometry_column_name
-    geom2 = to._geometry_column_name
+
+    if isinstance(to, GeoDataFrame):
+        geom2 = to._geometry_column_name
 
     if distance_col and distance_col in points:
         points = points.rename(columns={distance_col: distance_col + "_left"})
@@ -159,7 +157,7 @@ def snap_to(
     to = to[[id_col_, geom2]]
 
     # sjoin_nearest to get distance and/or id
-    unsnapped = unsnapped.sjoin_nearest(to, distance_col=distance_col)
+    unsnapped = unsnapped.sjoin_nearest(to_lines(to), distance_col=distance_col)
 
     if max_dist:
         unsnapped = unsnapped.loc[unsnapped[distance_col] <= max_dist]
@@ -225,8 +223,10 @@ def _series_snap_to(
             return nearest
         return snap(point, nearest, tolerance=max_dist)
 
-    if hasattr(snap_to, "unary_union"):
+    if isinstance(snap_to, GeoDataFrame):
         unioned = snap_to.unary_union
+    elif isinstance(snap_to, GeoSeries):
+        unioned = snap_to.to_frame().unary_union
     else:
         unioned = unary_union(snap_to)
 
