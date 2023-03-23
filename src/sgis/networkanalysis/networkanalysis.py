@@ -15,14 +15,14 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
 
+from ..geopandas_tools.general import _push_geom_col, gdf_concat
+from ..geopandas_tools.line_operations import split_lines_by_nearest_point
 from ._get_route import _get_route
 from ._od_cost_matrix import _od_cost_matrix
 from ._points import Destinations, Origins
 from ._service_area import _service_area
 from .directednetwork import DirectedNetwork
-from ..geopandas_tools.general import gdf_concat, _push_geom_col
 from .network import Network, _edge_ids
-from ..geopandas_tools.line_operations import split_lines_by_nearest_point
 from .networkanalysisrules import NetworkAnalysisRules
 
 
@@ -677,6 +677,7 @@ class NetworkAnalysis:
         self,
         origins: GeoDataFrame,
         destinations: GeoDataFrame,
+        frequency_col: str = "frequency",
     ) -> GeoDataFrame:
         """Finds the number of times each line segment was visited in all trips.
 
@@ -687,6 +688,8 @@ class NetworkAnalysis:
         Args:
             origins: GeoDataFrame of points from where the routes will originate
             destinations: GeoDataFrame of points from where the routes will terminate
+            frequency_col: Name of column with the number of times each road was
+                visited. Defaults to 'frequency'.
 
         Returns:
             A GeoDataFrame with all line segments that were visited at least once,
@@ -737,7 +740,9 @@ class NetworkAnalysis:
 
         results = _push_geom_col(results)
 
-        results = results.sort_values("n")
+        results = results.rename(columns={"n": frequency_col}).sort_values(
+            frequency_col
+        )
 
         if self.rules.split_lines:
             self._unsplit_network()
@@ -1205,7 +1210,6 @@ class NetworkAnalysis:
 
     @staticmethod
     def _sort_breaks(breaks):
-
         if isinstance(breaks, str):
             breaks = float(breaks)
 
@@ -1242,7 +1246,8 @@ class NetworkAnalysis:
             f"{self.__class__.__name__}(\n"
             f"    network={self.network.__repr__()},\n"
             f"    rules={rules}{x}),\n"
-            f"    log={self._log}, detailed_log={self.detailed_log})"
+            f"    log={self._log}, detailed_log={self.detailed_log},"
+            "\n)"
         )
 
     def __getitem__(self, item):
