@@ -1,8 +1,6 @@
 import sys
 from pathlib import Path
 
-import geopandas as gpd
-
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
@@ -11,7 +9,7 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_distances(points_oslo, roads_oslo):
+def test_distances(points_oslo):
     p = points_oslo
 
     p["idx"] = p.index
@@ -25,18 +23,21 @@ def test_distances(points_oslo, roads_oslo):
         max_dist=None,
     )
 
-    assert len(df) == len(p) * 50 - len(p)
+    print(df)
+
+    assert len(df) == len(p) * 50
 
     df = sg.get_k_nearest_neighbors(
         gdf=p,
         neighbors=p,
         k=50,
         id_cols="idx",
-        min_dist=-1,
+        min_dist=0.000001,
         max_dist=None,
     )
+    print(df)
 
-    assert len(df) == len(p) * 50
+    assert len(df) == len(p) * 50 - len(p)
 
     df = sg.get_k_nearest_neighbors(
         gdf=p,
@@ -45,8 +46,9 @@ def test_distances(points_oslo, roads_oslo):
         id_cols="idx",
         max_dist=None,
     )
+    print(df)
 
-    assert len(df) == len(p) * len(p) - len(p)
+    assert len(df) == len(p) * len(p)
 
     try:
         df = sg.get_k_nearest_neighbors(
@@ -57,8 +59,10 @@ def test_distances(points_oslo, roads_oslo):
             max_dist=None,
             strict=True,
         )
+        failed = False
     except ValueError:
-        pass
+        failed = True
+    assert failed
 
     df = sg.get_k_nearest_neighbors(
         gdf=p,
@@ -67,14 +71,15 @@ def test_distances(points_oslo, roads_oslo):
         id_cols="idx",
         max_dist=250,
     )
+    print(df)
 
-    assert max(df.dist) <= 250
+    assert max(df.distance) <= 250
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
 
-    test_distances(points_oslo(), roads_oslo())
+    test_distances(points_oslo())
 
 
 if __name__ == "__main__":
