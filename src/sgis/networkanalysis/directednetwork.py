@@ -149,11 +149,11 @@ class DirectedNetwork(Network):
                 ) from e
 
             # rename the two minute cols
-            both_ways = both_ways.rename(columns={min_f: "minutes"})
-            both_ways2 = both_ways2.rename(columns={min_t: "minutes"})
+            both_ways = both_ways.rename(columns={min_f: "minutes"}, errors="raise")
+            both_ways2 = both_ways2.rename(columns={min_t: "minutes"}, errors="raise")
 
-            ft = ft.rename(columns={min_f: "minutes"})
-            tf = tf.rename(columns={min_t: "minutes"})
+            ft = ft.rename(columns={min_f: "minutes"}, errors="raise")
+            tf = tf.rename(columns={min_t: "minutes"}, errors="raise")
 
             for gdf in [ft, tf, both_ways, both_ways2]:
                 if all(gdf["minutes"].fillna(0) <= 0):
