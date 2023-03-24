@@ -138,9 +138,8 @@ def split_lines_by_nearest_point(
     Args:
         lines: GeoDataFrame of lines that will be split.
         points: GeoDataFrame of points to split the lines with.
-        max_dist: the maximum distance between the point and the line.
-            Points further away than max_dist will not split any lines.
-            Defaults to None.
+        max_dist: the maximum distance between the point and the line. Points further
+            away than max_dist will not split any lines. Defaults to None.
 
     Returns:
         A GeoDataFrame with the same columns as the input lines, but with the lines
@@ -232,16 +231,17 @@ def split_lines_by_nearest_point(
         splitted_source,
         snapped,
         k=1,
-        max_dist=BUFFDIST * 2,
         id_cols=("splitidx", "point_coords"),
     )
     dists_target = get_k_nearest_neighbors(
         splitted_target,
         snapped,
         k=1,
-        max_dist=BUFFDIST * 2,
         id_cols=("splitidx", "point_coords"),
     )
+
+    dists_source = dists_source.loc[dists_source.distance <= BUFFDIST * 2]
+    dists_target = dists_target.loc[dists_target.distance <= BUFFDIST * 2]
 
     # use the id columns from k-neighbours to map line id with snapped point
     splitdict_source: pd.Series = dists_source.set_index("splitidx")["point_coords"]
@@ -445,103 +445,6 @@ def cut_lines_once(
     return lines
 
 
-def close_network_holes(
-    lines: GeoDataFrame,
-    max_dist: int,
-    min_dist: int = 0,
-    deadends_only: bool = False,
-    hole_col: str | None = "hole",
-    k: int = 25,
-    length_factor: int = 25,
-):
-    """Fills gaps shorter than 'max_dist' in a GeoDataFrame of lines.
-
-    Fills holes in the network by finding the nearest neighbors of each node, and
-    connecting the nodes that are within a certain distance from each other.
-
-    Args:
-        lines: GeoDataFrame with lines
-        max_dist: The maximum distance between two nodes to be considered a hole.
-        min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
-        deadends_only: If True, only lines that connect dead ends will be created. If
-            False (the default), deadends might be connected to nodes that are not
-            deadends.
-        hole_col: If you want to keep track of which lines were added, you can add a
-            column with a value of 1. Defaults to 'hole'
-        k: number of nearest neighbors to consider. Defaults to 25.
-        length_factor: The percentage longer the new lines have to be compared to the
-            distance from the other end of the deadend line relative to the line's
-            length. Or said (a bit) simpler: higher length_factor means the new lines
-            will have an angle more similar to the deadend line it originates from.
-
-    Returns:
-        The input GeoDataFrame with new lines added.
-
-    Examples
-    --------
-    Read road data with small gaps.
-
-    >>> import sgis as sg
-    >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-
-    Roads need to be singlepart linestrings for this to work.
-
-    >>> from shapely import line_merge
-    >>> roads.geometry = line_merge(roads)
-
-    Check for number of isolated lines now.
-
-    >>> roads = sg.get_largest_component(roads)
-    >>> roads.connected.value_counts()
-    1.0    85638
-    0.0     7757
-    Name: connected, dtype: int64
-
-    Fill gaps shorter than 1.1 meters.
-
-    >>> roads = sg.close_network_holes(roads, max_dist=1.1)
-    >>> roads = sg.get_largest_component(roads)
-    >>> roads.connected.value_counts()
-    1.0    100315
-    0.0       180
-    Name: connected, dtype: int64
-
-    It's not always wise to fill gaps. In the case of this data, these small gaps are
-    intentional. They are road blocks where most cars aren't allowed to pass. Fill the
-    holes only if it makes the travel times/routes more realistic.
-    """
-    lines, nodes = make_node_ids(lines)
-
-    if deadends_only:
-        new_lines = _find_holes_deadends(nodes, max_dist, min_dist)
-    else:
-        new_lines = _find_holes_all_lines(
-            lines,
-            nodes,
-            max_dist,
-            min_dist,
-            length_factor=length_factor,
-            k=k,
-        )
-
-    if not len(new_lines):
-        return lines
-
-    new_lines = make_edge_wkt_cols(new_lines)
-
-    wkt_id_dict = {
-        wkt: id for wkt, id in zip(nodes["wkt"], nodes["node_id"], strict=True)
-    }
-    new_lines["source"] = new_lines["source_wkt"].map(wkt_id_dict)
-    new_lines["target"] = new_lines["target_wkt"].map(wkt_id_dict)
-
-    if hole_col:
-        new_lines[hole_col] = 1
-        lines[hole_col] = 0
-
-    return gdf_concat([lines, new_lines])
-
-
 def make_node_ids(
     lines: GeoDataFrame,
     wkt: bool = True,
@@ -677,36 +580,109 @@ def make_edge_wkt_cols(lines: GeoDataFrame) -> GeoDataFrame:
     return lines
 
 
+def close_network_holes(
+    lines: GeoDataFrame,
+    max_dist: int,
+    max_angle: int = 90,
+    deadend_to_deadend: bool = False,
+    hole_col: str | None = "hole",
+):
+    """Fills gaps shorter than 'max_dist' in a GeoDataFrame of lines.
+
+    Fills holes in the network by finding the nearest neighbors of each node, and
+    connecting the nodes that are within a certain distance from each other.
+
+    Args:
+        lines: GeoDataFrame with lines
+        max_dist: The maximum distance between two nodes to be considered a hole.
+        max_angle: Number between 0 and 180 that represents the maximum difference
+            in angle between the new line and the the prior line in the network. 0
+            means the new lines must have the exact same angle as the prior line,
+            180 means the new lines can go backwards. Defaults to 90.
+        deadend_to_deadend: If True, only lines that connect dead ends will be created.
+            If False (the default), deadends might be connected to nodes that are not
+            deadends.
+        hole_col: If you want to keep track of which lines were added, you can add a
+            column with a value of 1. Defaults to 'hole'
+
+    Returns:
+        The input GeoDataFrame with new lines added.
+
+    Examples
+    --------
+    Read road data with small gaps.
+
+    >>> import sgis as sg
+    >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
+
+    Roads need to be singlepart linestrings for this to work.
+
+    >>> from shapely import line_merge
+    >>> roads.geometry = line_merge(roads)
+
+    Check for number of isolated lines now.
+
+    >>> roads = sg.get_largest_component(roads)
+    >>> roads.connected.value_counts()
+    1.0    85638
+    0.0     7757
+    Name: connected, dtype: int64
+
+    Fill gaps shorter than 1.1 meters.
+
+    >>> roads = sg.close_network_holes(roads, max_dist=1.1)
+    >>> roads = sg.get_largest_component(roads)
+    >>> roads.connected.value_counts()
+    1.0    100315
+    0.0       180
+    Name: connected, dtype: int64
+
+    It's not always wise to fill gaps. In the case of this data, these small gaps are
+    intentional. They are road blocks where most cars aren't allowed to pass. Fill the
+    holes only if it makes the travel times/routes more realistic.
+    """
+    lines, nodes = make_node_ids(lines)
+
+    if deadend_to_deadend:
+        new_lines = _find_holes_deadends(nodes, max_dist)
+    else:
+        new_lines = _find_holes_all_lines(
+            lines,
+            nodes,
+            max_dist,
+            max_angle=max_angle,
+        )
+
+    if not len(new_lines):
+        return lines.assign(hole=0)
+
+    new_lines = make_edge_wkt_cols(new_lines)
+
+    wkt_id_dict = {
+        wkt: id for wkt, id in zip(nodes["wkt"], nodes["node_id"], strict=True)
+    }
+    new_lines["source"] = new_lines["source_wkt"].map(wkt_id_dict)
+    new_lines["target"] = new_lines["target_wkt"].map(wkt_id_dict)
+
+    if hole_col:
+        new_lines[hole_col] = 1
+        lines[hole_col] = 0
+
+    return gdf_concat([lines, new_lines])
+
+
 def _find_holes_all_lines(
     lines: GeoDataFrame,
     nodes: GeoDataFrame,
     max_dist: int,
-    min_dist: int = 0,
-    k: int = 25,
-    length_factor: int = 25,
+    max_angle: int = 90,
 ):
-    """Creates lines between deadends and closest node in forward-going direction.
+    """Creates lines between deadends and closest node.
 
-    Creates a straight line between deadends and the closest node in a
-    forward-going direction, if the distance is between the max_dist and min_dist.
+    Creates lines if distance is less than max_dist and angle less than max_angle.
 
-    Args:
-        lines: the lines you want to find holes in
-        nodes: a GeoDataFrame of nodes
-        max_dist: The maximum distance between the dead end and the node it should be
-            connected to.
-        min_dist: The minimum distance between the dead end and the node. Defaults to 0
-        k: number of nearest neighbors to consider. Defaults to 25
-        length_factor: The percentage longer the new lines have to be compared to the
-            distance from the other end of the deadend line relative to the line's
-            length. Or said (a bit) simpler: higher length_factor means the new lines
-            will have an angle more similar to the deadend line it originates from.
-
-    Returns:
-        A GeoDataFrame with the shortest line between the two points.
+    wkt: well-known text, e.g. "POINT (60 10)"
     """
-    # wkt: well-known text, e.g. "POINT (60 10)"
-
     crs = nodes.crs
 
     # remove duplicates of lines going both directions
@@ -717,23 +693,19 @@ def _find_holes_all_lines(
 
     no_dups = lines.drop_duplicates("sorted")
 
-    # make new node ids without bidirectional lines
     no_dups, nodes = make_node_ids(no_dups)
 
-    # deadends are the target endpoints of the lines appearing once
+    # make point gdf for the deadends and the other endpoint of the deadend lines
     deadends_target = no_dups.loc[no_dups.n_target == 1].rename(
         columns={"target_wkt": "wkt", "source_wkt": "wkt_other_end"}
     )
     deadends_source = no_dups.loc[no_dups.n_source == 1].rename(
         columns={"source_wkt": "wkt", "target_wkt": "wkt_other_end"}
     )
-
     deadends = pd.concat([deadends_source, deadends_target], ignore_index=True)
 
     if len(deadends) <= 1:
         return []
-
-    deadends_lengths = deadends.length
 
     deadends_other_end = deadends.copy()
     deadends_other_end["geometry"] = gpd.GeoSeries.from_wkt(
@@ -743,16 +715,27 @@ def _find_holes_all_lines(
     deadends["geometry"] = gpd.GeoSeries.from_wkt(deadends["wkt"], crs=crs)
 
     deadends_array = coordinate_array(deadends)
-
     nodes_array = coordinate_array(nodes)
 
-    all_dists, all_indices = k_nearest_neighbors(deadends_array, nodes_array, k=k)
+    all_dists, all_indices = k_nearest_neighbors(
+        deadends_array, nodes_array, k=len(nodes_array)
+    )
+
+    deadends_other_end_array = coordinate_array(deadends_other_end)
+
+    def get_angle(array_a, array_b):
+        dx = array_b[:, 0] - array_a[:, 0]
+        dy = array_b[:, 1] - array_b[:, 1]
+
+        angles_rad = np.arctan2(dx, dy)
+        angles_degrees = np.degrees(angles_rad)
+        return angles_degrees
 
     # now to find the lines that go in the right direction. Collecting the startpoints
     # and endpoints of the new lines in lists, looping through the k neighbour points
     new_sources: list[str] = []
     new_targets: list[str] = []
-    for i in np.arange(1, k):
+    for i in np.arange(1, len(nodes_array)):
         # to break out of the loop if no new_targets that meet the condition are found
         len_now = len(new_sources)
 
@@ -760,18 +743,27 @@ def _find_holes_all_lines(
         indices = all_indices[:, i]
         dists = all_dists[:, i]
 
-        # get the distance from the other end of the deadends to the k neighbours
-        dists_source = deadends_other_end.distance(nodes.loc[indices], align=False)
+        #  # get the distance from the other end of the deadends to the k neighbours
+        #   dists_source = deadends_other_end.distance(nodes.loc[indices], align=False)
 
-        # select the distances between min_dist and max_dist that are also shorter than
-        # the distance from the other side of the line, meaning the new line will go
-        # forward. All arrays have the same shape, and can be easily filtered by index
-        # The node wkts have to be extracted after indexing 'indices'
-        condition = (
-            (dists < max_dist)
-            & (dists > min_dist)
-            & (dists < dists_source - deadends_lengths * length_factor / 100)
+        these_nodes_array = coordinate_array(nodes.loc[indices])
+
+        angles_deadend_to_node = get_angle(deadends_array, these_nodes_array)
+
+        angles_deadend_to_deadend_other_end = get_angle(
+            deadends_array, deadends_other_end_array
         )
+
+        angles_difference = np.abs(
+            np.abs(angles_deadend_to_deadend_other_end) - np.abs(angles_deadend_to_node)
+        )
+
+        angles_difference[
+            np.all(deadends_other_end_array == these_nodes_array, axis=1)
+        ] = np.nan
+
+        condition = (dists <= max_dist) & (angles_difference <= max_angle)
+
         from_wkt = deadends.loc[condition, "wkt"]
         to_idx = indices[condition]
         to_wkt = nodes.loc[to_idx, "wkt"]
@@ -803,19 +795,15 @@ def _find_holes_all_lines(
     return new_lines
 
 
-def _find_holes_deadends(
-    nodes: GeoDataFrame, max_dist: float | int, min_dist: float | int = 0
-):
+def _find_holes_deadends(nodes: GeoDataFrame, max_dist: float | int):
     """Creates lines between two deadends if between max_dist and min_dist.
 
     It takes a GeoDataFrame of nodes, chooses the deadends, and creates a straight line
-    between the closest deadends if the distance is between the specifies max_dist and
-    min_dist.
+    between the closest deadends if the distance is no greater than 'max_dist'.
 
     Args:
         nodes: the nodes of the network
         max_dist: The maximum distance between two nodes to be connected.
-        min_dist: minimum distance between nodes to be considered a hole. Defaults to 0
 
     Returns:
         A GeoDataFrame with the new lines.
@@ -839,11 +827,11 @@ def _find_holes_deadends(
     dists = dists[:, 1]
     indices = indices[:, 1]
 
-    # get the geometry of the distances between min_dist and max_dist
+    # get the geometry of the distances no greater than max_dist
     # the from geometries can be taken directly from the deadends index,
     # since 'dists' has the same index. 'to_geom' must be selected through the index
     # of the neighbours ('indices')
-    condition = (dists < max_dist) & (dists > min_dist)
+    condition = dists < max_dist
     from_geom = deadends.loc[condition, "geometry"].reset_index(drop=True)
     to_idx = indices[condition]
     to_geom = deadends.loc[to_idx, "geometry"].reset_index(drop=True)

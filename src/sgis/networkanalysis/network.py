@@ -14,6 +14,7 @@ from shapely import line_merge
 
 from ..exceptions import ZeroLinesError
 from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..geopandas_tools.line_operations import (
     close_network_holes,
     cut_lines,
@@ -121,7 +122,6 @@ class Network:
         self,
         gdf: GeoDataFrame,
         *,
-        merge_lines: bool = True,
         allow_degree_units: bool = False,
     ):
         """The lines are fixed, welded together rowwise and exploded. Creates node-ids.
@@ -145,7 +145,7 @@ class Network:
                 "set 'allow_degree_units' to True."
             )
 
-        self.gdf = self._prepare_network(gdf, merge_lines)
+        self.gdf = self._prepare_network(gdf)
 
         self._make_node_ids()
 
@@ -282,10 +282,9 @@ class Network:
         self,
         max_dist: int,
         fillna: float | int | None,
-        min_dist: int = 0,
-        deadends_only: bool = False,
+        max_angle: int = 90,
+        deadend_to_deadend: bool = False,
         hole_col: str = "hole",
-        length_factor: int = 25,
     ):
         """Fills holes in the network lines shorter than the max_dist.
 
@@ -298,18 +297,16 @@ class Network:
             fillna: The value to give the holes in all columns with NaN, which are all
                 columns except for the hole_col and the source/target columns. If set
                 to None,
-            min_dist: minimum distance between nodes to be considered a hole. Defaults
-                to 0
-            deadends_only: If True, only holes between two deadends will be filled.
+            max_angle: Number between 0 and 180 that represents the maximum difference
+                in angle between the new line and the the prior line in the network. 0
+                means the new lines must have the exact same angle as the prior line,
+                180 means the new lines can go backwards. Defaults to 90.
+            deadend_to_deadend: If True, only holes between two deadends will be filled.
                 If False (the default), deadends might be connected to any node of the
                 network.
             hole_col: Holes will get the value 1 in a column named 'hole' by default,
                 or what is specified as hole_col. If set to None or False, no column
                 will be added.
-            length_factor: The percentage longer the new lines have to be compared to the
-                distance from the other end of the deadend line relative to the line's
-                length. Or said (a bit) simpler: higher length_factor means the new lines
-                will have an angle more similar to the deadend line it originates from.
 
         Returns:
             The input GeoDataFrame with new lines added.
@@ -347,10 +344,9 @@ class Network:
         self.gdf = close_network_holes(
             self.gdf,
             max_dist,
-            min_dist=min_dist,
-            deadends_only=deadends_only,
+            deadend_to_deadend=deadend_to_deadend,
             hole_col=hole_col,
-            length_factor=length_factor,
+            max_angle=max_angle,
         )
 
         if fillna is not None:
@@ -435,7 +431,7 @@ class Network:
         self.gdf, self._nodes = make_node_ids(self.gdf)
 
     @staticmethod
-    def _prepare_network(gdf: GeoDataFrame, merge_lines: bool = True) -> GeoDataFrame:
+    def _prepare_network(gdf: GeoDataFrame) -> GeoDataFrame:
         """Make sure there are only singlepart LineStrings in the network.
 
         This is needed when making node-ids based on the lines' endpoints, because
@@ -444,11 +440,7 @@ class Network:
 
         Args:
             gdf: GeoDataFrame with (multi)line geometries. MultiLineStrings will be
-                merged, then split if not possible to merge.
-            merge_lines (bool): merge MultiLineStrings into LineStrings rowwise. No
-                rows will be dissolved. If false, the network might get more and shorter
-                lines, making network analysis more accurate, but possibly slower.
-                Might also make minute column wrong.
+                merged, then exploded if a merge was not possible.
 
         Returns:
             A GeoDataFrame of line geometries.
@@ -461,13 +453,13 @@ class Network:
         if gdf._geometry_column_name != "geometry":
             gdf = gdf.rename_geometry("geometry")
 
-        gdf = clean_geoms(gdf, geom_type="lines")
+        gdf = clean_geoms(gdf)
+        gdf = to_single_geom_type(gdf, geom_type="lines")
 
         if not len(gdf):
             raise ZeroLinesError
 
-        if merge_lines:
-            gdf.geometry = line_merge(gdf.geometry)
+        gdf.geometry = line_merge(gdf.geometry)
 
         rows_now = len(gdf)
         gdf = gdf.loc[gdf.geom_type != "LinearRing"]

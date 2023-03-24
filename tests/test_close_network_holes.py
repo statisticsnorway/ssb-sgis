@@ -1,14 +1,75 @@
 # %%
+import sys
 import warnings
 from pathlib import Path
 from time import perf_counter
 
 import geopandas as gpd
+from shapely.geometry import LineString, MultiLineString
 
+
+src = str(Path(__file__).parent).strip("tests") + "src"
+
+
+sys.path.insert(0, src)
 import sgis as sg
 
 
 def test_close_network_holes(roads_oslo, points_oslo):
+    lines_angle_0 = sg.to_gdf(
+        MultiLineString(
+            [
+                LineString([(-1, 0), (0, 0), (1, 0)]),
+                LineString([(2, 0), (3, 0), (4, 0)]),
+            ]
+        ),
+        crs=25833,
+    )
+    nw = sg.Network(lines_angle_0).close_network_holes(1, fillna=0, max_angle=90)
+    if __name__ == "__main__":
+        lines_angle_0.plot()
+        nw.gdf.plot("hole")
+    assert len(nw) == 4, len(nw)
+
+    nw = sg.DirectedNetwork(lines_angle_0).close_network_holes(
+        1, fillna=0, max_angle=90
+    )
+    if __name__ == "__main__":
+        lines_angle_0.plot()
+        nw.gdf.plot("hole")
+    assert len(nw) == 4, len(nw)
+
+    nw = sg.Network(lines_angle_0).close_network_holes(1, fillna=0, max_angle=10)
+    assert len(nw) == 4, len(nw)
+    nw = sg.Network(lines_angle_0).close_network_holes(1, fillna=0, max_angle=0)
+    assert len(nw) == 4, len(nw)
+
+    lines_angle_90 = sg.to_gdf(
+        MultiLineString([LineString([(0, 0), (1, 0)]), LineString([(1, 1), (1, 2)])]),
+        crs=25833,
+    )
+    nw = sg.Network(lines_angle_90).close_network_holes(1, fillna=0, max_angle=90)
+    if __name__ == "__main__":
+        lines_angle_90.plot()
+        nw.gdf.plot("hole")
+    assert len(nw) == 4, len(nw)
+
+    nw = sg.Network(lines_angle_90).close_network_holes(1, fillna=0, max_angle=45)
+    if __name__ == "__main__":
+        nw.gdf.plot("hole")
+    assert len(nw) == 3, len(nw)
+
+    lines_angle_90_both = sg.to_gdf(
+        MultiLineString([LineString([(0, 0), (1, 0)]), LineString([(1, 1), (2, 1)])]),
+        crs=25833,
+    )
+
+    nw = sg.Network(lines_angle_90_both).close_network_holes(1, fillna=0, max_angle=45)
+    if __name__ == "__main__":
+        lines_angle_90_both.plot()
+        nw.gdf.plot("hole")
+    assert len(nw) == 2, len(nw)
+
     warnings.filterwarnings(action="ignore", category=UserWarning)
     warnings.filterwarnings(action="ignore", category=FutureWarning)
 
