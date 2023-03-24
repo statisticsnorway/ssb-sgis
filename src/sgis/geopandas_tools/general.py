@@ -22,7 +22,6 @@ from shapely import (
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from .buffer_dissolve_explode import exp
 from .geometry_types import to_single_geom_type
 
 
@@ -48,13 +47,13 @@ def coordinate_array(
     2  POINT (0.74841 0.10627)
     3  POINT (0.00966 0.87868)
     4  POINT (0.38046 0.87879)
+
     >>> coordinate_array(points)
     array([[0.59376221, 0.92577159],
         [0.34074678, 0.91650446],
         [0.74840912, 0.10626954],
         [0.00965935, 0.87867915],
         [0.38045827, 0.87878816]])
-
     """
     return np.array([(geom.x, geom.y) for geom in gdf.geometry])
 
@@ -91,18 +90,12 @@ def rename_geometry_if(gdf):
 
 def clean_geoms(
     gdf: GeoDataFrame | GeoSeries,
-    geom_type: str | None = None,
     ignore_index: bool = False,
 ) -> GeoDataFrame | GeoSeries:
     """Fixes geometries and removes invalid, empty, NaN and None geometries.
 
-    Optionally keeps only the specified 'geom_type' ('point', 'line' or 'polygon').
-
     Args:
         gdf: GeoDataFrame or GeoSeries to be cleaned.
-        geom_type: the geometry type to keep, either 'point', 'line' or 'polygon'. Both
-            multi- and singlepart geometries are included. GeometryCollections will be
-            exploded first, so that no geometries of the correct type are excluded.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to False
 
@@ -143,12 +136,6 @@ def clean_geoms(
     0                            POINT (0.00000 0.00000)
     1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
     2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
-
-    Specify geom_type to keep only one geometry type.
-
-    >>> clean_geoms(gdf, geom_type="polygon")
-                                                geometry
-    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
     """
     warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
 
@@ -165,9 +152,6 @@ def clean_geoms(
         gdf = gdf.loc[(gdf.is_valid) & (~gdf.is_empty) & (gdf.notna())]
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
-
-    if geom_type:
-        gdf = to_single_geom_type(gdf, geom_type=geom_type, ignore_index=ignore_index)
 
     if ignore_index:
         gdf = gdf.reset_index(drop=True)
@@ -222,9 +206,10 @@ def gdf_concat(
     geometry: str = "geometry",
     **kwargs,
 ) -> GeoDataFrame:
-    """Converts to common crs and concatinates GeoDataFrames rowwise while ignoring index.
+    """Concatinates GeoDataFrames rowwise while ignoring index.
 
-    If no crs is given, chooses the first crs in the list of GeoDataFrames.
+    Converts to common crs. If no crs is given, chooses the first crs in the list of
+    GeoDataFrames.
 
     Args:
         gdfs: list, tuple or other iterable of GeoDataFrames to be concatinated.
@@ -307,9 +292,7 @@ def gdf_concat(
     )
 
 
-def to_lines(
-    *gdfs: GeoDataFrame, ignore_index: bool = True, copy: bool = True
-) -> GeoDataFrame:
+def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     """Makes lines out of one or more GeoDataFrames.
 
     The GeoDataFrames' geometries are converted to LineStrings, then unioned and
@@ -318,8 +301,6 @@ def to_lines(
 
     Args:
         *gdfs: one or more GeoDataFrames.
-        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-            Defaults to True
         copy: whether to take a copy of the incoming GeoDataFrames. Defaults to True.
 
     Returns:
@@ -363,7 +344,7 @@ def to_lines(
     <Axes: >
     """
 
-    def _to_lines(geom):
+    def _shapely_geometry_to_lines(geom):
         singlepart = get_parts(geom)
         lines = []
         for part in singlepart:
@@ -387,12 +368,14 @@ def to_lines(
         if copy:
             gdf = gdf.copy()
 
-        gdf[gdf._geometry_column_name] = gdf[gdf._geometry_column_name].map(_to_lines)
+        gdf[gdf._geometry_column_name] = gdf[gdf._geometry_column_name].map(
+            _shapely_geometry_to_lines
+        )
 
         lines.append(gdf)
 
     if len(lines) == 1:
-        return exp(lines[0], ignore_index=ignore_index)
+        return lines[0]
 
     unioned = lines[0].overlay(lines[1], how="union", keep_geom_type=True)
 
@@ -400,7 +383,7 @@ def to_lines(
         for line_gdf in lines[2:]:
             unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
 
-    return exp(unioned, ignore_index=ignore_index)
+    return unioned.explode(ignore_index=True)
 
 
 def to_multipoint(
@@ -423,7 +406,6 @@ def to_multipoint(
 
     Examples
     --------
-
     Let's create a GeoDataFrame with a point, a line and a polygon.
 
     >>> from sgis import to_multipoint, to_gdf
@@ -482,6 +464,39 @@ def to_multipoint(
     return gdf
 
 
+def clean_clip(
+    gdf: GeoDataFrame | GeoSeries,
+    mask: GeoDataFrame | GeoSeries | Geometry,
+    **kwargs,
+) -> GeoDataFrame | GeoSeries:
+    """Clips geometries to the mask extent and cleans the geometries.
+
+    Geopandas.clip does a fast and durty clipping, with no guarantee for valid outputs.
+    Here, the clipped geometries are made valid, and then empty, NaN and invalid
+    geometries are removed.
+
+    Args:
+        gdf: GeoDataFrame or GeoSeries to be clipped
+        mask: the geometry to clip gdf
+        **kwargs: Additional keyword arguments passed to GeoDataFrame.clip
+
+    Returns:
+        The cleanly clipped GeoDataFrame.
+
+    Raises:
+        TypeError: If gdf is not of type GeoDataFrame or GeoSeries.
+    """
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
+
+    try:
+        return gdf.clip(mask, **kwargs).pipe(clean_geoms)
+    except Exception:
+        gdf = clean_geoms(gdf)
+        mask = clean_geoms(mask)
+        return gdf.clip(mask, **kwargs).pipe(clean_geoms)
+
+
 def to_gdf(
     geom: Geometry
     | str
@@ -495,7 +510,6 @@ def to_gdf(
     | Iterator,
     crs: str | tuple[str] | None = None,
     geometry: str = "geometry",
-    copy: bool = True,
     **kwargs,
 ) -> GeoDataFrame:
     """Converts geometry objects to a GeoDataFrame.
@@ -513,17 +527,17 @@ def to_gdf(
     Args:
         geom: the object to be converted to a GeoDataFrame
         crs: if None (the default), it uses the crs of the GeoSeries if GeoSeries
-            is the input type.
-        geometry: name of resulting geometry column. Defaults to 'geometry'. If you
-            have a DataFrame with geometry-like column, specify this column.
-        copy: Applies to DataFrames.
-        **kwargs: additional keyword arguments taken by the GeoDataFrame constructor
+            is the input type. Otherwise, no crs is used.
+        geometry: name of resulting geometry column. Defaults to 'geometry'. If the
+            'geom' input is a  DataFrame with geometry-like column, specify 'geometry'
+             as this column.
+        **kwargs: additional keyword arguments taken by the GeoDataFrame constructor.
 
     Returns:
         A GeoDataFrame with one column, the geometry column.
 
     Raises:
-        TypeError: If geom is a GeoDataFrame
+        TypeError: If geom is a GeoDataFrame.
 
     Examples
     --------
@@ -621,7 +635,7 @@ def to_gdf(
 
     # dataframes and dicts with geometry/xyz key(s)
     if _is_df_like(geom, geometry):
-        geom = geom.copy() if copy else geom
+        geom = geom.copy()
         geom = _make_geomcol_df_like(geom, geometry, index=kwargs.get("index"))
         if "geometry" in geom:
             return GeoDataFrame(geom, geometry="geometry", crs=crs, **kwargs)
@@ -652,41 +666,6 @@ def to_gdf(
         return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
 
     raise TypeError(f"Got unexpected type {type(geom)}")
-
-
-def clean_clip(
-    gdf: GeoDataFrame | GeoSeries,
-    mask: GeoDataFrame | GeoSeries | Geometry,
-    geom_type: str | None = None,
-    **kwargs,
-) -> GeoDataFrame | GeoSeries:
-    """Clips geometries to the mask extent, then cleans the geometries.
-    Geopandas.clip does a fast and durty clipping, with no guarantee for valid outputs.
-    Here, geometries are made valid, then invalid, empty, nan and None geometries are
-    removed. If the clip fails, it tries to clean the geometries before retrying the
-    clip.
-
-    Args:
-        gdf: GeoDataFrame or GeoSeries to be clipped
-        mask: the geometry to clip gdf
-        geom_type (optional): geometry type to keep in 'gdf' before and after the clip
-        **kwargs: Additional keyword arguments passed to GeoDataFrame.clip
-
-    Returns:
-        The cleanly clipped GeoDataFrame.
-
-    Raises:
-        TypeError: If gdf is not of type GeoDataFrame or GeoSeries.
-    """
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
-        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
-
-    try:
-        return gdf.clip(mask, **kwargs).pipe(clean_geoms, geom_type=geom_type)
-    except Exception:
-        gdf = clean_geoms(gdf, geom_type=geom_type)
-        mask = clean_geoms(mask, geom_type="polygon")
-        return gdf.clip(mask, **kwargs).pipe(clean_geoms, geom_type=geom_type)
 
 
 def _is_one_geometry(geom) -> bool:

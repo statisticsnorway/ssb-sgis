@@ -100,8 +100,9 @@ def explore(
 
 def samplemap(
     *gdfs: GeoDataFrame,
-    size: int = 2000,
     column: str | None = None,
+    size: int = 2000,
+    sample_from_first: bool = True,
     labels: tuple[str] | None = None,
     popup: bool = True,
     max_zoom: int = 30,
@@ -128,10 +129,12 @@ def samplemap(
 
     Args:
         *gdfs: one or more GeoDataFrames.
-        size: the radius to buffer the sample point by before clipping with the data.
-            Defaults to 2000 (meters).
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
+        size: the radius to buffer the sample point by before clipping with the data.
+            Defaults to 2000 (meters).
+        sample_from_first: If True (the default), the sample point is taken form the
+            first specified GeoDataFrame. If False, all GeoDataFrames are considered.
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings the same
             length as the number of gdfs.
@@ -181,9 +184,12 @@ def samplemap(
     m = Explore(*gdfs, labels=labels, show_in_browser=show_in_browser, **kwargs)
 
     if explore:
-        m.samplemap(size)
+        m.samplemap(size, sample_from_first=sample_from_first)
     else:
-        random_point = m.gdf.sample(1).centroid.buffer(size)
+        if sample_from_first:
+            random_point = m.gdfs[0].sample(1).centroid.buffer(size)
+        else:
+            random_point = m.gdf.sample(1).centroid.buffer(size)
         m.gdf = m.gdf.clip(random_point)
         qtm(
             m.gdf,

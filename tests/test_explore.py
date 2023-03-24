@@ -44,6 +44,9 @@ def not_test_explore(points_oslo, roads_oslo):
         size=100,
     )
 
+    for yesno in [1, 0]:
+        sg.samplemap(r1, roads_oslo, sample_from_first=yesno, size=50)
+
     sg.clipmap(r1, r2, r3, "meters", p.buffer(100))
     sg.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
 

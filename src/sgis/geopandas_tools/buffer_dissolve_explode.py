@@ -24,7 +24,7 @@ def buff(
     copy: bool = True,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
-    """Buffers with high resolution and fixes geometries.
+    """High resolution buffer that fixes geometries.
 
     It buffers a GeoDataFrame, GeoSeries, or Geometry, and returns the same type of
     object. Returns a copy of the object unless 'copy' is set to False. The default
@@ -44,6 +44,10 @@ def buff(
     Returns:
          A GeoDataFrame with the buffered geometry.
 
+    Note:
+        Unlike the geopandas buffer method, buff returns the same type as the input.
+        Meaning a GeoDataFrame is returned if GeoDataFrame is the input.
+
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
@@ -53,19 +57,22 @@ def buff(
     if isinstance(gdf, GeoDataFrame):
         gdf["geometry"] = gdf.buffer(distance, resolution=resolution, **kwargs)
         gdf["geometry"] = gdf.make_valid()
-    elif isinstance(gdf, GeoSeries):
+        return gdf
+
+    if isinstance(gdf, GeoSeries):
         gdf = gdf.buffer(distance, resolution=resolution, **kwargs)
         gdf = gdf.make_valid()
-    elif isinstance(gdf, Geometry):
+        return gdf
+
+    if isinstance(gdf, Geometry):
         gdf = gdf.buffer(distance, resolution=resolution, **kwargs)
         gdf = make_valid(gdf)
-    else:
-        raise TypeError(
-            "'gdf' should be GeoDataFrame, GeoSeries or shapely Geometry. "
-            f"Got {type(gdf)}"
-        )
+        return gdf
 
-    return gdf
+    raise TypeError(
+        "'gdf' should be GeoDataFrame, GeoSeries or shapely Geometry. "
+        f"Got {type(gdf)}"
+    )
 
 
 def diss(
@@ -73,7 +80,7 @@ def diss(
     reset_index=True,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries | Geometry:
-    """Dissolves, fixes geometries, resets index tuple columns to string.
+    """Dissolves, fixes geometries, resets index.
 
     It dissolves a GeoDataFrame, GeoSeries or Geometry, fixes the geometry,
     resets the index and makes columns from tuple to string if there are multiple
@@ -91,32 +98,33 @@ def diss(
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
+
+    if isinstance(gdf, GeoDataFrame):
+        dissolved = gdf.dissolve(**kwargs)
+
+        dissolved["geometry"] = dissolved.make_valid()
+
+        if reset_index:
+            dissolved = dissolved.reset_index()
+
+        # columns from tuple to string
+        dissolved.columns = [
+            "_".join(col).strip("_") if isinstance(col, tuple) else col
+            for col in dissolved.columns
+        ]
+
+        return dissolved.loc[:, ~dissolved.columns.str.contains("index|level_")]
+
     if isinstance(gdf, GeoSeries):
-        return gpd.GeoSeries(gdf.unary_union)
+        return gpd.GeoSeries(gdf.unary_union).make_valid()
 
     if isinstance(gdf, Geometry):
-        return unary_union(gdf)
+        return make_valid(unary_union(gdf))
 
-    if not isinstance(gdf, GeoDataFrame):
-        raise TypeError(
-            "'gdf' should be GeoDataFrame, GeoSeries or shapely Geometry. "
-            f"Got {type(gdf)}"
-        )
-
-    dissolved = gdf.dissolve(**kwargs)
-
-    if reset_index:
-        dissolved = dissolved.reset_index()
-
-    dissolved["geometry"] = dissolved.make_valid()
-
-    # columns from tuple to string
-    dissolved.columns = [
-        "_".join(kolonne).strip("_") if isinstance(kolonne, tuple) else kolonne
-        for kolonne in dissolved.columns
-    ]
-
-    return dissolved.loc[:, ~dissolved.columns.str.contains("index|level_")]
+    raise TypeError(
+        "'gdf' should be GeoDataFrame, GeoSeries or shapely Geometry. "
+        f"Got {type(gdf)}"
+    )
 
 
 def exp(
@@ -160,7 +168,6 @@ def buffdissexp(
     gdf: GeoDataFrame | GeoSeries | Geometry,
     distance: int | float,
     resolution: int = 50,
-    id: str | None = None,
     ignore_index: bool = True,
     reset_index: bool = True,
     copy: bool = True,
@@ -180,8 +187,6 @@ def buffdissexp(
             Here defaults to 50, as opposed to the default 16 in geopandas.
         copy: if True (the default), the input geometry will not be buffered.
             Setting copy to False will save memory.
-        id: if not None (the default), an id column will be created
-            from the integer index (from 0 and up).
         reset_index: If True, the index is reset to the default integer index
             after dissolve. Defaults to True
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
@@ -195,24 +200,24 @@ def buffdissexp(
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
+    if not isinstance(gdf, Geometry):
+        return (
+            buff(gdf, distance, resolution=resolution, copy=copy)
+            .pipe(diss, reset_index=reset_index, **dissolve_kwargs)
+            .explode(ignore_index=ignore_index)
+        )
+
     if isinstance(gdf, Geometry):
         return exp(diss(buff(gdf, distance, resolution=resolution)))
 
-    gdf = (
-        buff(gdf, distance, resolution=resolution, copy=copy)
-        .pipe(diss, reset_index=reset_index, **dissolve_kwargs)
-        .pipe(exp, ignore_index=ignore_index)
+    raise TypeError(
+        "'gdf' should be GeoDataFrame, GeoSeries or shapely Geometry. "
+        f"Got {type(gdf)}"
     )
-
-    if id:
-        gdf[id] = list(range(len(gdf)))
-
-    return gdf
 
 
 def dissexp(
     gdf: GeoDataFrame | GeoSeries | Geometry,
-    id: str | None = None,
     reset_index: bool = True,
     ignore_index: bool = True,
     **dissolve_kwargs,
@@ -222,8 +227,6 @@ def dissexp(
     Args:
         gdf: the GeoDataFrame, GeoSeries or shapely Geometry that will be
             dissolved and exploded
-        id: if not None (the default), an id column will be created from
-            the integer index (from 0 and up).
         reset_index: If True, the 'by' columns become columns, not index, and the
             resulting axis will be labeled 0, 1, …, n - 1. Defaults to True.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
@@ -237,12 +240,9 @@ def dissexp(
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame, GeoSeries or Geometry.
     """
-    gdf = diss(gdf, reset_index=reset_index, **dissolve_kwargs).pipe(
-        exp, ignore_index=ignore_index
+    gdf = diss(gdf, reset_index=reset_index, **dissolve_kwargs).explode(
+        ignore_index=ignore_index
     )
-
-    if id:
-        gdf[id] = list(range(len(gdf)))
 
     return gdf
 
@@ -251,7 +251,6 @@ def buffdiss(
     gdf: GeoDataFrame | GeoSeries | Geometry,
     distance: int | float,
     resolution: int = 50,
-    id: str | None = None,
     reset_index: bool = True,
     copy: bool = True,
     **dissolve_kwargs,
@@ -267,8 +266,6 @@ def buffdiss(
             Here defaults to 50, as opposed to the default 16 in geopandas.
         copy: if True (the default), the input geometry will not be buffered.
             Setting copy to False will save memory.
-        id: if not None (the default), an id column will be created from
-            the integer index (from 0 and up).
         reset_index: If True, the index is reset to the default integer index after
             dissolve. Defaults to True
         **dissolve_kwargs: keyword arguments passed to geopandas' dissolve.
@@ -284,9 +281,6 @@ def buffdiss(
         diss, reset_index=reset_index, **dissolve_kwargs
     )
 
-    if id:
-        gdf[id] = list(range(len(gdf)))
-
     return gdf
 
 
@@ -294,7 +288,6 @@ def buffexp(
     gdf: GeoDataFrame | GeoSeries | Geometry,
     distance: int | float,
     resolution: int = 50,
-    id: str | None = None,
     ignore_index: bool = True,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries | Geometry:
@@ -312,8 +305,6 @@ def buffexp(
             Here defaults to 50, as opposed to the default 16 in geopandas.
         copy: if True (the default), the input geometry will not be buffered.
             Setting copy to False will save memory.
-        id: if not None (the default), an id column will be created
-            from the integer index (from 0 and up).
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to True
 
@@ -330,8 +321,5 @@ def buffexp(
     gdf = buff(gdf, distance, resolution=resolution, copy=copy).pipe(
         exp, ignore_index=ignore_index
     )
-
-    if id:
-        gdf[id] = list(range(len(gdf)))
 
     return gdf

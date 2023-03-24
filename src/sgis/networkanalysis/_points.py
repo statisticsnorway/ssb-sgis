@@ -82,19 +82,10 @@ class Points:
     @staticmethod
     def _convert_distance_to_weight(distances, rules):
         """Meters to minutes based on 'weight_to_nodes_' attribute of the rules."""
-        if (
-            not rules.weight_to_nodes_dist
-            and not rules.weight_to_nodes_kmh
-            and not rules.weight_to_nodes_mph
-        ):
+        if not rules.weight_to_nodes_dist and not rules.weight_to_nodes_kmh:
             return [0 for _ in distances]
 
-        if (
-            bool(rules.weight_to_nodes_dist)
-            + bool(rules.weight_to_nodes_kmh)
-            + bool(rules.weight_to_nodes_mph)
-            > 1
-        ):
+        if rules.weight_to_nodes_dist and rules.weight_to_nodes_kmh:
             raise ValueError(
                 "Can only specify one of 'weight_to_nodes_dist', 'weight_to_nodes_kmh'"
                 " and 'weight_to_nodes_mph'"
@@ -128,12 +119,15 @@ class Points:
             neighbors=nodes,
             id_cols=("temp_idx", "node_id"),
             k=50,
-            max_dist=rules.search_tolerance,
         )
 
-        search_factor_mult = 1 + rules.search_factor / 100
+        search_factor_multiplier = 1 + rules.search_factor / 100
         df = df.loc[
-            df.distance <= df.distance_min * search_factor_mult + rules.search_factor
+            (df.distance <= rules.search_tolerance)
+            & (
+                df.distance
+                <= df.distance_min * search_factor_multiplier + rules.search_factor
+            )
         ]
 
         edges = self._make_edges(df, from_col=from_col, to_col=to_col)

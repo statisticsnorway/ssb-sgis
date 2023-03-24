@@ -37,17 +37,15 @@ def test_network_methods(points_oslo, roads_oslo):
     if __name__ == "__main__":
         sg.qtm(nw.gdf, column="connected", title="after removing isolated")
 
-    holes_closed = sg.Network(r).close_network_holes(10.1, fillna=0).gdf
+    holes_closed = sg.Network(r).close_network_holes(10.1, max_angle=90, fillna=0).gdf
     print(holes_closed.hole.value_counts())
     if __name__ == "__main__":
         sg.qtm(holes_closed, column="hole", title="holes")
 
-    holes_closed2 = (
-        sg.Network(r).close_network_holes(10.1, fillna=0, deadends_only=True).gdf
-    )
+    holes_closed2 = sg.Network(r).close_network_holes_deadends(10.1, fillna=0).gdf
     print(holes_closed2.hole.value_counts())
     if __name__ == "__main__":
-        sg.qtm(holes_closed2, column="hole", title="holes, deadends_only")
+        sg.qtm(holes_closed2, column="hole", title="holes, deadend to deadend")
 
     """
     holes = holes_closed.query("hole==1").assign(hole=1)[["hole", "geometry"]]
@@ -56,9 +54,7 @@ def test_network_methods(points_oslo, roads_oslo):
     """
 
     nw = (
-        sg.Network(r)
-        .close_network_holes(1.1, fillna=0, deadends_only=False)
-        .remove_isolated()
+        sg.Network(r).close_network_holes(1.1, max_angle=90, fillna=0).remove_isolated()
     )
     if __name__ == "__main__":
         sg.qtm(nw.gdf)

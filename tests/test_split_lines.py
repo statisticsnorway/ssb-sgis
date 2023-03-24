@@ -47,7 +47,9 @@ def test_split_lines(points_oslo, roads_oslo):
 
     od = nwa.od_cost_matrix(points, points)
     print(nwa.log[["method", "cost_mean", "percent_missing"]])
-    # repeat to see if something dodgy happens
+
+    # the split lines should be reset after the analysis
+    # repeat to see if the unsplitting happens
     for _ in range(3):
         sp2 = nwa.get_route(points.loc[[97]], points.loc[[135]])
     sp2["split_lines"] = "Splitted"

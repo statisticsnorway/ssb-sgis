@@ -14,32 +14,25 @@ def to_single_geom_type(
 
     GeometryCollections are first exploded, then only the rows with the given
     geometry_type is kept. Both multipart and singlepart geometries are kept.
-    LinearRings are considered lines. GeometryCollections are exploded to
-    single-typed geometries before the selection.
+    LinearRings are considered lines.
 
     Args:
         gdf: GeoDataFrame or GeoSeries
         geom_type: the geometry type to keep, either 'point', 'line' or 'polygon'. Both
-            multi- and singlepart geometries are included. GeometryCollections will be
-            exploded first, so that no geometries of the correct type are excluded.
+            multi- and singlepart geometries are included.
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-            Defaults to False
+            Defaults to False.
 
     Returns:
         A GeoDataFrame with a single geometry type.
 
     Raises:
-        TypeError: If incorrect gdf type. ValueError if incorrect geom_type.
+        TypeError: If incorrect gdf type.
         ValueError: If 'geom_type' is neither 'polygon', 'line' or 'point'.
-
-    See also:
-        clean_geoms: fixes geometries and returns single geometry type if
-            'geom_type' is specified.
 
     Examples
     --------
-
-    Create a GeoDataFrame of mixed geometries.
+    First create a GeoDataFrame of mixed geometries.
 
     >>> from sgis import to_gdf, to_single_geom_type
     >>> from shapely.geometry import LineString, Polygon
@@ -67,6 +60,7 @@ def to_single_geom_type(
     >>> gdf
                                                 geometry
     0  GEOMETRYCOLLECTION (POINT (0.00000 0.00000), L...
+
     >>> to_single_geom_type(gdf, "line")
                     geometry
     2  LINESTRING (1.00000 1.00000, 2.00000 2.00000)
@@ -118,6 +112,16 @@ def get_geom_type(
 
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame or GeoSeries.
+
+    Examples
+    --------
+    >>> from sgis import to_gdf, get_geom_type
+    >>> gdf = to_gdf([0, 0])
+    >>> gdf
+                                                geometry
+    0                            POINT (0.00000 0.00000)
+    >>> get_geom_type(gdf)
+    'point'
     """
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
@@ -147,6 +151,16 @@ def is_single_geom_type(
 
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame or GeoSeries.
+
+    Examples
+    --------
+    >>> from sgis import to_gdf, get_geom_type
+    >>> gdf = to_gdf([0, 0])
+    >>> gdf
+                                                geometry
+    0                            POINT (0.00000 0.00000)
+    >>> is_single_geom_type(gdf)
+    True
     """
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")

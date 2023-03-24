@@ -18,23 +18,17 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_snap_to():
+def test_snap_and_get_ids():
     points = sg.to_gdf([(0, 0), (1, 1)])
     to = sg.to_gdf([(2, 2), (3, 3)])
-    to["snap_to_idx"] = to.index
+    to["snap_idx"] = to.index
 
-    # snap all points
-    snapped = sg.snap_to(points, to)
+    snapped = sg.snap_and_get_ids(points, to, id_col="snap_idx")
     assert len(snapped) == 2
-    assert all([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
-
-    # with id col
-    snapped = sg.snap_to(points, to, id_col="snap_to_idx")
-    assert len(snapped) == 2
-    assert all(snapped.snap_to_idx == 0)
+    assert all(snapped.snap_idx == 0)
 
     # with max_dist
-    snapped = sg.snap_to(points, to, id_col="snap_to_idx", max_dist=1.5)
+    snapped = sg.snap_and_get_ids(points, to, id_col="snap_idx", max_dist=1.5)
     assert len(snapped) == 2
     assert not all([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
     assert any([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
@@ -42,28 +36,28 @@ def test_snap_to():
     # with identical distances
     point = sg.to_gdf([0, 0])
     to = sg.to_gdf([(0, 1), (1, 0)])
-    to["snap_to_idx"] = to.index
-    snapped = sg.snap_to(point, to, id_col="snap_to_idx")
+    to["snap_idx"] = to.index
+    snapped = sg.snap_and_get_ids(point, to, id_col="snap_idx")
     assert len(snapped) == 1
-    assert all(snapped.snap_to_idx == 0)
+    assert all(snapped.snap_idx == 0)
     assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
 
     # opposite order of to coords
     to = sg.to_gdf([(1, 0), (0, 1)])
-    to["snap_to_idx"] = to.index
-    snapped = sg.snap_to(point, to, id_col="snap_to_idx")
+    to["snap_idx"] = to.index
+    snapped = sg.snap_and_get_ids(point, to, id_col="snap_idx")
     assert len(snapped) == 1
-    assert all(snapped.snap_to_idx == 1)
+    assert all(snapped.snap_idx == 1)
     assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
 
     # duplicate geometries in 'to'
     point = sg.to_gdf([0, 0])
     to = sg.to_gdf([(0, 1), (0, 1)])
-    to["snap_to_idx"] = to.index
-    snapped = sg.snap_to(point, to, id_col="snap_to_idx")
+    to["snap_idx"] = to.index
+    snapped = sg.snap_and_get_ids(point, to, id_col="snap_idx")
     assert len(snapped) == 2
-    assert any(snapped.snap_to_idx == 0)
-    assert any(snapped.snap_to_idx == 1)
+    assert any(snapped.snap_idx == 0)
+    assert any(snapped.snap_idx == 1)
     assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
 
 
@@ -140,11 +134,22 @@ def test_close_holes(gdf_fixture):
     buff1 = sg.buff(p, 100)
     buff2 = sg.buff(p, 200)
     rings_with_holes = sg.overlay(buff2, buff1, how="difference")
+
     holes_closed = sg.close_holes(rings_with_holes)
     assert sum(holes_closed.area) > sum(rings_with_holes.area)
-    holes_closed = sg.close_holes(rings_with_holes, 10000)
+
+    holes_closed = sg.close_small_holes(rings_with_holes, max_km2=10000)
     assert sum(holes_closed.area) > sum(rings_with_holes.area)
-    holes_not_closed = sg.close_holes(rings_with_holes, 0.000001)
+
+    holes_not_closed = sg.close_small_holes(rings_with_holes, max_km2=0.000001)
+    assert sum(holes_not_closed.area) == sum(rings_with_holes.area)
+
+    holes_closed = sg.close_small_holes(rings_with_holes, max_m2=10000 * 1_000_000)
+    assert sum(holes_closed.area) > sum(rings_with_holes.area)
+
+    holes_not_closed = sg.close_small_holes(
+        rings_with_holes, max_m2=0.000001 * 1_000_000
+    )
     assert sum(holes_not_closed.area) == sum(rings_with_holes.area)
 
 
@@ -172,12 +177,24 @@ def test_clean():
     )
 
     assert len(problematic_geometries) == 3
-    gdf = sg.clean_geoms(problematic_geometries, geom_type="polygon")
+    gdf = sg.clean_geoms(problematic_geometries)
+    gdf = sg.to_single_geom_type(gdf, "polygon")
+    print(gdf)
     assert len(gdf) == 1
     assert sg.get_geom_type(gdf) == "polygon"
-    ser = sg.clean_geoms(problematic_geometries.geometry, geom_type="polygon")
+    ser = sg.clean_geoms(problematic_geometries.geometry)
+    ser = sg.to_single_geom_type(ser, "polygon")
     assert len(ser) == 1
     assert sg.get_geom_type(ser) == "polygon"
+
+    valid_geometry = sg.to_gdf([0, 1])
+    problematic_geometries = sg.gdf_concat([problematic_geometries, valid_geometry])
+    gdf = sg.clean_geoms(problematic_geometries)
+    assert len(gdf) == 2
+    gdf = sg.to_single_geom_type(gdf, "polygon")
+    print(gdf)
+    assert sg.get_geom_type(gdf) == "polygon"
+    assert len(gdf) == 1
 
 
 def sjoin_overlay(gdf_fixture):
@@ -223,61 +240,49 @@ def test_copy(gdf_fixture):
     assert copy.area.sum() != 0
 
 
-def test_neighbors(gdf_fixture):
-    naboer = sg.get_neighbors(
-        gdf_fixture.iloc[[0]],
-        neighbors=gdf_fixture,
-        id_col="numcol",
-        max_dist=100,
-    )
-    naboer.sort()
-    assert naboer == [1, 2], naboer
-    naboer = sg.get_neighbors(
-        gdf_fixture.iloc[[8]],
-        neighbors=gdf_fixture,
-        id_col="numcol",
-        max_dist=100,
-    )
-    naboer.sort()
-    assert naboer == [4, 5, 7, 8, 9], naboer
-
+def test_get_neighbor_indices():
     points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
-    points["idx"] = points.index
     p1 = points.iloc[[0]]
-    assert sg.get_neighbors(p1, points, id_col="idx") == [0]
-    assert sg.get_neighbors(p1, points, id_col="idx", max_dist=1) == [0, 1]
-    assert sg.get_neighbors(p1, points, id_col="idx", max_dist=3) == [0, 1, 2]
+
+    assert sg.get_neighbor_indices(p1, points) == [0]
+    assert sg.get_neighbor_indices(p1, points, max_dist=1) == [0, 1]
+    assert sg.get_neighbor_indices(p1, points, max_dist=3) == [0, 1, 2]
 
 
-def test_snap(gdf_fixture):
-    punkter = gdf_fixture[gdf_fixture.length == 0]
-    annet = gdf_fixture[gdf_fixture.length != 0]
-    snapped = sg.snap_to(punkter, annet, max_dist=None, copy=True)
-    assert all(snapped.intersects(annet.buffer(1).unary_union))
-    snapped = sg.snap_to(punkter, annet, max_dist=200, copy=True)
-    assert sum(snapped.intersects(annet.buffer(1).unary_union)) == 3
-    snapped = sg.snap_to(punkter, annet, max_dist=20, copy=True)
-    assert sum(snapped.intersects(annet.buffer(1).unary_union)) == 1
+def test_get_neighbor_ids():
+    points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
+    p1 = points.iloc[[0]]
+    points["id_col"] = [*"abc"]
 
-    snapped = sg.snap_to(punkter, annet, max_dist=None, to_node=True, copy=True)
+    assert sg.get_neighbor_ids(p1, points, id_col="id_col") == ["a"]
+    assert sg.get_neighbor_ids(p1, points, max_dist=1, id_col="id_col") == ["a", "b"]
+    assert sg.get_neighbor_ids(p1, points, max_dist=3, id_col="id_col") == [
+        "a",
+        "b",
+        "c",
+    ]
 
-    assert all(
-        geom in list(sg.to_multipoint(annet).explode().geometry)
-        for geom in snapped.geometry
-    )
 
+def test_snap():
+    point = sg.to_gdf([0, 0])
+    points = sg.to_gdf([(0, 0), (1, 0), (2, 0), (3, 0)])
+    points["idx"] = points.index
+
+    snapped = sg.snap_all(points, point)
     print(snapped)
-    snapped = sg.snap_to(snapped, annet, max_dist=20, copy=True)
-    assert "snap_distance_left" in snapped.columns
-    assert "snap_distance_right" in snapped.columns
-    print(snapped)
+    print([geom.x == 0 and geom.y == 0 for geom in snapped.geometry])
+    assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry)
 
-    # it should fail when snap_distance_left and snap_distance_right exists in the df
-    with pytest.raises(ValueError):
-        snapped = sg.snap_to(snapped, punkter, max_dist=20, copy=True)
-
-    snapped = sg.snap_to(snapped, punkter, distance_col="different_name")
+    snapped = sg.snap_within_distance(points, point, 10)
     print(snapped)
+    assert [geom.x == 0 and geom.y == 0 for geom in snapped.geometry]
+    assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry)
+    assert snapped.snap_distance.notna().sum() == 3
+
+    snapped = sg.snap_within_distance(points, point, 1.001)
+    print(snapped)
+    assert sum([geom.x == 0 and geom.y == 0 for geom in snapped.geometry]) == 2
+    assert snapped.snap_distance.notna().sum() == 1
 
 
 def test_to_multipoint(gdf_fixture):

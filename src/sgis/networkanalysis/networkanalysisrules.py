@@ -60,8 +60,6 @@ class NetworkAnalysisRules:
             the edge between the origins/destinations and the network nodes,
             where the weight will be its straight-line distance converted to minutes
             in the speed specified.
-        weight_to_nodes_mph: same as weight_to_nodes_kmh, only that you speficy the
-            speed in miles per hour
 
     Note:
         Whether the network analysis will be directed or undirected is not stored here,
@@ -192,7 +190,6 @@ class NetworkAnalysisRules:
     split_lines: bool = False
     weight_to_nodes_dist: bool = False
     weight_to_nodes_kmh: int | None = None
-    weight_to_nodes_mph: int | None = None
 
     def _update_rules(self):
         """Stores the rules as separate attributes.
@@ -205,7 +202,6 @@ class NetworkAnalysisRules:
         self._split_lines = self.split_lines
         self._weight_to_nodes_dist = self.weight_to_nodes_dist
         self._weight_to_nodes_kmh = self.weight_to_nodes_kmh
-        self._weight_to_nodes_mph = self.weight_to_nodes_mph
 
     def _rules_have_changed(self):
         """Checks if any of the rules have changed since the graph was last created.
@@ -224,8 +220,6 @@ class NetworkAnalysisRules:
         if self.weight_to_nodes_dist != self._weight_to_nodes_dist:
             return True
         if self.weight_to_nodes_kmh != self._weight_to_nodes_kmh:
-            return True
-        if self.weight_to_nodes_mph != self._weight_to_nodes_mph:
             return True
 
     def _validate_weight(

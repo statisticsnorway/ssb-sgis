@@ -43,12 +43,12 @@ def _od_cost_matrix(
     )
 
     # calculating all-to-all distances is much faster than looping rowwise,
-    # so doing the rowwise-filtering down here
+    # so filtering to rowwise afterwards instead
     if rowwise:
-        results_template = DataFrame(
+        rowwise_df = DataFrame(
             {"origin": origins["temp_idx"], "destination": destinations["temp_idx"]}
         )
-        results = results_template.merge(results, on=["origin", "destination"])
+        results = rowwise_df.merge(results, on=["origin", "destination"])
 
     if cutoff:
         results = results[results[weight] < cutoff]

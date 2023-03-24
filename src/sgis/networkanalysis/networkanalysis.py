@@ -193,12 +193,12 @@ class NetworkAnalysis:
     Check the log.
 
     >>> nwa.log
-                endtime  minutes_elapsed                 method  origins_count  destinations_count  percent_missing  ...  search_tolerance  search_factor  split_lines weight_to_nodes_dist  weight_to_nodes_kmh  weight_to_nodes_mph
-    0 2023-03-01 16:58:37              0.4         od_cost_matrix           1000              1000.0           0.5987  ...               250             10        False                False                 None                 None
-    1 2023-03-01 17:05:26              6.7              get_route              1              1000.0           0.0000  ...               250             10        False                False                 None                 None
-    2 2023-03-01 17:06:21              0.3  get_route_frequencies             25                25.0           0.0000  ...               250             10        False                False                 None                 None
-    3 2023-03-01 17:07:25              0.2           service_area              3                 NaN           0.0000  ...               250             10        False                False                 None                 None
-    4 2023-03-01 17:07:46              0.1           get_k_routes              1                 2.0           0.0000  ...               250             10        False                False                 None                 None
+                endtime  minutes_elapsed                 method  origins_count  destinations_count  percent_missing  ...  search_tolerance  search_factor  split_lines weight_to_nodes_dist  weight_to_nodes_kmh
+    0 2023-03-01 16:58:37              0.4         od_cost_matrix           1000              1000.0           0.5987  ...               250             10        False                False                 None
+    1 2023-03-01 17:05:26              6.7              get_route              1              1000.0           0.0000  ...               250             10        False                False                 None
+    2 2023-03-01 17:06:21              0.3  get_route_frequencies             25                25.0           0.0000  ...               250             10        False                False                 None
+    3 2023-03-01 17:07:25              0.2           service_area              3                 NaN           0.0000  ...               250             10        False                False                 None
+    4 2023-03-01 17:07:46              0.1           get_k_routes              1                 2.0           0.0000  ...               250             10        False                False                 None
 
     [5 rows x 16 columns]
     """
@@ -210,7 +210,7 @@ class NetworkAnalysis:
         log: bool = True,
         detailed_log: bool = True,
     ):
-        """Checks types and does some validation."""
+        """Check types and do some validation."""
         self.network = network
         self.rules = rules
         self._log = log
@@ -497,7 +497,8 @@ class NetworkAnalysis:
                 self.destinations.id_dict
             )
 
-        results = _push_geom_col(results)
+        if isinstance(results, GeoDataFrame):
+            results = _push_geom_col(results)
 
         if self.rules.split_lines:
             self._unsplit_network()
@@ -524,8 +525,8 @@ class NetworkAnalysis:
         drop_middle_percent: int,
         id_col: str | tuple[str, str] | None = None,
         rowwise=False,
-        cutoff: int = None,
-        destination_count: int = None,
+        cutoff: int | None = None,
+        destination_count: int | None = None,
     ) -> GeoDataFrame:
         """Returns the geometry of 1 or more routes between origins and destinations.
 
@@ -655,7 +656,8 @@ class NetworkAnalysis:
                 self.destinations.id_dict
             )
 
-        results = _push_geom_col(results)
+        if isinstance(results, GeoDataFrame):
+            results = _push_geom_col(results)
 
         if self.rules.split_lines:
             self._unsplit_network()
@@ -707,20 +709,20 @@ class NetworkAnalysis:
         Get number of times each road was visited for trips from 25 to 25 points.
 
         >>> nwa = NetworkAnalysis(network=nw, rules=rules)
-        >>> freq = nwa.get_route_frequencies(points.sample(25), points.sample(25))
-        >>> freq
-            source target      n                                           geometry
-        137866  19095  44962    1.0  LINESTRING Z (265476.114 6645475.318 160.724, ...
-        138905  30597  16266    1.0  LINESTRING Z (272648.400 6652234.800 178.170, ...
-        138903  16266  45388    1.0  LINESTRING Z (272642.602 6652236.229 178.687, ...
-        138894  43025  30588    1.0  LINESTRING Z (272446.600 6652253.700 162.970, ...
-        138892  30588  16021    1.0  LINESTRING Z (272414.400 6652263.100 161.170, ...
-        ...       ...    ...    ...                                                ...
-        158287  78157  78156  176.0  LINESTRING Z (263975.482 6653605.092 132.739, ...
-        149697  72562  72563  180.0  LINESTRING Z (265179.202 6651549.723 81.532, 2...
-        149698  72563  72564  180.0  LINESTRING Z (265178.761 6651549.956 81.561, 2...
-        149695  72560  72561  180.0  LINESTRING Z (265457.755 6651249.238 76.502, 2...
-        149696  72561  72562  180.0  LINESTRING Z (265180.086 6651549.259 81.473, 2...
+        >>> frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
+        >>> frequencies
+               source target   frequency                                          geometry
+        137866  19095  44962    1.0      LINESTRING Z (265476.114 6645475.318 160.724, ...
+        138905  30597  16266    1.0      LINESTRING Z (272648.400 6652234.800 178.170, ...
+        138903  16266  45388    1.0      LINESTRING Z (272642.602 6652236.229 178.687, ...
+        138894  43025  30588    1.0      LINESTRING Z (272446.600 6652253.700 162.970, ...
+        138892  30588  16021    1.0      LINESTRING Z (272414.400 6652263.100 161.170, ...
+        ...       ...    ...    ...                                                    ...
+        158287  78157  78156  176.0      LINESTRING Z (263975.482 6653605.092 132.739, ...
+        149697  72562  72563  180.0      LINESTRING Z (265179.202 6651549.723 81.532, 2...
+        149698  72563  72564  180.0      LINESTRING Z (265178.761 6651549.956 81.561, 2...
+        149695  72560  72561  180.0      LINESTRING Z (265457.755 6651249.238 76.502, 2...
+        149696  72561  72562  180.0      LINESTRING Z (265180.086 6651549.259 81.473, 2...
 
         [12231 rows x 4 columns]
         """
@@ -738,7 +740,8 @@ class NetworkAnalysis:
             summarise=True,
         )
 
-        results = _push_geom_col(results)
+        if isinstance(results, GeoDataFrame):
+            results = _push_geom_col(results)
 
         results = results.rename(columns={"n": frequency_col}).sort_values(
             frequency_col
@@ -763,15 +766,12 @@ class NetworkAnalysis:
         breaks: int | float | tuple[int | float],
         *,
         id_col: str | None = None,
-        drop_duplicates: bool = True,
         dissolve: bool = True,
-        precice: bool = False,
     ) -> GeoDataFrame:
         """Returns the lines that can be reached within breaks (weight values).
 
-        It finds all the network lines that can be reached within each weight
-        impedance, given in the breaks argument as one or more integers/floats.
-        The breaks are sorted in ascending order, and duplicate lines from
+        It finds all the network lines that can be reached within each break. Lines
+        that are only partly within the break will not be included.
 
         Args:
             origins: GeoDataFrame of points from where the service areas will
@@ -781,18 +781,9 @@ class NetworkAnalysis:
                 each origins if multiple breaks.
             id_col: optional column to be used as identifier of the service areas.
                 If None, an arbitrary id will be used.
-            drop_duplicates: If True (the default), duplicate lines from the same
-                origin will be removed. Priority is given to the lower break values,
-                meaning the highest break will only cover the outermost ring of the
-                total service area for the origin. If False, the higher breaks will
-                also cover the inner rings of the origin's service area.
             dissolve: If True (the default), each service area will be dissolved into
                 one long multilinestring. If False, the individual line segments will
-                be returned. Duplicate lines can then be removed, or occurences
-                counted.
-            precice: If True, lines that are partly within the break will be split so
-                that the . Defaults to False since the precice calculation takes more
-                time.
+                be returned.
 
         Returns:
             A GeoDataFrame with one row per origin and break, with a dissolved line
@@ -804,6 +795,10 @@ class NetworkAnalysis:
             or the column 'origin' if not. If dissolve is False, it will return all
             the columns of the network.gdf as well. The columns 'source' and 'target'
             can be used to remove duplicates, or count occurences.
+
+        See also:
+            precice_service_area: Equivelent method where lines are also cut to get
+                precice results.
 
         Examples
         --------
@@ -844,10 +839,9 @@ class NetworkAnalysis:
         # sort the breaks as an np.ndarray
         breaks = self._sort_breaks(breaks)
 
-        if drop_duplicates:
-            self.network.gdf["source_target_weight"] = _edge_ids(
-                self.network.gdf, self.rules.weight
-            )
+        self.network.gdf["source_target_weight"] = _edge_ids(
+            self.network.gdf, self.rules.weight
+        )
 
         results = _service_area(
             graph=self.graph,
@@ -861,8 +855,142 @@ class NetworkAnalysis:
         )
 
         if not all(results.geometry.isna()):
-            if drop_duplicates:
-                results = results.drop_duplicates(["source_target_weight", "origin"])
+            results = results.drop_duplicates(["source_target_weight", "origin"])
+
+            if dissolve:
+                results = results.dissolve(by=["origin", self.rules.weight]).loc[
+                    :, ["geometry"]
+                ]
+
+            results = results.reset_index()
+
+            # add missing rows as NaNs
+            missing = self.origins.gdf.loc[
+                ~self.origins.gdf["temp_idx"].isin(results["origin"])
+            ].rename(columns={"temp_idx": "origin"})[["origin"]]
+
+            if len(missing):
+                missing["geometry"] = np.nan
+                results = pd.concat([results, missing], ignore_index=True)
+
+            if id_col:
+                results[id_col] = results["origin"].map(self.origins.id_dict)
+                results = results.drop("origin", axis=1)
+
+            results = _push_geom_col(results)
+
+        if self.rules.split_lines:
+            self._unsplit_network()
+
+        if self._log:
+            minutes_elapsed = round((perf_counter() - time_) / 60, 1)
+            self._runlog(
+                "service_area",
+                results,
+                minutes_elapsed,
+                breaks=breaks,
+                dissolve=dissolve,
+            )
+
+        return results
+
+    def precice_service_area(
+        self,
+        origins: GeoDataFrame,
+        breaks: int | float | tuple[int | float],
+        *,
+        id_col: str | None = None,
+        dissolve: bool = True,
+    ) -> GeoDataFrame:
+        """Precice, but slow version of the service_area method.
+
+        It finds all the network lines that can be reached within each break. Lines
+        that are partly within the break will be split at the point where the weight
+        value is exactly correct. Note that this takes more time than the regular
+        'service_area' method.
+
+        Args:
+            origins: GeoDataFrame of points from where the service areas will
+                originate
+            breaks: one or more integers or floats which will be the
+                maximum weight for the service areas. Calculates multiple areas for
+                each origins if multiple breaks.
+            id_col: optional column to be used as identifier of the service areas.
+                If None, an arbitrary id will be used.
+            dissolve: If True (the default), each service area will be dissolved into
+                one long multilinestring. If False, the individual line segments will
+                be returned.
+
+        Returns:
+            A GeoDataFrame with one row per origin and break, with a dissolved line
+            geometry of the lines that can be reached within the break. Duplicate lines
+            from an origin will be removed, with priority given to the lower break.
+            the roads that can be reached within the break
+            for each origin. If dissolve is False, the columns will be the weight
+            column, which contains the relevant break, and the if_col if specified,
+            or the column 'origin' if not. If dissolve is False, it will return all
+            the columns of the network.gdf as well. The columns 'source' and 'target'
+            can be used to remove duplicates, or count occurences.
+
+        See also:
+            service_area: Faster method where lines are not cut to get precice results.
+
+        Examples
+        --------
+        10 minute service area for one origin point.
+
+        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
+        >>> sa = nwa.precice_service_area(
+        ...         points.iloc[[0]],
+        ...         breaks=10,
+        ...         id_col="idx",
+        ...     )
+        >>> sa
+            idx  minutes                                           geometry
+        0    1       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
+
+        Service areas of 5, 10 and 15 minutes from three origin points.
+
+        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
+        >>> sa = nwa.precice_service_area(
+        ...         points.iloc[:2],
+        ...         breaks=[5, 10, 15],
+        ...         id_col="idx",
+        ...     )
+        >>> sa
+            idx  minutes                                           geometry
+        0    1        5  MULTILINESTRING Z ((265378.000 6650581.600 85....
+        1    1       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
+        2    1       15  MULTILINESTRING Z ((263110.060 6658296.870 154...
+        3    2        5  MULTILINESTRING Z ((273330.930 6653248.870 208...
+        4    2       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
+        5    2       15  MULTILINESTRING Z ((264348.673 6648271.134 17....
+        """
+        if self._log:
+            time_ = perf_counter()
+
+        self._prepare_network_analysis(origins, id_col=id_col)
+
+        # sort the breaks as an np.ndarray
+        breaks = self._sort_breaks(breaks)
+
+        self.network.gdf["source_target_weight"] = _edge_ids(
+            self.network.gdf, self.rules.weight
+        )
+
+        results = _service_area(
+            graph=self.graph,
+            origins=self.origins.gdf,
+            breaks=breaks,
+            weight=self.rules.weight,
+            lines=self.network.gdf,
+            nodes=self.network.nodes,
+            directed=self.network._as_directed,
+            precice=precice,
+        )
+
+        if not all(results.geometry.isna()):
+            results = results.drop_duplicates(["source_target_weight", "origin"])
 
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
@@ -1237,8 +1365,6 @@ class NetworkAnalysis:
             x = f"weight_to_nodes_dist={self.rules.weight_to_nodes_dist}"
         elif self.rules.weight_to_nodes_kmh:
             x = f"weight_to_nodes_kmh={self.rules.weight_to_nodes_kmh}"
-        elif self.rules.weight_to_nodes_mph:
-            x = f"weight_to_nodes_mph={self.rules.weight_to_nodes_mph}"
         else:
             x = "..."
 

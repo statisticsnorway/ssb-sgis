@@ -219,6 +219,8 @@ class Explore:
 
         self.gdf = gdf_concat(self.gdfs)
 
+        self.kwargs["k"] = self.kwargs.get("k", 5)
+
         if "title" not in self.kwargs:
             self.kwargs["title"] = self.kwargs["column"]
 
@@ -272,7 +274,13 @@ class Explore:
         self.to_show = self.gdfs
         self._explore(**kwargs)
 
-    def samplemap(self, size: int = 1000, column: str | None = None, **kwargs) -> None:
+    def samplemap(
+        self,
+        size: int = 1000,
+        column: str | None = None,
+        sample_from_first: bool = True,
+        **kwargs,
+    ) -> None:
         """Shows an interactive map of a random area of the GeoDataFrames.
 
         It takes a random sample point of the GeoDataFrames, and shows all geometries
@@ -285,9 +293,13 @@ class Explore:
         method.
 
         Args:
-            size: the radius to buffer the sample point by before clipping with the data
+            size: the radius to buffer the sample point by before clipping with the
+                data.
             column: The column to color the geometries by. Defaults to the column
                 that was specified last.
+            sample_from_first: If True (the default), the sample point is taken from
+                the first specified GeoDataFrame. If False, all GeoDataFrames are
+                considered.
             **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
                 instance 'cmap' to change the colors, 'scheme' to change how the data
                 is grouped. This defaults to 'fisherjenks' for numeric data.
@@ -301,7 +313,12 @@ class Explore:
             kwargs["column"] = column
         self.previous_sample_count = 0
         self.to_show = self.gdfs
-        random_point = self.gdf.sample(1).assign(geometry=lambda x: x.centroid)
+
+        if sample_from_first:
+            random_point = self.gdfs[0].sample(1).centroid.buffer(size)
+        else:
+            random_point = self.gdf.sample(1).centroid.buffer(size)
+
         to_show: tuple[GeoDataFrame] = ()
         for gdf in self.to_show:
             gdf = gdf.clip(random_point.buffer(size))
@@ -517,7 +534,9 @@ class Explore:
 
     def _create_bins(self, gdf, column, scheme):
         n_unique = len(gdf[column].unique())
-        self.kwargs["k"] = self.kwargs.get("k", 5) if n_unique >= 5 else n_unique
+
+        if n_unique <= self.kwargs.get("k", 5):
+            self.kwargs["k"] = n_unique
 
         binning = classify(
             np.asarray(gdf.loc[gdf[column].notna(), column]),

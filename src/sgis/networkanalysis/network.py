@@ -17,6 +17,7 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..geopandas_tools.line_operations import (
     close_network_holes,
+    close_network_holes_deadends,
     cut_lines,
     get_component_size,
     get_largest_component,
@@ -280,13 +281,92 @@ class Network:
 
     def close_network_holes(
         self,
-        max_dist: int,
+        max_dist: int | float,
+        max_angle: int,
         fillna: float | int | None,
-        max_angle: int = 90,
-        deadend_to_deadend: bool = False,
         hole_col: str = "hole",
     ):
-        """Fills holes in the network lines shorter than the max_dist.
+        """Fills network gaps with straigt lines.
+
+        Fills holes in the network by connecting deadends with the nodes that are
+        within the 'max_dist' distance and have an angle less 'max_angle'.
+
+        Args:
+            max_dist: The maximum distance for the holes to be filled.
+            max_angle: Absolute number between 0 and 180 that represents the maximum
+                difference in angle between the new line and the prior, i.e. the line
+                at which the deadend terminates. A value of 0 means the new lines must
+                have the exact same angle as the prior line, and 180 means the new
+                lines can go in any direction.
+            fillna: Numeric value to assign to all NaN values of the holes. This is
+                chiefly the 'weight' column that is to be used in network analysis.
+            hole_col: Holes will get the value 1 in a column named 'hole' by default,
+                or what is specified as hole_col. If set to None or False, no column
+                will be added.
+
+        Returns:
+            The input GeoDataFrame with new lines added.
+
+        Note:
+            The 'fillna' parameter has no default value, but can be set to None if NaN
+            values should be preserved. This will, however, mean that the filled holes
+            will be opened again in network analysis.
+
+        Examples
+        --------
+        Check for number of isolated lines before filling gaps.
+
+        >>> nw = Network(roads)
+        >>> nw = nw.get_largest_component()
+        >>> nw.gdf.connected.value_counts()
+        1.0    85638
+        0.0     7757
+        Name: connected, dtype: int64
+
+        Fill gaps shorter than 1.1 meters and an angle deviation of no more than
+        30 degrees.
+
+        >>> nw = nw.close_network_holes(max_dist=1.1, max_angle=30, fillna=0)
+        >>> nw = nw.get_largest_component()
+        >>> nw.gdf.connected.value_counts()
+        1.0    100315
+        0.0       191
+        Name: connected, dtype: int64
+
+        Fill gaps with all angles allowed.
+
+        >>> nw = nw.close_network_holes(max_dist=1.1, max_angle=180, fillna=0)
+        >>> nw = nw.get_largest_component()
+        >>> nw.gdf.connected.value_counts()
+        1.0    100315
+        0.0       180
+        Name: connected, dtype: int64
+
+        It's not always wise to fill gaps. In the case of this data, these small gaps
+        are intentional. They are road blocks where most cars aren't allowed to pass.
+        Fill the holes only if it makes the travel times/routes more realistic.
+        """
+        self.gdf = close_network_holes(
+            self.gdf,
+            max_dist,
+            hole_col=hole_col,
+            max_angle=max_angle,
+        )
+
+        if fillna is not None:
+            self.gdf.loc[self.gdf[hole_col] == 1] = self.gdf.loc[
+                self.gdf[hole_col] == 1
+            ].fillna(fillna)
+
+        return self
+
+    def close_network_holes_deadends(
+        self,
+        max_dist: int,
+        fillna: float | int | None,
+        hole_col: str = "hole",
+    ):
+        """Fills holes between two deadends if the distance is less than the max_dist.
 
         It fills holes in the network by finding the nearest neighbors of each node,
         then connecting the nodes that are within the max_dist of each other. The
@@ -297,13 +377,6 @@ class Network:
             fillna: The value to give the holes in all columns with NaN, which are all
                 columns except for the hole_col and the source/target columns. If set
                 to None,
-            max_angle: Number between 0 and 180 that represents the maximum difference
-                in angle between the new line and the the prior line in the network. 0
-                means the new lines must have the exact same angle as the prior line,
-                180 means the new lines can go backwards. Defaults to 90.
-            deadend_to_deadend: If True, only holes between two deadends will be filled.
-                If False (the default), deadends might be connected to any node of the
-                network.
             hole_col: Holes will get the value 1 in a column named 'hole' by default,
                 or what is specified as hole_col. If set to None or False, no column
                 will be added.
@@ -340,13 +413,10 @@ class Network:
         are intentional. They are road blocks where most cars aren't allowed to pass.
         Fill the holes only if it makes the travel times/routes more realistic.
         """
-        self._update_nodes_if()
-        self.gdf = close_network_holes(
+        self.gdf = close_network_holes_deadends(
             self.gdf,
             max_dist,
-            deadend_to_deadend=deadend_to_deadend,
             hole_col=hole_col,
-            max_angle=max_angle,
         )
 
         if fillna is not None:
@@ -363,10 +433,10 @@ class Network:
 
         Args:
             max_length: The maximum length of the line segments.
-            adjust_weight_col: If you have a column in your GeoDataFrame that you want
-                to adjust based on the length of the new lines, you can pass the name
-                of that column here. For example, if you have a column called
-                "minutes", the minute value will be halved if the line is halved.
+            adjust_weight_col: Name of a numeric column in the GeoDataFrame that should
+                be adjusted based on the length of the new lines. For example, if the
+                column is "minutes", the minute value will be halved if the line is
+                halved in length.
             ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
                 Defaults to True
 

@@ -15,6 +15,30 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+roads = sg.read_parquet_url(
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
+)
+from shapely import line_merge
+
+
+roads.geometry = line_merge(roads.geometry)
+
+
+filled = sg.close_network_holes(roads, max_dist=1.1)
+filled.hole.value_counts()
+
+roads = sg.get_largest_component(roads)
+roads.connected.value_counts()
+
+filled = sg.get_largest_component(filled)
+filled.connected.value_counts()
+
+filled = sg.close_network_holes(roads, max_dist=1.1, max_angle=30)
+filled.hole.value_counts()
+
+ss
+
+
 def not_test_network_analysis(points_oslo, roads_oslo):
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     warnings.filterwarnings(action="ignore", category=UserWarning)
@@ -81,33 +105,32 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
         sp = nwa.get_route(p, p, id_col="idx")
 
-        sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
 
-        i = 1
         nwa.rules.search_factor = 0
         nwa.rules.split_lines = False
 
-        sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
         if __name__ == "__main__":
             sg.qtm(sp)
         nwa.rules.split_lines = True
-        sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
         if __name__ == "__main__":
             sg.qtm(sp)
-        sp = nwa.get_route(p.iloc[[0]], p.iloc[[i]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
         if __name__ == "__main__":
             sg.qtm(sp)
 
         nwa.rules.split_lines = False
-        sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
         if __name__ == "__main__":
             sg.qtm(sp)
         nwa.rules.split_lines = True
-        sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
         if __name__ == "__main__":
             sg.qtm(sp)
 
-        sp = nwa.get_route(p.iloc[[0]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
         if __name__ == "__main__":
             sg.qtm(sp)
 
@@ -115,7 +138,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
         print(len(p))
         print(len(p))
         print(len(p))
-        sp = nwa.get_route_frequencies(p.iloc[[0]], p)
+        sp = nwa.get_route_frequencies(p.loc[[349]], p)
         if __name__ == "__main__":
             sg.qtm(sp)
 
@@ -131,7 +154,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
         if __name__ == "__main__":
             sg.qtm(sa)
 
-        sa = nwa.service_area(p.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
+        sa = nwa.service_area(p.loc[[349]], breaks=np.arange(1, 11), id_col="idx")
         print(sa.columns)
         sa = sa.sort_values("minutes", ascending=False)
         if __name__ == "__main__":
@@ -139,11 +162,9 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
         ### GET K ROUTES
 
-        i = 1
-
         for x in [0, 50, 100]:
             sp = nwa.get_k_routes(
-                p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
+                p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x, id_col="idx"
             )
             if __name__ == "__main__":
                 sg.qtm(sp, "k")
@@ -152,7 +173,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
         for x in [-1, 101]:
             try:
                 sp = nwa.get_k_routes(
-                    p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=x, id_col="idx"
+                    p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x, id_col="idx"
                 )
                 if __name__ == "__main__":
                     sg.qtm(sp, "k")
@@ -162,15 +183,16 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
         assert n == 2
 
-        i += 1
         sp = nwa.get_k_routes(
-            p.iloc[[0]], p.iloc[[i]], k=5, drop_middle_percent=50, id_col="idx"
+            p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=50, id_col="idx"
         )
         print(sp)
         if __name__ == "__main__":
             sg.qtm(sp)
 
-        sp = nwa.get_k_routes(p.iloc[[0]], p, k=5, drop_middle_percent=50, id_col="idx")
+        sp = nwa.get_k_routes(
+            p.loc[[349]], p, k=5, drop_middle_percent=50, id_col="idx"
+        )
         if __name__ == "__main__":
             sg.qtm(sp)
 
@@ -182,7 +204,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
             direction_vals_bft=("B", "FT", "TF"),
             minute_cols=("FT_MINUTES", "TF_MINUTES"),
         )
-        .close_network_holes(1.1, fillna=0, deadends_only=False)
+        .close_network_holes(1.1, fillna=0, deadend_to_deadend=False)
         .get_largest_component()
     )
     if __name__ == "__main__":

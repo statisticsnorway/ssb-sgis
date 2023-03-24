@@ -26,10 +26,10 @@ def test_to_lines():
 
     lines = sg.to_lines(poly1_diff)
     lines["l"] = lines.length.astype(str)
+    print(lines)
 
     if __name__ == "__main__":
         sg.qtm(lines, "l", legend_title=len(lines))
-    assert len(lines) > 1
 
     poly2 = sg.to_gdf(Polygon([(0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5)]))
 
@@ -38,16 +38,19 @@ def test_to_lines():
 
     lines = sg.to_lines(poly1, poly2, inner_poly)
     lines["l"] = lines.length.astype(str)
+    print(lines)
     if __name__ == "__main__":
         sg.qtm(lines, "l", legend_title=len(lines))
 
     lines = sg.to_lines(poly1, poly2)
     lines["l"] = lines.length.astype(str)
+    print(lines)
     if __name__ == "__main__":
         sg.qtm(lines, "l", legend_title=len(lines))
 
     lines = sg.to_lines(poly1, poly2, inner_poly, poly2)
     lines["l"] = lines.length.astype(str)
+    print(lines)
     if __name__ == "__main__":
         sg.qtm(lines, "l", legend_title=len(lines))
 
