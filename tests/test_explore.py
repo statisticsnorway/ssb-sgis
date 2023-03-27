@@ -28,11 +28,11 @@ def not_test_explore(points_oslo, roads_oslo):
     points = points.sjoin(p.buffer(500).to_frame())
     points["geometry"] = points.buffer(8)
     roads["geometry"] = roads.buffer(3)
-    r1 = roads.clip(p.buffer(300).to_frame())
-    r2 = roads.clip(p.buffer(200).to_frame())
-    r3 = roads.clip(p.buffer(100).to_frame())
+    r1 = roads.clip(p.buffer(300))
+    r2 = roads.clip(p.buffer(200))
+    r3 = roads.clip(p.buffer(100))
 
-    sg.clipmap(r1, r2, r3, "meters", p.buffer(100), explore=False)
+    sg.clipmap(r1, r2, r3, "meters", mask=p.buffer(100), explore=False)
     sg.samplemap(
         r1,
         r2,
@@ -47,7 +47,17 @@ def not_test_explore(points_oslo, roads_oslo):
     for yesno in [1, 0]:
         sg.samplemap(r1, roads_oslo, sample_from_first=yesno, size=50)
 
-    sg.clipmap(r1, r2, r3, "meters", p.buffer(100))
+    monopoly = sg.to_gdf(r1.unary_union.convex_hull, crs=r1.crs)
+
+    for _ in range(5):
+        sg.samplemap(
+            monopoly,
+            r1,
+            roads_oslo,
+            size=30,
+        )
+
+    sg.clipmap(r1, r2, r3, "meters", mask=p.buffer(100))
     sg.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
 
     print("static mapping finished")

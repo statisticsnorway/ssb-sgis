@@ -57,7 +57,7 @@ def explore(
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
         labels: By default, the GeoDataFrames will be labeled by their object names.
-            Alternatively, labels can be specified as a tuple of strings the same
+            Alternatively, labels can be specified as a tuple of strings with the same
             length as the number of gdfs.
         popup: If True (default), clicking on a geometry will create a popup box with
             column names and values for the given geometry. The box stays until
@@ -65,7 +65,7 @@ def explore(
             show when hovering over the geometry.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
-        show_in_browser: If False (the default), the maps will be shown in Jupyter.
+        show_in_browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
@@ -133,7 +133,7 @@ def samplemap(
             each GeoDataFrame will get a unique color.
         size: the radius to buffer the sample point by before clipping with the data.
             Defaults to 2000 (meters).
-        sample_from_first: If True (the default), the sample point is taken form the
+        sample_from_first: If True (default), the sample point is taken form the
             first specified GeoDataFrame. If False, all GeoDataFrames are considered.
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings the same
@@ -144,9 +144,9 @@ def samplemap(
             show when hovering over the geometry.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
-        explore: If True (the default), an interactive map will be displayed. If False,
+        explore: If True (default), an interactive map will be displayed. If False,
             or not in Jupyter, a static plot will be shown.
-        show_in_browser: If False (the default), the maps will be shown in Jupyter.
+        show_in_browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
@@ -203,7 +203,7 @@ def samplemap(
 
 def clipmap(
     *gdfs: GeoDataFrame,
-    mask: GeoDataFrame | GeoSeries | Geometry | None = None,
+    mask: GeoDataFrame | GeoSeries | Geometry,
     column: str | None = None,
     labels: tuple[str] | None = None,
     popup: bool = True,
@@ -237,9 +237,9 @@ def clipmap(
             show when hovering over the geometry.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
-        explore: If True (the default), an interactive map will be displayed. If False,
+        explore: If True (default), an interactive map will be displayed. If False,
             or not in Jupyter, a static plot will be shown.
-        show_in_browser: If False (the default), the maps will be shown in Jupyter.
+        show_in_browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
@@ -262,6 +262,8 @@ def clipmap(
     if not labels:
         namedict = make_namedict(gdfs)
         kwargs["namedict"] = namedict
+
+    print(namedict)
 
     if mask is not None:
         for gdf in gdfs:
@@ -319,7 +321,7 @@ def qtm(
         scheme: How to group the column values. Defaults to 'fisherjenks' if numeric
             column.
         legend: Whether to include a legend explaining the colors and their values.
-        black: If True (the default), the background color will be black and the title
+        black: If True (default), the background color will be black and the title
             white. If False, it will be the opposite.
         size: Size of the plot. Defaults to 10.
         title_fontsize: Size of the title.
@@ -402,6 +404,9 @@ def qtm(
         ax.set_xlim([minx - diffx * 0.03, maxx + diffx * 0.03])
         ax.set_ylim([miny - diffy * 0.03, maxy + diffy * 0.03])
         bg_gdf.plot(ax=ax, color=bg_gdf_color)
+
+    if "color" in kwargs:
+        kwargs.pop("column", None)
 
     m.gdf.plot(scheme=scheme, legend=legend, ax=ax, **kwargs)
 

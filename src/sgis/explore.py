@@ -22,13 +22,14 @@ from shapely.geometry import LineString
 from .geopandas_tools.general import (
     clean_geoms,
     drop_inactive_geometry_columns,
-    gdf_concat,
+    random_points_in_polygon,
     rename_geometry_if,
 )
+from .geopandas_tools.geometry_types import get_geom_type
 from .helpers import get_name
 
 
-# the geopandas._explore
+# the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(
     action="ignore", category=matplotlib.MatplotlibDeprecationWarning
 )
@@ -163,7 +164,7 @@ class Explore:
                 will only show when hovering over the geometry.
             max_zoom: The maximum allowed level of zoom. Higher number means more zoom
                 allowed. Defaults to 30, which is higher than the geopandas default.
-            show_in_browser: If False (the default), the maps will be shown in Jupyter.
+            show_in_browser: If False (default), the maps will be shown in Jupyter.
                 If True the maps will be opened in a browser folder.
             **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
                 instance 'cmap' to change the colors, 'scheme' to change how the data
@@ -206,18 +207,23 @@ class Explore:
                 gdf["label"] = label
             self.kwargs["column"] = "label"
 
-        # cannot have more than one geometry column
+        # cannot have more than one geometry column. Also setting common crs
+        crss = list({gdf.crs for gdf in self.gdfs if gdf.crs is not None})
         new_gdfs = []
         for gdf in self.gdfs:
-            gdf = drop_inactive_geometry_columns(gdf)
-            gdf = rename_geometry_if(gdf)
+            gdf = drop_inactive_geometry_columns(gdf).pipe(rename_geometry_if)
+            if crss:
+                try:
+                    gdf = gdf.to_crs(crss[0])
+                except ValueError:
+                    gdf = gdf.set_crs(crss[0])
             new_gdfs.append(gdf)
             self.gdfs = new_gdfs
 
         self._is_categorical = self._check_if_categorical()
         self._fill_missings()
 
-        self.gdf = gdf_concat(self.gdfs)
+        self.gdf = pd.concat(self.gdfs, ignore_index=True)
 
         self.kwargs["k"] = self.kwargs.get("k", 5)
 
@@ -297,7 +303,7 @@ class Explore:
                 data.
             column: The column to color the geometries by. Defaults to the column
                 that was specified last.
-            sample_from_first: If True (the default), the sample point is taken from
+            sample_from_first: If True (default), the sample point is taken from
                 the first specified GeoDataFrame. If False, all GeoDataFrames are
                 considered.
             **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
@@ -315,9 +321,14 @@ class Explore:
         self.to_show = self.gdfs
 
         if sample_from_first:
-            random_point = self.gdfs[0].sample(1).centroid.buffer(size)
+            sample = self.gdfs[0].sample(1)
         else:
-            random_point = self.gdf.sample(1).centroid.buffer(size)
+            sample = self.gdf.sample(1)
+
+        if get_geom_type(sample) == "polygon":
+            random_point = random_points_in_polygon(sample, 1)
+        else:
+            random_point = sample.centroid
 
         to_show: tuple[GeoDataFrame] = ()
         for gdf in self.to_show:
@@ -365,6 +376,7 @@ class Explore:
     def _explore(self, **kwargs):
         self.kwargs = self.kwargs | kwargs
         self._is_categorical = self._check_if_categorical()
+
         if self._is_categorical:
             self._create_categorical_map()
         else:
@@ -460,7 +472,7 @@ class Explore:
         )
 
     def _create_categorical_map(self):
-        gdfs = gdf_concat(self.to_show)
+        gdfs = pd.concat(self.to_show, ignore_index=True)
 
         self.map = self._explore_return(gdfs, return_="empty_map", **self.kwargs)
 
@@ -493,7 +505,7 @@ class Explore:
         self.map.add_child(folium.LayerControl())
 
     def _create_continous_map(self):
-        gdfs = gdf_concat(self.to_show)
+        gdfs = pd.concat(self.to_show, ignore_index=True)
 
         unique_bins = self._create_bins(
             gdfs, self.kwargs["column"], self.kwargs["scheme"]

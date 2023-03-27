@@ -15,30 +15,6 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-roads = sg.read_parquet_url(
-    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
-)
-from shapely import line_merge
-
-
-roads.geometry = line_merge(roads.geometry)
-
-
-filled = sg.close_network_holes(roads, max_dist=1.1)
-filled.hole.value_counts()
-
-roads = sg.get_largest_component(roads)
-roads.connected.value_counts()
-
-filled = sg.get_largest_component(filled)
-filled.connected.value_counts()
-
-filled = sg.close_network_holes(roads, max_dist=1.1, max_angle=30)
-filled.hole.value_counts()
-
-ss
-
-
 def not_test_network_analysis(points_oslo, roads_oslo):
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     warnings.filterwarnings(action="ignore", category=UserWarning)

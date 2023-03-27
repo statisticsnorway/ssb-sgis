@@ -1,6 +1,4 @@
 """Check and set geometry type."""
-import warnings
-
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 
@@ -71,12 +69,7 @@ def to_single_geom_type(
     # explode collections to single-typed geometries
     collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
     if len(collections):
-        warnings.filterwarnings("ignore", category=FutureWarning)
-        collections = collections.explode(ignore_index=ignore_index)
-
-        # avoid multiindex if ignore_index is False
-        if isinstance(collections.index, pd.MultiIndex):
-            collections.index = collections.index.get_level_values(0)
+        collections = collections.explode(ignore_index=ignore_index, index_parts=False)
 
         gdf = pd.concat([gdf, collections], ignore_index=ignore_index)
 
@@ -99,9 +92,7 @@ def to_single_geom_type(
     return gdf
 
 
-def get_geom_type(
-    gdf: GeoDataFrame | GeoSeries,
-) -> str:
+def get_geom_type(gdf: GeoDataFrame | GeoSeries) -> str:
     """Returns a string of the geometry type in a GeoDataFrame or GeoSeries.
 
     Args:
@@ -118,8 +109,8 @@ def get_geom_type(
     >>> from sgis import to_gdf, get_geom_type
     >>> gdf = to_gdf([0, 0])
     >>> gdf
-                                                geometry
-    0                            POINT (0.00000 0.00000)
+                      geometry
+    0  POINT (0.00000 0.00000)
     >>> get_geom_type(gdf)
     'point'
     """
@@ -135,9 +126,7 @@ def get_geom_type(
     return "mixed"
 
 
-def is_single_geom_type(
-    gdf: GeoDataFrame | GeoSeries,
-) -> bool:
+def is_single_geom_type(gdf: GeoDataFrame | GeoSeries) -> bool:
     """Returns True if all geometries in a GeoDataFrame are of the same type.
 
     The types are either polygon, line or point. Multipart and singlepart are

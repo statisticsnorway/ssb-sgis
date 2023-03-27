@@ -4,7 +4,6 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
 
-from ..geopandas_tools.general import gdf_concat
 from .network import _edge_ids
 
 
@@ -20,8 +19,6 @@ def _get_route(
     weight: str,
     roads: GeoDataFrame,
     summarise: bool = False,
-    cutoff: int | None = None,
-    destination_count: int | None = None,
     rowwise: bool = False,
     k: int = 1,
     drop_middle_percent: int = 0,
@@ -81,20 +78,12 @@ def _get_route(
         return roads_visited
 
     try:
-        results: GeoDataFrame = gdf_concat(resultlist)
+        results = pd.concat(resultlist)
     except Exception:
         raise ValueError(
             "No paths were found. Try larger search_tolerance or search_factor. "
             "Or close_network_holes() or remove_isolated()."
         )
-
-    if cutoff:
-        results = results.loc[results[weight] < cutoff]
-
-    if destination_count:
-        results = results.loc[~results[weight].isna()]
-        weight_ranked = results.groupby("origin")[weight].rank()
-        results = results.loc[weight_ranked <= destination_count]
 
     cols = ["origin", "destination", weight, "geometry"]
     if "k" in results.columns:

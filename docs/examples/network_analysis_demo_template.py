@@ -466,15 +466,15 @@ nwa.rules.search_factor = 0
 #
 # This will produce inaccurate results for points that are far away from the network. Especially when the search_factor is high.
 #
-# Therefore, you can set one of the 'weight_to_nodes_' parameters. If the weight is 'meters' (i.e. the length unit of the crs), setting 'weight_to_nodes_dist' to True will make the weight equivelant to the straight-line distance:
+# Therefore, you can set one of the 'weight_to_nodes_' parameters. If the weight is 'meters' (i.e. the length unit of the crs), setting 'nodedist_multiplier' to True will make the weight equivelant to the straight-line distance:
 # %%
 
-sg.NetworkAnalysisRules(weight="meters", weight_to_nodes_dist=True)
+sg.NetworkAnalysisRules(weight="meters", nodedist_multiplier=True)
 # %% [markdown]
 # If the weight is "minutes", you specify the speed in kilometers or miles per hour:
 # %%
 
-sg.NetworkAnalysisRules(weight="minutes", weight_to_nodes_kmh=5)
+sg.NetworkAnalysisRules(weight="minutes", nodedist_kmh=5)
 # %%
 
 sg.NetworkAnalysisRules(weight="minutes", weight_to_nodes_mph=3)
@@ -482,9 +482,9 @@ sg.NetworkAnalysisRules(weight="minutes", weight_to_nodes_mph=3)
 # Let's check how the speed to the nodes influences the average speed:
 
 # %%
-for weight_to_nodes_kmh in [5, 20, 50, 0]:
-    nwa.rules.weight_to_nodes_kmh = weight_to_nodes_kmh
+for nodedist_kmh in [5, 20, 50, 0]:
+    nwa.rules.nodedist_kmh = nodedist_kmh
     od = nwa.od_cost_matrix(points, points)
 
-nwa.log.iloc[-4:][["weight_to_nodes_kmh", "cost_mean"]]
+nwa.log.iloc[-4:][["nodedist_kmh", "cost_mean"]]
 # %%

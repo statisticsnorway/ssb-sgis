@@ -4,11 +4,7 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 from shapely import force_2d, reverse
 
-from ..geopandas_tools.general import gdf_concat
-from ..geopandas_tools.line_operations import (
-    cut_lines_once,
-    make_edge_wkt_cols,
-)
+from ..geopandas_tools.line_operations import cut_lines_once, make_edge_wkt_cols
 
 
 def _service_area(
@@ -43,13 +39,11 @@ def _service_area(
     # loop through every origin and every break
     service_areas: list[GeoDataFrame] = []
     for i, idx in enumerate(origins["temp_idx"]):
-
         # assign distances to the nodes and give the column to the edges
         nodes[weight] = all_distances[i]
         distance_df = edge_df.join(nodes)
 
         for break_ in breaks:
-
             nodes_within_break = nodes.loc[nodes[weight] <= break_]
 
             whole_edge_is_within = (edge_df.source.isin(nodes_within_break.index)) & (
@@ -100,7 +94,7 @@ def _service_area(
                 & (df.source_wkt.isin(nodes.wkt) | df.target_wkt.isin(nodes.wkt))
             ]
 
-            edges_within = gdf_concat([edges_within, within])
+            edges_within = pd.concat([edges_within, within], ignore_index=True)
             edges_within["origin"] = idx
             edges_within[weight] = break_
             service_areas.append(edges_within)
@@ -122,7 +116,6 @@ def _part_of_edge_within(distance_df, nodes_within_break, directed):
 
 
 def _split_lines(partly_within, directed):
-
     partly_within.geometry = force_2d(partly_within.geometry)
 
     if not directed:

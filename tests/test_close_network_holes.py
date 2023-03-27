@@ -72,6 +72,12 @@ def test_close_network_holes(roads_oslo, points_oslo):
         nw.gdf.plot("hole")
     assert len(nw) == 2, len(nw)
 
+    nw = sg.Network(lines_angle_90_both).close_network_holes(1, fillna=0, max_angle=90)
+    if __name__ == "__main__":
+        lines_angle_90_both.plot()
+        nw.gdf.plot("hole")
+    assert len(nw) == 4, len(nw)
+
     warnings.filterwarnings(action="ignore", category=UserWarning)
     warnings.filterwarnings(action="ignore", category=FutureWarning)
 
@@ -94,7 +100,7 @@ def test_close_network_holes(roads_oslo, points_oslo):
         print("time close_network_holes, all roads: ", perf_counter() - _time)
 
         _time = perf_counter()
-        nw = nw.close_network_holes_deadends(meters, fillna=0)
+        nw = nw.close_network_holes_to_deadends(meters, fillna=0)
         print("n", sum(nw.gdf.hole == 1))
         print("time close_network_holes, deadend to deadend: ", perf_counter() - _time)
 

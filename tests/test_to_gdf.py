@@ -1,4 +1,4 @@
-#%%
+# %%
 import sys
 from pathlib import Path
 
@@ -16,7 +16,6 @@ import sgis as sg
 
 
 def test_to_gdf():
-
     _dflike_single_col()
 
     _dflike_geom_col()
@@ -106,7 +105,6 @@ def _preserves_index():
 
 
 def _incorrect_geom_col():
-
     # these should all succeed because of only one column
     dict_2 = {"geom": [(10, 60), (11, 59)]}
     df2 = pd.DataFrame(dict_2)
@@ -200,7 +198,6 @@ def _xyz():
 
 
 def _iterators():
-
     set_ = {(10, 60), (59, 10), (5, 10)}
     gdf = sg.to_gdf(set_, crs=4326)
     assert not gdf.geometry.isna().sum()
@@ -291,7 +288,7 @@ def _geoseries():
     assert geoseries.crs is None
     assert geoseries_with_crs.crs == 4326
 
-    gdf = sg.gdf_concat(
+    gdf = pd.concat(
         sg.to_gdf(geom) for geom in [geoseries_with_crs, geoseries, geoseries]
     )
     assert gdf.crs == 4326

@@ -30,7 +30,7 @@ def test_node_ids(points_oslo, roads_oslo):
     rules = sg.NetworkAnalysisRules(weight="meters")
     nwa = sg.NetworkAnalysis(nw, rules=rules)
 
-    nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")
+    nwa.od_cost_matrix(p.sample(5), p.sample(5))
 
     nwa.network = nwa.network.close_network_holes(2, max_angle=90, fillna=0)
     nwa.network = nwa.network.get_component_size()
@@ -48,11 +48,11 @@ def test_node_ids(points_oslo, roads_oslo):
         .drop_duplicates("idx")
     )
 
-    nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")
-    nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")
-    nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")
-    nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")
-    nwa.od_cost_matrix(p.sample(5), p.sample(5), id_col="idx")
+    nwa.od_cost_matrix(p.sample(5), p.sample(5))
+    nwa.od_cost_matrix(p.sample(5), p.sample(5))
+    nwa.od_cost_matrix(p.sample(5), p.sample(5))
+    nwa.od_cost_matrix(p.sample(5), p.sample(5))
+    nwa.od_cost_matrix(p.sample(5), p.sample(5))
 
 
 def main():

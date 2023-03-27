@@ -12,7 +12,88 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
+import numpy as np
+
 import sgis as sg
+
+
+points = sg.random_points(100)
+points["group"] = np.random.choice([*"abd"], len(points))
+points["number"] = np.random.random(size=len(points))
+sg.buffdiss(points, 0.5)
+sg.buffdiss(points, 0.5, by="group", aggfunc="sum")
+sg.buffdiss(points, 0.5, by="group", as_index=False)
+aggcols = points.groupby("group").agg(
+    numbers_sum=("number", "count"),
+    numbers_mean=("number", "mean"),
+    n=("number", "count"),
+)
+points_agg = (
+    sg.buffdiss(points, 0.5, by="group")[["geometry"]].join(aggcols).reset_index()
+)
+points_agg
+
+
+sg.buffdissexp(points, 0.1)
+sg.buffdissexp(points, 0.1, by="group")
+sg.buffdissexp(points, 0.1, by="group", as_index=False)
+
+
+aggcols = points.groupby("group").agg(
+    numbers_sum=("number", "count"),
+    numbers_mean=("number", "mean"),
+    n=("number", "count"),
+)
+points_agg = (
+    sg.buffdissexp(points, 0.1, by="group")[["geometry"]].join(aggcols).reset_index()
+)
+points_agg
+
+
+veger_oslo = sg.read_parquet_url(
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
+)
+veger_oslo = veger_oslo[
+    ["oneway", "drivetime_fw", "drivetime_bw", "roadid", "geometry"]
+]
+nw = sg.DirectedNetwork(veger_oslo).remove_isolated().make_directed_network_norway()
+rules = sg.NetworkAnalysisRules(weight="minutes")
+
+from sgis import NetworkAnalysis
+
+
+nwa = NetworkAnalysis(network=nw, rules=rules)
+points = sg.read_parquet_url(
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+)
+
+origins = points.loc[:99, ["geometry"]].rename(columns={"idx": "origin_idx"})
+origins
+destinations = points.loc[100:199, ["geometry"]]
+destinations
+
+origins["letter"] = np.random.choice([*"abc"], len(origins))
+origins = origins.set_index("letter")
+od = nwa.od_cost_matrix(origins, destinations)
+
+print(od)
+mean_by_letter = od.groupby("origin")["minutes"].mean()
+print(mean_by_letter)
+
+points["idx2"] = points.index
+od = nwa.od_cost_matrix(points.set_index(["idx", "idx2"]), points)
+print(od)
+
+joined = points.join(od.set_index("origin"))
+joined
+
+points["minutes_mean"] = od.groupby("origin")["minutes"].mean()
+points
+
+points_reversed = points.iloc[::-1]
+od = nwa.od_cost_matrix(points, points_reversed, rowwise=True)
+od
+ss
 
 
 def test_network_analysis(points_oslo, roads_oslo):
@@ -60,7 +141,7 @@ def test_network_analysis(points_oslo, roads_oslo):
         assert all(nwa.log["cost_mean"] < 3)
         assert all(nwa.log["cost_mean"] > 0)
 
-        od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
+        od = nwa.od_cost_matrix(p, p, lines=True)
 
         p1 = nwa.origins.gdf
         p1 = p1.loc[[p1.missing.idxmin()]].sample(1).idx.values[0]
@@ -68,49 +149,39 @@ def test_network_analysis(points_oslo, roads_oslo):
         if __name__ == "__main__":
             sg.qtm(od.loc[od.origin == p1], nwa.rules.weight, scheme="quantiles")
 
-        od2 = nwa.od_cost_matrix(p, p, destination_count=3)
-
-        assert (od2.groupby("origin")["destination"].count() <= 3).mean() > 0.6
-
-        if len(od2) != len(od):
-            assert np.mean(od2[nwa.rules.weight]) < np.mean(od[nwa.rules.weight])
-
-        od = nwa.od_cost_matrix(p, p, cutoff=5)
-        assert (od[nwa.rules.weight] <= 5).all()
-
         od = nwa.od_cost_matrix(p, p, rowwise=True)
         assert len(od) == len(p)
 
         ### GET ROUTE
 
-        sp = nwa.get_route(p, p, id_col="idx")
+        sp = nwa.get_route(p, p)
 
-        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p)
 
         nwa.rules.search_factor = 0
         nwa.rules.split_lines = False
 
-        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]])
         if __name__ == "__main__":
             sg.qtm(sp)
         nwa.rules.split_lines = True
-        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]])
         if __name__ == "__main__":
             sg.qtm(sp)
-        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]])
         if __name__ == "__main__":
             sg.qtm(sp)
 
         nwa.rules.split_lines = False
-        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p)
         if __name__ == "__main__":
             sg.qtm(sp)
         nwa.rules.split_lines = True
-        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p)
         if __name__ == "__main__":
             sg.qtm(sp)
 
-        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p)
         if __name__ == "__main__":
             sg.qtm(sp)
 
@@ -134,7 +205,7 @@ def test_network_analysis(points_oslo, roads_oslo):
         if __name__ == "__main__":
             sg.qtm(sa)
 
-        sa = nwa.service_area(p.loc[[349]], breaks=np.arange(1, 11), id_col="idx")
+        sa = nwa.service_area(p.loc[[349]], breaks=np.arange(1, 11))
         print(sa.columns)
         sa = sa.sort_values("minutes", ascending=False)
         if __name__ == "__main__":
@@ -144,7 +215,7 @@ def test_network_analysis(points_oslo, roads_oslo):
 
         for x in [0, 50, 100]:
             sp = nwa.get_k_routes(
-                p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x, id_col="idx"
+                p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x
             )
             if __name__ == "__main__":
                 sg.qtm(sp, "k")
@@ -153,7 +224,10 @@ def test_network_analysis(points_oslo, roads_oslo):
         for x in [-1, 101]:
             try:
                 sp = nwa.get_k_routes(
-                    p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x, id_col="idx"
+                    p.loc[[349]],
+                    p.loc[[440]],
+                    k=5,
+                    drop_middle_percent=x,
                 )
                 if __name__ == "__main__":
                     sg.qtm(sp, "k")
@@ -163,16 +237,12 @@ def test_network_analysis(points_oslo, roads_oslo):
 
         assert n == 2
 
-        sp = nwa.get_k_routes(
-            p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=50, id_col="idx"
-        )
+        sp = nwa.get_k_routes(p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=50)
         print(sp)
         if __name__ == "__main__":
             sg.qtm(sp)
 
-        sp = nwa.get_k_routes(
-            p.loc[[349]], p, k=5, drop_middle_percent=50, id_col="idx"
-        )
+        sp = nwa.get_k_routes(p.loc[[349]], p, k=5, drop_middle_percent=50)
         if __name__ == "__main__":
             sg.qtm(sp)
 

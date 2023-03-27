@@ -22,8 +22,6 @@ from shapely import (
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from .geometry_types import to_single_geom_type
-
 
 def coordinate_array(
     gdf: GeoDataFrame,
@@ -89,8 +87,7 @@ def rename_geometry_if(gdf):
 
 
 def clean_geoms(
-    gdf: GeoDataFrame | GeoSeries,
-    ignore_index: bool = False,
+    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
 ) -> GeoDataFrame | GeoSeries:
     """Fixes geometries and removes invalid, empty, NaN and None geometries.
 
@@ -105,7 +102,7 @@ def clean_geoms(
 
     Examples
     --------
-    >>> from sgis import clean_geoms, to_gdf, gdf_concat
+    >>> from sgis import clean_geoms, to_gdf
     >>> import pandas as pd
     >>> from shapely import wkt
     >>> gdf = to_gdf([
@@ -199,105 +196,12 @@ def random_points(n: int) -> GeoDataFrame:
     )
 
 
-def gdf_concat(
-    gdfs: list[GeoDataFrame] | tuple[GeoDataFrame],
-    crs: str | int | None = None,
-    ignore_index: bool = True,
-    geometry: str = "geometry",
-    **kwargs,
-) -> GeoDataFrame:
-    """Concatinates GeoDataFrames rowwise while ignoring index.
-
-    Converts to common crs. If no crs is given, chooses the first crs in the list of
-    GeoDataFrames.
-
-    Args:
-        gdfs: list, tuple or other iterable of GeoDataFrames to be concatinated.
-        crs: common coordinate reference system each GeoDataFrames
-            will be converted to before concatination. If None, it uses
-            the crs of the first GeoDataFrame in the list or tuple.
-        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-            Defaults to True
-        geometry: name of geometry column. Defaults to 'geometry'
-        **kwargs: additional keyword argument taken by pandas.condat
-
-    Returns:
-        A GeoDataFrame.
-
-    Examples
-    --------
-    >>> from sgis import gdf_concat, to_gdf
-    >>> points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
-    >>> points
-                    geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (0.50000 0.50000)
-    2  POINT (2.00000 2.00000)
-    >>> gdf_concat([points, points])
-    C:/Users/ort/git/ssb-gis-utils/src/sgis/geopandas_utils.py:828: UserWarning: None of your GeoDataFrames have crs.
-    warnings.warn("None of your GeoDataFrames have crs.")
-                    geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (0.50000 0.50000)
-    2  POINT (2.00000 2.00000)
-    3  POINT (0.00000 0.00000)
-    4  POINT (0.50000 0.50000)
-    5  POINT (2.00000 2.00000)
-
-    We get a warning that we don't have any crs. Let's create the same point with
-    different crs. gdf_concat will then convert to the first gdf, if crs is
-    unspecified.
-
-    >>> unprojected_point = to_gdf([(10, 60)], crs=4326)
-    >>> utm_point = unprojected_point.to_crs(25833)
-    >>> gdf_concat([utm_point, unprojected_point])
-                            geometry
-    0  POINT (221288.770 6661953.040)
-    1  POINT (221288.770 6661953.040)
-    """
-    if not hasattr(gdfs, "__iter__"):
-        raise TypeError("'gdfs' must be an iterable.")
-
-    # to list
-    gdfs = [gdf for gdf in gdfs]
-
-    columns = list({col for gdf in gdfs for col in gdf.columns})
-    gdfs = [gdf for gdf in gdfs if len(gdf)]
-
-    if not gdfs:
-        return pd.DataFrame(columns=columns)
-
-    gdfs = [rename_geometry_if(gdf) for gdf in gdfs]
-
-    if not crs:
-        crs = gdfs[0].crs
-
-    try:
-        gdfs = [gdf.to_crs(crs) for gdf in gdfs]
-    except ValueError:
-        if all(gdf.crs is None for gdf in gdfs):
-            warnings.warn("None of your GeoDataFrames have crs.")
-        else:
-            warnings.warn(
-                "Not all your GeoDataFrames have crs. If you are concatenating "
-                "GeoDataFrames with different crs, the results will be wrong. First use "
-                "set_crs to set the correct crs then the crs can be changed with to_crs()",
-                stacklevel=2,
-            )
-
-    # ignoring erronous warning
-    warnings.filterwarnings(action="ignore", category=UserWarning)
-    return GeoDataFrame(
-        pd.concat(gdfs, ignore_index=ignore_index, **kwargs), geometry=geometry, crs=crs
-    )
-
-
 def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
-    """Makes lines out of one or more GeoDataFrames.
+    """Makes lines out of one or more GeoDataFrames and splits them at intersections.
 
-    The GeoDataFrames' geometries are converted to LineStrings, then unioned and
-    exploded. The lines are split at the intersections. Mimics 'feature to line' in
-    ArcGIS.
+    The GeoDataFrames' geometries are converted to LineStrings, then unioned together
+    and made to singlepart. The lines are split at the intersections. Mimics
+    'feature to line' in ArcGIS.
 
     Args:
         *gdfs: one or more GeoDataFrames.
@@ -307,9 +211,13 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         A GeoDataFrame with singlepart line geometries and columns of all input
             GeoDataFrames.
 
+    Note:
+        The index is preserved if only one GeoDataFrame is given, but otherwise
+        ignored. This is because the union overlay used if multiple GeoDataFrames
+        always ignores the index.
+
     Examples
     --------
-
     Convert single polygon to linestring.
 
     >>> import sgis as sg
@@ -344,7 +252,13 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     <Axes: >
     """
 
+    if any(any(gdf.geom_type.isin(["Point", "MultiPoint"])) for gdf in gdfs):
+        raise ValueError("Cannot convert points to lines.")
+
     def _shapely_geometry_to_lines(geom):
+        if geom.area == 0:
+            return geom
+
         singlepart = get_parts(geom)
         lines = []
         for part in singlepart:
@@ -379,15 +293,30 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 
     unioned = lines[0].overlay(lines[1], how="union", keep_geom_type=True)
 
+    unioned.plot()
     if len(lines) > 2:
         for line_gdf in lines[2:]:
             unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
+        unioned.plot()
 
     return unioned.explode(ignore_index=True)
 
 
+def random_points_in_polygon(polygon, n):
+    overlapping = pd.DataFrame()
+    while True:
+        minx, miny, maxx, maxy = polygon.total_bounds
+        x = np.random.uniform(minx, maxx, n)
+        y = np.random.uniform(miny, maxy, n)
+        points = to_gdf({"x": x, "y": y}, geometry=["x", "y"], crs=polygon.crs)
+        overlapping = pd.concat([overlapping, points.clip(polygon)], ignore_index=True)
+        if len(overlapping) >= n:
+            break
+    return overlapping.sample(n).reset_index(drop=True)
+
+
 def to_multipoint(
-    gdf: GeoDataFrame | GeoSeries | Geometry, copy: bool = False
+    gdf: GeoDataFrame | GeoSeries | Geometry, copy: bool = True
 ) -> GeoDataFrame | GeoSeries | Geometry:
     """Creates a multipoint geometry of any geometry object.
 
@@ -398,7 +327,7 @@ def to_multipoint(
     Args:
         gdf: The geometry to be converted to MultiPoint. Can be a GeoDataFrame,
             GeoSeries or a shapely geometry.
-        copy: If True, the geometry will be copied. Defaults to False
+        copy: If True, the geometry will be copied. Defaults to True.
 
     Returns:
         A GeoDataFrame with the geometry column as a MultiPoint, or Point if the
@@ -509,7 +438,7 @@ def to_gdf(
     | pd.DataFrame
     | Iterator,
     crs: str | tuple[str] | None = None,
-    geometry: str = "geometry",
+    geometry: str | None = None,
     **kwargs,
 ) -> GeoDataFrame:
     """Converts geometry objects to a GeoDataFrame.
@@ -519,18 +448,12 @@ def to_gdf(
     GeoSeries, Series/DataFrame. The index/keys will be preserved if the input type is
     (Geo)Series or dictionary.
 
-    Note:
-        The name of the geometry-like column/key in DataFrame/dict can be specified with
-        the "geometry" parameter. The geometry column in the resulting GeoDataFrame will,
-        however, always be named 'geometry'.
-
     Args:
         geom: the object to be converted to a GeoDataFrame
-        crs: if None (the default), it uses the crs of the GeoSeries if GeoSeries
+        crs: if None (default), it uses the crs of the GeoSeries if GeoSeries
             is the input type. Otherwise, no crs is used.
-        geometry: name of resulting geometry column. Defaults to 'geometry'. If the
-            'geom' input is a  DataFrame with geometry-like column, specify 'geometry'
-             as this column.
+        geometry: name of column(s) containing the geometry-like values. Can be
+            ['x', 'y', 'z'] if coordinate columns, or e.g. 'geometry' if one column.
         **kwargs: additional keyword arguments taken by the GeoDataFrame constructor.
 
     Returns:
@@ -538,6 +461,11 @@ def to_gdf(
 
     Raises:
         TypeError: If geom is a GeoDataFrame.
+
+    Note:
+        The name of the geometry-like column/key in DataFrame/dict can be specified with
+        the "geometry" parameter. The geometry column in the resulting GeoDataFrame will,
+        however, always be named 'geometry'.
 
     Examples
     --------
@@ -607,10 +535,10 @@ def to_gdf(
     0  10  60  POINT (10.00000 60.00000)
     1  11  59  POINT (11.00000 59.00000)
 
-    From 2/3 dimensional array.
+    From 2 or 3 dimensional array.
 
     >>> to_gdf(np.random.randint(100, size=(5, 3)))
-                            geometry
+                             geometry
     0  POINT Z (82.000 88.000 82.000)
     1  POINT Z (70.000 92.000 20.000)
     2   POINT Z (91.000 34.000 3.000)
@@ -780,7 +708,7 @@ def _make_shapely_geom(geom):
     if isinstance(geom, GeoSeries):
         raise TypeError(
             "to_gdf doesn't accept iterable of GeoSeries. Instead use: "
-            "gdf_concat(to_gdf(geom) for geom in geoseries_list)"
+            "pd.concat(to_gdf(geom) for geom in geoseries_iterable)"
         )
 
     if not any(isinstance(g, numbers.Number) for g in geom):

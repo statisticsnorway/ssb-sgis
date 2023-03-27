@@ -2,10 +2,10 @@
 
 import warnings
 
+import pandas as pd
 from geopandas import GeoDataFrame
 from shapely.constructive import reverse
 
-from ..geopandas_tools.general import gdf_concat
 from ..helpers import return_two_vals, unit_is_meters
 from .network import Network
 
@@ -164,7 +164,7 @@ class DirectedNetwork(Network):
         if reverse_tofrom:
             tf.geometry = reverse(tf.geometry)
 
-        self.gdf = gdf_concat([both_ways, both_ways2, ft, tf])
+        self.gdf = pd.concat([both_ways, both_ways2, ft, tf], ignore_index=True)
 
         if speed_col:
             self._get_speed_from_col(speed_col)

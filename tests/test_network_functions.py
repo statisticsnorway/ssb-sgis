@@ -37,7 +37,7 @@ def test_network_functions(points_oslo, roads_oslo):
     if __name__ == "__main__":
         sg.qtm(holes_closed, column="hole", title="holes")
 
-    holes_closed = sg.close_network_holes_deadends(r, 10.1)
+    holes_closed = sg.close_network_holes_to_deadends(r, 10.1)
     print(holes_closed.hole.value_counts())
     if __name__ == "__main__":
         sg.qtm(holes_closed, column="hole", title="holes, deadend to deadend")
