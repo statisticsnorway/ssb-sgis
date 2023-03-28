@@ -415,6 +415,7 @@ class Explore:
     def _check_if_categorical(self) -> bool:
         if not self.kwargs["column"]:
             return True
+
         all_nan = 0
         col_not_present = 0
         for gdf in self.gdfs:

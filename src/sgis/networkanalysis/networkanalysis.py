@@ -5,6 +5,7 @@ get_route_frequencies and service_area.
 """
 
 
+from copy import copy, deepcopy
 from datetime import datetime
 from time import perf_counter
 
@@ -108,17 +109,17 @@ class NetworkAnalysis:
     >>> od = nwa.od_cost_matrix(points, points)
     >>> od
             origin  destination    minutes
-    0            1            1   0.000000
-    1            1            2  11.983871
-    2            1            3   9.822048
-    3            1            4   7.838012
-    4            1            5  13.708064
+    0            0            0   0.000000
+    1            0            1  13.039830
+    2            0            2  10.902453
+    3            0            3   8.297021
+    4            0            4  14.742294
     ...        ...          ...        ...
-    999995    1000          996  10.315319
-    999996    1000          997  16.839220
-    999997    1000          998   6.539792
-    999998    1000          999  14.182613
-    999999    1000         1000   0.000000
+    999995     999          995  11.038673
+    999996     999          996  17.820664
+    999997     999          997  10.288465
+    999998     999          998  14.798257
+    999999     999          999   0.000000
 
     [1000000 rows x 3 columns]
 
@@ -143,8 +144,8 @@ class NetworkAnalysis:
 
     get_route_frequencies: get the number of times each line segment was used.
 
-    >>> freq = nwa.get_route_frequencies(points.sample(25), points.sample(25))
-    >>> freq
+    >>> frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
+    >>> frequencies
         source target      n                                           geometry
     137866  19095  44962    1.0  LINESTRING Z (265476.114 6645475.318 160.724, ...
     138905  30597  16266    1.0  LINESTRING Z (272648.400 6652234.800 178.170, ...
@@ -162,11 +163,11 @@ class NetworkAnalysis:
 
     service_area: get the area that can be reached within one or more breaks.
 
-    >>> sa = nwa.service_area(
+    >>> service_areas = nwa.service_area(
     ...         points.iloc[:3],
     ...         breaks=[5, 10, 15],
     ...     )
-    >>> sa
+    >>> service_areas
      origin  minutes                                           geometry
     0    1        5  MULTILINESTRING Z ((265378.000 6650581.600 85....
     1    1       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
@@ -177,23 +178,6 @@ class NetworkAnalysis:
     6    3        5  MULTILINESTRING Z ((266909.769 6651075.250 114...
     7    3       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
     8    3       15  MULTILINESTRING Z ((273161.140 6654455.240 229...
-
-    get_k_routes: get the geometry of the k low-cost routes for each od pair.
-
-    >>> k_routes = nwa.get_k_routes(
-    ...    points.iloc[[0]],
-    ...    points.iloc[1:3],
-    ...    k=3,
-    ...    drop_middle_percent=50,
-    ...    )
-    >>> k_routes
-       origin  destination    minutes  k                                           geometry
-    0       1            2  12.930588  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
-    1       1            2  14.128866  2  MULTILINESTRING Z ((272281.367 6653079.745 160...
-    2       1            2  20.030052  3  MULTILINESTRING Z ((272281.367 6653079.745 160...
-    3       1            3  10.867076  1  MULTILINESTRING Z ((270054.367 6653367.774 144...
-    4       1            3  11.535946  2  MULTILINESTRING Z ((270074.933 6653001.553 118...
-    5       1            3  14.867076  3  MULTILINESTRING Z ((265313.000 6650960.400 97....
 
     Check the log.
 
@@ -297,38 +281,39 @@ class NetworkAnalysis:
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
         ... )
-        >>> origins = points.loc[:99].rename(columns={"idx": "origin_idx"})
+        >>> origins = points.loc[:99]
         >>> origins
-            origin_idx                        geometry
-        0            1  POINT (263122.700 6651184.900)
-        1            2  POINT (272456.100 6653369.500)
-        2            3  POINT (270082.300 6653032.700)
-        3            4  POINT (259804.800 6650339.700)
-        4            5  POINT (272876.200 6652889.100)
-        ..         ...                             ...
-        95          96  POINT (270348.000 6651899.400)
-        96          97  POINT (264845.600 6649005.800)
-        97          98  POINT (263162.000 6650732.200)
-        98          99  POINT (272322.700 6653729.100)
-        99         100  POINT (265622.800 6644644.200)
+                                  geometry
+        0   POINT (263122.700 6651184.900)
+        1   POINT (272456.100 6653369.500)
+        2   POINT (270082.300 6653032.700)
+        3   POINT (259804.800 6650339.700)
+        4   POINT (272876.200 6652889.100)
+        ..                             ...
+        95  POINT (270348.000 6651899.400)
+        96  POINT (264845.600 6649005.800)
+        97  POINT (263162.000 6650732.200)
+        98  POINT (272322.700 6653729.100)
+        99  POINT (265622.800 6644644.200)
 
-        [100 rows x 2 columns]
-        >>> destinations = points.loc[100:199].rename(columns={"idx": "destination_idx"})
+        [100 rows x 1 columns]
+
+        >>> destinations = points.loc[100:199]
         >>> destinations
-             destination_idx                        geometry
-        100              101  POINT (265997.900 6647899.400)
-        101              102  POINT (263835.200 6648677.700)
-        102              103  POINT (265764.000 6644063.900)
-        103              104  POINT (265970.700 6651258.500)
-        104              105  POINT (264624.300 6649937.700)
-        ..               ...                             ...
-        195              196  POINT (258175.600 6653694.300)
-        196              197  POINT (258772.200 6652487.600)
-        197              198  POINT (273135.300 6653198.100)
-        198              199  POINT (270582.300 6652163.800)
-        199              200  POINT (264980.800 6647231.300)
+                                   geometry
+        100  POINT (265997.900 6647899.400)
+        101  POINT (263835.200 6648677.700)
+        102  POINT (265764.000 6644063.900)
+        103  POINT (265970.700 6651258.500)
+        104  POINT (264624.300 6649937.700)
+        ..                              ...
+        195  POINT (258175.600 6653694.300)
+        196  POINT (258772.200 6652487.600)
+        197  POINT (273135.300 6653198.100)
+        198  POINT (270582.300 6652163.800)
+        199  POINT (264980.800 6647231.300)
 
-        [100 rows x 2 columns]
+        [100 rows x 1 columns]
 
         Travel time from 100 to 100 points.
 
@@ -353,116 +338,115 @@ class NetworkAnalysis:
 
         >>> joined = origins.join(od.set_index("origin"))
         >>> joined
-            origin_idx                        geometry  destination    minutes
-        0            1  POINT (263122.700 6651184.900)          100   8.765621
-        0            1  POINT (263122.700 6651184.900)          101   6.383407
-        0            1  POINT (263122.700 6651184.900)          102  13.482324
-        0            1  POINT (263122.700 6651184.900)          103   6.410121
-        0            1  POINT (263122.700 6651184.900)          104   5.882124
-        ..         ...                             ...          ...        ...
-        99         100  POINT (265622.800 6644644.200)          195  20.488644
-        99         100  POINT (265622.800 6644644.200)          196  16.721241
-        99         100  POINT (265622.800 6644644.200)          197  19.977029
-        99         100  POINT (265622.800 6644644.200)          198  15.233163
-        99         100  POINT (265622.800 6644644.200)          199   6.439002
+                                  geometry  destination    minutes
+        0   POINT (263122.700 6651184.900)          100   8.765621
+        0   POINT (263122.700 6651184.900)          101   6.383407
+        0   POINT (263122.700 6651184.900)          102  13.482324
+        0   POINT (263122.700 6651184.900)          103   6.410121
+        0   POINT (263122.700 6651184.900)          104   5.882124
+        ..                             ...          ...        ...
+        99  POINT (265622.800 6644644.200)          195  20.488644
+        99  POINT (265622.800 6644644.200)          196  16.721241
+        99  POINT (265622.800 6644644.200)          197  19.977029
+        99  POINT (265622.800 6644644.200)          198  15.233163
+        99  POINT (265622.800 6644644.200)          199   6.439002
 
-        [10000 rows x 4 columns]
+        [10000 rows x 3 columns]
 
         Get travel times below 10 minutes.
 
         >>> less_than_10_min = od.loc[od.minutes < 10]
         >>> joined = origins.join(less_than_10_min.set_index("origin"))
         >>> joined
-            origin_idx                        geometry  destination   minutes
-        0            1  POINT (263122.700 6651184.900)        100.0  8.765621
-        0            1  POINT (263122.700 6651184.900)        101.0  6.383407
-        0            1  POINT (263122.700 6651184.900)        103.0  6.410121
-        0            1  POINT (263122.700 6651184.900)        104.0  5.882124
-        0            1  POINT (263122.700 6651184.900)        106.0  9.811828
-        ..         ...                             ...          ...       ...
-        99         100  POINT (265622.800 6644644.200)        173.0  4.305523
-        99         100  POINT (265622.800 6644644.200)        174.0  6.094040
-        99         100  POINT (265622.800 6644644.200)        177.0  5.944194
-        99         100  POINT (265622.800 6644644.200)        183.0  8.449906
-        99         100  POINT (265622.800 6644644.200)        199.0  6.439002
+                                  geometry  destination   minutes
+        0   POINT (263122.700 6651184.900)        100.0  8.765621
+        0   POINT (263122.700 6651184.900)        101.0  6.383407
+        0   POINT (263122.700 6651184.900)        103.0  6.410121
+        0   POINT (263122.700 6651184.900)        104.0  5.882124
+        0   POINT (263122.700 6651184.900)        106.0  9.811828
+        ..                             ...          ...       ...
+        99  POINT (265622.800 6644644.200)        173.0  4.305523
+        99  POINT (265622.800 6644644.200)        174.0  6.094040
+        99  POINT (265622.800 6644644.200)        177.0  5.944194
+        99  POINT (265622.800 6644644.200)        183.0  8.449906
+        99  POINT (265622.800 6644644.200)        199.0  6.439002
 
-        [2195 rows x 4 columns]
+        [2195 rows x 3 columns]
 
         Get the three fastest routes from each origin.
 
         >>> three_fastest = od.loc[od.groupby("origin")["minutes"].rank() <= 3]
         >>> joined = origins.join(three_fastest.set_index("origin"))
         >>> joined
-            origin_idx                        geometry  destination   minutes
-        0            1  POINT (263122.700 6651184.900)        135.0  0.966702
-        0            1  POINT (263122.700 6651184.900)        175.0  2.202638
-        0            1  POINT (263122.700 6651184.900)        188.0  2.931595
-        1            2  POINT (272456.100 6653369.500)        171.0  2.918100
-        1            2  POINT (272456.100 6653369.500)        184.0  2.754545
-        ..         ...                             ...          ...       ...
-        98          99  POINT (272322.700 6653729.100)        184.0  3.175472
-        98          99  POINT (272322.700 6653729.100)        189.0  3.179428
-        99         100  POINT (265622.800 6644644.200)        102.0  1.648705
-        99         100  POINT (265622.800 6644644.200)        134.0  1.116209
-        99         100  POINT (265622.800 6644644.200)        156.0  1.368926
+                                  geometry  destination   minutes
+        0   POINT (263122.700 6651184.900)        135.0  0.966702
+        0   POINT (263122.700 6651184.900)        175.0  2.202638
+        0   POINT (263122.700 6651184.900)        188.0  2.931595
+        1   POINT (272456.100 6653369.500)        171.0  2.918100
+        1   POINT (272456.100 6653369.500)        184.0  2.754545
+        ..                             ...          ...       ...
+        98  POINT (272322.700 6653729.100)        184.0  3.175472
+        98  POINT (272322.700 6653729.100)        189.0  3.179428
+        99  POINT (265622.800 6644644.200)        102.0  1.648705
+        99  POINT (265622.800 6644644.200)        134.0  1.116209
+        99  POINT (265622.800 6644644.200)        156.0  1.368926
 
-        [294 rows x 4 columns]
+        [294 rows x 3 columns]
 
         Assign aggregate values onto the origins without joining.
 
         >>> origins["minutes_mean"] = od.groupby("origin")["minutes"].mean()
         >>> origins
-            origin_idx                        geometry  minutes_mean
-        0            1  POINT (263122.700 6651184.900)     11.628637
-        1            2  POINT (272456.100 6653369.500)     16.084722
-        2            3  POINT (270082.300 6653032.700)     15.304246
-        3            4  POINT (259804.800 6650339.700)     14.044023
-        4            5  POINT (272876.200 6652889.100)     17.565747
-        ..         ...                             ...           ...
-        95          96  POINT (270348.000 6651899.400)     15.427027
-        96          97  POINT (264845.600 6649005.800)     11.239592
-        97          98  POINT (263162.000 6650732.200)     11.904372
-        98          99  POINT (272322.700 6653729.100)     17.579399
-        99         100  POINT (265622.800 6644644.200)     12.185800
-
-        [100 rows x 3 columns]
+                                  geometry  minutes_mean
+        0   POINT (263122.700 6651184.900)     11.628637
+        1   POINT (272456.100 6653369.500)     16.084722
+        2   POINT (270082.300 6653032.700)     15.304246
+        3   POINT (259804.800 6650339.700)     14.044023
+        4   POINT (272876.200 6652889.100)     17.565747
+        ..                             ...           ...
+        95  POINT (270348.000 6651899.400)     15.427027
+        96  POINT (264845.600 6649005.800)     11.239592
+        97  POINT (263162.000 6650732.200)     11.904372
+        98  POINT (272322.700 6653729.100)     17.579399
+        99  POINT (265622.800 6644644.200)     12.185800
 
         Set the index to use column as identifier insted of the index.
 
-        >>> od = nwa.od_cost_matrix(origins.set_index("origin_idx"), destinations.set_index("destination_idx"))
+        >>> origins["letter"] = np.random.choice([*"abc"], len(origins))
+        >>> od = nwa.od_cost_matrix(origins.set_index("letter"), destinations)
         >>> od
-              origin  destination    minutes
-        0          1          101   8.765621
-        1          1          102   6.383407
-        2          1          103  13.482324
-        3          1          104   6.410121
-        4          1          105   5.882124
-        ...      ...          ...        ...
-        9995     100          196  20.488644
-        9996     100          197  16.721241
-        9997     100          198  19.977029
-        9998     100          199  15.233163
-        9999     100          200   6.439002
+             origin  destination    minutes
+        0         a          100   8.765621
+        1         a          101   6.383407
+        2         a          102  13.482324
+        3         a          103   6.410121
+        4         a          104   5.882124
+        ...     ...          ...        ...
+        9995      b          195  20.488644
+        9996      b          196  16.721241
+        9997      b          197  19.977029
+        9998      b          198  15.233163
+        9999      b          199   6.439002
 
         [10000 rows x 3 columns]
 
         Travel time from 1000 to 1000 points rowwise.
 
-        >>> points_reversed = points.iloc[::-1]
+        >>> points_reversed = points.iloc[::-1].reset_index(drop=True)
         >>> od = nwa.od_cost_matrix(points, points_reversed, rowwise=True)
         >>> od
-            origin  destination    minutes
-        0         1         1000  14.657289
-        1         2          999   8.378826
-        2         3          998  15.147861
-        3         4          997   8.889927
-        4         5          996  16.371447
+             origin  destination    minutes
+        0         0            0  14.692667
+        1         1            1   8.452691
+        2         2            2  16.370569
+        3         3            3   9.486131
+        4         4            4  16.521346
         ..      ...          ...        ...
-        995     996            5  16.644710
-        996     997            4   9.015495
-        997     998            3  18.342336
-        998     999            2   9.410509
-        999    1000            1  14.892648
+        995     995          995  16.794610
+        996     996          996   9.611700
+        997     997          997  19.968743
+        998     998          998   9.484374
+        999     999          999  14.892648
 
         [1000 rows x 3 columns]
         """
@@ -1416,3 +1400,11 @@ class NetworkAnalysis:
     def __getitem__(self, item):
         """To be able to write self['origins'] as well as self.origins."""
         return getattr(self, item)
+
+    def copy(self):
+        """Returns a shallow copy of the class instance."""
+        return copy(self)
+
+    def deepcopy(self):
+        """Returns a deep copy of the class instance."""
+        return deepcopy(self)

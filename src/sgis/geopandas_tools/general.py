@@ -302,7 +302,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     return unioned.explode(ignore_index=True)
 
 
-def random_points_in_polygon(polygon, n):
+def random_points_in_polygon(polygon: GeoDataFrame, n: int):
     overlapping = pd.DataFrame()
     while True:
         minx, miny, maxx, maxy = polygon.total_bounds
@@ -356,7 +356,7 @@ def to_multipoint(
     1      MULTIPOINT (1.00000 1.00000, 2.00000 2.00000)
     2  MULTIPOINT (3.00000 3.00000, 3.00000 4.00000, ...
     """
-    if copy:
+    if copy and not isinstance(gdf, Geometry):
         gdf = gdf.copy()
 
     if isinstance(gdf, (GeoDataFrame, GeoSeries)) and gdf.is_empty.any():
@@ -454,6 +454,7 @@ def to_gdf(
             is the input type. Otherwise, no crs is used.
         geometry: name of column(s) containing the geometry-like values. Can be
             ['x', 'y', 'z'] if coordinate columns, or e.g. 'geometry' if one column.
+            The resulting geometry column will always be named 'geometry'.
         **kwargs: additional keyword arguments taken by the GeoDataFrame constructor.
 
     Returns:
@@ -562,6 +563,7 @@ def to_gdf(
         return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
 
     # dataframes and dicts with geometry/xyz key(s)
+    geometry = "geometry" if not geometry else geometry
     if _is_df_like(geom, geometry):
         geom = geom.copy()
         geom = _make_geomcol_df_like(geom, geometry, index=kwargs.get("index"))
@@ -606,7 +608,7 @@ def _is_one_geometry(geom) -> bool:
     return False
 
 
-def _is_df_like(geom, geometry) -> bool:
+def _is_df_like(geom, geometry: str | None) -> bool:
     if not is_dict_like(geom):
         return False
 

@@ -12,6 +12,7 @@ from .geopandas_tools.general import (
     clean_geoms,
     coordinate_array,
     random_points,
+    random_points_in_polygon,
     to_gdf,
     to_lines,
     to_multipoint,
@@ -36,7 +37,6 @@ from .geopandas_tools.line_operations import (
 from .geopandas_tools.neighbors import (
     get_all_distances,
     get_k_nearest_neighbors,
-    get_neighbor_ids,
     get_neighbor_indices,
 )
 from .geopandas_tools.overlay import clean_shapely_overlay, overlay, overlay_update

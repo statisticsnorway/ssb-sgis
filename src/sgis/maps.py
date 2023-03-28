@@ -8,7 +8,6 @@ The 'qtm' function shows a static map of one or more GeoDataFrames.
 """
 import matplotlib.pyplot as plt
 from geopandas import GeoDataFrame, GeoSeries
-from matplotlib import rcParams
 from matplotlib.axes._axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -35,7 +34,6 @@ def explore(
     *gdfs: GeoDataFrame,
     column: str | None = None,
     labels: tuple[str] | None = None,
-    popup: bool = True,
     max_zoom: int = 30,
     show_in_browser: bool = False,
     **kwargs,
@@ -59,10 +57,6 @@ def explore(
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings with the same
             length as the number of gdfs.
-        popup: If True (default), clicking on a geometry will create a popup box with
-            column names and values for the given geometry. The box stays until
-            clicking elsewhere. If False (the geopandas default), the box will only
-            show when hovering over the geometry.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         show_in_browser: If False (default), the maps will be shown in Jupyter.
@@ -92,7 +86,7 @@ def explore(
     >>> points["meters"] = points.length
     >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
     """
-    kwargs: dict = kwargs | {"popup": popup, "column": column, "max_zoom": max_zoom}
+    kwargs: dict = kwargs | {"column": column, "max_zoom": max_zoom}
 
     m = Explore(*gdfs, labels=labels, show_in_browser=show_in_browser, **kwargs)
     m.explore()
@@ -101,10 +95,9 @@ def explore(
 def samplemap(
     *gdfs: GeoDataFrame,
     column: str | None = None,
-    size: int = 2000,
+    size: int = 1500,
     sample_from_first: bool = True,
     labels: tuple[str] | None = None,
-    popup: bool = True,
     max_zoom: int = 30,
     explore: bool = True,
     show_in_browser: bool = False,
@@ -132,16 +125,12 @@ def samplemap(
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
         size: the radius to buffer the sample point by before clipping with the data.
-            Defaults to 2000 (meters).
+            Defaults to 1500 (meters).
         sample_from_first: If True (default), the sample point is taken form the
             first specified GeoDataFrame. If False, all GeoDataFrames are considered.
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings the same
             length as the number of gdfs.
-        popup: If True (default), clicking on a geometry will create a popup box with
-            column names and values for the given geometry. The box stays until
-            clicking elsewhere. If False (the geopandas default), the box will only
-            show when hovering over the geometry.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         explore: If True (default), an interactive map will be displayed. If False,
@@ -172,7 +161,7 @@ def samplemap(
     >>> samplemap(roads, points, size=5_000, column="meters")
 
     """
-    kwargs: dict = kwargs | {"popup": popup, "column": column, "max_zoom": max_zoom}
+    kwargs: dict = kwargs | {"column": column, "max_zoom": max_zoom}
 
     _check_if_jupyter_is_needed(explore, show_in_browser)
 
@@ -206,7 +195,6 @@ def clipmap(
     mask: GeoDataFrame | GeoSeries | Geometry,
     column: str | None = None,
     labels: tuple[str] | None = None,
-    popup: bool = True,
     explore: bool = True,
     max_zoom: int = 30,
     show_in_browser: bool = False,
@@ -231,10 +219,6 @@ def clipmap(
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings the same
             length as the number of gdfs.
-        popup: If True (default), clicking on a geometry will create a popup box with
-            column names and values for the given geometry. The box stays until
-            clicking elsewhere. If False (the geopandas default), the box will only
-            show when hovering over the geometry.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         explore: If True (default), an interactive map will be displayed. If False,
@@ -250,7 +234,8 @@ def clipmap(
     explore: same functionality, but shows the entire area of the geometries.
     samplemap: same functionality, but shows only a random area of a given size.
     """
-    kwargs: dict = kwargs | {"popup": popup, "column": column, "max_zoom": max_zoom}
+
+    kwargs: dict = kwargs | {"column": column, "max_zoom": max_zoom}
 
     _check_if_jupyter_is_needed(explore, show_in_browser)
 
@@ -301,7 +286,6 @@ def qtm(
     size: int = 10,
     legend_title: str | None = None,
     bbox_to_anchor: tuple[float | int, float | int] = (1, 0.2),
-    fonttype: str = "Calibri",
     **kwargs,
 ) -> tuple[Figure, Axes]:
     """Quick, thematic map of one or more GeoDataFrames.
@@ -329,13 +313,7 @@ def qtm(
 
     Returns:
         The matplotlib figure and axis.
-
-    Examples
-    --------
-
     """
-
-    rcParams["font.sans-serif"] = [fonttype]
 
     if black:
         facecolor, title_color, bg_gdf_color = "#0f0f0f", "#fefefe", "#383834"

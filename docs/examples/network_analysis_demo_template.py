@@ -95,7 +95,7 @@ points
 
 # od_cost_matrix calculates the traveltime from a set of origins to a set of destinations:
 # %%
-od = nwa.od_cost_matrix(origins=points, destinations=points, id_col="idx")
+od = nwa.od_cost_matrix(origins=points, destinations=points)
 od
 # %% [markdown]
 # Set 'lines' to True to get a geometry column with straight lines between origin and
@@ -120,7 +120,7 @@ print(nwa.log)
 # The get_route method can be used to get the actual lowest cost path:
 
 # %%
-routes = nwa.get_route(points.iloc[[0]], points.sample(100), id_col="idx")
+routes = nwa.get_route(points.iloc[[0]], points.sample(100))
 
 sg.qtm(
     sg.buff(routes, 12),
@@ -171,11 +171,11 @@ nwa.rules.weight = "minutes"
 # Here, we find the areas that can be reached within 5, 10 and 15 minutes for five random points:
 # %%
 
-sa = nwa.service_area(points.sample(5), breaks=(5, 10, 15), id_col="idx")
+sa = nwa.service_area(points.sample(5), breaks=(5, 10, 15))
 sa
 
 # %%
-sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
+sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11))
 
 sg.qtm(
     sa,

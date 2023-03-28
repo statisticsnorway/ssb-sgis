@@ -131,7 +131,7 @@ sg.qtm(
 # Fast many-to-many travel times/distances
 
 # %%
-od = nwa.od_cost_matrix(points, points, id_col="idx")
+od = nwa.od_cost_matrix(points, points)
 
 print(od)
 # %% [markdown]

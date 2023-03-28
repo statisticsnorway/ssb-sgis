@@ -199,8 +199,6 @@ def split_lines_by_nearest_point(
     # point coordinates, using get_k_nearest_neighbors. This will map the sligtly
     # off line endpoints with the point the line was split by.
 
-    # columns that will be used as id_cols in get_k_nearest_neighbors
-    splitted["splitidx"] = splitted.index
     snapped["point_coords"] = [(geom.x, geom.y) for geom in snapped.geometry]
 
     # get the endpoints of the lines as columns
@@ -242,7 +240,7 @@ def split_lines_by_nearest_point(
     splitted["splitted"] = 1
 
     lines = pd.concat([the_other_lines, splitted], ignore_index=True).drop(
-        ["temp_idx_", "splitidx", "source_coords", "target_coords"], axis=1
+        ["temp_idx_", "source_coords", "target_coords"], axis=1
     )
 
     return lines

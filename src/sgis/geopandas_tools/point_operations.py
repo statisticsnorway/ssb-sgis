@@ -126,7 +126,6 @@ def snap_all(
 
     Examples
     --------
-
     Create som points.
 
     >>> from sgis import snap_all, to_gdf

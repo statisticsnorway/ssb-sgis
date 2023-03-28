@@ -111,10 +111,9 @@ def test_neighbor_indices_ids(points_oslo):
     assert isinstance(neighbor_index, list)
     assert len(neighbor_index) == 101, len(neighbor_index)
 
-    neighbor_ids = sg.get_neighbor_ids(
+    neighbor_ids = sg.get_neighbor_indices(
         p.iloc[[0]],
-        neighbors=p,
-        id_col="idx2",
+        neighbors=p.set_index("idx2"),
         max_dist=2000,
     )
     assert isinstance(neighbor_ids, list)

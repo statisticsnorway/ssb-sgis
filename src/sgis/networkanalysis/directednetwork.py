@@ -96,12 +96,12 @@ class DirectedNetwork(Network):
             direction_vals_bft: tuple or list with the values of the direction
                 column. Must be in the order 'both directions', 'from', 'to'.
                 E.g. ('B', 'F', 'T').
-            speed_col (optional): name of column with the road speed limit.
             minute_cols (optional): column or columns containing the number of minutes
                 it takes to traverse the line. If one column name is given, this will
                 be used for both directions. If tuple/list with two column names,
                 the first column will be used as the minute column for the forward
                 direction, and the second column for roads going backwards.
+            speed_col (optional): name of column with the road speed limit.
             flat_speed (optional): Speed in kilometers per hour to use as the speed for
                 all roads.
             reverse_tofrom: If the geometries of the lines going backwards

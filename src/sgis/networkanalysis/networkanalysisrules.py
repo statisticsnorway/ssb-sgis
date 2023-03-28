@@ -125,6 +125,8 @@ class NetworkAnalysisRules:
     brigde and one at the edge of the road network (would require a larger network).
     These two points only find themselves, and thus has 999 missing values.
 
+    >>> n_missing = od.groupby("origin").minutes.agg(lambda x: x.isna().sum())
+    >>> n_missing.sort_values()
     >>> nwa.origins.gdf.sort_values("missing").tail(3)
           idx                        geometry temp_idx  missing
     999  1000  POINT (264570.300 6644239.500)    80957        2
@@ -205,7 +207,7 @@ class NetworkAnalysisRules:
             return True
         if self.nodedist_multiplier != self._nodedist_multiplier:
             return True
-        if self._nodedist_kmh != self._nodedist_kmh:
+        if self.nodedist_kmh != self._nodedist_kmh:
             return True
 
     def _validate_weight(self, gdf: GeoDataFrame) -> GeoDataFrame:

@@ -12,88 +12,7 @@ src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
 
-import numpy as np
-
 import sgis as sg
-
-
-points = sg.random_points(100)
-points["group"] = np.random.choice([*"abd"], len(points))
-points["number"] = np.random.random(size=len(points))
-sg.buffdiss(points, 0.5)
-sg.buffdiss(points, 0.5, by="group", aggfunc="sum")
-sg.buffdiss(points, 0.5, by="group", as_index=False)
-aggcols = points.groupby("group").agg(
-    numbers_sum=("number", "count"),
-    numbers_mean=("number", "mean"),
-    n=("number", "count"),
-)
-points_agg = (
-    sg.buffdiss(points, 0.5, by="group")[["geometry"]].join(aggcols).reset_index()
-)
-points_agg
-
-
-sg.buffdissexp(points, 0.1)
-sg.buffdissexp(points, 0.1, by="group")
-sg.buffdissexp(points, 0.1, by="group", as_index=False)
-
-
-aggcols = points.groupby("group").agg(
-    numbers_sum=("number", "count"),
-    numbers_mean=("number", "mean"),
-    n=("number", "count"),
-)
-points_agg = (
-    sg.buffdissexp(points, 0.1, by="group")[["geometry"]].join(aggcols).reset_index()
-)
-points_agg
-
-
-veger_oslo = sg.read_parquet_url(
-    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
-)
-veger_oslo = veger_oslo[
-    ["oneway", "drivetime_fw", "drivetime_bw", "roadid", "geometry"]
-]
-nw = sg.DirectedNetwork(veger_oslo).remove_isolated().make_directed_network_norway()
-rules = sg.NetworkAnalysisRules(weight="minutes")
-
-from sgis import NetworkAnalysis
-
-
-nwa = NetworkAnalysis(network=nw, rules=rules)
-points = sg.read_parquet_url(
-    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
-)
-
-origins = points.loc[:99, ["geometry"]].rename(columns={"idx": "origin_idx"})
-origins
-destinations = points.loc[100:199, ["geometry"]]
-destinations
-
-origins["letter"] = np.random.choice([*"abc"], len(origins))
-origins = origins.set_index("letter")
-od = nwa.od_cost_matrix(origins, destinations)
-
-print(od)
-mean_by_letter = od.groupby("origin")["minutes"].mean()
-print(mean_by_letter)
-
-points["idx2"] = points.index
-od = nwa.od_cost_matrix(points.set_index(["idx", "idx2"]), points)
-print(od)
-
-joined = points.join(od.set_index("origin"))
-joined
-
-points["minutes_mean"] = od.groupby("origin")["minutes"].mean()
-points
-
-points_reversed = points.iloc[::-1]
-od = nwa.od_cost_matrix(points, points_reversed, rowwise=True)
-od
-ss
 
 
 def test_network_analysis(points_oslo, roads_oslo):
@@ -298,3 +217,5 @@ if __name__ == "__main__":
     # import cProfile
     # cProfile.run("main()", sort="cumtime")
     main()
+
+# %%

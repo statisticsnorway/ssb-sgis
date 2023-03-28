@@ -58,6 +58,7 @@ def not_test_explore(points_oslo, roads_oslo):
         )
 
     sg.clipmap(r1, r2, r3, "meters", mask=p.buffer(100))
+
     sg.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
 
     print("static mapping finished")

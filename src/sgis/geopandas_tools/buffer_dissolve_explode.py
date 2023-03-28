@@ -56,19 +56,6 @@ def buffdissexp(
     Returns:
         A buffered GeoDataFrame where overlapping geometries are dissolved.
 
-    Examples
-    --------
-
-    Buffer 100 meters and dissolve all overlapping geometries.
-
-    Dissolve overlapping geometries with the same values in ''..
-
-    Get 'by' columns as columns, not index.
-
-    How to aggregate values can be specified with 'aggfunc'. Keep in mind that these
-    values do not make sense after exploding the geometries.
-
-    >>>
     """
     if "ignore_index" in dissolve_kwargs:
         raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
@@ -117,69 +104,50 @@ def buffdiss(
     Examples
     --------
     Create some random points.
+
     >>> import sgis as sg
     >>> import numpy as np
-    >>> points = sg.random_points(100)
+    >>> points = sg.read_parquet_url(
+    ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+    ... )[["geometry"]]
     >>> points["group"] = np.random.choice([*"abd"], len(points))
     >>> points["number"] = np.random.random(size=len(points))
     >>> points
-                    geometry group    number
-    0   POINT (0.63331 0.85744)     a  0.279622
-    1   POINT (0.98536 0.43368)     d  0.686433
-    2   POINT (0.00099 0.55209)     d  0.943445
-    3   POINT (0.18126 0.87312)     d  0.757552
-    4   POINT (0.14582 0.73144)     b  0.259795
-    ..                      ...   ...       ...
-    95  POINT (0.19386 0.13392)     a  0.741990
-    96  POINT (0.38129 0.43777)     d  0.296729
-    97  POINT (0.86136 0.83022)     d  0.562658
-    98  POINT (0.48929 0.08860)     d  0.937703
-    99  POINT (0.57027 0.15667)     a  0.312668
+                               geometry group    number
+    0    POINT (263122.700 6651184.900)     a  0.878158
+    1    POINT (272456.100 6653369.500)     a  0.693311
+    2    POINT (270082.300 6653032.700)     b  0.323960
+    3    POINT (259804.800 6650339.700)     a  0.606745
+    4    POINT (272876.200 6652889.100)     a  0.194360
+    ..                              ...   ...       ...
+    995  POINT (266801.700 6647844.500)     a  0.814424
+    996  POINT (261274.000 6653593.400)     b  0.769479
+    997  POINT (263542.900 6645427.000)     a  0.925991
+    998  POINT (269226.700 6650628.000)     b  0.431972
+    999  POINT (264570.300 6644239.500)     d  0.555239
 
-    [100 rows x 3 columns]
+    Buffer by 100 meters and dissolve.
 
-    Buffer by 0.5.
-    >>> sg.buffdiss(points, 0.5)
+    >>> sg.buffdiss(points, 100)
                                                 geometry group    number
-    0  POLYGON ((0.20196 -0.46016, 0.18635 -0.45843, ...     a  0.279622
+    0  MULTIPOLYGON (((256421.833 6649878.117, 256420...     d  0.580157
 
-    Buffer by group and summarise columns.
+    Dissolve by 'group' and get sum of columns.
 
-    >>> sg.buffdiss(points, 0.5, by="group", aggfunc="sum")
-                                                    geometry     number
+    >>> sg.buffdiss(points, 100, by="group", aggfunc="sum")
+                                                    geometry      number
     group
-    a      POLYGON ((0.86263 -0.33061, 0.85170 -0.34189, ...  15.143742
-    b      POLYGON ((0.58850 -0.31011, 0.57565 -0.31914, ...  12.049528
-    d      POLYGON ((0.24902 -0.46238, 0.23331 -0.46213, ...  22.079456
+    a      MULTIPOLYGON (((258866.258 6648220.031, 258865...  167.265619
+    b      MULTIPOLYGON (((258404.858 6647830.931, 258404...  171.939169
+    d      MULTIPOLYGON (((258180.258 6647935.731, 258179...  156.964300
 
     To get the 'by' columns as columns, not index.
 
-    >>> sg.buffdiss(points, 0.5, by="group", as_index=False)
+    >>> sg.buffdiss(points, 100, by="group", as_index=False)
       group                                           geometry    number
-    0     a  POLYGON ((0.86263 -0.33061, 0.85170 -0.34189, ...  0.279622
-    1     b  POLYGON ((0.58850 -0.31011, 0.57565 -0.31914, ...  0.259795
-    2     d  POLYGON ((0.24902 -0.46238, 0.23331 -0.46213, ...  0.686433
-
-    If doing different aggregate functions, it might be a good idea to specify
-    each in groupby.agg, then join these columns with the dissolved geometries.
-
-    >>> aggcols = points.groupby("group").agg(
-    ...     numbers_sum=("number", "count"),
-    ...     numbers_mean=("number", "mean"),
-    ...     n=("number", "count"),
-    ... )
-    >>> points_agg = (
-    ...     sg.buffdiss(points, 0.5, by="group")
-    ...     [["geometry"]]
-    ...     .join(aggcols)
-    ...     .reset_index()
-    ... )
-    >>> points_agg
-      group                                           geometry  numbers_sum  numbers_mean   n
-    0     a  POLYGON ((0.86263 -0.33061, 0.85170 -0.34189, ...           32      0.473242  32
-    1     b  POLYGON ((0.58850 -0.31011, 0.57565 -0.31914, ...           27      0.446279  27
-    2     d  POLYGON ((0.24902 -0.46238, 0.23331 -0.46213, ...           41      0.538523  41
-
+    0     a  MULTIPOLYGON (((258866.258 6648220.031, 258865...  0.323948
+    1     b  MULTIPOLYGON (((258404.858 6647830.931, 258404...  0.687635
+    2     d  MULTIPOLYGON (((258180.258 6647935.731, 258179...  0.580157
     """
     if "ignore_index" in dissolve_kwargs:
         raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
@@ -218,9 +186,6 @@ def dissexp(
 
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
-
-    Examples
-    --------
     """
     if "ignore_index" in dissolve_kwargs:
         raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
@@ -259,11 +224,6 @@ def buffexp(
 
     Returns:
         A buffered GeoDataFrame where geometries are exploded.
-
-    Examples
-    --------
-
-    >>>
     """
     if "ignore_index" in buffer_kwargs:
         raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
@@ -293,9 +253,6 @@ def buff(
 
     Returns:
         A buffered GeoDataFrame.
-
-    Examples
-    --------
     """
     geom_col = gdf._geometry_column_name
 

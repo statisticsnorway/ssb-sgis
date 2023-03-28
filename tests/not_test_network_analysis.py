@@ -56,7 +56,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
             ]
         )
 
-        od = nwa.od_cost_matrix(p, p, id_col=("idx", "idx2"), lines=True)
+        od = nwa.od_cost_matrix(p, p, lines=True)
 
         p1 = nwa.origins.gdf
         p1 = p1.loc[[p1.missing.idxmin()]].sample(1).idx.values[0]
@@ -79,34 +79,34 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
         ### GET ROUTE
 
-        sp = nwa.get_route(p, p, id_col="idx")
+        sp = nwa.get_route(p, p)
 
-        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p)
 
         nwa.rules.search_factor = 0
         nwa.rules.split_lines = False
 
-        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]])
         if __name__ == "__main__":
             sg.qtm(sp)
         nwa.rules.split_lines = True
-        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]])
         if __name__ == "__main__":
             sg.qtm(sp)
-        sp = nwa.get_route(p.loc[[349]], p.loc[[440]], id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p.loc[[440]])
         if __name__ == "__main__":
             sg.qtm(sp)
 
         nwa.rules.split_lines = False
-        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p)
         if __name__ == "__main__":
             sg.qtm(sp)
         nwa.rules.split_lines = True
-        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p)
         if __name__ == "__main__":
             sg.qtm(sp)
 
-        sp = nwa.get_route(p.loc[[349]], p, id_col="idx")
+        sp = nwa.get_route(p.loc[[349]], p)
         if __name__ == "__main__":
             sg.qtm(sp)
 
@@ -130,7 +130,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
         if __name__ == "__main__":
             sg.qtm(sa)
 
-        sa = nwa.service_area(p.loc[[349]], breaks=np.arange(1, 11), id_col="idx")
+        sa = nwa.service_area(p.loc[[349]], breaks=np.arange(1, 11))
         print(sa.columns)
         sa = sa.sort_values("minutes", ascending=False)
         if __name__ == "__main__":
@@ -140,7 +140,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
         for x in [0, 50, 100]:
             sp = nwa.get_k_routes(
-                p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x, id_col="idx"
+                p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x
             )
             if __name__ == "__main__":
                 sg.qtm(sp, "k")
@@ -149,7 +149,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
         for x in [-1, 101]:
             try:
                 sp = nwa.get_k_routes(
-                    p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x, id_col="idx"
+                    p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x
                 )
                 if __name__ == "__main__":
                     sg.qtm(sp, "k")
@@ -159,16 +159,12 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
         assert n == 2
 
-        sp = nwa.get_k_routes(
-            p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=50, id_col="idx"
-        )
+        sp = nwa.get_k_routes(p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=50)
         print(sp)
         if __name__ == "__main__":
             sg.qtm(sp)
 
-        sp = nwa.get_k_routes(
-            p.loc[[349]], p, k=5, drop_middle_percent=50, id_col="idx"
-        )
+        sp = nwa.get_k_routes(p.loc[[349]], p, k=5, drop_middle_percent=50)
         if __name__ == "__main__":
             sg.qtm(sp)
 

@@ -37,12 +37,12 @@ def test_network_methods(points_oslo, roads_oslo):
     if __name__ == "__main__":
         sg.qtm(nw.gdf, column="connected", title="after removing isolated")
 
-    holes_closed = sg.Network(r).close_network_holes(10.1, max_angle=90).gdf
+    holes_closed = sg.Network(r).close_network_holes(10.1, max_angle=90, fillna=0).gdf
     print(holes_closed.hole.value_counts())
     if __name__ == "__main__":
         sg.qtm(holes_closed, column="hole", title="holes")
 
-    holes_closed2 = sg.Network(r).close_network_holes_to_deadends(10.1).gdf
+    holes_closed2 = sg.Network(r).close_network_holes_to_deadends(10.1, fillna=0).gdf
     print(holes_closed2.hole.value_counts())
     if __name__ == "__main__":
         sg.qtm(holes_closed2, column="hole", title="holes, deadend to deadend")
@@ -53,7 +53,9 @@ def test_network_methods(points_oslo, roads_oslo):
     sg.concat_explore(holes.overlay(holes2, how="symmetric_difference").pipe(sg.buff, 1), r[["geometry"]])
     """
 
-    nw = sg.Network(r).close_network_holes(1.1, max_angle=90).remove_isolated()
+    nw = (
+        sg.Network(r).close_network_holes(1.1, max_angle=90, fillna=0).remove_isolated()
+    )
     if __name__ == "__main__":
         sg.qtm(nw.gdf)
     rules = sg.NetworkAnalysisRules(

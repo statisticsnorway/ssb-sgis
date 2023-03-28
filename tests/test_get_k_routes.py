@@ -42,11 +42,11 @@ def not_test_network_analysis(roads_oslo, points_oslo):
         print(i)
         p1 = points.sample(1)
         try:
-            k = nwa.get_k_routes(p, p1, k=5, id_col="idx", drop_middle_percent=50)
+            k = nwa.get_k_routes(p, p1, k=5, drop_middle_percent=50)
             sg.qtm(k, nwa.rules.weight)
-            k = nwa.get_k_routes(p, p1, k=5, id_col="idx", drop_middle_percent=25)
+            k = nwa.get_k_routes(p, p1, k=5, drop_middle_percent=25)
             sg.qtm(k, nwa.rules.weight)
-            k = nwa.get_k_routes(p, p1, k=5, id_col="idx", drop_middle_percent=10)
+            k = nwa.get_k_routes(p, p1, k=5, drop_middle_percent=10)
             sg.qtm(k, nwa.rules.weight)
         except Exception as e:
             raise e

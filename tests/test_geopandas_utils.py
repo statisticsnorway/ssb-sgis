@@ -18,49 +18,6 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_snap_and_get_ids():
-    points = sg.to_gdf([(0, 0), (1, 1)])
-    to = sg.to_gdf([(2, 2), (3, 3)])
-    to["snap_idx"] = to.index
-
-    snapped = sg.snap_and_get_ids(points, to, id_col="snap_idx")
-    assert len(snapped) == 2
-    assert all(snapped.snap_idx == 0)
-
-    # with max_dist
-    snapped = sg.snap_and_get_ids(points, to, id_col="snap_idx", max_dist=1.5)
-    assert len(snapped) == 2
-    assert not all([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
-    assert any([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
-
-    # with identical distances
-    point = sg.to_gdf([0, 0])
-    to = sg.to_gdf([(0, 1), (1, 0)])
-    to["snap_idx"] = to.index
-    snapped = sg.snap_and_get_ids(point, to, id_col="snap_idx")
-    assert len(snapped) == 1
-    assert all(snapped.snap_idx == 0)
-    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
-
-    # opposite order of to coords
-    to = sg.to_gdf([(1, 0), (0, 1)])
-    to["snap_idx"] = to.index
-    snapped = sg.snap_and_get_ids(point, to, id_col="snap_idx")
-    assert len(snapped) == 1
-    assert all(snapped.snap_idx == 1)
-    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
-
-    # duplicate geometries in 'to'
-    point = sg.to_gdf([0, 0])
-    to = sg.to_gdf([(0, 1), (0, 1)])
-    to["snap_idx"] = to.index
-    snapped = sg.snap_and_get_ids(point, to, id_col="snap_idx")
-    assert len(snapped) == 2
-    assert any(snapped.snap_idx == 0)
-    assert any(snapped.snap_idx == 1)
-    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
-
-
 def test_buffdissexp(gdf_fixture):
     for distance in [1, 10, 100, 1000, 10000]:
         copy = gdf_fixture.copy()[["geometry"]]
@@ -186,16 +143,8 @@ def test_get_neighbor_indices():
     assert sg.get_neighbor_indices(p1, points) == [0]
     assert sg.get_neighbor_indices(p1, points, max_dist=1) == [0, 1]
     assert sg.get_neighbor_indices(p1, points, max_dist=3) == [0, 1, 2]
-
-
-def test_get_neighbor_ids():
-    points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
-    p1 = points.iloc[[0]]
     points["id_col"] = [*"abc"]
-
-    assert sg.get_neighbor_ids(p1, points, id_col="id_col") == ["a"]
-    assert sg.get_neighbor_ids(p1, points, max_dist=1, id_col="id_col") == ["a", "b"]
-    assert sg.get_neighbor_ids(p1, points, max_dist=3, id_col="id_col") == [
+    assert sg.get_neighbor_indices(p1, points.set_index("id_col"), max_dist=3) == [
         "a",
         "b",
         "c",
@@ -251,16 +200,6 @@ def main():
     print(f"{geos_versjon    = }")
     print(f"{pd.__version__  = }")
     print(f"{np.__version__  = }")
-
-    src = str(Path(__file__).parent).strip("tests") + "src"
-
-    sys.path.append(src)
-
-    from conftest import make_gdf
-
-    test_snap(make_gdf())
-
-    print("Success")
 
 
 if __name__ == "__main__":
