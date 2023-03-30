@@ -1,20 +1,17 @@
-import warnings
 import numbers
+import warnings
 from collections.abc import Iterator, Sized
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from pandas.api.types import is_dict_like
 from numpy.random import random as _np_random
-from shapely import (
-    Geometry,
-    wkb,
-    wkt,
-)
+from pandas.api.types import is_dict_like
+from shapely import Geometry, wkb, wkt
 from shapely.geometry import Point
 from shapely.ops import unary_union
+
 from .geometry_types import to_single_geom_type
 
 
@@ -496,7 +493,6 @@ def _is_one_geometry(geom) -> bool:
 
 
 def _is_df_like(geom, geometry) -> bool:
-
     if not is_dict_like(geom):
         return False
 

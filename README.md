@@ -23,16 +23,14 @@ GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 [pre-commit]: https://github.com/pre-commit/pre-commit
 [black]: https://github.com/psf/black
 
-
 sgis builds on the geopandas package and provides functions that make it easier to do advanced GIS in python.
 Features include network analysis, functions for exploring multiple GeoDataFrames in a layered interactive map,
 and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 in polygons by size.
 
-### Network analysis examples
+## Network analysis examples
+
 Preparing for network analysis:
-
-
 
 ```python
 import sgis as sg
@@ -58,18 +56,12 @@ nwa = sg.NetworkAnalysis(network=nw, rules=rules)
 nwa
 ```
 
-
-
-
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
         rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...)
     )
 
-
-
 Get number of times each line segment was visited
-
 
 ```python
 freq = nwa.get_route_frequencies(points.sample(75), points.sample(75))
@@ -83,14 +75,9 @@ sg.qtm(
 )
 ```
 
-
-    
 ![png](docs/examples/network_analysis_examples_files/network_analysis_examples_6_0.png)
-    
-
 
 Fast many-to-many travel times/distances
-
 
 ```python
 od = nwa.od_cost_matrix(points, points, id_col="idx")
@@ -110,12 +97,10 @@ print(od)
     999997    1000          998  10.288465
     999998    1000          999  14.798257
     999999    1000         1000   0.000000
-    
+
     [1000000 rows x 3 columns]
-    
 
 Get the area that can be reached within one or more breaks
-
 
 ```python
 sa = nwa.service_area(
@@ -126,14 +111,9 @@ sa = nwa.service_area(
 sg.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minutes")
 ```
 
-
-    
 ![png](docs/examples/network_analysis_examples_files/network_analysis_examples_10_0.png)
-    
-
 
 Get one or more route per origin-destination pair
-
 
 ```python
 routes = nwa.get_k_routes(
@@ -143,16 +123,11 @@ routes = nwa.get_k_routes(
 sg.qtm(sg.buff(routes, 15), "k", title="Five fastest routes from A to B", legend=False)
 ```
 
-
-    
 ![png](docs/examples/network_analysis_examples_files/network_analysis_examples_12_0.png)
-    
-
 
 More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 
 Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
-
 
 ## Developer information
 

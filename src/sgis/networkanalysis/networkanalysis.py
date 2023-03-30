@@ -15,14 +15,14 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
 
+from ..geopandas_tools.general import _push_geom_col, gdf_concat
+from ..geopandas_tools.line_operations import split_lines_at_closest_point
 from ._get_route import _get_route
 from ._od_cost_matrix import _od_cost_matrix
 from ._points import Destinations, Origins
 from ._service_area import _service_area
 from .directednetwork import DirectedNetwork
-from ..geopandas_tools.general import gdf_concat, _push_geom_col
 from .network import Network, _edge_ids
-from ..geopandas_tools.line_operations import split_lines_at_closest_point
 from .networkanalysisrules import NetworkAnalysisRules
 
 

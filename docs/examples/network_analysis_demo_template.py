@@ -19,6 +19,7 @@ os.chdir("../../src")
 
 import sgis as sg
 
+
 # ignore some warnings to make it cleaner
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=FutureWarning)

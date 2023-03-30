@@ -3,11 +3,7 @@
 import geopandas as gpd
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from shapely import (
-    Geometry,
-    force_2d,
-    wkt,
-)
+from shapely import Geometry, force_2d, wkt
 from shapely.ops import nearest_points, snap, unary_union
 
 

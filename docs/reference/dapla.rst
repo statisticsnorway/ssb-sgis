@@ -3,5 +3,5 @@ Dapla (statnorway)
 
 .. automodule:: sgis.dapla
     :members:
-    :exclude-members: 
+    :exclude-members:
     :show-inheritance:

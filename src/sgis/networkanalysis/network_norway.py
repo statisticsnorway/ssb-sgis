@@ -2,8 +2,8 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 from shapely import force_2d
 
-from .directednetwork import DirectedNetwork
 from ..geopandas_tools.construction import gdf_concat
+from .directednetwork import DirectedNetwork
 from .network import Network
 
 

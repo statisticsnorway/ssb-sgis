@@ -1,6 +1,6 @@
 """Functions for line geometries.
 
-The module includes functions for cutting and splitting lines, cutting lines into 
+The module includes functions for cutting and splitting lines, cutting lines into
 pieces, filling holes in a network of lines, finding isolated network islands and
 creating unique node ids.
 
@@ -19,11 +19,9 @@ from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
 from .buffer_dissolve_explode import buff
+from .general import _push_geom_col, coordinate_array, gdf_concat, to_gdf
 from .neighbors import get_k_nearest_neighbors, k_nearest_neighbors
-from .general import gdf_concat, to_gdf, _push_geom_col, coordinate_array
-from .point_operations import (
-    snap_to,
-)
+from .point_operations import snap_to
 
 
 def get_largest_component(lines: GeoDataFrame) -> GeoDataFrame:

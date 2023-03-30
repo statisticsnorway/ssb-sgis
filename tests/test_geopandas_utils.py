@@ -269,7 +269,6 @@ def test_to_multipoint(gdf_fixture):
 
 
 def main():
-
     info = """
     The test was created 08.01.2023 with the following package versions.
     From C++: GEOS 3.11.1, PROJ 9.1.0, GDAL 3.6.1.

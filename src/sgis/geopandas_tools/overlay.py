@@ -10,7 +10,7 @@ Both 'overlay' and 'clean_shapely_overlay' also include the overlay type "update
 which can be specified in the "how" parameter, in addition to the five native geopandas
 how-s.
 
-*https://github.com/geopandas/geopandas/issues/2792
+https://github.com/geopandas/geopandas/issues/2792
 """
 
 import geopandas as gpd
@@ -19,16 +19,8 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from shapely import GEOSException, STRtree, difference, intersection, union_all
 
-from .general import (
-    clean_geoms,
-    gdf_concat,
-    _push_geom_col,
-)
-from .geometry_types import (
-    get_geom_type,
-    is_single_geom_type,
-    to_single_geom_type,
-)
+from .general import _push_geom_col, clean_geoms, gdf_concat
+from .geometry_types import get_geom_type, is_single_geom_type, to_single_geom_type
 
 
 def overlay(
