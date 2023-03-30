@@ -87,7 +87,7 @@ points = sg.read_parquet_url(
 # and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 # in polygons by size.
 #
-# ### Network analysis examples
+# ## Network analysis examples
 # Preparing for network analysis:
 #
 # %%

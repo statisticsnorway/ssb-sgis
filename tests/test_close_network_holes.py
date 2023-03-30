@@ -56,7 +56,9 @@ def test_close_network_holes(roads_oslo, points_oslo):
     if __name__ == "__main__":
         lines_angle_90.plot()
         nw.gdf.plot("hole")
-    # assert len(nw) == 4, len(nw)
+
+    # when 180 degrees allowed, it should create duplicate lines on top of existing ones
+    # assert len(nw) == 6, len(nw)
 
     nw = sg.Network(lines_angle_90).close_network_holes(1, fillna=0, max_angle=45)
     if __name__ == "__main__":
