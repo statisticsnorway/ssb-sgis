@@ -69,8 +69,6 @@ def test_to_lines():
     if __name__ == "__main__":
         sg.qtm(lines, "l", legend_title=len(lines))
 
-    # TODO: MIXED
-
 
 def main():
     test_to_lines()

@@ -808,38 +808,25 @@ def _find_holes_all_lines(
         dists = all_dists[:, i]
 
         these_nodes_array = coordinate_array(nodes.loc[indices])
-        print(deadends_array)
-        print(deadends_other_end_array)
-        print(these_nodes_array)
+
+        if np.all(deadends_other_end_array == these_nodes_array):
+            continue
 
         angles_deadend_to_node = get_angle(deadends_array, these_nodes_array)
-        print(angles_deadend_to_node)
 
-        # angles_deadend_to_deadend_other_end = get_angle(
-        #    deadends_array, deadends_other_end_array
-        # )
         angles_deadend_to_deadend_other_end = get_angle(
             deadends_other_end_array, deadends_array
         )
-        print(angles_deadend_to_deadend_other_end)
 
         angles_difference = np.abs(
-            np.abs(angles_deadend_to_deadend_other_end)
-            - np.abs(angles_deadend_to_node)
-            #  angles_deadend_to_deadend_other_end
-            # - angles_deadend_to_node
+            np.abs(angles_deadend_to_deadend_other_end) - np.abs(angles_deadend_to_node)
         )
-        print(angles_difference)
 
-        #        angles_difference[
-        #           np.all(deadends_other_end_array == these_nodes_array, axis=1)
-        #      ] = np.nan
-        print(dists <= max_dist)
-        print(angles_difference <= max_angle)
+        angles_difference[
+            np.all(deadends_other_end_array == these_nodes_array, axis=1)
+        ] = np.nan
+
         condition = (dists <= max_dist) & (angles_difference <= max_angle)
-        print(deadends)
-        print(indices)
-        print(nodes)
 
         from_wkt = deadends.loc[condition, "wkt"]
         to_idx = indices[condition]

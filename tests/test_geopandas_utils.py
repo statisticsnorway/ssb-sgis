@@ -144,6 +144,13 @@ def test_snap():
     assert sum([geom.x == 0 and geom.y == 0 for geom in snapped.geometry]) == 2
     assert snapped.snap_distance.notna().sum() == 1
 
+    snapped = sg.snap_all(points, point)
+
+    poly = sg.to_gdf(Polygon([(10, 10), (110, 11), (11, 11), (11, 110)]))
+    snapped = sg.snap_all(points, to=pd.concat([point, poly]))
+    print([geom.x == 0 and geom.y == 0 for geom in snapped.geometry])
+    assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry)
+
 
 def test_to_multipoint(gdf_fixture):
     mp = sg.to_multipoint(gdf_fixture)

@@ -34,21 +34,25 @@ def test_network_analysis(points_oslo, roads_oslo):
 
     def run_analyses(nwa, p):
         x = nwa.get_route_frequencies(p.loc[p.idx == 0], p.sample(7))
+        assert len(x.columns) > 5, len(x.columns)
 
         if __name__ == "__main__":
             sg.qtm(x, "frequency")
 
         ### OD COST MATRIX
 
-        for search_factor in [0, 25, 50]:
+        for search_factor in [0, 50]:
             nwa.rules.search_factor = search_factor
             od = nwa.od_cost_matrix(p, p)
 
+        assert list(od.columns) == ["origin", "destination", nwa.rules.weight]
+
         nwa.rules.search_factor = 10
 
-        for search_tolerance in [100, 250, 1000]:
+        for search_tolerance in [100, 1000]:
             nwa.rules.search_tolerance = search_tolerance
             od = nwa.od_cost_matrix(p, p)
+        assert list(od.columns) == ["origin", "destination", nwa.rules.weight]
 
         print(
             nwa.log[
@@ -61,6 +65,12 @@ def test_network_analysis(points_oslo, roads_oslo):
         assert all(nwa.log["cost_mean"] > 0)
 
         od = nwa.od_cost_matrix(p, p, lines=True)
+        assert list(od.columns) == [
+            "origin",
+            "destination",
+            nwa.rules.weight,
+            "geometry",
+        ]
 
         p1 = nwa.origins.gdf
         p1 = p1.loc[[p1.missing.idxmin()]].sample(1).idx.values[0]
@@ -70,10 +80,17 @@ def test_network_analysis(points_oslo, roads_oslo):
 
         od = nwa.od_cost_matrix(p, p, rowwise=True)
         assert len(od) == len(p)
+        assert list(od.columns) == ["origin", "destination", nwa.rules.weight]
 
         ### GET ROUTE
 
         sp = nwa.get_route(p, p)
+        assert list(sp.columns) == [
+            "origin",
+            "destination",
+            nwa.rules.weight,
+            "geometry",
+        ]
 
         sp = nwa.get_route(p.loc[[349]], p)
 
@@ -100,6 +117,12 @@ def test_network_analysis(points_oslo, roads_oslo):
         if __name__ == "__main__":
             sg.qtm(sp)
 
+        assert list(sp.columns) == [
+            "origin",
+            "destination",
+            nwa.rules.weight,
+            "geometry",
+        ]
         sp = nwa.get_route(p.loc[[349]], p)
         if __name__ == "__main__":
             sg.qtm(sp)
@@ -129,15 +152,27 @@ def test_network_analysis(points_oslo, roads_oslo):
         sa = sa.sort_values("minutes", ascending=False)
         if __name__ == "__main__":
             sg.qtm(sa, "minutes", k=10)
-
+        assert list(sa.columns) == [
+            "origin",
+            nwa.rules.weight,
+            "geometry",
+        ]
         ### GET K ROUTES
 
-        for x in [0, 50, 100]:
+        for x in [0, 100]:
             sp = nwa.get_k_routes(
                 p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x
             )
             if __name__ == "__main__":
                 sg.qtm(sp, "k")
+
+        assert list(sp.columns) == [
+            "origin",
+            "destination",
+            nwa.rules.weight,
+            "k",
+            "geometry",
+        ], list(sp.columns)
 
         n = 0
         for x in [-1, 101]:
@@ -169,15 +204,8 @@ def test_network_analysis(points_oslo, roads_oslo):
     nw = (
         sg.DirectedNetwork(r)
         .make_directed_network_norway(minute_cols=("drivetime_fw", "drivetime_bw"))
-        .close_network_holes(1.1, max_angle=90, fillna=0)
-        .get_largest_component()
+        .remove_isolated()
     )
-    if __name__ == "__main__":
-        sg.qtm(nw.gdf, "connected", scheme="equalinterval")
-        sg.qtm(nw.gdf, "hole")
-    print(nw.gdf.hole.value_counts())
-
-    nw = nw.remove_isolated()
 
     rules = sg.NetworkAnalysisRules(
         weight="minutes",

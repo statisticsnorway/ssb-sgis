@@ -102,10 +102,10 @@ class NetworkAnalysisRules:
 
     >>> nwa.log.iloc[-4:][['percent_missing', 'cost_mean', 'search_tolerance', 'search_factor']]
        percent_missing  cost_mean  search_tolerance  search_factor
-    2           2.2854  15.538083               100              0
-    3           0.7977  15.178683               250              0
-    4           0.6982  15.570546               500              0
-    5           0.4989  15.565538              1000              0
+    2           2.3840  15.235559               100              0
+    3           0.9966  15.270462               250              0
+    4           0.7976  15.273579               500              0
+    5           0.5984  15.268614              1000              0
 
     High search_tolerance won't affect how the points close to the network are
     connected to network nodes. Points trapped behind deadend oneway streets, can find
@@ -115,13 +115,13 @@ class NetworkAnalysisRules:
     >>> for i in [0, 10, 35, 100]:
     ...     nwa.rules.search_factor = i
     ...     od = nwa.od_cost_matrix(points, points)
-    >>>
+
     >>> nwa.log.iloc[-4:][['percent_missing', 'cost_mean', 'search_tolerance', 'search_factor']]
        percent_missing  cost_mean  search_tolerance  search_factor
-    6           0.8973  15.566827               250              0
-    7           0.6983  15.375234               250             10
-    8           0.4991  14.890791               250             35
-    9           0.3994  13.910521               250            100
+    6           0.9966  15.270462               250              0
+    7           0.5987  15.063283               250             10
+    8           0.4991  14.636172               250             35
+    9           0.3994  13.680307               250            100
 
     The remaining 0.4 percent missing are from/to two points, one on an island with no
     brigde and one at the edge of the road network (would require a larger network).
@@ -129,11 +129,10 @@ class NetworkAnalysisRules:
 
     >>> n_missing = od.groupby("origin").minutes.agg(lambda x: x.isna().sum())
     >>> n_missing.n_largest(3)
-    >>> nwa.origins.gdf.sort_values("missing").tail(3)
-          idx                        geometry temp_idx  missing
-    999  1000  POINT (264570.300 6644239.500)    80957        2
-    510   511  POINT (261319.300 6647824.800)    80468      999
-    59     60  POINT (271816.400 6650812.500)    80017      999
+    59     999
+    510    999
+    0        2
+    Name: minutes, dtype: int64
 
     By default, the distance from origin/destination to the network nodes is given a
     weight of 0. This means, if the search_tolerance is high, points far away from the
@@ -151,9 +150,9 @@ class NetworkAnalysisRules:
     ...
     >>> nwa.log.iloc[-3:][['nodedist_kmh', 'cost_mean']]
        nodedist_kmh  cost_mean
-    10                   3  15.898794
-    11                  10  14.945977
-    12                  50  14.164665
+    10            3  15.924197
+    11           10  14.817717
+    12           50  13.964457
 
     If the weight is 'meters', setting nodedist_multiplier=1 will make the distance
     to nodes count as its straight line distance.
@@ -166,11 +165,11 @@ class NetworkAnalysisRules:
     >>> od = nwa.od_cost_matrix(points, points)
     >>> nwa.rules.nodedist_multiplier = 1
     >>> od = nwa.od_cost_matrix(points, points)
-    >>>
+
     >>> nwa.log[['nodedist_multiplier', 'cost_mean']]
-       nodedist_multiplier     cost_mean
-    0                    0  10228.400228
-    1                    1  10277.926186
+      nodedist_multiplier     cost_mean
+    0                None  10228.400228
+    1                   1  10277.926186
     """
 
     weight: str

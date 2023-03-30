@@ -7,9 +7,7 @@ poetry run python docs/output_for_docstrings.py
 import sys
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
-import pandas as pd
 
 
 src = str(Path(__file__).parent.parent / "src")
@@ -97,8 +95,6 @@ def networkanalysisrules_docstring():
 
     n_missing = od.groupby("origin").minutes.agg(lambda x: x.isna().sum())
     print(n_missing.nlargest(3))
-
-    print(nwa.origins.gdf.sort_values("missing").tail(3))
 
     nwa.rules.search_tolerance = 5000
     for i in [3, 10, 50]:
