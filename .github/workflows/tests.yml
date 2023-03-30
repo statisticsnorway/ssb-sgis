@@ -50,4 +50,4 @@ jobs:
 
       - name: Build api-documentation
         run: |
-          poetry run -W sphinx-build docs docs/_build
+          poetry run sphinx-build -W docs docs/_build

@@ -16,6 +16,7 @@ maxdepth: 3
 ---
 reference/index
 examples/index
+examples/network_analysis_examples
 contributing
 Code of Conduct <codeofconduct>
 License <license>
