@@ -56,10 +56,12 @@ nwa = sg.NetworkAnalysis(network=nw, rules=rules)
 nwa
 ```
 
+```
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
         rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...)
     )
+```
 
 Get number of times each line segment was visited
 
@@ -85,6 +87,7 @@ od = nwa.od_cost_matrix(points, points, id_col="idx")
 print(od)
 ```
 
+```
             origin  destination    minutes
     0            1            1   0.000000
     1            1            2  13.039830
