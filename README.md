@@ -28,12 +28,13 @@ Features include network analysis, functions for exploring multiple GeoDataFrame
 and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 in polygons by size.
 
-## Network analysis examples
+### Network analysis examples
 
 Preparing for network analysis:
 
 ```python
 import sgis as sg
+
 
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -62,7 +63,7 @@ nwa
         log=True, detailed_log=True,
     )
 
-Get number of times each line segment was visited.
+Get number of times each line segment was visited
 
 ```python
 freq = nwa.get_route_frequencies(points.sample(75), points.sample(75))
@@ -101,7 +102,7 @@ print(od)
 
     [1000000 rows x 3 columns]
 
-Get the area that can be reached within one or more breaks.
+Get the area that can be reached within one or more breaks
 
 ```python
 sa = nwa.service_area(
@@ -126,9 +127,9 @@ sg.qtm(sg.buff(routes, 15), "k", title="Five fastest routes from A to B", legend
 
 ![png](network_analysis_examples_files/network_analysis_examples_12_1.png)
 
-More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
+Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
 
-# Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
+More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 
 ## Developer information
 
