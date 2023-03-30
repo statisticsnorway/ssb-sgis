@@ -22,7 +22,6 @@ from shapely.geometry import LineString
 from .geopandas_tools.general import (
     clean_geoms,
     drop_inactive_geometry_columns,
-    random_points_in_polygon,
     rename_geometry_if,
 )
 from .geopandas_tools.geometry_types import get_geom_type
@@ -413,23 +412,47 @@ class Explore:
                 gdf[self.kwargs["column"]] = np.nan
 
     def _check_if_categorical(self) -> bool:
+        """Quite messy this..."""
         if not self.kwargs["column"]:
             return True
+
+        maybe_area = 1 if "area" in self.kwargs["column"] else 0
+        maybe_length = (
+            1
+            if any(x in self.kwargs["column"] for x in ["meter", "metre", "leng"])
+            else 0
+        )
 
         all_nan = 0
         col_not_present = 0
         for gdf in self.gdfs:
             if self.kwargs["column"] not in gdf:
-                col_not_present += 1
-                continue
-            if not pd.api.types.is_numeric_dtype(gdf[self.kwargs["column"]]):
+                if maybe_area:
+                    gdf["area"] = gdf.area
+                    maybe_area += 1
+                elif maybe_length:
+                    gdf["length"] = gdf.length
+                    maybe_length += 1
+                else:
+                    col_not_present += 1
+            elif not pd.api.types.is_numeric_dtype(gdf[self.kwargs["column"]]):
                 if all(gdf[self.kwargs["column"]].isna()):
                     all_nan += 1
                 return True
+
+        if maybe_area > 1:
+            self.kwargs["column"] = "area"
+            return False
+        if maybe_length > 1:
+            self.kwargs["column"] = "length"
+            return False
+
         if all_nan == len(self.gdfs):
             raise ValueError(f"All values are NaN in column {self.kwargs['column']!r}.")
+
         if col_not_present == len(self.gdfs):
             raise ValueError(f"{self.kwargs['column']} not found.")
+
         return False
 
     def _choose_cmap(self) -> None:

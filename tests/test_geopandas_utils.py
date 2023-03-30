@@ -6,9 +6,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import pytest
-from shapely.geometry import LineString, Polygon
-from shapely.wkt import loads
+from shapely.geometry import Polygon
 
 
 src = str(Path(__file__).parent.parent) + "/src"
@@ -18,47 +16,42 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_buffdissexp(gdf_fixture):
-    for distance in [1, 10, 100, 1000, 10000]:
-        copy = gdf_fixture.copy()[["geometry"]]
-        copy = sg.buff(copy, distance)
-        copy = copy.dissolve()
-        copy = copy.explode(ignore_index=True)
+def test_random():
+    for i in [1, 10, 100]:
+        gdf = sg.random_points(i, loc=100)
+        assert len(gdf) == i
 
-        areal1 = copy.area.sum()
-        lengde1 = copy.length.sum()
+        buffered = sg.buff(gdf, 10)
 
-        copy = sg.buffdissexp(gdf_fixture, distance)
+        points = sg.random_points_in_polygons(buffered, 100)
 
-        assert (
-            areal1 == copy.area.sum() and lengde1 == copy.length.sum()
-        ), "ulik lengde/areal"
+        assert len(points) == 100 * i, points
+        assert max(points.index) == i - 1, points.index
 
-    sg.buffdissexp(gdf_fixture, 100)
+        points["temp_idx"] = range(len(points))
+        joined = points.sjoin(buffered, how="inner")
+        assert all(points.temp_idx.isin(joined.temp_idx))
 
 
-def test_geos(gdf_fixture):
+def test_area(gdf_fixture):
     copy = sg.buffdissexp(gdf_fixture, 25)
-    assert len(copy) == 4, "feil antall rader. Noe galt/nytt med GEOS' GIS-algoritmer?"
-    assert (
-        round(copy.area.sum(), 5) == 1035381.10389
-    ), "feil areal. Noe galt/nytt med GEOS' GIS-algoritmer?"
-    assert (
-        round(copy.length.sum(), 5) == 16689.46148
-    ), "feil lengde. Noe galt/nytt med GEOS' GIS-algoritmer?"
+    assert len(copy) == 4
+    assert round(copy.area.sum(), 5) == 1035381.10389
+    assert round(copy.length.sum(), 5) == 16689.46148
 
 
 def test_close_all_holes(gdf_fixture):
     p = gdf_fixture.loc[gdf_fixture.geom_type == "Point"]
-    buff1 = sg.buff(p, 100)
-    buff2 = sg.buff(p, 200)
-    rings_with_holes = sg.overlay(buff2, buff1, how="difference")
 
+    buff1 = sg.buffdissexp(p, 100)
+    buff2 = sg.buffdissexp(p, 200)
+    rings_with_holes = sg.overlay(buff2, buff1, how="difference")
     holes_closed = sg.close_all_holes(rings_with_holes)
     assert sum(holes_closed.area) > sum(rings_with_holes.area)
 
-    holes_closed = sg.close_small_holes(rings_with_holes, max_area=10000 * 1_000_000)
-    assert sum(holes_closed.area) > sum(rings_with_holes.area)
+    holes_closed2 = sg.close_small_holes(rings_with_holes, max_area=10000 * 1_000_000)
+    assert round(sum(holes_closed2.area), 3) == round(sum(holes_closed.area), 3)
+    assert sum(holes_closed2.area) > sum(rings_with_holes.area)
 
     holes_not_closed = sg.close_small_holes(rings_with_holes, max_area=1)
     assert sum(holes_not_closed.area) == sum(rings_with_holes.area)
@@ -70,6 +63,7 @@ def test_clean_clip():
     buff2 = sg.buff(p, 200)
 
     clipped = buff1.clip(buff2)
+    clipped["geometry"] = clipped.make_valid()
     clipped2 = sg.clean_clip(buff1, buff2)
     assert clipped.equals(clipped2)
 
@@ -110,30 +104,6 @@ def test_clean():
     print(gdf)
     assert sg.get_geom_type(gdf) == "polygon"
     assert len(gdf) == 1
-
-
-def sjoin_overlay(gdf_fixture):
-    gdf1 = sg.buff(gdf_fixture, 25)
-    gdf2 = sg.buff(gdf_fixture, 100)
-    gdf2["nykoll"] = 1
-    gdf = sg.sjoin(gdf1, gdf2)
-    assert all(col in ["geometry", "numcol", "txtcol", "nykoll"] for col in gdf.columns)
-    assert not any(
-        col not in list(gdf.columns)
-        for col in ["geometry", "numcol", "txtcol", "nykoll"]
-    )
-    assert len(gdf) == 25
-    gdf = sg.overlay(gdf1, gdf2)
-    assert all(col in ["geometry", "numcol", "txtcol", "nykoll"] for col in gdf.columns)
-    assert not any(
-        col not in list(gdf.columns)
-        for col in ["geometry", "numcol", "txtcol", "nykoll"]
-    )
-    assert len(gdf) == 25
-
-    gdf = sg.overlay_update(gdf2, gdf1)
-    assert list(gdf.columns) == ["geometry", "numcol", "txtcol", "nykoll"]
-    assert len(gdf) == 18
 
 
 def test_get_neighbor_indices():

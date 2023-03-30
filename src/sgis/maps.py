@@ -248,8 +248,6 @@ def clipmap(
         namedict = make_namedict(gdfs)
         kwargs["namedict"] = namedict
 
-    print(namedict)
-
     if mask is not None:
         for gdf in gdfs:
             clipped_ = gdf.clip(mask)
@@ -346,8 +344,8 @@ def qtm(
 
     # manually add legend if categorical, since geopandas.plot removes it otherwise.
     if legend and m._is_categorical:
-        kwargs["color"] = m.gdf.color
         kwargs.pop("column")
+        kwargs["color"] = m.gdf.color
         patches, categories = [], []
         for category, color in m._categories_colors_dict.items():
             categories.append(category)
@@ -363,6 +361,25 @@ def qtm(
                     markeredgewidth=0,
                 )
             )
+        ax.legend(patches, categories, fontsize=size_x)
+
+    # if single color
+    elif legend and "color" in kwargs:
+        m.gdf["color"] = kwargs["color"]
+        kwargs.pop("column")
+        categories = [kwargs["color"] if isinstance(kwargs["color"], str) else "color"]
+        patches = [
+            Line2D(
+                [0],
+                [0],
+                linestyle="none",
+                marker="o",
+                alpha=kwargs.get("alpha", 1),
+                markersize=10,
+                markerfacecolor=kwargs["color"],
+                markeredgewidth=0,
+            )
+        ]
         ax.legend(patches, categories, fontsize=size_x)
 
     if not m._is_categorical:

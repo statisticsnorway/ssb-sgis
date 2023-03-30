@@ -70,7 +70,7 @@ class NetworkAnalysisRules:
     ... )
     >>> rules = sg.NetworkAnalysisRules(weight="minutes")
     >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules)
-    >>>
+
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
@@ -85,11 +85,13 @@ class NetworkAnalysisRules:
     >>> od = nwa.od_cost_matrix(points, points)
     >>> nwa.rules.split_lines = True
     >>> od = nwa.od_cost_matrix(points, points)
-    >>>
+
     >>> nwa.log[['split_lines', 'percent_missing', 'cost_mean']]
        split_lines  percent_missing  cost_mean
     0        False           0.9966  15.270462
-    1         True           0.2995   3.306094
+    1         True           0.8973  15.249900
+
+    >>> nwa.rules.split_lines = False
 
     Setting a high search_tolerance will make faraway points find their way to the
     network.
@@ -97,7 +99,7 @@ class NetworkAnalysisRules:
     >>> for i in [100, 250, 500, 1000]:
     ...     nwa.rules.search_tolerance = i
     ...     od = nwa.od_cost_matrix(points, points)
-    >>>
+
     >>> nwa.log.iloc[-4:][['percent_missing', 'cost_mean', 'search_tolerance', 'search_factor']]
        percent_missing  cost_mean  search_tolerance  search_factor
     2           2.2854  15.538083               100              0
@@ -126,7 +128,7 @@ class NetworkAnalysisRules:
     These two points only find themselves, and thus has 999 missing values.
 
     >>> n_missing = od.groupby("origin").minutes.agg(lambda x: x.isna().sum())
-    >>> n_missing.sort_values()
+    >>> n_missing.n_largest(3)
     >>> nwa.origins.gdf.sort_values("missing").tail(3)
           idx                        geometry temp_idx  missing
     999  1000  POINT (264570.300 6644239.500)    80957        2

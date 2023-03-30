@@ -439,8 +439,9 @@ class Network:
         """Cuts lines into pieces no longer than 'max_length'.
 
         Will give more accurate results in the service_area method, but not in the
-        precice_service_area method. Other than that, has no impact on network analysis
-        except making it slower.
+        precice_service_area method. Shorter lines also mean more holes might be filled
+        in close_network_holes. Other than that, cutting lines has no impact on network
+        analysis except making it slower.
 
         Args:
             max_length: The maximum length of the line segments.

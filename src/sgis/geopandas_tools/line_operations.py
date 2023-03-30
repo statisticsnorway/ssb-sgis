@@ -635,7 +635,10 @@ def close_network_holes(
     )
 
     if not len(new_lines):
-        return lines.assign(hole=0)
+        lines[hole_col] = (
+            0 if hole_col not in lines.columns else lines[hole_col].fillna(0)
+        )
+        return lines
 
     new_lines = make_edge_wkt_cols(new_lines)
 
@@ -647,7 +650,9 @@ def close_network_holes(
 
     if hole_col:
         new_lines[hole_col] = 1
-        lines[hole_col] = 0
+        lines[hole_col] = (
+            0 if hole_col not in lines.columns else lines[hole_col].fillna(0)
+        )
 
     return pd.concat([lines, new_lines], ignore_index=True)
 
@@ -709,7 +714,10 @@ def close_network_holes_to_deadends(
     new_lines = _find_holes_deadends(nodes, max_dist)
 
     if not len(new_lines):
-        return lines.assign(hole=0)
+        lines[hole_col] = (
+            0 if hole_col not in lines.columns else lines[hole_col].fillna(0)
+        )
+        return lines
 
     new_lines = make_edge_wkt_cols(new_lines)
 
@@ -721,7 +729,9 @@ def close_network_holes_to_deadends(
 
     if hole_col:
         new_lines[hole_col] = 1
-        lines[hole_col] = 0
+        lines[hole_col] = (
+            0 if hole_col not in lines.columns else lines[hole_col].fillna(0)
+        )
 
     return pd.concat([lines, new_lines], ignore_index=True)
 

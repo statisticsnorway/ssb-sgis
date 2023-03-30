@@ -6,7 +6,7 @@ and classes can be imported directly from sgis.
 
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 4
 
    networkanalysis/index
    geopandas_tools/index

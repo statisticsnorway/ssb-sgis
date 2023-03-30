@@ -156,11 +156,12 @@ def clean_geoms(
     return gdf
 
 
-def random_points(n: int) -> GeoDataFrame:
+def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     """Creates a GeoDataFrame with n random points.
 
     Args:
-        n: number of points/rows to create.
+        n: Number of points/rows to create.
+        loc: Mean ('centre') of the distribution.
 
     Returns:
         A GeoDataFrame of points with n rows.
@@ -170,7 +171,7 @@ def random_points(n: int) -> GeoDataFrame:
     >>> from sgis import random_points
     >>> points = random_points(10_000)
     >>> points
-                        geometry
+                         geometry
     0     POINT (0.62044 0.22805)
     1     POINT (0.31885 0.38109)
     2     POINT (0.39632 0.61130)
@@ -184,16 +185,118 @@ def random_points(n: int) -> GeoDataFrame:
     9999  POINT (0.01386 0.22935)
 
     [10000 rows x 1 columns]
+
+    Values with a mean of 100.
+
+    >>> points = random_points(10_000, loc=100)
+    >>> points
+                         geometry
+    0      POINT (50.442 199.729)
+    1       POINT (26.450 83.367)
+    2     POINT (111.054 147.610)
+    3      POINT (93.141 141.456)
+    4       POINT (94.101 24.837)
+    ...                       ...
+    9995   POINT (174.344 91.772)
+    9996    POINT (95.375 11.391)
+    9997    POINT (45.694 60.843)
+    9998   POINT (73.261 101.881)
+    9999  POINT (134.503 168.155)
+
+    [10000 rows x 1 columns]
     """
     if isinstance(n, (str, float)):
         n = int(n)
 
-    x = _np_random(n)
-    y = _np_random(n)
+    x = np.random.rand(n) * float(loc) * 2
+    y = np.random.rand(n) * float(loc) * 2
 
     return GeoDataFrame(
         (Point(x, y) for x, y in zip(x, y, strict=True)), columns=["geometry"]
     )
+
+
+def random_points_in_polygons(gdf: GeoDataFrame, n: int) -> GeoDataFrame:
+    """Creates n random points inside each polygon of a GeoDataFrame.
+
+    Args:
+        gdf: GeoDataFrame to use as mask for the points.
+        n: Number of points/rows to create.
+
+    Returns:
+        A GeoDataFrame of points with 'n' rows per row in 'gdf'. It uses the index
+        values of 'gdf'.
+
+    Examples
+    --------
+    Buffer 100 random points.
+
+    >>> import sgis as sg
+    >>> gdf = sg.random_points(100)
+    >>> polygons = sg.buff(gdf, 1)
+    >>> polygons
+                                                 geometry
+    0   POLYGON ((1.49436 0.36088, 1.49387 0.32947, 1....
+    1   POLYGON ((1.38427 0.21069, 1.38378 0.17928, 1....
+    2   POLYGON ((1.78894 0.94134, 1.78845 0.90992, 1....
+    3   POLYGON ((1.47174 0.81259, 1.47125 0.78118, 1....
+    4   POLYGON ((1.13941 0.20821, 1.13892 0.17680, 1....
+    ..                                                ...
+    95  POLYGON ((1.13462 0.18908, 1.13412 0.15767, 1....
+    96  POLYGON ((1.96391 0.43191, 1.96342 0.40050, 1....
+    97  POLYGON ((1.30569 0.46956, 1.30520 0.43815, 1....
+    98  POLYGON ((1.18172 0.10944, 1.18122 0.07803, 1....
+    99  POLYGON ((1.06156 0.99893, 1.06107 0.96752, 1....
+
+    [100 rows x 1 columns]
+
+    >>> points = sg.random_points_in_polygons(polygons, 3)
+    >>> points
+                        geometry
+    0   POINT (0.74944 -0.41658)
+    0    POINT (1.27490 0.54076)
+    0    POINT (0.22523 0.49323)
+    1   POINT (0.25302 -0.34825)
+    1    POINT (0.21124 0.89223)
+    ..                       ...
+    98  POINT (-0.39865 0.87135)
+    98   POINT (0.03573 0.50788)
+    99  POINT (-0.79089 0.57835)
+    99   POINT (0.39838 1.50881)
+    99   POINT (0.98383 0.77298)
+
+    [300 rows x 1 columns]
+    """
+
+    if not all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
+        raise ValueError("Geometry types must be polygon.")
+
+    all_points = pd.DataFrame()
+
+    for i in gdf.index:
+        polygon = gdf.loc[gdf.index == i]
+
+        overlapping = pd.DataFrame()
+
+        while True:
+            minx, miny, maxx, maxy = polygon.total_bounds
+            x = np.random.uniform(minx, maxx, n)
+            y = np.random.uniform(miny, maxy, n)
+            points = to_gdf(
+                {"x": x, "y": y}, geometry=["x", "y"], crs=polygon.crs
+            ).drop(["x", "y"], axis=1)
+            overlapping = pd.concat(
+                [overlapping, points.clip(polygon)], ignore_index=True
+            )
+            if len(overlapping) >= n:
+                break
+
+        overlapping = overlapping.sample(n)
+        overlapping.index = np.repeat(i, n)
+
+        all_points = pd.concat([all_points, overlapping], ignore_index=False)
+
+    return all_points
 
 
 def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
@@ -293,26 +396,11 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 
     unioned = lines[0].overlay(lines[1], how="union", keep_geom_type=True)
 
-    unioned.plot()
     if len(lines) > 2:
         for line_gdf in lines[2:]:
             unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
-        unioned.plot()
 
     return unioned.explode(ignore_index=True)
-
-
-def random_points_in_polygon(polygon: GeoDataFrame, n: int):
-    overlapping = pd.DataFrame()
-    while True:
-        minx, miny, maxx, maxy = polygon.total_bounds
-        x = np.random.uniform(minx, maxx, n)
-        y = np.random.uniform(miny, maxy, n)
-        points = to_gdf({"x": x, "y": y}, geometry=["x", "y"], crs=polygon.crs)
-        overlapping = pd.concat([overlapping, points.clip(polygon)], ignore_index=True)
-        if len(overlapping) >= n:
-            break
-    return overlapping.sample(n).reset_index(drop=True)
 
 
 def to_multipoint(
@@ -441,12 +529,12 @@ def to_gdf(
     geometry: str | None = None,
     **kwargs,
 ) -> GeoDataFrame:
-    """Converts geometry objects to a GeoDataFrame.
+    """Converts geometry-like objects to a GeoDataFrame.
 
-    Constructs a GeoDataFrame from any geometry object, or an interable of geometry
-    objects. Accepted types are wkt, wkb, coordinate tuples, shapely objects,
+    Constructs a GeoDataFrame from any geometry-like object, or an interable of such.
+    Accepted types are string (wkt), byte (wkb), coordinate tuples, shapely geometries,
     GeoSeries, Series/DataFrame. The index/keys will be preserved if the input type is
-    (Geo)Series or dictionary.
+    Series, DataFrame or dictionary.
 
     Args:
         geom: the object to be converted to a GeoDataFrame
@@ -462,11 +550,6 @@ def to_gdf(
 
     Raises:
         TypeError: If geom is a GeoDataFrame.
-
-    Note:
-        The name of the geometry-like column/key in DataFrame/dict can be specified with
-        the "geometry" parameter. The geometry column in the resulting GeoDataFrame will,
-        however, always be named 'geometry'.
 
     Examples
     --------

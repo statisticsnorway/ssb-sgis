@@ -20,11 +20,11 @@ os.chdir("../../src")
 import sgis as sg
 
 
-# ignore some warnings to make it cleaner
+# ignore some warnings
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 # %% [markdown]
-# The netork analysis happens in the NetworkAnalysis class.
+# The network analysis happens in the NetworkAnalysis class.
 # It takes a network and a set of rules for the analysis:
 #
 # The rules can be instantiated like this:
@@ -47,7 +47,9 @@ nw
 # %% [markdown]
 # The Network is now ready for undirected network analysis. The network can also be optimises with methods stored in the Network class. More about this further down in this notebook.
 # %%
-nw = nw.close_network_holes(1.5, fillna=0).remove_isolated().cut_lines(250)
+nw = (
+    nw.close_network_holes(1.5, max_angle=90, fillna=0).remove_isolated().cut_lines(250)
+)
 nw
 # %% [markdown]
 # For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.
@@ -136,7 +138,7 @@ routes
 # get_route_frequencies finds the number of times each road segment was used.
 
 # %%
-pointsample = points.sample(100)
+pointsample = points.sample(75)
 freq = nwa.get_route_frequencies(pointsample, pointsample)
 
 sg.qtm(
@@ -152,10 +154,10 @@ sg.qtm(
 # %%
 nwa.rules.weight = "meters"
 
-freq = nwa.get_route_frequencies(pointsample, pointsample)
+frequencies = nwa.get_route_frequencies(pointsample, pointsample)
 
 sg.qtm(
-    sg.buff(freq, 15),
+    sg.buff(frequencies, 15),
     "frequency",
     scheme="naturalbreaks",
     cmap="plasma",
@@ -171,26 +173,26 @@ nwa.rules.weight = "minutes"
 # Here, we find the areas that can be reached within 5, 10 and 15 minutes for five random points:
 # %%
 
-sa = nwa.service_area(points.sample(5), breaks=(5, 10, 15))
-sa
+service_areas = nwa.service_area(points.sample(5), breaks=(5, 10, 15))
+service_areas
 
 # %%
-sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11))
+service_areas = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11))
 
 sg.qtm(
-    sa,
+    service_areas,
     "minutes",
     k=10,
     title="Roads that can be reached within 1 to 10 minutes",
 )
-sa
+service_areas
 # %% [markdown]
 # By default, only the lowest break is kept for overlapping areas from the same origin, meaning the area for minutes=10
 # covers not the entire area, only the outermost ring:
 
 # %%
 sg.qtm(
-    sa.query("minutes == 10"),
+    service_areas.query("minutes == 10"),
     color="yellow",
     title="Roads that can be reached within 10 minutes",
 )
@@ -202,10 +204,10 @@ sg.qtm(
 # and then drop rows afterwards:
 
 # %%
-sa = nwa.service_area(points.sample(100), breaks=5, dissolve=False)
-print("rows before drop_duplicates:", len(sa))
-sa = sa.drop_duplicates(["source", "target"])
-print("rows after drop_duplicates:", len(sa))
+service_areas = nwa.service_area(points.sample(100), breaks=5, dissolve=False)
+print("rows before drop_duplicates:", len(service_areas))
+service_areas = service_areas.drop_duplicates(["source", "target"])
+print("rows after drop_duplicates:", len(service_areas))
 # %% [markdown]
 # Let's check the log.
 
@@ -218,7 +220,7 @@ print(nwa.log)
 nw = sg.Network(roads)
 nw
 # %% [markdown]
-# If you want to manipulate the roads after instantiating the Network, you can access the GeoDataFrame in the 'gdf' attribute:
+# To manipulate the roads after instantiating the Network, the GeoDataFrame can be accessed in the 'gdf' attribute:
 # %%
 nw.gdf.head(3)
 # %% [markdown]
@@ -250,7 +252,9 @@ sg.qtm(
 # %%
 
 nwa = sg.NetworkAnalysis(network=nw, rules=sg.NetworkAnalysisRules(weight="meters"))
+
 od = nwa.od_cost_matrix(points, points)
+
 percent_missing = od[nwa.rules.weight].isna().mean() * 100
 print(f"Before removing isolated: {percent_missing=:.2f}")
 
@@ -264,7 +268,7 @@ print(f"After removing isolated: {percent_missing=:.2f}")
 # If the road data has some gaps between the segments, these can be filled with straight lines:
 # %%
 
-nw = nw.close_network_holes(max_dist=1.5, fillna=0.1)
+nw = nw.close_network_holes(max_dist=1.5, max_angle=90, fillna=0.1)
 nw
 # %% [markdown]
 # The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the destination will either be reached or not within the breaks. This can be fixed by cutting all lines to a maximum distance.
@@ -390,7 +394,7 @@ sp2["split_lines"] = "Splitted"
 # In the get_route example, when the lines are split, the trip starts a bit further up in the bottom-right corner (when the search_factor is 0). The trip also ends in a roundtrip, since the line that is split is a oneway street. So you're allowed to go to the intersection where the blue line goes, but not to the point where the line is cut.
 # %%
 
-sg.qtm(sg.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
+sg.qtm(sp1, sp2, column="split_lines", cmap="bwr")
 # %% [markdown]
 # But these kinds of deviations doesn't have much of an impact on the results in total here, where the mean is about 15 minutes. For shorter trips, the difference will be relatively larger, of course.
 # %%
@@ -471,13 +475,10 @@ nwa.rules.search_factor = 0
 
 sg.NetworkAnalysisRules(weight="meters", nodedist_multiplier=True)
 # %% [markdown]
-# If the weight is "minutes", you specify the speed in kilometers or miles per hour:
+# If the weight is "minutes", you specify the speed in kilometers:
 # %%
 
 sg.NetworkAnalysisRules(weight="minutes", nodedist_kmh=5)
-# %%
-
-sg.NetworkAnalysisRules(weight="minutes", weight_to_nodes_mph=3)
 # %% [markdown]
 # Let's check how the speed to the nodes influences the average speed:
 

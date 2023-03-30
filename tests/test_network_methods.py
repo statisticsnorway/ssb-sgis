@@ -47,12 +47,6 @@ def test_network_methods(points_oslo, roads_oslo):
     if __name__ == "__main__":
         sg.qtm(holes_closed2, column="hole", title="holes, deadend to deadend")
 
-    """
-    holes = holes_closed.query("hole==1").assign(hole=1)[["hole", "geometry"]]
-    holes2 = holes_closed2.query("hole==1").assign(hole2=2)[["hole2", "geometry"]]
-    sg.concat_explore(holes.overlay(holes2, how="symmetric_difference").pipe(sg.buff, 1), r[["geometry"]])
-    """
-
     nw = (
         sg.Network(r).close_network_holes(1.1, max_angle=90, fillna=0).remove_isolated()
     )

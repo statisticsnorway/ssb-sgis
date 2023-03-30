@@ -2,7 +2,6 @@
 import sys
 import warnings
 from pathlib import Path
-from time import perf_counter
 
 import geopandas as gpd
 from shapely.geometry import LineString, MultiLineString
@@ -91,21 +90,36 @@ def test_close_network_holes(roads_oslo, points_oslo):
     nw = sg.Network(r)
 
     nw = nw.get_largest_component()
-    len_now = len(nw.gdf)
 
-    for meters in [1.1, 3, 10]:
-        _time = perf_counter()
-        nw = nw.close_network_holes(meters, max_angle=90, fillna=0)
-        print("n", sum(nw.gdf.hole == 1))
-        print("time close_network_holes, all roads: ", perf_counter() - _time)
+    if __name__ == "__main__":
+        sg.qtm(nw.gdf, "connected")
 
-        _time = perf_counter()
-        nw = nw.close_network_holes_to_deadends(meters, fillna=0)
-        print("n", sum(nw.gdf.hole == 1))
-        print("time close_network_holes, deadend to deadend: ", perf_counter() - _time)
+    assert sum(nw.gdf.connected == 1) == 650
+    assert sum(nw.gdf.connected == 0) == 104
+
+    nw = nw.close_network_holes_to_deadends(1.1, fillna=0)
+    print("n", sum(nw.gdf.hole == 1))
+    assert sum(nw.gdf.hole == 1) == 68
+
+    nw = nw.close_network_holes(1.1, max_angle=90, fillna=0)
+    print("n", sum(nw.gdf.hole == 1))
+    assert sum(nw.gdf.hole == 1) == 68
+
+    nw = nw.close_network_holes_to_deadends(10, fillna=0)
+    print("n", sum(nw.gdf.hole == 1))
+    assert sum(nw.gdf.hole == 1) == 93
+
+    nw = nw.close_network_holes(10, max_angle=90, fillna=0)
+    print("n", sum(nw.gdf.hole == 1))
+    assert sum(nw.gdf.hole == 1) == 103
 
     nw = nw.get_largest_component()
-    assert len(nw.gdf) != len_now
+
+    if __name__ == "__main__":
+        sg.qtm(nw.gdf, "connected")
+
+    assert sum(nw.gdf.connected == 1) == 836, sum(nw.gdf.connected == 1)
+    assert sum(nw.gdf.connected == 0) == 21, sum(nw.gdf.connected == 0)
 
 
 def main():

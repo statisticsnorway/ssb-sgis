@@ -2,7 +2,7 @@
 ---
 end-before: <!-- github-only -->
 relative-docs: docs/network_analysis_examples_files
-relative-images: 
+relative-images:
 ---
 ```
 
@@ -12,7 +12,7 @@ relative-images:
 ```{toctree}
 ---
 hidden:
-maxdepth: 3
+maxdepth: 5
 ---
 reference/index
 examples/index

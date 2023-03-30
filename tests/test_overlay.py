@@ -29,6 +29,7 @@ def test_overlay(points_oslo):
     if __name__ == "__main__":
         updated["area_"] = updated.area
         sg.qtm(updated, "area_")
+
     updated = sg.overlay_update(p1000, p500)
     if __name__ == "__main__":
         updated["area_"] = updated.area
@@ -47,6 +48,9 @@ def test_overlay(points_oslo):
             .overlay(sg.clean_geoms(p1000).explode(ignore_index=True), how=how)
         )
         overlayed2 = sg.clean_shapely_overlay(p500, p1000, how=how)
+
+        if int(overlayed.area.sum()) != int(overlayed.area.sum()):
+            raise ValueError(int(overlayed.area.sum()) != int(overlayed.area.sum()))
 
         if len(overlayed) != len(overlayed2):
             raise ValueError(how, len(overlayed), len(overlayed2))

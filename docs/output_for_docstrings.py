@@ -20,7 +20,7 @@ import sgis as sg
 
 def print_function_name(func):
     def wrapper(*args, **kwargs):
-        print("\n", func.__name__)
+        print("\n\n\n", func.__name__, "\n\n\n")
         func(*args, **kwargs)
 
     return wrapper
@@ -37,7 +37,7 @@ def networkanalysis_doctring(nwa, points):
     print("\n")
 
     frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
-    print(frequencies)
+    print(frequencies[["source", "target", "frequency", "geometry"]])
     print("\n")
 
     service_areas = nwa.service_area(
@@ -49,6 +49,74 @@ def networkanalysis_doctring(nwa, points):
 
     print(nwa.log)
     print("\n")
+
+
+@print_function_name
+def networkanalysisrules_docstring():
+    import sgis as sg
+
+    roads = sg.read_parquet_url(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
+    )
+    points = sg.read_parquet_url(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+    )
+
+    nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+    rules = sg.NetworkAnalysisRules(weight="minutes")
+    nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+    print(nwa)
+
+    od = nwa.od_cost_matrix(points, points)
+    nwa.rules.split_lines = True
+    od = nwa.od_cost_matrix(points, points)
+    print(nwa.log[["split_lines", "percent_missing", "cost_mean"]])
+    nwa.rules.split_lines = False
+
+    for i in [100, 250, 500, 1000]:
+        print(i)
+        nwa.rules.search_tolerance = i
+        od = nwa.od_cost_matrix(points, points)
+
+    print(
+        nwa.log.iloc[-4:][
+            ["percent_missing", "cost_mean", "search_tolerance", "search_factor"]
+        ]
+    )
+
+    nwa.rules.search_tolerance = 250
+    for i in [0, 10, 35, 100]:
+        nwa.rules.search_factor = i
+        od = nwa.od_cost_matrix(points, points)
+
+    print(
+        nwa.log.iloc[-4:][
+            ["percent_missing", "cost_mean", "search_tolerance", "search_factor"]
+        ]
+    )
+
+    n_missing = od.groupby("origin").minutes.agg(lambda x: x.isna().sum())
+    print(n_missing.nlargest(3))
+
+    print(nwa.origins.gdf.sort_values("missing").tail(3))
+
+    nwa.rules.search_tolerance = 5000
+    for i in [3, 10, 50]:
+        nwa.rules.nodedist_kmh = i
+        od = nwa.od_cost_matrix(points, points)
+
+    print(nwa.log.iloc[-3:][["nodedist_kmh", "cost_mean"]])
+
+    rules = sg.NetworkAnalysisRules(
+        weight="meters",
+        search_tolerance=5000,
+    )
+    nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+    od = nwa.od_cost_matrix(points, points)
+    nwa.rules.nodedist_multiplier = 1
+    od = nwa.od_cost_matrix(points, points)
+
+    print(nwa.log[["nodedist_multiplier", "cost_mean"]])
 
 
 @print_function_name
@@ -77,7 +145,7 @@ def get_route_docstring(nwa, points):
 @print_function_name
 def get_route_frequencies_docstring(nwa, points):
     frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
-    print(frequencies)
+    print(frequencies[["source", "target", "frequency", "geometry"]])
     print("\n")
 
 
@@ -276,7 +344,7 @@ def make_docstring_output():
     roads = sg.read_parquet_url(
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
     )
-    roads = roads[["oneway", "drivetime_fw", "drivetime_bw", "roadid", "geometry"]]
+    roads = roads[["oneway", "drivetime_fw", "drivetime_bw", "geometry"]]
     nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
     rules = sg.NetworkAnalysisRules(weight="minutes")
 
@@ -284,14 +352,18 @@ def make_docstring_output():
 
     directed_isolated_dropped = NetworkAnalysis(network=nw, rules=rules)
 
-    od_cost_matrix_docstring(directed_isolated_dropped.deepcopy(), points)
-    get_k_routes_docstring(directed_isolated_dropped.deepcopy(), points)
-    service_area_docstring(directed_isolated_dropped.deepcopy(), points)
-    get_route_frequencies_docstring(directed_isolated_dropped.deepcopy(), points)
-    get_route_docstring(directed_isolated_dropped.deepcopy(), points)
-
     networkanalysis_doctring(directed_isolated_dropped, points)
+
+    networkanalysisrules_docstring()
+
+    od_cost_matrix_docstring(directed_isolated_dropped, points)
+    get_k_routes_docstring(directed_isolated_dropped, points)
+    service_area_docstring(directed_isolated_dropped, points)
+    get_route_frequencies_docstring(directed_isolated_dropped, points)
+    get_route_docstring(directed_isolated_dropped, points)
 
 
 if __name__ == "__main__":
-    make_docstring_output()
+    import cProfile
+
+    cProfile.run("make_docstring_output()", sort="cumtime")

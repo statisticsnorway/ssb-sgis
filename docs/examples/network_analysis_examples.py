@@ -114,7 +114,7 @@ nwa = sg.NetworkAnalysis(network=nw, rules=rules)
 
 nwa
 # %% [markdown]
-# Get number of times each line segment was visited
+# Get number of times each line segment was visited.
 
 # %%
 freq = nwa.get_route_frequencies(points.sample(75), points.sample(75))
@@ -128,14 +128,14 @@ sg.qtm(
 )
 
 # %% [markdown]
-# Fast many-to-many travel times/distances
+# Fast many-to-many travel times/distances.
 
 # %%
 od = nwa.od_cost_matrix(points, points)
 
 print(od)
 # %% [markdown]
-# Get the area that can be reached within one or more breaks
+# Get the area that can be reached within one or more breaks.
 
 # %%
 sa = nwa.service_area(
@@ -145,7 +145,7 @@ sa = nwa.service_area(
 
 sg.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minutes")
 # %% [markdown]
-# Get one or more route per origin-destination pair
+# Get one or more route per origin-destination pair.
 
 # %%
 routes = nwa.get_k_routes(

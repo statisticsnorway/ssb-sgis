@@ -12,7 +12,7 @@ from .geopandas_tools.general import (
     clean_geoms,
     coordinate_array,
     random_points,
-    random_points_in_polygon,
+    random_points_in_polygons,
     to_gdf,
     to_lines,
     to_multipoint,

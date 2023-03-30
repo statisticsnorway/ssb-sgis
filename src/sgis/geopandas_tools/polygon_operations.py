@@ -1,6 +1,7 @@
 """Functions for polygon geometries."""
 
 import geopandas as gpd
+import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
     Geometry,
@@ -136,17 +137,20 @@ def close_all_holes(
         gdf = gdf.copy()
 
     def close_all_holes_func(poly):
-        return polygons(get_exterior_ring(get_parts(poly)))
+        return unary_union(polygons(get_exterior_ring(get_parts(poly))))
+
+    close_all_holes_func = np.vectorize(close_all_holes_func)
 
     if isinstance(gdf, GeoDataFrame):
         gdf["geometry"] = close_all_holes_func(gdf.geometry)
+
         return gdf
 
     elif isinstance(gdf, gpd.GeoSeries):
         return close_all_holes_func(gdf)
 
     else:
-        return close_all_holes_func(gdf)
+        return polygons(get_exterior_ring(get_parts(gdf)))
 
 
 def _close_small_holes_poly(poly, max_area):
