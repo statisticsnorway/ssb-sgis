@@ -3,5 +3,5 @@ Maps
 
 .. automodule:: sgis.maps
     :members:
-    :exclude-members: 
+    :exclude-members:
     :show-inheritance:

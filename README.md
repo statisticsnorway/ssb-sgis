@@ -23,25 +23,17 @@ GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 [pre-commit]: https://github.com/pre-commit/pre-commit
 [black]: https://github.com/psf/black
 
-To install, one of:
-
-```console
-pip install ssb-sgis
-poetry add ssb-sgis
-```
-
 sgis builds on the geopandas package and provides functions that make it easier to do advanced GIS in python.
 Features include network analysis, functions for exploring multiple GeoDataFrames in a layered interactive map,
 and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 in polygons by size.
 
-### Network analysis examples
+## Network analysis examples
 
 Preparing for network analysis:
 
 ```python
 import sgis as sg
-
 
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -86,10 +78,7 @@ sg.qtm(
 
 ![png](network_analysis_examples_files/network_analysis_examples_6_0.png)
 
-    (<Figure size 1000x1000 with 1 Axes>,
-     <Axes: title={'center': 'Number of times each road was used.'}>)
-
-Fast many-to-many travel times/distances.
+Fast many-to-many travel times/distances
 
 ```python
 od = nwa.od_cost_matrix(points, points)
@@ -125,10 +114,7 @@ sg.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minu
 
 ![png](network_analysis_examples_files/network_analysis_examples_10_0.png)
 
-    (<Figure size 1000x1000 with 1 Axes>,
-     <Axes: title={'center': 'Roads that can be reached within 1 to 10 minutes'}>)
-
-Get one or more route per origin-destination pair.
+Get one or more route per origin-destination pair
 
 ```python
 routes = nwa.get_k_routes(
@@ -137,9 +123,6 @@ routes = nwa.get_k_routes(
 
 sg.qtm(sg.buff(routes, 15), "k", title="Five fastest routes from A to B", legend=False)
 ```
-
-    (<Figure size 1000x1000 with 1 Axes>,
-     <Axes: title={'center': 'Five fastest routes from A to B'}>)
 
 ![png](network_analysis_examples_files/network_analysis_examples_12_1.png)
 
