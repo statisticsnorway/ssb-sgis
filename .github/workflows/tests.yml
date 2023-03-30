@@ -52,13 +52,13 @@ jobs:
           poetry run pytest --verbose --durations=5 --cov --cov-report=term --cov-report=xml --junitxml=pytest-report.xml
 
       - name: SonarCloud Scan
-        if: matrix.os == 'ubuntu-latest'
+        if: ${{ (matrix.os == 'ubuntu-latest') &&  (matrix.python-version == '3.11') }}
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Build api-documentation
-        if: ${{ matrix.os == 'ubuntu-latest' }} && ${{ matrix.python-version == '3.11' }}
+        if: ${{ (matrix.os == 'ubuntu-latest') &&  (matrix.python-version == '3.11') }}
         run: |
           poetry run sphinx-build -W docs docs/_build
