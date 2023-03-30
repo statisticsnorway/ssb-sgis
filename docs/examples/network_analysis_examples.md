@@ -1,3 +1,5 @@
+# sgis
+
 ```python
 
 import os
@@ -17,61 +19,6 @@ warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 import geopandas as gpd
 
-
-"""
-r = gpd.read_file(
-    r"C:/Users\\ort\\Downloads\vegnettRuteplan_FGDB_20230109.gdb",
-    layer="ruttger_link_geom",
-    engine="pyogrio",
-    where="municipality in ('3416')",
-)
-r.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/roads_eidskog_2022.parquet")
-
-r2 = (
-    r.sample(40)
-    .assign(geometry=lambda x: x.centroid.buffer(np.arange(1, 41)))
-    .pipe(sg.to_multipoint)
-    .explode()
-    .sample(100)
-    .reset_index()
-    .assign(idx=range(100))[["idx", "geometry"]]
-)
-
-r2.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/points_eidskog.parquet")
-r2.explore()
-"""
-```
-
-    '\nr = gpd.read_file(\n    r"C:/Users\\ort\\Downloads\x0begnettRuteplan_FGDB_20230109.gdb",\n    layer="ruttger_link_geom",\n    engine="pyogrio",\n    where="municipality in (\'3416\')",\n)\nr.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/roads_eidskog_2022.parquet")\n\nr2 = (\n    r.sample(40)\n    .assign(geometry=lambda x: x.centroid.buffer(np.arange(1, 41)))\n    .pipe(sg.to_multipoint)\n    .explode()\n    .sample(100)\n    .reset_index()\n    .assign(idx=range(100))[["idx", "geometry"]]\n)\n\nr2.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/points_eidskog.parquet")\nr2.explore()\n'
-
-```python
-
-"""
-roads = sg.read_parquet_url(
-    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
-)
-
-nw = (
-    sg.DirectedNetwork(roads)
-    .remove_isolated()
-    .make_directed_network(
-        direction_col="oneway",
-        direction_vals_bft=("B", "FT", "TF"),
-        minute_cols=("drivetime_fw", "drivetime_bw"),
-    )
-)
-
-rules = sg.NetworkAnalysisRules(weight="minutes")
-
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
-
-nwa
-"""
-```
-
-    '\nroads = sg.read_parquet_url(\n    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"\n)\n\nnw = (\n    sg.DirectedNetwork(roads)\n    .remove_isolated()\n    .make_directed_network(\n        direction_col="oneway",\n        direction_vals_bft=("B", "FT", "TF"),\n        minute_cols=("drivetime_fw", "drivetime_bw"),\n    )\n)\n\nrules = sg.NetworkAnalysisRules(weight="minutes")\n\nnwa = sg.NetworkAnalysis(network=nw, rules=rules)\n\nnwa\n'
-
-```python
 
 points = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"

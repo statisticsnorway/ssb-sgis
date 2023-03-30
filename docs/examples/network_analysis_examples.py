@@ -5,6 +5,8 @@
 #       extension: .py
 #       format_name: percent
 # ---
+# %% [markdown]
+# # sgis
 # %%
 
 import os
@@ -25,53 +27,6 @@ warnings.filterwarnings(action="ignore", category=FutureWarning)
 import geopandas as gpd
 
 
-"""
-r = gpd.read_file(
-    r"C:/Users\\ort\\Downloads\vegnettRuteplan_FGDB_20230109.gdb",
-    layer="ruttger_link_geom",
-    engine="pyogrio",
-    where="municipality in ('3416')",
-)
-r.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/roads_eidskog_2022.parquet")
-
-r2 = (
-    r.sample(40)
-    .assign(geometry=lambda x: x.centroid.buffer(np.arange(1, 41)))
-    .pipe(sg.to_multipoint)
-    .explode()
-    .sample(100)
-    .reset_index()
-    .assign(idx=range(100))[["idx", "geometry"]]
-)
-
-r2.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/points_eidskog.parquet")
-r2.explore()
-"""
-# %%
-
-"""
-roads = sg.read_parquet_url(
-    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
-)
-
-nw = (
-    sg.DirectedNetwork(roads)
-    .remove_isolated()
-    .make_directed_network(
-        direction_col="oneway",
-        direction_vals_bft=("B", "FT", "TF"),
-        minute_cols=("drivetime_fw", "drivetime_bw"),
-    )
-)
-
-rules = sg.NetworkAnalysisRules(weight="minutes")
-
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
-
-nwa
-"""
-# %%
-
 points = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
 )
@@ -79,7 +34,6 @@ points = sg.read_parquet_url(
 ### !!!
 ### COPY EVERYTHING BELOW INTO readme.md and change the png paths.
 ### !!!
-
 
 # %% [markdown]
 # sgis builds on the geopandas package and provides functions that make it easier to do advanced GIS in python.
