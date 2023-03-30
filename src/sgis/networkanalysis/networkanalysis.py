@@ -275,11 +275,13 @@ class NetworkAnalysis:
         Examples
         --------
         Create some origin and destination points.
+        See the class examples for how to prepare the network.
 
         import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
         ... )
+
         >>> origins = points.loc[:99]
         >>> origins
                                   geometry
@@ -519,7 +521,11 @@ class NetworkAnalysis:
         --------
         Get routes from 1 to 1000 points.
 
-        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
+        import sgis as sg
+        >>> points = sg.read_parquet_url(
+        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+        ... )
+
         >>> routes = nwa.get_route(points.iloc[[0]], points)
         >>> routes
             origin  destination    minutes                                           geometry
@@ -622,9 +628,12 @@ class NetworkAnalysis:
 
         Examples
         --------
+        import sgis as sg
+        >>> points = sg.read_parquet_url(
+        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+        ... )
         >>> point1 = points.iloc[[0]]
         >>> point2 = points.iloc[[1]]
-        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
 
         Getting 10 fastest routes from one point to another point.
 
@@ -750,7 +759,11 @@ class NetworkAnalysis:
         --------
         Get number of times each road was visited for trips from 25 to 25 points.
 
-        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
+        import sgis as sg
+        >>> points = sg.read_parquet_url(
+        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+        ... )
+
         >>> frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
         >>> frequencies[["source", "target", "frequency", "geometry"]]
                source target   frequency                                          geometry
@@ -836,9 +849,13 @@ class NetworkAnalysis:
 
         Examples
         --------
+        import sgis as sg
+        >>> points = sg.read_parquet_url(
+        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+        ... )
+
         10 minute service area for three origin points.
 
-        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> service_areas = nwa.service_area(
         ...         points.loc[:2],
         ...         breaks=10,
@@ -960,9 +977,13 @@ class NetworkAnalysis:
 
         Examples
         --------
+        import sgis as sg
+        >>> points = sg.read_parquet_url(
+        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+        ... )
+
         10 minute service area for one origin point.
 
-        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> sa = nwa.precice_service_area(
         ...         points.iloc[[0]],
         ...         breaks=10,
