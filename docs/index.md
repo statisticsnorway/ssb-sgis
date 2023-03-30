@@ -2,7 +2,7 @@
 ---
 end-before: <!-- github-only -->
 relative-docs: docs/network_analysis_examples_files
-relative-images: 
+relative-images:
 ---
 ```
 
@@ -16,4 +16,8 @@ maxdepth: 3
 ---
 reference/index
 examples/index
+contributing
+Code of Conduct <codeofconduct>
+License <license>
+Changelog <https://github.com/statisticsnorway/ssb-sgis/releases>
 ```

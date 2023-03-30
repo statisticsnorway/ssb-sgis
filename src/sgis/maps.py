@@ -8,9 +8,9 @@ The 'qtm' function shows a static map of one or more GeoDataFrames.
 """
 import matplotlib.pyplot as plt
 from geopandas import GeoDataFrame, GeoSeries
+from matplotlib.lines import Line2D
 from pandas.api.types import is_numeric_dtype
 from shapely import Geometry
-from matplotlib.lines import Line2D
 
 from .exceptions import NotInJupyterError
 from .explore import Explore, _separate_args

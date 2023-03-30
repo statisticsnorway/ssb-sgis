@@ -3,5 +3,5 @@ Read parquet from url
 
 .. automodule:: sgis.read_parquet
     :members:
-    :exclude-members: 
+    :exclude-members:
     :show-inheritance:

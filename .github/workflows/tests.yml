@@ -40,9 +40,6 @@ jobs:
           poetry run pytest --verbose --durations=5 \
             --cov --cov-report=term --cov-report=xml --junitxml=pytest-report.xml
 
-      - name: Debug
-        run: echo "${{ github.actor }}"
-
       - name: SonarCloud Scan
         # No need to run SonarCloud analysis if dependabot update
         if: ${{ github.actor != 'dependabot[bot]' }}
@@ -50,3 +47,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Build api-documentation
+        run: |
+          poetry run -W sphinx-build docs docs/_build
