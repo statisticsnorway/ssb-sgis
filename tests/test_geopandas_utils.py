@@ -6,8 +6,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import LineString
-from shapely.wkt import loads
+from shapely.geometry import Polygon
 
 
 src = str(Path(__file__).parent.parent) + "/src"
@@ -17,246 +16,140 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_snap_to():
-    points = sg.to_gdf([(0, 0), (1, 1)])
-    to = sg.to_gdf([(2, 2), (3, 3)])
-    to["snap_to_idx"] = to.index
+def test_random():
+    for i in [1, 10, 100]:
+        gdf = sg.random_points(i, loc=100)
+        assert len(gdf) == i
 
-    # snap all points
-    snapped = sg.snap_to(points, to)
-    assert len(snapped) == 2
-    assert all([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
+        buffered = sg.buff(gdf, 10)
 
-    # with id col
-    snapped = sg.snap_to(points, to, id_col="snap_to_idx")
-    assert len(snapped) == 2
-    assert all(snapped.snap_to_idx == 0)
+        points = sg.random_points_in_polygons(buffered, 100)
 
-    # with max_dist
-    snapped = sg.snap_to(points, to, id_col="snap_to_idx", max_dist=1.5)
-    assert len(snapped) == 2
-    assert not all([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
-    assert any([list(geom.coords)[0] == (2, 2) for geom in snapped.geometry])
+        assert len(points) == 100 * i, points
+        assert max(points.index) == i - 1, points.index
 
-    # with identical distances
-    point = sg.to_gdf([0, 0])
-    to = sg.to_gdf([(0, 1), (1, 0)])
-    to["snap_to_idx"] = to.index
-    snapped = sg.snap_to(point, to, id_col="snap_to_idx")
-    assert len(snapped) == 1
-    assert all(snapped.snap_to_idx == 0)
-    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
-
-    # opposite order of to coords
-    to = sg.to_gdf([(1, 0), (0, 1)])
-    to["snap_to_idx"] = to.index
-    snapped = sg.snap_to(point, to, id_col="snap_to_idx")
-    assert len(snapped) == 1
-    assert all(snapped.snap_to_idx == 1)
-    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
-
-    # duplicate geometries in 'to'
-    point = sg.to_gdf([0, 0])
-    to = sg.to_gdf([(0, 1), (0, 1)])
-    to["snap_to_idx"] = to.index
-    snapped = sg.snap_to(point, to, id_col="snap_to_idx")
-    assert len(snapped) == 2
-    assert any(snapped.snap_to_idx == 0)
-    assert any(snapped.snap_to_idx == 1)
-    assert all([list(geom.coords)[0] == (0, 1) for geom in snapped.geometry])
+        points["temp_idx"] = range(len(points))
+        joined = points.sjoin(buffered, how="inner")
+        assert all(points.temp_idx.isin(joined.temp_idx))
 
 
-def test_buffdissexp(gdf_fixture):
-    for distance in [1, 10, 100, 1000, 10000]:
-        copy = gdf_fixture.copy()[["geometry"]]
-        copy = sg.buff(copy, distance)
-        copy = sg.diss(copy)
-        copy = copy.explode(ignore_index=True)
-
-        areal1 = copy.area.sum()
-        lengde1 = copy.length.sum()
-
-        copy = sg.buffdissexp(gdf_fixture, distance, copy=True)
-
-        assert (
-            areal1 == copy.area.sum() and lengde1 == copy.length.sum()
-        ), "ulik lengde/areal"
-
-    sg.buffdissexp(gdf_fixture, 100)
-    sg.buffdissexp(gdf_fixture.geometry, 100)
-    sg.buffdissexp(gdf_fixture.unary_union, 100)
+def test_area(gdf_fixture):
+    copy = sg.buffdissexp(gdf_fixture, 25)
+    assert len(copy) == 4
+    assert round(copy.area.sum(), 5) == 1035381.10389
+    assert round(copy.length.sum(), 5) == 16689.46148
 
 
-def test_geos(gdf_fixture):
-    copy = sg.buffdissexp(gdf_fixture, 25, copy=True)
-    assert len(copy) == 4, "feil antall rader. Noe galt/nytt med GEOS' GIS-algoritmer?"
-    assert (
-        round(copy.area.sum(), 5) == 1035381.10389
-    ), "feil areal. Noe galt/nytt med GEOS' GIS-algoritmer?"
-    assert (
-        round(copy.length.sum(), 5) == 16689.46148
-    ), "feil lengde. Noe galt/nytt med GEOS' GIS-algoritmer?"
-
-
-def test_aggfuncs(gdf_fixture):
-    copy = sg.dissexp(gdf_fixture, by="txtcol", aggfunc="sum")
-    assert (
-        len(copy) == 11
-    ), "dissexp by txtcol skal gi 11 rader, tre stykk linestrings..."
-
-    copy = sg.buffdiss(gdf_fixture, 100, by="txtcol", aggfunc="sum", copy=True)
-    assert (
-        copy.numcol.sum()
-        == gdf_fixture.numcol.sum()
-        == sum([1, 2, 3, 4, 5, 6, 7, 8, 9])
-    )
-
-    copy = sg.buffdissexp(
-        gdf_fixture, 100, by="txtcol", aggfunc=["sum", "mean"], copy=True
-    )
-    assert (
-        "numcol_sum" in copy.columns and "numcol_mean" in copy.columns
-    ), "kolonnene følger ikke mønstret 'kolonnenavn_aggfunc'"
-    assert len(copy) == 6, "feil lengde"
-
-    copy = sg.buffdissexp(
-        gdf_fixture, 1000, by="txtcol", aggfunc=["sum", "mean"], copy=True
-    )
-    assert len(copy) == 4, "feil lengde"
-
-    copy = sg.buffdissexp(gdf_fixture, 100, by="numcol", copy=True)
-    assert len(copy) == 9, "feil lengde"
-
-    copy = sg.buffdissexp(gdf_fixture, 100, by=["numcol", "txtcol"], copy=True)
-    assert (
-        "numcol" in copy.columns and "txtcol" in copy.columns
-    ), "kolonnene mangler. Er de index?"
-    assert len(copy) == 9, "feil lengde"
-
-
-def test_close_holes(gdf_fixture):
+def test_close_all_holes(gdf_fixture):
     p = gdf_fixture.loc[gdf_fixture.geom_type == "Point"]
-    buff1 = sg.buff(p, 100)
-    buff2 = sg.buff(p, 200)
+
+    buff1 = sg.buffdissexp(p, 100)
+    buff2 = sg.buffdissexp(p, 200)
     rings_with_holes = sg.overlay(buff2, buff1, how="difference")
-    holes_closed = sg.close_holes(rings_with_holes)
+    holes_closed = sg.close_all_holes(rings_with_holes)
     assert sum(holes_closed.area) > sum(rings_with_holes.area)
-    holes_closed = sg.close_holes(rings_with_holes, 10000)
-    assert sum(holes_closed.area) > sum(rings_with_holes.area)
-    holes_not_closed = sg.close_holes(rings_with_holes, 0.000001)
+
+    holes_closed2 = sg.close_small_holes(rings_with_holes, max_area=10000 * 1_000_000)
+    assert round(sum(holes_closed2.area), 3) == round(sum(holes_closed.area), 3)
+    assert sum(holes_closed2.area) > sum(rings_with_holes.area)
+
+    holes_not_closed = sg.close_small_holes(rings_with_holes, max_area=1)
     assert sum(holes_not_closed.area) == sum(rings_with_holes.area)
 
 
-def test_concat():
-    points = sg.random_points(100)
-    points2 = sg.random_points(100)
-    assert len(sg.gdf_concat([points, points2])) == 200
-    assert len(sg.gdf_concat((points, points2))) == 200
-    assert len(sg.gdf_concat(x for x in (points, points2))) == 200
+def test_clean_clip():
+    p = sg.random_points(100)
+    buff1 = sg.buff(p, 100)
+    buff2 = sg.buff(p, 200)
+
+    clipped = buff1.clip(buff2)
+    clipped["geometry"] = clipped.make_valid()
+    clipped2 = sg.clean_clip(buff1, buff2)
+    assert clipped.equals(clipped2)
 
 
-def test_clean(gdf_fixture):
-    missing = gpd.GeoDataFrame(
-        {"geometry": [None, np.nan]}, geometry="geometry", crs=25833
+def test_clean():
+    invalid_geometry = sg.to_gdf(
+        Polygon([(0, 1), (0, 0), (0, 1), (1, 1), (1, 2), (0, 2), (0, 0)])
     )
-    empty = gpd.GeoDataFrame(
-        {"geometry": gpd.GeoSeries(loads("POINT (0 0)")).buffer(0)},
-        geometry="geometry",
-        crs=25833,
+
+    empty_geometry = sg.to_gdf("POINT (0 0)").pipe(sg.buff, 0)
+
+    missing_geometry = gpd.GeoDataFrame(
+        {"geometry": [None]}, geometry="geometry", crs=25833
     )
-    gdf = sg.gdf_concat([gdf_fixture, missing, empty])
-    assert len(gdf) == 12
-    gdf2 = sg.clean_geoms(gdf_fixture)
-    ser = sg.clean_geoms(gdf_fixture.geometry)
-    assert len(gdf2) == 9
-    assert len(ser) == 9
 
-
-def sjoin_overlay(gdf_fixture):
-    gdf1 = sg.buff(gdf_fixture, 25, copy=True)
-    gdf2 = sg.buff(gdf_fixture, 100, copy=True)
-    gdf2["nykoll"] = 1
-    gdf = sg.sjoin(gdf1, gdf2)
-    assert all(col in ["geometry", "numcol", "txtcol", "nykoll"] for col in gdf.columns)
-    assert not any(
-        col not in list(gdf.columns)
-        for col in ["geometry", "numcol", "txtcol", "nykoll"]
+    problematic_geometries = pd.concat(
+        [invalid_geometry, missing_geometry, empty_geometry], ignore_index=True
     )
-    assert len(gdf) == 25
-    gdf = sg.overlay(gdf1, gdf2)
-    assert all(col in ["geometry", "numcol", "txtcol", "nykoll"] for col in gdf.columns)
-    assert not any(
-        col not in list(gdf.columns)
-        for col in ["geometry", "numcol", "txtcol", "nykoll"]
+
+    assert len(problematic_geometries) == 3
+    gdf = sg.clean_geoms(problematic_geometries)
+    gdf = sg.to_single_geom_type(gdf, "polygon")
+    print(gdf)
+    assert len(gdf) == 1
+    assert sg.get_geom_type(gdf) == "polygon"
+    ser = sg.clean_geoms(problematic_geometries.geometry)
+    ser = sg.to_single_geom_type(ser, "polygon")
+    assert len(ser) == 1
+    assert sg.get_geom_type(ser) == "polygon"
+
+    valid_geometry = sg.to_gdf([0, 1])
+    problematic_geometries = pd.concat(
+        [problematic_geometries, valid_geometry], ignore_index=True
     )
-    assert len(gdf) == 25
-
-    gdf = sg.overlay_update(gdf2, gdf1)
-    assert list(gdf.columns) == ["geometry", "numcol", "txtcol", "nykoll"]
-    assert len(gdf) == 18
-
-
-def test_copy(gdf_fixture):
-    """
-    Sjekk at copy-parametret i buff funker. Og sjekk pandas' copy-regler samtidig.
-    """
-
-    copy = gdf_fixture[gdf_fixture.area == 0]
-    assert gdf_fixture.area.sum() != 0
-
-    copy = gdf_fixture.loc[gdf_fixture.area == 0]
-    assert gdf_fixture.area.sum() != 0
-    assert copy.area.sum() == 0
-
-    bufret = sg.buff(copy, 10, copy=True)
-    assert copy.area.sum() == 0
-
-    bufret = sg.buff(copy, 10, copy=False)
-    assert copy.area.sum() != 0
+    gdf = sg.clean_geoms(problematic_geometries)
+    assert len(gdf) == 2
+    gdf = sg.to_single_geom_type(gdf, "polygon")
+    print(gdf)
+    assert sg.get_geom_type(gdf) == "polygon"
+    assert len(gdf) == 1
 
 
-def test_neighbors(gdf_fixture):
-    naboer = sg.get_neighbors(
-        gdf_fixture.iloc[[0]],
-        neighbors=gdf_fixture,
-        id_col="numcol",
-        max_dist=100,
-    )
-    naboer.sort()
-    assert naboer == [1, 2], naboer
-    naboer = sg.get_neighbors(
-        gdf_fixture.iloc[[8]],
-        neighbors=gdf_fixture,
-        id_col="numcol",
-        max_dist=100,
-    )
-    naboer.sort()
-    assert naboer == [4, 5, 7, 8, 9], naboer
-
+def test_get_neighbor_indices():
     points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
-    points["idx"] = points.index
     p1 = points.iloc[[0]]
-    assert sg.get_neighbors(p1, points, id_col="idx") == [0]
-    assert sg.get_neighbors(p1, points, id_col="idx", max_dist=1) == [0, 1]
-    assert sg.get_neighbors(p1, points, id_col="idx", max_dist=3) == [0, 1, 2]
+
+    assert sg.get_neighbor_indices(p1, points) == [0]
+    assert sg.get_neighbor_indices(p1, points, max_dist=1) == [0, 1]
+    assert sg.get_neighbor_indices(p1, points, max_dist=3) == [0, 1, 2]
+    points["id_col"] = [*"abc"]
+    assert sg.get_neighbor_indices(p1, points.set_index("id_col"), max_dist=3) == [
+        "a",
+        "b",
+        "c",
+    ]
 
 
-def test_snap(gdf_fixture):
-    punkter = gdf_fixture[gdf_fixture.length == 0]
-    annet = gdf_fixture[gdf_fixture.length != 0]
-    snapped = sg.snap_to(punkter, annet, max_dist=None, copy=True)
-    assert all(snapped.intersects(annet.buffer(1).unary_union))
-    snapped = sg.snap_to(punkter, annet, max_dist=200, copy=True)
-    assert sum(snapped.intersects(annet.buffer(1).unary_union)) == 3
-    snapped = sg.snap_to(punkter, annet, max_dist=20, copy=True)
-    assert sum(snapped.intersects(annet.buffer(1).unary_union)) == 1
+def test_snap():
+    point = sg.to_gdf([0, 0])
+    points = sg.to_gdf([(0, 0), (1, 0), (2, 0), (3, 0)])
+    points["idx"] = points.index
 
-    snapped = sg.snap_to(punkter, annet, max_dist=None, to_node=True, copy=True)
+    snapped = sg.snap_all(points, point)
+    print(snapped)
+    print([geom.x == 0 and geom.y == 0 for geom in snapped.geometry])
+    assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry)
 
-    assert all(
-        geom in list(sg.to_multipoint(annet).explode().geometry)
-        for geom in snapped.geometry
+    snapped = sg.snap_within_distance(points, point, 10, distance_col="snap_distance")
+    print(snapped)
+    assert [geom.x == 0 and geom.y == 0 for geom in snapped.geometry]
+    assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry)
+    assert snapped.snap_distance.notna().sum() == 3
+
+    snapped = sg.snap_within_distance(
+        points, point, 1.001, distance_col="snap_distance"
     )
+    print(snapped)
+    assert sum([geom.x == 0 and geom.y == 0 for geom in snapped.geometry]) == 2
+    assert snapped.snap_distance.notna().sum() == 1
+
+    snapped = sg.snap_all(points, point)
+
+    poly = sg.to_gdf(Polygon([(10, 10), (110, 11), (11, 11), (11, 110)]))
+    snapped = sg.snap_all(points, to=pd.concat([point, poly]))
+    print([geom.x == 0 and geom.y == 0 for geom in snapped.geometry])
+    assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry)
 
 
 def test_to_multipoint(gdf_fixture):
@@ -284,16 +177,6 @@ def main():
     print(f"{geos_versjon    = }")
     print(f"{pd.__version__  = }")
     print(f"{np.__version__  = }")
-
-    src = str(Path(__file__).parent).strip("tests") + "src"
-
-    sys.path.append(src)
-
-    from conftest import make_gdf
-
-    test_snap(make_gdf())
-
-    print("Success")
 
 
 if __name__ == "__main__":

@@ -14,8 +14,10 @@ from shapely import line_merge
 
 from ..exceptions import ZeroLinesError
 from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..geopandas_tools.line_operations import (
     close_network_holes,
+    close_network_holes_to_deadends,
     cut_lines,
     get_component_size,
     get_largest_component,
@@ -60,7 +62,7 @@ class Network:
         merge_lines: if True (default), multilinestrings within the same row will
             be merged if they overlap. if False, multilines will be split into
             separate rows of singlepart lines.
-        allow_degree_units: If False (the default), it will raise an exception if
+        allow_degree_units: If False (default), it will raise an exception if
             the coordinate reference system of 'gdf' is in degree units, i.e.
             unprojected (4326). If set to True, all crs are allowed, but it might
             raise exceptions and give erronous results.
@@ -72,7 +74,7 @@ class Network:
 
     See also
     --------
-    DirectedNetwork: subclass of Network for directed network analysis
+    DirectedNetwork: subclass of Network for directed network analysis.
 
     Examples
     --------
@@ -121,7 +123,6 @@ class Network:
         self,
         gdf: GeoDataFrame,
         *,
-        merge_lines: bool = True,
         allow_degree_units: bool = False,
     ):
         """The lines are fixed, welded together rowwise and exploded. Creates node-ids.
@@ -145,7 +146,7 @@ class Network:
                 "set 'allow_degree_units' to True."
             )
 
-        self.gdf = self._prepare_network(gdf, merge_lines)
+        self.gdf = self._prepare_network(gdf)
 
         self._make_node_ids()
 
@@ -280,36 +281,28 @@ class Network:
 
     def close_network_holes(
         self,
-        max_dist: int,
+        max_dist: int | float,
+        max_angle: int,
         fillna: float | int | None,
-        min_dist: int = 0,
-        deadends_only: bool = False,
         hole_col: str = "hole",
-        length_factor: int = 25,
     ):
-        """Fills holes in the network lines shorter than the max_dist.
+        """Fills network gaps with straigt lines.
 
-        It fills holes in the network by finding the nearest neighbors of each node,
-        then connecting the nodes that are within the max_dist of each other. The
-        minimum distance is set to 0, but can be changed with the min_dist parameter.
+        Fills holes in the network by connecting deadends with the the closest node
+        that is within the 'max_dist' distance and have an angle less 'max_angle'.
 
         Args:
-            max_dist: The maximum distance between two nodes to be considered a hole.
-            fillna: The value to give the holes in all columns with NaN, which are all
-                columns except for the hole_col and the source/target columns. If set
-                to None,
-            min_dist: minimum distance between nodes to be considered a hole. Defaults
-                to 0
-            deadends_only: If True, only holes between two deadends will be filled.
-                If False (the default), deadends might be connected to any node of the
-                network.
+            max_dist: The maximum distance for the holes to be filled.
+            max_angle: Absolute number between 0 and 180 that represents the maximum
+                difference in angle between the new line and the prior, i.e. the line
+                at which the deadend ends. A value of 0 means the new lines must
+                have the exact same angle as the prior line, and 180 means the new
+                lines can go in any direction.
+            fillna: Numeric value to assign to all NaN values of the holes. This is
+                chiefly the 'weight' column that is to be used in network analysis.
             hole_col: Holes will get the value 1 in a column named 'hole' by default,
                 or what is specified as hole_col. If set to None or False, no column
                 will be added.
-            length_factor: The percentage longer the new lines have to be compared to the
-                distance from the other end of the deadend line relative to the line's
-                length. Or said (a bit) simpler: higher length_factor means the new lines
-                will have an angle more similar to the deadend line it originates from.
 
         Returns:
             The input GeoDataFrame with new lines added.
@@ -330,7 +323,86 @@ class Network:
         0.0     7757
         Name: connected, dtype: int64
 
-        Fill gaps shorter than 1.1 meters.
+        Fill gaps shorter than 1.1 meters and an angle deviation of no more than
+        30 degrees.
+
+        >>> nw = nw.close_network_holes(max_dist=1.1, max_angle=30, fillna=0)
+        >>> nw = nw.get_largest_component()
+        >>> nw.gdf.connected.value_counts()
+        1.0    100315
+        0.0       191
+        Name: connected, dtype: int64
+
+        Fill gaps with all angles allowed.
+
+        >>> nw = nw.close_network_holes(max_dist=1.1, max_angle=180, fillna=0)
+        >>> nw = nw.get_largest_component()
+        >>> nw.gdf.connected.value_counts()
+        1.0    100315
+        0.0       180
+        Name: connected, dtype: int64
+
+        It's not always wise to fill gaps. In the case of this data, these small gaps
+        are intentional. They are road blocks where most cars aren't allowed to pass.
+        Fill the holes only if it makes the travel times/routes more realistic.
+        """
+        self.gdf = close_network_holes(
+            self.gdf,
+            max_dist,
+            hole_col=hole_col,
+            max_angle=max_angle,
+        )
+
+        if fillna is not None:
+            self.gdf.loc[self.gdf[hole_col] == 1] = self.gdf.loc[
+                self.gdf[hole_col] == 1
+            ].fillna(fillna)
+
+        self._hole_col = hole_col
+
+        return self
+
+    def close_network_holes_to_deadends(
+        self,
+        max_dist: int | float,
+        fillna: int | float | None,
+        hole_col: str = "hole",
+    ):
+        """Fills holes between two deadends if the distance is less than the max_dist.
+
+        It fills gaps in the network by finding the nearest neighbors of each node,
+        then creating straigt lines between the nodes that are within the 'max_dist'
+        of each other.
+
+        Args:
+            max_dist: The maximum distance between two nodes to be considered a hole.
+            fillna: The value to give the closed holes in all columns with NaN. This
+                has to be set in order for the closed holes to be included in network
+                analyses. If set to 0, the lines will get a weight of 0.
+            hole_col: Holes will get the value 1 in a column named 'hole' by default,
+                or what is specified as hole_col. If set to None or False, no column
+                will be added.
+
+        Returns:
+            The input GeoDataFrame with new lines added.
+
+        Note:
+            The 'fillna' parameter has no default value, but can be set to None if NaN
+            values should be preserved. This will, however, mean that the filled holes
+            will be opened again in network analysis.
+
+        Examples
+        --------
+        Check for number of isolated lines before filling gaps.
+
+        >>> nw = Network(roads)
+        >>> nw = nw.get_largest_component()
+        >>> nw.gdf.connected.value_counts()
+        1.0    85638
+        0.0     7757
+        Name: connected, dtype: int64
+
+        Fill gaps shorter than 1.1 meters and assign 0 to all columns.
 
         >>> nw = nw.close_network_holes(max_dist=1.1, fillna=0)
         >>> nw = nw.get_largest_component()
@@ -343,14 +415,10 @@ class Network:
         are intentional. They are road blocks where most cars aren't allowed to pass.
         Fill the holes only if it makes the travel times/routes more realistic.
         """
-        self._update_nodes_if()
-        self.gdf = close_network_holes(
+        self.gdf = close_network_holes_to_deadends(
             self.gdf,
             max_dist,
-            min_dist=min_dist,
-            deadends_only=deadends_only,
             hole_col=hole_col,
-            length_factor=length_factor,
         )
 
         if fillna is not None:
@@ -358,21 +426,31 @@ class Network:
                 self.gdf[hole_col] == 1
             ].fillna(fillna)
 
+        self._hole_col = hole_col
+
         return self
 
     def cut_lines(
-        self, max_length: int, adjust_weight_col: str | None = None, ignore_index=True
+        self,
+        max_length: int | float,
+        adjust_weight_col: str | None = None,
+        ignore_index: bool = False,
     ):
         """Cuts lines into pieces no longer than 'max_length'.
 
+        Will give more accurate results in the service_area method, but not in the
+        precice_service_area method. Shorter lines also mean more holes might be filled
+        in close_network_holes. Other than that, cutting lines has no impact on network
+        analysis except making it slower.
+
         Args:
             max_length: The maximum length of the line segments.
-            adjust_weight_col: If you have a column in your GeoDataFrame that you want
-                to adjust based on the length of the new lines, you can pass the name
-                of that column here. For example, if you have a column called
-                "minutes", the minute value will be halved if the line is halved.
+            adjust_weight_col: Name of a numeric column in the GeoDataFrame to
+                be adjusted based on the length of the new lines. For example, if the
+                column is "minutes", the minute value will be halved if the line is
+                halved in length.
             ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-                Defaults to True
+                Defaults to False.
 
         Returns:
             Self
@@ -413,6 +491,7 @@ class Network:
             if adjust_weight_col not in self.gdf.columns:
                 raise KeyError(f"'gdf' has no column {adjust_weight_col}")
             self.gdf["original_length"] = self.gdf.length
+
         self.gdf = cut_lines(self.gdf, max_length=max_length, ignore_index=ignore_index)
 
         if adjust_weight_col:
@@ -435,7 +514,7 @@ class Network:
         self.gdf, self._nodes = make_node_ids(self.gdf)
 
     @staticmethod
-    def _prepare_network(gdf: GeoDataFrame, merge_lines: bool = True) -> GeoDataFrame:
+    def _prepare_network(gdf: GeoDataFrame) -> GeoDataFrame:
         """Make sure there are only singlepart LineStrings in the network.
 
         This is needed when making node-ids based on the lines' endpoints, because
@@ -444,11 +523,7 @@ class Network:
 
         Args:
             gdf: GeoDataFrame with (multi)line geometries. MultiLineStrings will be
-                merged, then split if not possible to merge.
-            merge_lines (bool): merge MultiLineStrings into LineStrings rowwise. No
-                rows will be dissolved. If false, the network might get more and shorter
-                lines, making network analysis more accurate, but possibly slower.
-                Might also make minute column wrong.
+                merged, then exploded if a merge was not possible.
 
         Returns:
             A GeoDataFrame of line geometries.
@@ -461,13 +536,13 @@ class Network:
         if gdf._geometry_column_name != "geometry":
             gdf = gdf.rename_geometry("geometry")
 
-        gdf = clean_geoms(gdf, geom_type="lines")
+        gdf = clean_geoms(gdf)
+        gdf = to_single_geom_type(gdf, geom_type="lines")
 
         if not len(gdf):
             raise ZeroLinesError
 
-        if merge_lines:
-            gdf.geometry = line_merge(gdf.geometry)
+        gdf.geometry = line_merge(gdf.geometry)
 
         rows_now = len(gdf)
         gdf = gdf.loc[gdf.geom_type != "LinearRing"]
@@ -575,6 +650,9 @@ class Network:
     def __iter__(self):
         """So the attributes can be iterated through."""
         return iter(self.__dict__.items())
+
+    def __len__(self):
+        return len(self.gdf)
 
 
 # TODO: put these a better place:

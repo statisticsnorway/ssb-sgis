@@ -1,3 +1,5 @@
+# sgis
+
 ```python
 
 import os
@@ -17,60 +19,6 @@ warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 import geopandas as gpd
 
-"""
-r = gpd.read_file(
-    r"C:/Users\ort\Downloads\vegnettRuteplan_FGDB_20230109.gdb",
-    layer="ruttger_link_geom",
-    engine="pyogrio",
-    where="municipality in ('3416')",
-)
-r.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/roads_eidskog_2022.parquet")
-
-r2 = (
-    r.sample(40)
-    .assign(geometry=lambda x: x.centroid.buffer(np.arange(1, 41)))
-    .pipe(sg.to_multipoint)
-    .explode()
-    .sample(100)
-    .reset_index()
-    .assign(idx=range(100))[["idx", "geometry"]]
-)
-
-r2.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/points_eidskog.parquet")
-r2.explore()
-"""
-```
-
-    '\nr = gpd.read_file(\n    r"C:/Users\\ort\\Downloads\x0begnettRuteplan_FGDB_20230109.gdb",\n    layer="ruttger_link_geom",\n    engine="pyogrio",\n    where="municipality in (\'3416\')",\n)\nr.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/roads_eidskog_2022.parquet")\n\nr2 = (\n    r.sample(40)\n    .assign(geometry=lambda x: x.centroid.buffer(np.arange(1, 41)))\n    .pipe(sg.to_multipoint)\n    .explode()\n    .sample(100)\n    .reset_index()\n    .assign(idx=range(100))[["idx", "geometry"]]\n)\n\nr2.to_parquet("C:/Users/ort/git/ssb-sgis/tests/testdata/points_eidskog.parquet")\nr2.explore()\n'
-
-```python
-
-"""
-roads = sg.read_parquet_url(
-    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
-)
-
-nw = (
-    sg.DirectedNetwork(roads)
-    .remove_isolated()
-    .make_directed_network(
-        direction_col="oneway",
-        direction_vals_bft=("B", "FT", "TF"),
-        minute_cols=("drivetime_fw", "drivetime_bw"),
-    )
-)
-
-rules = sg.NetworkAnalysisRules(weight="minutes")
-
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
-
-nwa
-"""
-```
-
-    '\nroads = sg.read_parquet_url(\n    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"\n)\n\nnw = (\n    sg.DirectedNetwork(roads)\n    .remove_isolated()\n    .make_directed_network(\n        direction_col="oneway",\n        direction_vals_bft=("B", "FT", "TF"),\n        minute_cols=("drivetime_fw", "drivetime_bw"),\n    )\n)\n\nrules = sg.NetworkAnalysisRules(weight="minutes")\n\nnwa = sg.NetworkAnalysis(network=nw, rules=rules)\n\nnwa\n'
-
-```python
 
 points = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
@@ -86,12 +34,13 @@ Features include network analysis, functions for exploring multiple GeoDataFrame
 and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 in polygons by size.
 
-# Network analysis examples
+## Network analysis examples
 
 Preparing for network analysis:
 
 ```python
 import sgis as sg
+
 
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -114,19 +63,22 @@ nwa = sg.NetworkAnalysis(network=nw, rules=rules)
 nwa
 ```
 
+```
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...)
+        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...),
+        log=True, detailed_log=True,
     )
+```
 
-Get number of times each line segment was visited
+Get number of times each line segment was visited.
 
 ```python
 freq = nwa.get_route_frequencies(points.sample(75), points.sample(75))
 
 sg.qtm(
     sg.buff(freq, 15),
-    "n",
+    "frequency",
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used.",
@@ -135,30 +87,32 @@ sg.qtm(
 
 ![png](network_analysis_examples_files/network_analysis_examples_6_0.png)
 
-Fast many-to-many travel times/distances
+Fast many-to-many travel times/distances.
 
 ```python
-od = nwa.od_cost_matrix(points, points, id_col="idx")
+od = nwa.od_cost_matrix(points, points)
 
 print(od)
 ```
 
+```
             origin  destination    minutes
-    0            1            1   0.000000
-    1            1            2  13.039830
-    2            1            3  10.902453
-    3            1            4   8.297021
-    4            1            5  14.742294
+    0            0            0   0.000000
+    1            0            1  13.039830
+    2            0            2  10.902453
+    3            0            3   8.297021
+    4            0            4  14.742294
     ...        ...          ...        ...
-    999995    1000          996  11.038673
-    999996    1000          997  17.820664
-    999997    1000          998  10.288465
-    999998    1000          999  14.798257
-    999999    1000         1000   0.000000
+    999995     999          995  11.038673
+    999996     999          996  17.820664
+    999997     999          997  10.288465
+    999998     999          998  14.798257
+    999999     999          999   0.000000
 
     [1000000 rows x 3 columns]
+```
 
-Get the area that can be reached within one or more breaks
+Get the area that can be reached within one or more breaks.
 
 ```python
 sa = nwa.service_area(
@@ -171,7 +125,7 @@ sg.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minu
 
 ![png](network_analysis_examples_files/network_analysis_examples_10_0.png)
 
-Get one or more route per origin-destination pair
+Get one or more route per origin-destination pair.
 
 ```python
 routes = nwa.get_k_routes(
@@ -181,7 +135,7 @@ routes = nwa.get_k_routes(
 sg.qtm(sg.buff(routes, 15), "k", title="Five fastest routes from A to B", legend=False)
 ```
 
-![png](network_analysis_examples_files/network_analysis_examples_12_0.png)
+![png](network_analysis_examples_files/network_analysis_examples_12_1.png)
 
 More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 

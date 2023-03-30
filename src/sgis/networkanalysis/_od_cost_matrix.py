@@ -15,8 +15,6 @@ def _od_cost_matrix(
     *,
     lines: bool = False,
     rowwise: bool = False,
-    cutoff: int | None = None,
-    destination_count: int | None = None,
 ) -> DataFrame | GeoDataFrame:
     if rowwise and len(origins) != len(destinations):
         raise ValueError(
@@ -43,20 +41,12 @@ def _od_cost_matrix(
     )
 
     # calculating all-to-all distances is much faster than looping rowwise,
-    # so doing the rowwise-filtering down here
+    # so filtering to rowwise afterwards instead
     if rowwise:
-        results_template = DataFrame(
+        rowwise_df = DataFrame(
             {"origin": origins["temp_idx"], "destination": destinations["temp_idx"]}
         )
-        results = results_template.merge(results, on=["origin", "destination"])
-
-    if cutoff:
-        results = results[results[weight] < cutoff]
-
-    if destination_count:
-        results = results.loc[~results[weight].isna()]
-        weight_ranked = results.groupby("origin")[weight].rank()
-        results = results.loc[weight_ranked <= destination_count]
+        results = rowwise_df.merge(results, on=["origin", "destination"], how="left")
 
     wkt_dict_origin = {
         idx: geom.wkt

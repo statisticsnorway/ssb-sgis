@@ -4,13 +4,12 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
 
-from ..geopandas_tools.general import gdf_concat
 from .network import _edge_ids
 
 
 # run functions for get_route, get_k_routes and get_route_frequencies
 
-# TODO: clean up this mess, make smaller base functions and three nicely separated
+# TODO: clean up this mess. Make smaller base functions and three separated for route, frequency and k_routes
 
 
 def _get_route(
@@ -20,8 +19,6 @@ def _get_route(
     weight: str,
     roads: GeoDataFrame,
     summarise: bool = False,
-    cutoff: int | None = None,
-    destination_count: int | None = None,
     rowwise: bool = False,
     k: int = 1,
     drop_middle_percent: int = 0,
@@ -34,20 +31,20 @@ def _get_route(
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
     if k > 1:
-        func = _run_get_k_routes
+        route_func = _run_get_k_routes
     else:
-        func = _run_get_route
+        route_func = _run_get_route
 
     resultlist: list[GeoDataFrame] = []
     if rowwise:
         for ori_id, des_id in zip(origins["temp_idx"], destinations["temp_idx"]):
-            resultlist = resultlist + func(
+            resultlist = resultlist + route_func(
                 ori_id, des_id, graph, roads, summarise, weight, k, drop_middle_percent
             )
     else:
         for ori_id in origins["temp_idx"]:
             for des_id in destinations["temp_idx"]:
-                resultlist = resultlist + func(
+                resultlist = resultlist + route_func(
                     ori_id,
                     des_id,
                     graph,
@@ -57,6 +54,10 @@ def _get_route(
                     k,
                     drop_middle_percent,
                 )
+
+    if not resultlist:
+        warnings.warn("No paths were found.")
+        return pd.DataFrame(columns=["origin", "destination", weight, "geometry"])
 
     if summarise:
         counted = (
@@ -77,20 +78,12 @@ def _get_route(
         return roads_visited
 
     try:
-        results: GeoDataFrame = gdf_concat(resultlist)
+        results = pd.concat(resultlist)
     except Exception:
         raise ValueError(
             "No paths were found. Try larger search_tolerance or search_factor. "
             "Or close_network_holes() or remove_isolated()."
         )
-
-    if cutoff:
-        results = results.loc[results[weight] < cutoff]
-
-    if destination_count:
-        results = results.loc[~results[weight].isna()]
-        weight_ranked = results.groupby("origin")[weight].rank()
-        results = results.loc[weight_ranked <= destination_count]
 
     cols = ["origin", "destination", weight, "geometry"]
     if "k" in results.columns:
@@ -110,7 +103,7 @@ def _run_get_route(
     weight: str,
     k: int,
     drop_middle_percent: int,
-) -> list[GeoDataFrame] | list:
+) -> list[GeoDataFrame] | tuple[GeoDataFrame, list[tuple] | None]:
     res = graph.get_shortest_paths(
         weights="weight", v=ori_id, to=des_id, output="epath"
     )
@@ -165,7 +158,9 @@ def _run_get_k_routes(
     middle of the route, given with drop_middle_percent, repeat k times.
     """
     graph = graph.copy()
-    lines = []
+
+    lines: list[GeoDataFrame] = []
+
     for i in range(k):
         line = _run_get_route(
             ori_id, des_id, graph, roads, summarise, weight, k, drop_middle_percent
@@ -180,13 +175,16 @@ def _run_get_k_routes(
 
         lines.append(line)
 
-        keep_n = (len(edge_tuples) - len(edge_tuples) * drop_middle_percent / 100) / 2
+        n_edges_to_keep = (
+            len(edge_tuples) - len(edge_tuples) * drop_middle_percent / 100
+        ) / 2
 
-        keep_n = int(round(keep_n, 0))
+        n_edges_to_keep = int(round(n_edges_to_keep, 0))
 
-        keep_n = 1 if not keep_n else keep_n
+        if n_edges_to_keep == 0:
+            n_edges_to_keep = 1
 
-        to_be_dropped = edge_tuples[keep_n:-keep_n]
+        to_be_dropped = edge_tuples[n_edges_to_keep:-n_edges_to_keep]
         graph.delete_edges(to_be_dropped)
 
     return lines

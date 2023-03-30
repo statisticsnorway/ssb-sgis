@@ -8,7 +8,7 @@ analyses undirected. The NetworkAnalysis class also takes a set of rules in the 
 a NetworkAnalysisRules instance. See examples in the subsections of this page.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    networkanalysis
    networkanalysisrules

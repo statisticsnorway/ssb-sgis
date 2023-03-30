@@ -47,7 +47,9 @@ def test_split_lines(points_oslo, roads_oslo):
 
     od = nwa.od_cost_matrix(points, points)
     print(nwa.log[["method", "cost_mean", "percent_missing"]])
-    # repeat to see if something dodgy happens
+
+    # the split lines should be reset after the analysis
+    # repeat to see if the unsplitting happens
     for _ in range(3):
         sp2 = nwa.get_route(points.loc[[97]], points.loc[[135]])
     sp2["split_lines"] = "Splitted"
@@ -55,7 +57,8 @@ def test_split_lines(points_oslo, roads_oslo):
     assert sp1[rules.weight].sum() != sp2[rules.weight].sum()
     assert sp1[rules.weight].sum() < sp2[rules.weight].sum() * 0.7
 
-    sg.qtm(sg.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
+    if __name__ == "__main__":
+        sg.qtm(sp1, sp2, column="split_lines", cmap="bwr")
 
 
 def main():
@@ -67,5 +70,5 @@ def main():
 if __name__ == "__main__":
     import cProfile
 
-    cProfile.run("main()", sort="cumtime")
-    # main()
+    # cProfile.run("main()", sort="cumtime")
+    main()

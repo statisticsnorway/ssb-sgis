@@ -4,18 +4,18 @@ from .geopandas_tools.buffer_dissolve_explode import (
     buff,
     buffdiss,
     buffdissexp,
-    diss,
+    buffexp,
     dissexp,
-    exp,
 )
 from .geopandas_tools.general import (
-    _push_geom_col,
     clean_clip,
     clean_geoms,
     coordinate_array,
-    gdf_concat,
     random_points,
+    random_points_in_polygons,
     to_gdf,
+    to_lines,
+    to_multipoint,
 )
 from .geopandas_tools.geometry_types import (
     get_geom_type,
@@ -24,25 +24,24 @@ from .geopandas_tools.geometry_types import (
 )
 from .geopandas_tools.line_operations import (
     close_network_holes,
+    close_network_holes_to_deadends,
     cut_lines,
+    cut_lines_once,
     get_component_size,
     get_largest_component,
     make_edge_coords_cols,
     make_edge_wkt_cols,
     make_node_ids,
-    split_lines_at_closest_point,
+    split_lines_by_nearest_point,
 )
 from .geopandas_tools.neighbors import (
+    get_all_distances,
     get_k_nearest_neighbors,
-    get_k_nearest_neighbours,
-    get_neighbors,
-    get_neighbours,
-    k_nearest_neighbors,
-    k_nearest_neighbours,
+    get_neighbor_indices,
 )
 from .geopandas_tools.overlay import clean_shapely_overlay, overlay, overlay_update
-from .geopandas_tools.point_operations import snap_to, to_multipoint
-from .geopandas_tools.polygon_operations import close_holes
+from .geopandas_tools.point_operations import snap_all, snap_within_distance
+from .geopandas_tools.polygon_operations import close_all_holes, close_small_holes
 from .maps import clipmap, explore, qtm, samplemap
 from .networkanalysis.directednetwork import DirectedNetwork
 from .networkanalysis.network import Network

@@ -2,7 +2,7 @@ Geopandas tools
 ================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    general
    line_operations

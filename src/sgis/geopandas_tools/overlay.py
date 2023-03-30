@@ -2,15 +2,13 @@
 
 This module includes the function 'clean_shapely_overlay', which bypasses a
 GEOSException from the regular geopandas.overlay. The function is a generalized
-version of the solution from GH 2792*. The module also includes the 'overlay' function,
+version of the solution from GH 2792. The module also includes the 'overlay' function,
 which first tries a geopandas.overlay, and if it raises a GEOSException, tries
 'clean_shapely_overlay'.
 
 Both 'overlay' and 'clean_shapely_overlay' also include the overlay type "update",
 which can be specified in the "how" parameter, in addition to the five native geopandas
 how-s.
-
-https://github.com/geopandas/geopandas/issues/2792
 """
 
 import geopandas as gpd
@@ -19,7 +17,7 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from shapely import GEOSException, STRtree, difference, intersection, union_all
 
-from .general import _push_geom_col, clean_geoms, gdf_concat
+from .general import _push_geom_col, clean_geoms
 from .geometry_types import get_geom_type, is_single_geom_type, to_single_geom_type
 
 
@@ -29,7 +27,6 @@ def overlay(
     how: str = "intersection",
     keep_geom_type: bool = True,
     geom_type: str | tuple[str, str] | None = None,
-    drop_dupcol: bool = False,
     **kwargs,
 ) -> GeoDataFrame:
     """Overlay that bypasses a GEOSException raised by geopandas.overlay.
@@ -50,13 +47,11 @@ def overlay(
         how: Method of spatial overlay. Includes the 'update' method, plus the five
             native geopandas methods 'intersection', 'union', 'identity',
             'symmetric_difference' and 'difference'.
-        keep_geom_type: If True (the default), return only geometries of the same
+        keep_geom_type: If True (default), return only geometries of the same
             geometry type as df1 has, if False, return all resulting geometries.
         geom_type: optionally specify what geometry type to keep before the overlay,
             if there may be mixed geometry types. Either a string with one geom_type
             or a tuple/list with geom_type for df1 and df2 respectfully.
-        drop_dupcol: optionally remove all columns in df2 that is in df1. Defaults to
-            False, meaning no columns are dropped.
         **kwargs: Additional keyword arguments passed to geopandas.overlay
 
     Returns:
@@ -109,13 +104,6 @@ def overlay(
     df1 = df1.loc[:, ~df1.columns.str.contains("index|level_")]
     df2 = df2.loc[:, ~df2.columns.str.contains("index|level_")]
 
-    # remove columns in df2 that are in df1 (except for geometry column)
-    if drop_dupcol:
-        df2 = df2.loc[
-            :,
-            df2.columns.difference(df1.columns.difference([df1._geometry_column_name])),
-        ]
-
     # determine what function to use
     if how == "update":
         overlayfunc = overlay_update
@@ -153,7 +141,7 @@ def overlay_update(
     Args:
         df1: GeoDataFrame
         df2: GeoDataFrame
-        keep_geom_type: If True (the default), return only geometries of the same
+        keep_geom_type: If True (default), return only geometries of the same
             geometry type as df1 has, if False, return all resulting geometries.
         geom_type: optionally specify what geometry type to keep before the overlay,
             if there may be mixed geometry types. Either a string with one geom_type
@@ -175,7 +163,7 @@ def overlay_update(
             geom_type=geom_type,
         )
     overlayed = overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
-    return gdf_concat([overlayed, df2])
+    return pd.concat([overlayed, df2], ignore_index=True)
 
 
 def clean_shapely_overlay(
@@ -197,7 +185,7 @@ def clean_shapely_overlay(
         how: Method of spatial overlay. Includes the 'update' method, plus the five
             native geopandas methods 'intersection', 'union', 'identity',
             'symmetric_difference' and 'difference'.
-        keep_geom_type: If True (the default), return only geometries of the same
+        keep_geom_type: If True (default), return only geometries of the same
             geometry type as df1 has, if False, return all resulting geometries.
         geom_type: optionally specify what geometry type to keep before the overlay,
             if there may be mixed geometry types. Either a string with one geom_type
@@ -230,19 +218,21 @@ def clean_shapely_overlay(
     if keep_geom_type and not geom_type_left:
         geom_type_left = get_geom_type(df1)
 
-    df1 = clean_geoms(df1, geom_type=geom_type_left)
-    df2 = clean_geoms(df2, geom_type=geom_type_right)
+    df1 = clean_geoms(df1)
+    if geom_type_left:
+        df1 = to_single_geom_type(df1, geom_type_left)
+    df2 = clean_geoms(df2)
+    if geom_type_right:
+        df2 = to_single_geom_type(df2, geom_type_right)
 
     df1 = df1.explode(ignore_index=True)
     df2 = df2.explode(ignore_index=True)
 
-    overlayed = (
-        _shapely_overlay(df1, df2, how=how)
-        .pipe(clean_geoms, geom_type=geom_type_left)
-        .reset_index(drop=True)
-    )
+    overlayed = _shapely_overlay(df1, df2, how=how).pipe(clean_geoms)
+    if geom_type_left:
+        overlayed = to_single_geom_type(overlayed, geom_type_left)
 
-    return overlayed
+    return overlayed.reset_index(drop=True)
 
 
 def _get_geom_type_left_right(
@@ -305,7 +295,7 @@ def _union(pairs, df1, df2, left, right):
         merged.append(intersections)
     symmdiff = _symmetric_difference(pairs, df1, df2, left, right)
     merged.append(symmdiff)
-    return gdf_concat(merged).pipe(_push_geom_col)
+    return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
 def _identity(pairs, df1, left):
@@ -315,7 +305,7 @@ def _identity(pairs, df1, left):
         merged.append(intersections)
     diff = _difference(pairs, df1, left)
     merged.append(diff)
-    return gdf_concat(merged).pipe(_push_geom_col)
+    return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
 def _symmetric_difference(pairs, df1, df2, left, right):
@@ -327,7 +317,7 @@ def _symmetric_difference(pairs, df1, df2, left, right):
         merged.append(clip_right)
     diff_right = _add_from_right(df1, df2, right)
     merged.append(diff_right)
-    return gdf_concat(merged).pipe(_push_geom_col)
+    return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
 def _difference(pairs, df1, left):
@@ -337,7 +327,7 @@ def _difference(pairs, df1, left):
         merged.append(clip_left)
     diff_left = _add_from_left(df1, left)
     merged.append(diff_left)
-    return gdf_concat(merged).pipe(_push_geom_col)
+    return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
 def _get_intersects_pairs(

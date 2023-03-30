@@ -47,20 +47,29 @@ def unit_is_metres(gdf: GeoDataFrame) -> bool:
 
 def get_name(var: object, n: int = 5) -> str | None:
     """Searches through the local variables down one level at a time."""
-    current = inspect.currentframe().f_back.f_back
-    iters = reversed(list(range(n)))
-    for _ in iters:
-        callers_local_vars = current.f_locals.items()
-        name = [var_name for var_name, var_val in callers_local_vars if var_val is var]
-        if name and len(name) == 1:
-            return name[0]
-        if name and len(name) > 1:
+    frame = inspect.currentframe().f_back.f_back
+
+    for _ in range(n):
+        locals_ = frame.f_locals
+
+        names = [var_name for var_name, var_val in locals_.items() if var_val is var]
+        if names and len(names) == 1:
+            return names[0]
+
+        names = [name for name in names if not name.startswith("_")]
+
+        if names and len(names) == 1:
+            return names[0]
+
+        if names and len(names) > 1:
             warnings.warn(
                 "More than one local variable matches the object. Name might be wrong."
             )
-            return name[0]
-        current = current.f_back
-        if not current:
+            return names[0]
+
+        frame = frame.f_back
+
+        if not frame:
             return
 
 

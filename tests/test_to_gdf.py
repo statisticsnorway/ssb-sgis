@@ -288,7 +288,7 @@ def _geoseries():
     assert geoseries.crs is None
     assert geoseries_with_crs.crs == 4326
 
-    gdf = sg.gdf_concat(
+    gdf = pd.concat(
         sg.to_gdf(geom) for geom in [geoseries_with_crs, geoseries, geoseries]
     )
     assert gdf.crs == 4326

@@ -1,11 +1,186 @@
 # %%
+import sys
 import warnings
 from pathlib import Path
-from time import perf_counter
 
 import geopandas as gpd
+from shapely.geometry import LineString, MultiLineString
 
+
+src = str(Path(__file__).parent).strip("tests") + "src"
+
+
+sys.path.insert(0, src)
 import sgis as sg
+
+
+def test_line_angle_0():
+    lines_angle_0 = sg.to_gdf(
+        MultiLineString(
+            [
+                LineString([(-1, 0), (0, 0), (1, 0)]),
+                LineString([(2, 0), (3, 0), (4, 0)]),
+            ]
+        ),
+        crs=25833,
+    )
+    should_work = sg.Network(lines_angle_0).close_network_holes(
+        1, fillna=0, max_angle=90
+    )
+    if __name__ == "__main__":
+        lines_angle_0.plot()
+        should_work.gdf.plot("hole")
+    assert len(should_work) == 4, len(should_work)
+
+    directed_should_give_same = sg.DirectedNetwork(lines_angle_0).close_network_holes(
+        1,
+        max_angle=90,
+        fillna=0,
+    )
+    if __name__ == "__main__":
+        lines_angle_0.plot()
+        directed_should_give_same.gdf.plot("hole")
+    assert len(directed_should_give_same) == 4, len(directed_should_give_same)
+
+    cannot_reach = sg.Network(lines_angle_0).close_network_holes(
+        0.5, fillna=0, max_angle=10
+    )
+    assert len(cannot_reach) == 2, len(cannot_reach)
+
+    can_reach = sg.Network(lines_angle_0).close_network_holes(1, fillna=0, max_angle=10)
+    assert len(can_reach) == 4, len(can_reach)
+
+    angle_0_should_be_fine = sg.Network(lines_angle_0).close_network_holes(
+        1, fillna=0, max_angle=0
+    )
+    assert len(angle_0_should_be_fine) == 4, len(angle_0_should_be_fine)
+
+
+def test_line_angle_90():
+    lines_angle_90 = sg.to_gdf(
+        MultiLineString([LineString([(0, 0), (1, 0)]), LineString([(1, 1), (1, 2)])]),
+        crs=25833,
+    )
+
+    nw = sg.Network(lines_angle_90).close_network_holes(1, max_angle=180, fillna=0)
+    if __name__ == "__main__":
+        lines_angle_90.plot()
+        nw.gdf.plot("hole")
+
+    assert len(nw) == 4, len(nw)
+
+    # when 180 degrees allowed and 2 units, it should create duplicate lines on top of
+    # existing ones
+    nw = sg.Network(lines_angle_90).close_network_holes(2, max_angle=180, fillna=0)
+    assert len(nw) == 6, len(nw)
+
+    nw = sg.Network(lines_angle_90).close_network_holes(1, fillna=0, max_angle=45)
+    if __name__ == "__main__":
+        nw.gdf.plot("hole")
+    assert len(nw) == 3, len(nw)
+
+    lines_angle_90_both = sg.to_gdf(
+        MultiLineString([LineString([(0, 0), (1, 0)]), LineString([(1, 1), (2, 1)])]),
+        crs=25833,
+    )
+
+    nw = sg.Network(lines_angle_90_both).close_network_holes(1, fillna=0, max_angle=45)
+    if __name__ == "__main__":
+        lines_angle_90_both.plot()
+        nw.gdf.plot("hole")
+    assert len(nw) == 2, len(nw)
+
+    nw = sg.Network(lines_angle_90_both).close_network_holes(1, fillna=0, max_angle=90)
+    if __name__ == "__main__":
+        nw.gdf.plot("hole")
+    assert len(nw) == 4, len(nw)
+
+    lines_angle_90_other_side = sg.to_gdf(
+        MultiLineString(
+            [LineString([(0, 0), (-1, 0)]), LineString([(-1, -1), (-2, -1)])]
+        ),
+        crs=25833,
+    )
+
+    nw = sg.Network(lines_angle_90_other_side).close_network_holes(
+        1, fillna=0, max_angle=45
+    )
+    if __name__ == "__main__":
+        lines_angle_90_other_side.plot()
+        nw.gdf.plot("hole")
+    assert len(nw) == 2, len(nw)
+
+    nw = sg.Network(lines_angle_90_other_side).close_network_holes(
+        1, fillna=0, max_angle=90
+    )
+    if __name__ == "__main__":
+        nw.gdf.plot("hole")
+    assert len(nw) == 4, len(nw)
+
+    should_fill_diagonals = sg.Network(lines_angle_90_other_side).close_network_holes(
+        2, fillna=0, max_angle=160
+    )
+    if __name__ == "__main__":
+        should_fill_diagonals.gdf.plot("hole")
+    assert len(should_fill_diagonals) == 6, len(should_fill_diagonals)
+
+
+def test_line_angle_45():
+    lines_angle_45 = sg.to_gdf(
+        MultiLineString(
+            [LineString([(0, 0), (1, 0)]), LineString([(-1, -1), (-2, -1)])]
+        ),
+        crs=25833,
+    )
+
+    should_not_reach = sg.Network(lines_angle_45).close_network_holes(
+        1, fillna=0, max_angle=45
+    )
+    if __name__ == "__main__":
+        lines_angle_45.plot()
+        should_not_reach.gdf.plot("hole")
+    assert len(should_not_reach) == 2, len(should_not_reach)
+
+    should_reach = sg.Network(lines_angle_45).close_network_holes(
+        2, fillna=0, max_angle=45
+    )
+    if __name__ == "__main__":
+        should_reach.gdf.plot("hole")
+    assert len(should_reach) == 4, len(should_reach)
+
+    not_small_enough_angle = sg.Network(lines_angle_45).close_network_holes(
+        2, fillna=0, max_angle=20
+    )
+    if __name__ == "__main__":
+        not_small_enough_angle.gdf.plot("hole")
+    assert len(not_small_enough_angle) == 2, len(not_small_enough_angle)
+
+    lines_angle_45_opposite = sg.to_gdf(
+        MultiLineString([LineString([(0, 0), (-1, 0)]), LineString([(1, 1), (2, 1)])]),
+        crs=25833,
+    )
+
+    should_not_reach = sg.Network(lines_angle_45_opposite).close_network_holes(
+        1, fillna=0, max_angle=45
+    )
+    if __name__ == "__main__":
+        lines_angle_45_opposite.plot()
+        should_not_reach.gdf.plot("hole")
+    assert len(should_not_reach) == 2, len(should_not_reach)
+
+    should_reach = sg.Network(lines_angle_45_opposite).close_network_holes(
+        2, fillna=0, max_angle=45
+    )
+    if __name__ == "__main__":
+        should_reach.gdf.plot("hole")
+    assert len(should_reach) == 4, len(should_reach)
+
+    not_small_enough_angle = sg.Network(lines_angle_45_opposite).close_network_holes(
+        2, fillna=0, max_angle=20
+    )
+    if __name__ == "__main__":
+        not_small_enough_angle.gdf.plot("hole")
+    assert len(not_small_enough_angle) == 2, len(not_small_enough_angle)
 
 
 def test_close_network_holes(roads_oslo, points_oslo):
@@ -22,26 +197,52 @@ def test_close_network_holes(roads_oslo, points_oslo):
     nw = sg.Network(r)
 
     nw = nw.get_largest_component()
-    len_now = len(nw.gdf)
 
-    for meters in [1.1, 3, 10]:
-        _time = perf_counter()
-        nw = nw.close_network_holes(meters, fillna=0, deadends_only=False)
-        print("n", sum(nw.gdf.hole == 1))
-        print("time close_network_holes, all roads: ", perf_counter() - _time)
+    if __name__ == "__main__":
+        sg.qtm(nw.gdf, "connected")
 
-        _time = perf_counter()
-        nw = nw.close_network_holes(meters, fillna=0, deadends_only=True)
-        print("n", sum(nw.gdf.hole == 1))
-        print("time close_network_holes, deadends_only: ", perf_counter() - _time)
+    assert sum(nw.gdf.connected == 1) == 650
+    assert sum(nw.gdf.connected == 0) == 104
+
+    nw = nw.close_network_holes_to_deadends(1.1, fillna=0)
+    assert sum(nw.gdf.hole == 1) == 68, sum(nw.gdf.hole == 1)
+
+    nw = sg.Network(r)
+    nw = nw.close_network_holes(1.1, max_angle=0, fillna=0)
+    assert sum(nw.gdf.hole == 1) == 0, sum(nw.gdf.hole == 1)
+
+    nw = sg.Network(r)
+    nw = nw.close_network_holes(1.1, max_angle=10, fillna=0)
+    assert sum(nw.gdf.hole == 1) == 57, sum(nw.gdf.hole == 1)
+
+    nw = nw.close_network_holes(1.1, max_angle=90, fillna=0)
+    assert sum(nw.gdf.hole == 1) == 59, sum(nw.gdf.hole == 1)
+
+    nw = nw.close_network_holes(1.1, max_angle=180, fillna=0)
+    assert sum(nw.gdf.hole == 1) == 59, sum(nw.gdf.hole == 1)
+
+    nw = nw.close_network_holes_to_deadends(10, fillna=0)
+    assert sum(nw.gdf.hole == 1) == 84, sum(nw.gdf.hole == 1)
+
+    nw = sg.Network(r)
+    nw = nw.close_network_holes(10, max_angle=90, fillna=0)
+    assert sum(nw.gdf.hole == 1) == 93, sum(nw.gdf.hole == 1)
 
     nw = nw.get_largest_component()
-    assert len(nw.gdf) != len_now
+
+    if __name__ == "__main__":
+        sg.qtm(nw.gdf, "connected")
+
+    assert sum(nw.gdf.connected == 1) == 827, sum(nw.gdf.connected == 1)
+    assert sum(nw.gdf.connected == 0) == 20, sum(nw.gdf.connected == 0)
 
 
 def main():
     from oslo import points_oslo, roads_oslo
 
+    test_line_angle_0()
+    test_line_angle_90()
+    test_line_angle_45()
     test_close_network_holes(roads_oslo(), points_oslo())
 
 

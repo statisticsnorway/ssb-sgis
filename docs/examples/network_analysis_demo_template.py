@@ -20,11 +20,11 @@ os.chdir("../../src")
 import sgis as sg
 
 
-# ignore some warnings to make it cleaner
+# ignore some warnings
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 # %% [markdown]
-# The netork analysis happens in the NetworkAnalysis class.
+# The network analysis happens in the NetworkAnalysis class.
 # It takes a network and a set of rules for the analysis:
 #
 # The rules can be instantiated like this:
@@ -47,7 +47,9 @@ nw
 # %% [markdown]
 # The Network is now ready for undirected network analysis. The network can also be optimises with methods stored in the Network class. More about this further down in this notebook.
 # %%
-nw = nw.close_network_holes(1.5, fillna=0).remove_isolated().cut_lines(250)
+nw = (
+    nw.close_network_holes(1.5, max_angle=90, fillna=0).remove_isolated().cut_lines(250)
+)
 nw
 # %% [markdown]
 # For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.
@@ -95,7 +97,7 @@ points
 
 # od_cost_matrix calculates the traveltime from a set of origins to a set of destinations:
 # %%
-od = nwa.od_cost_matrix(origins=points, destinations=points, id_col="idx")
+od = nwa.od_cost_matrix(origins=points, destinations=points)
 od
 # %% [markdown]
 # Set 'lines' to True to get a geometry column with straight lines between origin and
@@ -108,6 +110,7 @@ sg.qtm(
     od,
     "minutes",
     title="Travel time (minutes) from 1 to 1000 addresses.",
+    scheme="quantiles",
 )
 # %% [markdown]
 # Information about the analyses are stored in a DataFrame in the 'log' attribute.
@@ -119,7 +122,7 @@ print(nwa.log)
 # The get_route method can be used to get the actual lowest cost path:
 
 # %%
-routes = nwa.get_route(points.iloc[[0]], points.sample(100), id_col="idx")
+routes = nwa.get_route(points.iloc[[0]], points.sample(100))
 
 sg.qtm(
     sg.buff(routes, 12),
@@ -135,12 +138,12 @@ routes
 # get_route_frequencies finds the number of times each road segment was used.
 
 # %%
-pointsample = points.sample(100)
+pointsample = points.sample(75)
 freq = nwa.get_route_frequencies(pointsample, pointsample)
 
 sg.qtm(
     sg.buff(freq, 15),
-    "n",
+    "frequency",
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used (weight='minutes')",
@@ -151,11 +154,11 @@ sg.qtm(
 # %%
 nwa.rules.weight = "meters"
 
-freq = nwa.get_route_frequencies(pointsample, pointsample)
+frequencies = nwa.get_route_frequencies(pointsample, pointsample)
 
 sg.qtm(
-    sg.buff(freq, 15),
-    "n",
+    sg.buff(frequencies, 15),
+    "frequency",
     scheme="naturalbreaks",
     cmap="plasma",
     title="Number of times each road was used (weight='meters')",
@@ -170,26 +173,26 @@ nwa.rules.weight = "minutes"
 # Here, we find the areas that can be reached within 5, 10 and 15 minutes for five random points:
 # %%
 
-sa = nwa.service_area(points.sample(5), breaks=(5, 10, 15), id_col="idx")
-sa
+service_areas = nwa.service_area(points.sample(5), breaks=(5, 10, 15))
+service_areas
 
 # %%
-sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
+service_areas = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11))
 
 sg.qtm(
-    sa,
+    service_areas,
     "minutes",
     k=10,
     title="Roads that can be reached within 1 to 10 minutes",
 )
-sa
+service_areas
 # %% [markdown]
 # By default, only the lowest break is kept for overlapping areas from the same origin, meaning the area for minutes=10
 # covers not the entire area, only the outermost ring:
 
 # %%
 sg.qtm(
-    sa.query("minutes == 10"),
+    service_areas.query("minutes == 10"),
     color="yellow",
     title="Roads that can be reached within 10 minutes",
 )
@@ -201,10 +204,10 @@ sg.qtm(
 # and then drop rows afterwards:
 
 # %%
-sa = nwa.service_area(points.sample(100), breaks=5, dissolve=False)
-print("rows before drop_duplicates:", len(sa))
-sa = sa.drop_duplicates(["source", "target"])
-print("rows after drop_duplicates:", len(sa))
+service_areas = nwa.service_area(points.sample(100), breaks=5, dissolve=False)
+print("rows before drop_duplicates:", len(service_areas))
+service_areas = service_areas.drop_duplicates(["source", "target"])
+print("rows after drop_duplicates:", len(service_areas))
 # %% [markdown]
 # Let's check the log.
 
@@ -217,7 +220,7 @@ print(nwa.log)
 nw = sg.Network(roads)
 nw
 # %% [markdown]
-# If you want to manipulate the roads after instantiating the Network, you can access the GeoDataFrame in the 'gdf' attribute:
+# To manipulate the roads after instantiating the Network, the GeoDataFrame can be accessed in the 'gdf' attribute:
 # %%
 nw.gdf.head(3)
 # %% [markdown]
@@ -249,7 +252,9 @@ sg.qtm(
 # %%
 
 nwa = sg.NetworkAnalysis(network=nw, rules=sg.NetworkAnalysisRules(weight="meters"))
+
 od = nwa.od_cost_matrix(points, points)
+
 percent_missing = od[nwa.rules.weight].isna().mean() * 100
 print(f"Before removing isolated: {percent_missing=:.2f}")
 
@@ -263,7 +268,7 @@ print(f"After removing isolated: {percent_missing=:.2f}")
 # If the road data has some gaps between the segments, these can be filled with straight lines:
 # %%
 
-nw = nw.close_network_holes(max_dist=1.5, fillna=0.1)
+nw = nw.close_network_holes(max_dist=1.5, max_angle=90, fillna=0.1)
 nw
 # %% [markdown]
 # The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the destination will either be reached or not within the breaks. This can be fixed by cutting all lines to a maximum distance.
@@ -389,7 +394,7 @@ sp2["split_lines"] = "Splitted"
 # In the get_route example, when the lines are split, the trip starts a bit further up in the bottom-right corner (when the search_factor is 0). The trip also ends in a roundtrip, since the line that is split is a oneway street. So you're allowed to go to the intersection where the blue line goes, but not to the point where the line is cut.
 # %%
 
-sg.qtm(sg.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
+sg.qtm(sp1, sp2, column="split_lines", cmap="bwr")
 # %% [markdown]
 # But these kinds of deviations doesn't have much of an impact on the results in total here, where the mean is about 15 minutes. For shorter trips, the difference will be relatively larger, of course.
 # %%
@@ -465,25 +470,22 @@ nwa.rules.search_factor = 0
 #
 # This will produce inaccurate results for points that are far away from the network. Especially when the search_factor is high.
 #
-# Therefore, you can set one of the 'weight_to_nodes_' parameters. If the weight is 'meters' (i.e. the length unit of the crs), setting 'weight_to_nodes_dist' to True will make the weight equivelant to the straight-line distance:
+# Therefore, you can set one of the 'weight_to_nodes_' parameters. If the weight is 'meters' (i.e. the length unit of the crs), setting 'nodedist_multiplier' to True will make the weight equivelant to the straight-line distance:
 # %%
 
-sg.NetworkAnalysisRules(weight="meters", weight_to_nodes_dist=True)
+sg.NetworkAnalysisRules(weight="meters", nodedist_multiplier=True)
 # %% [markdown]
-# If the weight is "minutes", you specify the speed in kilometers or miles per hour:
+# If the weight is "minutes", you specify the speed in kilometers:
 # %%
 
-sg.NetworkAnalysisRules(weight="minutes", weight_to_nodes_kmh=5)
-# %%
-
-sg.NetworkAnalysisRules(weight="minutes", weight_to_nodes_mph=3)
+sg.NetworkAnalysisRules(weight="minutes", nodedist_kmh=5)
 # %% [markdown]
 # Let's check how the speed to the nodes influences the average speed:
 
 # %%
-for weight_to_nodes_kmh in [5, 20, 50, 0]:
-    nwa.rules.weight_to_nodes_kmh = weight_to_nodes_kmh
+for nodedist_kmh in [5, 20, 50, 0]:
+    nwa.rules.nodedist_kmh = nodedist_kmh
     od = nwa.od_cost_matrix(points, points)
 
-nwa.log.iloc[-4:][["weight_to_nodes_kmh", "cost_mean"]]
+nwa.log.iloc[-4:][["nodedist_kmh", "cost_mean"]]
 # %%
