@@ -46,12 +46,6 @@ def buffdissexp(
             True, an integer index level is added during explode.
         copy: Whether to copy the GeoDataFrame before buffering.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
-            The most important are:
-                by: string or list of strings represeting the columns to dissolve by.
-                aggfunc: function, string representing function or dictionary of column
-                    name and function name/string.
-                as_index: Whether the 'by' columns should be returned as index or
-                    column. Defaults to True.
 
     Returns:
         A buffered GeoDataFrame where overlapping geometries are dissolved.
@@ -91,12 +85,6 @@ def buffdiss(
             Here defaults to 50, as opposed to the default 16 in geopandas.
         copy: Whether to copy the GeoDataFrame before buffering.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
-            The most important are:
-                by: string or list of strings represeting the columns to dissolve by.
-                aggfunc: function, string representing function or dictionary of column
-                    name and function name/string.
-                as_index: Whether the 'by' columns should be returned as index or
-                    column. Defaults to True.
 
     Returns:
         A buffered GeoDataFrame where geometries are dissolved.
@@ -177,12 +165,6 @@ def dissexp(
         index_parts: If False (default), the index after dissolve is respected. If
             True, an integer index level is added during explode.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
-            The most important are:
-                by: string or list of strings represeting the columns to dissolve by.
-                aggfunc: function, string representing function or dictionary of column
-                    name and function name/string.
-                as_index: Whether the 'by' columns should be returned as index or
-                    column. Defaults to True.
 
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
