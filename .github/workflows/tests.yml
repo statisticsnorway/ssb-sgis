@@ -20,9 +20,16 @@ jobs:
           lfs: true
 
       - name: Upgrade pip
+        if: matrix.os != 'macos-latest'
         run: |
           pip install --constraint=.github/workflows/constraints.txt pip
           pip --version
+
+      - name: Upgrade pip on MacOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          pip3 install --constraint=.github/workflows/constraints.txt pip
+          pip3 --version
 
       - name: Install Poetry
         run: |
