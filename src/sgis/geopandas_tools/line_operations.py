@@ -807,23 +807,46 @@ def _find_holes_all_lines(
         indices = all_indices[:, i]
         dists = all_dists[:, i]
 
+        # 180 grader i forskjell: helt rett vinkel -- 0 grader.
+        # 90 - - 90 = 180: helt motsatt av andre ende, altså helt rett vinkel.
+        # 90 - 90 = 0
+        # 90 - - 90 = 180 altså helt motsatt
+        # 0 grader forskjell: helt rett vinkel -- 0 grader.
+        # 90-0 = 0 -- egentlig 90 grader
+        # 90-180 = 90 -- egentlig 90 grader
+
         these_nodes_array = coordinate_array(nodes.loc[indices])
+        print(deadends_array)
+        print(deadends_other_end_array)
+        print(these_nodes_array)
 
         angles_deadend_to_node = get_angle(deadends_array, these_nodes_array)
+        print(angles_deadend_to_node)
 
+        # angles_deadend_to_deadend_other_end = get_angle(
+        #    deadends_array, deadends_other_end_array
+        # )
         angles_deadend_to_deadend_other_end = get_angle(
-            deadends_array, deadends_other_end_array
+            deadends_other_end_array, deadends_array
         )
+        print(angles_deadend_to_deadend_other_end)
 
         angles_difference = np.abs(
-            np.abs(angles_deadend_to_deadend_other_end) - np.abs(angles_deadend_to_node)
+            # np.abs(angles_deadend_to_deadend_other_end) - np.abs(angles_deadend_to_node)
+            angles_deadend_to_deadend_other_end
+            - angles_deadend_to_node
         )
+        print(angles_difference)
 
-        angles_difference[
-            np.all(deadends_other_end_array == these_nodes_array, axis=1)
-        ] = np.nan
-
+        #        angles_difference[
+        #           np.all(deadends_other_end_array == these_nodes_array, axis=1)
+        #      ] = np.nan
+        print(dists <= max_dist)
+        print(angles_difference <= max_angle)
         condition = (dists <= max_dist) & (angles_difference <= max_angle)
+        print(deadends)
+        print(indices)
+        print(nodes)
 
         from_wkt = deadends.loc[condition, "wkt"]
         to_idx = indices[condition]

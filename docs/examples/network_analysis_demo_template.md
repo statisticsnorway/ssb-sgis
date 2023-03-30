@@ -109,7 +109,7 @@ nw = (
 nw
 ```
 
-    Network(3832 km, undirected)
+    Network(3684 km, undirected)
 
 For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.
 
@@ -302,7 +302,6 @@ od
       <th>1</th>
       <td>0</td>
       <td>1</td>
-      <td>2</td>
       <td>13.039830</td>
     </tr>
     <tr>
@@ -349,7 +348,6 @@ od
     </tr>
     <tr>
       <th>999998</th>
-      <td>1000</td>
       <td>999</td>
       <td>998</td>
       <td>14.798257</td>
@@ -381,6 +379,9 @@ sg.qtm(
 
 ![png](network_analysis_demo_template_files/network_analysis_demo_template_23_0.png)
 
+    (<Figure size 1000x1000 with 1 Axes>,
+     <Axes: title={'center': 'Travel time (minutes) from 1 to 1000 addresses.'}>)
+
 Information about the analyses are stored in a DataFrame in the 'log' attribute.
 
 ```python
@@ -388,8 +389,8 @@ print(nwa.log)
 ```
 
                   endtime  minutes_elapsed          method  origins_count  \
-    0 2023-03-29 09:34:49              0.5  od_cost_matrix           1000
-    1 2023-03-29 09:34:56              0.1  od_cost_matrix              1
+    0 2023-03-30 12:03:30              0.5  od_cost_matrix           1000
+    1 2023-03-30 12:03:36              0.1  od_cost_matrix              1
 
        destinations_count  percent_missing  cost_mean
     0                1000           0.9966  15.270462
@@ -411,6 +412,9 @@ sg.qtm(
 
 routes
 ```
+
+    c:\Users\ort\AppData\Local\Programs\Python\Python311\Lib\site-packages\mapclassify\classifiers.py:1860: UserWarning: Numba not installed. Using slow pure python version.
+      warnings.warn(
 
 ![png](network_analysis_demo_template_files/network_analysis_demo_template_27_1.png)
 
@@ -443,37 +447,37 @@ routes
     <tr>
       <th>0</th>
       <td>0</td>
-      <td>660</td>
-      <td>10.819579</td>
-      <td>MULTILINESTRING Z ((266612.400 6649059.000 87....</td>
+      <td>49</td>
+      <td>12.418983</td>
+      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
     </tr>
     <tr>
       <th>1</th>
       <td>0</td>
-      <td>426</td>
-      <td>11.515883</td>
-      <td>MULTILINESTRING Z ((267018.127 6648183.742 138...</td>
+      <td>968</td>
+      <td>6.060113</td>
+      <td>MULTILINESTRING Z ((265921.420 6652983.780 200...</td>
     </tr>
     <tr>
       <th>2</th>
       <td>0</td>
-      <td>595</td>
-      <td>5.641919</td>
-      <td>MULTILINESTRING Z ((262841.200 6651029.403 30....</td>
+      <td>188</td>
+      <td>2.931595</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>3</th>
       <td>0</td>
-      <td>721</td>
-      <td>14.233810</td>
+      <td>449</td>
+      <td>11.826665</td>
       <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>4</th>
       <td>0</td>
-      <td>109</td>
-      <td>10.096080</td>
-      <td>MULTILINESTRING Z ((264626.356 6652897.926 130...</td>
+      <td>463</td>
+      <td>8.080776</td>
+      <td>MULTILINESTRING Z ((264597.000 6654920.000 162...</td>
     </tr>
     <tr>
       <th>...</th>
@@ -485,44 +489,42 @@ routes
     <tr>
       <th>93</th>
       <td>0</td>
-      <td>354</td>
-      <td>15.080127</td>
-      <td>MULTILINESTRING Z ((272281.367 6653079.745 160...</td>
+      <td>699</td>
+      <td>13.534795</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>94</th>
       <td>0</td>
-      <td>227</td>
-      <td>3.124035</td>
-      <td>MULTILINESTRING Z ((262082.600 6651528.500 74....</td>
+      <td>797</td>
+      <td>9.427284</td>
+      <td>MULTILINESTRING Z ((263171.800 6651250.200 46....</td>
     </tr>
     <tr>
       <th>95</th>
       <td>0</td>
-      <td>735</td>
-      <td>11.954112</td>
-      <td>MULTILINESTRING Z ((261352.158 6649521.080 6.6...</td>
+      <td>727</td>
+      <td>11.480371</td>
+      <td>MULTILINESTRING Z ((270337.300 6653311.200 126...</td>
     </tr>
     <tr>
       <th>96</th>
       <td>0</td>
-      <td>719</td>
-      <td>5.779328</td>
-      <td>MULTILINESTRING Z ((262623.190 6652506.640 79....</td>
+      <td>732</td>
+      <td>10.836332</td>
+      <td>MULTILINESTRING Z ((266612.400 6649059.000 87....</td>
     </tr>
     <tr>
       <th>97</th>
       <td>0</td>
-      <td>1</td>
-      <td>13.039830</td>
-      <td>MULTILINESTRING Z ((272281.367 6653079.745 160...</td>
+      <td>660</td>
+      <td>10.819579</td>
+      <td>MULTILINESTRING Z ((266612.400 6649059.000 87....</td>
     </tr>
   </tbody>
 </table>
 <p>98 rows × 4 columns</p>
 </div>
-
-![png](network_analysis_demo_template_files/network_analysis_demo_template_27_1.png)
 
 ### Get route frequencies
 
@@ -543,6 +545,9 @@ sg.qtm(
 
 ![png](network_analysis_demo_template_files/network_analysis_demo_template_29_0.png)
 
+    (<Figure size 1000x1000 with 1 Axes>,
+     <Axes: title={'center': "Number of times each road was used (weight='minutes')"}>)
+
 The results will be quite different when it is the shortest, rather than the fastest, route that is used:
 
 ```python
@@ -560,6 +565,9 @@ sg.qtm(
 ```
 
 ![png](network_analysis_demo_template_files/network_analysis_demo_template_31_0.png)
+
+    (<Figure size 1000x1000 with 1 Axes>,
+     <Axes: title={'center': "Number of times each road was used (weight='meters')"}>)
 
 ```python
 nwa.rules.weight = "minutes"
@@ -596,108 +604,122 @@ service_areas
   <thead>
     <tr style="text-align: right;">
       <th></th>
+      <th>origin</th>
       <th>minutes</th>
-      <th>idx</th>
       <th>geometry</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <th>0</th>
+      <td>924</td>
       <td>5</td>
-      <td>MULTILINESTRING Z ((262336.200 6644548.930 11....</td>
+      <td>MULTILINESTRING Z ((264588.982 6639572.298 101...</td>
     </tr>
     <tr>
       <th>1</th>
+      <td>924</td>
       <td>10</td>
-      <td>MULTILINESTRING Z ((263408.570 6645763.100 5.3...</td>
+      <td>MULTILINESTRING Z ((263653.090 6642036.160 36....</td>
     </tr>
     <tr>
       <th>2</th>
+      <td>924</td>
       <td>15</td>
-      <td>883</td>
-      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+      <td>MULTILINESTRING Z ((266382.600 6639604.600 -99...</td>
     </tr>
     <tr>
       <th>3</th>
+      <td>210</td>
       <td>5</td>
-      <td>289</td>
-      <td>MULTILINESTRING Z ((260390.270 6651212.750 44....</td>
+      <td>MULTILINESTRING Z ((265219.918 6649120.950 79....</td>
     </tr>
     <tr>
       <th>4</th>
+      <td>210</td>
       <td>10</td>
-      <td>289</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
     </tr>
     <tr>
       <th>5</th>
+      <td>210</td>
       <td>15</td>
-      <td>289</td>
-      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
+      <td>MULTILINESTRING Z ((269100.290 6654598.780 237...</td>
     </tr>
     <tr>
       <th>6</th>
+      <td>49</td>
       <td>5</td>
-      <td>MULTILINESTRING Z ((257544.400 6657483.600 418...</td>
+      <td>MULTILINESTRING Z ((260267.706 6653626.740 133...</td>
     </tr>
     <tr>
       <th>7</th>
+      <td>49</td>
       <td>10</td>
-      <td>MULTILINESTRING Z ((257410.330 6656581.380 443...</td>
+      <td>MULTILINESTRING Z ((257922.652 6655163.375 336...</td>
     </tr>
     <tr>
       <th>8</th>
+      <td>49</td>
       <td>15</td>
-      <td>MULTILINESTRING Z ((258147.795 6657045.202 473...</td>
-    </tr>
-    <tr>
-      <th>9</th>
-      <td>5</td>
-      <td>MULTILINESTRING Z ((256491.035 6652587.257 128...</td>
-    </tr>
-    <tr>
-      <th>10</th>
-      <td>10</td>
-      <td>MULTILINESTRING Z ((256747.750 6655744.370 182...</td>
-    </tr>
-    <tr>
-      <th>11</th>
-      <td>15</td>
-      <td>MULTILINESTRING Z ((256441.240 6660586.270 150...</td>
-    </tr>
-    <tr>
-      <th>12</th>
-      <td>5</td>
-      <td>MULTILINESTRING Z ((265095.100 6643849.300 140...</td>
-    </tr>
-    <tr>
-      <th>13</th>
-      <td>10</td>
-      <td>713</td>
       <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
     <tr>
-      <th>14</th>
+      <th>9</th>
+      <td>392</td>
+      <td>5</td>
+      <td>MULTILINESTRING Z ((259244.368 6648916.053 13....</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>392</td>
+      <td>10</td>
+      <td>MULTILINESTRING Z ((258998.250 6649650.090 15....</td>
+    </tr>
+    <tr>
+      <th>11</th>
+      <td>392</td>
       <td>15</td>
-      <td>713</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+    </tr>
+    <tr>
+      <th>12</th>
+      <td>887</td>
+      <td>5</td>
+      <td>MULTILINESTRING Z ((258824.672 6649181.710 19....</td>
+    </tr>
+    <tr>
+      <th>13</th>
+      <td>887</td>
+      <td>10</td>
+      <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
+    </tr>
+    <tr>
+      <th>14</th>
+      <td>887</td>
+      <td>15</td>
+      <td>MULTILINESTRING Z ((266909.769 6651075.250 114...</td>
     </tr>
   </tbody>
 </table>
 </div>
 
 ```python
-sa = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11), id_col="idx")
+service_areas = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11))
 
 sg.qtm(
-    sa,
+    service_areas,
     "minutes",
     k=10,
     title="Roads that can be reached within 1 to 10 minutes",
 )
-sa
+service_areas
 ```
+
+    c:\Users\ort\AppData\Local\Programs\Python\Python311\Lib\site-packages\mapclassify\classifiers.py:1860: UserWarning: Numba not installed. Using slow pure python version.
+      warnings.warn(
+
+![png](network_analysis_demo_template_files/network_analysis_demo_template_35_1.png)
 
 <div>
 <style scoped>
@@ -718,104 +740,91 @@ sa
   <thead>
     <tr style="text-align: right;">
       <th></th>
+      <th>origin</th>
       <th>minutes</th>
-      <th>idx</th>
       <th>geometry</th>
-      <th>label</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <th>0</th>
-      <td>1</td>
+      <td>0</td>
       <td>1</td>
       <td>MULTILINESTRING Z ((263122.461 6651267.381 46....</td>
-      <td>sa</td>
     </tr>
     <tr>
       <th>1</th>
+      <td>0</td>
       <td>2</td>
-      <td>1</td>
-      <td>MULTILINESTRING Z ((263889.223 6651115.545 63....</td>
-      <td>sa</td>
+      <td>MULTILINESTRING Z ((263585.029 6651794.619 74....</td>
     </tr>
     <tr>
       <th>2</th>
+      <td>0</td>
       <td>3</td>
-      <td>1</td>
       <td>MULTILINESTRING Z ((262750.930 6651840.320 63....</td>
-      <td>sa</td>
     </tr>
     <tr>
       <th>3</th>
+      <td>0</td>
       <td>4</td>
-      <td>1</td>
-      <td>MULTILINESTRING Z ((261870.921 6651358.348 77....</td>
-      <td>sa</td>
+      <td>MULTILINESTRING Z ((261565.090 6650650.323 35....</td>
     </tr>
     <tr>
       <th>4</th>
+      <td>0</td>
       <td>5</td>
-      <td>1</td>
       <td>MULTILINESTRING Z ((265378.000 6650581.600 85....</td>
-      <td>sa</td>
     </tr>
     <tr>
       <th>5</th>
+      <td>0</td>
       <td>6</td>
-      <td>1</td>
       <td>MULTILINESTRING Z ((265262.829 6650519.242 78....</td>
-      <td>sa</td>
     </tr>
     <tr>
       <th>6</th>
+      <td>0</td>
       <td>7</td>
-      <td>1</td>
       <td>MULTILINESTRING Z ((264348.673 6648271.134 17....</td>
-      <td>sa</td>
     </tr>
     <tr>
       <th>7</th>
+      <td>0</td>
       <td>8</td>
-      <td>1</td>
       <td>MULTILINESTRING Z ((266903.800 6651086.560 114...</td>
-      <td>sa</td>
     </tr>
     <tr>
       <th>8</th>
+      <td>0</td>
       <td>9</td>
-      <td>1</td>
       <td>MULTILINESTRING Z ((263683.620 6648172.520 20....</td>
-      <td>sa</td>
     </tr>
     <tr>
       <th>9</th>
+      <td>0</td>
       <td>10</td>
-      <td>1</td>
       <td>MULTILINESTRING Z ((265657.500 6654844.860 296...</td>
-      <td>sa</td>
     </tr>
   </tbody>
 </table>
 </div>
-
-![png](network_analysis_demo_template_files/network_analysis_demo_template_35_1.png)
 
 By default, only the lowest break is kept for overlapping areas from the same origin, meaning the area for minutes=10
 covers not the entire area, only the outermost ring:
 
 ```python
 sg.qtm(
-    sa.query("minutes == 10"),
+    service_areas.query("minutes == 10"),
     color="yellow",
     title="Roads that can be reached within 10 minutes",
 )
 ```
 
-    c:\Users\ort\AppData\Local\Programs\Python\Python311\Lib\site-packages\geopandas\plotting.py:656: UserWarning: Only specify one of 'column' or 'color'. Using 'color'.
-      warnings.warn(
+![png](network_analysis_demo_template_files/network_analysis_demo_template_37_0.png)
 
-![png](network_analysis_demo_template_files/network_analysis_demo_template_37_1.png)
+    (<Figure size 1000x1000 with 1 Axes>,
+     <Axes: title={'center': 'Roads that can be reached within 10 minutes'}>)
 
 This behaviour can be changed by setting drop_duplicates to False.
 
@@ -824,14 +833,14 @@ origins in close proximity, set 'dissolve' to False to get each individual road 
 and then drop rows afterwards:
 
 ```python
-sa = nwa.service_area(points.sample(100), breaks=5, dissolve=False)
-print("rows before drop_duplicates:", len(sa))
-sa = sa.drop_duplicates(["source", "target"])
-print("rows after drop_duplicates:", len(sa))
+service_areas = nwa.service_area(points.sample(100), breaks=5, dissolve=False)
+print("rows before drop_duplicates:", len(service_areas))
+service_areas = service_areas.drop_duplicates(["source", "target"])
+print("rows after drop_duplicates:", len(service_areas))
 ```
 
-    rows before drop_duplicates: 632497
-    rows after drop_duplicates: 143421
+    rows before drop_duplicates: 636302
+    rows after drop_duplicates: 135027
 
 Let's check the log.
 
@@ -840,24 +849,24 @@ print(nwa.log)
 ```
 
                   endtime  minutes_elapsed                 method  origins_count  \
-    0 2023-03-16 09:10:16              0.4         od_cost_matrix           1000
-    1 2023-03-16 09:10:22              0.1         od_cost_matrix              1
-    2 2023-03-16 09:10:58              0.6              get_route              1
-    3 2023-03-16 09:15:32              4.5  get_route_frequencies            100
-    4 2023-03-16 09:21:34              5.9  get_route_frequencies            100
-    5 2023-03-16 09:21:59              0.3           service_area              5
-    6 2023-03-16 09:22:14              0.1           service_area              1
-    7 2023-03-16 09:22:39              0.4           service_area            100
+    0 2023-03-30 12:03:30              0.5         od_cost_matrix           1000
+    1 2023-03-30 12:03:36              0.1         od_cost_matrix              1
+    2 2023-03-30 12:04:08              0.5              get_route              1
+    3 2023-03-30 12:06:22              2.2  get_route_frequencies             75
+    4 2023-03-30 12:08:40              2.2  get_route_frequencies             75
+    5 2023-03-30 12:08:59              0.2           service_area              5
+    6 2023-03-30 12:09:09              0.1           service_area              1
+    7 2023-03-30 12:10:17              1.1           service_area            100
 
        destinations_count  percent_missing  cost_mean
-    0              1000.0           0.9966  15.270462
-    1              1000.0           0.4000  11.476453
-    2               100.0           0.0000  11.714403
-    3               100.0           0.0000   0.073649
-    4               100.0           0.0000  39.437185
-    5                 NaN           0.0000  10.000000
-    6                 NaN           0.0000   5.500000
-    7                 NaN           0.0000   5.000000
+    0              1000.0         0.996600  15.270462
+    1              1000.0         0.400000  11.476453
+    2               100.0         0.000000  11.132785
+    3                75.0         0.000000   0.073063
+    4                75.0         0.000000  39.561378
+    5                 NaN         0.000000  10.000000
+    6                 NaN         0.000000   5.500000
+    7                 NaN         0.000157   5.000000
 
 ## Customising the network
 
@@ -868,7 +877,7 @@ nw
 
     Network(3851 km, undirected)
 
-If you want to manipulate the roads after instantiating the Network, you can access the GeoDataFrame in the 'gdf' attribute:
+To manipulate the roads after instantiating the Network, the GeoDataFrame can be accessed in the 'gdf' attribute:
 
 ```python
 nw.gdf.head(3)
@@ -984,12 +993,17 @@ sg.qtm(
 
 ![png](network_analysis_demo_template_files/network_analysis_demo_template_47_0.png)
 
+    (<Figure size 1000x1000 with 1 Axes>,
+     <Axes: title={'center': 'Connected and isolated networks'}>)
+
 Use the remove_isolated method to remove the unconnected roads:
 
 ```python
 
 nwa = sg.NetworkAnalysis(network=nw, rules=sg.NetworkAnalysisRules(weight="meters"))
+
 od = nwa.od_cost_matrix(points, points)
+
 percent_missing = od[nwa.rules.weight].isna().mean() * 100
 print(f"Before removing isolated: {percent_missing=:.2f}")
 ```
@@ -1010,11 +1024,11 @@ If the road data has some gaps between the segments, these can be filled with st
 
 ```python
 
-nw = nw.close_network_holes(max_dist=1.5, fillna=0.1)
+nw = nw.close_network_holes(max_dist=1.5, max_angle=90, fillna=0.1)
 nw
 ```
 
-    Network(3408 km, undirected)
+    Network(3407 km, undirected)
 
 The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the destination will either be reached or not within the breaks. This can be fixed by cutting all lines to a maximum distance.
 
@@ -1040,7 +1054,7 @@ rules = sg.NetworkAnalysisRules(weight="metres")
 nwa = sg.NetworkAnalysis(nw, rules=rules)
 ```
 
-    c:\Users\ort\git\ssb-sgis\src\sgis\networkanalysis\networkanalysis.py:235: UserWarning: Your network is likely not directed. Only 0.0 percent of the lines go both ways. Try setting direction_col='oneway' in the 'make_directed_network' method
+    c:\Users\ort\git\ssb-sgis\src\sgis\networkanalysis\networkanalysis.py:222: UserWarning: Your network is likely not directed. Only 0.0 percent of the lines go both ways. Try setting direction_col='oneway' in the 'make_directed_network' method
       self.network._warn_if_undirected()
 
 To make this network bidirectional, roads going both ways have to be duplicated and flipped. Roads going the opposite way also need to be flipped.
@@ -1234,7 +1248,8 @@ nwa
 
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...)
+        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...),
+        log=True, detailed_log=True,
     )
 
 ### split_lines
@@ -1290,10 +1305,12 @@ In the get_route example, when the lines are split, the trip starts a bit furthe
 
 ```python
 
-sg.qtm(sg.gdf_concat([sp1, sp2]), column="split_lines", cmap="bwr")
+sg.qtm(sp1, sp2, column="split_lines", cmap="bwr")
 ```
 
 ![png](network_analysis_demo_template_files/network_analysis_demo_template_78_0.png)
+
+    (<Figure size 1000x1000 with 1 Axes>, <Axes: >)
 
 But these kinds of deviations doesn't have much of an impact on the results in total here, where the mean is about 15 minutes. For shorter trips, the difference will be relatively larger, of course.
 
@@ -1345,11 +1362,11 @@ nwa.log.loc[
     <tr>
       <th>2</th>
       <td>True</td>
-      <td>3.306094</td>
-      <td>2.549855</td>
-      <td>3.211445</td>
-      <td>3.939938</td>
-      <td>1.314062</td>
+      <td>15.249900</td>
+      <td>10.538048</td>
+      <td>14.755051</td>
+      <td>19.321450</td>
+      <td>6.651464</td>
     </tr>
   </tbody>
 </table>
@@ -1568,39 +1585,32 @@ The class has three 'weight*to_nodes*' parameters. This is about the cost betwee
 
 This will produce inaccurate results for points that are far away from the network. Especially when the search_factor is high.
 
-Therefore, you can set one of the 'weight*to_nodes*' parameters. If the weight is 'meters' (i.e. the length unit of the crs), setting 'weight_to_nodes_dist' to True will make the weight equivelant to the straight-line distance:
+Therefore, you can set one of the 'weight*to_nodes*' parameters. If the weight is 'meters' (i.e. the length unit of the crs), setting 'nodedist_multiplier' to True will make the weight equivelant to the straight-line distance:
 
 ```python
 
-sg.NetworkAnalysisRules(weight="meters", weight_to_nodes_dist=True)
+sg.NetworkAnalysisRules(weight="meters", nodedist_multiplier=True)
 ```
 
-    NetworkAnalysisRules(weight='meters', search_tolerance=250, search_factor=0, split_lines=False, weight_to_nodes_dist=True, weight_to_nodes_kmh=None, weight_to_nodes_mph=None)
+    NetworkAnalysisRules(weight='meters', search_tolerance=250, search_factor=0, split_lines=False, nodedist_multiplier=True, nodedist_kmh=None)
 
-If the weight is "minutes", you specify the speed in kilometers or miles per hour:
+If the weight is "minutes", you specify the speed in kilometers:
 
 ```python
 
-sg.NetworkAnalysisRules(weight="minutes", weight_to_nodes_kmh=5)
+sg.NetworkAnalysisRules(weight="minutes", nodedist_kmh=5)
 ```
 
-    NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=0, split_lines=False, weight_to_nodes_dist=False, weight_to_nodes_kmh=5, weight_to_nodes_mph=None)
-
-```python
-
-sg.NetworkAnalysisRules(weight="minutes", weight_to_nodes_mph=3)
-```
-
-    NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=0, split_lines=False, weight_to_nodes_dist=False, weight_to_nodes_kmh=None, weight_to_nodes_mph=3)
+    NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=0, split_lines=False, nodedist_multiplier=None, nodedist_kmh=5)
 
 Let's check how the speed to the nodes influences the average speed:
 
 ```python
-for weight_to_nodes_kmh in [5, 20, 50, 0]:
-    nwa.rules.weight_to_nodes_kmh = weight_to_nodes_kmh
+for nodedist_kmh in [5, 20, 50, 0]:
+    nwa.rules.nodedist_kmh = nodedist_kmh
     od = nwa.od_cost_matrix(points, points)
 
-nwa.log.iloc[-4:][["weight_to_nodes_kmh", "cost_mean"]]
+nwa.log.iloc[-4:][["nodedist_kmh", "cost_mean"]]
 ```
 
 <div>
@@ -1622,7 +1632,7 @@ nwa.log.iloc[-4:][["weight_to_nodes_kmh", "cost_mean"]]
   <thead>
     <tr style="text-align: right;">
       <th></th>
-      <th>weight_to_nodes_kmh</th>
+      <th>nodedist_kmh</th>
       <th>cost_mean</th>
     </tr>
   </thead>
