@@ -47,13 +47,13 @@ jobs:
 
       - name: SonarCloud Scan
         # No need to run SonarCloud analysis if dependabot update
-        if: ${{ github.actor != 'dependabot[bot]' }} && (matrix.os == 'ubuntu-latest') && (matrix.python-version = "3.11")
+        if: ${{ github.actor != 'dependabot[bot]' }} && (matrix.os == 'ubuntu-latest') && (matrix.python-version == '3.11')
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Build api-documentation
-        if: (matrix.os == 'ubuntu-latest') && (matrix.python-version = "3.11")
+        if: (matrix.os == 'ubuntu-latest') && (matrix.python-version == '3.11')
         run: |
           poetry run sphinx-build -W docs docs/_build
