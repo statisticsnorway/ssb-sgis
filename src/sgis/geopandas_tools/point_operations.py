@@ -7,7 +7,7 @@ from shapely import Geometry
 from shapely.ops import nearest_points, snap, unary_union
 
 from ..geopandas_tools.general import to_lines
-from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
 
 
 def snap_within_distance(
@@ -172,9 +172,9 @@ def _polygons_to_lines(gdf):
     if get_geom_type(gdf) == "polygon":
         return to_lines(gdf)
     if get_geom_type(gdf) == "mixed":
-        gdf_points = get_geom_type(gdf, "point")
-        gdf_lines = get_geom_type(gdf, "line")
-        gdf_polys = to_lines(get_geom_type(gdf, "polygon"))
+        gdf_points = to_single_geom_type(gdf, "point")
+        gdf_lines = to_single_geom_type(gdf, "line")
+        gdf_polys = to_lines(to_single_geom_type(gdf, "polygon"))
         return pd.concat([gdf_points, gdf_lines, gdf_polys])
     return gdf
 

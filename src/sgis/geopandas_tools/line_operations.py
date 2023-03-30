@@ -789,7 +789,7 @@ def _find_holes_all_lines(
 
     def get_angle(array_a, array_b):
         dx = array_b[:, 0] - array_a[:, 0]
-        dy = array_b[:, 1] - array_b[:, 1]
+        dy = array_b[:, 1] - array_a[:, 1]
 
         angles_rad = np.arctan2(dx, dy)
         angles_degrees = np.degrees(angles_rad)
