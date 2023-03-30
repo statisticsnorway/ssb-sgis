@@ -2,15 +2,13 @@
 
 This module includes the function 'clean_shapely_overlay', which bypasses a
 GEOSException from the regular geopandas.overlay. The function is a generalized
-version of the solution from GH 2792*. The module also includes the 'overlay' function,
+version of the solution from GH 2792. The module also includes the 'overlay' function,
 which first tries a geopandas.overlay, and if it raises a GEOSException, tries
 'clean_shapely_overlay'.
 
 Both 'overlay' and 'clean_shapely_overlay' also include the overlay type "update",
 which can be specified in the "how" parameter, in addition to the five native geopandas
 how-s.
-
-*https://github.com/geopandas/geopandas/issues/2792
 """
 
 import geopandas as gpd
