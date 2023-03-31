@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -97,27 +98,40 @@ def test_k_neighbors(points_oslo):
     assert len(df) == len(p) * len(p)
 
 
-def test_neighbor_indices_ids(points_oslo):
-    p = points_oslo
+def test_get_neighbor_indices():
+    points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
+    p1 = points.iloc[[0]]
 
-    p["idx"] = p.index
-    p["idx2"] = np.random.randint(10_000, 20_000, size=len(p))
+    neighbor_indices = sg.get_neighbor_indices(p1, points)
+    assert neighbor_indices.equals(pd.Series([0], index=[0]))
 
-    neighbor_index = sg.get_neighbor_indices(
-        p.iloc[[0]],
-        neighbors=p,
-        max_dist=2000,
+    neighbor_indices = sg.get_neighbor_indices(p1, points, max_dist=1)
+    assert neighbor_indices.equals(pd.Series([0, 1], index=[0, 0]))
+
+    neighbor_indices = sg.get_neighbor_indices(p1, points, max_dist=3)
+    assert neighbor_indices.equals(pd.Series([0, 1, 2], index=[0, 0, 0]))
+
+    points["id_col"] = [*"abc"]
+    neighbor_indices = sg.get_neighbor_indices(
+        p1, points.set_index("id_col"), max_dist=3
     )
-    assert isinstance(neighbor_index, list)
-    assert len(neighbor_index) == 101, len(neighbor_index)
+    assert neighbor_indices.equals(pd.Series(["a", "b", "c"], index=[0, 0, 0]))
 
-    neighbor_ids = sg.get_neighbor_indices(
-        p.iloc[[0]],
-        neighbors=p.set_index("idx2"),
-        max_dist=2000,
+    two_points = sg.to_gdf([(0, 0), (0.5, 0.5)])
+    two_points["text"] = [*"ab"]
+    neighbor_indices = sg.get_neighbor_indices(two_points, two_points)
+    assert neighbor_indices.equals(pd.Series([0, 1], index=[0, 1]))
+
+    neighbor_indices = sg.get_neighbor_indices(two_points, two_points, max_dist=1)
+    assert neighbor_indices.equals(pd.Series([0, 0, 1, 1], index=[0, 1, 0, 1]))
+
+    neighbor_indices = sg.get_neighbor_indices(
+        two_points, two_points.set_index("text"), max_dist=1
     )
-    assert isinstance(neighbor_ids, list)
-    assert len(neighbor_ids), len(neighbor_ids)
+    assert neighbor_indices.equals(pd.Series(["a", "a", "b", "b"], index=[0, 1, 0, 1]))
+
+    assert list(neighbor_indices.values) == ["a", "a", "b", "b"]
+    assert list(neighbor_indices.index) == [0, 1, 0, 1]
 
 
 def main():
@@ -126,7 +140,7 @@ def main():
     points_oslo = points_oslo()
 
     test_k_neighbors(points_oslo)
-    test_neighbor_indices_ids(points_oslo)
+    test_neighbor_indices(points_oslo)
 
 
 if __name__ == "__main__":

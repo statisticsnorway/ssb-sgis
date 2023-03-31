@@ -22,6 +22,7 @@ from shapely.geometry import LineString
 from .geopandas_tools.general import (
     clean_geoms,
     drop_inactive_geometry_columns,
+    random_points_in_polygons,
     rename_geometry_if,
 )
 from .geopandas_tools.geometry_types import get_geom_type
@@ -325,7 +326,7 @@ class Explore:
             sample = self.gdf.sample(1)
 
         if get_geom_type(sample) == "polygon":
-            random_point = random_points_in_polygon(sample, 1)
+            random_point = random_points_in_polygons(sample, 1)
         else:
             random_point = sample.centroid
 

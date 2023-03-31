@@ -106,21 +106,6 @@ def test_clean():
     assert len(gdf) == 1
 
 
-def test_get_neighbor_indices():
-    points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
-    p1 = points.iloc[[0]]
-
-    assert sg.get_neighbor_indices(p1, points) == [0]
-    assert sg.get_neighbor_indices(p1, points, max_dist=1) == [0, 1]
-    assert sg.get_neighbor_indices(p1, points, max_dist=3) == [0, 1, 2]
-    points["id_col"] = [*"abc"]
-    assert sg.get_neighbor_indices(p1, points.set_index("id_col"), max_dist=3) == [
-        "a",
-        "b",
-        "c",
-    ]
-
-
 def test_snap():
     point = sg.to_gdf([0, 0])
     points = sg.to_gdf([(0, 0), (1, 0), (2, 0), (3, 0)])
