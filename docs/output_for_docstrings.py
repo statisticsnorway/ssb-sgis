@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 
 src = str(Path(__file__).parent.parent / "src")
@@ -22,6 +23,40 @@ def print_function_name(func):
         func(*args, **kwargs)
 
     return wrapper
+
+
+@print_function_name
+def get_neighbor_indices_docstring():
+    from sgis import get_neighbor_indices, to_gdf
+
+    """
+    points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
+    p1 = points.iloc[[0]]
+    print(points)
+    print(get_unique_neighbor_indices(p1, points))
+    print(get_unique_neighbor_indices(p1, points, max_dist=1))
+    print(get_unique_neighbor_indices(p1, points, max_dist=3))
+
+    points["text"] = [*"abd"]
+    print(get_unique_neighbor_indices(p1, points.set_index("text"), max_dist=3))
+
+    print(get_neighbor_indices(p1, points))
+    print(get_neighbor_indices(p1, points, max_dist=1))
+    print(get_neighbor_indices(p1, points, max_dist=3))
+    print(get_neighbor_indices(p1, points.set_index("text"), max_dist=3))
+    """
+
+    points = to_gdf([(0, 0), (0.5, 0.5)])
+    points["text"] = [*"ab"]
+    print(get_neighbor_indices(points, points))
+    print(get_neighbor_indices(points, points, max_dist=1))
+    print(get_neighbor_indices(points, points.set_index("text"), max_dist=1))
+
+    neighbor_indices = get_neighbor_indices(
+        points, points.set_index("text"), max_dist=1
+    )
+    print(neighbor_indices.values)
+    print(neighbor_indices.index)
 
 
 @print_function_name

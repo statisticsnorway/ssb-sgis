@@ -1376,7 +1376,7 @@ class NetworkAnalysis:
             ]
 
     @staticmethod
-    def _sort_breaks(breaks):
+    def _sort_breaks(breaks) -> list[float | int]:
         if isinstance(breaks, str):
             breaks = float(breaks)
 
