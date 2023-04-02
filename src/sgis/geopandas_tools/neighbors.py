@@ -12,13 +12,14 @@ from .general import coordinate_array
 def get_neighbor_indices(
     gdf: GeoDataFrame | GeoSeries,
     neighbors: GeoDataFrame | GeoSeries,
-    max_dist: int = 0,
+    max_distance: int = 0,
     predicate: str = "intersects",
 ) -> Series:
     """Returns a pandas Series of neighbor indices.
 
-    The returned Series will contain values of all indices of 'neighbors' for each row in 'gdf'. will be the 'neighbours' indices. The Series index will be the
-    'gdf' indices.
+    The returned Series will contain values of all indices of 'neighbors' for each row
+    in 'gdf'. will be the 'neighbours' indices. The Series index will be the 'gdf'
+    indices.
 
     Finds all the geometries in 'neighbors' that intersect with 'gdf' and returns a
     list of the indices of the neighbors. Use set_index on the neighbors inside the
@@ -27,7 +28,7 @@ def get_neighbor_indices(
     Args:
         gdf: GeoDataFrame or GeoSeries
         neighbors: GeoDataFrame or GeoSeries
-        max_dist: The maximum distance between the two geometries. Defaults to 0.
+        max_distance: The maximum distance between the two geometries. Defaults to 0.
         predicate: Spatial predicate to use in sjoin. Defaults to "intersects", meaning
             the geometry itself and geometries within will be considered neighbors if
             they are part of the 'neighbors' GeoDataFrame.
@@ -48,7 +49,7 @@ def get_neighbor_indices(
     0  POINT (0.00000 0.00000)
     1  POINT (0.50000 0.50000)
 
-    Here, the points return the index of themselves.
+    With no max_distance, the points return the index of themselves.
 
     >>> neighbor_indices = get_neighbor_indices(points, points)
     >>> neighbor_indices
@@ -56,9 +57,9 @@ def get_neighbor_indices(
     1    1
     Name: neighbor_index, dtype: int64
 
-    With max_dist=1, each point find themselves and the neighbor.
+    With max_distance=1, each point find themselves and the neighbor.
 
-    >>> neighbor_indices = get_neighbor_indices(points, points, max_dist=1)
+    >>> neighbor_indices = get_neighbor_indices(points, points, max_distance=1)
     >>> neighbor_indices
     0    0
     1    0
@@ -69,7 +70,7 @@ def get_neighbor_indices(
     Using a column instead of the index.
 
     >>> points["text"] = [*"ab"]
-    >>> neighbor_indices = get_neighbor_indices(points, points.set_index("text"), max_dist=1)
+    >>> neighbor_indices = get_neighbor_indices(points, points.set_index("text"), max_distance=1)
     >>> neighbor_indices
     0    a
     1    a
@@ -92,19 +93,24 @@ def get_neighbor_indices(
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
     # buffer and keep only geometry column
-    if max_dist:
+    if max_distance:
         if gdf.crs == 4326:
             warnings.warn(
-                "'gdf' has latlon crs, meaning the 'max_dist' paramter "
+                "'gdf' has latlon crs, meaning the 'max_distance' paramter "
                 "will not be in meters, but degrees."
             )
-        gdf = gdf.buffer(max_dist).to_frame()
+        gdf = gdf.buffer(max_distance).to_frame()
     else:
         gdf = gdf.geometry.to_frame()
 
-    joined = gdf.sjoin(neighbors, how="inner", predicate=predicate).rename(
-        columns={"index_right": "neighbor_index"}, errors="raise"
-    )
+    if predicate == "nearest":
+        joined = gdf.sjoin_nearest(neighbors, how="inner").rename(
+            columns={"index_right": "neighbor_index"}, errors="raise"
+        )
+    else:
+        joined = gdf.sjoin(neighbors, how="inner", predicate=predicate).rename(
+            columns={"index_right": "neighbor_index"}, errors="raise"
+        )
 
     return joined["neighbor_index"]
 
@@ -112,7 +118,7 @@ def get_neighbor_indices(
 def _get_unique_neighbor_indices(
     gdf: GeoDataFrame | GeoSeries,
     neighbors: GeoDataFrame | GeoSeries,
-    max_dist: int = 0,
+    max_distance: int = 0,
     predicate: str = "intersects",
 ) -> list:
     """Returns a list of the indices of a GeoDataFrame's neigbours.
@@ -124,7 +130,7 @@ def _get_unique_neighbor_indices(
     Args:
         gdf: GeoDataFrame or GeoSeries
         neighbors: GeoDataFrame or GeoSeries
-        max_dist: The maximum distance between the two geometries. Defaults to 0.
+        max_distance: The maximum distance between the two geometries. Defaults to 0.
         predicate: Spatial predicate to use in sjoin. Defaults to "intersects", meaning
             the geometry itself and geometries within will be considered neighbors if
             they are part of the 'neighbors' GeoDataFrame.
@@ -149,15 +155,15 @@ def _get_unique_neighbor_indices(
     >>> p1 = points.iloc[[0]]
     >>> get_neighbor_indices(p1, points)
     [0]
-    >>> get_neighbor_indices(p1, points, max_dist=1)
+    >>> get_neighbor_indices(p1, points, max_distance=1)
     [0, 1]
-    >>> get_neighbor_indices(p1, points, max_dist=3)
+    >>> get_neighbor_indices(p1, points, max_distance=3)
     [0, 1, 2]
 
     Using a column instead of the index.
 
     >>> points["text"] = [*"abc"]
-    >>> get_neighbor_indices(p1, points.set_index("text"), max_dist=3)
+    >>> get_neighbor_indices(p1, points.set_index("text"), max_distance=3)
     ['a', 'b', 'c']
     """
 
@@ -167,13 +173,13 @@ def _get_unique_neighbor_indices(
     id_col = "index_right"
 
     # buffer and keep only geometry column
-    if max_dist:
+    if max_distance:
         if gdf.crs == 4326:
             warnings.warn(
-                "'gdf' has latlon crs, meaning the 'max_dist' paramter "
+                "'gdf' has latlon crs, meaning the 'max_distance' paramter "
                 "will not be in meters, but degrees."
             )
-        gdf = gdf.buffer(max_dist).to_frame()
+        gdf = gdf.buffer(max_distance).to_frame()
     else:
         gdf = gdf.geometry.to_frame()
 

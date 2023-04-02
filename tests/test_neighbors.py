@@ -105,15 +105,15 @@ def test_get_neighbor_indices():
     neighbor_indices = sg.get_neighbor_indices(p1, points)
     assert neighbor_indices.equals(pd.Series([0], index=[0]))
 
-    neighbor_indices = sg.get_neighbor_indices(p1, points, max_dist=1)
+    neighbor_indices = sg.get_neighbor_indices(p1, points, max_distance=1)
     assert neighbor_indices.equals(pd.Series([0, 1], index=[0, 0]))
 
-    neighbor_indices = sg.get_neighbor_indices(p1, points, max_dist=3)
+    neighbor_indices = sg.get_neighbor_indices(p1, points, max_distance=3)
     assert neighbor_indices.equals(pd.Series([0, 1, 2], index=[0, 0, 0]))
 
     points["id_col"] = [*"abc"]
     neighbor_indices = sg.get_neighbor_indices(
-        p1, points.set_index("id_col"), max_dist=3
+        p1, points.set_index("id_col"), max_distance=3
     )
     assert neighbor_indices.equals(pd.Series(["a", "b", "c"], index=[0, 0, 0]))
 
@@ -122,11 +122,11 @@ def test_get_neighbor_indices():
     neighbor_indices = sg.get_neighbor_indices(two_points, two_points)
     assert neighbor_indices.equals(pd.Series([0, 1], index=[0, 1]))
 
-    neighbor_indices = sg.get_neighbor_indices(two_points, two_points, max_dist=1)
+    neighbor_indices = sg.get_neighbor_indices(two_points, two_points, max_distance=1)
     assert neighbor_indices.equals(pd.Series([0, 0, 1, 1], index=[0, 1, 0, 1]))
 
     neighbor_indices = sg.get_neighbor_indices(
-        two_points, two_points.set_index("text"), max_dist=1
+        two_points, two_points.set_index("text"), max_distance=1
     )
     assert neighbor_indices.equals(pd.Series(["a", "a", "b", "b"], index=[0, 1, 0, 1]))
 

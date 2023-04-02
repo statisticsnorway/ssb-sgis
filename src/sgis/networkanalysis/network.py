@@ -105,7 +105,7 @@ class Network:
 
     >>> len(nw.gdf)
     85638
-    >>> nw = nw.close_network_holes(max_dist=1.5, fillna=0)
+    >>> nw = nw.close_network_holes(max_distance=1.5, fillna=0)
     >>> len(nw.gdf)
     86929
 
@@ -281,7 +281,7 @@ class Network:
 
     def close_network_holes(
         self,
-        max_dist: int | float,
+        max_distance: int | float,
         max_angle: int,
         fillna: float | int | None,
         hole_col: str = "hole",
@@ -289,10 +289,10 @@ class Network:
         """Fills network gaps with straigt lines.
 
         Fills holes in the network by connecting deadends with the the closest node
-        that is within the 'max_dist' distance and have an angle less 'max_angle'.
+        that is within the 'max_distance' distance and have an angle less 'max_angle'.
 
         Args:
-            max_dist: The maximum distance for the holes to be filled.
+            max_distance: The maximum distance for the holes to be filled.
             max_angle: Absolute number between 0 and 180 that represents the maximum
                 difference in angle between the new line and the prior, i.e. the line
                 at which the deadend ends. A value of 0 means the new lines must
@@ -326,7 +326,7 @@ class Network:
         Fill gaps shorter than 1.1 meters and an angle deviation of no more than
         30 degrees.
 
-        >>> nw = nw.close_network_holes(max_dist=1.1, max_angle=30, fillna=0)
+        >>> nw = nw.close_network_holes(max_distance=1.1, max_angle=30, fillna=0)
         >>> nw = nw.get_largest_component()
         >>> nw.gdf.connected.value_counts()
         1.0    100315
@@ -335,7 +335,7 @@ class Network:
 
         Fill gaps with all angles allowed.
 
-        >>> nw = nw.close_network_holes(max_dist=1.1, max_angle=180, fillna=0)
+        >>> nw = nw.close_network_holes(max_distance=1.1, max_angle=180, fillna=0)
         >>> nw = nw.get_largest_component()
         >>> nw.gdf.connected.value_counts()
         1.0    100315
@@ -348,7 +348,7 @@ class Network:
         """
         self.gdf = close_network_holes(
             self.gdf,
-            max_dist,
+            max_distance,
             hole_col=hole_col,
             max_angle=max_angle,
         )
@@ -364,18 +364,18 @@ class Network:
 
     def close_network_holes_to_deadends(
         self,
-        max_dist: int | float,
+        max_distance: int | float,
         fillna: int | float | None,
         hole_col: str = "hole",
     ):
-        """Fills holes between two deadends if the distance is less than the max_dist.
+        """Fills holes between two deadends if the distance is less than the max_distance.
 
         It fills gaps in the network by finding the nearest neighbors of each node,
-        then creating straigt lines between the nodes that are within the 'max_dist'
+        then creating straigt lines between the nodes that are within the 'max_distance'
         of each other.
 
         Args:
-            max_dist: The maximum distance between two nodes to be considered a hole.
+            max_distance: The maximum distance between two nodes to be considered a hole.
             fillna: The value to give the closed holes in all columns with NaN. This
                 has to be set in order for the closed holes to be included in network
                 analyses. If set to 0, the lines will get a weight of 0.
@@ -404,7 +404,7 @@ class Network:
 
         Fill gaps shorter than 1.1 meters and assign 0 to all columns.
 
-        >>> nw = nw.close_network_holes(max_dist=1.1, fillna=0)
+        >>> nw = nw.close_network_holes(max_distance=1.1, fillna=0)
         >>> nw = nw.get_largest_component()
         >>> nw.gdf.connected.value_counts()
         1.0    100315
@@ -417,7 +417,7 @@ class Network:
         """
         self.gdf = close_network_holes_to_deadends(
             self.gdf,
-            max_dist,
+            max_distance,
             hole_col=hole_col,
         )
 

@@ -13,20 +13,20 @@ from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
 def snap_within_distance(
     points: GeoDataFrame,
     to: GeoDataFrame,
-    max_dist: int | float,
+    max_distance: int | float,
     *,
     distance_col: str | None = None,
 ) -> GeoDataFrame:
     """Snaps points to nearest geometry if within given distance.
 
     It takes a GeoDataFrame of points and snaps them to the nearest geometry in a
-    second GeoDataFrame if the snap distance is less than 'max_dist'. Returns distance
+    second GeoDataFrame if the snap distance is less than 'max_distance'. Returns distance
     column if specified.
 
     Args:
         points: The GeoDataFrame of points to snap.
         to: The GeoDataFrame to snap to.
-        max_dist: The maximum distance to snap to.
+        max_distance: The maximum distance to snap to.
         distance_col: Name of column with the snap distance. Defaults to
             'snap_distance'. Set to None to not get any distance column. This will make
             the function a bit faster.
@@ -83,7 +83,7 @@ def snap_within_distance(
     copied[geom_col] = _series_snap(
         points=copied[geom_col],
         to=to,
-        max_dist=max_dist,
+        max_distance=max_distance,
     )
 
     if distance_col:
@@ -156,7 +156,7 @@ def snap_all(
     copied[geom_col] = _series_snap(
         points=copied[geom_col],
         to=to,
-        max_dist=None,
+        max_distance=None,
     )
 
     if distance_col:
@@ -182,13 +182,13 @@ def _polygons_to_lines(gdf):
 def _series_snap(
     points: GeoSeries,
     to: GeoSeries | GeoDataFrame | Geometry,
-    max_dist: int | float | None = None,
+    max_distance: int | float | None = None,
 ) -> GeoSeries:
     def snapfunc(point, to):
         nearest = nearest_points(point, to)[1]
-        if not max_dist:
+        if not max_distance:
             return nearest
-        return snap(point, nearest, tolerance=max_dist)
+        return snap(point, nearest, tolerance=max_distance)
 
     if isinstance(to, GeoDataFrame):
         unioned = to.unary_union

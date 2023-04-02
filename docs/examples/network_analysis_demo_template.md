@@ -1024,7 +1024,7 @@ If the road data has some gaps between the segments, these can be filled with st
 
 ```python
 
-nw = nw.close_network_holes(max_dist=1.5, max_angle=90, fillna=0.1)
+nw = nw.close_network_holes(max_distance=1.5, max_angle=90, fillna=0.1)
 nw
 ```
 

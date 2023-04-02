@@ -1251,7 +1251,7 @@ class NetworkAnalysis:
         lines = split_lines_by_nearest_point(
             lines=self.network.gdf,
             points=points,
-            max_dist=self.rules.search_tolerance,
+            max_distance=self.rules.search_tolerance,
         )
 
         # save the unsplit lines for later

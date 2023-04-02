@@ -268,7 +268,7 @@ print(f"After removing isolated: {percent_missing=:.2f}")
 # If the road data has some gaps between the segments, these can be filled with straight lines:
 # %%
 
-nw = nw.close_network_holes(max_dist=1.5, max_angle=90, fillna=0.1)
+nw = nw.close_network_holes(max_distance=1.5, max_angle=90, fillna=0.1)
 nw
 # %% [markdown]
 # The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the destination will either be reached or not within the breaks. This can be fixed by cutting all lines to a maximum distance.

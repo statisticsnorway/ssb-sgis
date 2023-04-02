@@ -34,26 +34,26 @@ def get_neighbor_indices_docstring():
     p1 = points.iloc[[0]]
     print(points)
     print(get_unique_neighbor_indices(p1, points))
-    print(get_unique_neighbor_indices(p1, points, max_dist=1))
-    print(get_unique_neighbor_indices(p1, points, max_dist=3))
+    print(get_unique_neighbor_indices(p1, points, max_distance=1))
+    print(get_unique_neighbor_indices(p1, points, max_distance=3))
 
     points["text"] = [*"abd"]
-    print(get_unique_neighbor_indices(p1, points.set_index("text"), max_dist=3))
+    print(get_unique_neighbor_indices(p1, points.set_index("text"), max_distance=3))
 
     print(get_neighbor_indices(p1, points))
-    print(get_neighbor_indices(p1, points, max_dist=1))
-    print(get_neighbor_indices(p1, points, max_dist=3))
-    print(get_neighbor_indices(p1, points.set_index("text"), max_dist=3))
+    print(get_neighbor_indices(p1, points, max_distance=1))
+    print(get_neighbor_indices(p1, points, max_distance=3))
+    print(get_neighbor_indices(p1, points.set_index("text"), max_distance=3))
     """
 
     points = to_gdf([(0, 0), (0.5, 0.5)])
     points["text"] = [*"ab"]
     print(get_neighbor_indices(points, points))
-    print(get_neighbor_indices(points, points, max_dist=1))
-    print(get_neighbor_indices(points, points.set_index("text"), max_dist=1))
+    print(get_neighbor_indices(points, points, max_distance=1))
+    print(get_neighbor_indices(points, points.set_index("text"), max_distance=1))
 
     neighbor_indices = get_neighbor_indices(
-        points, points.set_index("text"), max_dist=1
+        points, points.set_index("text"), max_distance=1
     )
     print(neighbor_indices.values)
     print(neighbor_indices.index)
@@ -350,12 +350,12 @@ def get_neighbor_indices():
     p1 = points.iloc[[0]]
     print(
         get_neighbor_indices(p1, points),
-        get_neighbor_indices(p1, points, max_dist=1),
-        get_neighbor_indices(p1, points, max_dist=3),
+        get_neighbor_indices(p1, points, max_distance=1),
+        get_neighbor_indices(p1, points, max_distance=3),
     )
 
     points["text"] = [*"abd"]
-    print(get_neighbor_indices(p1, points.set_index("text"), max_dist=3))
+    print(get_neighbor_indices(p1, points.set_index("text"), max_distance=3))
 
 
 def make_docstring_output():
