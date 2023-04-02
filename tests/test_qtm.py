@@ -22,6 +22,7 @@ def not_test_qtm(points_oslo):
 
     points.geometry = points.buffer(np.arange(1, len(points) + 1) * 10)
     points["m2"] = points.area
+    sg.qtm(points, points, points, "m2")
     sg.qtm(points, "m2")
 
     # making a list of gdfs makes it hard/impossible to get the names as labels
@@ -67,7 +68,7 @@ def not_test_qtm(points_oslo):
         points100.assign(area_cat=lambda df: df.area.astype(int).astype(str)),
         column="area_cat",
         title="should be three colors with five circles each",
-        legend_title="square meters",
+        legend_title="square meters, categorical",
     )
 
     sg.qtm(

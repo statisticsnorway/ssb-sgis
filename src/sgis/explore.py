@@ -15,6 +15,7 @@ import matplotlib.colors as colors
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
+from jenkspy import jenks_breaks
 from mapclassify import classify
 from shapely import Geometry
 from shapely.geometry import LineString
@@ -113,7 +114,7 @@ def _separate_args(
         elif isinstance(arg, (GeoDataFrame, GeoSeries, Geometry)):
             gdfs = gdfs + (arg,)
 
-    if column and not kwargs["column"]:
+    if column and not kwargs.get("column", None):
         kwargs["column"] = column
 
     return gdfs, column, kwargs
@@ -137,6 +138,7 @@ class Explore:
         self,
         *gdfs: GeoDataFrame,
         column: str | None = None,
+        scheme: str = "fisherjenks",
         labels: tuple[str] | None = None,
         popup: bool = True,
         max_zoom: int = 30,
@@ -170,12 +172,14 @@ class Explore:
                 instance 'cmap' to change the colors, 'scheme' to change how the data
                 is grouped. This defaults to 'fisherjenks' for numeric data.
         """
+        self.scheme = scheme
         self.show_in_browser = show_in_browser
         all_kwargs: dict = kwargs | {
             "popup": popup,
             "column": column,
             "max_zoom": max_zoom,
         }
+        all_kwargs["k"] = kwargs.get("k", 5)
 
         gdfs, column, all_kwargs = _separate_args(gdfs, column, all_kwargs)
 
@@ -190,7 +194,8 @@ class Explore:
                 gdf.name = all_kwargs["namedict"][i]
             all_kwargs.pop("namedict")
 
-        # need to get the object names of the gdfs before copying
+        # need to get the object names of the gdfs before copying. Only getting,
+        # not setting, labels. So the original gdfs don't get the label column.
         self.labels = labels
         if not self.labels:
             self._get_labels(gdfs)
@@ -198,7 +203,6 @@ class Explore:
         self.gdfs: list[GeoDataFrame] = [gdf.copy() for gdf in gdfs]
         self.kwargs = all_kwargs
 
-        # setting labels here to not get the column on the input gdfs
         if not self.labels:
             self._set_labels()
 
@@ -207,25 +211,12 @@ class Explore:
                 gdf["label"] = label
             self.kwargs["column"] = "label"
 
-        # cannot have more than one geometry column. Also setting common crs
-        crss = list({gdf.crs for gdf in self.gdfs if gdf.crs is not None})
-        new_gdfs = []
-        for gdf in self.gdfs:
-            gdf = drop_inactive_geometry_columns(gdf).pipe(rename_geometry_if)
-            if crss:
-                try:
-                    gdf = gdf.to_crs(crss[0])
-                except ValueError:
-                    gdf = gdf.set_crs(crss[0])
-            new_gdfs.append(gdf)
-            self.gdfs = new_gdfs
+        self.gdfs = self._to_common_crs_and_one_geom_col(self.gdfs)
 
         self._is_categorical = self._check_if_categorical()
         self._fill_missings()
 
         self.gdf = pd.concat(self.gdfs, ignore_index=True)
-
-        self.kwargs["k"] = self.kwargs.get("k", 5)
 
         if "title" not in self.kwargs:
             self.kwargs["title"] = self.kwargs["column"]
@@ -403,6 +394,21 @@ class Explore:
         for i, gdf in enumerate(self.gdfs):
             gdf["label"] = self.labels[i]
 
+    @staticmethod
+    def _to_common_crs_and_one_geom_col(gdfs: list[GeoDataFrame]):
+        """Need common crs and max one geometry column."""
+        crss = list({gdf.crs for gdf in gdfs if gdf.crs is not None})
+        new_gdfs = []
+        for gdf in gdfs:
+            gdf = drop_inactive_geometry_columns(gdf).pipe(rename_geometry_if)
+            if crss:
+                try:
+                    gdf = gdf.to_crs(crss[0])
+                except ValueError:
+                    gdf = gdf.set_crs(crss[0])
+            new_gdfs.append(gdf)
+        return new_gdfs
+
     def _fill_missings(self) -> None:
         for gdf in self.gdfs:
             if self.kwargs["column"] in gdf.columns:
@@ -462,14 +468,16 @@ class Explore:
                 self.kwargs["cmap"] = None
             else:
                 self.kwargs["cmap"] = "viridis"
-        if "scheme" not in self.kwargs:
-            self.kwargs["scheme"] = "fisherjenks"
+
+    #        if "scheme" not in self.kwargs:
+    #           self.kwargs["scheme"] = "fisherjenks"
 
     def _get_categorical_colors(self) -> None:
         cat_col = self.kwargs["column"]
         self._unique_categories = sorted(
             list(self.gdf.loc[self.gdf[cat_col] != "missing", cat_col].unique())
         )
+        # custom categorical cmap
         if len(self._unique_categories) <= len(_CATEGORICAL_CMAP):
             self.kwargs["cmap"] = None
             self._categories_colors_dict = {
@@ -532,13 +540,11 @@ class Explore:
     def _create_continous_map(self):
         gdfs = pd.concat(self.to_show, ignore_index=True)
 
-        unique_bins = self._create_bins(
-            gdfs, self.kwargs["column"], self.kwargs["scheme"]
-        )
+        bins = self._create_bins(gdfs, self.kwargs["column"])
 
-        self.kwargs["classification_kwds"] = {"bins": unique_bins}
-        if len(unique_bins) < self.kwargs.get("k", 5):
-            self.kwargs["k"] = len(unique_bins)
+        self.kwargs["classification_kwds"] = {"bins": bins}
+        if len(bins) < self.kwargs.get("k", 5):
+            self.kwargs["k"] = len(bins)
 
         self.map, colorbar = self._explore_return(
             gdfs, return_="empty_map_and_colorbar", **self.kwargs
@@ -569,24 +575,45 @@ class Explore:
             return tooltip
         return [col for col in gdf.columns if col not in COLS_TO_DROP]
 
-    def _create_bins(self, gdf, column, scheme):
+    def _create_bins(self, gdf, column):
         n_unique = len(gdf[column].unique())
 
         if n_unique <= self.kwargs.get("k", 5):
             self.kwargs["k"] = n_unique
 
-        binning = classify(
-            np.asarray(gdf.loc[gdf[column].notna(), column]),
-            scheme=scheme,
-            k=self.kwargs["k"],
-        )
+        if self.scheme == "fisherjenks":
+            bins = jenks_breaks(
+                gdf.loc[gdf[column].notna(), column], n_classes=self.kwargs["k"]
+            )
+        else:
+            binning = classify(
+                np.asarray(gdf.loc[gdf[column].notna(), column]),
+                scheme=self.scheme,
+                k=self.kwargs["k"],
+            )
+            bins = binning.bins
 
-        unique_bins = list({round(bin, 5) for bin in binning.bins})
+        unique_bins = list({round(bin, 5) for bin in bins})
         unique_bins.sort()
 
         # adding a small amount to get the colors correct. Weird that this is
         # nessecary...
         return [bin + bin / 10_000 for bin in unique_bins]
+
+    @staticmethod
+    def _get_continous_colors(cmap: str, k: int) -> list[str]:
+        cmap = matplotlib.colormaps.get_cmap(cmap)
+        return [colors.to_hex(cmap(int(i))) for i in np.linspace(0, 256, num=k)]
+
+    @staticmethod
+    def _classify_from_bins(
+        bins: list[float], colors_: list[str], array: np.ndarray
+    ) -> np.ndarray:
+        if len(bins) == len(colors_) + 1:
+            bins = bins[1:]
+        bins = np.array(bins)
+        colors_ = np.array(colors_)
+        return colors_[np.searchsorted(bins, array)]
 
     @staticmethod
     def _get_continous_color_idx(gdf, column, bins):

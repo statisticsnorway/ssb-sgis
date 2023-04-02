@@ -6,8 +6,11 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 
 The 'qtm' function shows a static map of one or more GeoDataFrames.
 """
+import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
+from matplotlib import colors
 from matplotlib.axes._axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -63,7 +66,7 @@ def explore(
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
-            is grouped. This defaults to 'fisherjenks' for numeric data.
+            is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See also
     --------
@@ -139,7 +142,7 @@ def samplemap(
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
-            is grouped. This defaults to 'fisherjenks' for numeric data.
+            is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See also
     --------
@@ -227,7 +230,7 @@ def clipmap(
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
-            is grouped. This defaults to 'fisherjenks' for numeric data.
+            is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See also
     --------
@@ -278,7 +281,7 @@ def qtm(
     column: str | None = None,
     bg_gdf: GeoDataFrame | None = None,
     title: str | None = None,
-    scheme: str | None = "fisherjenks",
+    #  scheme: str | None = "fisherjenkssampled",
     legend: bool = True,
     black: bool = True,
     size: int = 10,
@@ -288,29 +291,29 @@ def qtm(
 ) -> tuple[Figure, Axes]:
     """Quick, thematic map of one or more GeoDataFrames.
 
-    Shows one or more GeoDataFrames in the same plot, with a common color scheme if
-    column is specified, or with unique colors for each GeoDataFrame if not. The
-    function simplifies the manual construction of a basic matplotlib plot. It also
-    returns the matplotlib figure and axis, so the plot can be changed afterwards.
+     Shows one or more GeoDataFrames in the same plot, with a common color scheme if
+     column is specified, or with unique colors for each GeoDataFrame if not. The
+     function simplifies the manual construction of a basic matplotlib plot. It also
+     returns the matplotlib figure and axis, so the plot can be changed afterwards.
 
-    Disclaimer: the 'qtm' name is taken from the tmap package in R.
+     Disclaimer: the 'qtm' name is taken from the tmap package in R.
 
-    Args:
-        *gdfs: One or more GeoDataFrames to plot.
-        column: The column to color the map by. Defaults to None, meaning each
-            GeoDataFrame is given a unique color.
-        title: Text to use as the map's heading.
-        scheme: How to group the column values. Defaults to 'fisherjenks' if numeric
-            column.
-        legend: Whether to include a legend explaining the colors and their values.
-        black: If True (default), the background color will be black and the title
-            white. If False, it will be the opposite.
-        size: Size of the plot. Defaults to 10.
-        title_fontsize: Size of the title.
-        **kwargs: Additional keyword arguments passed to the geopandas plot method.
+     Args:
+         *gdfs: One or more GeoDataFrames to plot.
+         column: The column to color the map by. Defaults to None, meaning each
+             GeoDataFrame is given a unique color.
+         title: Text to use as the map's heading.
+    #     scheme: How to group the column values. Defaults to 'fisherjenkssampled' if numeric
+     #        column.
+         legend: Whether to include a legend explaining the colors and their values.
+         black: If True (default), the background color will be black and the title
+             white. If False, it will be the opposite.
+         size: Size of the plot. Defaults to 10.
+         title_fontsize: Size of the title.
+         **kwargs: Additional keyword arguments passed to the geopandas plot method.
 
-    Returns:
-        The matplotlib figure and axis.
+     Returns:
+         The matplotlib figure and axis.
     """
 
     if black:
@@ -318,33 +321,28 @@ def qtm(
     else:
         facecolor, title_color, bg_gdf_color = "#fefefe", "#0f0f0f", "#d1d1cd"
 
-    # run the gdfs through the __init__ of the Explore class
-    # this gives a custom categorical cmap and labels to be used in the legend
+    # run the gdfs through the __init__ of the Explore class. This concatinates the
+    # gdfs and creates custom categorical cmap and labels to be used in the legend
     kwargs["column"] = column
     gdfs, column, kwargs = _separate_args(gdfs, column, kwargs)
     m = Explore(*gdfs, **kwargs)
 
-    # the 'column' in the kwargs has to be updated to the custom categorical column (if
-    # column was not specified).
-    kwargs["column"] = m.kwargs.pop("column")
+    column = m.kwargs.pop("column")
+    kwargs.pop("scheme", None)
 
     if m._is_categorical and any(
         kwarg in kwargs for kwarg in ("cmap", "color", "column")
     ):
         kwargs["color"] = m.gdf["color"]
+    # kwargs["color"] = m.gdf.get("color", None)
 
-    if column and not is_numeric_dtype(m.gdf[column]):
-        scheme = None
-
-    size_x, size_y = return_two_vals(size)
-    fig, ax = _get_matplotlib_figure_and_axix(figsize=(size_x, size_y))
-
+    fig, ax = _get_matplotlib_figure_and_axix(figsize=(size, size))
     fig.patch.set_facecolor(facecolor)
     ax.set_axis_off()
 
-    # manually add legend if categorical, since geopandas.plot removes it otherwise.
+    # manually add legend if categorical. Geopandas.plot removes it otherwise.
     if legend and m._is_categorical:
-        kwargs.pop("column")
+        kwargs.pop("column", None)
         kwargs["color"] = m.gdf.color
         patches, categories = [], []
         for category, color in m._categories_colors_dict.items():
@@ -361,12 +359,12 @@ def qtm(
                     markeredgewidth=0,
                 )
             )
-        ax.legend(patches, categories, fontsize=size_x)
+        ax.legend(patches, categories, fontsize=size)
 
     # if single color
     elif legend and "color" in kwargs:
         m.gdf["color"] = kwargs["color"]
-        kwargs.pop("column")
+        kwargs.pop("column", None)
         categories = [kwargs["color"] if isinstance(kwargs["color"], str) else "color"]
         patches = [
             Line2D(
@@ -380,17 +378,65 @@ def qtm(
                 markeredgewidth=0,
             )
         ]
-        ax.legend(patches, categories, fontsize=size_x)
+        ax.legend(patches, categories, fontsize=size)
 
     if not m._is_categorical:
-        # making unique bins manually so that all equal values get same color
-        unique_bins = m._create_bins(m.gdf, column, scheme)
+        unique_bins = m._create_bins(m.gdf, column)
         kwargs["classification_kwds"] = {"bins": unique_bins}
         if len(unique_bins) < kwargs.get("k", 5):
             kwargs["k"] = len(unique_bins)
 
+        colors_ = m._get_continous_colors(
+            cmap=kwargs.get("cmap", "viridis"), k=kwargs.get("k", 5)
+        )
+        kwargs["color"] = m._classify_from_bins(unique_bins, colors_, m.gdf[column])
+
+        if len(unique_bins) == len(colors_):
+            unique_bins = [0] + unique_bins
+
+        def _what_rounding(bins):
+            if max(bins) > 30:
+                return 0
+            if max(bins) > 5:
+                return 1
+            if max(bins) > 1:
+                return 2
+            if max(bins) > 0.1:
+                return 3
+            if max(bins) > 0.01:
+                return 4
+            return None
+
+        rounding = _what_rounding(unique_bins)
+        if rounding == 0:
+            unique_bins = [int(bin) for bin in unique_bins]
+        elif rounding:
+            unique_bins = [round(bin, rounding) for bin in unique_bins]
+
+        kwargs.pop("column", None)
+
+        if legend:
+            patches, categories = [], []
+            for cat1, cat2, color in zip(
+                unique_bins[:-1], unique_bins[1:], colors_, strict=True
+            ):
+                categories.append(f"{cat1} - {cat2}")
+                patches.append(
+                    Line2D(
+                        [0],
+                        [0],
+                        linestyle="none",
+                        marker="o",
+                        alpha=kwargs.get("alpha", 1),
+                        markersize=10,
+                        markerfacecolor=color,
+                        markeredgewidth=0,
+                    )
+                )
+            ax.legend(patches, categories, fontsize=size)
+
     if title:
-        ax.set_title(title, fontsize=size_x * 2, color=title_color)
+        ax.set_title(title, fontsize=size * 2, color=title_color)
 
     if bg_gdf is not None:
         minx, miny, maxx, maxy = m.gdf.total_bounds
@@ -403,7 +449,7 @@ def qtm(
     if "color" in kwargs:
         kwargs.pop("column", None)
 
-    m.gdf.plot(scheme=scheme, legend=legend, ax=ax, **kwargs)
+    m.gdf.plot(legend=legend, ax=ax, **kwargs)
 
     if not legend:
         return fig, ax
@@ -411,12 +457,12 @@ def qtm(
     the_legend = plt.gca().get_legend()
 
     for text in the_legend.get_texts():
-        text.set_fontsize(size_x)
+        text.set_fontsize(size)
 
     the_legend.set_bbox_to_anchor(bbox_to_anchor)
 
     legend_title = column if not legend_title else legend_title
-    the_legend.set_title(legend_title, prop={"size": size_x * 1.25})
+    the_legend.set_title(legend_title, prop={"size": size * 1.25})
 
     plt.show()
 
@@ -427,3 +473,54 @@ def _get_matplotlib_figure_and_axix(figsize):
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(1, 1, 1)
     return fig, ax
+
+
+def _make_bins():
+    unique_bins = m._create_bins(m.gdf, column, scheme)
+    kwargs["classification_kwds"] = {"bins": unique_bins}
+    if len(unique_bins) < kwargs.get("k", 5):
+        kwargs["k"] = len(unique_bins)
+
+
+def s():
+    cmap = matplotlib.colormaps.get_cmap(m.kwargs.get("cmap", "viridis"))
+
+    colors_ = []
+    for i in np.arange(0, 256, int(256 / kwargs.get("k", 5))):
+        colors_.append(colors.to_hex(cmap(int(i))))
+
+    def _what_rounding(bins):
+        if max(bins) > 100:
+            return 0
+        if max(bins) > 5:
+            return 1
+        if max(bins) > 1:
+            return 2
+        if max(bins) > 0.1:
+            return 3
+        if max(bins) > 0.01:
+            return 4
+
+    rounding = _what_rounding(unique_bins)
+    if rounding == 0:
+        unique_bins = [int(bin) for bin in unique_bins]
+    else:
+        unique_bins = [round(bin, rounding) for bin in unique_bins]
+
+    kwargs.pop("column")
+    patches, categories = [], []
+    for category, color in zip(unique_bins, colors_, strict=True):
+        categories.append(category)
+        patches.append(
+            Line2D(
+                [0],
+                [0],
+                linestyle="none",
+                marker="o",
+                alpha=kwargs.get("alpha", 1),
+                markersize=10,
+                markerfacecolor=color,
+                markeredgewidth=0,
+            )
+        )
+    ax.legend(patches, categories, fontsize=size)
