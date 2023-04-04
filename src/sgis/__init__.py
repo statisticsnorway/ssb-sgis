@@ -1,5 +1,4 @@
 # flake8: noqa: F401
-from .explore import Explore
 from .geopandas_tools.buffer_dissolve_explode import (
     buff,
     buffdiss,
@@ -42,7 +41,9 @@ from .geopandas_tools.neighbors import (
 from .geopandas_tools.overlay import clean_shapely_overlay, overlay, overlay_update
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import close_all_holes, close_small_holes
-from .maps import clipmap, explore, qtm, samplemap
+from .maps.explore import Explore
+from .maps.maps import clipmap, explore, qtm, samplemap
+from .maps.thematicmap import ThematicMap
 from .networkanalysis.directednetwork import DirectedNetwork
 from .networkanalysis.network import Network
 from .networkanalysis.networkanalysis import NetworkAnalysis

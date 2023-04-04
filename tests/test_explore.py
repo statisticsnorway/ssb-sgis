@@ -31,8 +31,8 @@ def not_test_explore(points_oslo, roads_oslo):
     r2 = roads.clip(p.buffer(200))
     r3 = roads.clip(p.buffer(100))
 
-    sg.clipmap(r1, r2, r3, "meters", mask=p.buffer(100), explore=True)
-    sg.clipmap(r1, r2, r3, "area", mask=p.buffer(100), explore=True)
+    sg.explore(r1, r2, r3)
+    sg.explore(r1, r2, r3, "meters")
     sg.samplemap(
         r1,
         r2,
@@ -43,10 +43,12 @@ def not_test_explore(points_oslo, roads_oslo):
         explore=True,
         size=100,
     )
+    sg.clipmap(r1, r2, r3, "meters", mask=p.buffer(100), explore=True)
+    sg.clipmap(r1, r2, r3, "area", mask=p.buffer(100), explore=True)
 
     for yesno in [1, 0]:
         sg.samplemap(r1, roads_oslo, sample_from_first=yesno, size=50)
-
+    ss
     monopoly = sg.to_gdf(r1.unary_union.convex_hull, crs=r1.crs)
 
     for _ in range(5):
@@ -78,6 +80,9 @@ def not_test_explore(points_oslo, roads_oslo):
         points.assign(meters_cat=lambda x: (x.length / 40).astype(int).astype(str)),
         "meters_cat",
     )
+
+    sosss
+
     x = sg.Explore(roads, points, p, "meters", labels=("roads", "points", "p"))
     assert not x._is_categorical
     x = sg.Explore(roads, points)
@@ -109,4 +114,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import cProfile
+
+    # main()
+    cProfile.run("main()", sort="cumtime")

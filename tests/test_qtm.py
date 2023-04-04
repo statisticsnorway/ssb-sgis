@@ -15,6 +15,62 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+def not_test_thematicmap(points_oslo):
+    kommuner = gpd.read_file("C:/Users/ort/Downloads/kommuner_n5000.gpkg")
+    m = sg.ThematicMap(kommuner, "area")
+    m.add_continous_legend()
+    m.plot()
+
+    points = points_oslo
+
+    points = points.clip(points.iloc[[0]].buffer(500))
+
+    points.geometry = points.buffer(np.arange(1, len(points) + 1) * 10)
+    points["m2"] = points.area
+
+    m = sg.ThematicMap(points, points, points, "meters")
+    m.plot()
+
+    m = sg.ThematicMap(points, points, points, "area")
+    m.add_continous_legend()
+    m.plot()
+
+    m = sg.ThematicMap(points, points, points, "area")
+    m.add_continous_legend(bin_precicion=0.001)
+    m.plot()
+
+    m = sg.ThematicMap(points, points, points, "area")
+    m.add_continous_legend(bin_precicion=1000)
+    m.plot()
+
+    m.change_legend_title("New title")
+    m.plot()
+
+    m.change_legend_size(fontsize=5, title_fontsize=30, markersize=20)
+    m.plot()
+
+    m = sg.ThematicMap(points, points, points, "m2")
+    m.add_continous_legend(bin_precicion=1000)
+    m.add_title("bin_precicion=1000")
+    m.plot()
+
+    m = sg.ThematicMap(points, points, points, "m2", cmap="plasma")
+    m.add_background(sg.buff(points_oslo, 100))
+    m.add_continous_legend(
+        title="Legend title",
+        label_suffix="m2",
+        label_sep="to",
+        markersize=20,
+        fontsize=20,
+    )
+    m.move_legend(1, 0.4)
+    m.add_title("Title", size=30)
+    m.plot()
+
+    sg.qtm(points, points, points, "m2", black=True)
+    sg.qtm(points, points, points, "m2", black=False)
+
+
 def not_test_qtm(points_oslo):
     points = points_oslo
 
@@ -23,7 +79,6 @@ def not_test_qtm(points_oslo):
     points.geometry = points.buffer(np.arange(1, len(points) + 1) * 10)
     points["m2"] = points.area
     sg.qtm(points, points, points, "m2")
-    sg.qtm(points, "m2")
 
     # making a list of gdfs makes it hard/impossible to get the names as labels
     pointlist = ()
@@ -41,7 +96,7 @@ def not_test_qtm(points_oslo):
     p6 = points.iloc[[5]]
     p7 = points.iloc[[6]]
     sg.qtm(p1, p2, p3, p4, p5, p6, p7)
-    sg.qtm(p1, p2, p3, p4, p5, p6, p7, "m2")
+    sg.qtm(p1, p2, p3, p4, p5, p6, p7, "m2", title="Should be five colors, gradient")
 
     points = sg.read_parquet_url(
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
@@ -68,7 +123,7 @@ def not_test_qtm(points_oslo):
         points100.assign(area_cat=lambda df: df.area.astype(int).astype(str)),
         column="area_cat",
         title="should be three colors with five circles each",
-        legend_title="square meters, categorical",
+        # legend_title="square meters, categorical",
     )
 
     sg.qtm(
@@ -79,7 +134,7 @@ def not_test_qtm(points_oslo):
         points100,
         column="area_m",
         title="should be three colors, 15 yellow, five green, five purple",
-        legend_title="square meters",
+        #  legend_title="square meters",
     )
 
     if __name__ == "__main__":
@@ -114,13 +169,14 @@ def not_test_qtm(points_oslo):
             "Should be five colors, five unique points \neach "
             "But some colors have multiple \noverlapping points"
         ),
-        legend_title="square meters",
+        #  legend_title="square meters",
     )
 
 
 def main():
     from oslo import points_oslo
 
+    not_test_thematicmap(points_oslo())
     not_test_qtm(points_oslo())
 
 

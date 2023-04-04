@@ -299,6 +299,19 @@ def random_points_in_polygons(gdf: GeoDataFrame, n: int) -> GeoDataFrame:
     return all_points
 
 
+def points_in_bounds(gdf, n):
+    minx, miny, maxx, maxy = gdf.total_bounds
+    bbox = to_gdf(
+        Polygon([(minx, miny), (minx, maxy), (maxx, maxy), (maxx, miny)]),
+        crs=gdf.crs,
+    )
+    xs = np.linspace(minx, maxx, num=n)
+    ys = np.linspace(miny, maxy, num=n)
+    x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")
+    coords = np.concatenate((x_coords.reshape(-1, 1), y_coords.reshape(-1, 1)), axis=1)
+    return to_gdf(coords, crs=gdf.crs)
+
+
 def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     """Makes lines out of one or more GeoDataFrames and splits them at intersections.
 
