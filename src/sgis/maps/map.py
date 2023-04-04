@@ -115,7 +115,16 @@ class Map:
 
         self.gdf = pd.concat(self.gdfs, ignore_index=True)
 
-        self.to_show: tuple[GeoDataFrame] = self.gdfs
+        if self.bins:
+            self.bins = [bin for bin in self.bins]
+            print(self.bins)
+            if min(self.gdf[self.column]) < self.bins[0]:
+                self.bins = [min(self.gdf[self.column])] + self.bins
+            if max(self.gdf[self.column]) > self.bins[-1]:
+                self.bins = self.bins + [max(self.gdf[self.column])]
+            print(self.bins)
+
+            self.k = len(self.bins) - 1
 
     def _prepare_bins_and_colors(self, cmap: str):
         if not self.bins:
@@ -263,7 +272,7 @@ class Map:
         n_unique = len(gdf[column].unique())
 
         if n_unique <= self.k:
-            self.k = n_unique
+            self.k = n_unique - 1  #!!!
 
         if self.kwargs.get("scheme", "fisherjenks") == "fisherjenks":
             bins = jenks_breaks(gdf.loc[gdf[column].notna(), column], n_classes=self.k)
@@ -293,11 +302,49 @@ class Map:
     def _classify_from_bins(
         bins: list[float], colors_: list[str], array: np.ndarray
     ) -> np.ndarray:
+        print(bins)
         if len(bins) == len(colors_) + 1:
             bins = bins[1:]
+        print(bins)
+
         bins = np.array(bins)
         colors_ = np.array(colors_)
-        return colors_[np.searchsorted(bins, array)]
+        classified = np.searchsorted(bins, array)
+        print(colors_)
+        print(classified)
+        print(array)
+        colors_ = colors_[classified]
+        return colors_
+
+        #        drop = []
+        #       if min(array) < bins[0]:
+        #          bins = [min(array)] + bins
+        #         drop = drop + [0]
+        #    if max(array) > bins[-1]:
+        #       bins = bins + [max(array)]
+        #      drop = drop + [len(bins)]
+        # print(drop)
+        bins = np.array(bins)
+        colors_ = np.array(colors_)
+        print(bins)
+        classified = np.searchsorted(bins, array)
+        print(classified)
+
+        print(array < bins[0])
+        print(array[array < bins[0]])
+        print(array[array > bins[-1]])
+        classified[array < bins[0]] = -1
+        classified[array > bins[-1]] = -1
+        print(classified)
+
+        #        classified = [x for x in classified if x not in drop]
+        print(max(classified))
+        print(len(colors_))
+
+        colors_ = colors_[classified]
+
+        print(colors_)
+        return colors_
 
     @staticmethod
     def _get_continous_color_idx(gdf, column, bins):

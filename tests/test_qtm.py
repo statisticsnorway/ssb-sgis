@@ -16,14 +16,18 @@ import sgis as sg
 
 
 def not_test_thematicmap(points_oslo):
-    kommuner = gpd.read_file("C:/Users/ort/Downloads/kommuner_n5000.gpkg")
-    m = sg.ThematicMap(kommuner, "area")
-    m.add_continous_legend()
-    m.plot()
-
     points = points_oslo
 
     points = points.clip(points.iloc[[0]].buffer(500))
+
+    p = ()
+    for buffdist in np.arange(1, 40)[::-1]:
+        p = p + (sg.buff(points.iloc[[0]], buffdist),)
+    sg.qtm(*p, column="area", k=3)
+    sg.qtm(*p, column="area", k=5)
+    sg.qtm(*p, column="area", k=9)
+    sg.qtm(*p, column="area", bins=(1000, 1500, 2500, 3000, 4000))
+    sg.qtm(*p, column="area", bins=(0, 1000, 1500, 2500, 3000, 4000, 6000))
 
     points.geometry = points.buffer(np.arange(1, len(points) + 1) * 10)
     points["m2"] = points.area
@@ -37,6 +41,7 @@ def not_test_thematicmap(points_oslo):
 
     m = sg.ThematicMap(points, points, points, "area")
     m.add_continous_legend(bin_precicion=0.001)
+    m.change_legend_title("bin_precicion=0.001")
     m.plot()
 
     m = sg.ThematicMap(points, points, points, "area")
@@ -123,7 +128,6 @@ def not_test_qtm(points_oslo):
         points100.assign(area_cat=lambda df: df.area.astype(int).astype(str)),
         column="area_cat",
         title="should be three colors with five circles each",
-        # legend_title="square meters, categorical",
     )
 
     sg.qtm(
@@ -134,18 +138,7 @@ def not_test_qtm(points_oslo):
         points100,
         column="area_m",
         title="should be three colors, 15 yellow, five green, five purple",
-        #  legend_title="square meters",
     )
-
-    if __name__ == "__main__":
-        sg.explore(
-            points500_3,
-            points500_2,
-            points500,
-            points300,
-            points100,
-            column="area_m",
-        )
 
     points750 = sg.buff(points.sample(5), 750).assign(area_m=lambda df: df.area)
     points1000 = sg.buff(points.sample(5), 1000).assign(area_m=lambda df: df.area)
@@ -169,7 +162,6 @@ def not_test_qtm(points_oslo):
             "Should be five colors, five unique points \neach "
             "But some colors have multiple \noverlapping points"
         ),
-        #  legend_title="square meters",
     )
 
 

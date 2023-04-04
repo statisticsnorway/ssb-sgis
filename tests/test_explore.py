@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -33,6 +34,7 @@ def not_test_explore(points_oslo, roads_oslo):
 
     sg.explore(r1, r2, r3)
     sg.explore(r1, r2, r3, "meters")
+
     sg.samplemap(
         r1,
         r2,
@@ -48,7 +50,6 @@ def not_test_explore(points_oslo, roads_oslo):
 
     for yesno in [1, 0]:
         sg.samplemap(r1, roads_oslo, sample_from_first=yesno, size=50)
-    ss
     monopoly = sg.to_gdf(r1.unary_union.convex_hull, crs=r1.crs)
 
     for _ in range(5):
@@ -63,48 +64,17 @@ def not_test_explore(points_oslo, roads_oslo):
 
     sg.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
 
-    print("static mapping finished")
-
     sg.explore(roads, points, "meters")
 
     roads_mcat = roads.assign(
-        meters_cat=lambda x: (x.length / 40).astype(int).astype(str)
+        meters_cat=lambda x: (x.length / 50).astype(int).astype(str)
     )
     points_mcat = points.assign(
-        meters_cat=lambda x: (x.length / 40).astype(int).astype(str)
+        meters_cat=lambda x: (x.length / 50).astype(int).astype(str)
     )
 
     sg.explore(roads_mcat, points_mcat, "meters_cat")
-    sg.qtm(
-        roads.assign(meters_cat=lambda x: (x.length / 40).astype(int).astype(str)),
-        points.assign(meters_cat=lambda x: (x.length / 40).astype(int).astype(str)),
-        "meters_cat",
-    )
-
-    sosss
-
-    x = sg.Explore(roads, points, p, "meters", labels=("roads", "points", "p"))
-    assert not x._is_categorical
-    x = sg.Explore(roads, points)
-    assert x._is_categorical
-    x.explore("meters")
-    x.clipmap(p.buffer(100))
-    x.samplemap()
-
-    x = sg.Explore(r1, r2, r3, column="meters")
-    x.clipmap(p.buffer(100))
-    x.samplemap()
-    r3.loc[0, "meters"] = None
-    x = sg.Explore(r1, r2, r3)
-    x.explore()
-    x.explore(cmap="inferno")
-    #    x.explore("meters", cmap="inferno")
-    x.samplemap(cmap="magma")
-    x.samplemap(100, "km")
-    x.clipmap(p.buffer(100), cmap="RdPu")
-
-
-#    x.clipmap(p.buffer(100), "meters")
+    sg.qtm(roads_mcat, points_mcat, "meters_cat")
 
 
 def main():
@@ -116,5 +86,5 @@ def main():
 if __name__ == "__main__":
     import cProfile
 
-    # main()
-    cProfile.run("main()", sort="cumtime")
+    main()
+    # cProfile.run("main()", sort="cumtime")

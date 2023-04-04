@@ -303,7 +303,6 @@ def qtm(
     black: bool = True,
     size: int = 10,
     legend: bool = True,
-    bbox_to_anchor: tuple[float | int, float | int] = (1, 0.2),
     **kwargs,
 ) -> tuple[Figure, Axes]:
     """Quick, thematic map of one or more GeoDataFrames.
@@ -331,7 +330,7 @@ def qtm(
         The matplotlib figure and axis.
     """
 
-    m = ThematicMap(*gdfs, column=column, size=size, black=black)
+    m = ThematicMap(*gdfs, column=column, size=size, black=black, **kwargs)
 
     if legend and m._is_categorical:
         m.add_categorical_legend()

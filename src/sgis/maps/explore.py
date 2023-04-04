@@ -124,8 +124,10 @@ class Explore(Map):
         """
         if column:
             self.column = column
+            self._update_column()
+            kwargs.pop("column", None)
         self.to_show = self.gdfs
-        self._explore(column=column, **kwargs)
+        self._explore(**kwargs)
 
     def samplemap(
         self,
@@ -164,8 +166,10 @@ class Explore(Map):
         """
         if column:
             self.column = column
+            self._update_column()
+            kwargs.pop("column", None)
+
         self.previous_sample_count = 0
-        self.to_show = self.gdfs
 
         if sample_from_first:
             sample = self.gdfs[0].sample(1)
@@ -177,12 +181,13 @@ class Explore(Map):
         else:
             random_point = sample.centroid
 
-        to_show: tuple[GeoDataFrame] = ()
-        for gdf in self.to_show:
+        gdfs: tuple[GeoDataFrame] = ()
+        for gdf in self.gdfs:
             gdf = gdf.clip(random_point.buffer(size))
-            to_show = to_show + (gdf,)
-        self.to_show = to_show
-        self._explore(column=column, **kwargs)
+            gdfs = gdfs + (gdf,)
+        self.gdfs = gdfs
+        self.gdf = pd.concat(gdfs, ignore_index=True)
+        self._explore(**kwargs)
 
     def clipmap(
         self,
@@ -213,21 +218,23 @@ class Explore(Map):
         """
         if column:
             self.column = column
-        to_show: tuple[GeoDataFrame] = ()
+            self._update_column()
+            kwargs.pop("column", None)
+
+        gdfs: tuple[GeoDataFrame] = ()
         for gdf in self.gdfs:
             gdf = gdf.clip(mask)
-            to_show = to_show + (gdf,)
-        self.to_show = to_show
-        self._explore(column=column, **kwargs)
+            gdfs = gdfs + (gdf,)
+        self.gdfs = gdfs
+        self.gdf = pd.concat(gdfs, ignore_index=True)
+        self._explore(**kwargs)
+
+    def _update_column(self):
+        self._is_categorical = self._check_if_categorical()
+        self._fill_missings()
+        self.gdf = pd.concat(self.gdfs, ignore_index=True)
 
     def _explore(self, **kwargs):
-        if "column" in kwargs:
-            self._is_categorical = self._check_if_categorical()
-            self._fill_missings()
-            self.gdf = pd.concat(self.gdfs, ignore_index=True)
-            self.to_show: tuple[GeoDataFrame] = self.gdfs
-            kwargs.pop("column")
-
         self.kwargs = self.kwargs | kwargs
 
         if self._is_categorical:
@@ -256,7 +263,7 @@ class Explore(Map):
 
         self.map = self._explore_return(self.gdf, return_="empty_map", **self.kwargs)
 
-        for gdf, label in zip(self.to_show, self.labels, strict=True):
+        for gdf, label in zip(self.gdfs, self.labels, strict=True):
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)
@@ -313,7 +320,7 @@ class Explore(Map):
             #  **colormap_kwds,
         )
 
-        for gdf, label in zip(self.to_show, self.labels, strict=True):
+        for gdf, label in zip(self.gdfs, self.labels, strict=True):
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)

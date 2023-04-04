@@ -155,6 +155,9 @@ class ThematicMap(Map):
             fancybox=False,
         )
 
+    def _remove_max_legend_value(self):
+        pass
+
     def move_legend(self, x, y):
         self.legend = self.ax.get_legend()
         self.legend.set_bbox_to_anchor((x, y))
@@ -311,12 +314,10 @@ class ThematicMap(Map):
 
         bestx = (x - minx) / (maxx - minx)
         besty = (y - miny) / (maxy - miny)
-        print(bestx, besty)
         if bestx < 0.2:
             bestx = bestx + 0.2 - bestx
         if besty < 0.2:
             besty = besty + 0.2 - besty
-        print(bestx, besty)
 
         self.bbox_to_anchor = bestx, besty
 
