@@ -35,18 +35,23 @@ def not_test_explore(points_oslo, roads_oslo):
     sg.explore(r1, r2, r3)
     sg.explore(r1, r2, r3, "meters")
 
-    sg.samplemap(
-        r1,
-        r2,
-        r3,
-        "length",
-        labels=("r100", "r200", "r300"),
-        cmap="plasma",
-        explore=True,
-        size=100,
-    )
+    for yesno in [1, 0]:
+        sg.samplemap(
+            r1,
+            r2,
+            r3,
+            "length",
+            labels=("r100", "r200", "r300"),
+            cmap="plasma",
+            explore=yesno,
+            size=100,
+        )
+
     sg.clipmap(r1, r2, r3, "meters", mask=p.buffer(100), explore=True)
-    sg.clipmap(r1, r2, r3, "area", mask=p.buffer(100), explore=True)
+    for yesno in [1, 0]:
+        sg.clipmap(
+            r1, r2, r3, "area", cmap="inferno", mask=p.buffer(100), explore=yesno
+        )
 
     for yesno in [1, 0]:
         sg.samplemap(r1, roads_oslo, sample_from_first=yesno, size=50)

@@ -299,14 +299,10 @@ def random_points_in_polygons(gdf: GeoDataFrame, n: int) -> GeoDataFrame:
     return all_points
 
 
-def points_in_bounds(gdf, n):
+def points_in_bounds(gdf: GeoDataFrame, n2: int):
     minx, miny, maxx, maxy = gdf.total_bounds
-    bbox = to_gdf(
-        Polygon([(minx, miny), (minx, maxy), (maxx, maxy), (maxx, miny)]),
-        crs=gdf.crs,
-    )
-    xs = np.linspace(minx, maxx, num=n)
-    ys = np.linspace(miny, maxy, num=n)
+    xs = np.linspace(minx, maxx, num=n2)
+    ys = np.linspace(miny, maxy, num=n2)
     x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")
     coords = np.concatenate((x_coords.reshape(-1, 1), y_coords.reshape(-1, 1)), axis=1)
     return to_gdf(coords, crs=gdf.crs)

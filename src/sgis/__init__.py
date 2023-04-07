@@ -10,6 +10,7 @@ from .geopandas_tools.general import (
     clean_clip,
     clean_geoms,
     coordinate_array,
+    points_in_bounds,
     random_points,
     random_points_in_polygons,
     to_gdf,

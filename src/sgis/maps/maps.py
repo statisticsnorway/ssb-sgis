@@ -6,20 +6,17 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 
 The 'qtm' function shows a static map of one or more GeoDataFrames.
 """
-import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
-from matplotlib import colors
 from matplotlib.axes._axes import Axes
 from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
-from pandas.api.types import is_numeric_dtype
 from shapely import Geometry
 
 from ..exceptions import NotInJupyterError
-from ..helpers import make_namedict, return_two_vals
+from ..geopandas_tools.general import random_points_in_polygons
+from ..geopandas_tools.geometry_types import get_geom_type
+from ..helpers import make_namedict
 from .explore import Explore
+from .map import Map
 from .thematicmap import ThematicMap
 
 
@@ -45,11 +42,12 @@ def explore(
     """Interactive map of GeoDataFrames with layers that can be toggles on/off.
 
     It takes all the given GeoDataFrames and displays them together in an
-    interactive map with a common legend. The layers can be toggled on and off.
+    interactive map with a common legend. If 'column' is not specified, each
+    GeoDataFrame is given a unique color.
 
-    If 'column' is not specified, each GeoDataFrame is given a unique color. The
-    default colormap is a custom, strongly colored palette. If a numerical column
-    is given, the 'viridis' palette is used.
+    The coloring can be changed with the 'cmap' parameter. The default colormap is a
+    custom, strongly colored palette. If a numerical colum is given, the 'viridis'
+    palette is used.
 
     Note:
         The maximum zoom level only works on the OpenStreetMap background map.
@@ -90,8 +88,6 @@ def explore(
     >>> points["meters"] = points.length
     >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
     """
-    #    kwargs: dict = kwargs | {"column": column, "max_zoom": max_zoom}
-
     m = Explore(
         *gdfs,
         column=column,
@@ -116,17 +112,9 @@ def samplemap(
 ) -> None:
     """Shows an interactive map of a random area of GeoDataFrames.
 
-    It takes all the GeoDataFrames specified, takes a random sample point, and shows
-    all geometries within a given radius of this point. Displays an interactive map
-    with a common legend. The layers can be toggled on and off.
-
-    The radius to plot can be changed with the 'size' parameter.
-
-    By default, tries to display interactive map, but falls back to static if not in
-    Jupyter. Can be changed to static by setting 'explore' to False. This will run the
-    function 'qtm'.
-
-    For more info about the labeling and coloring of the map, see the explore function.
+    It takes all the GeoDataFrames specified, takes a random sample point from the
+    first, and shows all geometries within a given radius of this point. Otherwise
+    works like the explore function.
 
     Note:
         The maximum zoom level only works on the OpenStreetMap background map.
@@ -154,8 +142,8 @@ def samplemap(
 
     See also
     --------
-    explore: same functionality, but shows the entire area of the geometries.
-    clipmap: same functionality, but shows only the areas clipped by a given mask.
+    explore: Same functionality, but shows the entire area of the geometries.
+    clipmap: Same functionality, but shows only the areas clipped by a given mask.
 
     Examples
     --------
@@ -172,37 +160,56 @@ def samplemap(
     >>> samplemap(roads, points, size=5_000, column="meters")
 
     """
-    #    kwargs: dict = kwargs | {"column": column, "max_zoom": max_zoom}
-
     _check_if_jupyter_is_needed(explore, show_in_browser)
 
     if not size and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
-    m = Explore(
-        *gdfs,
-        column=column,
-        labels=labels,
-        show_in_browser=show_in_browser,
-        max_zoom=max_zoom,
-        **kwargs,
-    )
-
     if explore:
+        m = Explore(
+            *gdfs,
+            column=column,
+            labels=labels,
+            show_in_browser=show_in_browser,
+            max_zoom=max_zoom,
+            **kwargs,
+        )
         m.samplemap(size, sample_from_first=sample_from_first)
     else:
+        m = Map(
+            *gdfs,
+            column=column,
+            labels=labels,
+            **kwargs,
+        )
+
         if sample_from_first:
-            random_point = m.gdfs[0].sample(1).centroid.buffer(size)
+            sample = m.gdfs[0].sample(1)
         else:
-            random_point = m.gdf.sample(1).centroid.buffer(size)
-        m.gdf = m.gdf.clip(random_point)
+            sample = m.gdf.sample(1)
+
+        # convert lines to polygons
+        if get_geom_type(sample) == "line":
+            sample["geometry"] = sample.buffer(1)
+
+        if get_geom_type(sample) == "polygon":
+            random_point = random_points_in_polygons(sample, 1)
+
+        # if point or mixed geometries
+        else:
+            random_point = sample.centroid.buffer
+
+        m.gdf = m.gdf.clip(random_point.buffer(size))
+
         qtm(
             m.gdf,
-            **{
-                key: value
-                for key, value in m.kwargs.items()
-                if key not in ["popup", "max_zoom"]
-            },
+            column=m.column,
+            cmap=m._cmap,
+            k=m.k,
+            bins=m.bins,
+            nan_label=m.nan_label,
+            labels=m.labels,
+            **m.kwargs,
         )
 
 
@@ -251,18 +258,16 @@ def clipmap(
     samplemap: same functionality, but shows only a random area of a given size.
     """
 
-    #    kwargs: dict = kwargs | {"column": column, "max_zoom": max_zoom}
-
     _check_if_jupyter_is_needed(explore, show_in_browser)
-
-    clipped: tuple[GeoDataFrame] = ()
 
     gdfs, column = Explore._separate_args(gdfs, column)
 
-    # creating a dict of object names here, since the names disappear after clip
+    # storing object names in dict here, since the names disappear after clip
     if not labels:
         namedict = make_namedict(gdfs)
         kwargs["namedict"] = namedict
+
+    clipped: tuple[GeoDataFrame] = ()
 
     if mask is not None:
         for gdf in gdfs:
@@ -274,25 +279,32 @@ def clipmap(
             clipped_ = gdf.clip(gdfs[-1])
             clipped = clipped + (clipped_,)
 
-    m = Explore(
-        *clipped,
-        column=column,
-        labels=labels,
-        show_in_browser=show_in_browser,
-        max_zoom=max_zoom,
-        **kwargs,
-    )
-
     if explore:
+        m = Explore(
+            *clipped,
+            column=column,
+            labels=labels,
+            show_in_browser=show_in_browser,
+            max_zoom=max_zoom,
+            **kwargs,
+        )
         m.explore()
     else:
+        m = Map(
+            *gdfs,
+            column=column,
+            labels=labels,
+            **kwargs,
+        )
         qtm(
             m.gdf,
-            **{
-                key: value
-                for key, value in m.kwargs.items()
-                if key not in ["popup", "max_zoom"]
-            },
+            column=m.column,
+            cmap=m._cmap,
+            k=m.k,
+            bins=m.bins,
+            nan_label=m.nan_label,
+            labels=m.labels,
+            **m.kwargs,
         )
 
 
@@ -304,30 +316,27 @@ def qtm(
     size: int = 10,
     legend: bool = True,
     **kwargs,
-) -> tuple[Figure, Axes]:
+) -> None:
     """Quick, thematic map of one or more GeoDataFrames.
 
     Shows one or more GeoDataFrames in the same plot, with a common color scheme if
-    column is specified, or with unique colors for each GeoDataFrame if not. The
-    function simplifies the manual construction of a basic matplotlib plot. It also
-    returns the matplotlib figure and axis, so the plot can be changed afterwards.
+    column is specified, otherwise with unique colors for each GeoDataFrame.
 
-    Disclaimer: the 'qtm' name is taken from the tmap package in R.
+    The 'qtm' name is taken from the tmap package in R.
 
     Args:
         *gdfs: One or more GeoDataFrames to plot.
         column: The column to color the map by. Defaults to None, meaning each
             GeoDataFrame is given a unique color.
         title: Text to use as the map's heading.
-        legend: Whether to include a legend explaining the colors and their values.
         black: If True (default), the background color will be black and the title
             white. If False, it will be the opposite.
         size: Size of the plot. Defaults to 10.
         title_fontsize: Size of the title.
-        **kwargs: Additional keyword arguments passed to the geopandas plot method.
+        **kwargs: Additional keyword arguments passed to the ThematicMap class.
 
-    Returns:
-        The matplotlib figure and axis.
+    See also:
+        ThematicMap: Class with more options for customising plots.
     """
 
     m = ThematicMap(*gdfs, column=column, size=size, black=black, **kwargs)
@@ -338,7 +347,6 @@ def qtm(
     elif legend and not m._is_categorical:
         m.add_continous_legend()
 
-    if title:
-        m.add_title(title)
+    m.title = title
 
     m.plot()

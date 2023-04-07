@@ -4,33 +4,13 @@ This module holds the Explore class, which is the basis for the explore, samplem
 clipmap functions from the 'maps' module.
 """
 import warnings
-from statistics import mean
 
-import branca as bc
-import folium
-import geopandas
 import matplotlib
-import matplotlib.cm as cm
-import matplotlib.colors as colors
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from jenkspy import jenks_breaks
-from mapclassify import classify
-from matplotlib.lines import Line2D
-from shapely import Geometry
-from shapely.geometry import LineString, Polygon
+from geopandas import GeoDataFrame
 
-from ..geopandas_tools.general import (
-    clean_geoms,
-    drop_inactive_geometry_columns,
-    random_points_in_polygons,
-    rename_geometry_if,
-    to_gdf,
-)
-from ..geopandas_tools.geometry_types import get_geom_type
-from ..helpers import get_name
+from .legend import Legend
 from .map import Map
 
 
@@ -46,6 +26,7 @@ class ThematicMap(Map):
         self,
         *gdfs: GeoDataFrame,
         column: str | None = None,
+        title: str | None = None,
         size: int = 10,
         black: bool = False,
         bins: tuple[float] | None = None,
@@ -54,46 +35,41 @@ class ThematicMap(Map):
         super().__init__(*gdfs, column=column, bins=bins, **kwargs)
 
         self.size = size
-        self.black = black
-        self._legend = False
-        self._has_been_plotted = False
-        self._legend_fontsize = size
+        self._black = black
         self.background_gdfs = []
 
-        if self.black:
-            self.facecolor, self.title_color, self.bg_gdf_color = (
-                "#0f0f0f",
-                "#fefefe",
-                "#383834",
-            )
-            self.cmap = kwargs.get("cmap", "viridis")
-            self._cmap_start = 0
-        else:
-            self.facecolor, self.title_color, self.bg_gdf_color = (
-                "#fefefe",
-                "#0f0f0f",
-                "#d1d1cd",
-            )
-            self.cmap = kwargs.get("cmap", "RdPu")
-            self._cmap_start = 25
+        self.title = title
+        self.title_fontsize = kwargs.get("title_fontsize", self.size * 2)
+
+        self._black_or_white()
 
         if not self._is_categorical:
-            if not self.bins:
-                self.bins = self._create_bins(self.gdf, self.column)
-
-                if len(self.bins) < self.k:
-                    self.k = len(self.bins)
-
-            self.colorlist = self._get_continous_colors(
-                self.cmap, k=self.k, start=self._cmap_start
+            cmap_kwargs = {}
+            if "cmap_start" in kwargs:
+                cmap_kwargs["cmap_start"] = kwargs.pop("cmap_start")
+            if "cmap_stop" in kwargs:
+                cmap_kwargs["cmap_stop"] = kwargs.pop("cmap_stop")
+            self._choose_cmap(
+                cmap=self._cmap,
+                **cmap_kwargs,
             )
-            self.colors = self._classify_from_bins(
-                self.bins, self.colorlist, self.gdf[self.column]
-            )
+
+    def _choose_cmap(self, cmap: str | None, **kwargs):
+        """kwargs is to catch start and stop points for the cmap in __init__."""
+        if cmap:
+            self._cmap = cmap
+            self.cmap_start = kwargs.get("cmap_start", 0)
+            self.cmap_stop = kwargs.get("cmap_stop", 256)
+        elif self._black:
+            self._cmap = "viridis"
+            self.cmap_start = kwargs.get("cmap_start", 0)
+            self.cmap_stop = kwargs.get("cmap_stop", 256)
         else:
-            self._get_categorical_colors()
-            self.colors = self.gdf["color"]
+            self._cmap = "RdPu"
+            self.cmap_start = kwargs.get("cmap_start", 25)
+            self.cmap_stop = kwargs.get("cmap_stop", 256)
 
+    def _create_fig_and_ax(self):
         self.fig, self.ax = self._get_matplotlib_figure_and_axix(
             figsize=(self.size, self.size)
         )
@@ -101,189 +77,155 @@ class ThematicMap(Map):
         self.fig.patch.set_facecolor(self.facecolor)
         self.ax.set_axis_off()
 
-    def add_background(self, gdf):
-        self.background_gdfs.append(gdf)
-        minx, miny, maxx, maxy = self.gdf.total_bounds
-        diffx = maxx - minx
-        diffy = maxy - miny
-        self.ax.set_xlim([minx - diffx * 0.03, maxx + diffx * 0.03])
-        self.ax.set_ylim([miny - diffy * 0.03, maxy + diffy * 0.03])
-        gdf.plot(ax=self.ax, color=self.bg_gdf_color)
+    def change_cmap(self, cmap: str, start: int = 0, stop: int = 256):
+        self.cmap_start = start
+        self.cmap_stop = stop
+        self._cmap = cmap
+        return self
+
+    def add_background(self, gdf, color: str | None = None):
+        if color:
+            self.bg_gdf_color = color
+        if not hasattr(self, "_background_gdfs"):
+            self._background_gdfs = gdf
+        else:
+            self._background_gdfs = pd.concat(
+                [self._background_gdfs, gdf], ignore_index=True
+            )
+        self.minx, self.miny, self.maxx, self.maxy = self.gdf.total_bounds
+        self.diffx = self.maxx - self.minx
+        self.diffy = self.maxy - self.miny
 
     def plot(self):
-        if not self._has_been_plotted:
-            self._has_been_plotted = True
-            self.gdf.plot(color=self.colors, legend=self._legend, ax=self.ax)
-            self.legend = plt.gca().get_legend()
-        #  else:
-        # plt.show()
+        """Creates the final plot. This method should be run last."""
 
-    def add_title(self, title, size: int | None = None):
-        self.title = title
-        if not size:
-            size = self.size * 2
-        self.ax.set_title(self.title, fontsize=size, color=self.title_color)
-
-    def change_title_size(self, size=int):
-        self.ax.set_title(self.title, fontsize=size, color=self.title_color)
-
-    def change_legend_title(self, title: str):
-        self.legend_title = title
-        self.ax.legend(
-            self.patches,
-            self.categories,
-            fontsize=self.fontsize,
-            title=title,
-            title_fontsize=self.title_fontsize,
-            bbox_to_anchor=self.bbox_to_anchor,
-            fancybox=False,
+        self.fig, self.ax = self._get_matplotlib_figure_and_axix(
+            figsize=(self.size, self.size)
         )
+        self.fig.patch.set_facecolor(self.facecolor)
+        self.ax.set_axis_off()
 
-    def change_legend_size(self, fontsize: int, title_fontsize: int, markersize: int):
-        self.new_patches = []
-        for patch in self.patches:
-            patch.set_markersize(markersize)
-            self.new_patches.append(patch)
-        self.patches = self.new_patches
-        self.ax.legend(
-            self.patches,
-            self.categories,
-            fontsize=fontsize,
-            title=self.legend_title,
-            title_fontsize=title_fontsize,
-            bbox_to_anchor=self.bbox_to_anchor,
-            fancybox=False,
-        )
+        if hasattr(self, "_background_gdfs"):
+            self._actually_add_background()
+
+        if hasattr(self, "title") and self.title:
+            self.ax.set_title(
+                self.title, fontsize=self.title_fontsize, color=self.title_color
+            )
+
+        if not self._is_categorical:
+            self._prepare_continous_map()
+            self.colorlist = self._get_continous_colors()
+            self.colors = self._classify_from_bins(self.gdf[self.column])
+        else:
+            self._get_categorical_colors()
+            self.colors = self.gdf["color"]
+
+        if hasattr(self, "legend") and self._is_categorical:
+            self.add_categorical_legend()
+            self.ax = self.legend._actually_add_categorical_legend(
+                ax=self.ax,
+                categories_colors=self._categories_colors_dict,
+                nan_label=self.nan_label,
+            )
+        elif hasattr(self, "legend") and not self._is_categorical:
+            self.add_continous_legend()
+
+            if self.legend._rounding is not None:
+                self.bins = self.legend._set_rounding(
+                    bins=self.bins, rounding=self.legend._rounding
+                )
+
+            if any(self._nan_idx):
+                self.bins = self.bins + [self.nan_label]
+
+            self.ax = self.legend._actually_add_continous_legend(
+                ax=self.ax,
+                bins=self.bins,
+                colors=self.colorlist,
+                nan_label=self.nan_label,
+                bin_values=self._bins_unique_values,
+            )
+
+        self.gdf.plot(color=self.colors, legend=hasattr(self, "legend"), ax=self.ax)
 
     def _remove_max_legend_value(self):
-        pass
-
-    def move_legend(self, x, y):
-        self.legend = self.ax.get_legend()
-        self.legend.set_bbox_to_anchor((x, y))
-        self.ax.plot()
-
-    def create_bins(self, bins):
-        self.bins = bins
-        if len(bins) < self.k:
-            self.k = len(bins)
-
-        colors_ = self._get_continous_colors(cmap=self.cmap, k=self.k)
-        self.colors = self._classify_from_bins(bins, colors_, self.gdf[self.column])
+        if not self.legend:
+            raise ValueError("Cannot modify legend before it is created.")
 
     def add_continous_legend(
         self,
-        title: str | None = None,
-        markersize: int | None = None,
-        fontsize: int | None = None,
-        title_fontsize: int | None = None,
-        label_suffix: str = "",
-        label_sep: str = "-",
-        bin_precicion: int | float | None = None,
         **kwargs,
     ):
-        self._legend = True
-        self.fontsize = self.size if not fontsize else fontsize
-        self.markersize = self.size if not markersize else markersize
-        self.title_fontsize = self.size if not title_fontsize else title_fontsize
-        self.legend_title = self.column if not title else title
-
-        if bin_precicion is None:
-            bin_precicion = self._get_bin_precicion()
-
-        self._set_bin_precicion(bin_precicion)
-        self._get_best_legend_position()
-
-        if len(self.bins) == len(self.colorlist):
-            self.patches = [
-                Line2D(
-                    [0],
-                    [0],
-                    linestyle="none",
-                    marker="o",
-                    alpha=self.kwargs.get("alpha", 1),
-                    markersize=self.markersize,
-                    markerfacecolor=color,
-                    markeredgewidth=0,
-                )
-                for color in self.colorlist
-            ]
-            self.categories = self.bins
-
+        if hasattr(self, "legend"):
+            for key, value in kwargs.items():
+                self.legend[key] = value
         else:
-            self.patches, self.categories = [], []
-            for cat1, cat2, color in zip(
-                self.bins[:-1], self.bins[1:], self.colorlist, strict=True
-            ):
-                self.categories.append(
-                    f"{cat1} {label_suffix} {label_sep} {cat2} {label_suffix}"
-                )
-                self.patches.append(
-                    Line2D(
-                        [0],
-                        [0],
-                        linestyle="none",
-                        marker="o",
-                        alpha=self.kwargs.get("alpha", 1),
-                        markersize=self.markersize,
-                        markerfacecolor=color,
-                        markeredgewidth=0,
-                    )
-                )
+            title = kwargs.pop("title", self.column)
+            fontsize = kwargs.pop("fontsize", self.size)
+            title_fontsize = kwargs.pop("title_fontsize", self.size * 1.2)
+            markersize = kwargs.pop("markersize", self.size)
 
-        self.ax.legend(
-            self.patches,
-            self.categories,
-            fontsize=self.fontsize,
-            title=self.legend_title,
-            title_fontsize=self.title_fontsize,
-            loc="best",
-            bbox_to_anchor=self.bbox_to_anchor,
-            fancybox=False,
-            **kwargs,
-        )
+            self.legend = Legend(
+                title=title,
+                fontsize=fontsize,
+                title_fontsize=title_fontsize,
+                markersize=markersize,
+                **kwargs,
+            )
+
+        if "rounding" in kwargs:
+            self.legend._rounding = kwargs["rounding"]
+        elif not self.legend._rounding_has_been_set:
+            self.legend._rounding = self.legend._get_rounding(
+                array=self.gdf.loc[~self._nan_idx, self.column]
+            )
+
+        if "position" in kwargs:
+            self.legend._position = kwargs["position"]
+        elif not self.legend._position_has_been_set:
+            self.legend._get_best_legend_position(self.gdf)
 
     def add_categorical_legend(
         self,
-        title: str | None = None,
-        markersize: int | None = None,
-        fontsize: int | None = None,
-        title_fontsize: int | None = None,
         **kwargs,
     ):
-        self._legend = True
-        fontsize = self.size if not fontsize else fontsize
-        markersize = self.size if not markersize else markersize
-        title_fontsize = self.size if not title_fontsize else title_fontsize
-        self.legend_title = self.column if not title else title
+        if hasattr(self, "legend"):
+            for key, value in kwargs.items():
+                self.legend[key] = value
+        else:
+            title = kwargs.pop("title", self.column)
+            fontsize = kwargs.pop("fontsize", self.size)
+            title_fontsize = kwargs.pop("title_fontsize", self.size * 1.2)
+            markersize = kwargs.pop("markersize", self.size)
 
-        self._get_best_legend_position()
-
-        self.patches, self.categories = [], []
-        for category, color in self._categories_colors_dict.items():
-            self.categories.append(category)
-            self.patches.append(
-                Line2D(
-                    [0],
-                    [0],
-                    linestyle="none",
-                    marker="o",
-                    alpha=self.kwargs.get("alpha", 1),
-                    markersize=markersize,
-                    markerfacecolor=color,
-                    markeredgewidth=0,
-                )
+            self.legend = Legend(
+                title=title,
+                fontsize=fontsize,
+                title_fontsize=title_fontsize,
+                markersize=markersize,
+                **kwargs,
             )
-        self.ax.legend(
-            self.patches,
-            self.categories,
-            fontsize=fontsize,
-            title=self.legend_title,
-            title_fontsize=title_fontsize,
-            bbox_to_anchor=self.bbox_to_anchor,
-            **kwargs,
-            fancybox=False,
-        )
+
+        if "position" in kwargs:
+            self.legend._position = kwargs["position"]
+        elif not self.legend._position_has_been_set:
+            self.legend._get_best_legend_position(self.gdf)
+
+    def save(self, path):
+        try:
+            plt.savefig(path)
+        except Exception:
+            from dapla import FileClient
+
+            fs = FileClient.get_gcs_file_system()
+            with fs.open(path, "wb") as file:
+                plt.savefig(file)
+
+    def _actually_add_background(self):
+        self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
+        self.ax.set_ylim([self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03])
+        self._background_gdfs.plot(ax=self.ax, color=self.bg_gdf_color)
 
     @staticmethod
     def _get_matplotlib_figure_and_axix(figsize: tuple[int, int]):
@@ -291,55 +233,43 @@ class ThematicMap(Map):
         ax = fig.add_subplot(1, 1, 1)
         return fig, ax
 
-    def _get_best_legend_position(self):
-        minx, miny, maxx, maxy = self.gdf.total_bounds
-        bbox = to_gdf(
-            Polygon([(minx, miny), (minx, maxy), (maxx, maxy), (maxx, miny)]),
-            crs=self.crs,
-        )
-        xs = np.linspace(minx, maxx, num=20)
-        ys = np.linspace(miny, maxy, num=20)
-        x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")
-        coords = np.concatenate(
-            (x_coords.reshape(-1, 1), y_coords.reshape(-1, 1)), axis=1
-        )
-        points = to_gdf(coords, crs=self.crs)
-        self.gdf = self.gdf.loc[:, ~self.gdf.columns.str.contains("index|level_")]
-        joined = points.sjoin_nearest(self.gdf, distance_col="nearest")
-        best_position = joined.loc[
-            joined.nearest == max(joined.nearest)
-        ].drop_duplicates("geometry")
-
-        x, y = best_position.geometry.x.iloc[0], best_position.geometry.y.iloc[0]
-
-        bestx = (x - minx) / (maxx - minx)
-        besty = (y - miny) / (maxy - miny)
-        if bestx < 0.2:
-            bestx = bestx + 0.2 - bestx
-        if besty < 0.2:
-            besty = besty + 0.2 - besty
-
-        self.bbox_to_anchor = bestx, besty
-
-    def _set_bin_precicion(self, precicion: int | float):
-        if precicion == 0:
-            self.bins = [int(bin) for bin in self.bins]
-        elif precicion > 1:
-            self.bins = [int(int(bin / precicion) * precicion) for bin in self.bins]
+    def _black_or_white(self):
+        if self._black:
+            self.facecolor, self.title_color, self.bg_gdf_color = (
+                "#0f0f0f",
+                "#fefefe",
+                "#383834",
+            )
         else:
-            precicion = int(abs(np.log10(precicion)))
-            self.bins = [round(bin, precicion) for bin in self.bins]
+            self.facecolor, self.title_color, self.bg_gdf_color = (
+                "#fefefe",
+                "#0f0f0f",
+                "#d1d1cd",
+            )
 
-    def _get_bin_precicion(self):
-        max_ = max(self.bins)
-        if max_ > 30:
-            return 0
-        if max_ > 5:
-            return 1
-        if max_ > 1:
-            return 2
-        if max_ > 0.1:
-            return 3
-        if max_ > 0.01:
-            return 4
-        return int(abs(np.log10(max_)))
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except (KeyError, ValueError, IndexError, AttributeError):
+            return default
+
+    @property
+    def black(self):
+        return self._black
+
+    @black.setter
+    def black(self, new_value: bool):
+        self._black = new_value
+        self._black_or_white()
+
+    @property
+    def cmap(self):
+        return self._cmap
+
+    @cmap.setter
+    def cmap(self, new_value: bool):
+        self._cmap = new_value
+        self.change_cmap(cmap=new_value)

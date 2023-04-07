@@ -8,26 +8,13 @@ from statistics import mean
 
 import branca as bc
 import folium
-import geopandas
 import matplotlib
-import matplotlib.cm as cm
-import matplotlib.colors as colors
-import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from jenkspy import jenks_breaks
-from mapclassify import classify
-from shapely import Geometry
+from geopandas import GeoDataFrame
 from shapely.geometry import LineString
 
-from ..geopandas_tools.general import (
-    clean_geoms,
-    drop_inactive_geometry_columns,
-    random_points_in_polygons,
-    rename_geometry_if,
-)
+from ..geopandas_tools.general import clean_geoms, random_points_in_polygons
 from ..geopandas_tools.geometry_types import get_geom_type
-from ..helpers import get_name
 from .map import Map
 
 
@@ -83,7 +70,12 @@ class Explore(Map):
         self.popup = popup
         self.max_zoom = max_zoom
         self.show_in_browser = show_in_browser
-        self.cmap = kwargs.get("cmap", "viridis")
+
+        if not self._is_categorical:
+            if not self._cmap:
+                self._cmap = "viridis"
+            self.cmap_start = kwargs.pop("cmap_start", 0)
+            self.cmap_stop = kwargs.pop("cmap_stop", 256)
 
     def explore(self, column: str | None = None, **kwargs) -> None:
         """Interactive map of the GeoDataFrames with layers that can be toggles on/off.
@@ -176,8 +168,14 @@ class Explore(Map):
         else:
             sample = self.gdf.sample(1)
 
+        # convert lines to polygons
+        if get_geom_type(sample) == "line":
+            sample["geometry"] = sample.buffer(1)
+
         if get_geom_type(sample) == "polygon":
             random_point = random_points_in_polygons(sample, 1)
+
+        # if point or mixed geometries
         else:
             random_point = sample.centroid
 
@@ -247,19 +245,8 @@ class Explore(Map):
         else:
             display(self.map)
 
-    def _choose_cmap(self) -> None:
-        if "cmap" not in self.kwargs:
-            if self._is_categorical:
-                self.cmap = None
-            else:
-                self.cmap = "viridis"
-
     def _create_categorical_map(self):
-        #  gdfs = pd.concat(self.to_show, ignore_index=True)
-        #    print(self.kwargs)
         self._get_categorical_colors()
-        #  for i in self.__dict__.items():
-        #     print(i)
 
         self.map = self._explore_return(self.gdf, return_="empty_map", **self.kwargs)
 
@@ -292,22 +279,13 @@ class Explore(Map):
         self.map.add_child(folium.LayerControl())
 
     def _create_continous_map(self):
-        if not self.bins:
-            self.bins = self._create_bins(self.gdf, self.column)
-            if len(self.bins) < self.k:
-                self.k = len(self.bins)
-
-        self.colorlist = self._get_continous_colors(self.cmap, k=self.k)
-
-        self.colors = self._classify_from_bins(
-            self.bins, self.colorlist, self.gdf[self.column]
-        )
+        self._prepare_continous_map()
+        self.colorlist = self._get_continous_colors()
+        self.colors = self._classify_from_bins(self.gdf[self.column])
 
         self.map = self._explore_return(
             self.gdf,
-            #            color=self.colors,
             return_="empty_map",
-            #            title=self.column,
             **self.kwargs,
         )
 
@@ -325,9 +303,7 @@ class Explore(Map):
                 continue
             f = folium.FeatureGroup(name=label)
 
-            self.colors = self._classify_from_bins(
-                self.bins, self.colorlist, gdf[self.column]
-            )
+            self.colors = self._classify_from_bins(gdf[self.column])
 
             gjs = self._explore_return(
                 gdf,
@@ -355,33 +331,21 @@ class Explore(Map):
         df,
         return_: str,
         column=None,
-        title=None,
-        cmap=None,
         color=None,
-        m=None,
-        tiles="OpenStreetMap",
         attr=None,
+        tiles="OpenStreetMap",
         tooltip=True,
         popup=False,
         highlight=True,
-        legend=True,
-        scheme=None,
-        k=5,
-        vmin=None,
-        vmax=None,
         width="100%",
         height="100%",
-        categories=None,
-        classification_kwds=None,
         control_scale=True,
         marker_type=None,
         marker_kwds={},
         style_kwds={},
         highlight_kwds={},
-        missing_kwds={},
         tooltip_kwds={},
         popup_kwds={},
-        legend_kwds={},
         map_kwds={},
         **kwargs,
     ):
@@ -414,46 +378,45 @@ class Explore(Map):
             gdf = gdf.to_crs(4326)
 
         # create folium.Map object
-        if m is None:
-            # Get bounds to specify location and map extent
-            bounds = gdf.total_bounds
-            location = kwargs.pop("location", None)
-            if location is None:
-                x = mean([bounds[0], bounds[2]])
-                y = mean([bounds[1], bounds[3]])
-                location = (y, x)
-                if "zoom_start" in kwargs.keys():
-                    fit = False
-                else:
-                    fit = True
-            else:
+        # Get bounds to specify location and map extent
+        bounds = gdf.total_bounds
+        location = kwargs.pop("location", None)
+        if location is None:
+            x = mean([bounds[0], bounds[2]])
+            y = mean([bounds[1], bounds[3]])
+            location = (y, x)
+            if "zoom_start" in kwargs.keys():
                 fit = False
+            else:
+                fit = True
+        else:
+            fit = False
 
-            # get a subset of kwargs to be passed to folium.Map
-            for i in _MAP_KWARGS:
-                if i in map_kwds:
-                    raise ValueError(
-                        f"'{i}' cannot be specified in 'map_kwds'. "
-                        f"Use the '{i}={map_kwds[i]}' argument instead."
-                    )
-            map_kwds = {
-                **map_kwds,
-                **{i: kwargs[i] for i in kwargs.keys() if i in _MAP_KWARGS},
-            }
+        # get a subset of kwargs to be passed to folium.Map
+        for i in _MAP_KWARGS:
+            if i in map_kwds:
+                raise ValueError(
+                    f"'{i}' cannot be specified in 'map_kwds'. "
+                    f"Use the '{i}={map_kwds[i]}' argument instead."
+                )
+        map_kwds = {
+            **map_kwds,
+            **{i: kwargs[i] for i in kwargs.keys() if i in _MAP_KWARGS},
+        }
 
-            if has_xyzservices:
-                # match provider name string to xyzservices.TileProvider
-                if isinstance(tiles, str):
-                    try:
-                        tiles = xyzservices.providers.query_name(tiles)
-                    except ValueError:
-                        pass
+        if has_xyzservices:
+            # match provider name string to xyzservices.TileProvider
+            if isinstance(tiles, str):
+                try:
+                    tiles = xyzservices.providers.query_name(tiles)
+                except ValueError:
+                    pass
 
-                if isinstance(tiles, xyzservices.TileProvider):
-                    attr = attr if attr else tiles.html_attribution
-                    map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
-                    map_kwds["max_zoom"] = tiles.get("max_zoom", 18)
-                    tiles = tiles.build_url(scale_factor="{r}")
+            if isinstance(tiles, xyzservices.TileProvider):
+                attr = attr if attr else tiles.html_attribution
+                map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
+                map_kwds["max_zoom"] = tiles.get("max_zoom", 18)
+                tiles = tiles.build_url(scale_factor="{r}")
 
             m = folium.Map(
                 location=location,
@@ -472,45 +435,6 @@ class Explore(Map):
         for map_kwd in _MAP_KWARGS:
             kwargs.pop(map_kwd, None)
 
-        if column and pd.api.types.is_list_like(column):
-            if len(column) != gdf.shape[0]:
-                raise ValueError(
-                    "The GeoDataFrame and given column have different number of rows."
-                )
-            else:
-                column_name = "__plottable_column"
-                gdf[column_name] = column
-                column = column_name
-        elif column and pd.api.types.is_categorical_dtype(gdf[column]):
-            if categories is not None:
-                raise ValueError(
-                    "Cannot specify 'categories' when column has categorical dtype"
-                )
-
-        #        nan_idx = pd.isna(gdf[column])
-
-        if 0:  # not self._is_categorical:
-            vmin = gdf[column].min() if vmin is None else vmin
-            vmax = gdf[column].max() if vmax is None else vmax
-
-            if len(gdf[column][~nan_idx]):
-                bins = classification_kwds["bins"]
-
-                binning = classify(
-                    np.asarray(gdf[column][~nan_idx]),
-                    "UserDefined",
-                    bins=bins,
-                    k=k,
-                )
-
-                color = np.apply_along_axis(
-                    colors.to_hex,
-                    1,
-                    cm.get_cmap(cmap, k)(binning.yb),  # ! changed 256 to k
-                )
-            else:
-                color = NAN_COLOR
-
         # set default style
         if "fillOpacity" not in style_kwds:
             style_kwds["fillOpacity"] = 0.5
@@ -528,74 +452,23 @@ class Explore(Map):
 
             style_kwds_function = _no_style
 
-        # specify color
-        if color is not None:
-            """
-            if (
-                isinstance(color, str)
-                and isinstance(gdf, geopandas.GeoDataFrame)
-                and color in gdf.columns
-            ):  # use existing column
+        gdf["__folium_color"] = color
 
-                def _style_color(x):
-                    base_style = {
-                        "fillColor": x["properties"][color],
-                        **style_kwds,
-                    }
-                    return {
-                        **base_style,
-                        **style_kwds_function(x),
-                    }
+        stroke_color = style_kwds.pop("color", None)
+        if not stroke_color:
 
-                style_function = _style_color
-            """
-            if 1:  # else:  # assign new column
-                if isinstance(gdf, GeoSeries):
-                    gdf = GeoDataFrame(geometry=gdf)
+            def _style_column(x):
+                base_style = {
+                    "fillColor": x["properties"]["__folium_color"],
+                    "color": x["properties"]["__folium_color"],
+                    **style_kwds,
+                }
+                return {
+                    **base_style,
+                    **style_kwds_function(x),
+                }
 
-                if 0:  # nan_idx is not None and nan_idx.any():
-                    nan_color = missing_kwds.pop("color", NAN_COLOR)
-
-                    gdf["__folium_color"] = nan_color
-                    gdf.loc[~nan_idx, "__folium_color"] = color
-                else:
-                    gdf["__folium_color"] = color
-
-                stroke_color = style_kwds.pop("color", None)
-                if not stroke_color:
-
-                    def _style_column(x):
-                        base_style = {
-                            "fillColor": x["properties"]["__folium_color"],
-                            "color": x["properties"]["__folium_color"],
-                            **style_kwds,
-                        }
-                        return {
-                            **base_style,
-                            **style_kwds_function(x),
-                        }
-
-                    style_function = _style_column
-                else:
-
-                    def _style_stroke(x):
-                        base_style = {
-                            "fillColor": x["properties"]["__folium_color"],
-                            "color": stroke_color,
-                            **style_kwds,
-                        }
-                        return {
-                            **base_style,
-                            **style_kwds_function(x),
-                        }
-
-                    style_function = _style_stroke
-        else:  # use folium default
-
-            def _style_default(x):
-                return {**style_kwds, **style_kwds_function(x)}
-
-            style_function = _style_default
+            style_function = _style_column
 
         if highlight:
             if "fillOpacity" not in highlight_kwds:
@@ -628,15 +501,6 @@ class Explore(Map):
                     "supported as marker values"
                 )
 
-        # remove additional geometries
-        if isinstance(gdf, GeoDataFrame):
-            non_active_geoms = [
-                name
-                for name, val in (gdf.dtypes == "geometry").items()
-                if val and name != gdf.geometry.name
-            ]
-            gdf = gdf.drop(columns=non_active_geoms)
-
         gdf = clean_geoms(gdf)
 
         # prepare tooltip and popup
@@ -664,103 +528,7 @@ class Explore(Map):
             )
             return gjs
 
-        if 0:  # legend and not self._is_categorical:
-            print(color)
-            colorbar = bc.colormap.StepColormap(
-                color,
-                #                vmin=vmin,
-                #               vmax=vmax,
-                caption=title,
-                index=[0] + self.bins,
-                #  **colormap_kwds,
-            )
-            """
-
-            # NOTE: overlaps will be resolved in branca #88
-            caption = column if column != "__plottable_column" else ""
-            caption = legend_kwds.pop("caption", caption)
-            if column is not None:
-                cbar = legend_kwds.pop("colorbar", True)
-                colormap_kwds = {}
-                if "max_labels" in legend_kwds:
-                    colormap_kwds["max_labels"] = legend_kwds.pop("max_labels")
-                if scheme and len(gdf[column][~nan_idx]):
-                    cb_colors = np.apply_along_axis(
-                        colors.to_hex, 1, cm.get_cmap(cmap, binning.k)(range(binning.k))
-                    )
-                    if cbar:
-                        if legend_kwds.pop("scale", True):
-                            index = [vmin] + binning.bins.tolist()
-                        else:
-                            index = None
-                        colorbar = bc.colormap.StepColormap(
-                            cb_colors,
-                            vmin=vmin,
-                            vmax=vmax,
-                            caption=caption,
-                            index=index,
-                            **colormap_kwds,
-                        )
-                    else:
-                        fmt = legend_kwds.pop("fmt", "{:.2f}")
-                        if "labels" in legend_kwds:
-                            categories = legend_kwds["labels"]
-                        else:
-                            categories = binning.get_legend_classes(fmt)
-                            show_interval = legend_kwds.pop("interval", False)
-                            if not show_interval:
-                                categories = [c[1:-1] for c in categories]
-
-                        if nan_idx.any() and nan_color:
-                            categories.append(missing_kwds.pop("label", "NaN"))
-                            cb_colors = np.append(cb_colors, nan_color)
-
-                else:
-                    if isinstance(cmap, bc.colormap.ColorMap):
-                        colorbar = cmap
-                    else:
-                        mp_cmap = cm.get_cmap(cmap)
-                        cb_colors = np.apply_along_axis(
-                            colors.to_hex, 1, mp_cmap(range(mp_cmap.N))
-                        )
-
-                        # linear legend
-                        if mp_cmap.N > 20:
-                            colorbar = bc.colormap.LinearColormap(
-                                cb_colors,
-                                vmin=vmin,
-                                vmax=vmax,
-                                caption=caption,
-                                **colormap_kwds,
-                            )
-
-                        # steps
-                        else:
-                            colorbar = bc.colormap.StepColormap(
-                                cb_colors,
-                                vmin=vmin,
-                                vmax=vmax,
-                                caption=caption,
-                                **colormap_kwds,
-                            )
-            """
-
-        if return_ == "empty_map":
-            return m
-
-        if return_ == "empty_map_and_colorbar":
-            return m, colorbar
-        """
-        if return_ == "map":
-            m.add_child(gjs)
-            if legend and cbar:
-                if nan_idx.any() and nan_color:
-                    _categorical_legend(
-                        m, "", [missing_kwds.pop("label", "NaN")], [nan_color]
-                    )
-                m.add_child(colorbar)
-            return m
-        """
+        return m
 
 
 def _tooltip_popup(type, fields, gdf, **kwds):
