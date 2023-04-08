@@ -28,23 +28,36 @@ def test_thematicmap(points_oslo):
 
     points.geometry = points.buffer(np.arange(1, len(points) + 1) * 10)
 
+    def size_20(points):
+        m = sg.ThematicMap(points, points, points, "meters")
+        m.add_continous_legend()
+        m.size = 20
+        m.title = inspect.stack()[0][3]
+        m.plot()
+        assert m.title_fontsize == 40, m.title_fontsize
+        assert m.legend.title_fontsize == 20 * 1.2
+        assert m.legend.fontsize == 20
+        assert m.legend.markersize == 20
+
+    size_20(points)
+
     def with_legend_and_title(points):
         m = sg.ThematicMap(points, points, points, "meters")
         m.add_continous_legend()
         m.title = "added legend and title"
         m.plot()
         assert m._k == 5
-        assert m.bins == [62, 125, 188, 251, 314, 439], m.bins
+        assert m.bins == [63, 126, 188, 251, 314, 440], m.bins
         assert m.column == "length"
         assert m.legend.title == "length"
         assert m.colorlist == ["#fde5e2", "#fbafba", "#ed549d", "#a3017d", "#49006a"]
         assert m.cmap_start == 25
         assert m.legend._categories == [
-            "62  - 125 ",
+            "63  - 126 ",
             "188 ",
             "251 ",
             "314 ",
-            "376  - 439 ",
+            "377  - 440 ",
         ], m.legend._categories
         assert (m.facecolor, m.title_color, m.bg_gdf_color) == (
             "#fefefe",
@@ -54,22 +67,43 @@ def test_thematicmap(points_oslo):
 
     with_legend_and_title(points)
 
-    def manual_labels(points):
+    def manual_labels_and_bins(points):
+        labels_should_be = [
+            "63 m to 100 m ",
+            "100 m to 200 m ",
+            "200 m to 300 m ",
+            "300 m to 440 m ",
+        ]
+
         m = sg.ThematicMap(points, points, points, "meters")
         m.add_continous_legend()
-        m.k = 3
-        m.legend.labels = ["something", "something more", "last color"]
+        m.bins = [(min(points.length)), 100, 200, 300, (max(points.length))]
+        m.legend.labels = [
+            f"{int(round(min(points.length),0))} m to 100 m ",
+            "100 m to 200 m ",
+            "200 m to 300 m ",
+            f"300 m to {int(round(max(points.length),0))} m ",
+        ]
         m.title = inspect.stack()[0][3]
         m.plot()
-        assert m._k == 3
-        assert m.bins == [62, 188, 314, 439], m.bins
-        assert m.legend._categories == [
-            "something",
-            "something more",
-            "last color",
-        ], m.legend._categories
+        assert m.bins == [63, 100, 200, 300, 440], m.bins
+        assert m.legend._categories == labels_should_be, m.legend._categories
 
-    manual_labels(points)
+        m = sg.ThematicMap(points, points, points, "meters")
+        m.add_continous_legend()
+        m.bins = [100, 200, 300]
+        m.legend.labels = [
+            f"{int(round(min(points.length),0))} m to 100 m ",
+            "100 m to 200 m ",
+            "200 m to 300 m ",
+            f"300 m to {int(round(max(points.length),0))} m ",
+        ]
+        m.title = inspect.stack()[0][3]
+        m.plot()
+        assert m.bins == [63, 100, 200, 300, 440], m.bins
+        assert m.legend._categories == labels_should_be, m.legend._categories
+
+    manual_labels_and_bins(points)
 
     def k_is_7_equal_to_n_unique(points):
         m = sg.ThematicMap(points, points, points, "meters", title="k=7 (all)")
@@ -94,19 +128,19 @@ def test_thematicmap(points_oslo):
             "#d1d1cd",
         )
         assert m._k == 7, m._k
-        assert m.bins == [62, 125, 188, 251, 314, 376, 439], m.bins
+        assert m.bins == [63, 126, 188, 251, 314, 377, 440], m.bins
         assert m.column == "length"
         assert m.legend.title == "length"
         assert m.legend._position_has_been_set is False
         assert m.legend.rounding == 0
         assert m.legend._categories == [
-            "62 ",
-            "125 ",
+            "63 ",
+            "126 ",
             "188 ",
             "251 ",
             "314 ",
-            "376 ",
-            "439 ",
+            "377 ",
+            "440 ",
         ], m.legend._categories
 
     k_is_7_equal_to_n_unique(points)
@@ -124,11 +158,11 @@ def test_thematicmap(points_oslo):
         assert m.column == "length"
         assert m.legend.title == "length"
         assert m._k == 3
-        assert m.bins == [62, 188, 314, 439], m.bins
+        assert m.bins == [63, 188, 314, 440], m.bins
         assert m.legend._categories == [
-            "62  - 188 ",
+            "63  - 188 ",
             "251  - 314 ",
-            "376  - 439 ",
+            "377  - 440 ",
         ], m.legend._categories
         assert m.colorlist == ["#440154", "#21918c", "#fde725"], m.colorlist
         assert (m.facecolor, m.title_color, m.bg_gdf_color) == (
@@ -148,10 +182,10 @@ def test_thematicmap(points_oslo):
         m.plot()
         assert m.colorlist == ["#fde5e2", "#f994b1", "#c01588", "#49006a"], m.colorlist
         assert m.legend._categories == [
-            "62 m",
-            "125 m to 188 m",
+            "63 m",
+            "126 m to 188 m",
             "251 m",
-            "314 m to 439 m",
+            "314 m to 440 m",
         ], m.legend._categories
 
     manual_bins_and_legend_suffix_sep(points)
@@ -206,8 +240,8 @@ def test_thematicmap(points_oslo):
         m.plot()
         assert m.colorlist == ["#fde5e2", "#ed549d", "#49006a", "#969696"], m.colorlist
         assert m.legend._categories == [
-            "313  - 1254 ",
-            "7841  - 11291 ",
+            "314  - 1255 ",
+            "7841  - 11292 ",
             "15369 ",
             "Missing",
         ], m.legend._categories

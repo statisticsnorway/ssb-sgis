@@ -69,7 +69,7 @@ class Map:
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
             gdfs, column = self._separate_args(gdfs, column)
 
-        self.column = column
+        self._column = column
         self.bins = bins
         self._k = k
         self.nan_label = nan_label
@@ -92,25 +92,25 @@ class Map:
         if not self.labels:
             self._get_labels(gdfs)
 
-        self.gdfs: list[GeoDataFrame] = [gdf.copy() for gdf in gdfs]
+        self._gdfs: list[GeoDataFrame] = [gdf.copy() for gdf in gdfs]
         self.kwargs = kwargs
 
         if not self.labels:
             self._set_labels()
 
-        if not self.column:
-            for gdf, label in zip(self.gdfs, self.labels, strict=True):
+        if not self._column:
+            for gdf, label in zip(self._gdfs, self.labels, strict=True):
                 gdf["label"] = label
-            self.column = "label"
+            self._column = "label"
 
-        self.gdfs = self._to_common_crs_and_one_geom_col(self.gdfs)
+        self._gdfs = self._to_common_crs_and_one_geom_col(self._gdfs)
         self._is_categorical = self._check_if_categorical()
 
         self._fillna_if_col_is_missing()
 
-        self.gdf = pd.concat(self.gdfs, ignore_index=True)
+        self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
-        self._nan_idx = self.gdf[self.column].isna()
+        self._nan_idx = self._gdf[self._column].isna()
 
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
@@ -118,7 +118,7 @@ class Map:
                 self._k = len(self._unique_values)
         else:
             self._unique_values = sorted(
-                list(self.gdf.loc[~self._nan_idx, self.column].unique())
+                list(self._gdf.loc[~self._nan_idx, self._column].unique())
             )
 
     def _get_unique_floats(self) -> list[int | float]:
@@ -126,9 +126,9 @@ class Map:
 
         Also making a column of the large integers to use in the bin classifying later.
         """
-        array = self.gdf.loc[~self._nan_idx, self.column]
+        array = self._gdf.loc[~self._nan_idx, self._column]
 
-        self.gdf["col_as_int"] = self._array_to_large_int(array)
+        self._gdf["col_as_int"] = self._array_to_large_int(array)
 
         unique = array.reset_index(drop=True).drop_duplicates()
 
@@ -157,17 +157,17 @@ class Map:
         # make sure they are lists
         bins = [bin for bin in self.bins]
 
-        if min(bins) > 0 and min(self.gdf[self.column]) < min(bins) * 0.999:
-            bins = [min(self.gdf[self.column]) * 0.9999] + bins
+        if min(bins) > 0 and min(self._gdf[self._column]) < min(bins) * 0.999:
+            bins = [min(self._gdf[self._column]) * 0.9999] + bins
 
-        if min(bins) < 0 and min(self.gdf[self.column]) < min(bins) * 1.0001:
-            bins = [min(self.gdf[self.column]) * 1.0001] + bins
+        if min(bins) < 0 and min(self._gdf[self._column]) < min(bins) * 1.0001:
+            bins = [min(self._gdf[self._column]) * 1.0001] + bins
 
-        if max(bins) > 0 and max(self.gdf[self.column]) > max(bins) * 1.0001:
-            bins = bins + [max(self.gdf[self.column]) * 1.0001]
+        if max(bins) > 0 and max(self._gdf[self._column]) > max(bins) * 1.0001:
+            bins = bins + [max(self._gdf[self._column]) * 1.0001]
 
-        if max(bins) < 0 and max(self.gdf[self.column]) < max(bins) * 1.0001:
-            bins = bins + [max(self.gdf[self.column]) * 1.0001]
+        if max(bins) < 0 and max(self._gdf[self._column]) < max(bins) * 1.0001:
+            bins = bins + [max(self._gdf[self._column]) * 1.0001]
 
         return bins
 
@@ -195,7 +195,7 @@ class Map:
     def _prepare_continous_map(self):
         """Create bins if not already done and adjust k if needed."""
         if not self.bins:
-            self.bins = self._create_bins(self.gdf, self.column)
+            self.bins = self._create_bins(self._gdf, self._column)
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
                 warnings.warn(f"Could not create {self._k} classes.")
                 self._k = len(self.bins)
@@ -219,7 +219,7 @@ class Map:
 
     def _set_labels(self) -> None:
         """Setting the labels after copying the gdfs."""
-        for i, gdf in enumerate(self.gdfs):
+        for i, gdf in enumerate(self._gdfs):
             gdf["label"] = self.labels[i]
 
     def _to_common_crs_and_one_geom_col(self, gdfs: list[GeoDataFrame]):
@@ -238,25 +238,25 @@ class Map:
         return new_gdfs
 
     def _fillna_if_col_is_missing(self) -> None:
-        for gdf in self.gdfs:
-            if self.column in gdf.columns:
+        for gdf in self._gdfs:
+            if self._column in gdf.columns:
                 continue
-            gdf[self.column] = pd.NA
+            gdf[self._column] = pd.NA
 
     def _check_if_categorical(self) -> bool:
         """Quite messy this..."""
-        if not self.column:
+        if not self._column:
             return True
 
-        maybe_area = 1 if "area" in self.column else 0
+        maybe_area = 1 if "area" in self._column else 0
         maybe_length = (
-            1 if any(x in self.column for x in ["meter", "metre", "leng"]) else 0
+            1 if any(x in self._column for x in ["meter", "metre", "leng"]) else 0
         )
 
         all_nan = 0
         col_not_present = 0
-        for gdf in self.gdfs:
-            if self.column not in gdf:
+        for gdf in self._gdfs:
+            if self._column not in gdf:
                 if maybe_area:
                     gdf["area"] = gdf.area
                     maybe_area += 1
@@ -265,22 +265,22 @@ class Map:
                     maybe_length += 1
                 else:
                     col_not_present += 1
-            elif not pd.api.types.is_numeric_dtype(gdf[self.column]):
-                if all(gdf[self.column].isna()):
+            elif not pd.api.types.is_numeric_dtype(gdf[self._column]):
+                if all(gdf[self._column].isna()):
                     all_nan += 1
                 return True
 
         if maybe_area > 1:
-            self.column = "area"
+            self._column = "area"
             return False
         if maybe_length > 1:
-            self.column = "length"
+            self._column = "length"
             return False
 
-        if all_nan == len(self.gdfs):
+        if all_nan == len(self._gdfs):
             raise ValueError(f"All values are NaN in column {self.kwargs['column']!r}.")
 
-        if col_not_present == len(self.gdfs):
+        if col_not_present == len(self._gdfs):
             raise ValueError(f"{self.kwargs['column']} not found.")
 
         return False
@@ -308,13 +308,13 @@ class Map:
             }
 
         if any(self._nan_idx):
-            self.gdf[self.column] = self.gdf[self.column].fillna(self.nan_label)
+            self._gdf[self._column] = self._gdf[self._column].fillna(self.nan_label)
             self._categories_colors_dict[self.nan_label] = NAN_COLOR
 
-        for gdf in self.gdfs:
-            gdf["color"] = gdf[self.column].map(self._categories_colors_dict)
+        for gdf in self._gdfs:
+            gdf["color"] = gdf[self._column].map(self._categories_colors_dict)
 
-        self.gdf["color"] = self.gdf[self.column].map(self._categories_colors_dict)
+        self._gdf["color"] = self._gdf[self._column].map(self._categories_colors_dict)
 
     def _create_bins(self, gdf, column) -> list[str]:
         """Make bin list of length k + 1, or length of unique values.
@@ -369,35 +369,33 @@ class Map:
             colors_ = colors_ + [NAN_COLOR]
         return colors_
 
-    def _classify_from_bins(self, array: Series | np.ndarray) -> np.ndarray:
+    def _classify_from_bins(self, gdf: GeoDataFrame) -> np.ndarray:
+        # if equal lenght, use integer column to check for equality
+        # since long floats are unpredictable
         if len(self.bins) == len(self._unique_values):
-            # using the integer column since long floats are unpredictable
-            bins = np.array(sorted(self.gdf["col_as_int"].unique()))
-            classified = np.searchsorted(bins, self.gdf["col_as_int"])
-
-            self._bins_unique_values = {
-                i: list(set(array[classified == i])) for i, bin in enumerate(bins)
-            }
-
-            colors_ = np.array(self.colorlist)
-            colors_classified = colors_[classified]
-            return colors_classified
-
-        if any(self._nan_idx) and len(self.bins) == len(self.colorlist):
-            bins = self.bins[1:]
-        elif not any(self._nan_idx) and len(self.bins) == len(self.colorlist) + 1:
-            bins = self.bins[1:]
+            if "col_as_int" not in gdf.columns:
+                gdf["col_as_int"] = self._array_to_large_int(gdf[self._column])
+            bins = np.array(sorted(gdf["col_as_int"].unique()))
+            classified = np.searchsorted(bins, gdf["col_as_int"])
         else:
-            bins = self.bins
+            if any(self._nan_idx) and len(self.bins) == len(self.colorlist):
+                bins = self.bins[1:]
+            elif not any(self._nan_idx) and len(self.bins) == len(self.colorlist) + 1:
+                bins = self.bins[1:]
+            else:
+                bins = self.bins
 
-        bins = np.array(bins, dtype=np.float64)
-        colors_ = np.array(self.colorlist)
+            bins = np.array(bins, dtype=np.float64)
 
-        classified = np.searchsorted(bins, array)
+            classified = np.searchsorted(bins, gdf[self._column])
 
+        # storing unique values to use in legend labels
         self._bins_unique_values = {
-            i: list(set(array[classified == i])) for i, bin in enumerate(bins)
+            i: list(set(gdf.loc[classified == i, self._column]))
+            for i, _ in enumerate(bins)
         }
+
+        colors_ = np.array(self.colorlist)
 
         # nans are sorted to the end, so nans will get NAN_COLOR
         colors_classified = colors_[classified]
@@ -415,3 +413,36 @@ class Map:
                 "'k' cannot be larger than the number of unique values in the column.'"
             )
         self._k = int(new_value)
+
+    @property
+    def gdf(self):
+        return self._gdf
+
+    @gdf.setter
+    def gdf(self, _):
+        raise ValueError(
+            "Cannot change 'gdf' after init. Put the GeoDataFrames into "
+            "the class initialiser."
+        )
+
+    @property
+    def gdfs(self):
+        return self._gdfs
+
+    @gdfs.setter
+    def gdfs(self, _):
+        raise ValueError(
+            "Cannot change 'gdfs' after init. Put the GeoDataFrames into "
+            "the class initialiser."
+        )
+
+    @property
+    def column(self):
+        return self._column
+
+    @column.setter
+    def column(self, _):
+        raise ValueError(
+            "Cannot change 'column' after init. Specify 'column' in the "
+            "class initialiser."
+        )

@@ -36,9 +36,15 @@ class Legend:
         **kwargs,
     ):
         self.title = title
-        self.title_fontsize = title_fontsize
-        self.fontsize = fontsize
-        self.markersize = markersize
+
+        if "size" in kwargs:
+            size = kwargs.pop("size")
+            self._get_legend_sizes(size, kwargs)
+        else:
+            self._title_fontsize = title_fontsize
+            self._fontsize = fontsize
+            self._markersize = markersize
+
         self.label_suffix = label_suffix
         self.label_sep = label_sep
         self.labels = labels
@@ -47,6 +53,27 @@ class Legend:
         self.kwargs = kwargs
         self._position_has_been_set = True if position else False
         self._rounding_has_been_set = True if rounding else False
+
+    def _get_legend_sizes(self, size, kwargs):
+        """Adjust fontsize and markersize to size kwarg."""
+
+        if "title_fontsize" in kwargs:
+            self._title_fontsize = kwargs["title_fontsize"]
+            self._title_fontsize_has_been_set = True
+        else:
+            self._title_fontsize = size * 1.2
+
+        if "fontsize" in kwargs:
+            self._fontsize = kwargs["fontsize"]
+            self._fontsize_has_been_set = True
+        else:
+            self._fontsize = size
+
+        if "markersize" in kwargs:
+            self._markersize = kwargs["markersize"]
+            self._markersize_has_been_set = True
+        else:
+            self._markersize = size
 
     def _get_rounding(self, array: Series | np.ndarray) -> int:
         if np.max(array) > 30 and np.std(array) > 5:
@@ -60,7 +87,7 @@ class Legend:
     @staticmethod
     def _set_rounding(bins, rounding: int | float):
         if rounding == 0:
-            return [int(bin) for bin in bins]
+            return [int(round(bin, 0)) for bin in bins]
         else:
             return [round(bin, rounding) for bin in bins]
 
@@ -81,7 +108,7 @@ class Legend:
                     linestyle="none",
                     marker="o",
                     alpha=self.kwargs.get("alpha", 1),
-                    markersize=self.markersize,
+                    markersize=self._markersize,
                     markerfacecolor=color,
                     markeredgewidth=0,
                 )
@@ -89,7 +116,9 @@ class Legend:
 
         if self.labels:
             if len(self.labels) != len(colors):
-                raise ValueError("Label list must be same length as 'k'")
+                raise ValueError(
+                    f"Label list must be same length as 'k'. Got k={len(colors)} and labels={self.labels}"
+                )
             self._categories = self.labels
 
         elif len(bins) == len(colors):
@@ -124,9 +153,9 @@ class Legend:
         ax.legend(
             self._patches,
             self._categories,
-            fontsize=self.fontsize,
+            fontsize=self._fontsize,
             title=self.title,
-            title_fontsize=self.title_fontsize,
+            title_fontsize=self._title_fontsize,
             bbox_to_anchor=self._position,
             fancybox=False,
             **self.kwargs,
@@ -149,7 +178,7 @@ class Legend:
                     linestyle="none",
                     marker="o",
                     alpha=self.kwargs.get("alpha", 1),
-                    markersize=self.markersize,
+                    markersize=self._markersize,
                     markerfacecolor=color,
                     markeredgewidth=0,
                 )
@@ -157,9 +186,9 @@ class Legend:
         ax.legend(
             self._patches,
             self._categories,
-            fontsize=self.fontsize,
+            fontsize=self._fontsize,
             title=self.title,
-            title_fontsize=self.title_fontsize,
+            title_fontsize=self._title_fontsize,
             bbox_to_anchor=self._position,
             fancybox=False,
             **self.kwargs,
@@ -214,3 +243,30 @@ class Legend:
     def rounding(self, new_value: bool):
         self._rounding = new_value
         self._rounding_has_been_set = True
+
+    @property
+    def title_fontsize(self):
+        return self._title_fontsize
+
+    @title_fontsize.setter
+    def title_fontsize(self, new_value: bool):
+        self._title_fontsize = new_value
+        self._title_fontsize_has_been_set = True
+
+    @property
+    def fontsize(self):
+        return self._fontsize
+
+    @fontsize.setter
+    def fontsize(self, new_value: bool):
+        self._fontsize = new_value
+        self._fontsize_has_been_set = True
+
+    @property
+    def markersize(self):
+        return self._markersize
+
+    @markersize.setter
+    def markersize(self, new_value: bool):
+        self._markersize = new_value
+        self._markersize_has_been_set = True

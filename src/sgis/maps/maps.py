@@ -184,9 +184,9 @@ def samplemap(
         )
 
         if sample_from_first:
-            sample = m.gdfs[0].sample(1)
+            sample = m._gdfs[0].sample(1)
         else:
-            sample = m.gdf.sample(1)
+            sample = m._gdf.sample(1)
 
         # convert lines to polygons
         if get_geom_type(sample) == "line":
@@ -199,10 +199,10 @@ def samplemap(
         else:
             random_point = sample.centroid.buffer
 
-        m.gdf = m.gdf.clip(random_point.buffer(size))
+        m._gdf = m._gdf.clip(random_point.buffer(size))
 
         qtm(
-            m.gdf,
+            m._gdf,
             column=m.column,
             cmap=m._cmap,
             k=m.k,
@@ -297,7 +297,7 @@ def clipmap(
             **kwargs,
         )
         qtm(
-            m.gdf,
+            m._gdf,
             column=m.column,
             cmap=m._cmap,
             k=m.k,

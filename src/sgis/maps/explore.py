@@ -115,10 +115,10 @@ class Explore(Map):
         >>> ex.samplemap()
         """
         if column:
-            self.column = column
+            self._column = column
             self._update_column()
             kwargs.pop("column", None)
-        self.to_show = self.gdfs
+        self.to_show = self._gdfs
         self._explore(**kwargs)
 
     def samplemap(
@@ -157,16 +157,16 @@ class Explore(Map):
             mask.
         """
         if column:
-            self.column = column
+            self._column = column
             self._update_column()
             kwargs.pop("column", None)
 
         self.previous_sample_count = 0
 
         if sample_from_first:
-            sample = self.gdfs[0].sample(1)
+            sample = self._gdfs[0].sample(1)
         else:
-            sample = self.gdf.sample(1)
+            sample = self._gdf.sample(1)
 
         # convert lines to polygons
         if get_geom_type(sample) == "line":
@@ -180,11 +180,11 @@ class Explore(Map):
             random_point = sample.centroid
 
         gdfs: tuple[GeoDataFrame] = ()
-        for gdf in self.gdfs:
+        for gdf in self._gdfs:
             gdf = gdf.clip(random_point.buffer(size))
             gdfs = gdfs + (gdf,)
-        self.gdfs = gdfs
-        self.gdf = pd.concat(gdfs, ignore_index=True)
+        self._gdfs = gdfs
+        self._gdf = pd.concat(gdfs, ignore_index=True)
         self._explore(**kwargs)
 
     def clipmap(
@@ -215,22 +215,22 @@ class Explore(Map):
             samplemap: same functionality, but shows only a random area of a given size.
         """
         if column:
-            self.column = column
+            self._column = column
             self._update_column()
             kwargs.pop("column", None)
 
         gdfs: tuple[GeoDataFrame] = ()
-        for gdf in self.gdfs:
+        for gdf in self._gdfs:
             gdf = gdf.clip(mask)
             gdfs = gdfs + (gdf,)
-        self.gdfs = gdfs
-        self.gdf = pd.concat(gdfs, ignore_index=True)
+        self._gdfs = gdfs
+        self._gdf = pd.concat(gdfs, ignore_index=True)
         self._explore(**kwargs)
 
     def _update_column(self):
         self._is_categorical = self._check_if_categorical()
         self._fill_missings()
-        self.gdf = pd.concat(self.gdfs, ignore_index=True)
+        self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
     def _explore(self, **kwargs):
         self.kwargs = self.kwargs | kwargs
@@ -248,9 +248,9 @@ class Explore(Map):
     def _create_categorical_map(self):
         self._get_categorical_colors()
 
-        self.map = self._explore_return(self.gdf, return_="empty_map", **self.kwargs)
+        self.map = self._explore_return(self._gdf, return_="empty_map", **self.kwargs)
 
-        for gdf, label in zip(self.gdfs, self.labels, strict=True):
+        for gdf, label in zip(self._gdfs, self.labels, strict=True):
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)
@@ -270,7 +270,7 @@ class Explore(Map):
             self.map.add_child(f)
         _categorical_legend(
             self.map,
-            self.column,
+            self._column,
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
@@ -281,29 +281,29 @@ class Explore(Map):
     def _create_continous_map(self):
         self._prepare_continous_map()
         self.colorlist = self._get_continous_colors()
-        self.colors = self._classify_from_bins(self.gdf[self.column])
+        self.colors = self._classify_from_bins(self._gdf)
 
         self.map = self._explore_return(
-            self.gdf,
+            self._gdf,
             return_="empty_map",
             **self.kwargs,
         )
 
         colorbar = bc.colormap.StepColormap(
             self.colorlist,
-            vmin=self.gdf[self.column].min(),
-            vmax=self.gdf[self.column].max(),
-            caption=self.column,
+            vmin=self._gdf[self._column].min(),
+            vmax=self._gdf[self._column].max(),
+            caption=self._column,
             index=self.bins,
             #  **colormap_kwds,
         )
 
-        for gdf, label in zip(self.gdfs, self.labels, strict=True):
+        for gdf, label in zip(self._gdfs, self.labels, strict=True):
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)
 
-            self.colors = self._classify_from_bins(gdf[self.column])
+            self.colors = self._classify_from_bins(gdf)
 
             gjs = self._explore_return(
                 gdf,

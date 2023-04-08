@@ -22,6 +22,11 @@ pd.options.mode.chained_assignment = None
 
 
 class ThematicMap(Map):
+    """Class for customising static maps with geopandas.
+
+    The class takes one or more GeoDataFrames, a column name
+    """
+
     def __init__(
         self,
         *gdfs: GeoDataFrame,
@@ -34,12 +39,17 @@ class ThematicMap(Map):
     ):
         super().__init__(*gdfs, column=column, bins=bins, **kwargs)
 
-        self.size = size
+        self._size = size
         self._black = black
         self.background_gdfs = []
 
         self.title = title
-        self.title_fontsize = kwargs.get("title_fontsize", self.size * 2)
+
+        if "title_fontsize" in kwargs:
+            self.title_fontsize = kwargs["title_fontsize"]
+            self._title_fontsize_has_been_set = True
+        else:
+            self._title_fontsize = self._size * 2
 
         self._black_or_white()
 
@@ -69,14 +79,6 @@ class ThematicMap(Map):
             self.cmap_start = kwargs.get("cmap_start", 25)
             self.cmap_stop = kwargs.get("cmap_stop", 256)
 
-    def _create_fig_and_ax(self):
-        self.fig, self.ax = self._get_matplotlib_figure_and_axix(
-            figsize=(self.size, self.size)
-        )
-
-        self.fig.patch.set_facecolor(self.facecolor)
-        self.ax.set_axis_off()
-
     def change_cmap(self, cmap: str, start: int = 0, stop: int = 256):
         self.cmap_start = start
         self.cmap_stop = stop
@@ -92,7 +94,7 @@ class ThematicMap(Map):
             self._background_gdfs = pd.concat(
                 [self._background_gdfs, gdf], ignore_index=True
             )
-        self.minx, self.miny, self.maxx, self.maxy = self.gdf.total_bounds
+        self.minx, self.miny, self.maxx, self.maxy = self._gdf.total_bounds
         self.diffx = self.maxx - self.minx
         self.diffy = self.maxy - self.miny
 
@@ -100,7 +102,7 @@ class ThematicMap(Map):
         """Creates the final plot. This method should be run last."""
 
         self.fig, self.ax = self._get_matplotlib_figure_and_axix(
-            figsize=(self.size, self.size)
+            figsize=(self._size, self._size)
         )
         self.fig.patch.set_facecolor(self.facecolor)
         self.ax.set_axis_off()
@@ -116,10 +118,10 @@ class ThematicMap(Map):
         if not self._is_categorical:
             self._prepare_continous_map()
             self.colorlist = self._get_continous_colors()
-            self.colors = self._classify_from_bins(self.gdf[self.column])
+            self.colors = self._classify_from_bins(self._gdf)
         else:
             self._get_categorical_colors()
-            self.colors = self.gdf["color"]
+            self.colors = self._gdf["color"]
 
         if hasattr(self, "legend") and self._is_categorical:
             self.add_categorical_legend()
@@ -147,7 +149,7 @@ class ThematicMap(Map):
                 bin_values=self._bins_unique_values,
             )
 
-        self.gdf.plot(color=self.colors, legend=hasattr(self, "legend"), ax=self.ax)
+        self._gdf.plot(color=self.colors, legend=hasattr(self, "legend"), ax=self.ax)
 
     def _remove_max_legend_value(self):
         if not self.legend:
@@ -161,16 +163,11 @@ class ThematicMap(Map):
             for key, value in kwargs.items():
                 self.legend[key] = value
         else:
-            title = kwargs.pop("title", self.column)
-            fontsize = kwargs.pop("fontsize", self.size)
-            title_fontsize = kwargs.pop("title_fontsize", self.size * 1.2)
-            markersize = kwargs.pop("markersize", self.size)
+            title = kwargs.pop("title", self._column)
 
             self.legend = Legend(
                 title=title,
-                fontsize=fontsize,
-                title_fontsize=title_fontsize,
-                markersize=markersize,
+                size=self._size,
                 **kwargs,
             )
 
@@ -178,13 +175,13 @@ class ThematicMap(Map):
             self.legend._rounding = kwargs["rounding"]
         elif not self.legend._rounding_has_been_set:
             self.legend._rounding = self.legend._get_rounding(
-                array=self.gdf.loc[~self._nan_idx, self.column]
+                array=self._gdf.loc[~self._nan_idx, self._column]
             )
 
         if "position" in kwargs:
             self.legend._position = kwargs["position"]
         elif not self.legend._position_has_been_set:
-            self.legend._get_best_legend_position(self.gdf)
+            self.legend._get_best_legend_position(self._gdf)
 
     def add_categorical_legend(
         self,
@@ -194,23 +191,18 @@ class ThematicMap(Map):
             for key, value in kwargs.items():
                 self.legend[key] = value
         else:
-            title = kwargs.pop("title", self.column)
-            fontsize = kwargs.pop("fontsize", self.size)
-            title_fontsize = kwargs.pop("title_fontsize", self.size * 1.2)
-            markersize = kwargs.pop("markersize", self.size)
+            title = kwargs.pop("title", self._column)
 
             self.legend = Legend(
                 title=title,
-                fontsize=fontsize,
-                title_fontsize=title_fontsize,
-                markersize=markersize,
+                size=self._size,
                 **kwargs,
             )
 
         if "position" in kwargs:
             self.legend._position = kwargs["position"]
         elif not self.legend._position_has_been_set:
-            self.legend._get_best_legend_position(self.gdf)
+            self.legend._get_best_legend_position(self._gdf)
 
     def save(self, path):
         try:
@@ -273,3 +265,31 @@ class ThematicMap(Map):
     def cmap(self, new_value: bool):
         self._cmap = new_value
         self.change_cmap(cmap=new_value)
+
+    @property
+    def title_fontsize(self):
+        return self._title_fontsize
+
+    @title_fontsize.setter
+    def title_fontsize(self, new_value: bool):
+        self._title_fontsize = new_value
+        self._title_fontsize_has_been_set = True
+
+    @property
+    def size(self):
+        return self._size
+
+    @size.setter
+    def size(self, new_value: bool):
+        """Adjust font and marker size if not actively set."""
+        self._size = new_value
+        if not hasattr(self, "_title_fontsize_has_been_set"):
+            self._title_fontsize = self._size * 2
+        if not hasattr(self, "legend"):
+            return
+        if not hasattr(self.legend, "_title_fontsize_has_been_set"):
+            self.legend._title_fontsize = self._size * 1.2
+        if not hasattr(self.legend, "_fontsize_has_been_set"):
+            self.legend._fontsize = self._size
+        if not hasattr(self.legend, "_markersize_has_been_set"):
+            self.legend._markersize = self._size
