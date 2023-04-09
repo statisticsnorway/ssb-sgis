@@ -42,6 +42,7 @@ from .geopandas_tools.neighbors import (
 from .geopandas_tools.overlay import clean_shapely_overlay, overlay, overlay_update
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import close_all_holes, close_small_holes
+from .maps.legend import Legend
 from .maps.maps import clipmap, explore, qtm, samplemap
 from .maps.thematicmap import ThematicMap
 from .networkanalysis.directednetwork import DirectedNetwork

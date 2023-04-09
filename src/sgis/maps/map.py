@@ -47,7 +47,7 @@ _CATEGORICAL_CMAP = {
 }
 
 # gray for NaNs
-NAN_COLOR = "#969696"
+NAN_COLOR = "#c2c2c2"
 
 
 class Map:
@@ -65,7 +65,7 @@ class Map:
         nan_label: str = "Missing",
         bins: tuple[float] | None = None,
         **kwargs,
-    ) -> None:
+    ):
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
             gdfs, column = self._separate_args(gdfs, column)
 
@@ -152,10 +152,10 @@ class Map:
 
         return unique_multiplied.astype(np.int64)
 
-    def _add_minmax_to_bins(self) -> list[float | int]:
+    def _add_minmax_to_bins(self, bins: list[float | int]) -> list[float | int]:
         """If values are outside the bin range, add max and/or min values of array."""
         # make sure they are lists
-        bins = [bin for bin in self.bins]
+        bins = [bin for bin in bins]
 
         if min(bins) > 0 and min(self._gdf[self._column]) < min(bins) * 0.999:
             bins = [min(self._gdf[self._column]) * 0.9999] + bins
@@ -199,9 +199,9 @@ class Map:
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
                 warnings.warn(f"Could not create {self._k} classes.")
                 self._k = len(self.bins)
-            self.bins = self._add_minmax_to_bins()
+            self.bins = self._add_minmax_to_bins(self.bins)
         else:
-            self.bins = self._add_minmax_to_bins()
+            self.bins = self._add_minmax_to_bins(self.bins)
             if len(self._unique_values) > len(self.bins):
                 self._k = len(self.bins) - 1
 
@@ -224,12 +224,14 @@ class Map:
 
     def _to_common_crs_and_one_geom_col(self, gdfs: list[GeoDataFrame]):
         """Need common crs and max one geometry column."""
-        crss = list({gdf.crs for gdf in gdfs if gdf.crs is not None})
-        self.crs = crss[0]
+        crs_list = list({gdf.crs for gdf in gdfs if gdf.crs is not None})
+        if not crs_list:
+            return gdfs
+        self.crs = crs_list[0]
         new_gdfs = []
         for gdf in gdfs:
             gdf = drop_inactive_geometry_columns(gdf).pipe(rename_geometry_if)
-            if crss:
+            if crs_list:
                 try:
                     gdf = gdf.to_crs(self.crs)
                 except ValueError:
@@ -325,7 +327,12 @@ class Map:
         much faster than the one from Mapclassifier.
         """
 
-        for plus in [0, 1, 2, 3]:
+        if hasattr(self, "scheme"):
+            scheme = self.scheme
+        else:
+            scheme = self.kwargs.get("scheme", "fisherjenks")
+
+        for plus in [0]:  # , 1, 2, 3]:
             if len(self._unique_values) > self._k + plus:
                 n_classes = self._k + plus
             else:
@@ -334,17 +341,18 @@ class Map:
             if self._k == len(self._unique_values) - 1:
                 n_classes = self._k - 1
 
-            if self.kwargs.get("scheme", "fisherjenks") == "fisherjenks":
+            if scheme == "fisherjenks":
                 bins = jenks_breaks(
                     gdf.loc[~self._nan_idx, column], n_classes=n_classes
                 )
             else:
                 binning = classify(
                     np.asarray(gdf.loc[~self._nan_idx, column]),
-                    scheme=self.scheme,
+                    scheme=scheme,
                     k=self._k,
                 )
                 bins = binning.bins
+                bins = self._add_minmax_to_bins(bins)
 
             unique_bins = list({round(bin, 5) for bin in bins})
             unique_bins.sort()
@@ -355,9 +363,58 @@ class Map:
             if len(unique_bins) == len(self._unique_values):
                 return unique_bins
 
-            if len(unique_bins) == self._k + 1:
-                plus_or_minus = lambda x, y: x + y if x > 0 else x - y
-                return [plus_or_minus(bin, bin / 100_000) for bin in unique_bins]
+            if 1:  # len(unique_bins) == self._k + 1:
+
+                def plus_or_minus(x, y):
+                    """Plus if negative, since minus and minus is plus."""
+                    return x - y if x > 0 else x + y
+
+                def minus_or_plus(x, y):
+                    return x + y if x > 0 else x - y
+
+                binarray = np.array(bins)
+                binarray = np.where(
+                    binarray > 0,
+                    binarray + binarray / 100_000,
+                    binarray - binarray / 100_000,
+                )
+                """
+                binarray[:-1] = np.where(
+                    binarray[:-1] > 0,
+                    binarray[:-1] - binarray[:-1] / 100_000,
+                    binarray[:-1] + binarray[:-1] / 100_000,
+                )
+                binarray[-1] = np.where(
+                    binarray[-1] > 0,
+                    binarray[-1] + binarray[-1] / 100_000,
+                    binarray[-1] - binarray[-1] / 100_000,
+                )
+                """
+                #                binarray[0] = np.where(
+                #                   binarray[0] > 0,
+                #                  binarray[0] + binarray[0] / 100_000,
+                #                 binarray[0] - binarray[0] / 100_000,
+                #            )
+                print(bins)
+                print(binarray)
+                return binarray
+                binarray[-1] = (
+                    binarray[0] - binarray[0] / 100_000
+                    if binarray[0] > 0
+                    else binarray[0] + binarray[0] / 100_000
+                )
+                binarray[-1] = (
+                    binarray[-1] - binarray[-1] / 100_000
+                    if binarray[-1] > 0
+                    else binarray[-1] + binarray[-1] / 100_000
+                )
+                print(binarray)
+                return binarray
+                plus_or_minus = lambda x, y: x - y if x > 0 else x + y
+                return [
+                    bin + bin / 100_000 if i != 0 else plus_or_minus(bin, bin / 100_000)
+                    for i, bin in enumerate(unique_bins)
+                ]
 
     def _get_continous_colors(self) -> list[str]:
         cmap = matplotlib.colormaps.get_cmap(self._cmap)
@@ -396,6 +453,11 @@ class Map:
         }
 
         colors_ = np.array(self.colorlist)
+
+        print(bins)
+        print(gdf[self._column])
+        print(classified)
+        print(self._bins_unique_values)
 
         # nans are sorted to the end, so nans will get NAN_COLOR
         colors_classified = colors_[classified]

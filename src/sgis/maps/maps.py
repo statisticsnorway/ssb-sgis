@@ -315,7 +315,6 @@ def qtm(
     black: bool = True,
     size: int = 10,
     legend: bool = True,
-    **kwargs,
 ) -> None:
     """Quick, thematic map of one or more GeoDataFrames.
 
@@ -333,20 +332,13 @@ def qtm(
             white. If False, it will be the opposite.
         size: Size of the plot. Defaults to 10.
         title_fontsize: Size of the title.
-        **kwargs: Additional keyword arguments passed to the ThematicMap class.
 
     See also:
-        ThematicMap: Class with more options for customising plots.
+        ThematicMap: Class with more options for customising the plot.
     """
 
-    m = ThematicMap(*gdfs, column=column, size=size, black=black, **kwargs)
-
-    if legend and m._is_categorical:
-        m.add_categorical_legend()
-
-    elif legend and not m._is_categorical:
-        m.add_continous_legend()
-
+    m = ThematicMap(*gdfs, column=column, size=size, black=black)
     m.title = title
-
+    if not legend:
+        m.legend = None
     m.plot()

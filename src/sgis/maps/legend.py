@@ -1,7 +1,8 @@
-"""Interactive map of one or more GeoDataFrames with layers that can be toggles on/off.
+"""Attributes of the legend of the ThematicMap class.
 
-This module holds the Explore class, which is the basis for the explore, samplemap and
-clipmap functions from the 'maps' module.
+The Legend class is best accessed through the 'legend' attribute of the ThematicMap
+class.
+
 """
 import warnings
 
@@ -22,17 +23,106 @@ pd.options.mode.chained_assignment = None
 
 
 class Legend:
+    """Holds the attributes of the legend in the ThematicMap class.
+
+    This class is stored in the 'legend' attribute of the ThematicMap class.
+    The fontsize, title_fontsize and markersize attributes are adjusted
+    according to the size attribute of the ThematicMap.
+
+    The attributes 'label_suffix', 'label_sep' and 'rounding' only apply to plots
+    of numeric columns.
+
+    The 'labels' attribute can be used to set labels manually. By default, the
+    maximum and minimum values of each color group is used as label for numeric
+    columns. For categorical columns, the column values are used.
+
+    Attributes:
+        title: Legend title. Defaults to the column name if used in the
+            ThematicMap class.
+        labels: To manually set labels for the color groups. Must be a list/tuple of
+            same length as the number of color groups (k).
+        position: The legend's x and y position in the plot, specified as a tuple of
+            x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
+            in the bottom right corner, (0.2, 0.8) for the upper left corner.
+        fontsize: Text size of the legend labels. Defaults to the size of
+            the ThematicMap class.
+        title_fontsize: Text size of the legend title. Defaults to the
+            size * 1.2 of the ThematicMap class.
+        markersize: Size of the color circles in the legend. Defaults to the size of
+            the ThematicMap class.
+        label_suffix: For numeric columns. The text to put after each number in the
+            legend labels.
+        label_sep: For numeric columns. Text to put in between the two numbers in each
+            color group in the legend.
+        rounding: Number of decimals for numeric columns. By default the rounding
+            depends on the column's
+        kwargs: Stores additional keyword arguments taken by the matplotlib legend
+            method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
+            'm' is the name of the ThematicMap instance.
+
+    Examples
+    --------
+    Create ten random points with a numeric column from 0 to 9.
+
+    >>> import sgis as sg
+    >>> points = sg.random_points(10)
+    >>> points["number"] = range(10)
+    >>> points
+                    geometry  number
+    0  POINT (0.59780 0.50425)       0
+    1  POINT (0.07019 0.26167)       1
+    2  POINT (0.56475 0.15422)       2
+    3  POINT (0.87293 0.60316)       3
+    4  POINT (0.47373 0.20040)       4
+    5  POINT (0.98661 0.15614)       5
+    6  POINT (0.30951 0.77057)       6
+    7  POINT (0.47802 0.52824)       7
+    8  POINT (0.12215 0.96588)       8
+    9  POINT (0.02938 0.93467)       9
+
+    Creating the ThematicMap instance.
+
+    >>> m = sg.ThematicMap(points, column="number")
+
+    Changing the attributes that apply to both numeric and categorical columns.
+
+    >>> m.legend.title = "Meters"
+    >>> m.legend.title_fontsize = 11
+    >>> m.legend.fontsize = 9
+    >>> m.legend.markersize = 7.5
+    >>> m.legend.position = (0.35, 0.28)
+    >>> m.legend.kwargs["labelcolor"] = "red"
+    >>> m.plot()
+
+    Changing the additional attributes that only apply only to numeric columns.
+
+    >>> m = sg.ThematicMap(points, column="number")
+    >>> m.label_sep = "to"
+    >>> m.label_suffix = "num"
+    >>> m.rounding = 2
+    >>> m.plot()
+
+    The final attribute, labels, should be changed along with the bins attribute
+    of the ThematicMap class. The following bins will create a plot with the color
+    groups 0-2, 3-5, 6-7 and 8-9. The legend labels can then be set accordingly.
+
+    >>> m.bins = [2, 5, 7]
+    >>> m.legend.labels = ["0 to 2 num", "3 to 5 num", "6 to 7 num", "8 to 9 num"]
+    >>> m.plot()
+
+    """
+
     def __init__(
         self,
         title: str | None = None,
-        markersize: int | None = None,
-        fontsize: int | None = None,
-        title_fontsize: int | None = None,
         labels: list[str] | None = None,
         label_suffix: str = "",
         label_sep: str = "-",
         rounding: int | None = None,
         position: tuple[float] | None = None,
+        markersize: int | None = None,
+        fontsize: int | None = None,
+        title_fontsize: int | None = None,
         **kwargs,
     ):
         self.title = title
@@ -76,6 +166,11 @@ class Legend:
             self._markersize = size
 
     def _get_rounding(self, array: Series | np.ndarray) -> int:
+        def isinteger(x):
+            return np.equal(np.mod(x, 1), 0)
+
+        if np.all(isinteger(array)):
+            return 0
         if np.max(array) > 30 and np.std(array) > 5:
             return 0
         if np.max(array) > 5 and np.std(array) > 1:
@@ -117,7 +212,8 @@ class Legend:
         if self.labels:
             if len(self.labels) != len(colors):
                 raise ValueError(
-                    f"Label list must be same length as 'k'. Got k={len(colors)} and labels={self.labels}"
+                    f"Label list must be same length as 'k'. Got k={len(colors)} and "
+                    f"labels={len(self.labels)}"
                 )
             self._categories = self.labels
 
@@ -131,7 +227,8 @@ class Legend:
                     self._categories.append(f"{min_rounded} {self.label_suffix}")
                 else:
                     self._categories.append(
-                        f"{min_rounded} {self.label_suffix} {self.label_sep} {max_rounded} {self.label_suffix}"
+                        f"{min_rounded} {self.label_suffix} {self.label_sep} "
+                        f"{max_rounded} {self.label_suffix}"
                     )
 
         else:
@@ -139,6 +236,7 @@ class Legend:
                 if nan_label in str(cat1) or nan_label in str(cat2):
                     self._categories.append(nan_label)
                 else:
+                    print(bin_values, i)
                     min_ = np.min(bin_values[i])
                     max_ = np.max(bin_values[i])
                     min_rounded = self._set_rounding([min_], self._rounding)[0]
@@ -147,7 +245,8 @@ class Legend:
                         self._categories.append(f"{min_rounded} {self.label_suffix}")
                     else:
                         self._categories.append(
-                            f"{min_rounded} {self.label_suffix} {self.label_sep} {max_rounded} {self.label_suffix}"
+                            f"{min_rounded} {self.label_suffix} {self.label_sep} "
+                            f"{max_rounded} {self.label_suffix}"
                         )
 
         ax.legend(
@@ -165,6 +264,18 @@ class Legend:
     def _actually_add_categorical_legend(
         self, ax, categories_colors: dict, nan_label: str
     ):
+        if self.labels and isinstance(self.labels, dict):
+            categories_colors = {
+                self.labels[cat]: color for cat, color in categories_colors.items()
+            }
+        elif self.labels:
+            categories_colors = {
+                label: color
+                for label, color in zip(
+                    self.labels, categories_colors.values(), strict=True
+                )
+            }
+
         self._patches, self._categories = [], []
         for category, color in categories_colors.items():
             if category == nan_label:
