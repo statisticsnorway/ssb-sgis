@@ -27,7 +27,7 @@ class ThematicMap(Map):
         *gdfs: One or more GeoDataFrames.
         column: The name of the column to plot.
         size: Width and height of the plot in inches. Fontsize of title and legend is
-            adjusted accordingly.
+            adjusted accordingly. Defaults to 25.
         black: If False (default), the background will be white and the text black. If
             True, the background will be black and the text white. When True, the
             default cmap is "viridis", and when False, the default is red to purple
@@ -88,7 +88,7 @@ class ThematicMap(Map):
         self,
         *gdfs: GeoDataFrame,
         column: str | None = None,
-        size: int = 10,
+        size: int = 25,
         black: bool = False,
     ):
         super().__init__(*gdfs, column=column)
@@ -99,10 +99,10 @@ class ThematicMap(Map):
 
         self._title_fontsize = self._size * 2
 
-        self._black_or_white()
+        self.black = black
 
         if not self._is_categorical:
-            self._choose_cmap(cmap=self._cmap)
+            self._choose_cmap()
 
         self._add_legend()
 
@@ -116,9 +116,7 @@ class ThematicMap(Map):
             stop: End position for the color palette. Defaults to 256, which
                 is the end of the color range.
         """
-        self.cmap_start = start
-        self.cmap_stop = stop
-        self._cmap = cmap
+        super().change_cmap(cmap, start, stop)
         return self
 
     def add_background(self, gdf, color: str | None = None):
@@ -213,7 +211,13 @@ class ThematicMap(Map):
                 plt.savefig(file)
 
     def _add_legend(self):
-        self.legend = Legend(title=self._column, size=self._size)
+        kwargs = {}
+        if self._black:
+            kwargs["facecolor"] = "#0f0f0f"
+            kwargs["labelcolor"] = "#fefefe"
+            kwargs["title_color"] = "#fefefe"
+
+        self.legend = Legend(title=self._column, size=self._size, **kwargs)
 
         self.legend._get_best_legend_position(self._gdf)
 
@@ -222,20 +226,16 @@ class ThematicMap(Map):
                 array=self._gdf.loc[~self._nan_idx, self._column]
             )
 
-    def _choose_cmap(self, cmap: str | None, **kwargs):
+    def _choose_cmap(self):
         """kwargs is to catch start and stop points for the cmap in __init__."""
-        if cmap:
-            self._cmap = cmap
-            self.cmap_start = kwargs.get("cmap_start", 0)
-            self.cmap_stop = kwargs.get("cmap_stop", 256)
-        elif self._black:
+        if self._black:
             self._cmap = "viridis"
-            self.cmap_start = kwargs.get("cmap_start", 0)
-            self.cmap_stop = kwargs.get("cmap_stop", 256)
+            self.cmap_start = 0
+            self.cmap_stop = 256
         else:
             self._cmap = "RdPu"
-            self.cmap_start = kwargs.get("cmap_start", 33)
-            self.cmap_stop = kwargs.get("cmap_stop", 256)
+            self.cmap_start = 23
+            self.cmap_stop = 256
 
     def _actually_add_background(self):
         self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
@@ -255,12 +255,21 @@ class ThematicMap(Map):
                 "#fefefe",
                 "#383836",
             )
+            self.nan_color = "#666666"
+            if not self._is_categorical:
+                self.change_cmap("viridis")
+            self._add_legend()
+
         else:
             self.facecolor, self.title_color, self.bg_gdf_color = (
                 "#fefefe",
                 "#0f0f0f",
                 "#ebebeb",
             )
+            self.nan_color = "#c2c2c2"
+            if not self._is_categorical:
+                self.change_cmap("RdPu", start=23)
+            self._add_legend()
 
     def __getitem__(self, item):
         return getattr(self, item)
@@ -279,15 +288,6 @@ class ThematicMap(Map):
     def black(self, new_value: bool):
         self._black = new_value
         self._black_or_white()
-
-    @property
-    def cmap(self):
-        return self._cmap
-
-    @cmap.setter
-    def cmap(self, new_value: bool):
-        self._cmap = new_value
-        self.change_cmap(cmap=new_value)
 
     @property
     def title_fontsize(self):

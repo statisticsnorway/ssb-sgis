@@ -45,7 +45,6 @@ def test_thematicmap(points_oslo):
     size_20(points)
 
     def check_colors_bins(points):
-        print(points.length)
         m = sg.ThematicMap(points, points, points, "meters")
         m.title = "added title"
         m.plot()
@@ -54,13 +53,13 @@ def test_thematicmap(points_oslo):
         assert m.column == "length"
         assert m.legend.title == "length"
         assert m.colorlist == [
-            "#fddfdc",
-            "#faa8b8",
-            "#ea4d9c",
-            "#a0017c",
+            "#fee6e3",
+            "#fbb0ba",
+            "#ee559d",
+            "#a5017d",
             "#49006a",
         ], m.colorlist
-        assert m.cmap_start == 33
+        assert m.cmap_start == 23
         assert m.legend._categories == [
             "63 ",
             "126  - 188 ",
@@ -121,12 +120,12 @@ def test_thematicmap(points_oslo):
         assert m.labels == ["points"] * 3
         assert m.cmap == "RdPu"
         assert m.colorlist == [
-            "#fddfdc",
-            "#fcbebe",
-            "#f98bae",
-            "#ea4d9c",
-            "#bd1186",
-            "#820178",
+            "#fee6e3",
+            "#fcc7c3",
+            "#fa97b2",
+            "#ee559d",
+            "#c21688",
+            "#840178",
             "#49006a",
         ], m.colorlist
         assert m._k == 7, m._k
@@ -176,7 +175,7 @@ def test_thematicmap(points_oslo):
         m.legend.label_suffix = "m"
         m.title = inspect.stack()[0][3]
         m.plot()
-        assert m.colorlist == ["#fddfdc", "#f98bae", "#bd1186", "#49006a"], m.colorlist
+        assert m.colorlist == ["#fee6e3", "#fa97b2", "#c21688", "#49006a"], m.colorlist
         assert m.legend._categories == [
             "63 m",
             "126 m to 188 m",
@@ -204,10 +203,10 @@ def test_thematicmap(points_oslo):
         m.title = inspect.stack()[0][3]
         m.plot()
         assert m.colorlist == [
-            "#fddfdc",
-            "#faa8b8",
-            "#ea4d9c",
-            "#a0017c",
+            "#fee6e3",
+            "#fbb0ba",
+            "#ee559d",
+            "#a5017d",
             "#49006a",
         ], m.colorlist
         assert m.legend._categories == [
@@ -231,7 +230,7 @@ def test_thematicmap(points_oslo):
         m.title = "Middle values missing"
         m.k = 3
         m.plot()
-        assert m.colorlist == ["#fddfdc", "#ea4d9c", "#49006a", "#c2c2c2"], m.colorlist
+        assert m.colorlist == ["#fee6e3", "#ee559d", "#49006a", "#c2c2c2"], m.colorlist
         assert m.legend._categories == [
             "314  - 1255 ",
             "7841  - 11292 ",
@@ -324,10 +323,10 @@ def test_thematicmap(points_oslo):
         m.plot()
         assert len(m._unique_values) == 7, m._unique_values
         assert m.colorlist == [
-            "#fddfdc",
-            "#faa8b8",
-            "#ea4d9c",
-            "#a0017c",
+            "#fee6e3",
+            "#fbb0ba",
+            "#ee559d",
+            "#a5017d",
             "#49006a",
         ], m.colorlist
         assert m.legend._categories == [
@@ -364,7 +363,7 @@ def test_thematicmap(points_oslo):
         m.plot()
         assert len(m._unique_values) == 3, m._unique_values
         assert m.legend.rounding == 6, m.legend.rounding
-        assert m.colorlist == ["#fddfdc", "#ea4d9c", "#49006a"], m.colorlist
+        assert m.colorlist == ["#fee6e3", "#ee559d", "#49006a"], m.colorlist
         assert m.legend._categories == [
             "0.0 ",
             "1e-05 ",
@@ -443,7 +442,7 @@ def test_thematicmap(points_oslo):
         m = sg.ThematicMap(buffered1, buffered2, buffered3, "negative_number")
         m.plot()
         assert len(m._unique_values) == 3, m._unique_values
-        assert m.colorlist == ["#fddfdc", "#ea4d9c", "#49006a"], m.colorlist
+        assert m.colorlist == ["#fee6e3", "#ee559d", "#49006a"], m.colorlist
         assert m.legend._categories == [
             "-100002 ",
             "-100001 ",

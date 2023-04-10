@@ -201,16 +201,7 @@ def samplemap(
 
         m._gdf = m._gdf.clip(random_point.buffer(size))
 
-        qtm(
-            m._gdf,
-            column=m.column,
-            cmap=m._cmap,
-            k=m.k,
-            bins=m.bins,
-            nan_label=m.nan_label,
-            labels=m.labels,
-            **m.kwargs,
-        )
+        qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
 def clipmap(
@@ -296,16 +287,7 @@ def clipmap(
             labels=labels,
             **kwargs,
         )
-        qtm(
-            m._gdf,
-            column=m.column,
-            cmap=m._cmap,
-            k=m.k,
-            bins=m.bins,
-            nan_label=m.nan_label,
-            labels=m.labels,
-            **m.kwargs,
-        )
+        qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
 def qtm(
@@ -315,6 +297,8 @@ def qtm(
     black: bool = True,
     size: int = 10,
     legend: bool = True,
+    cmap: str | None = None,
+    k: int = 5,
 ) -> None:
     """Quick, thematic map of one or more GeoDataFrames.
 
@@ -332,6 +316,8 @@ def qtm(
             white. If False, it will be the opposite.
         size: Size of the plot. Defaults to 10.
         title_fontsize: Size of the title.
+        cmap: Colormap. See: https://matplotlib.org/stable/tutorials/colors/colormaps.html
+        k: Number of color groups.
 
     See also:
         ThematicMap: Class with more options for customising the plot.
@@ -339,6 +325,11 @@ def qtm(
 
     m = ThematicMap(*gdfs, column=column, size=size, black=black)
     m.title = title
+    if k:
+        m.k = k
+    if cmap:
+        m.cmap = cmap
     if not legend:
         m.legend = None
+
     m.plot()

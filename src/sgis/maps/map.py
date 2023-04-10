@@ -46,9 +46,6 @@ _CATEGORICAL_CMAP = {
     13: "#80ff00",
 }
 
-# gray for NaNs
-NAN_COLOR = "#c2c2c2"
-
 
 class Map:
     """Base class that prepares one or more GeoDataFrames for mapping.
@@ -62,8 +59,9 @@ class Map:
         column: str | None = None,
         labels: tuple[str] | None = None,
         k: int = 5,
-        nan_label: str = "Missing",
         bins: tuple[float] | None = None,
+        nan_label: str = "Missing",
+        nan_color="#c2c2c2",
         **kwargs,
     ):
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
@@ -73,6 +71,7 @@ class Map:
         self.bins = bins
         self._k = k
         self.nan_label = nan_label
+        self.nan_color = nan_color
         self._cmap = kwargs.pop("cmap", None)
 
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
@@ -311,14 +310,14 @@ class Map:
 
         if any(self._nan_idx):
             self._gdf[self._column] = self._gdf[self._column].fillna(self.nan_label)
-            self._categories_colors_dict[self.nan_label] = NAN_COLOR
+            self._categories_colors_dict[self.nan_label] = self.nan_color
 
         for gdf in self._gdfs:
             gdf["color"] = gdf[self._column].map(self._categories_colors_dict)
 
         self._gdf["color"] = self._gdf[self._column].map(self._categories_colors_dict)
 
-    def _create_bins(self, gdf, column) -> list[str]:
+    def _create_bins(self, gdf, column) -> np.ndarray:
         """Make bin list of length k + 1, or length of unique values.
 
         The returned bins sometimes have two almost identical
@@ -332,89 +331,56 @@ class Map:
         else:
             scheme = self.kwargs.get("scheme", "fisherjenks")
 
-        for plus in [0]:  # , 1, 2, 3]:
-            if len(self._unique_values) > self._k + plus:
-                n_classes = self._k + plus
-            else:
-                n_classes = len(self._unique_values)
+        n_classes = (
+            self._k if len(self._unique_values) > self._k else len(self._unique_values)
+        )
 
-            if self._k == len(self._unique_values) - 1:
-                n_classes = self._k - 1
+        if self._k == len(self._unique_values) - 1:
+            n_classes = self._k - 1
 
-            if scheme == "fisherjenks":
-                bins = jenks_breaks(
-                    gdf.loc[~self._nan_idx, column], n_classes=n_classes
-                )
-            else:
-                binning = classify(
-                    np.asarray(gdf.loc[~self._nan_idx, column]),
-                    scheme=scheme,
-                    k=self._k,
-                )
-                bins = binning.bins
-                bins = self._add_minmax_to_bins(bins)
+        if scheme == "fisherjenks":
+            bins = jenks_breaks(gdf.loc[~self._nan_idx, column], n_classes=n_classes)
+        else:
+            binning = classify(
+                np.asarray(gdf.loc[~self._nan_idx, column]),
+                scheme=scheme,
+                k=self._k,
+            )
+            bins = binning.bins
+            bins = self._add_minmax_to_bins(bins)
 
-            unique_bins = list({round(bin, 5) for bin in bins})
-            unique_bins.sort()
+        unique_bins = list({round(bin, 5) for bin in bins})
+        unique_bins.sort()
 
-            if self._k == len(self._unique_values) - 1:
-                return unique_bins
+        if self._k == len(self._unique_values) - 1:
+            return np.array(unique_bins)
 
-            if len(unique_bins) == len(self._unique_values):
-                return unique_bins
+        if len(unique_bins) == len(self._unique_values):
+            return np.array(unique_bins)
 
-            if 1:  # len(unique_bins) == self._k + 1:
+        binarray = np.array(bins)
+        binarray = np.where(
+            binarray > 0,
+            binarray + binarray / 100_000,
+            binarray - binarray / 100_000,
+        )
+        return binarray
 
-                def plus_or_minus(x, y):
-                    """Plus if negative, since minus and minus is plus."""
-                    return x - y if x > 0 else x + y
+    def change_cmap(self, cmap: str, start: int = 0, stop: int = 256):
+        """Change the color palette of the plot.
 
-                def minus_or_plus(x, y):
-                    return x + y if x > 0 else x - y
-
-                binarray = np.array(bins)
-                binarray = np.where(
-                    binarray > 0,
-                    binarray + binarray / 100_000,
-                    binarray - binarray / 100_000,
-                )
-                """
-                binarray[:-1] = np.where(
-                    binarray[:-1] > 0,
-                    binarray[:-1] - binarray[:-1] / 100_000,
-                    binarray[:-1] + binarray[:-1] / 100_000,
-                )
-                binarray[-1] = np.where(
-                    binarray[-1] > 0,
-                    binarray[-1] + binarray[-1] / 100_000,
-                    binarray[-1] - binarray[-1] / 100_000,
-                )
-                """
-                #                binarray[0] = np.where(
-                #                   binarray[0] > 0,
-                #                  binarray[0] + binarray[0] / 100_000,
-                #                 binarray[0] - binarray[0] / 100_000,
-                #            )
-                print(bins)
-                print(binarray)
-                return binarray
-                binarray[-1] = (
-                    binarray[0] - binarray[0] / 100_000
-                    if binarray[0] > 0
-                    else binarray[0] + binarray[0] / 100_000
-                )
-                binarray[-1] = (
-                    binarray[-1] - binarray[-1] / 100_000
-                    if binarray[-1] > 0
-                    else binarray[-1] + binarray[-1] / 100_000
-                )
-                print(binarray)
-                return binarray
-                plus_or_minus = lambda x, y: x - y if x > 0 else x + y
-                return [
-                    bin + bin / 100_000 if i != 0 else plus_or_minus(bin, bin / 100_000)
-                    for i, bin in enumerate(unique_bins)
-                ]
+        Args:
+            cmap: The colormap.
+                https://matplotlib.org/stable/tutorials/colors/colormaps.html
+            start: Start position for the color palette. Defaults to 0.
+            stop: End position for the color palette. Defaults to 256, which
+                is the end of the color range.
+        """
+        self.cmap_start = start
+        self.cmap_stop = stop
+        self._cmap = cmap
+        self._cmap_has_been_set = True
+        return self
 
     def _get_continous_colors(self) -> list[str]:
         cmap = matplotlib.colormaps.get_cmap(self._cmap)
@@ -423,10 +389,11 @@ class Map:
             for i in np.linspace(self.cmap_start, self.cmap_stop, num=self._k)
         ]
         if any(self._nan_idx):
-            colors_ = colors_ + [NAN_COLOR]
+            colors_ = colors_ + [self.nan_color]
         return colors_
 
     def _classify_from_bins(self, gdf: GeoDataFrame) -> np.ndarray:
+        """Place the values of the column into groups."""
         # if equal lenght, use integer column to check for equality
         # since long floats are unpredictable
         if len(self.bins) == len(self._unique_values):
@@ -442,8 +409,6 @@ class Map:
             else:
                 bins = self.bins
 
-            bins = np.array(bins, dtype=np.float64)
-
             classified = np.searchsorted(bins, gdf[self._column])
 
         # storing unique values to use in legend labels
@@ -453,11 +418,6 @@ class Map:
         }
 
         colors_ = np.array(self.colorlist)
-
-        print(bins)
-        print(gdf[self._column])
-        print(classified)
-        print(self._bins_unique_values)
 
         # nans are sorted to the end, so nans will get NAN_COLOR
         colors_classified = colors_[classified]
@@ -475,6 +435,15 @@ class Map:
                 "'k' cannot be larger than the number of unique values in the column.'"
             )
         self._k = int(new_value)
+
+    @property
+    def cmap(self):
+        return self._cmap
+
+    @cmap.setter
+    def cmap(self, new_value: bool):
+        self._cmap = new_value
+        self.change_cmap(cmap=new_value, start=self.cmap_start, stop=self.cmap_stop)
 
     @property
     def gdf(self):

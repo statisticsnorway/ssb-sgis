@@ -7,6 +7,7 @@ class.
 import warnings
 
 import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
@@ -50,15 +51,19 @@ class Legend:
             size * 1.2 of the ThematicMap class.
         markersize: Size of the color circles in the legend. Defaults to the size of
             the ThematicMap class.
+        framealpha: Transparency of the legend background.
+        edgecolor: Color of the legend border. Defaults to #0f0f0f (almost black).
         label_suffix: For numeric columns. The text to put after each number in the
             legend labels.
         label_sep: For numeric columns. Text to put in between the two numbers in each
             color group in the legend.
-        rounding: Number of decimals for numeric columns. By default the rounding
-            depends on the column's
+        rounding: For numeric columns. Number of decimals in the legend labels. By
+            default the rounding depends on the column's maximum value and standard
+            deviation.
         kwargs: Stores additional keyword arguments taken by the matplotlib legend
             method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
-            'm' is the name of the ThematicMap instance.
+            'm' is the name of the ThematicMap instance. See here:
+            https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
 
     Examples
     --------
@@ -123,6 +128,8 @@ class Legend:
         markersize: int | None = None,
         fontsize: int | None = None,
         title_fontsize: int | None = None,
+        framealpha: float = 1.0,
+        edgecolor: str = "#0f0f0f",
         **kwargs,
     ):
         self.title = title
@@ -134,6 +141,11 @@ class Legend:
             self._title_fontsize = title_fontsize
             self._fontsize = fontsize
             self._markersize = markersize
+
+        self.framealpha = framealpha
+        self.edgecolor = edgecolor
+        self.title_color = kwargs.pop("title_color", None)
+        self.labelspacing = kwargs.pop("labelspacing", 0.8)
 
         self.label_suffix = label_suffix
         self.label_sep = label_sep
@@ -236,7 +248,6 @@ class Legend:
                 if nan_label in str(cat1) or nan_label in str(cat2):
                     self._categories.append(nan_label)
                 else:
-                    print(bin_values, i)
                     min_ = np.min(bin_values[i])
                     max_ = np.max(bin_values[i])
                     min_rounded = self._set_rounding([min_], self._rounding)[0]
@@ -249,7 +260,7 @@ class Legend:
                             f"{max_rounded} {self.label_suffix}"
                         )
 
-        ax.legend(
+        legend = ax.legend(
             self._patches,
             self._categories,
             fontsize=self._fontsize,
@@ -257,8 +268,15 @@ class Legend:
             title_fontsize=self._title_fontsize,
             bbox_to_anchor=self._position,
             fancybox=False,
+            framealpha=self.framealpha,
+            edgecolor=self.edgecolor,
+            labelspacing=self.labelspacing,
             **self.kwargs,
         )
+
+        if self.title_color:
+            plt.setp(legend.get_title(), color=self.title_color)
+
         return ax
 
     def _actually_add_categorical_legend(
@@ -294,7 +312,7 @@ class Legend:
                     markeredgewidth=0,
                 )
             )
-        ax.legend(
+        legend = ax.legend(
             self._patches,
             self._categories,
             fontsize=self._fontsize,
@@ -302,8 +320,15 @@ class Legend:
             title_fontsize=self._title_fontsize,
             bbox_to_anchor=self._position,
             fancybox=False,
+            framealpha=self.framealpha,
+            edgecolor=self.edgecolor,
+            labelspacing=self.labelspacing,
             **self.kwargs,
         )
+
+        if self.title_color:
+            plt.setp(legend.get_title(), color=self.title_color)
+
         return ax
 
     def _get_best_legend_position(self, gdf):
@@ -381,3 +406,60 @@ class Legend:
     def markersize(self, new_value: bool):
         self._markersize = new_value
         self._markersize_has_been_set = True
+
+
+class _ContinousLegend(Legend):
+    """Holds the legend attributes specific to numeric columns.
+
+    This class is stored in the 'legend' attribute of the ThematicMap class.
+    The fontsize, title_fontsize and markersize attributes are adjusted
+    according to the size attribute of the ThematicMap.
+
+    The 'labels' attribute can be used to set labels manually. By default, the
+    maximum and minimum values of each color group is used as label.
+
+    Attributes:
+        labels: To manually set labels for the color groups. Must be a list/tuple of
+            same length as the number of color groups (k).
+        label_suffix: For numeric columns. The text to put after each number in the
+            legend labels.
+        label_sep: For numeric columns. Text to put in between the two numbers in each
+            color group in the legend.
+        rounding: Number of decimals for numeric columns. By default the rounding
+            depends on the column's
+
+    Examples
+    --------
+    """
+
+    pass
+
+
+class _CategoricalLegend(Legend):
+    """Holds the attributes of the legend in the ThematicMap class.
+
+    This class is stored in the 'legend' attribute of the ThematicMap class.
+    The fontsize, title_fontsize and markersize attributes are adjusted
+    according to the size attribute of the ThematicMap.
+
+    Attributes:
+        title: Legend title. Defaults to the column name if used in the
+            ThematicMap class.
+        position: The legend's x and y position in the plot, specified as a tuple of
+            x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
+            in the bottom right corner, (0.2, 0.8) for the upper left corner.
+        fontsize: Text size of the legend labels. Defaults to the size of
+            the ThematicMap class.
+        title_fontsize: Text size of the legend title. Defaults to the
+            size * 1.2 of the ThematicMap class.
+        markersize: Size of the color circles in the legend. Defaults to the size of
+            the ThematicMap class.
+        kwargs: Stores additional keyword arguments taken by the matplotlib legend
+            method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
+            'm' is the name of the ThematicMap instance.
+
+    Examples
+    --------
+    """
+
+    pass
