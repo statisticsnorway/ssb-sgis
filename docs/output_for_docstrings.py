@@ -119,6 +119,10 @@ def get_neighbor_indices_docstring():
     print(neighbor_indices.index)
 
 
+get_neighbor_indices_docstring()
+ss
+
+
 @print_function_name
 def networkanalysis_doctring(nwa, points):
     od = nwa.od_cost_matrix(points, points)

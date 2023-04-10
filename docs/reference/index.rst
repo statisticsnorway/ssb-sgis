@@ -10,6 +10,6 @@ and classes can be imported directly from sgis.
 
    networkanalysis/index
    geopandas_tools/index
-   maps
+   maps/index
    read_parquet_url
    dapla
