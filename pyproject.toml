@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ssb-sgis"
-version = "0.1.3"
+version = "0.1.4"
 description = "GIS utility functions used at Statistics Norway."
 authors = ["Statistics Norway <ort@ssb.no>"]
 license = "MIT"

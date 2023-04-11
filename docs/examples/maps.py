@@ -33,24 +33,25 @@ points = points[["geometry"]]
 
 distances = sg.get_k_nearest_neighbors(points, points, k=100)
 
-mean_dist_above_0 = (
+mean_distance_above_0 = (
     distances.loc[distances.distance != 0].groupby(level=0)["distance"].mean()
 )
 
-points["mean_dist_99_neighbors"] = mean_dist_above_0
+points["mean_dist_99_neighbors"] = mean_distance_above_0
 
 print(points)
+
 # %% [markdown]
 # Create and save a simple plot with legend and title.
 # %%
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors", size=10)
+m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
 m.title = "Distance to 99 nearest neighbors"
 m.plot()
 m.save("path_to_file.png")
 # %% [markdown]
 # Customising the colors and text. Creating an ugly example.
 # %%
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors", size=10)
+m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
 
 m.title = "Map with custom (and ugly) colors."
 m.title_fontsize = 15
@@ -66,7 +67,7 @@ m.plot()
 #
 # Customising the legend can be done through the legend attribute.
 # %%
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors", size=10)
+m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
 
 m.title = "Map with customised legend"
 
@@ -80,7 +81,7 @@ m.plot()
 # %% [markdown]
 # Using custom breaks and labels for the color classification.
 # %%
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors", size=10)
+m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
 
 m.title = "Map with custom bins and legend labels"
 m.legend.title = "Custom labels"
@@ -103,24 +104,21 @@ m.plot()
 # maximum values in each color group. This will be accurate and truthful, but
 # somewhat confusing.
 # %%
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors", size=10)
+m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
 m.title = "Map with custom bins, but default legend labels"
 m.bins = [1500, 2000, 2500, 3000]
 m.legend.title = "Default legend labels"
 m.plot()
-# %% [markdown]
-# The default size is 20 (inches). The text size is adjusted accordingly when the size
-# is set, but the points will be smaller. This can be solved with by buffering.
 # %%
 m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
-m.title = "Map with a size of 50 inches"
+m.title = "Map with a size of 20 inches"
 m.plot()
 # %% [markdown]
 # GeoDataFrames can be added as background with the add_background method.
 # The background gdf will be gray by default, but can be changed by setting
 # the color.
 # %%
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors", size=10)
+m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
 
 m.title = "Map with a background GeoDataFrame"
 m.legend.title = "Meters"
@@ -133,7 +131,7 @@ m.plot()
 # Setting black to True gives opposite colors and a palette suited for a black
 # background (viridis).
 # %%
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors", black=True, size=10)
+m = sg.ThematicMap(points, column="mean_dist_99_neighbors", black=True)
 
 m.title = "black=True, with background GeoDataFrame"
 m.legend.title = "Meters"
@@ -146,7 +144,7 @@ m.plot()
 # %% [markdown]
 # Customising all at once.
 # %%
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors", size=10)
+m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
 
 m.title = "Everything customised"
 

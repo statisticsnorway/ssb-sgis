@@ -16,9 +16,5 @@ maxdepth: 5
 ---
 reference/index
 examples/index
-examples/network_analysis_examples
-contributing
-Code of Conduct <codeofconduct>
-License <license>
 Changelog <https://github.com/statisticsnorway/ssb-sgis/releases>
 ```
