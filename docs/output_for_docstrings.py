@@ -1,3 +1,4 @@
+# %%
 """Prints outputs to paste into docstrings. Run this in the terminal:
 
 poetry run python docs/output_for_docstrings.py
@@ -26,25 +27,67 @@ def print_function_name(func):
 
 
 @print_function_name
+def legend_docstring():
+    import sgis as sg
+
+    points = sg.random_points(10)
+    points["number"] = range(10)
+    print(points)
+
+    # Creating the ThematicMap instance.
+
+    m = sg.ThematicMap(points, column="number")
+
+    # Changing the attributes that apply to both numeric and categorical columns.
+
+    m.legend.title = "Number"
+    m.legend.title_fontsize = 11
+    m.legend.fontsize = 9
+    m.legend.markersize = 7.5
+    m.legend.position = (0.8, 0.2)
+    m.legend.kwargs["labelcolor"] = "red"
+    m.plot()
+
+    # Changing the additional attributes that only apply only to numeric columns.
+
+    m = sg.ThematicMap(points, column="number")
+    m.legend.label_sep = "to"
+    m.legend.label_suffix = "num"
+    m.legend.rounding = 2
+    m.plot()
+
+    # The final attribute, labels, should be changed along with the bins attribute
+    # of the ThematicMap class, for numeric columns. The following bins will create a
+    # plot with the color groups 0-2, 3-5, 6-7 and 8-9. The legend labels can then be
+    # set accordingly.
+
+    m = sg.ThematicMap(points, column="number")
+    m.bins = [2, 5, 7]
+    m.legend.labels = ["0 to 2 num", "3 to 5 num", "6 to 7 num", "8 to 9 num"]
+    m.plot()
+
+    # For categorical columns, labels can be specified as a dictionary with the
+    # original or new column values.
+
+    points["group"] = np.random.choice([*"abc"], size=10)
+    m = sg.ThematicMap(points, column="group")
+    m.legend.labels = {"a": "A", "b": "B", "c": "C"}
+    m.plot()
+
+    points["group"] = np.random.choice([*"abc"], size=10)
+    labels = {"a": "A", "b": "B", "c": "C"}
+    points["label"] = points["group"].map(labels)
+    m = sg.ThematicMap(points, column="label")
+    m.legend.title = "Label"
+    m.plot()
+
+
+legend_docstring()
+
+
+@print_function_name
 def get_neighbor_indices_docstring():
     from sgis import get_neighbor_indices, to_gdf
-
-    """
-    points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
-    p1 = points.iloc[[0]]
-    print(points)
-    print(get_unique_neighbor_indices(p1, points))
-    print(get_unique_neighbor_indices(p1, points, max_distance=1))
-    print(get_unique_neighbor_indices(p1, points, max_distance=3))
-
-    points["text"] = [*"abd"]
-    print(get_unique_neighbor_indices(p1, points.set_index("text"), max_distance=3))
-
-    print(get_neighbor_indices(p1, points))
-    print(get_neighbor_indices(p1, points, max_distance=1))
-    print(get_neighbor_indices(p1, points, max_distance=3))
-    print(get_neighbor_indices(p1, points.set_index("text"), max_distance=3))
-    """
 
     points = to_gdf([(0, 0), (0.5, 0.5)])
     points["text"] = [*"ab"]
@@ -57,6 +100,9 @@ def get_neighbor_indices_docstring():
     )
     print(neighbor_indices.values)
     print(neighbor_indices.index)
+
+
+get_neighbor_indices_docstring()
 
 
 @print_function_name

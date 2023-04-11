@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -26,26 +27,34 @@ def not_test_explore(points_oslo, roads_oslo):
     points = points.sjoin(p.buffer(500).to_frame())
     points["geometry"] = points.buffer(8)
     roads["geometry"] = roads.buffer(3)
+
     r1 = roads.clip(p.buffer(300))
     r2 = roads.clip(p.buffer(200))
     r3 = roads.clip(p.buffer(100))
 
-    sg.clipmap(r1, r2, r3, "meters", mask=p.buffer(100), explore=False)
-    sg.clipmap(r1, r2, r3, "area", mask=p.buffer(100), explore=False)
-    sg.samplemap(
-        r1,
-        r2,
-        r3,
-        "length",
-        labels=("r100", "r200", "r300"),
-        cmap="plasma",
-        explore=False,
-        size=100,
-    )
+    sg.explore(r1, r2, r3)
+    sg.explore(r1, r2, r3, "meters")
 
-    for yesno in [1, 0]:
-        sg.samplemap(r1, roads_oslo, sample_from_first=yesno, size=50)
+    for explore in [1, 0]:
+        sg.samplemap(
+            r1,
+            r2,
+            r3,
+            "length",
+            labels=("r100", "r200", "r300"),
+            cmap="plasma",
+            explore=explore,
+            size=100,
+        )
 
+    sg.clipmap(r1, r2, r3, "meters", mask=p.buffer(100), explore=True)
+    for explore in [1, 0]:
+        sg.clipmap(
+            r1, r2, r3, "area", cmap="inferno", mask=p.buffer(100), explore=explore
+        )
+
+    for sample_from_first in [1, 0]:
+        sg.samplemap(r1, roads_oslo, sample_from_first=sample_from_first, size=50)
     monopoly = sg.to_gdf(r1.unary_union.convex_hull, crs=r1.crs)
 
     for _ in range(5):
@@ -60,45 +69,17 @@ def not_test_explore(points_oslo, roads_oslo):
 
     sg.samplemap(r1, r2, r3, "meters", labels=("r100", "r200", "r300"), cmap="plasma")
 
-    print("static mapping finished")
-
     sg.explore(roads, points, "meters")
 
     roads_mcat = roads.assign(
-        meters_cat=lambda x: (x.length / 40).astype(int).astype(str)
+        meters_cat=lambda x: (x.length / 50).astype(int).astype(str)
     )
     points_mcat = points.assign(
-        meters_cat=lambda x: (x.length / 40).astype(int).astype(str)
+        meters_cat=lambda x: (x.length / 50).astype(int).astype(str)
     )
 
     sg.explore(roads_mcat, points_mcat, "meters_cat")
-    sg.qtm(
-        roads.assign(meters_cat=lambda x: (x.length / 40).astype(int).astype(str)),
-        points.assign(meters_cat=lambda x: (x.length / 40).astype(int).astype(str)),
-        "meters_cat",
-    )
-    x = sg.Explore(roads, points, p, "meters", labels=("roads", "points", "p"))
-    assert not x._is_categorical
-    x = sg.Explore(roads, points)
-    assert x._is_categorical
-    x.explore("meters")
-    x.clipmap(p.buffer(100))
-    x.samplemap()
-
-    x = sg.Explore(r1, r2, r3, column="meters")
-    x.clipmap(p.buffer(100))
-    x.samplemap()
-    r3.loc[0, "meters"] = None
-    x = sg.Explore(r1, r2, r3)
-    x.explore()
-    x.explore(cmap="inferno")
-    #    x.explore("meters", cmap="inferno")
-    x.samplemap(cmap="magma")
-    x.samplemap(100, "km")
-    x.clipmap(p.buffer(100), cmap="RdPu")
-
-
-#    x.clipmap(p.buffer(100), "meters")
+    sg.qtm(roads_mcat, points_mcat, "meters_cat")
 
 
 def main():
@@ -108,4 +89,7 @@ def main():
 
 
 if __name__ == "__main__":
+    import cProfile
+
     main()
+    # cProfile.run("main()", sort="cumtime")
