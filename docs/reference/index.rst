@@ -1,8 +1,7 @@
 API Reference
 =============
 
-This page gives an overview of all public functions and methods of sgis. All functions
-and classes can be imported directly from sgis.
+The bullet list below contains all public functions and classes in sgis.
 
 
 .. toctree::

@@ -1,13 +1,24 @@
 # Maps
 
 ```python
+import os
+import warnings
+
 import numpy as np
 import pandas as pd
+
+
+os.chdir("../../src")
+
 import sgis as sg
 
+
+# ignore some warnings
+pd.options.mode.chained_assignment = None
+warnings.filterwarnings(action="ignore", category=FutureWarning)
 ```
 
-First get 1000 addresses in Oslo and create a column with distance to neighbors.
+First get 1000 addresses in Oslo and create a distance to neighbors column.
 
 ```python
 points = sg.read_parquet_url(
@@ -44,7 +55,7 @@ print(points)
 Create and save a simple plot with legend and title.
 
 ```python
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
+m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
 m.title = "Distance to 99 nearest neighbors"
 m.plot()
 m.save("path_to_file.png")
@@ -55,7 +66,7 @@ m.save("path_to_file.png")
 Customising the colors and text. Creating an ugly example.
 
 ```python
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
+m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
 
 m.title = "Map with custom (and ugly) colors."
 m.title_fontsize = 15
@@ -75,7 +86,7 @@ See here for available cmaps: https://matplotlib.org/stable/tutorials/colors/col
 Customising the legend can be done through the legend attribute.
 
 ```python
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
+m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
 
 m.title = "Map with customised legend"
 
@@ -93,7 +104,7 @@ m.plot()
 Using custom breaks and labels for the color classification.
 
 ```python
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
+m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
 
 m.title = "Map with custom bins and legend labels"
 m.legend.title = "Custom labels"
@@ -120,7 +131,7 @@ maximum values in each color group. This will be accurate and truthful, but
 somewhat confusing.
 
 ```python
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors")
+m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
 m.title = "Map with custom bins, but default legend labels"
 m.bins = [1500, 2000, 2500, 3000]
 m.legend.title = "Default legend labels"
@@ -128,14 +139,6 @@ m.plot()
 ```
 
 ![png](maps_files/maps_13_0.png)
-
-```python
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
-m.title = "Map with a size of 20 inches"
-m.plot()
-```
-
-![png](maps_files/maps_14_0.png)
 
 GeoDataFrames can be added as background with the add_background method.
 The background gdf will be gray by default, but can be changed by setting
@@ -153,7 +156,7 @@ m.add_background(background, color=None)
 m.plot()
 ```
 
-![png](maps_files/maps_16_0.png)
+![png](maps_files/maps_15_0.png)
 
 Setting black to True gives opposite colors and a palette suited for a black
 background (viridis).
@@ -170,7 +173,7 @@ m.add_background(background)
 m.plot()
 ```
 
-![png](maps_files/maps_18_0.png)
+![png](maps_files/maps_17_0.png)
 
 Customising all at once.
 
@@ -210,4 +213,4 @@ m.plot()
 m.save("path_to_file.png")
 ```
 
-![png](maps_files/maps_20_0.png)
+![png](maps_files/maps_19_0.png)

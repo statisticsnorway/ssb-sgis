@@ -89,23 +89,6 @@ legend_docstring()
 def get_neighbor_indices_docstring():
     from sgis import get_neighbor_indices, to_gdf
 
-    """
-    points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
-    p1 = points.iloc[[0]]
-    print(points)
-    print(get_unique_neighbor_indices(p1, points))
-    print(get_unique_neighbor_indices(p1, points, max_distance=1))
-    print(get_unique_neighbor_indices(p1, points, max_distance=3))
-
-    points["text"] = [*"abd"]
-    print(get_unique_neighbor_indices(p1, points.set_index("text"), max_distance=3))
-
-    print(get_neighbor_indices(p1, points))
-    print(get_neighbor_indices(p1, points, max_distance=1))
-    print(get_neighbor_indices(p1, points, max_distance=3))
-    print(get_neighbor_indices(p1, points.set_index("text"), max_distance=3))
-    """
-
     points = to_gdf([(0, 0), (0.5, 0.5)])
     points["text"] = [*"ab"]
     print(get_neighbor_indices(points, points))
@@ -120,7 +103,6 @@ def get_neighbor_indices_docstring():
 
 
 get_neighbor_indices_docstring()
-ss
 
 
 @print_function_name

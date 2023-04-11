@@ -63,29 +63,24 @@ nwa = sg.NetworkAnalysis(network=nw, rules=rules)
 nwa
 ```
 
-```
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
         rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...),
         log=True, detailed_log=True,
     )
-```
 
 Get number of times each line segment was visited.
 
 ```python
-freq = nwa.get_route_frequencies(points.sample(75), points.sample(75))
+frequencies = nwa.get_route_frequencies(points.sample(75), points.sample(75))
 
-sg.qtm(
-    sg.buff(freq, 15),
-    "frequency",
-    scheme="naturalbreaks",
-    cmap="plasma",
-    title="Number of times each road was used.",
-)
+m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
+m.cmap = "plasma"
+m.title = "Number of times each road was used."
+m.plot()
 ```
 
-![png](network_analysis_examples_files/network_analysis_examples_6_0.png)
+![png](network_analysis_examples_files/network_analysis_examples_5_0.png)
 
 Fast many-to-many travel times/distances.
 
@@ -95,7 +90,6 @@ od = nwa.od_cost_matrix(points, points)
 print(od)
 ```
 
-```
             origin  destination    minutes
     0            0            0   0.000000
     1            0            1  13.039830
@@ -110,32 +104,37 @@ print(od)
     999999     999          999   0.000000
 
     [1000000 rows x 3 columns]
-```
 
 Get the area that can be reached within one or more breaks.
 
 ```python
-sa = nwa.service_area(
+service_areas = nwa.service_area(
     points.iloc[[0]],
     breaks=np.arange(1, 11),
 )
 
-sg.qtm(sa, "minutes", k=10, title="Roads that can be reached within 1 to 10 minutes")
+m = sg.ThematicMap(service_areas, column="minutes", black=True, size=10)
+m.k = 10
+m.title = "Roads that can be reached within 1 to 10 minutes"
+m.plot()
 ```
 
-![png](network_analysis_examples_files/network_analysis_examples_10_0.png)
+![png](network_analysis_examples_files/network_analysis_examples_9_0.png)
 
 Get one or more route per origin-destination pair.
 
 ```python
 routes = nwa.get_k_routes(
-    points.iloc[[0]], points.iloc[[1]], k=5, drop_middle_percent=50
+    points.iloc[[0]], points.iloc[[1]], k=4, drop_middle_percent=50
 )
 
-sg.qtm(sg.buff(routes, 15), "k", title="Five fastest routes from A to B", legend=False)
+m = sg.ThematicMap(sg.buff(routes, 15), column="k", black=True)
+m.title = "Four fastest routes from A to B"
+m.legend.title = "Rank"
+m.plot()
 ```
 
-![png](network_analysis_examples_files/network_analysis_examples_12_1.png)
+![png](network_analysis_examples_files/network_analysis_examples_11_0.png)
 
 More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 

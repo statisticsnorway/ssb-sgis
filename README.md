@@ -107,7 +107,7 @@ service_areas = nwa.service_area(
     breaks=np.arange(1, 11),
 )
 
-m = sg.ThematicMap(service_areas, column="minutes", black=True)
+m = sg.ThematicMap(service_areas, column="minutes", black=True, size=10)
 m.k = 10
 m.title = "Roads that can be reached within 1 to 10 minutes"
 m.plot()
@@ -133,10 +133,6 @@ m.plot()
 More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 
 Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
-
-```python
-
-```
 
 ## Developer information
 
