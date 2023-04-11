@@ -12,7 +12,6 @@ import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from jenkspy import jenks_breaks
 from mapclassify import classify
-from pandas import Series
 from shapely import Geometry
 
 from ..geopandas_tools.general import drop_inactive_geometry_columns, rename_geometry_if
@@ -193,6 +192,13 @@ class Map:
 
     def _prepare_continous_map(self):
         """Create bins if not already done and adjust k if needed."""
+
+        if not hasattr(self, "scheme"):
+            self.scheme = self.kwargs.get("scheme", "fisherjenks")
+
+        if self.scheme is None:
+            return
+
         if not self.bins:
             self.bins = self._create_bins(self._gdf, self._column)
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
@@ -330,6 +336,9 @@ class Map:
             scheme = self.scheme
         else:
             scheme = self.kwargs.get("scheme", "fisherjenks")
+
+        if scheme is None:
+            return
 
         n_classes = (
             self._k if len(self._unique_values) > self._k else len(self._unique_values)

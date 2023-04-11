@@ -5,15 +5,18 @@ class.
 
 """
 import warnings
+from statistics import mean
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from geopandas import GeoDataFrame
 from matplotlib.lines import Line2D
 from pandas import Series
 
-from ..geopandas_tools.general import points_in_bounds
+from ..geopandas_tools.general import points_in_bounds, to_gdf
+from ..geopandas_tools.point_operations import snap_all
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -144,6 +147,8 @@ class Legend:
 
         self.framealpha = framealpha
         self.edgecolor = edgecolor
+        self.width = kwargs.pop("width", 0.1)
+        self.height = kwargs.pop("height", 0.1)
         self.title_color = kwargs.pop("title_color", None)
         self.labelspacing = kwargs.pop("labelspacing", 0.8)
 
@@ -203,8 +208,17 @@ class Legend:
             raise ValueError("Cannot modify legend before it is created.")
 
     def _actually_add_continous_legend(
-        self, ax, bins: list[float], colors: list[str], nan_label: str, bin_values: dict
+        self,
+        ax,
+        bins: list[float],
+        colors: list[str],
+        nan_label: str,
+        bin_values: dict,
     ):
+        for attr in self.__dict__.keys():
+            if attr in self.kwargs:
+                self[attr] = self.kwargs.pop(attr)
+
         self._patches, self._categories = [], []
 
         for color in colors:
@@ -266,7 +280,7 @@ class Legend:
             fontsize=self._fontsize,
             title=self.title,
             title_fontsize=self._title_fontsize,
-            bbox_to_anchor=self._position,
+            bbox_to_anchor=self._position + (self.width, self.height),
             fancybox=False,
             framealpha=self.framealpha,
             edgecolor=self.edgecolor,
@@ -282,6 +296,10 @@ class Legend:
     def _actually_add_categorical_legend(
         self, ax, categories_colors: dict, nan_label: str
     ):
+        for attr in self.__dict__.keys():
+            if attr in self.kwargs:
+                self[attr] = self.kwargs.pop(attr)
+
         if self.labels and isinstance(self.labels, dict):
             categories_colors = {
                 self.labels[cat]: color for cat, color in categories_colors.items()
@@ -318,7 +336,7 @@ class Legend:
             fontsize=self._fontsize,
             title=self.title,
             title_fontsize=self._title_fontsize,
-            bbox_to_anchor=self._position,
+            bbox_to_anchor=self._position + (self.width, self.height),
             fancybox=False,
             framealpha=self.framealpha,
             edgecolor=self.edgecolor,
@@ -331,27 +349,33 @@ class Legend:
 
         return ax
 
-    def _get_best_legend_position(self, gdf):
+    def _get_best_legend_position(self, gdf, k: int):
+        minx, miny, maxx, maxy = gdf.total_bounds
+        diffx = maxx - minx
+        diffy = maxy - miny
+
         points = points_in_bounds(gdf, 30)
         gdf = gdf.loc[:, ~gdf.columns.str.contains("index|level_")]
         joined = points.sjoin_nearest(gdf, distance_col="nearest")
-        best_position = joined.loc[
-            joined.nearest == max(joined.nearest)
-        ].drop_duplicates("geometry")
 
-        x, y = best_position.geometry.x.iloc[0], best_position.geometry.y.iloc[0]
+        max_distance = max(joined.nearest)
 
-        minx, miny, maxx, maxy = gdf.total_bounds
+        best_position = joined.loc[joined.nearest == max_distance].drop_duplicates(
+            "geometry"
+        )
 
-        bestx = (x - minx) / (maxx - minx)
-        besty = (y - miny) / (maxy - miny)
+        bestx, besty = (
+            best_position.geometry.x.iloc[0],
+            best_position.geometry.y.iloc[0],
+        )
 
-        if bestx < 0.2:
-            bestx = bestx + 0.2 - bestx
-        if besty < 0.2:
-            besty = besty + 0.2 - besty
+        bestx_01 = (bestx - minx) / (diffx)
+        besty_01 = (besty - miny) / (diffy)
 
-        self._position = bestx, besty
+        bestx_01 = 0.1 if bestx_01 < 0.5 else 0.90
+        besty_01 = 0.0375 * k if besty_01 < 0.5 else 1
+
+        return bestx_01, besty_01
 
     def __getitem__(self, item):
         return getattr(self, item)

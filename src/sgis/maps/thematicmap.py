@@ -48,7 +48,6 @@ class ThematicMap(Map):
         cmap_start (int): Start position for the color palette.
         cmap_stop (int): End position for the color palette.
         facecolor (str): Background color.
-        title_color (str): Color of the title.
 
     Examples
     --------
@@ -162,20 +161,38 @@ class ThematicMap(Map):
 
         if not self._is_categorical:
             self._prepare_continous_map()
-            self.colorlist = self._get_continous_colors()
-            self.colors = self._classify_from_bins(self._gdf)
+            if self.scheme:
+                self.colorlist = self._get_continous_colors()
+                self.colors = self._classify_from_bins(self._gdf)
         else:
             self._get_categorical_colors()
             self.colors = self._gdf["color"]
 
-        if self.legend and self._is_categorical:
+        if self.legend:
+            if not self.legend._position_has_been_set:
+                self.legend._position = self.legend._get_best_legend_position(
+                    self._gdf, k=self._k + bool(len(self._nan_idx))
+                )
+
+            if not self._is_categorical and not self.legend._rounding_has_been_set:
+                self.legend._rounding = self.legend._get_rounding(
+                    array=self._gdf.loc[~self._nan_idx, self._column]
+                )
+
+        if not self.legend:
+            self._include_legend = False
+        elif self._is_categorical:
             self.ax = self.legend._actually_add_categorical_legend(
                 ax=self.ax,
                 categories_colors=self._categories_colors_dict,
                 nan_label=self.nan_label,
             )
-        elif self.legend and not self._is_categorical:
-            if self.legend._rounding is not None:
+            self._include_legend = True
+        elif self.scheme is None:
+            self._include_legend = True
+        else:
+            self._include_legend = True
+            if not self.legend._rounding_has_been_set:
                 self.bins = self.legend._set_rounding(
                     bins=self.bins, rounding=self.legend._rounding
                 )
@@ -191,7 +208,10 @@ class ThematicMap(Map):
                 bin_values=self._bins_unique_values,
             )
 
-        self._gdf.plot(color=self.colors, legend=bool(self.legend), ax=self.ax)
+        if self.bins or self._is_categorical:
+            self._gdf.plot(color=self.colors, legend=self._include_legend, ax=self.ax)
+        else:
+            self._gdf.plot(column=self.column, legend=self._include_legend, ax=self.ax)
 
     def save(self, path: str) -> None:
         """Save figure as image file.
@@ -218,13 +238,6 @@ class ThematicMap(Map):
             kwargs["title_color"] = "#fefefe"
 
         self.legend = Legend(title=self._column, size=self._size, **kwargs)
-
-        self.legend._get_best_legend_position(self._gdf)
-
-        if not self._is_categorical:
-            self.legend._rounding = self.legend._get_rounding(
-                array=self._gdf.loc[~self._nan_idx, self._column]
-            )
 
     def _choose_cmap(self):
         """kwargs is to catch start and stop points for the cmap in __init__."""
