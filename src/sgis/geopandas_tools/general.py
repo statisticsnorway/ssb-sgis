@@ -216,12 +216,17 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     )
 
 
-def random_points_in_polygons(gdf: GeoDataFrame, n: int) -> GeoDataFrame:
+def random_points_in_polygons(
+    gdf: GeoDataFrame, n: int, ignore_index=False
+) -> GeoDataFrame:
     """Creates n random points inside each polygon of a GeoDataFrame.
 
     Args:
         gdf: GeoDataFrame to use as mask for the points.
-        n: Number of points/rows to create.
+        n: Number of points to create per polygon in 'gdf'.
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+            Defaults to False, meaning the points will have the index of the polygon
+            it is within.
 
     Returns:
         A GeoDataFrame of points with 'n' rows per row in 'gdf'. It uses the index
@@ -271,32 +276,44 @@ def random_points_in_polygons(gdf: GeoDataFrame, n: int) -> GeoDataFrame:
     if not all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
         raise ValueError("Geometry types must be polygon.")
 
+    if gdf.index.is_unique:
+        gdf["temp_idx____"] = gdf.index
+    else:
+        gdf["temp_idx____"] = range(len(gdf))
+
     all_points = pd.DataFrame()
 
-    for i in gdf.index:
-        polygon = gdf.loc[gdf.index == i]
-
+    for _ in range(n):
+        bounds = gdf.bounds
+        temp_idx____ = gdf["temp_idx____"].values
         overlapping = pd.DataFrame()
+        overlapping_indices = ()
 
-        while True:
-            minx, miny, maxx, maxy = polygon.total_bounds
-            x = np.random.uniform(minx, maxx, n)
-            y = np.random.uniform(miny, maxy, n)
-            points = to_gdf(
-                {"x": x, "y": y}, geometry=["x", "y"], crs=polygon.crs
-            ).drop(["x", "y"], axis=1)
-            overlapping = pd.concat(
-                [overlapping, points.clip(polygon)], ignore_index=True
+        while len(bounds):
+            xs = np.random.uniform(bounds.minx, bounds.maxx)
+            ys = np.random.uniform(bounds.miny, bounds.maxy)
+
+            points_df = pd.DataFrame({"x": xs, "y": ys}, index=temp_idx____)
+
+            points = to_gdf(points_df, geometry=["x", "y"], crs=gdf.crs).drop(
+                ["x", "y"], axis=1
             )
-            if len(overlapping) >= n:
-                break
 
-        overlapping = overlapping.sample(n)
-        overlapping.index = np.repeat(i, n)
+            overlapping = points.sjoin(gdf[["temp_idx____", "geometry"]], how="inner")
 
-        all_points = pd.concat([all_points, overlapping], ignore_index=False)
+            overlapping = overlapping.loc[overlapping.index == overlapping.temp_idx____]
 
-    return all_points
+            all_points = pd.concat([all_points, overlapping], ignore_index=ignore_index)
+
+            overlapping_indices = overlapping_indices + tuple(overlapping.index.values)
+
+            gdf__ = gdf.loc[~gdf["temp_idx____"].isin(overlapping_indices)]
+            bounds = gdf__.bounds
+            temp_idx____ = gdf__["temp_idx____"].values
+
+    gdf = gdf.drop("temp_idx____", axis=1)
+
+    return all_points.sort_index().drop(["temp_idx____", "index_right"], axis=1)
 
 
 def points_in_bounds(gdf: GeoDataFrame, n2: int):

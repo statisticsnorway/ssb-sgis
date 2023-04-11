@@ -24,6 +24,18 @@ def test_thematicmap(points_oslo):
 
     points.geometry = points.buffer(np.arange(1, len(points) + 1) * 10)
 
+    def scheme_is_none(points):
+        m = sg.ThematicMap(points, points, points, "meters")
+        m.title = inspect.stack()[0][3]
+        m.scheme = None
+        m.plot()
+        m = sg.ThematicMap(points, points, points, "meters", size=5)
+        m.title = inspect.stack()[0][3]
+        m.scheme = None
+        m.plot()
+
+    scheme_is_none(points)
+
     def legend_kwargs(points):
         m = sg.ThematicMap(points, points, points, "meters")
         m.title = inspect.stack()[0][3]
@@ -32,17 +44,17 @@ def test_thematicmap(points_oslo):
 
     legend_kwargs(points)
 
-    def size_20(points):
+    def size_10(points):
         m = sg.ThematicMap(points, points, points, "meters")
-        m.size = 20
+        m.size = 10
         m.title = inspect.stack()[0][3]
         m.plot()
-        assert m.title_fontsize == 40, m.title_fontsize
-        assert m.legend.title_fontsize == 20 * 1.2
-        assert m.legend.fontsize == 20
-        assert m.legend.markersize == 20
+        assert m.title_fontsize == 20, m.title_fontsize
+        assert m.legend.title_fontsize == 10 * 1.2
+        assert m.legend.fontsize == 10
+        assert m.legend.markersize == 10
 
-    size_20(points)
+    size_10(points)
 
     def check_colors_bins(points):
         m = sg.ThematicMap(points, points, points, "meters")
