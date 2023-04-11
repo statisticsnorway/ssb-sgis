@@ -7,7 +7,7 @@ GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 [![Python Version](https://img.shields.io/pypi/pyversions/ssb-sgis)][python version]
 [![License](https://img.shields.io/pypi/l/ssb-sgis)][license]
 
-[![Read the documentation at https://statisticsnorway.github.io/ssb-sgis/index.html](https://img.shields.io/readthedocs/ssb-sgis/latest.svg?label=Read%20the%20Docs)][read the docs]
+[![Read the documentation at https://statisticsnorway.github.io/ssb-sgis/index.html](https://img.shields.io/readthedocs/ssb-sgis/latest.svg?label=Read%20the%20Docs)][github pages]
 [![Tests](https://github.com/statisticsnorway/ssb-sgis/workflows/Tests/badge.svg)][tests]
 [![Coverage](https://sonarcloud.io/component_measures?id=statisticsnorway_ssb-gis-utils&metric=new_coverage&view=list)][coverage]
 
