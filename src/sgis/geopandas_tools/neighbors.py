@@ -34,7 +34,8 @@ def get_neighbor_indices(
             they are part of the 'neighbors' GeoDataFrame.
 
     Returns:
-        A list of the indices of the intersecting neighbors.
+        A pandas Series with indices of the intersecting 'neighbors'. The Series'
+        index will follow the index of the 'gdf'.
 
     Raises:
         ValueError: If gdf and neighbors do not have the same coordinate reference
@@ -49,7 +50,7 @@ def get_neighbor_indices(
     0  POINT (0.00000 0.00000)
     1  POINT (0.50000 0.50000)
 
-    With no max_distance, the points return the index of themselves.
+    With the default max_distance (0), the points return the index of themselves.
 
     >>> neighbor_indices = get_neighbor_indices(points, points)
     >>> neighbor_indices

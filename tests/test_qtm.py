@@ -27,6 +27,7 @@ def test_qtm(points_oslo):
 
     # making a list of gdfs makes it hard/impossible to get the names as labels
     pointlist = ()
+
     for i in points.index:
         pointlist = pointlist + (points.loc[[i]],)
     sg.qtm(*pointlist, "m2")

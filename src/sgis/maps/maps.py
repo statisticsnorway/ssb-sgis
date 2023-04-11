@@ -313,10 +313,12 @@ def qtm(
             GeoDataFrame is given a unique color.
         title: Text to use as the map's heading.
         black: If True (default), the background color will be black and the title
-            white. If False, it will be the opposite.
+            white. If False, it will be the opposite. The colormap will also be
+            'viridis' when black, and 'RdPu' when white.
         size: Size of the plot. Defaults to 10.
         title_fontsize: Size of the title.
-        cmap: Colormap. See: https://matplotlib.org/stable/tutorials/colors/colormaps.html
+        cmap: Color palette of the map. See:
+            https://matplotlib.org/stable/tutorials/colors/colormaps.html
         k: Number of color groups.
 
     See also:
@@ -324,11 +326,15 @@ def qtm(
     """
 
     m = ThematicMap(*gdfs, column=column, size=size, black=black)
+
     m.title = title
-    if k:
+
+    if k and len(m._unique_values) >= 6:
         m.k = k
+
     if cmap:
         m.cmap = cmap
+
     if not legend:
         m.legend = None
 

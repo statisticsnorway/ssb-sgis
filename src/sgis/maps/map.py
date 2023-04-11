@@ -432,7 +432,9 @@ class Map:
     def k(self, new_value: bool):
         if not self._is_categorical and new_value > len(self._unique_values):
             raise ValueError(
-                "'k' cannot be larger than the number of unique values in the column.'"
+                "'k' cannot be greater than the number of unique values in the column.'"
+                f"Got new k={new_value} and previous k={len(self._unique_values)}.'"
+                #  f"{''.join(self._unique_values)}"
             )
         self._k = int(new_value)
 
