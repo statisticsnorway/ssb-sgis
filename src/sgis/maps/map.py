@@ -120,16 +120,17 @@ class Map:
             )
 
     def _get_unique_floats(self) -> list[int | float]:
-        """Converting floats to large integers, then getting unique values.
+        """Get unique floats by multiplying, then converting to integer.
 
-        Also making a column of the large integers to use in the bin classifying later.
+        Find a multiplier that makes the max value greater than +- 1_000_000.
+        Because floats don't always equal each other. This will make very
+        similar values count as the same value in the color classification.
         """
         array = self._gdf.loc[~self._nan_idx, self._column]
 
         self._min = np.min(array)
         self._max = np.max(array)
-        #        self._mean = np.mean(array)
-        self._multiplier = self._get_multiplier(array)
+        self._get_multiplier(array)
 
         unique = array.reset_index(drop=True).drop_duplicates()
         as_int = self._array_to_large_int(unique)
@@ -144,7 +145,12 @@ class Map:
 
         return unique_multiplied.astype(np.int64)
 
-    def _get_multiplier(self, array: np.ndarray) -> int:
+    def _get_multiplier(self, array: np.ndarray):
+        """Find the number of zeros needed to push the max value of the array above
+        +-1_000_000.
+
+        Adding this as an attribute to use later in _classify_from_bins.
+        """
         multiplier = 10
         max_ = np.max(array * multiplier)
 
@@ -157,24 +163,24 @@ class Map:
                 multiplier *= 10
                 max_ = np.max(array * multiplier)
 
-        return multiplier
+        self._multiplier: int = multiplier
 
     def _add_minmax_to_bins(self, bins: list[float | int]) -> list[float | int]:
         """If values are outside the bin range, add max and/or min values of array."""
         # make sure they are lists
         bins = [bin for bin in bins]
 
-        if min(bins) > 0 and min(self._gdf[self._column]) < min(bins) * 0.999:
-            bins = [min(self._gdf[self._column]) * 0.9999] + bins
+        if min(bins) > 0 and min(self._gdf[self._column]) < min(bins):
+            bins = [min(self._gdf[self._column])] + bins
 
-        if min(bins) < 0 and min(self._gdf[self._column]) < min(bins) * 1.0001:
-            bins = [min(self._gdf[self._column]) * 1.0001] + bins
+        if min(bins) < 0 and min(self._gdf[self._column]) < min(bins):
+            bins = [min(self._gdf[self._column])] + bins
 
-        if max(bins) > 0 and max(self._gdf[self._column]) > max(bins) * 1.0001:
-            bins = bins + [max(self._gdf[self._column]) * 1.0001]
+        if max(bins) > 0 and max(self._gdf[self._column]) > max(bins):
+            bins = bins + [max(self._gdf[self._column])]
 
-        if max(bins) < 0 and max(self._gdf[self._column]) < max(bins) * 1.0001:
-            bins = bins + [max(self._gdf[self._column]) * 1.0001]
+        if max(bins) < 0 and max(self._gdf[self._column]) < max(bins):
+            bins = bins + [max(self._gdf[self._column])]
 
         return bins
 

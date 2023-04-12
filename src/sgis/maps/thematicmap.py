@@ -154,6 +154,11 @@ class ThematicMap(Map):
             kwargs["column"] = self.column
             self.legend = None
             include_legend = False
+        elif hasattr(self, "color"):
+            kwargs["column"] = self.column
+            kwargs["color"] = self.color
+            self.legend = None
+            include_legend = False
         elif self._is_categorical:
             kwargs = self._prepare_categorical_plot(kwargs)
         else:
