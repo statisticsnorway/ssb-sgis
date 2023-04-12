@@ -44,6 +44,101 @@ def test_thematicmap(points_oslo):
 
     legend_kwargs(points)
 
+    def pretty_labels(points):
+        m = sg.ThematicMap(points, points, points, "meters")
+        m.title = inspect.stack()[0][3]
+        m.legend.title = "not pretty_labels, no bins"
+        m.legend.pretty_labels = False
+        m.plot()
+        assert m.legend._categories == [
+            "63 ",
+            "126  - 188 ",
+            "251 ",
+            "314 ",
+            "377  - 440 ",
+        ], m.legend._categories
+        m = sg.ThematicMap(points, points, points, "meters")
+        m.title = inspect.stack()[0][3]
+        m.legend.title = "pretty_labels, no bins"
+        m.legend.pretty_labels = True
+        m.plot()
+        assert m.legend._categories == [
+            "63  - 63 ",
+            "64  - 188 ",
+            "189  - 251 ",
+            "252  - 314 ",
+            "315  - 440 ",
+        ], m.legend._categories
+
+        # custom column with the exact bin values
+        points["col"] = [63, 100, 150, 200, 250, 300, 440]
+
+        m = sg.ThematicMap(points, points, points, "col")
+        m.bins = (99.99, 199.999, 299.99)
+        m.title = "not pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
+        m.legend.title = "not pretty_labels, bins"
+        m.legend.pretty_labels = False
+        m.plot()
+        assert m.legend._categories == [
+            "63 ",
+            "100  - 150 ",
+            "200  - 250 ",
+            "300  - 440 ",
+        ], m.legend._categories
+
+        m = sg.ThematicMap(points, points, points, "col")
+        m.bins = (100, 200, 300)
+        m.title = "not pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
+        m.legend.title = "not pretty_labels, bins"
+        m.legend.pretty_labels = False
+        m.plot()
+        assert m.legend._categories == [
+            "63  - 100 ",
+            "150  - 200 ",
+            "250  - 300 ",
+            "440 ",
+        ], m.legend._categories
+
+        m = sg.ThematicMap(points, points, points, "col")
+        m.bins = (99.99, 199.999, 299.99)
+        m.title = "pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
+        m.legend.title = "pretty_labels, bins"
+        m.legend.pretty_labels = True
+        m.legend.label_sep = "to"
+        m.plot()
+        assert m.legend._categories == [
+            "63  to 100 ",
+            "101  to 200 ",
+            "201  to 300 ",
+            "301  to 440 ",
+        ], m.legend._categories
+
+        m = sg.ThematicMap(points, points, points, "col")
+        m.bins = (100, 200, 300)
+        m.title = "pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
+        m.legend.title = "pretty_labels, bins"
+        m.legend.pretty_labels = True
+        m.plot()
+        assert m.legend._categories == [
+            "63  - 100 ",
+            "101  - 200 ",
+            "201  - 300 ",
+            "301  - 440 ",
+        ], m.legend._categories
+
+    pretty_labels(points)
+
+    def thousand_sep_decimal_mark(points):
+        m = sg.ThematicMap(points, column="meters")
+        for thousand_sep in [None, ".", ",", " "]:
+            for decimal_mark in [None, ",", "."]:
+                number = 10000000.1234
+                m.thousand_sep = thousand_sep
+                m.decimal_mark = decimal_mark
+                print(thousand_sep, decimal_mark, number)
+
+    thousand_sep_decimal_mark(points)
+
     def size_10(points):
         m = sg.ThematicMap(points, points, points, "meters")
         m.size = 10
@@ -209,6 +304,21 @@ def test_thematicmap(points_oslo):
 
     fontsize(points)
 
+    def categorical_column(points):
+        points["category"] = [*"abcddea"]
+        m = sg.ThematicMap(points, "category")
+        m.plot()
+        assert m._categories_colors_dict == {
+            "a": "#4576ff",
+            "b": "#ff455e",
+            "c": "#59d45f",
+            "d": "#b51d8b",
+            "e": "#ffa514",
+        }, m._categories_colors_dict
+        assert m.legend._categories == ["a", "b", "c", "d", "e"], m.legend._categories
+
+    categorical_column(points)
+
     def rounding_1(points):
         m = sg.ThematicMap(points, points, points, "meters")
         m.legend.rounding = 1
@@ -254,31 +364,39 @@ def test_thematicmap(points_oslo):
             try:
                 return int(value)
             except Exception:
-                return pd.NA
+                return "nan"
 
-        with_nan["col_with_nan_cat"] = with_nan["col_with_nan"].map(_to_int)
+        with_nan["col_with_nan_cat"] = with_nan["col_with_nan"].map(_to_int).astype(str)
+        with_nan.loc[with_nan.col_with_nan_cat == "nan", "col_with_nan_cat"] = pd.NA
 
         m = sg.ThematicMap(with_nan, "col_with_nan_cat")
         m.title = "Middle values missing, categorical"
         m.plot()
         assert m.legend._categories == [
-            313,
-            1254,
-            7841,
-            11291,
-            15369,
+            "11291",
+            "1254",
+            "15369",
+            "313",
+            "7841",
             "Missing",
         ], m.legend._categories
         assert m._categories_colors_dict == {
-            313: "#4576ff",
-            1254: "#ff455e",
-            7841: "#59d45f",
-            11291: "#b51d8b",
-            15369: "#ffa514",
+            "11291": "#4576ff",
+            "1254": "#ff455e",
+            "15369": "#59d45f",
+            "313": "#b51d8b",
+            "7841": "#ffa514",
             "Missing": "#c2c2c2",
-        }
+        }, m._categories_colors_dict
 
     with_nans(points)
+
+    def categorical_column(points):
+        points["category"] = [*"abcddef"]
+        m = sg.ThematicMap(points, "category")
+        m.plot()
+
+    categorical_column(points)
 
     def cmap_start_and_stop(points):
         m = sg.ThematicMap(points, points, points, "meters")
@@ -498,11 +616,11 @@ def test_thematicmap(points_oslo):
         m.plot()
         assert len(m._unique_values) == 7, m._unique_values
         assert m.legend._categories == [
-            "-100006  - -100005 ",
+            "-100006 ",
+            "-100005 ",
             "-100004 ",
-            "-100003 ",
-            "-100002  - -100001 ",
-            "-100000 ",
+            "-100003  - -100002 ",
+            "-100001  - -100000 ",
         ], m.legend._categories
 
     negative_numbers(points)

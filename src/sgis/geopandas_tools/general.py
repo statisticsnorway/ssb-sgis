@@ -234,7 +234,7 @@ def random_points_in_polygons(
 
     Examples
     --------
-    Buffer 100 random points.
+    First create and buffer 100 random points.
 
     >>> import sgis as sg
     >>> gdf = sg.random_points(100)
@@ -311,9 +311,22 @@ def random_points_in_polygons(
             bounds = gdf__.bounds
             temp_idx____ = gdf__["temp_idx____"].values
 
+    all_points = all_points.sort_index().drop(["temp_idx____", "index_right"], axis=1)
+
+    if gdf.index.is_unique:
+        gdf = gdf.drop("temp_idx____", axis=1)
+        return all_points
+
+    original_index = {
+        temp_idx: idx for temp_idx, idx in zip(gdf.temp_idx____, gdf.index)
+    }
+
+    all_points.index = all_points.index.map(original_index)
+    all_points.index.name = None
+
     gdf = gdf.drop("temp_idx____", axis=1)
 
-    return all_points.sort_index().drop(["temp_idx____", "index_right"], axis=1)
+    return all_points
 
 
 def points_in_bounds(gdf: GeoDataFrame, n2: int):

@@ -1,3 +1,4 @@
+# %%
 import sys
 from pathlib import Path
 
@@ -140,7 +141,7 @@ def main():
     points_oslo = points_oslo()
 
     test_k_neighbors(points_oslo)
-    test_neighbor_indices(points_oslo)
+    test_get_neighbor_indices()
 
 
 if __name__ == "__main__":

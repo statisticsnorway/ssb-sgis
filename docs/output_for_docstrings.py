@@ -37,9 +37,10 @@ def legend_docstring():
     # Creating the ThematicMap instance.
 
     m = sg.ThematicMap(points, column="number")
+    print(m.legend)
+    print(type(m.legend))
 
     # Changing the attributes that apply to both numeric and categorical columns.
-
     m.legend.title = "Number"
     m.legend.title_fontsize = 11
     m.legend.fontsize = 9
@@ -62,6 +63,11 @@ def legend_docstring():
     # set accordingly.
 
     m = sg.ThematicMap(points, column="number")
+    m.bins = [0, 2, 5, 7, 9]
+    m.legend.labels = ["0 to 2 num", "3 to 5 num", "6 to 7 num", "8 to 9 num"]
+    m.plot()
+
+    m = sg.ThematicMap(points, column="number")
     m.bins = [2, 5, 7]
     m.legend.labels = ["0 to 2 num", "3 to 5 num", "6 to 7 num", "8 to 9 num"]
     m.plot()
@@ -78,11 +84,13 @@ def legend_docstring():
     labels = {"a": "A", "b": "B", "c": "C"}
     points["label"] = points["group"].map(labels)
     m = sg.ThematicMap(points, column="label")
+    print(type(m.legend))
     m.legend.title = "Label"
     m.plot()
 
 
 legend_docstring()
+sss
 
 
 @print_function_name
