@@ -126,29 +126,38 @@ class Map:
         """
         array = self._gdf.loc[~self._nan_idx, self._column]
 
-        self._gdf["col_as_int"] = self._array_to_large_int(array)
+        self._min = np.min(array)
+        self._max = np.max(array)
+        #        self._mean = np.mean(array)
+        self._multiplier = self._get_multiplier(array)
 
         unique = array.reset_index(drop=True).drop_duplicates()
-
         as_int = self._array_to_large_int(unique)
         no_duplicates = as_int.drop_duplicates()
+
         return list(sorted(unique.loc[no_duplicates.index]))
 
-    @staticmethod
-    def _array_to_large_int(array: np.ndarray):
+    def _array_to_large_int(self, array: np.ndarray):
         """Multiply values in float array, then convert to integer."""
-        max_ = np.max(array)
-        min_ = np.min(array)
 
-        if max_ > 1 or min_ < -1:
-            unique_multiplied = array * np.emath.logn(1.25, np.abs(np.mean(array)) + 1)
-        else:
-            unique_multiplied = array
-            while max_ < 1_000_000:
-                unique_multiplied = unique_multiplied * 10
-                max_ = np.max(unique_multiplied)
+        unique_multiplied = array * self._multiplier
 
         return unique_multiplied.astype(np.int64)
+
+    def _get_multiplier(self, array: np.ndarray) -> int:
+        multiplier = 10
+        max_ = np.max(array * multiplier)
+
+        if self._max > 0:
+            while max_ < 1_000_000:
+                multiplier *= 10
+                max_ = np.max(array * multiplier)
+        else:
+            while max_ > -1_000_000:
+                multiplier *= 10
+                max_ = np.max(array * multiplier)
+
+        return multiplier
 
     def _add_minmax_to_bins(self, bins: list[float | int]) -> list[float | int]:
         """If values are outside the bin range, add max and/or min values of array."""
@@ -194,7 +203,7 @@ class Map:
         """Create bins if not already done and adjust k if needed."""
 
         if not hasattr(self, "scheme"):
-            self.scheme = self.kwargs.get("scheme", "fisherjenks")
+            self.scheme = self.kwargs.pop("scheme", "fisherjenks")
 
         if self.scheme is None:
             return
@@ -204,7 +213,6 @@ class Map:
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
                 warnings.warn(f"Could not create {self._k} classes.")
                 self._k = len(self.bins)
-        #            self.bins = self._add_minmax_to_bins(self.bins)
         else:
             self.bins = self._add_minmax_to_bins(self.bins)
             if len(self._unique_values) > len(self.bins):
@@ -332,14 +340,6 @@ class Map:
         much faster than the one from Mapclassifier.
         """
 
-        if hasattr(self, "scheme"):
-            scheme = self.scheme
-        else:
-            scheme = self.kwargs.get("scheme", "fisherjenks")
-
-        if scheme is None:
-            return
-
         n_classes = (
             self._k if len(self._unique_values) > self._k else len(self._unique_values)
         )
@@ -347,12 +347,12 @@ class Map:
         if self._k == len(self._unique_values) - 1:
             n_classes = self._k - 1
 
-        if scheme == "fisherjenks":
+        if self.scheme == "fisherjenks":
             bins = jenks_breaks(gdf.loc[~self._nan_idx, column], n_classes=n_classes)
         else:
             binning = classify(
                 np.asarray(gdf.loc[~self._nan_idx, column]),
-                scheme=scheme,
+                scheme=self.scheme,
                 k=self._k,
             )
             bins = binning.bins
@@ -385,47 +385,81 @@ class Map:
         self._cmap_has_been_set = True
         return self
 
-    def _get_continous_colors(self) -> list[str]:
+    def _get_continous_colors(self, n: int):
         cmap = matplotlib.colormaps.get_cmap(self._cmap)
         colors_ = [
             colors.to_hex(cmap(int(i)))
-            for i in np.linspace(self.cmap_start, self.cmap_stop, num=self._k)
+            #            for i in np.linspace(self.cmap_start, self.cmap_stop, num=self._k)
+            for i in np.linspace(self.cmap_start, self.cmap_stop, num=n)
         ]
         if any(self._nan_idx):
             colors_ = colors_ + [self.nan_color]
-        return colors_
+        return np.array(colors_)
 
-    def _classify_from_bins(self, gdf: GeoDataFrame) -> np.ndarray:
+    def _classify_from_bins(self, gdf: GeoDataFrame):  # -> np.ndarray:
         """Place the values of the column into groups."""
         # if equal lenght, use integer column to check for equality
         # since long floats are unpredictable
         if len(self.bins) == len(self._unique_values):
-            if "col_as_int" not in gdf.columns:
-                gdf["col_as_int"] = self._array_to_large_int(gdf[self._column])
-            bins = np.array(sorted(gdf["col_as_int"].unique()))
+            gdf["col_as_int"] = self._array_to_large_int(gdf[self._column])
+            unique = np.array(sorted(self._unique_values))
+            bins = self._array_to_large_int(unique)
             classified = np.searchsorted(bins, gdf["col_as_int"])
         else:
-            if any(self._nan_idx) and len(self.bins) == len(self.colorlist):
+            if len(self.bins) == self._k + 1:
                 bins = self.bins[1:]
-            elif not any(self._nan_idx) and len(self.bins) == len(self.colorlist) + 1:
-                bins = self.bins[1:]
+
+            #            if any(self._nan_idx) and len(self.bins) == len(self._unique_colors):
+            #               bins = self.bins[1:]
+            #          elif not any(self._nan_idx) and len(self.bins) == len(self._unique_colors) + 1:
+            #             bins = self.bins[1:]
             else:
                 bins = self.bins
 
+            #            bins = self.bins
+
             classified = np.searchsorted(bins, gdf[self._column])
 
-        # storing unique values to use in legend labels
-        self._bins_unique_values = {
-            i: list(set(gdf.loc[classified == i, self._column]))
-            for i, _ in enumerate(bins)
-        }
+        return classified
 
-        colors_ = np.array(self.colorlist)
+    def _make_bin_value_dict(self, gdf, classified) -> dict:
+        # TODO: MOve to thematicmap
+        bins_unique_values = {
+            i: list(set(gdf.loc[classified == i, self._column]))
+            for i, _ in enumerate(np.unique(classified))
+        }
+        return bins_unique_values
+
+    def _classify_colors(self, colors, classified):
+        # nans are sorted to the end, so nans will get NAN_COLOR
+        return colors[classified]
+
+        return self._unique_colors[[key for key in rank_dict.keys()]]
+
+    #    def _push_colors(self, classified):
+    #       # push classes downwards if gaps in sequence, so from [0,2,3] to [0,1,2]
+    #      rank_dict = {val: rank for rank, val in enumerate(np.unique(classified))}
+    #
+    #       return np.array([rank_dict[val] for val in classified])
+
+    def _push_classification(self, classified):
+        # push classes downwards if gaps in sequence, so from [0,2,3] to [0,1,2]
+        rank_dict = {val: rank for rank, val in enumerate(np.unique(classified))}
+
+        return np.array([rank_dict[val] for val in classified])
+
+        self._unique_colors = self._unique_colors[[key for key in rank_dict.keys()]]
+
+        #        self._bins_unique_values = {
+        #           i: list(set(gdf.loc[self._classified == i, self._column]))
+        #          for i, _ in enumerate(np.unique(self._classified))
+        #     }
 
         # nans are sorted to the end, so nans will get NAN_COLOR
-        colors_classified = colors_[classified]
 
-        return colors_classified
+    #        colors_classified = self._unique_colors[self._classified]
+
+    #       return colors_classified
 
     @property
     def k(self):

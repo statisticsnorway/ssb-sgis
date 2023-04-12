@@ -404,13 +404,23 @@ class ContinousLegend(Legend):
 
         if np.all(isinteger(array)):
             return 0
-        if np.max(array) > 30 and np.std(array) > 5:
+
+        closest_to_zero_idx = np.argmin(np.abs(array))
+        closest_to_zero = np.abs(array[closest_to_zero_idx])
+
+        between_1_and_0 = 1 > closest_to_zero > 0
+        if between_1_and_0:
+            return int(abs(np.log10(abs(closest_to_zero)))) + 1
+
+        std_ = np.std(array)
+        max_ = np.max(array)
+        if max_ > 30 and std_ > 5:
             return 0
-        if np.max(array) > 5 and np.std(array) > 1:
+        if max_ > 5 and std_ > 1:
             return 1
-        if np.max(array) > 1 and np.std(array) > 0.1:
+        if max_ > 1 and std_ > 0.1:
             return 2
-        return int(abs(np.log10(np.std(array)))) + 1
+        return int(abs(np.log10(std_))) + 1
 
     @staticmethod
     def _set_rounding(bins, rounding: int | float):

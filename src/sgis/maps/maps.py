@@ -329,7 +329,7 @@ def qtm(
 
     m.title = title
 
-    if k and len(m._unique_values) >= 6:
+    if k and len(m._unique_values) >= k:
         m.k = k
 
     if cmap:

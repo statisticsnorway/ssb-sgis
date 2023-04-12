@@ -45,7 +45,7 @@ def not_test_explore(points_oslo, roads_oslo):
     print("when multiple gdfs and no column, should be one color per gdf:")
     sg.explore(r300, r200, r100)
     print("when numeric column, should be same color scheme:")
-    sg.explore(r300, r200, r100, "meters")
+    sg.explore(r300, r200, r100, "meters", scheme="quantiles")
 
     for explore in [1, 0]:
         sg.samplemap(
@@ -101,9 +101,15 @@ def not_test_explore(points_oslo, roads_oslo):
     sg.explore(roads_mcat, points_mcat, "meters_cat")
     sg.qtm(roads_mcat, points_mcat, "meters_cat")
 
-    # createing a geometry collection
+    print("creating a geometry collection")
     r100 = pd.concat([r100, lines], ignore_index=True).dissolve()
     sg.explore(r300, r200, r100, "meters")
+
+    print("only one unique value per gdf")
+    r300["col"] = 30323.32032
+    r200["col"] = 232323.32032
+    r100["col"] = 12243433.3223
+    sg.explore(r300, r200, r100, "col")
 
 
 def main():

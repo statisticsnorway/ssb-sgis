@@ -9,6 +9,7 @@ from statistics import mean
 import branca as bc
 import folium
 import matplotlib
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString
@@ -30,7 +31,7 @@ NAN_COLOR = "#969696"
 
 
 # cols to not show when hovering over geometries (tooltip)
-COLS_TO_DROP = ["color", "geometry"]
+COLS_TO_DROP = ["color", "col_as_int", "geometry"]
 
 
 # from geopandas
@@ -321,8 +322,11 @@ class Explore(Map):
 
     def _create_continous_map(self):
         self._prepare_continous_map()
-        self.colorlist = self._get_continous_colors()
-        self.colors = self._classify_from_bins(self._gdf)
+        if self.scheme:
+            classified = self._classify_from_bins(self._gdf)
+            classified_sequential = self._push_classification(classified)
+            n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
+            unique_colors = self._get_continous_colors(n=n_colors)
 
         self.map = self._explore_return(
             self._gdf,
@@ -333,7 +337,7 @@ class Explore(Map):
         )
 
         colorbar = bc.colormap.StepColormap(
-            self.colorlist,
+            unique_colors,
             vmin=self._gdf[self._column].min(),
             vmax=self._gdf[self._column].max(),
             caption=self._column,
@@ -346,12 +350,19 @@ class Explore(Map):
                 continue
             f = folium.FeatureGroup(name=label)
 
-            self.colors = self._classify_from_bins(gdf)
+            # self.colors = self._classify_from_bins(gdf)
+            classified = self._classify_from_bins(gdf)
+            print("heiiii")
 
+            print(classified)
+            #            classified = self._push_classification(classified)
+            colorarray = self._classify_colors(unique_colors, classified)
+            #            self._make_bin_value_dict(gdf, classified)
+            print(colorarray)
             gjs = self._explore_return(
                 gdf,
                 tooltip=self._tooltip_cols(gdf),
-                color=self.colors,
+                color=colorarray,
                 return_="geojson",
                 **{key: value for key, value in self.kwargs.items() if key != "title"},
             )
