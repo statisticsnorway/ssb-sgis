@@ -222,16 +222,14 @@ class ThematicMap(Map):
             return kwargs
 
         else:
-            classified = self._classify_from_bins(self._gdf)
+            classified = self._classify_from_bins(self._gdf, bins=self.bins)
             classified_sequential = self._push_classification(classified)
             n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
             self._unique_colors = self._get_continous_colors(n=n_colors)
             self._bins_unique_values = self._make_bin_value_dict(
                 self._gdf, classified_sequential
             )
-            colorarray = self._classify_colors(
-                self._unique_colors, classified_sequential
-            )
+            colorarray = self._unique_colors[classified_sequential]
             kwargs["color"] = colorarray
 
         if self.legend and not self.legend._rounding_has_been_set:
@@ -302,6 +300,14 @@ class ThematicMap(Map):
             self._cmap = "RdPu"
             self.cmap_start = 23
             self.cmap_stop = 256
+
+    def _make_bin_value_dict(self, gdf, classified) -> dict:
+        """Dict with unique values of all bins. Used in labels in ContinousLegend."""
+        bins_unique_values = {
+            i: list(set(gdf.loc[classified == i, self._column]))
+            for i, _ in enumerate(np.unique(classified))
+        }
+        return bins_unique_values
 
     def _actually_add_background(self):
         self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])

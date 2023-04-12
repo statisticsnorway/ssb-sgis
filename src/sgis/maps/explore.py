@@ -323,7 +323,7 @@ class Explore(Map):
     def _create_continous_map(self):
         self._prepare_continous_map()
         if self.scheme:
-            classified = self._classify_from_bins(self._gdf)
+            classified = self._classify_from_bins(self._gdf, bins=self.bins)
             classified_sequential = self._push_classification(classified)
             n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
             unique_colors = self._get_continous_colors(n=n_colors)
@@ -350,15 +350,9 @@ class Explore(Map):
                 continue
             f = folium.FeatureGroup(name=label)
 
-            # self.colors = self._classify_from_bins(gdf)
-            classified = self._classify_from_bins(gdf)
-            print("heiiii")
+            classified = self._classify_from_bins(gdf, bins=self.bins)
+            colorarray = unique_colors[classified]
 
-            print(classified)
-            #            classified = self._push_classification(classified)
-            colorarray = self._classify_colors(unique_colors, classified)
-            #            self._make_bin_value_dict(gdf, classified)
-            print(colorarray)
             gjs = self._explore_return(
                 gdf,
                 tooltip=self._tooltip_cols(gdf),

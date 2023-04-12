@@ -119,7 +119,7 @@ class Map:
                 list(self._gdf.loc[~self._nan_idx, self._column].unique())
             )
 
-    def _get_unique_floats(self) -> list[int | float]:
+    def _get_unique_floats(self) -> np.array:
         """Get unique floats by multiplying, then converting to integer.
 
         Find a multiplier that makes the max value greater than +- 1_000_000.
@@ -136,7 +136,7 @@ class Map:
         as_int = self._array_to_large_int(unique)
         no_duplicates = as_int.drop_duplicates()
 
-        return list(sorted(unique.loc[no_duplicates.index]))
+        return np.sort(np.array(unique.loc[no_duplicates.index]))
 
     def _array_to_large_int(self, array: np.ndarray):
         """Multiply values in float array, then convert to integer."""
@@ -337,7 +337,7 @@ class Map:
 
         self._gdf["color"] = self._gdf[self._column].map(self._categories_colors_dict)
 
-    def _create_bins(self, gdf, column) -> np.ndarray:
+    def _create_bins(self, gdf: GeoDataFrame, column: str) -> np.ndarray:
         """Make bin list of length k + 1, or length of unique values.
 
         The returned bins sometimes have two almost identical
@@ -391,7 +391,7 @@ class Map:
         self._cmap_has_been_set = True
         return self
 
-    def _get_continous_colors(self, n: int):
+    def _get_continous_colors(self, n: int) -> np.ndarray:
         cmap = matplotlib.colormaps.get_cmap(self._cmap)
         colors_ = [
             colors.to_hex(cmap(int(i)))
@@ -402,70 +402,31 @@ class Map:
             colors_ = colors_ + [self.nan_color]
         return np.array(colors_)
 
-    def _classify_from_bins(self, gdf: GeoDataFrame):  # -> np.ndarray:
-        """Place the values of the column into groups."""
-        # if equal lenght, use integer column to check for equality
-        # since long floats are unpredictable
-        if len(self.bins) == len(self._unique_values):
+    def _classify_from_bins(self, gdf: GeoDataFrame, bins: np.ndarray) -> np.ndarray:
+        """Place the column values into groups."""
+        if len(bins) == len(self._unique_values):
+            # if equal lenght, convert to integer and check for equality
             gdf["col_as_int"] = self._array_to_large_int(gdf[self._column])
-            unique = np.array(sorted(self._unique_values))
-            bins = self._array_to_large_int(unique)
+            bins = self._array_to_large_int(self._unique_values)
             classified = np.searchsorted(bins, gdf["col_as_int"])
         else:
-            if len(self.bins) == self._k + 1:
-                bins = self.bins[1:]
-
-            #            if any(self._nan_idx) and len(self.bins) == len(self._unique_colors):
-            #               bins = self.bins[1:]
-            #          elif not any(self._nan_idx) and len(self.bins) == len(self._unique_colors) + 1:
-            #             bins = self.bins[1:]
-            else:
-                bins = self.bins
-
-            #            bins = self.bins
+            if len(bins) == self._k + 1:
+                bins = bins[1:]
 
             classified = np.searchsorted(bins, gdf[self._column])
 
         return classified
 
-    def _make_bin_value_dict(self, gdf, classified) -> dict:
-        # TODO: MOve to thematicmap
-        bins_unique_values = {
-            i: list(set(gdf.loc[classified == i, self._column]))
-            for i, _ in enumerate(np.unique(classified))
-        }
-        return bins_unique_values
+    def _push_classification(self, classified: np.ndarray) -> np.ndarray:
+        """Push classes downwards if gaps in classification sequence.
 
-    def _classify_colors(self, colors, classified):
-        # nans are sorted to the end, so nans will get NAN_COLOR
-        return colors[classified]
+        So from e.g. [0,2,4] to [0,1,2].
 
-        return self._unique_colors[[key for key in rank_dict.keys()]]
-
-    #    def _push_colors(self, classified):
-    #       # push classes downwards if gaps in sequence, so from [0,2,3] to [0,1,2]
-    #      rank_dict = {val: rank for rank, val in enumerate(np.unique(classified))}
-    #
-    #       return np.array([rank_dict[val] for val in classified])
-
-    def _push_classification(self, classified):
-        # push classes downwards if gaps in sequence, so from [0,2,3] to [0,1,2]
+        Otherwise, will get index error when classifying colors.
+        """
         rank_dict = {val: rank for rank, val in enumerate(np.unique(classified))}
 
         return np.array([rank_dict[val] for val in classified])
-
-        self._unique_colors = self._unique_colors[[key for key in rank_dict.keys()]]
-
-        #        self._bins_unique_values = {
-        #           i: list(set(gdf.loc[self._classified == i, self._column]))
-        #          for i, _ in enumerate(np.unique(self._classified))
-        #     }
-
-        # nans are sorted to the end, so nans will get NAN_COLOR
-
-    #        colors_classified = self._unique_colors[self._classified]
-
-    #       return colors_classified
 
     @property
     def k(self):
