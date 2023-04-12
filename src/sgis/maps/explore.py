@@ -9,6 +9,7 @@ from statistics import mean
 import branca as bc
 import folium
 import matplotlib
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from shapely.geometry import LineString
@@ -30,7 +31,7 @@ NAN_COLOR = "#969696"
 
 
 # cols to not show when hovering over geometries (tooltip)
-COLS_TO_DROP = ["color", "geometry"]
+COLS_TO_DROP = ["color", "col_as_int", "geometry"]
 
 
 # from geopandas
@@ -71,7 +72,13 @@ class Explore(Map):
         self.max_zoom = max_zoom
         self.show_in_browser = show_in_browser
 
-        if not self._is_categorical:
+        if any(get_geom_type(gdf) == "mixed" for gdf in self.gdfs):
+            self._make_all_polygon()
+
+        if self._is_categorical:
+            if len(self.gdfs) == 1:
+                self._split_categories()
+        else:
             if not self._cmap:
                 self._cmap = "viridis"
             self.cmap_start = kwargs.pop("cmap_start", 0)
@@ -222,15 +229,14 @@ class Explore(Map):
         gdfs: tuple[GeoDataFrame] = ()
         for gdf in self._gdfs:
             gdf = gdf.clip(mask)
+            collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
+            if len(collections):
+                collections = collections.explode(index_parts=False)
+                gdf = pd.concat([gdf, collections], ignore_index=False)
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
         self._gdf = pd.concat(gdfs, ignore_index=True)
         self._explore(**kwargs)
-
-    def _update_column(self):
-        self._is_categorical = self._check_if_categorical()
-        self._fill_missings()
-        self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
     def _explore(self, **kwargs):
         self.kwargs = self.kwargs | kwargs
@@ -245,10 +251,46 @@ class Explore(Map):
         else:
             display(self.map)
 
+    def _split_categories(self):
+        new_gdfs, new_labels = [], []
+        for cat in self._unique_values:
+            gdf = self.gdf.loc[self.gdf[self.column] == cat]
+            new_gdfs.append(gdf)
+            new_labels.append(cat)
+        self._gdfs = new_gdfs
+        self._gdf = pd.concat(new_gdfs, ignore_index=True)
+        self.labels = new_labels
+
+    def _make_all_polygon(self):
+        """Buffer gdf if mixed geometry types
+
+        Because Folium does not handle GeometryCollection well
+        """
+
+        new_gdfs = []
+        for gdf in self.gdfs:
+            if get_geom_type(gdf) == "mixed":
+                gdf[gdf._geometry_column_name] = gdf.buffer(0.1)
+            new_gdfs.append(gdf)
+        self._gdfs = new_gdfs
+        self._gdf = pd.concat(new_gdfs, ignore_index=True)
+        self._nan_idx = self._gdf[self._column].isna()
+
+    def _update_column(self):
+        self._is_categorical = self._check_if_categorical()
+        self._fill_missings()
+        self._gdf = pd.concat(self._gdfs, ignore_index=True)
+
     def _create_categorical_map(self):
         self._get_categorical_colors()
 
-        self.map = self._explore_return(self._gdf, return_="empty_map", **self.kwargs)
+        self.map = self._explore_return(
+            self._gdf,
+            return_="empty_map",
+            max_zoom=self.max_zoom,
+            popup=self.popup,
+            **self.kwargs,
+        )
 
         for gdf, label in zip(self._gdfs, self.labels, strict=True):
             if not len(gdf):
@@ -280,17 +322,22 @@ class Explore(Map):
 
     def _create_continous_map(self):
         self._prepare_continous_map()
-        self.colorlist = self._get_continous_colors()
-        self.colors = self._classify_from_bins(self._gdf)
+        if self.scheme:
+            classified = self._classify_from_bins(self._gdf, bins=self.bins)
+            classified_sequential = self._push_classification(classified)
+            n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
+            unique_colors = self._get_continous_colors(n=n_colors)
 
         self.map = self._explore_return(
             self._gdf,
             return_="empty_map",
+            max_zoom=self.max_zoom,
+            popup=self.popup,
             **self.kwargs,
         )
 
         colorbar = bc.colormap.StepColormap(
-            self.colorlist,
+            unique_colors,
             vmin=self._gdf[self._column].min(),
             vmax=self._gdf[self._column].max(),
             caption=self._column,
@@ -303,12 +350,13 @@ class Explore(Map):
                 continue
             f = folium.FeatureGroup(name=label)
 
-            self.colors = self._classify_from_bins(gdf)
+            classified = self._classify_from_bins(gdf, bins=self.bins)
+            colorarray = unique_colors[classified]
 
             gjs = self._explore_return(
                 gdf,
                 tooltip=self._tooltip_cols(gdf),
-                color=self.colors,
+                color=colorarray,
                 return_="geojson",
                 **{key: value for key, value in self.kwargs.items() if key != "title"},
             )
@@ -415,7 +463,7 @@ class Explore(Map):
             if isinstance(tiles, xyzservices.TileProvider):
                 attr = attr if attr else tiles.html_attribution
                 map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
-                map_kwds["max_zoom"] = tiles.get("max_zoom", 18)
+                map_kwds["max_zoom"] = tiles.get("max_zoom", 30)
                 tiles = tiles.build_url(scale_factor="{r}")
 
             m = folium.Map(

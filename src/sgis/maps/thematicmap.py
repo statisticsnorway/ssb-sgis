@@ -3,10 +3,11 @@ import warnings
 
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 
-from .legend import Legend
+from .legend import ContinousLegend, Legend
 from .map import Map
 
 
@@ -103,7 +104,7 @@ class ThematicMap(Map):
         if not self._is_categorical:
             self._choose_cmap()
 
-        self._add_legend()
+        self._create_legend()
 
     def change_cmap(self, cmap: str, start: int = 0, stop: int = 256):
         """Change the color palette of the plot.
@@ -139,79 +140,34 @@ class ThematicMap(Map):
         self.diffy = self.maxy - self.miny
         return self
 
-    def plot(self) -> None:
+    def plot(self, **kwargs) -> None:
         """Creates the final plot.
 
         This method should be run after customising the map, but before saving.
         """
 
-        self.fig, self.ax = self._get_matplotlib_figure_and_axix(
-            figsize=(self._size, self._size)
-        )
-        self.fig.patch.set_facecolor(self.facecolor)
-        self.ax.set_axis_off()
+        include_legend = bool(kwargs.pop("legend", self.legend))
 
-        if hasattr(self, "_background_gdfs"):
-            self._actually_add_background()
+        self._prepare_plot(**kwargs)
 
-        if hasattr(self, "title") and self.title:
-            self.ax.set_title(
-                self.title, fontsize=self.title_fontsize, color=self.title_color
-            )
-
-        if not self._is_categorical:
-            self._prepare_continous_map()
-            if self.scheme:
-                self.colorlist = self._get_continous_colors()
-                self.colors = self._classify_from_bins(self._gdf)
+        if "color" in kwargs:
+            kwargs["column"] = self.column
+            self.legend = None
+            include_legend = False
+        elif hasattr(self, "color"):
+            kwargs["column"] = self.column
+            kwargs["color"] = self.color
+            self.legend = None
+            include_legend = False
+        elif self._is_categorical:
+            kwargs = self._prepare_categorical_plot(kwargs)
         else:
-            self._get_categorical_colors()
-            self.colors = self._gdf["color"]
+            kwargs = self._prepare_continous_plot(kwargs)
 
         if self.legend:
-            if not self.legend._position_has_been_set:
-                self.legend._position = self.legend._get_best_legend_position(
-                    self._gdf, k=self._k + bool(len(self._nan_idx))
-                )
+            self._actually_add_legend()
 
-            if not self._is_categorical and not self.legend._rounding_has_been_set:
-                self.legend._rounding = self.legend._get_rounding(
-                    array=self._gdf.loc[~self._nan_idx, self._column]
-                )
-
-        if not self.legend:
-            self._include_legend = False
-        elif self._is_categorical:
-            self.ax = self.legend._actually_add_categorical_legend(
-                ax=self.ax,
-                categories_colors=self._categories_colors_dict,
-                nan_label=self.nan_label,
-            )
-            self._include_legend = True
-        elif self.scheme is None:
-            self._include_legend = True
-        else:
-            self._include_legend = True
-            if not self.legend._rounding_has_been_set:
-                self.bins = self.legend._set_rounding(
-                    bins=self.bins, rounding=self.legend._rounding
-                )
-
-            if any(self._nan_idx):
-                self.bins = self.bins + [self.nan_label]
-
-            self.ax = self.legend._actually_add_continous_legend(
-                ax=self.ax,
-                bins=self.bins,
-                colors=self.colorlist,
-                nan_label=self.nan_label,
-                bin_values=self._bins_unique_values,
-            )
-
-        if self.bins or self._is_categorical:
-            self._gdf.plot(color=self.colors, legend=self._include_legend, ax=self.ax)
-        else:
-            self._gdf.plot(column=self.column, legend=self._include_legend, ax=self.ax)
+        self._gdf.plot(legend=include_legend, ax=self.ax, **kwargs)
 
     def save(self, path: str) -> None:
         """Save figure as image file.
@@ -230,14 +186,109 @@ class ThematicMap(Map):
             with fs.open(path, "wb") as file:
                 plt.savefig(file)
 
-    def _add_legend(self):
+    def _prepare_plot(self, **kwargs):
+        """Add figure and axis, title and background gdf."""
+        for attr in self.__dict__.keys():
+            if attr in self.kwargs:
+                self[attr] = self.kwargs.pop(attr)
+            if attr in kwargs:
+                self[attr] = kwargs.pop(attr)
+
+        self.fig, self.ax = self._get_matplotlib_figure_and_axix(
+            figsize=(self._size, self._size)
+        )
+        self.fig.patch.set_facecolor(self.facecolor)
+        self.ax.set_axis_off()
+
+        if hasattr(self, "_background_gdfs"):
+            self._actually_add_background()
+
+        if hasattr(self, "title") and self.title:
+            self.ax.set_title(
+                self.title, fontsize=self.title_fontsize, color=self.title_color
+            )
+
+    def _prepare_continous_plot(self, kwargs) -> dict:
+        """Create bins and colors."""
+        self._prepare_continous_map()
+
+        if self.scheme is None:
+            self.legend = None
+            kwargs["column"] = self.column
+            return kwargs
+
+        elif self.bins is None:
+            kwargs["column"] = self.column
+            return kwargs
+
+        else:
+            classified = self._classify_from_bins(self._gdf, bins=self.bins)
+            classified_sequential = self._push_classification(classified)
+            n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
+            self._unique_colors = self._get_continous_colors(n=n_colors)
+            self._bins_unique_values = self._make_bin_value_dict(
+                self._gdf, classified_sequential
+            )
+            colorarray = self._unique_colors[classified_sequential]
+            kwargs["color"] = colorarray
+
+        if self.legend and not self.legend._rounding_has_been_set:
+            self.bins = self.legend._set_rounding(
+                bins=self.bins, rounding=self.legend._rounding
+            )
+
+            if any(self._nan_idx):
+                self.bins = self.bins + [self.nan_label]
+
+        return kwargs
+
+    def _prepare_categorical_plot(self, kwargs) -> dict:
+        """Map values to colors."""
+        self._get_categorical_colors()
+        colorarray = self._gdf["color"]
+
+        kwargs["color"] = colorarray
+        return kwargs
+
+    def _actually_add_legend(self) -> None:
+        """Add legend to the axis and fill it with colors and labels."""
+        if not self.legend._position_has_been_set:
+            self.legend._position = self.legend._get_best_legend_position(
+                self._gdf, k=self._k + bool(len(self._nan_idx))
+            )
+
+        if not self._is_categorical and not self.legend._rounding_has_been_set:
+            self.legend._rounding = self.legend._get_rounding(
+                array=self._gdf.loc[~self._nan_idx, self._column]
+            )
+
+        if self._is_categorical:
+            self.ax = self.legend._actually_add_categorical_legend(
+                ax=self.ax,
+                categories_colors=self._categories_colors_dict,
+                nan_label=self.nan_label,
+            )
+        else:
+            self.ax = self.legend._actually_add_continous_legend(
+                ax=self.ax,
+                bins=self.bins,
+                colors=self._unique_colors,
+                nan_label=self.nan_label,
+                bin_values=self._bins_unique_values,
+            )
+
+    def _create_legend(self):
+        """Instantiate the Legend class."""
         kwargs = {}
         if self._black:
             kwargs["facecolor"] = "#0f0f0f"
             kwargs["labelcolor"] = "#fefefe"
             kwargs["title_color"] = "#fefefe"
 
-        self.legend = Legend(title=self._column, size=self._size, **kwargs)
+        if self._is_categorical:
+            self.legend = Legend(title=self._column, size=self._size, **kwargs)
+        else:
+            self.legend = ContinousLegend(title=self._column, size=self._size, **kwargs)
 
     def _choose_cmap(self):
         """kwargs is to catch start and stop points for the cmap in __init__."""
@@ -249,6 +300,14 @@ class ThematicMap(Map):
             self._cmap = "RdPu"
             self.cmap_start = 23
             self.cmap_stop = 256
+
+    def _make_bin_value_dict(self, gdf, classified) -> dict:
+        """Dict with unique values of all bins. Used in labels in ContinousLegend."""
+        bins_unique_values = {
+            i: list(set(gdf.loc[classified == i, self._column]))
+            for i, _ in enumerate(np.unique(classified))
+        }
+        return bins_unique_values
 
     def _actually_add_background(self):
         self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
@@ -271,7 +330,6 @@ class ThematicMap(Map):
             self.nan_color = "#666666"
             if not self._is_categorical:
                 self.change_cmap("viridis")
-            self._add_legend()
 
         else:
             self.facecolor, self.title_color, self.bg_gdf_color = (
@@ -282,7 +340,8 @@ class ThematicMap(Map):
             self.nan_color = "#c2c2c2"
             if not self._is_categorical:
                 self.change_cmap("RdPu", start=23)
-            self._add_legend()
+
+        self._create_legend()
 
     def __getitem__(self, item):
         return getattr(self, item)

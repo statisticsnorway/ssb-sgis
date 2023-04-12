@@ -77,6 +77,9 @@ def overlay(
             f"'how' was {how!r} but is expected to be in {', '.join(allowed_hows)}"
         )
 
+    if df1.crs != df2.crs:
+        raise ValueError(f"crs mismatch. Got {df1.crs} and {df2.crs}")
+
     df1 = clean_geoms(df1)
     df2 = clean_geoms(df2)
 
@@ -295,6 +298,8 @@ def _union(pairs, df1, df2, left, right):
         merged.append(intersections)
     symmdiff = _symmetric_difference(pairs, df1, df2, left, right)
     merged.append(symmdiff)
+    crs = merged[0].crs
+    merged = [gdf.to_crs(crs) for gdf in merged]
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
@@ -305,6 +310,8 @@ def _identity(pairs, df1, left):
         merged.append(intersections)
     diff = _difference(pairs, df1, left)
     merged.append(diff)
+    crs = merged[0].crs
+    merged = [gdf.to_crs(crs) for gdf in merged]
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
@@ -317,6 +324,8 @@ def _symmetric_difference(pairs, df1, df2, left, right):
         merged.append(clip_right)
     diff_right = _add_from_right(df1, df2, right)
     merged.append(diff_right)
+    crs = merged[0].crs
+    merged = [gdf.to_crs(crs) for gdf in merged]
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
@@ -327,6 +336,8 @@ def _difference(pairs, df1, left):
         merged.append(clip_left)
     diff_left = _add_from_left(df1, left)
     merged.append(diff_left)
+    crs = merged[0].crs
+    merged = [gdf.to_crs(crs) for gdf in merged]
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 

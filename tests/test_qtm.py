@@ -43,6 +43,17 @@ def test_qtm(points_oslo):
     p7 = points.iloc[[6]]
     sg.qtm(p1, p2, p3, p4, p5, p6, p7)
     sg.qtm(p1, p2, p3, p4, p5, p6, p7, "m2", title="Should be five colors, gradient")
+    sg.qtm(
+        p1,
+        p2,
+        p3,
+        p4,
+        p5,
+        p6,
+        p7,
+        color="red",
+        title="Should be all red colors, no legend",
+    )
 
     points100 = sg.buff(points_oslo.sample(5), 100).assign(area_m=lambda df: df.area)
     points300 = sg.buff(points_oslo.sample(5), 300).assign(area_m=lambda df: df.area)
@@ -101,6 +112,11 @@ def test_qtm(points_oslo):
             "But some colors have multiple \noverlapping points"
         ),
     )
+
+    points100["col"] = 30323.32032
+    points300["col"] = 232323.32032
+    points500["col"] = 12243433.3223
+    sg.qtm(points100, points300, points500, "col")
 
 
 def main():

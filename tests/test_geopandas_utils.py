@@ -18,7 +18,6 @@ import sgis as sg
 
 def test_random():
     for i in [1, 10, 100]:
-        print("hei")
         gdf = sg.random_points(i, loc=100)
         assert len(gdf) == i
 
@@ -33,8 +32,14 @@ def test_random():
         joined = points.sjoin(buffered, how="inner")
         assert all(points.temp_idx.isin(joined.temp_idx))
 
+        if i == 10:
+            buffered.index = np.random.choice([0, 1, 2], i)
+            points = sg.random_points_in_polygons(buffered, 100)
+            assert all(points.index.isin([0, 1, 2]))
 
-test_random()
+            points["temp_idx"] = range(len(points))
+            joined = points.sjoin(buffered, how="inner")
+            assert all(points.temp_idx.isin(joined.temp_idx))
 
 
 def test_area(gdf_fixture):

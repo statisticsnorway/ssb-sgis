@@ -7,8 +7,6 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 The 'qtm' function shows a static map of one or more GeoDataFrames.
 """
 from geopandas import GeoDataFrame, GeoSeries
-from matplotlib.axes._axes import Axes
-from matplotlib.figure import Figure
 from shapely import Geometry
 
 from ..exceptions import NotInJupyterError
@@ -299,6 +297,7 @@ def qtm(
     legend: bool = True,
     cmap: str | None = None,
     k: int = 5,
+    **kwargs,
 ) -> None:
     """Quick, thematic map of one or more GeoDataFrames.
 
@@ -320,6 +319,7 @@ def qtm(
         cmap: Color palette of the map. See:
             https://matplotlib.org/stable/tutorials/colors/colormaps.html
         k: Number of color groups.
+        **kwargs: Additional keyword arguments taken by the geopandas plot method.
 
     See also:
         ThematicMap: Class with more options for customising the plot.
@@ -329,7 +329,7 @@ def qtm(
 
     m.title = title
 
-    if k and len(m._unique_values) >= 6:
+    if k and len(m._unique_values) >= k:
         m.k = k
 
     if cmap:
@@ -338,4 +338,4 @@ def qtm(
     if not legend:
         m.legend = None
 
-    m.plot()
+    m.plot(**kwargs)
