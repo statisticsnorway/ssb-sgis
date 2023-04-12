@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from geopandas import GeoDataFrame
 
-from .legend import Legend
+from .legend import ContinousLegend, Legend
 from .map import Map
 
 
@@ -139,11 +139,14 @@ class ThematicMap(Map):
         self.diffy = self.maxy - self.miny
         return self
 
-    def plot(self) -> None:
+    def plot(self, **kwargs) -> None:
         """Creates the final plot.
 
         This method should be run after customising the map, but before saving.
         """
+
+        #        if self.legend.pretty_labels and not self.bins_have_been_set:
+        #           raise ValueError("")
 
         self.fig, self.ax = self._get_matplotlib_figure_and_axix(
             figsize=(self._size, self._size)
@@ -208,10 +211,14 @@ class ThematicMap(Map):
                 bin_values=self._bins_unique_values,
             )
 
-        if self.bins or self._is_categorical:
-            self._gdf.plot(color=self.colors, legend=self._include_legend, ax=self.ax)
+        if self.bins is not None or self._is_categorical:
+            self._gdf.plot(
+                color=self.colors, legend=self._include_legend, ax=self.ax, **kwargs
+            )
         else:
-            self._gdf.plot(column=self.column, legend=self._include_legend, ax=self.ax)
+            self._gdf.plot(
+                column=self.column, legend=self._include_legend, ax=self.ax, **kwargs
+            )
 
     def save(self, path: str) -> None:
         """Save figure as image file.
@@ -237,7 +244,10 @@ class ThematicMap(Map):
             kwargs["labelcolor"] = "#fefefe"
             kwargs["title_color"] = "#fefefe"
 
-        self.legend = Legend(title=self._column, size=self._size, **kwargs)
+        if self._is_categorical:
+            self.legend = Legend(title=self._column, size=self._size, **kwargs)
+        else:
+            self.legend = ContinousLegend(title=self._column, size=self._size, **kwargs)
 
     def _choose_cmap(self):
         """kwargs is to catch start and stop points for the cmap in __init__."""

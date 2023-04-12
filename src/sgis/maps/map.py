@@ -204,7 +204,7 @@ class Map:
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
                 warnings.warn(f"Could not create {self._k} classes.")
                 self._k = len(self.bins)
-            self.bins = self._add_minmax_to_bins(self.bins)
+        #            self.bins = self._add_minmax_to_bins(self.bins)
         else:
             self.bins = self._add_minmax_to_bins(self.bins)
             if len(self._unique_values) > len(self.bins):
@@ -285,10 +285,10 @@ class Map:
             return False
 
         if all_nan == len(self._gdfs):
-            raise ValueError(f"All values are NaN in column {self.kwargs['column']!r}.")
+            raise ValueError(f"All values are NaN in column {self.column!r}.")
 
         if col_not_present == len(self._gdfs):
-            raise ValueError(f"{self.kwargs['column']} not found.")
+            raise ValueError(f"{self.column} not found.")
 
         return False
 
@@ -367,13 +367,7 @@ class Map:
         if len(unique_bins) == len(self._unique_values):
             return np.array(unique_bins)
 
-        binarray = np.array(bins)
-        binarray = np.where(
-            binarray > 0,
-            binarray + binarray / 100_000,
-            binarray - binarray / 100_000,
-        )
-        return binarray
+        return np.array(bins)
 
     def change_cmap(self, cmap: str, start: int = 0, stop: int = 256):
         """Change the color palette of the plot.
