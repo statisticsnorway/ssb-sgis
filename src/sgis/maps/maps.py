@@ -37,11 +37,15 @@ def explore(
     show_in_browser: bool = False,
     **kwargs,
 ) -> None:
-    """Interactive map of GeoDataFrames with layers that can be toggles on/off.
+    """Interactive map of GeoDataFrames with layers that can be toggled on/off.
 
     It takes all the given GeoDataFrames and displays them together in an
     interactive map with a common legend. If 'column' is not specified, each
     GeoDataFrame is given a unique color.
+
+    If the column is of type string and only one GeoDataFrame is given, the unique
+    values will be split into separate GeoDataFrames so that each value can be toggled
+    on/off.
 
     The coloring can be changed with the 'cmap' parameter. The default colormap is a
     custom, strongly colored palette. If a numerical colum is given, the 'viridis'

@@ -151,11 +151,11 @@ class ThematicMap(Map):
         self._prepare_plot(**kwargs)
 
         if "color" in kwargs:
-            kwargs["column"] = self.column
+            kwargs.pop("column", None)
             self.legend = None
             include_legend = False
         elif hasattr(self, "color"):
-            kwargs["column"] = self.column
+            kwargs.pop("column", None)
             kwargs["color"] = self.color
             self.legend = None
             include_legend = False
