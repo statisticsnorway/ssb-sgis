@@ -34,7 +34,7 @@ Preparing for network analysis:
 
 ```python
 import sgis as sg
-
+import pandas as pd
 
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
