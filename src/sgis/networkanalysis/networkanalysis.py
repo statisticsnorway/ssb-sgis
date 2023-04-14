@@ -85,7 +85,6 @@ class NetworkAnalysis:
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
 
     Creating a NetworkAnalysis class instance.
-    hei
 
     >>> nw = (
     ...     sg.DirectedNetwork(roads)
@@ -96,6 +95,7 @@ class NetworkAnalysis:
     ...         minute_cols=("drivetime_fw", "drivetime_bw"),
     ...     )
     ... )
+
     >>> rules = sg.NetworkAnalysisRules(weight="minutes")
     >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
     >>> nwa
