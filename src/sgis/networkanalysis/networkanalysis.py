@@ -95,7 +95,6 @@ class NetworkAnalysis:
     ...         minute_cols=("drivetime_fw", "drivetime_bw"),
     ...     )
     ... )
-
     >>> rules = sg.NetworkAnalysisRules(weight="minutes")
     >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
     >>> nwa
@@ -190,6 +189,7 @@ class NetworkAnalysis:
     3 2023-03-29 15:20:50              0.2           service_area              3                 NaN           0.0000  10.000000              True  ...   5.000000   10.000000  15.000000  4.330127    NaN     NaN  5, 10, 15      True
 
     [4 rows x 23 columns]
+
     """
 
     def __init__(
@@ -451,6 +451,7 @@ class NetworkAnalysis:
         999     999          999  14.892648
 
         [1000 rows x 3 columns]
+
         """
         if self._log:
             time_ = perf_counter()
