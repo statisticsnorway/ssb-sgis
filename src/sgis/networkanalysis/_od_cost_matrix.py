@@ -16,12 +16,7 @@ def _od_cost_matrix(
     lines: bool = False,
     rowwise: bool = False,
 ) -> DataFrame | GeoDataFrame:
-    if rowwise and len(origins) != len(destinations):
-        raise ValueError(
-            "'origins' and 'destinations' must have the same length when rowwise=True"
-        )
-
-    results = graph.distances(
+    distances: list[list[str]] = graph.distances(
         weights="weight",
         source=origins["temp_idx"],
         target=destinations["temp_idx"],
@@ -29,10 +24,10 @@ def _od_cost_matrix(
 
     ori_idx, des_idx, costs = [], [], []
     for i, f_idx in enumerate(origins["temp_idx"]):
-        for ii, t_idx in enumerate(destinations["temp_idx"]):
+        for j, t_idx in enumerate(destinations["temp_idx"]):
             ori_idx.append(f_idx)
             des_idx.append(t_idx)
-            costs.append(results[i][ii])
+            costs.append(distances[i][j])
 
     results = (
         pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, weight: costs})
@@ -44,7 +39,10 @@ def _od_cost_matrix(
     # so filtering to rowwise afterwards instead
     if rowwise:
         rowwise_df = DataFrame(
-            {"origin": origins["temp_idx"], "destination": destinations["temp_idx"]}
+            {
+                "origin": origins["temp_idx"].reset_index(drop=True),
+                "destination": destinations["temp_idx"].reset_index(drop=True),
+            }
         )
         results = rowwise_df.merge(results, on=["origin", "destination"], how="left")
 

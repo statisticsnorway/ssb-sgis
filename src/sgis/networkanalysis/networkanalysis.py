@@ -15,15 +15,16 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
+from pandas.api.types import is_dict_like
 
 from ..geopandas_tools.general import _push_geom_col
 from ..geopandas_tools.line_operations import split_lines_by_nearest_point
-from ._get_route import _get_route
+from ._get_route import _get_k_routes, _get_route, _get_route_frequencies
 from ._od_cost_matrix import _od_cost_matrix
 from ._points import Destinations, Origins
 from ._service_area import _service_area
 from .directednetwork import DirectedNetwork
-from .network import Network, _edge_ids
+from .network import Network
 from .networkanalysisrules import NetworkAnalysisRules
 
 
@@ -454,7 +455,7 @@ class NetworkAnalysis:
         if self._log:
             time_ = perf_counter()
 
-        self._prepare_network_analysis(origins, destinations)
+        self._prepare_network_analysis(origins, destinations, rowwise)
 
         results = _od_cost_matrix(
             graph=self.graph,
@@ -464,9 +465,6 @@ class NetworkAnalysis:
             lines=lines,
             rowwise=rowwise,
         )
-
-        self.origins._get_n_missing(results, "origin")
-        self.destinations._get_n_missing(results, "destination")
 
         results["origin"] = results["origin"].map(self.origins.idx_dict)
         results["destination"] = results["destination"].map(self.destinations.idx_dict)
@@ -546,7 +544,7 @@ class NetworkAnalysis:
         if self._log:
             time_ = perf_counter()
 
-        self._prepare_network_analysis(origins, destinations)
+        self._prepare_network_analysis(origins, destinations, rowwise)
 
         results = _get_route(
             graph=self.graph,
@@ -557,14 +555,8 @@ class NetworkAnalysis:
             rowwise=rowwise,
         )
 
-        self.origins._get_n_missing(results, "origin")
-        self.destinations._get_n_missing(results, "destination")
-
         results["origin"] = results["origin"].map(self.origins.idx_dict)
         results["destination"] = results["destination"].map(self.destinations.idx_dict)
-
-        if isinstance(results, GeoDataFrame):
-            results = _push_geom_col(results)
 
         if self.rules.split_lines:
             self._unsplit_network()
@@ -689,9 +681,9 @@ class NetworkAnalysis:
         if self._log:
             time_ = perf_counter()
 
-        self._prepare_network_analysis(origins, destinations)
+        self._prepare_network_analysis(origins, destinations, rowwise)
 
-        results = _get_route(
+        results = _get_k_routes(
             graph=self.graph,
             origins=self.origins.gdf,
             destinations=self.destinations.gdf,
@@ -701,9 +693,6 @@ class NetworkAnalysis:
             k=k,
             drop_middle_percent=drop_middle_percent,
         )
-
-        self.origins._get_n_missing(results, "origin")
-        self.destinations._get_n_missing(results, "destination")
 
         results["origin"] = results["origin"].map(self.origins.idx_dict)
         results["destination"] = results["destination"].map(self.destinations.idx_dict)
@@ -729,6 +718,8 @@ class NetworkAnalysis:
         self,
         origins: GeoDataFrame,
         destinations: GeoDataFrame,
+        weight_df: DataFrame | None = None,
+        rowwise: bool = False,
         frequency_col: str = "frequency",
     ) -> GeoDataFrame:
         """Finds the number of times each line segment was visited in all trips.
@@ -738,9 +729,18 @@ class NetworkAnalysis:
         segment was used. The aggregation is done on the line indices, which is much
         faster than getting the geometries and then dissolving.
 
+        The trip frequencies can be weighted (multiplied) based on 'weight_df'. See
+        example below.
+
         Args:
-            origins: GeoDataFrame of points from where the routes will originate
-            destinations: GeoDataFrame of points from where the routes will terminate
+            origins: GeoDataFrame of points from where the routes will originate.
+            destinations: GeoDataFrame of points from where the routes will terminate.
+            weight_df: A long formated DataFrame where each row contains the indices of
+                an origin-destination pair and the number to multiply the frequency for
+                this route by. The DataFrame can either contain three columns (origin
+                index, destination index and weight. In that order) or only a weight
+                column and a MultiIndex where level 0 is origin index and level 1 is
+                destination index.
             frequency_col: Name of column with the number of times each road was
                 visited. Defaults to 'frequency'.
 
@@ -753,52 +753,143 @@ class NetworkAnalysis:
             The resulting lines will keep all columns of the 'gdf' of the Network.
 
         Raises:
-            ValueError: if no paths were found.
+            ValueError: If no paths were found.
+            ValueError: If weight_df is not a DataFrame with one or three columns.
+            ValueError: If weight_df is given and the index of origins/destinations
+                is not unique.
 
         Examples
         --------
-        Get number of times each road was visited for trips from 25 to 25 points.
 
-        import sgis as sg
+        >>> import sgis as sg
+        >>> import pandas as pd
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
         ... )
 
-        >>> frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
-        >>> frequencies[["source", "target", "frequency", "geometry"]]
-               source target   frequency                                          geometry
-        137866  19095  44962    1.0      LINESTRING Z (265476.114 6645475.318 160.724, ...
-        138905  30597  16266    1.0      LINESTRING Z (272648.400 6652234.800 178.170, ...
-        138903  16266  45388    1.0      LINESTRING Z (272642.602 6652236.229 178.687, ...
-        138894  43025  30588    1.0      LINESTRING Z (272446.600 6652253.700 162.970, ...
-        138892  30588  16021    1.0      LINESTRING Z (272414.400 6652263.100 161.170, ...
-        ...       ...    ...    ...                                                    ...
-        158287  78157  78156  176.0      LINESTRING Z (263975.482 6653605.092 132.739, ...
-        149697  72562  72563  180.0      LINESTRING Z (265179.202 6651549.723 81.532, 2...
-        149698  72563  72564  180.0      LINESTRING Z (265178.761 6651549.956 81.561, 2...
-        149695  72560  72561  180.0      LINESTRING Z (265457.755 6651249.238 76.502, 2...
-        149696  72561  72562  180.0      LINESTRING Z (265180.086 6651549.259 81.473, 2...
+        Get number of times each road was visited for trips from 25 to 25 points.
 
-        [12231 rows x 4 columns]
+        >>> origins = points.iloc[:25]
+        >>> destinations = points.iloc[25:50]
+        >>> frequencies = nwa.get_route_frequencies(origins, destinations)
+        >>> frequencies[["source", "target", "frequency", "geometry"]]
+               source target  frequency                                           geometry
+        160188  77264  79112        1.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
+        153682  68376   4136        1.0  LINESTRING Z (268542.700 6652162.400 121.266, ...
+        153679  75263  75502        1.0  LINESTRING Z (268665.600 6652165.400 117.466, ...
+        153678  75262  75263        1.0  LINESTRING Z (268660.000 6652167.100 117.466, ...
+        153677  47999  75262        1.0  LINESTRING Z (268631.500 6652176.800 118.166, ...
+        ...       ...    ...        ...                                                ...
+        151465  73801  73802      103.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
+        151464  73800  73801      103.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
+        151466  73802  73632      103.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
+        151463  73799  73800      123.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
+        152170  74418  74246      130.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
+
+        [8556 rows x 4 columns]
+
+        The frequencies can be weighted for each origin-destination pair by specifying
+        'weight_df'. This can be a DataFrame with three columns, where the first two
+        contain the indices of the origin and destination (in that order), and the
+        third the number to multiply the frequency by. 'weight_df' can also be a
+        DataFrame with a 2-leveled MultiIndex, where level 0 is the origin index and
+        level 1 is the destination.
+
+        Constructing a DataFrame with all od-pair combinations and give all rows a
+        weight of 10.
+
+        >>> od_pairs = pd.MultiIndex.from_product(
+        ...     [origins.index, destinations.index], names=["origin", "destination"]
+        ... )
+        >>> weight_df = pd.DataFrame(index=od_pairs).reset_index()
+        >>> weight_df["weight"] = 10
+        >>> weight_df
+             origin  destination  weight
+        0         0           25      10
+        1         0           26      10
+        2         0           27      10
+        3         0           28      10
+        4         0           29      10
+        ..      ...          ...     ...
+        620      24           45      10
+        621      24           46      10
+        622      24           47      10
+        623      24           48      10
+        624      24           49      10
+
+        [625 rows x 3 columns]
+
+        All frequencies will now be multiplied by 10.
+
+        >>> frequencies = nwa.get_route_frequencies(origins, destinations, weight_df, weight_df=weight_df)
+        >>> frequencies[["source", "target", "frequency", "geometry"]]
+
+               source target  frequency                                           geometry
+        160188  77264  79112       10.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
+        153682  68376   4136       10.0  LINESTRING Z (268542.700 6652162.400 121.266, ...
+        153679  75263  75502       10.0  LINESTRING Z (268665.600 6652165.400 117.466, ...
+        153678  75262  75263       10.0  LINESTRING Z (268660.000 6652167.100 117.466, ...
+        153677  47999  75262       10.0  LINESTRING Z (268631.500 6652176.800 118.166, ...
+        ...       ...    ...        ...                                                ...
+        151465  73801  73802     1030.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
+        151464  73800  73801     1030.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
+        151466  73802  73632     1030.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
+        151463  73799  73800     1230.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
+        152170  74418  74246     1300.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
+
+        [8556 rows x 4 columns]
+
+        'weight_df' can also be a DataFrame with one column (the weight) and a
+        MultiIndex.
+
+        >>> weight_df = pd.DataFrame(index=od_pairs)
+        >>> weight_df["weight"] = 10
+        >>> weight_df
+               weight
+        0  25      10
+           26      10
+           27      10
+           28      10
+           29      10
+        ...       ...
+        24 45      10
+           46      10
+           47      10
+           48      10
+           49      10
+
         """
         if self._log:
             time_ = perf_counter()
 
-        self._prepare_network_analysis(origins, destinations)
+        if weight_df is not None:
+            weight_df = self._prepare_weight_df(weight_df, origins, destinations)
 
-        results = _get_route(
+        self._prepare_network_analysis(origins, destinations, rowwise)
+
+        if weight_df is not None:
+            ori_idx_mapper = {v: k for k, v in self.origins.idx_dict.items()}
+            des_idx_mapper = {v: k for k, v in self.destinations.idx_dict.items()}
+            multiindex_mapper = lambda x: (
+                ori_idx_mapper.get(x[0]),
+                des_idx_mapper.get(x[1]),
+            )
+            weight_df.index = weight_df.index.map(multiindex_mapper)
+
+        results = _get_route_frequencies(
             graph=self.graph,
             origins=self.origins.gdf,
             destinations=self.destinations.gdf,
             weight=self.rules.weight,
             roads=self.network.gdf,
-            summarise=True,
+            weight_df=weight_df,
+            rowwise=rowwise,
         )
 
         if isinstance(results, GeoDataFrame):
             results = _push_geom_col(results)
 
-        results = results.rename(columns={"n": frequency_col}).sort_values(
+        results = results.rename(columns={"frequency": frequency_col}).sort_values(
             frequency_col
         )
 
@@ -889,10 +980,6 @@ class NetworkAnalysis:
 
         # sort the breaks as an np.ndarray
         breaks = self._sort_breaks(breaks)
-
-        self.network.gdf["source_target_weight"] = _edge_ids(
-            self.network.gdf, self.rules.weight
-        )
 
         results = _service_area(
             graph=self.graph,
@@ -1016,10 +1103,6 @@ class NetworkAnalysis:
         # sort the breaks as an np.ndarray
         breaks = self._sort_breaks(breaks)
 
-        self.network.gdf["source_target_weight"] = _edge_ids(
-            self.network.gdf, self.rules.weight
-        )
-
         results = _service_area(
             graph=self.graph,
             origins=self.origins.gdf,
@@ -1069,6 +1152,64 @@ class NetworkAnalysis:
             )
 
         return results
+
+    @staticmethod
+    def _prepare_weight_df(weight_df, origins, destinations):
+        """Copy weight_df, convert to MultiIndex (if needed), then validate it.
+
+        The weight_df needs to have a very specific shape and index. If a 3-columned df
+        is given, convert the first two to a MultiIndex.
+
+        Then make sure this index matches the index of origins and destinations.
+        """
+        error_message = (
+            "'weight_df' should be a DataFrame with the columns "
+            "'origin', 'destination' and 'weight', where the first "
+            "two contain the indices of the origins and destinations "
+            "and the weight column contains the number to multiply "
+            "the trip frequency for this origin-destination pair."
+        )
+
+        if not isinstance(weight_df, DataFrame):
+            raise ValueError(error_message)
+
+        weight_df = weight_df.copy()
+
+        if len(weight_df.columns) == 3:
+            weight_df = weight_df.set_index(list(weight_df.columns[:2]))
+
+        if len(weight_df.columns) != 1 and isinstance(weight_df.index, pd.MultiIndex):
+            raise ValueError(error_message)
+
+        if not weight_df.index.is_unique:
+            raise ValueError("'weight_df' must contain only unique OD combinations.")
+
+        if not origins.index.is_unique:
+            raise ValueError(
+                "The index of 'origins' must be unque when using a 'weight_df'."
+            )
+        if not destinations.index.is_unique:
+            raise ValueError(
+                "The index of 'destinations' must be unque when using a 'weight_df'."
+            )
+
+        # check if any/all indices are in origins/destinations.
+        # Doing 'any' to give better error message
+        level_0 = weight_df.index.get_level_values(0)
+        if not level_0.isin(origins.index).any():
+            raise ValueError("None of the 'origins' indices are in 'weight_df'.")
+
+        level_1 = weight_df.index.get_level_values(1)
+        if not level_1.isin(destinations.index).any():
+            raise ValueError("None of the 'destinations' indices are in 'weight_df'.")
+
+        if not level_0.isin(origins.index).all():
+            raise ValueError("Not all 'origins' indices are in 'weight_df'.")
+
+        if not level_1.isin(destinations.index).all():
+            raise ValueError("Not all 'destinations' indices are in 'weight_df'.")
+
+        return weight_df
 
     def _log_df_template(self, method: str, minutes_elapsed: float) -> DataFrame:
         """Creates a DataFrame with one row and the main columns.
@@ -1149,13 +1290,22 @@ class NetworkAnalysis:
 
         self.log = pd.concat([self.log, df], ignore_index=True)
 
-    def _prepare_network_analysis(self, origins, destinations=None) -> None:
+    def _prepare_network_analysis(
+        self, origins, destinations=None, rowwise=False
+    ) -> None:
         """Prepares the weight column, node ids, origins, destinations and graph.
 
         Updates the graph only if it is not yet created and no parts of the analysis
         has changed. this method is run inside od_cost_matrix, get_route and
         service_area.
         """
+
+        if rowwise and len(origins) != len(destinations):
+            raise ValueError(
+                "'origins' and 'destinations' must have the same length when "
+                "rowwise=True"
+            )
+
         self.network.gdf = self.rules._validate_weight(self.network.gdf)
 
         self.origins = Origins(origins)
@@ -1175,10 +1325,13 @@ class NetworkAnalysis:
         if not self._graph_is_up_to_date() or not self.network._nodes_are_up_to_date():
             self.network._update_nodes_if()
 
-            edges, weights = self._get_edges_and_weights()
+            edges, weights, ids = self._get_edges_and_weights()
 
             self.graph = self._make_graph(
-                edges=edges, weights=weights, directed=self.network._as_directed
+                edges=edges,
+                weights=weights,
+                edge_ids=ids,
+                directed=self.network._as_directed,
             )
 
             self._add_missing_vertices()
@@ -1186,7 +1339,9 @@ class NetworkAnalysis:
         self._update_wkts()
         self.rules._update_rules()
 
-    def _get_edges_and_weights(self) -> tuple[list[tuple[str, str]], list[float]]:
+    def _get_edges_and_weights(
+        self,
+    ) -> tuple[list[tuple[str, str]], list[float], list[str]]:
         """Creates lists of edges and weights which will be used to make the graph.
 
         Edges and weights between origins and nodes and nodes and destinations are
@@ -1203,14 +1358,13 @@ class NetworkAnalysis:
                     start=max(self.origins.gdf.temp_idx.astype(int)) + 1
                 )
 
-        edges = [
-            (str(source), str(target))
-            for source, target in zip(
-                self.network.gdf["source"], self.network.gdf["target"], strict=True
-            )
-        ]
+        edges: list[tuple[str, str]] = self.network.get_edges()
 
         weights = list(self.network.gdf[self.rules.weight])
+
+        self.network.gdf["source_target_weight"] = self.network._create_edge_ids(
+            edges, weights
+        )
 
         edges_start, weights_start = self.origins._get_edges_and_weights(
             nodes=self.network.nodes,
@@ -1221,7 +1375,8 @@ class NetworkAnalysis:
         weights = weights + weights_start
 
         if self.destinations is None:
-            return edges, weights
+            edge_ids = self.network._create_edge_ids(edges, weights)
+            return edges, weights, edge_ids
 
         edges_end, weights_end = self.destinations._get_edges_and_weights(
             nodes=self.network.nodes,
@@ -1231,7 +1386,9 @@ class NetworkAnalysis:
         edges = edges + edges_end
         weights = weights + weights_end
 
-        return edges, weights
+        edge_ids = self.network._create_edge_ids(edges, weights)
+
+        return edges, weights, edge_ids
 
     def _split_lines(self) -> None:
         if self.destinations is not None:
@@ -1304,6 +1461,7 @@ class NetworkAnalysis:
     def _make_graph(
         edges: list[tuple[str, ...]] | np.ndarray[tuple[str, ...]],
         weights: list[float] | np.ndarray[float],
+        edge_ids: np.ndarray,
         directed: bool,
     ) -> Graph:
         """Creates an igraph Graph from a list of edges and weights."""
@@ -1312,7 +1470,7 @@ class NetworkAnalysis:
         graph = igraph.Graph.TupleList(edges, directed=directed)
 
         graph.es["weight"] = weights
-        graph.es["source_target_weight"] = _edge_ids(edges, weights)
+        graph.es["source_target_weight"] = edge_ids
         graph.es["edge_tuples"] = edges
         graph.es["source"] = [edge[0] for edge in edges]
         graph.es["target"] = [edge[1] for edge in edges]
@@ -1339,6 +1497,7 @@ class NetworkAnalysis:
             if self._points_have_changed(self[points].gdf, what=points):
                 return False
 
+        #        if not self.gdf["source_target_weight"].
         return True
 
     def _points_have_changed(self, points: GeoDataFrame, what: str) -> bool:
