@@ -99,7 +99,7 @@ def _get_route_frequencies(
     od_pairs = _create_od_pairs(origins, destinations, rowwise)
 
     if weight_df is not None and len(weight_df) != len(od_pairs):
-        error_message = _make_keyerror_message(weight_df, origins)
+        error_message = _make_keyerror_message(rowwise, weight_df, origins)
         raise ValueError(error_message)
 
     resultlist: list[DataFrame] = []
@@ -118,7 +118,7 @@ def _get_route_frequencies(
             try:
                 line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
             except KeyError as e:
-                error_message = _make_keyerror_message(resultlist, weight_df, origins)
+                error_message = _make_keyerror_message(rowwise, weight_df, origins)
                 raise KeyError(error_message) from e
         else:
             line_ids["multiplier"] = 1

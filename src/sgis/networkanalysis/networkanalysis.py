@@ -95,6 +95,7 @@ class NetworkAnalysis:
     ...         minute_cols=("drivetime_fw", "drivetime_bw"),
     ...     )
     ... )
+
     >>> rules = sg.NetworkAnalysisRules(weight="minutes")
     >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
     >>> nwa
