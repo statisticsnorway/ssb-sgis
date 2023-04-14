@@ -80,14 +80,15 @@ class NetworkAnalysis:
     --------
     Read example data.
 
-    >>> import sgis as sg
-    >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
-    >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
+    >>> from sgis import read_parquet_url
+    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
 
     Creating a NetworkAnalysis class instance.
 
+    >>> from sgis import DirectedNetwork, NetworkAnalysisRules, NetworkAnalysis
     >>> nw = (
-    ...     sg.DirectedNetwork(roads)
+    ...     DirectedNetwork(roads)
     ...     .remove_isolated()
     ...     .make_directed_network(
     ...         direction_col="oneway",
@@ -96,8 +97,8 @@ class NetworkAnalysis:
     ...     )
     ... )
 
-    >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-    >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+    >>> rules = NetworkAnalysisRules(weight="minutes")
+    >>> nwa = NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
@@ -651,8 +652,9 @@ class NetworkAnalysis:
         8       0            1  16.513253   9  MULTILINESTRING Z ((272281.367 6653079.745 160...
         9       0            1  16.551196  10  MULTILINESTRING Z ((272281.367 6653079.745 160...
 
-        We got all 10 routes because only the middle 1 percent of the routes are removed in
-        each iteration. Let's compare with dropping middle 50 and middle 100 percent.
+        We got all 10 routes because only the middle 1 percent of the routes are
+        removed in each iteration. Let's compare with dropping middle 50 and middle
+        100 percent.
 
         >>> k_routes = nwa.get_k_routes(
         ...             point1,
