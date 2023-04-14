@@ -68,11 +68,11 @@ Get number of times each line segment was visited, with optional weighting.
 ```python
 origins = points.iloc[:75]
 destinations = points.iloc[75:150]
-weight_is_10 = pd.DataFrame(
-    index=pd.MultiIndex.from_product([origins.index, destinations.index])
-)
-weight_is_10["weight"] = 10
-frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_is_10)
+
+weights = pd.DataFrame(index=pd.MultiIndex.from_product([origins.index, destinations.index]))
+weights["weight"] = 10
+
+frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
 
 m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
 m.cmap = "plasma"
