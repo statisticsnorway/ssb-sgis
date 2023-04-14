@@ -621,6 +621,7 @@ class NetworkAnalysis:
 
         Examples
         --------
+
         >>> import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
@@ -941,6 +942,7 @@ class NetworkAnalysis:
 
         Examples
         --------
+
         >>> import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
@@ -1065,6 +1067,7 @@ class NetworkAnalysis:
 
         Examples
         --------
+
         >>> import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
