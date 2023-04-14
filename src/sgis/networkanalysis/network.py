@@ -105,7 +105,7 @@ class Network:
 
     >>> len(nw.gdf)
     85638
-    >>> nw = nw.close_network_holes(max_distance=1.5, fillna=0)
+    >>> nw = nw.close_network_holes(max_distance=1.5, max_angle=90, fillna=0)
     >>> len(nw.gdf)
     86929
 

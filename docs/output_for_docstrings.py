@@ -89,6 +89,49 @@ def legend_docstring():
     m.plot()
 
 
+def split_lines_docstring():
+    from sgis import read_parquet_url, split_lines_by_nearest_point
+
+    roads = read_parquet_url(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
+    )
+    points = read_parquet_url(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+    )
+    rows = len(roads)
+    print(rows)
+
+    roads = split_lines_by_nearest_point(roads, points, max_distance=10)
+    print("number of lines that were split:", len(roads) - rows)
+
+    roads = split_lines_by_nearest_point(roads, points)
+    print("number of lines that were split:", len(roads) - rows)
+
+
+def to_single_geom_type_docstring():
+    from shapely.geometry import LineString, Polygon
+
+    from sgis import to_gdf, to_single_geom_type
+
+    gdf = to_gdf(
+        [
+            (0, 0),
+            LineString([(1, 1), (2, 2)]),
+            Polygon([(3, 3), (4, 4), (3, 4), (3, 3)]),
+        ]
+    )
+    print(gdf)
+
+    print(to_single_geom_type(gdf, "line"))
+
+    print(to_single_geom_type(gdf, "polygon"))
+
+    gdf = gdf.dissolve()
+    print(gdf)
+
+    print(to_single_geom_type(gdf, "line"))
+
+
 @print_function_name
 def get_neighbor_indices_docstring():
     from sgis import get_neighbor_indices, to_gdf

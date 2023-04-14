@@ -81,15 +81,14 @@ class NetworkAnalysis:
     --------
     Read example data.
 
-    >>> from sgis import read_parquet_url
-    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
-    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
+    >>> import sgis as sg
+    >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+    >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
 
     Creating a NetworkAnalysis class instance.
 
-    >>> from sgis import DirectedNetwork, NetworkAnalysisRules, NetworkAnalysis
     >>> nw = (
-    ...     DirectedNetwork(roads)
+    ...     sg.DirectedNetwork(roads)
     ...     .remove_isolated()
     ...     .make_directed_network(
     ...         direction_col="oneway",
@@ -97,8 +96,8 @@ class NetworkAnalysis:
     ...         minute_cols=("drivetime_fw", "drivetime_bw"),
     ...     )
     ... )
-    >>> rules = NetworkAnalysisRules(weight="minutes")
-    >>> nwa = NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+    >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+    >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
@@ -278,7 +277,7 @@ class NetworkAnalysis:
         Create some origin and destination points.
         See the class examples for how to prepare the network.
 
-        import sgis as sg
+        >>> import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
         ... )
@@ -519,7 +518,7 @@ class NetworkAnalysis:
         --------
         Get routes from 1 to 1000 points.
 
-        import sgis as sg
+        >>> import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
         ... )
@@ -620,7 +619,7 @@ class NetworkAnalysis:
 
         Examples
         --------
-        import sgis as sg
+        >>> import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
         ... )
@@ -940,7 +939,7 @@ class NetworkAnalysis:
 
         Examples
         --------
-        import sgis as sg
+        >>> import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
         ... )
@@ -1064,7 +1063,7 @@ class NetworkAnalysis:
 
         Examples
         --------
-        import sgis as sg
+        >>> import sgis as sg
         >>> points = sg.read_parquet_url(
         ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
         ... )

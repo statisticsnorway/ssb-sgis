@@ -85,42 +85,6 @@ class Explore(Map):
             self.cmap_stop = kwargs.pop("cmap_stop", 256)
 
     def explore(self, column: str | None = None, **kwargs) -> None:
-        """Interactive map of the GeoDataFrames with layers that can be toggles on/off.
-
-        It displays all the GeoDataFrames and displays them together in an interactive
-        map with a common legend. The layers can be toggled on and off.
-
-        Args:
-            column: The column to color the geometries by. Defaults to the column
-                that was specified last.
-            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
-                instance 'cmap' to change the colors, 'scheme' to change how the data
-                is grouped. This defaults to 'fisherjenks' for numeric data.
-
-        See also:
-            samplemap: same functionality, but shows only a random area of a given size.
-            clipmap: same functionality, but shows only the areas clipped by a given
-            mask.
-
-        Examples
-        --------
-        >>> from sgis import read_parquet_url
-        >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
-
-        Simple explore of two GeoDataFrames.
-
-        >>> from sgis import Explore
-        >>> ex = Explore(roads, points)
-        >>> ex.explore()
-
-        With column.
-
-        >>> roads["meters"] = roads.length
-        >>> points["meters"] = points.length
-        >>> ex = Explore(roads, points, column="meters")
-        >>> ex.samplemap()
-        """
         if column:
             self._column = column
             self._update_column()
@@ -135,34 +99,6 @@ class Explore(Map):
         sample_from_first: bool = True,
         **kwargs,
     ) -> None:
-        """Shows an interactive map of a random area of the GeoDataFrames.
-
-        It takes a random sample point of the GeoDataFrames, and shows all geometries
-        within a given radius of this point. Displays an interactive map with a common
-        legend. The layers can be toggled on and off.
-
-        The radius to plot can be changed with the 'size' parameter.
-
-        For more info about the labeling and coloring of the map, see the explore
-        method.
-
-        Args:
-            size: the radius to buffer the sample point by before clipping with the
-                data.
-            column: The column to color the geometries by. Defaults to the column
-                that was specified last.
-            sample_from_first: If True (default), the sample point is taken from
-                the first specified GeoDataFrame. If False, all GeoDataFrames are
-                considered.
-            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
-                instance 'cmap' to change the colors, 'scheme' to change how the data
-                is grouped. This defaults to 'fisherjenks' for numeric data.
-
-        See also:
-            explore: same functionality, but shows the entire area of the geometries.
-            clipmap: same functionality, but shows only the areas clipped by a given
-            mask.
-        """
         if column:
             self._column = column
             self._update_column()
@@ -200,27 +136,6 @@ class Explore(Map):
         column: str | None = None,
         **kwargs,
     ) -> None:
-        """Shows an interactive map of a of the GeoDataFrames clipped by the mask.
-
-        It clips all the GeoDataFrames in the Explore instance to the mask extent,
-        and displays the resulting geometries in an interactive map with a common
-        legends. The layers can be toggled on and off.
-
-        For more info about the labeling and coloring of the map, see the explore
-        method.
-
-        Args:
-            mask: the geometry to clip the data by.
-            column: The column to color the geometries by. Defaults to the column
-                that was specified last.
-            **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
-                instance 'cmap' to change the colors, 'scheme' to change how the data
-                is grouped. This defaults to 'fisherjenks' for numeric data.
-
-        See also:
-            explore: same functionality, but shows the entire area of the geometries.
-            samplemap: same functionality, but shows only a random area of a given size.
-        """
         if column:
             self._column = column
             self._update_column()

@@ -3,6 +3,7 @@ import inspect
 from pathlib import Path
 
 import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -669,6 +670,16 @@ def test_thematicmap(points_oslo):
         m.plot()
 
     fontsize(points)
+
+    def change_ax_afterwards(points):
+        m = sg.ThematicMap(points, points, points, "meters")
+        m.plot()
+
+        m.ax.set_title("Updated Title", fontsize=50)
+
+        plt.show()
+
+    change_ax_afterwards(points)
 
 
 def main():

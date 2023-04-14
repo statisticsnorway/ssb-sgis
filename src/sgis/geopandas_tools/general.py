@@ -368,8 +368,8 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     >>> poly1["poly1"] = 1
     >>> line = sg.to_lines(poly1)
     >>> line
-        poly1                                           geometry
-    0      1  LINESTRING (0.00000 0.00000, 0.00000 1.00000, ...
+                                                geometry  poly1
+    0  LINESTRING (0.00000 0.00000, 0.00000 1.00000, ...      1
 
     Convert two overlapping polygons to linestrings.
 

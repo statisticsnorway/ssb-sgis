@@ -70,11 +70,11 @@ class NetworkAnalysisRules:
     ... )
     >>> rules = sg.NetworkAnalysisRules(weight="minutes")
     >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules)
-
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...)
+        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...),
+        log=True, detailed_log=True,
     )
 
     Setting 'split_lines' to True, means the points will be connected to the closest
