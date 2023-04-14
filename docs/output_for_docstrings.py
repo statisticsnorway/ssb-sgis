@@ -89,10 +89,6 @@ def legend_docstring():
     m.plot()
 
 
-legend_docstring()
-sss
-
-
 @print_function_name
 def get_neighbor_indices_docstring():
     from sgis import get_neighbor_indices, to_gdf
@@ -229,9 +225,27 @@ def get_route_docstring(nwa, points):
 
 @print_function_name
 def get_route_frequencies_docstring(nwa, points):
-    frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
+    origins = points.iloc[:25]
+    destinations = points.iloc[25:50]
+    frequencies = nwa.get_route_frequencies(origins, destinations)
     print(frequencies[["source", "target", "frequency", "geometry"]])
-    print("\n")
+
+    od_pairs = pd.MultiIndex.from_product(
+        [origins.index, destinations.index], names=["origin", "destination"]
+    )
+    weight_df = pd.DataFrame(index=od_pairs).reset_index()
+    weight_df["weight"] = 10
+    print(weight_df)
+
+    frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_df)
+    print(frequencies[["source", "target", "frequency", "geometry"]])
+
+    weight_df = pd.DataFrame(index=od_pairs)
+    weight_df["weight"] = 10
+    print(weight_df)
+
+    frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_df)
+    print(frequencies[["source", "target", "frequency", "geometry"]])
 
 
 @print_function_name
@@ -449,6 +463,4 @@ def make_docstring_output():
 
 
 if __name__ == "__main__":
-    import cProfile
-
-    cProfile.run("make_docstring_output()", sort="cumtime")
+    make_docstring_output()

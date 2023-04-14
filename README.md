@@ -63,10 +63,16 @@ nwa
         log=True, detailed_log=True,
     )
 
-Get number of times each line segment was visited.
+Get number of times each line segment was visited, with optional weighting.
 
 ```python
-frequencies = nwa.get_route_frequencies(points.sample(75), points.sample(75))
+origins = points.iloc[:75]
+destinations = points.iloc[75:150]
+weight_is_10 = pd.DataFrame(
+    index=pd.MultiIndex.from_product([origins.index, destinations.index])
+)
+weight_is_10["weight"] = 10
+frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_is_10)
 
 m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
 m.cmap = "plasma"
@@ -74,7 +80,7 @@ m.title = "Number of times each road was used."
 m.plot()
 ```
 
-![png](docs/examples/network_analysis_examples_files/network_analysis_examples_5_0.png)
+![png](docs/examples/network_analysis_examples_files/network_analysis_examples_5_1.png)
 
 Fast many-to-many travel times/distances.
 
@@ -129,8 +135,6 @@ m.plot()
 ```
 
 ![png](docs/examples/network_analysis_examples_files/network_analysis_examples_11_0.png)
-
-More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 
 Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
 
