@@ -74,26 +74,22 @@ Get number of times each line segment was visited, with optional weighting.
 ```python
 origins = points.iloc[:75]
 destinations = points.iloc[75:150]
-weight_is_10 = pd.DataFrame(
+
+weights = pd.DataFrame(
     index=pd.MultiIndex.from_product([origins.index, destinations.index])
 )
-weight_is_10["weight"] = 10
-frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_is_10)
+weights["weight"] = 10
 
+frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
+
+# plot the results
 m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
 m.cmap = "plasma"
-m.title = "Number of times each road was used."
+m.title = "Number of times each road was used,\nweighted * 10"
 m.plot()
 ```
 
-    c:\Users\ort\git\ssb-sgis\src\sgis\networkanalysis\_get_route.py:157: RuntimeWarning: Couldn't reach some vertices at src/paths/dijkstra.c:524
-      res = graph.get_shortest_paths(
-    c:\Users\ort\git\ssb-sgis\src\sgis\networkanalysis\_get_route.py:157: RuntimeWarning: Couldn't reach some vertices at src/paths/dijkstra.c:524
-      res = graph.get_shortest_paths(
-    c:\Users\ort\git\ssb-sgis\src\sgis\networkanalysis\_get_route.py:157: RuntimeWarning: Couldn't reach some vertices at src/paths/dijkstra.c:524
-      res = graph.get_shortest_paths(
-
-![png](network_analysis_examples_files/network_analysis_examples_5_1.png)
+![png](network_analysis_examples_files/network_analysis_examples_5_0.png)
 
 Fast many-to-many travel times/distances.
 
@@ -126,6 +122,7 @@ service_areas = nwa.service_area(
     breaks=np.arange(1, 11),
 )
 
+# plot the results
 m = sg.ThematicMap(service_areas, column="minutes", black=True, size=10)
 m.k = 10
 m.title = "Roads that can be reached within 1 to 10 minutes"
@@ -148,5 +145,7 @@ m.plot()
 ```
 
 ![png](network_analysis_examples_files/network_analysis_examples_11_0.png)
+
+More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 
 Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313

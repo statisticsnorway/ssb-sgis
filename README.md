@@ -69,7 +69,9 @@ Get number of times each line segment was visited, with optional weighting.
 origins = points.iloc[:75]
 destinations = points.iloc[75:150]
 
-weights = pd.DataFrame(index=pd.MultiIndex.from_product([origins.index, destinations.index]))
+# creating uniform weights of 10
+od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
+weights = pd.DataFrame(index=od_pairs)
 weights["weight"] = 10
 
 frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
@@ -77,11 +79,11 @@ frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights
 # plot the results
 m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
 m.cmap = "plasma"
-m.title = "Number of times each road was used."
+m.title = "Number of times each road was used,\nweighted * 10"
 m.plot()
 ```
 
-![png](docs/examples/network_analysis_examples_files/network_analysis_examples_5_1.png)
+![png](docs/examples/network_analysis_examples_files/network_analysis_examples_5_0.png)
 
 Fast many-to-many travel times/distances.
 
