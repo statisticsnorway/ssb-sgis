@@ -15,7 +15,6 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
-from pandas.api.types import is_dict_like
 
 from ..geopandas_tools.general import _push_geom_col
 from ..geopandas_tools.line_operations import split_lines_by_nearest_point
@@ -96,12 +95,14 @@ class NetworkAnalysis:
     ...         minute_cols=("drivetime_fw", "drivetime_bw"),
     ...     )
     ... )
+
     >>> rules = sg.NetworkAnalysisRules(weight="minutes")
     >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
         rules=NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=10, split_lines=False, ...)
+        log=True, detailed_log=True,
     )
 
     od_cost_matrix: fast many-to-many travel time/distance calculation.
