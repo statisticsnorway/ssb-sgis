@@ -146,9 +146,8 @@ class ThematicMap(Map):
         This method should be run after customising the map, but before saving.
         """
 
+        __test = kwargs.pop("__test", False)
         include_legend = bool(kwargs.pop("legend", self.legend))
-
-        self._prepare_plot(**kwargs)
 
         if "color" in kwargs:
             kwargs.pop("column", None)
@@ -159,13 +158,44 @@ class ThematicMap(Map):
             kwargs["color"] = self.color
             self.legend = None
             include_legend = False
+
         elif self._is_categorical:
             kwargs = self._prepare_categorical_plot(kwargs)
+            self.legend._prepare_categorical_legend(
+                categories_colors=self._categories_colors_dict,
+                nan_label=self.nan_label,
+            )
+
         else:
             kwargs = self._prepare_continous_plot(kwargs)
+            if self.legend:
+                if not self.legend._rounding_has_been_set:
+                    self.legend._rounding = self.legend._get_rounding(
+                        array=self._gdf.loc[~self._nan_idx, self._column]
+                    )
+
+                self.legend._prepare_continous_legend(
+                    bins=self.bins,
+                    colors=self._unique_colors,
+                    nan_label=self.nan_label,
+                    bin_values=self._bins_unique_values,
+                )
+
+        if self.legend and not self.legend._position_has_been_set:
+            self.legend._position = self.legend._get_best_legend_position(
+                self._gdf, k=self._k + bool(len(self._nan_idx))
+            )
+
+        if __test:
+            return
+
+        self._prepare_plot(**kwargs)
 
         if self.legend:
-            self._actually_add_legend()
+            self.ax = self.legend._actually_add_legend(ax=self.ax)
+
+        #        if self.legend:
+        #           self._actually_add_legend()
 
         self._gdf.plot(legend=include_legend, ax=self.ax, **kwargs)
 
@@ -255,11 +285,6 @@ class ThematicMap(Map):
         if not self.legend._position_has_been_set:
             self.legend._position = self.legend._get_best_legend_position(
                 self._gdf, k=self._k + bool(len(self._nan_idx))
-            )
-
-        if not self._is_categorical and not self.legend._rounding_has_been_set:
-            self.legend._rounding = self.legend._get_rounding(
-                array=self._gdf.loc[~self._nan_idx, self._column]
             )
 
         if self._is_categorical:

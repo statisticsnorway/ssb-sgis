@@ -158,11 +158,11 @@ def networkanalysis_doctring(nwa, points):
     print(od)
     print("\n")
 
-    routes = nwa.get_route(points.sample(10), points.sample(10))
+    routes = nwa.get_route(points.loc[:10], points.loc[10:20])
     print(routes)
     print("\n")
 
-    frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
+    frequencies = nwa.get_route_frequencies(points.loc[:25], points.loc[25:50])
     print(frequencies[["source", "target", "frequency", "geometry"]])
     print("\n")
 

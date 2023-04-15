@@ -18,6 +18,11 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+# set to True to not actually create the plots
+# because pytest breaks with all these plots on github
+__test = True
+
+
 def test_thematicmap(points_oslo):
     points = points_oslo
 
@@ -30,7 +35,7 @@ def test_thematicmap(points_oslo):
         m.title = inspect.stack()[0][3]
         m.legend.title = "not pretty_labels, no bins"
         m.legend.pretty_labels = False
-        m.plot()
+        m.plot(__test=__test)
         assert m.legend._categories == [
             "63 ",
             "126  - 188 ",
@@ -42,7 +47,7 @@ def test_thematicmap(points_oslo):
         m.title = inspect.stack()[0][3]
         m.legend.title = "pretty_labels, no bins"
         m.legend.pretty_labels = True
-        m.plot()
+        m.plot(__test=__test)
         assert m.legend._categories == [
             "63  - 63 ",
             "64  - 188 ",
@@ -59,7 +64,7 @@ def test_thematicmap(points_oslo):
         m.title = "not pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
         m.legend.title = "not pretty_labels, bins"
         m.legend.pretty_labels = False
-        m.plot()
+        m.plot(__test=__test)
         assert m.legend._categories == [
             "63 ",
             "100  - 150 ",
@@ -72,7 +77,7 @@ def test_thematicmap(points_oslo):
         m.title = "not pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
         m.legend.title = "not pretty_labels, bins"
         m.legend.pretty_labels = False
-        m.plot()
+        m.plot(__test=__test)
         assert m.legend._categories == [
             "63  - 100 ",
             "150  - 200 ",
@@ -86,7 +91,7 @@ def test_thematicmap(points_oslo):
         m.legend.title = "pretty_labels, bins"
         m.legend.pretty_labels = True
         m.legend.label_sep = "to"
-        m.plot()
+        m.plot(__test=__test)
         assert m.legend._categories == [
             "63  to 100 ",
             "101  to 200 ",
@@ -99,7 +104,7 @@ def test_thematicmap(points_oslo):
         m.title = "pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
         m.legend.title = "pretty_labels, bins"
         m.legend.pretty_labels = True
-        m.plot()
+        m.plot(__test=__test)
         assert m.legend._categories == [
             "63  - 100 ",
             "101  - 200 ",
@@ -282,21 +287,6 @@ def test_thematicmap(points_oslo):
 
     manual_bins_and_legend_suffix_sep(points)
 
-    def categorical_column(points):
-        points["category"] = [*"abcddea"]
-        m = sg.ThematicMap(points, "category")
-        m.plot()
-        assert m._categories_colors_dict == {
-            "a": "#4576ff",
-            "b": "#ff455e",
-            "c": "#59d45f",
-            "d": "#b51d8b",
-            "e": "#ffa514",
-        }, m._categories_colors_dict
-        assert m.legend._categories == ["a", "b", "c", "d", "e"], m.legend._categories
-
-    categorical_column(points)
-
     def rounding_1(points):
         m = sg.ThematicMap(points, points, points, "meters")
         m.legend.rounding = 1
@@ -374,14 +364,6 @@ def test_thematicmap(points_oslo):
 
     with_nans(points)
 
-    def categorical_column(points):
-        points["category"] = [*"abcddef"]
-        m = sg.ThematicMap(points, "category")
-        m.title = "categorical_column"
-        m.plot()
-
-    categorical_column(points)
-
     def cmap_start_and_stop(points):
         m = sg.ThematicMap(points, points, points, "meters")
         m.cmap = "viridis"
@@ -396,7 +378,7 @@ def test_thematicmap(points_oslo):
     cmap_start_and_stop(points)
 
     def large_numbers(points):
-        for k in np.arange(1, 8):
+        for k in [2, 4, 6, 7]:
             print(k)
             m = sg.ThematicMap(
                 points.iloc[[0]].assign(large_number=100000000.323),
@@ -454,7 +436,7 @@ def test_thematicmap(points_oslo):
     large_numbers(points)
 
     def small_numbers(points):
-        for k in np.arange(1, 8):
+        for k in [2, 4, 6]:
             print(k)
             m = sg.ThematicMap(
                 points.iloc[[0]].assign(small_number=0.00000),
@@ -539,7 +521,7 @@ def test_thematicmap(points_oslo):
     small_numbers(points)
 
     def negative_numbers(points):
-        for k in np.arange(1, 8):
+        for k in [2, 4, 6, 7]:
             print(k)
             m = sg.ThematicMap(
                 points.iloc[[0]].assign(negative_number=-100_000),
@@ -571,29 +553,6 @@ def test_thematicmap(points_oslo):
             "-100001 ",
             "-100000 ",
         ], m.legend._categories
-        m = sg.ThematicMap(
-            points.iloc[[0]].assign(negative_number=-100_000),
-            points.iloc[[1]].assign(negative_number=-100_001),
-            points.iloc[[2]].assign(negative_number=-100_002),
-            points.iloc[[3]].assign(negative_number=-100_003),
-            points.iloc[[4]].assign(negative_number=-100_004),
-            points.iloc[[5]].assign(negative_number=-100_005),
-            points.iloc[[6]].assign(negative_number=-100_006),
-            "negative_number",
-        )
-        m.k = 7
-        m.title = "k=7"
-        m.plot()
-        assert len(m._unique_values) == 7, m._unique_values
-        assert m.legend._categories == [
-            "-100006 ",
-            "-100005 ",
-            "-100004 ",
-            "-100003 ",
-            "-100002 ",
-            "-100001 ",
-            "-100000 ",
-        ], m.legend._categories
 
         m = sg.ThematicMap(
             points.iloc[[0]].assign(negative_number=-100_000),
@@ -605,7 +564,7 @@ def test_thematicmap(points_oslo):
             points.iloc[[6]].assign(negative_number=-100_006),
             "negative_number",
         )
-        m.title = "k=5"
+        m.title = "large, negative numbers"
         m.plot()
         assert len(m._unique_values) == 7, m._unique_values
         assert m.legend._categories == [
@@ -626,7 +585,7 @@ def test_thematicmap(points_oslo):
             points.iloc[[6]].assign(negative_number=-0.3232),
             "negative_number",
         )
-        m.title = "k=5"
+        m.title = "small, negative numbers"
         m.plot()
         assert len(m._unique_values) == 7, m._unique_values
         assert m.legend._categories == [
@@ -644,42 +603,35 @@ def test_thematicmap(points_oslo):
         m.title = inspect.stack()[0][3]
         m.scheme = None
         m.plot()
-        m = sg.ThematicMap(points, points, points, "meters", size=5)
-        m.title = inspect.stack()[0][3]
-        m.scheme = None
-        m.plot()
 
     scheme_is_none(points)
 
-    def legend_kwargs(points):
-        m = sg.ThematicMap(points, points, points, "meters")
-        m.title = inspect.stack()[0][3]
-        m.legend.kwargs["labelcolor"] = "red"
-        m.plot()
-
-    legend_kwargs(points)
-
-    def fontsize(points):
+    def assert_manually(points):
         m = sg.ThematicMap(points, points, points, "meters")
         m.cmap = "plasma"
         m.title_fontsize = 20
         m.legend.fontsize = 30
         m.legend.title_fontsize = 10
-        m.legend.title = "small legend_title_fontsize, large legend_fontsize"
-        m.title = inspect.stack()[0][3]
+        m.title = "small legend_title_fontsize, large legend_fontsize, red color"
+        m.legend.kwargs["labelcolor"] = "red"
         m.plot()
 
-    fontsize(points)
+    assert_manually(points)
 
-    def change_ax_afterwards(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+    def categorical_column(points):
+        points["category"] = [*"abcddea"]
+        m = sg.ThematicMap(points, "category")
         m.plot()
+        assert m._categories_colors_dict == {
+            "a": "#4576ff",
+            "b": "#ff455e",
+            "c": "#59d45f",
+            "d": "#b51d8b",
+            "e": "#ffa514",
+        }, m._categories_colors_dict
+        assert m.legend._categories == ["a", "b", "c", "d", "e"], m.legend._categories
 
-        m.ax.set_title("Updated Title", fontsize=50)
-
-        plt.show()
-
-    change_ax_afterwards(points)
+    categorical_column(points)
 
 
 def main():

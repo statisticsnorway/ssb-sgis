@@ -157,9 +157,7 @@ class Legend:
         else:
             self._markersize = size
 
-    def _actually_add_categorical_legend(
-        self, ax, categories_colors: dict, nan_label: str
-    ):
+    def _prepare_categorical_legend(self, categories_colors: dict, nan_label: str):
         for attr in self.__dict__.keys():
             if attr in self.kwargs:
                 self[attr] = self.kwargs.pop(attr)
@@ -196,6 +194,8 @@ class Legend:
                     markeredgewidth=0,
                 )
             )
+
+    def _actually_add_legend(self, ax):
         legend = ax.legend(
             self._patches,
             self._categories,
@@ -433,9 +433,8 @@ class ContinousLegend(Legend):
         if not self._legend:
             raise ValueError("Cannot modify legend before it is created.")
 
-    def _actually_add_continous_legend(
+    def _prepare_continous_legend(
         self,
-        ax,
         bins: list[float],
         colors: list[str],
         nan_label: str,
@@ -524,6 +523,7 @@ class ContinousLegend(Legend):
                     label = self._two_value_label(min_rounded, max_rounded)
                     self._categories.append(label)
 
+    def _actually_add_legend(self, ax):
         legend = ax.legend(
             self._patches,
             self._categories,

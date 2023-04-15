@@ -385,13 +385,11 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     4    NaN    1.0  LINESTRING (0.50000 1.00000, 0.50000 1.50000, ...
     5    NaN    1.0      LINESTRING (1.00000 0.50000, 0.50000 0.50000)
 
-    Plot before and after (plots not showing in terminal).
+    Plot before and after.
 
     >>> sg.qtm(poly1, poly2)
-    <Axes: >
     >>> lines["l"] = lines.length
     >>> sg.qtm(lines, "l")
-    <Axes: >
     """
 
     if any(any(gdf.geom_type.isin(["Point", "MultiPoint"])) for gdf in gdfs):
