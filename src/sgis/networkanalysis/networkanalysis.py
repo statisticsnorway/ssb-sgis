@@ -71,24 +71,24 @@ class NetworkAnalysis:
 
     See also
     --------
-    DirectedNetwork : for customising and optimising line data before directed network
+    DirectedNetwork : For customising and optimising line data before directed network
         analysis.
-    Network : for customising and optimising line data before undirected network
+
+    Network : For customising and optimising line data before undirected network
         analysis.
 
     Examples
     --------
     Read example data.
 
-    >>> from sgis import read_parquet_url
-    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
-    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
+    >>> import sgis as sg
+    >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+    >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
 
     Creating a NetworkAnalysis class instance.
 
-    >>> from sgis import DirectedNetwork, NetworkAnalysisRules, NetworkAnalysis
     >>> nw = (
-    ...     DirectedNetwork(roads)
+    ...     sg.DirectedNetwork(roads)
     ...     .remove_isolated()
     ...     .make_directed_network(
     ...         direction_col="oneway",
@@ -96,9 +96,8 @@ class NetworkAnalysis:
     ...         minute_cols=("drivetime_fw", "drivetime_bw"),
     ...     )
     ... )
-
-    >>> rules = NetworkAnalysisRules(weight="minutes")
-    >>> nwa = NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+    >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+    >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
@@ -122,7 +121,6 @@ class NetworkAnalysis:
     999997     999          997  10.288465
     999998     999          998  14.798257
     999999     999          999   0.000000
-
     [1000000 rows x 3 columns]
 
     get_route: get the geometry of the routes.
@@ -141,7 +139,6 @@ class NetworkAnalysis:
     97     606          901  16.998595  MULTILINESTRING Z ((265040.505 6641218.021 100...
     98     606          766  10.094371  MULTILINESTRING Z ((265639.400 6649020.000 85....
     99     606          320   7.317098  MULTILINESTRING Z ((262711.480 6648807.500 3.8...
-
     [100 rows x 4 columns]
 
     get_route_frequencies: get the number of times each line segment was used.
@@ -160,7 +157,6 @@ class NetworkAnalysis:
     158249  78124  78123       95.0  LINESTRING Z (265563.150 6650547.620 89.382, 2...
     158248  78123  72820       95.0  LINESTRING Z (265567.158 6650542.836 89.522, 2...
     156601  77353  78124       95.0  LINESTRING Z (265530.470 6650587.640 88.527, 2...
-
     [9268 rows x 4 columns]
 
     service_area: get the area that can be reached within one or more breaks.
@@ -189,7 +185,6 @@ class NetworkAnalysis:
     1 2023-03-29 15:20:21              0.5              get_route             10                10.0           0.0000  15.001443              True  ...  10.093613   14.641413  19.725085  6.869095    NaN   False        NaN       NaN
     2 2023-03-29 15:20:40              0.3  get_route_frequencies             25                25.0           0.0000   0.067199              True  ...   0.013309    0.038496   0.085692  0.087247    NaN     NaN        NaN       NaN
     3 2023-03-29 15:20:50              0.2           service_area              3                 NaN           0.0000  10.000000              True  ...   5.000000   10.000000  15.000000  4.330127    NaN     NaN  5, 10, 15      True
-
     [4 rows x 23 columns]
 
     """
@@ -277,15 +272,19 @@ class NetworkAnalysis:
 
         Examples
         --------
-        Create some origin and destination points.
-        See the class examples for how to prepare the network.
+        Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> points = sg.read_parquet_url(
-        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
-        ... )
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
 
-        >>> origins = points.loc[:99]
+        Create some origin and destination points.
+
+        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
+
+        >>> origins = points.loc[:99, ["geometry"]]
         >>> origins
                                   geometry
         0   POINT (263122.700 6651184.900)
@@ -299,10 +298,9 @@ class NetworkAnalysis:
         97  POINT (263162.000 6650732.200)
         98  POINT (272322.700 6653729.100)
         99  POINT (265622.800 6644644.200)
-
         [100 rows x 1 columns]
 
-        >>> destinations = points.loc[100:199]
+        >>> destinations = points.loc[100:199, ["geometry"]]
         >>> destinations
                                    geometry
         100  POINT (265997.900 6647899.400)
@@ -316,7 +314,6 @@ class NetworkAnalysis:
         197  POINT (273135.300 6653198.100)
         198  POINT (270582.300 6652163.800)
         199  POINT (264980.800 6647231.300)
-
         [100 rows x 1 columns]
 
         Travel time from 100 to 100 points.
@@ -335,7 +332,6 @@ class NetworkAnalysis:
         9997      99          197  19.977029
         9998      99          198  15.233163
         9999      99          199   6.439002
-
         [10000 rows x 3 columns]
 
         Join the results onto the 'origins' GeoDataFrame via the index.
@@ -354,7 +350,6 @@ class NetworkAnalysis:
         99  POINT (265622.800 6644644.200)          197  19.977029
         99  POINT (265622.800 6644644.200)          198  15.233163
         99  POINT (265622.800 6644644.200)          199   6.439002
-
         [10000 rows x 3 columns]
 
         Get travel times below 10 minutes.
@@ -374,7 +369,6 @@ class NetworkAnalysis:
         99  POINT (265622.800 6644644.200)        177.0  5.944194
         99  POINT (265622.800 6644644.200)        183.0  8.449906
         99  POINT (265622.800 6644644.200)        199.0  6.439002
-
         [2195 rows x 3 columns]
 
         Get the three fastest routes from each origin.
@@ -394,7 +388,6 @@ class NetworkAnalysis:
         99  POINT (265622.800 6644644.200)        102.0  1.648705
         99  POINT (265622.800 6644644.200)        134.0  1.116209
         99  POINT (265622.800 6644644.200)        156.0  1.368926
-
         [294 rows x 3 columns]
 
         Assign aggregated values directly onto the origins via the index.
@@ -413,6 +406,7 @@ class NetworkAnalysis:
         97  POINT (263162.000 6650732.200)     11.904372
         98  POINT (272322.700 6653729.100)     17.579399
         99  POINT (265622.800 6644644.200)     12.185800
+        [100 rows x 2 columns]
 
         Use set_index to use column as identifier insted of the index.
 
@@ -431,7 +425,6 @@ class NetworkAnalysis:
         9997      b          197  19.977029
         9998      b          198  15.233163
         9999      b          199   6.439002
-
         [10000 rows x 3 columns]
 
         Travel time from 1000 to 1000 points rowwise.
@@ -451,7 +444,6 @@ class NetworkAnalysis:
         997     997          997  19.968743
         998     998          998   9.484374
         999     999          999  14.892648
-
         [1000 rows x 3 columns]
 
         """
@@ -520,12 +512,17 @@ class NetworkAnalysis:
 
         Examples
         --------
-        Get routes from 1 to 1000 points.
+        Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> points = sg.read_parquet_url(
-        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
-        ... )
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+
+        Get routes from 1 to 1000 points.
+
+        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
 
         >>> routes = nwa.get_route(points.iloc[[0]], points)
         >>> routes
@@ -623,11 +620,15 @@ class NetworkAnalysis:
 
         Examples
         --------
+        Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> points = sg.read_parquet_url(
-        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
-        ... )
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+
+        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
         >>> point1 = points.iloc[[0]]
         >>> point2 = points.iloc[[1]]
 
@@ -765,14 +766,18 @@ class NetworkAnalysis:
 
         Examples
         --------
+        Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
         >>> import pandas as pd
-        >>> points = sg.read_parquet_url(
-        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
-        ... )
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
 
         Get number of times each road was visited for trips from 25 to 25 points.
+
+        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
 
         >>> origins = points.iloc[:25]
         >>> destinations = points.iloc[25:50]
@@ -885,7 +890,6 @@ class NetworkAnalysis:
             graph=self.graph,
             origins=self.origins.gdf,
             destinations=self.destinations.gdf,
-            weight=self.rules.weight,
             roads=self.network.gdf,
             weight_df=weight_df,
             rowwise=rowwise,
@@ -945,14 +949,17 @@ class NetworkAnalysis:
 
         Examples
         --------
+        Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> points = sg.read_parquet_url(
-        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
-        ... )
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
 
         10 minute service area for three origin points.
 
+        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
         >>> service_areas = nwa.service_area(
         ...         points.loc[:2],
         ...         breaks=10,
@@ -1070,13 +1077,17 @@ class NetworkAnalysis:
 
         Examples
         --------
+        Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> points = sg.read_parquet_url(
-        ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
-        ... )
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
 
         10 minute service area for one origin point.
+
+        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
 
         >>> sa = nwa.precice_service_area(
         ...         points.iloc[[0]],

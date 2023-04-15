@@ -41,6 +41,7 @@ def _get_route(
         return pd.DataFrame(columns=["origin", "destination", weight, "geometry"])
 
     results: DataFrame = pd.concat(resultlist)
+    assert list(results.columns) == ["origin", "destination"], list(results.columns)
     lines: GeoDataFrame = _get_line_geometries(results, roads, weight)
     lines = lines.dissolve(by=["origin", "destination"], aggfunc="sum", as_index=False)
 
@@ -64,9 +65,11 @@ def _get_k_routes(
     resultlist: list[DataFrame] = []
 
     for ori_id, des_id in od_pairs:
-        lines: DataFrame = _loop_k_routes(graph, ori_id, des_id, k, drop_middle_percent)
-        if lines is not None:
-            resultlist.append(lines)
+        k_lines: DataFrame = _loop_k_routes(
+            graph, ori_id, des_id, k, drop_middle_percent
+        )
+        if k_lines is not None:
+            resultlist.append(k_lines)
 
     if not resultlist:
         warnings.warn(
@@ -76,6 +79,9 @@ def _get_k_routes(
         return pd.DataFrame(columns=["origin", "destination", weight, "geometry"])
 
     results: DataFrame = pd.concat(resultlist)
+    assert list(results.columns) == ["origin", "destination", "k"], list(
+        results.columns
+    )
     lines: GeoDataFrame = _get_line_geometries(results, roads, weight)
 
     lines = lines.dissolve(
@@ -91,7 +97,6 @@ def _get_route_frequencies(
     destinations,
     rowwise,
     roads,
-    weight,
     weight_df: DataFrame | None = None,
 ):
     """Function used in the get_route_frequencies method of NetworkAnalysis."""
