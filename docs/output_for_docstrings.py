@@ -154,16 +154,53 @@ get_neighbor_indices_docstring()
 
 @print_function_name
 def networkanalysis_doctring(nwa, points):
-    od = nwa.od_cost_matrix(points, points)
+    origins = points.loc[:99, ["geometry"]]
+    print(origins)
+    destinations = points.loc[100:199, ["geometry"]]
+    print(destinations)
+    od = nwa.od_cost_matrix(origins, destinations)
+    print(od)
+    joined = origins.join(od.set_index("origin"))
+    print(joined)
+    less_than_10_min = od.loc[od.minutes < 10]
+    joined = origins.join(less_than_10_min.set_index("origin"))
+    print(joined)
+    three_fastest = od.loc[od.groupby("origin")["minutes"].rank() <= 3]
+    joined = origins.join(three_fastest.set_index("origin"))
+    print(joined)
+    origins["minutes_mean"] = od.groupby("origin")["minutes"].mean()
+    print(origins)
+    origins["areacode"] = np.random.choice(["0301", "4601", "3401"], len(origins))
+    od = nwa.od_cost_matrix(origins.set_index("areacode"), destinations)
+    print(od)
+
+    points_reversed = points.iloc[::-1].reset_index(drop=True)
+    od = nwa.od_cost_matrix(points, points_reversed, rowwise=True)
     print(od)
     print("\n")
 
-    routes = nwa.get_route(points.loc[:10], points.loc[10:20])
+    routes = nwa.get_route(points.iloc[[0]], points)
     print(routes)
     print("\n")
 
-    frequencies = nwa.get_route_frequencies(points.loc[:25], points.loc[25:50])
+    origins = points.iloc[:25]
+    destinations = points.iloc[25:50]
+    frequencies = nwa.get_route_frequencies(origins, destinations)
     print(frequencies[["source", "target", "frequency", "geometry"]])
+
+    od_pairs = pd.MultiIndex.from_product(
+        [origins.index, destinations.index], names=["origin", "destination"]
+    )
+    weight_df = pd.DataFrame(index=od_pairs).reset_index()
+    weight_df["weight"] = 10
+    print(weight_df)
+
+    frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_df)
+    print(frequencies[["source", "target", "frequency", "geometry"]])
+
+    weight_df = pd.DataFrame(index=od_pairs)
+    weight_df["weight"] = 10
+    print(weight_df)
     print("\n")
 
     service_areas = nwa.service_area(

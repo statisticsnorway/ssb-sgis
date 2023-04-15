@@ -61,4 +61,4 @@ jobs:
       - name: Build api-documentation
         if: ${{ (matrix.os == 'ubuntu-latest') &&  (matrix.python-version == '3.11') }}
         run: |
-          poetry run sphinx-build docs docs/_build
+          poetry run sphinx-build -W docs docs/_build
