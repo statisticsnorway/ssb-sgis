@@ -82,8 +82,7 @@ class NetworkAnalysis:
     Read example data.
 
     >>> import sgis as sg
-    >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
-    >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
+    >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
 
     Creating a NetworkAnalysis class instance.
 
@@ -101,92 +100,11 @@ class NetworkAnalysis:
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight='minutes', search_tolerance=250, search_factor=10, split_lines=False, ...),
+        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...),
         log=True, detailed_log=True,
     )
 
-    od_cost_matrix: fast many-to-many travel time/distance calculation.
-
-    >>> od = nwa.od_cost_matrix(points, points)
-    >>> od
-            origin  destination    minutes
-    0            0            0   0.000000
-    1            0            1  13.039830
-    2            0            2  10.902453
-    3            0            3   8.297021
-    4            0            4  14.742294
-    ...        ...          ...        ...
-    999995     999          995  11.038673
-    999996     999          996  17.820664
-    999997     999          997  10.288465
-    999998     999          998  14.798257
-    999999     999          999   0.000000
-    [1000000 rows x 3 columns]
-
-    get_route: get the geometry of the routes.
-
-    >>> routes = nwa.get_route(points.sample(10), points.sample(10))
-    >>> routes
-        origin  destination    minutes                                           geometry
-    0      112          501  20.016625  MULTILINESTRING Z ((256346.680 6651343.586 78....
-    1      112            9  14.570397  MULTILINESTRING Z ((265186.200 6644291.300 145...
-    2      112           88  14.976093  MULTILINESTRING Z ((265186.200 6644291.300 145...
-    3      112          874  11.886933  MULTILINESTRING Z ((263069.585 6648646.891 5.1...
-    4      112          939  10.308372  MULTILINESTRING Z ((264112.512 6640728.679 79....
-    ..     ...          ...        ...                                                ...
-    95     606            2  11.325834  MULTILINESTRING Z ((270054.367 6653367.774 144...
-    96     606          511  15.045134  MULTILINESTRING Z ((258569.800 6652168.600 57....
-    97     606          901  16.998595  MULTILINESTRING Z ((265040.505 6641218.021 100...
-    98     606          766  10.094371  MULTILINESTRING Z ((265639.400 6649020.000 85....
-    99     606          320   7.317098  MULTILINESTRING Z ((262711.480 6648807.500 3.8...
-    [100 rows x 4 columns]
-
-    get_route_frequencies: get the number of times each line segment was used.
-
-    >>> frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
-    >>> frequencies[[["source", "target", "frequency", "geometry"]]
-           source target  frequency                                           geometry
-    160188  77264  79112        1.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
-    138956  30221  45403        1.0  LINESTRING Z (273091.100 6652396.000 170.471, ...
-    138958  30224  30221        1.0  LINESTRING Z (273117.500 6652391.500 169.771, ...
-    138960  16513  30224        1.0  LINESTRING Z (273176.813 6652379.896 169.414, ...
-    138962  40610  16513        1.0  LINESTRING Z (273207.300 6652372.100 168.871, ...
-    ...       ...    ...        ...                                                ...
-    151464  73800  73801      108.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
-    151465  73801  73802      108.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
-    151466  73802  73632      108.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
-    151463  73799  73800      129.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
-    152170  74418  74246      135.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
-
-    [8915 rows x 4 columns]
-
-    service_area: get the area that can be reached within one or more breaks.
-
-    >>> service_areas = nwa.service_area(
-    ...         points.iloc[:3],
-    ...         breaks=[5, 10, 15],
-    ...     )
-    >>> service_areas
-       origin  minutes                                           geometry
-    0       0        5  MULTILINESTRING Z ((265378.000 6650581.600 85....
-    1       0       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
-    2       0       15  MULTILINESTRING Z ((263110.060 6658296.870 154...
-    3       1        5  MULTILINESTRING Z ((273330.930 6653248.870 208...
-    4       1       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
-    5       1       15  MULTILINESTRING Z ((264348.673 6648271.134 17....
-    6       2        5  MULTILINESTRING Z ((269143.130 6652434.060 127...
-    7       2       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
-    8       2       15  MULTILINESTRING Z ((264348.673 6648271.134 17....
-
-    Check the log.
-
-    >>> nwa.log
-                  endtime  minutes_elapsed                 method  origins_count  destinations_count  percent_missing  cost_mean  isolated_removed  ...   cost_p25 cost_median   cost_p75  cost_std  lines rowwise     breaks  dissolve
-    0 2023-03-29 15:19:51              0.5         od_cost_matrix           1000              1000.0           0.9966  15.270462              True  ...  10.565738   14.772737  19.337235  6.654981  False   False        NaN       NaN
-    1 2023-03-29 15:20:21              0.5              get_route             10                10.0           0.0000  15.001443              True  ...  10.093613   14.641413  19.725085  6.869095    NaN   False        NaN       NaN
-    2 2023-03-29 15:20:40              0.3  get_route_frequencies             25                25.0           0.0000   0.067199              True  ...   0.013309    0.038496   0.085692  0.087247    NaN     NaN        NaN       NaN
-    3 2023-03-29 15:20:50              0.2           service_area              3                 NaN           0.0000  10.000000              True  ...   5.000000   10.000000  15.000000  4.330127    NaN     NaN  5, 10, 15      True
-    [4 rows x 23 columns]
+    Now it's ready for network analysis.
 
     """
 
@@ -276,7 +194,7 @@ class NetworkAnalysis:
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
         >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
         >>> rules = sg.NetworkAnalysisRules(weight="minutes")
         >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
@@ -411,8 +329,8 @@ class NetworkAnalysis:
 
         Use set_index to use column as identifier insted of the index.
 
-        >>> origins["letter"] = np.random.choice([*"abc"], len(origins))
-        >>> od = nwa.od_cost_matrix(origins.set_index("letter"), destinations)
+        >>> origins["areacode"] = np.random.choice(["0301", "4601", "3401"], len(origins))
+        >>> od = nwa.od_cost_matrix(origins.set_index("areacode"), destinations)
         >>> od
              origin  destination    minutes
         0         a          100   8.765621
@@ -483,6 +401,197 @@ class NetworkAnalysis:
 
         return results
 
+    def get_route_frequencies(
+        self,
+        origins: GeoDataFrame,
+        destinations: GeoDataFrame,
+        weight_df: DataFrame | None = None,
+        rowwise: bool = False,
+        frequency_col: str = "frequency",
+    ) -> GeoDataFrame:
+        """Finds the number of times each line segment was visited in all trips.
+
+        Finds the route with the lowest cost (minutes, meters, etc.) from a set of
+        origins to a set of destinations and summarises the number of times each
+        segment was used. The aggregation is done on the line indices, which is much
+        faster than getting the geometries and then dissolving.
+
+        The trip frequencies can be weighted (multiplied) based on 'weight_df'. See
+        example below.
+
+        Args:
+            origins: GeoDataFrame of points from where the routes will originate.
+            destinations: GeoDataFrame of points from where the routes will terminate.
+            weight_df: A long formated DataFrame where each row contains the indices of
+                an origin-destination pair and the number to multiply the frequency for
+                this route by. The DataFrame can either contain three columns (origin
+                index, destination index and weight. In that order) or only a weight
+                column and a MultiIndex where level 0 is origin index and level 1 is
+                destination index.
+            frequency_col: Name of column with the number of times each road was
+                visited. Defaults to 'frequency'.
+
+        Returns:
+            A GeoDataFrame with all line segments that were visited at least once,
+            with a column with the number of times the line segment was used in the
+            individual routes.
+
+        Note:
+            The resulting lines will keep all columns of the 'gdf' of the Network.
+
+        Raises:
+            ValueError: If no paths were found.
+            ValueError: If weight_df is not a DataFrame with one or three columns.
+            ValueError: If weight_df is given and the index of origins/destinations
+                is not unique.
+
+        Examples
+        --------
+        Create the NetworkAnalysis instance.
+
+        >>> import sgis as sg
+        >>> import pandas as pd
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
+        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+
+        Get number of times each road was visited for trips from 25 to 25 points.
+
+        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
+
+        >>> origins = points.iloc[:25]
+        >>> destinations = points.iloc[25:50]
+        >>> frequencies = nwa.get_route_frequencies(origins, destinations)
+        >>> frequencies[["source", "target", "frequency", "geometry"]]
+               source target  frequency                                           geometry
+        160188  77264  79112        1.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
+        153682  68376   4136        1.0  LINESTRING Z (268542.700 6652162.400 121.266, ...
+        153679  75263  75502        1.0  LINESTRING Z (268665.600 6652165.400 117.466, ...
+        153678  75262  75263        1.0  LINESTRING Z (268660.000 6652167.100 117.466, ...
+        153677  47999  75262        1.0  LINESTRING Z (268631.500 6652176.800 118.166, ...
+        ...       ...    ...        ...                                                ...
+        151465  73801  73802      103.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
+        151464  73800  73801      103.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
+        151466  73802  73632      103.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
+        151463  73799  73800      123.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
+        152170  74418  74246      130.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
+        [8556 rows x 4 columns]
+
+        The frequencies can be weighted for each origin-destination pair by specifying
+        'weight_df'. This can be a DataFrame with three columns, where the first two
+        contain the indices of the origin and destination (in that order), and the
+        third the number to multiply the frequency by. 'weight_df' can also be a
+        DataFrame with a 2-leveled MultiIndex, where level 0 is the origin index and
+        level 1 is the destination.
+
+        Constructing a DataFrame with all od-pair combinations and give all rows a
+        weight of 10.
+
+        >>> od_pairs = pd.MultiIndex.from_product(
+        ...     [origins.index, destinations.index], names=["origin", "destination"]
+        ... )
+        >>> weight_df = pd.DataFrame(index=od_pairs).reset_index()
+        >>> weight_df["weight"] = 10
+        >>> weight_df
+             origin  destination  weight
+        0         0           25      10
+        1         0           26      10
+        2         0           27      10
+        3         0           28      10
+        4         0           29      10
+        ..      ...          ...     ...
+        620      24           45      10
+        621      24           46      10
+        622      24           47      10
+        623      24           48      10
+        624      24           49      10
+        [625 rows x 3 columns]
+
+        All frequencies will now be multiplied by 10.
+
+        >>> frequencies = nwa.get_route_frequencies(origins, destinations, weight_df, weight_df=weight_df)
+        >>> frequencies[["source", "target", "frequency", "geometry"]]
+               source target  frequency                                           geometry
+        160188  77264  79112       10.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
+        153682  68376   4136       10.0  LINESTRING Z (268542.700 6652162.400 121.266, ...
+        153679  75263  75502       10.0  LINESTRING Z (268665.600 6652165.400 117.466, ...
+        153678  75262  75263       10.0  LINESTRING Z (268660.000 6652167.100 117.466, ...
+        153677  47999  75262       10.0  LINESTRING Z (268631.500 6652176.800 118.166, ...
+        ...       ...    ...        ...                                                ...
+        151465  73801  73802     1030.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
+        151464  73800  73801     1030.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
+        151466  73802  73632     1030.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
+        151463  73799  73800     1230.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
+        152170  74418  74246     1300.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
+        [8556 rows x 4 columns]
+
+        'weight_df' can also be a DataFrame with one column (the weight) and a
+        MultiIndex.
+
+        >>> weight_df = pd.DataFrame(index=od_pairs)
+        >>> weight_df["weight"] = 10
+        >>> weight_df
+               weight
+        0  25      10
+           26      10
+           27      10
+           28      10
+           29      10
+        ...       ...
+        24 45      10
+           46      10
+           47      10
+           48      10
+           49      10
+
+        """
+        if self._log:
+            time_ = perf_counter()
+
+        if weight_df is not None:
+            weight_df = self._prepare_weight_df(weight_df, origins, destinations)
+
+        self._prepare_network_analysis(origins, destinations, rowwise)
+
+        if weight_df is not None:
+            ori_idx_mapper = {v: k for k, v in self.origins.idx_dict.items()}
+            des_idx_mapper = {v: k for k, v in self.destinations.idx_dict.items()}
+            multiindex_mapper = lambda x: (
+                ori_idx_mapper.get(x[0]),
+                des_idx_mapper.get(x[1]),
+            )
+            weight_df.index = weight_df.index.map(multiindex_mapper)
+
+        results = _get_route_frequencies(
+            graph=self.graph,
+            origins=self.origins.gdf,
+            destinations=self.destinations.gdf,
+            roads=self.network.gdf,
+            weight_df=weight_df,
+            rowwise=rowwise,
+        )
+
+        if isinstance(results, GeoDataFrame):
+            results = _push_geom_col(results)
+
+        results = results.rename(columns={"frequency": frequency_col}).sort_values(
+            frequency_col
+        )
+
+        if self.rules.split_lines:
+            self._unsplit_network()
+
+        if self._log:
+            minutes_elapsed = round((perf_counter() - time_) / 60, 1)
+            self._runlog(
+                "get_route_frequencies",
+                results,
+                minutes_elapsed,
+            )
+
+        return results
+
     def get_route(
         self,
         origins: GeoDataFrame,
@@ -516,7 +625,7 @@ class NetworkAnalysis:
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
         >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
         >>> rules = sg.NetworkAnalysisRules(weight="minutes")
         >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
@@ -539,7 +648,6 @@ class NetworkAnalysis:
         994       1          998  10.698588  MULTILINESTRING Z ((263489.330 6645655.330 11....
         995       1          999  10.109855  MULTILINESTRING Z ((269217.997 6650654.895 166...
         996       1         1000  14.657289  MULTILINESTRING Z ((264475.675 6644245.782 114...
-
         [997 rows x 4 columns]
         """
         if self._log:
@@ -582,24 +690,17 @@ class NetworkAnalysis:
         drop_middle_percent: int,
         rowwise=False,
     ) -> GeoDataFrame:
-        """Returns the geometry of 1 or more routes between origins and destinations.
+        r"""Returns the geometry of 1 or more routes between origins and destinations.
 
         Finds the route with the lowest cost (minutes, meters, etc.) from a set of
         origins to a set of destinations. Then the middle part of the route is removed
         from the graph the new low-cost path is found. Repeats k times. If k=1, it is
         identical to the get_route method.
 
-        Note:
-            How many percent of the route to drop from the graph, will determine how
-            many k routes will be found. If 100 percent of the route is dropped, it is
-            very hard to find more than one path for each OD pair. If
-            'drop_middle_percent' is 1, the resulting routes might be very similar,
-            depending on the layout of the network.
-
         Args:
-            origins: GeoDataFrame of points from where the routes will originate
-            destinations: GeoDataFrame of points from where the routes will terminate
-            k: the number of low-cost routes to find
+            origins: GeoDataFrame of points from where the routes will originate.
+            destinations: GeoDataFrame of points from where the routes will terminate.
+            k: the number of low-cost routes to find.
             drop_middle_percent: how many percent of the middle part of the routes
                 that should be removed from the graph before the next k route is
                 calculated. If set to 100, only the median edge will be removed.
@@ -615,6 +716,13 @@ class NetworkAnalysis:
             'origin' and 'destination', containing the indices of the origins and
             destinations GeoDataFrames.
 
+        Note:
+            How many percent of the route to drop from the graph, will determine how
+            many k routes will be found. If 100 percent of the route is dropped, it is
+            very hard to find more than one path for each OD pair.
+            If 'drop_middle_percent' is 1, the resulting routes might be very similar,
+            depending on the layout of the network.
+
         Raises:
             ValueError: if no paths were found.
             ValueError: if drop_middle_percent is not between 0 and 100.
@@ -624,23 +732,23 @@ class NetworkAnalysis:
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> roads = sg.read_parquet_url('https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet')
         >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+        >>> rules = sg.NetworkAnalysisRules(weight='minutes')
         >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
 
-        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
+        Getting 10 fastest routes from one point to another point.
+
+        >>> points = sg.read_parquet_url('https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet')
         >>> point1 = points.iloc[[0]]
         >>> point2 = points.iloc[[1]]
-
-        Getting 10 fastest routes from one point to another point.
 
         >>> k_routes = nwa.get_k_routes(
         ...             point1,
         ...             point2,
         ...             k=10,
         ...             drop_middle_percent=1
-        ...         )
+        ... )
         >>> k_routes
            origin  destination    minutes   k                                           geometry
         0       0            1  13.039830   1  MULTILINESTRING Z ((272281.367 6653079.745 160...
@@ -721,201 +829,6 @@ class NetworkAnalysis:
 
         return results
 
-    def get_route_frequencies(
-        self,
-        origins: GeoDataFrame,
-        destinations: GeoDataFrame,
-        weight_df: DataFrame | None = None,
-        rowwise: bool = False,
-        frequency_col: str = "frequency",
-    ) -> GeoDataFrame:
-        """Finds the number of times each line segment was visited in all trips.
-
-        Finds the route with the lowest cost (minutes, meters, etc.) from a set of
-        origins to a set of destinations and summarises the number of times each
-        segment was used. The aggregation is done on the line indices, which is much
-        faster than getting the geometries and then dissolving.
-
-        The trip frequencies can be weighted (multiplied) based on 'weight_df'. See
-        example below.
-
-        Args:
-            origins: GeoDataFrame of points from where the routes will originate.
-            destinations: GeoDataFrame of points from where the routes will terminate.
-            weight_df: A long formated DataFrame where each row contains the indices of
-                an origin-destination pair and the number to multiply the frequency for
-                this route by. The DataFrame can either contain three columns (origin
-                index, destination index and weight. In that order) or only a weight
-                column and a MultiIndex where level 0 is origin index and level 1 is
-                destination index.
-            frequency_col: Name of column with the number of times each road was
-                visited. Defaults to 'frequency'.
-
-        Returns:
-            A GeoDataFrame with all line segments that were visited at least once,
-            with a column with the number of times the line segment was used in the
-            individual routes.
-
-        Note:
-            The resulting lines will keep all columns of the 'gdf' of the Network.
-
-        Raises:
-            ValueError: If no paths were found.
-            ValueError: If weight_df is not a DataFrame with one or three columns.
-            ValueError: If weight_df is given and the index of origins/destinations
-                is not unique.
-
-        Examples
-        --------
-        Create the NetworkAnalysis instance.
-
-        >>> import sgis as sg
-        >>> import pandas as pd
-        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
-        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
-
-        Get number of times each road was visited for trips from 25 to 25 points.
-
-        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
-
-        >>> origins = points.iloc[:25]
-        >>> destinations = points.iloc[25:50]
-        >>> frequencies = nwa.get_route_frequencies(origins, destinations)
-        >>> frequencies[["source", "target", "frequency", "geometry"]]
-               source target  frequency                                           geometry
-        160188  77264  79112        1.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
-        153682  68376   4136        1.0  LINESTRING Z (268542.700 6652162.400 121.266, ...
-        153679  75263  75502        1.0  LINESTRING Z (268665.600 6652165.400 117.466, ...
-        153678  75262  75263        1.0  LINESTRING Z (268660.000 6652167.100 117.466, ...
-        153677  47999  75262        1.0  LINESTRING Z (268631.500 6652176.800 118.166, ...
-        ...       ...    ...        ...                                                ...
-        151465  73801  73802      103.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
-        151464  73800  73801      103.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
-        151466  73802  73632      103.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
-        151463  73799  73800      123.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
-        152170  74418  74246      130.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
-
-        [8556 rows x 4 columns]
-
-        The frequencies can be weighted for each origin-destination pair by specifying
-        'weight_df'. This can be a DataFrame with three columns, where the first two
-        contain the indices of the origin and destination (in that order), and the
-        third the number to multiply the frequency by. 'weight_df' can also be a
-        DataFrame with a 2-leveled MultiIndex, where level 0 is the origin index and
-        level 1 is the destination.
-
-        Constructing a DataFrame with all od-pair combinations and give all rows a
-        weight of 10.
-
-        >>> od_pairs = pd.MultiIndex.from_product(
-        ...     [origins.index, destinations.index], names=["origin", "destination"]
-        ... )
-        >>> weight_df = pd.DataFrame(index=od_pairs).reset_index()
-        >>> weight_df["weight"] = 10
-        >>> weight_df
-             origin  destination  weight
-        0         0           25      10
-        1         0           26      10
-        2         0           27      10
-        3         0           28      10
-        4         0           29      10
-        ..      ...          ...     ...
-        620      24           45      10
-        621      24           46      10
-        622      24           47      10
-        623      24           48      10
-        624      24           49      10
-
-        [625 rows x 3 columns]
-
-        All frequencies will now be multiplied by 10.
-
-        >>> frequencies = nwa.get_route_frequencies(origins, destinations, weight_df, weight_df=weight_df)
-        >>> frequencies[["source", "target", "frequency", "geometry"]]
-
-               source target  frequency                                           geometry
-        160188  77264  79112       10.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
-        153682  68376   4136       10.0  LINESTRING Z (268542.700 6652162.400 121.266, ...
-        153679  75263  75502       10.0  LINESTRING Z (268665.600 6652165.400 117.466, ...
-        153678  75262  75263       10.0  LINESTRING Z (268660.000 6652167.100 117.466, ...
-        153677  47999  75262       10.0  LINESTRING Z (268631.500 6652176.800 118.166, ...
-        ...       ...    ...        ...                                                ...
-        151465  73801  73802     1030.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
-        151464  73800  73801     1030.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
-        151466  73802  73632     1030.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
-        151463  73799  73800     1230.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
-        152170  74418  74246     1300.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
-
-        [8556 rows x 4 columns]
-
-        'weight_df' can also be a DataFrame with one column (the weight) and a
-        MultiIndex.
-
-        >>> weight_df = pd.DataFrame(index=od_pairs)
-        >>> weight_df["weight"] = 10
-        >>> weight_df
-               weight
-        0  25      10
-           26      10
-           27      10
-           28      10
-           29      10
-        ...       ...
-        24 45      10
-           46      10
-           47      10
-           48      10
-           49      10
-
-        """
-        if self._log:
-            time_ = perf_counter()
-
-        if weight_df is not None:
-            weight_df = self._prepare_weight_df(weight_df, origins, destinations)
-
-        self._prepare_network_analysis(origins, destinations, rowwise)
-
-        if weight_df is not None:
-            ori_idx_mapper = {v: k for k, v in self.origins.idx_dict.items()}
-            des_idx_mapper = {v: k for k, v in self.destinations.idx_dict.items()}
-            multiindex_mapper = lambda x: (
-                ori_idx_mapper.get(x[0]),
-                des_idx_mapper.get(x[1]),
-            )
-            weight_df.index = weight_df.index.map(multiindex_mapper)
-
-        results = _get_route_frequencies(
-            graph=self.graph,
-            origins=self.origins.gdf,
-            destinations=self.destinations.gdf,
-            roads=self.network.gdf,
-            weight_df=weight_df,
-            rowwise=rowwise,
-        )
-
-        if isinstance(results, GeoDataFrame):
-            results = _push_geom_col(results)
-
-        results = results.rename(columns={"frequency": frequency_col}).sort_values(
-            frequency_col
-        )
-
-        if self.rules.split_lines:
-            self._unsplit_network()
-
-        if self._log:
-            minutes_elapsed = round((perf_counter() - time_) / 60, 1)
-            self._runlog(
-                "get_route_frequencies",
-                results,
-                minutes_elapsed,
-            )
-
-        return results
-
     def service_area(
         self,
         origins: GeoDataFrame,
@@ -953,7 +866,7 @@ class NetworkAnalysis:
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
         >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
         >>> rules = sg.NetworkAnalysisRules(weight="minutes")
         >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
@@ -1081,7 +994,7 @@ class NetworkAnalysis:
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
+        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
         >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
         >>> rules = sg.NetworkAnalysisRules(weight="minutes")
         >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
@@ -1538,6 +1451,7 @@ class NetworkAnalysis:
 
         This method is run after the graph is created. If the wkts haven't updated
         since the last run, the graph doesn't have to be remade.
+
         """
         self.wkts = {}
 
@@ -1605,5 +1519,4 @@ class NetworkAnalysis:
         return copy(self)
 
     def deepcopy(self):
-        """Returns a deep copy of the class instance."""
         return deepcopy(self)
