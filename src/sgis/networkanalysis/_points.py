@@ -36,24 +36,6 @@ class Points:
             for temp_idx, idx in zip(self.gdf.temp_idx, self.gdf.index, strict=True)
         }
 
-    def _get_n_missing(
-        self,
-        results: GeoDataFrame | DataFrame,
-        col: str,
-    ) -> None:
-        """
-        Get number of missing values for each point after a network analysis.
-
-        Args:
-            results: (Geo)DataFrame resulting from od_cost_matrix, get_route,
-                get_k_routes, get_route_frequencies or service_area.
-            col: id column of the results. Either 'origin' or 'destination'.
-        """
-        self.gdf["missing"] = self.gdf["temp_idx"].map(
-            results.groupby(col).count().iloc[:, 0]
-            - results.dropna().groupby(col).count().iloc[:, 0]
-        )
-
     @staticmethod
     def _convert_distance_to_weight(distances, rules):
         """Meters to minutes based on 'weight_to_nodes_' attribute of the rules."""

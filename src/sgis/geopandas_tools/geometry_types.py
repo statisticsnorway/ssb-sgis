@@ -60,7 +60,7 @@ def to_single_geom_type(
     0  GEOMETRYCOLLECTION (POINT (0.00000 0.00000), L...
 
     >>> to_single_geom_type(gdf, "line")
-                    geometry
+                                            geometry
     2  LINESTRING (1.00000 1.00000, 2.00000 2.00000)
     """
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):

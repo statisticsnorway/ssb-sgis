@@ -105,7 +105,7 @@ class Network:
 
     >>> len(nw.gdf)
     85638
-    >>> nw = nw.close_network_holes(max_distance=1.5, fillna=0)
+    >>> nw = nw.close_network_holes(max_distance=1.5, max_angle=90, fillna=0)
     >>> len(nw.gdf)
     86929
 
@@ -612,6 +612,21 @@ class Network:
 
         return True
 
+    def get_edges(self) -> list[tuple[str, str]]:
+        return [
+            (str(source), str(target))
+            for source, target in zip(
+                self.gdf["source"], self.gdf["target"], strict=True
+            )
+        ]
+
+    @staticmethod
+    def _create_edge_ids(
+        edges: list[tuple[str, str]], weights: list[float]
+    ) -> list[str]:
+        """Edge identifiers represented with source and target ids and the weight."""
+        return [f"{s}_{t}_{w}" for (s, t), w in zip(edges, weights, strict=True)]
+
     def _update_nodes_if(self):
         if not self._nodes_are_up_to_date():
             self._make_node_ids()
@@ -653,27 +668,3 @@ class Network:
 
     def __len__(self):
         return len(self.gdf)
-
-
-# TODO: put these a better place:
-
-
-def _edge_ids(
-    gdf: GeoDataFrame | list[tuple[int, int]], weight: str | list[float]
-) -> list[str]:
-    """Quite messy way to deal with different input types."""
-    if isinstance(gdf, GeoDataFrame):
-        return _edge_id_template(
-            zip(gdf["source"], gdf["target"], strict=True),
-            weight_arr=gdf[weight],
-        )
-    if isinstance(gdf, list):
-        return _edge_id_template(gdf, weight_arr=weight)
-
-
-def _edge_id_template(*source_target_arrs, weight_arr):
-    """Edge identifiers represented with source and target ids and the weight."""
-    return [
-        f"{s}_{t}_{w}"
-        for (s, t), w in zip(*source_target_arrs, weight_arr, strict=True)
-    ]

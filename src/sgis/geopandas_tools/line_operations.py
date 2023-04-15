@@ -698,7 +698,7 @@ def close_network_holes_to_deadends(
 
     Fill gaps shorter than 1.1 meters.
 
-    >>> filled = sg.close_network_holes_to_deadends(roads, max_distance=1.1, max_angle=30)
+    >>> filled = sg.close_network_holes_to_deadends(roads, max_distance=1.1)
     >>> roads = sg.get_largest_component(roads)
     >>> roads.connected.value_counts()
     1.0    100315

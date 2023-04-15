@@ -89,8 +89,47 @@ def legend_docstring():
     m.plot()
 
 
-legend_docstring()
-sss
+def split_lines_docstring():
+    from sgis import read_parquet_url, split_lines_by_nearest_point
+
+    roads = read_parquet_url(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
+    )
+    points = read_parquet_url(
+        "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+    )
+    rows = len(roads)
+    print(rows)
+
+    roads = split_lines_by_nearest_point(roads, points, max_distance=10)
+    print("number of lines that were split:", len(roads) - rows)
+
+    roads = split_lines_by_nearest_point(roads, points)
+    print("number of lines that were split:", len(roads) - rows)
+
+
+def to_single_geom_type_docstring():
+    from shapely.geometry import LineString, Polygon
+
+    from sgis import to_gdf, to_single_geom_type
+
+    gdf = to_gdf(
+        [
+            (0, 0),
+            LineString([(1, 1), (2, 2)]),
+            Polygon([(3, 3), (4, 4), (3, 4), (3, 3)]),
+        ]
+    )
+    print(gdf)
+
+    print(to_single_geom_type(gdf, "line"))
+
+    print(to_single_geom_type(gdf, "polygon"))
+
+    gdf = gdf.dissolve()
+    print(gdf)
+
+    print(to_single_geom_type(gdf, "line"))
 
 
 @print_function_name
@@ -119,11 +158,11 @@ def networkanalysis_doctring(nwa, points):
     print(od)
     print("\n")
 
-    routes = nwa.get_route(points.sample(10), points.sample(10))
+    routes = nwa.get_route(points.loc[:10], points.loc[10:20])
     print(routes)
     print("\n")
 
-    frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
+    frequencies = nwa.get_route_frequencies(points.loc[:25], points.loc[25:50])
     print(frequencies[["source", "target", "frequency", "geometry"]])
     print("\n")
 
@@ -229,9 +268,27 @@ def get_route_docstring(nwa, points):
 
 @print_function_name
 def get_route_frequencies_docstring(nwa, points):
-    frequencies = nwa.get_route_frequencies(points.sample(25), points.sample(25))
+    origins = points.iloc[:25]
+    destinations = points.iloc[25:50]
+    frequencies = nwa.get_route_frequencies(origins, destinations)
     print(frequencies[["source", "target", "frequency", "geometry"]])
-    print("\n")
+
+    od_pairs = pd.MultiIndex.from_product(
+        [origins.index, destinations.index], names=["origin", "destination"]
+    )
+    weight_df = pd.DataFrame(index=od_pairs).reset_index()
+    weight_df["weight"] = 10
+    print(weight_df)
+
+    frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_df)
+    print(frequencies[["source", "target", "frequency", "geometry"]])
+
+    weight_df = pd.DataFrame(index=od_pairs)
+    weight_df["weight"] = 10
+    print(weight_df)
+
+    frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_df)
+    print(frequencies[["source", "target", "frequency", "geometry"]])
 
 
 @print_function_name
@@ -449,6 +506,4 @@ def make_docstring_output():
 
 
 if __name__ == "__main__":
-    import cProfile
-
-    cProfile.run("make_docstring_output()", sort="cumtime")
+    make_docstring_output()

@@ -11,7 +11,7 @@ from .network import Network
 
 
 class DirectedNetwork(Network):
-    """Subclass of Network with methods for making the network directed.
+    """Class for preparing line data for directed network analysis.
 
     Can be used as the 'network' parameter in the NetworkAnalysis class for directed
     network analysis.
@@ -19,7 +19,7 @@ class DirectedNetwork(Network):
     The DirectedNetwork class differs from the Network base class in two ways:
     1) using a DirectedNetwork in the NetworkAnalysis class means the network graph
     will be directed, meaning you can only travel in one direction on each line.
-    2) the class offers methods for making the network directed, mainly the
+    2) the class holds methods for making the network directed, mainly the
     'make_directed_network' method, which reverses lines going the wrong direction
     and duplicates and flips lines going both directions. It also creates a 'minute'
     column.

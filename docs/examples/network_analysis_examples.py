@@ -68,14 +68,23 @@ nwa = sg.NetworkAnalysis(network=nw, rules=rules)
 
 nwa
 # %% [markdown]
-# Get number of times each line segment was visited.
+# Get number of times each line segment was visited, with optional weighting.
 
 # %%
-frequencies = nwa.get_route_frequencies(points.sample(75), points.sample(75))
+origins = points.iloc[:75]
+destinations = points.iloc[75:150]
 
+# creating uniform weights of 10
+od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
+weights = pd.DataFrame(index=od_pairs)
+weights["weight"] = 10
+
+frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
+
+# plot the results
 m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
 m.cmap = "plasma"
-m.title = "Number of times each road was used."
+m.title = "Number of times each road was used,\nweighted * 10"
 m.plot()
 
 # %% [markdown]
@@ -94,6 +103,7 @@ service_areas = nwa.service_area(
     breaks=np.arange(1, 11),
 )
 
+# plot the results
 m = sg.ThematicMap(service_areas, column="minutes", black=True, size=10)
 m.k = 10
 m.title = "Roads that can be reached within 1 to 10 minutes"
