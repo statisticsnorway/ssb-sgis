@@ -104,7 +104,7 @@ def explore(
 def samplemap(
     *gdfs: GeoDataFrame,
     column: str | None = None,
-    size: int = 1500,
+    size: int = 1000,
     sample_from_first: bool = True,
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
@@ -126,7 +126,7 @@ def samplemap(
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
         size: the radius to buffer the sample point by before clipping with the data.
-            Defaults to 1500 (meters).
+            Defaults to 1000 (meters).
         sample_from_first: If True (default), the sample point is taken form the
             first specified GeoDataFrame. If False, all GeoDataFrames are considered.
         labels: By default, the GeoDataFrames will be labeled by their object names.

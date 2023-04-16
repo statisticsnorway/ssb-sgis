@@ -9,29 +9,33 @@ from pandas import DataFrame
 
 def _get_route(
     graph: Graph,
-    origins: GeoDataFrame,
-    destinations: GeoDataFrame,
     weight: str,
     roads: GeoDataFrame,
-    rowwise: bool = False,
+    od_pairs: pd.MultiIndex,
 ) -> GeoDataFrame:
     """Function used in the get_route method of NetworkAnalysis."""
 
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-    od_pairs = _create_od_pairs(origins, destinations, rowwise)
-
     resultlist: list[DataFrame] = []
 
-    for ori_id, des_id in od_pairs:
-        indices = _get_one_route(graph, ori_id, des_id)
+    for ori_id in od_pairs.get_level_values(0).unique():
+        relevant_pairs = od_pairs[od_pairs.get_level_values(0) == ori_id]
+        destinations = relevant_pairs.get_level_values(1)
 
-        if not indices:
-            continue
+        res = graph.get_shortest_paths(
+            weights="weight", v=ori_id, to=destinations, output="epath"
+        )
 
-        line_ids = _create_line_id_df(indices["source_target_weight"], ori_id, des_id)
+        for i, des_id in enumerate(destinations):
+            indices = graph.es[res[i]]
 
-        resultlist.append(line_ids)
+            if not indices:
+                continue
+
+            line_ids = _create_line_id_df(indices["src_tgt_wt"], ori_id, des_id)
+
+            resultlist.append(line_ids)
 
     if not resultlist:
         warnings.warn(
@@ -50,17 +54,14 @@ def _get_route(
 
 def _get_k_routes(
     graph: Graph,
-    origins: GeoDataFrame,
-    destinations: GeoDataFrame,
     weight: str,
     roads: GeoDataFrame,
     k: int,
     drop_middle_percent: int,
-    rowwise: bool,
+    od_pairs: pd.MultiIndex,
 ) -> GeoDataFrame:
     """Function used in the get_k_routes method of NetworkAnalysis."""
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    od_pairs = _create_od_pairs(origins, destinations, rowwise)
 
     resultlist: list[DataFrame] = []
 
@@ -93,87 +94,58 @@ def _get_k_routes(
 
 def _get_route_frequencies(
     graph,
-    origins,
-    destinations,
-    rowwise,
-    roads,
-    weight_df: DataFrame | None = None,
+    roads: GeoDataFrame,
+    weight_df: DataFrame,
 ):
     """Function used in the get_route_frequencies method of NetworkAnalysis."""
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    od_pairs = _create_od_pairs(origins, destinations, rowwise)
-
-    if weight_df is not None and len(weight_df) != len(od_pairs):
-        error_message = _make_keyerror_message(rowwise, weight_df, origins)
-        raise ValueError(error_message)
 
     resultlist: list[DataFrame] = []
 
-    for ori_id, des_id in od_pairs:
-        indices = _get_one_route(graph, ori_id, des_id)
+    od_pairs = weight_df.index
 
-        if not indices:
-            continue
+    for ori_id in od_pairs.get_level_values(0).unique():
+        relevant_pairs = od_pairs[od_pairs.get_level_values(0) == ori_id]
+        destinations = relevant_pairs.get_level_values(1)
 
-        line_ids = DataFrame({"source_target_weight": indices["source_target_weight"]})
-        line_ids["origin"] = ori_id
-        line_ids["destination"] = des_id
+        res = graph.get_shortest_paths(
+            weights="weight", v=ori_id, to=destinations, output="epath"
+        )
 
-        if weight_df is not None:
-            try:
-                line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
-            except KeyError as e:
-                error_message = _make_keyerror_message(rowwise, weight_df, origins)
-                raise KeyError(error_message) from e
-        else:
-            line_ids["multiplier"] = 1
+        for i, des_id in enumerate(destinations):
+            indices = graph.es[res[i]]
 
-        resultlist.append(line_ids)
+            if not indices:
+                continue
+
+            line_ids = DataFrame({"src_tgt_wt": indices["src_tgt_wt"]})
+            line_ids["origin"] = ori_id
+            line_ids["destination"] = des_id
+            line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
+
+            resultlist.append(line_ids)
 
     summarised = (
         pd.concat(resultlist, ignore_index=True)
-        .groupby("source_target_weight")["multiplier"]
+        .groupby("src_tgt_wt")["multiplier"]
         .sum()
     )
 
-    roads["frequency"] = roads["source_target_weight"].map(summarised)
+    roads["frequency"] = roads["src_tgt_wt"].map(summarised)
 
-    roads_visited = roads.loc[
-        roads.frequency.notna(), roads.columns.difference(["source_target_weight"])
-    ]
+    roads_visited = roads.loc[roads.frequency.notna()].drop("src_tgt_wt", axis=1)
 
     return roads_visited
 
 
-def _create_od_pairs(
-    origins: GeoDataFrame, destinations: GeoDataFrame, rowwise: bool
-) -> zip | pd.MultiIndex:
-    """Get all od combinaions if not rowwise."""
-    if rowwise:
-        return zip(origins.temp_idx, destinations.temp_idx)
-    else:
-        return pd.MultiIndex.from_product([origins.temp_idx, destinations.temp_idx])
-
-
-def _get_one_route(graph: Graph, ori_id: str, des_id: str):
-    """Get the edges for one route."""
-    res = graph.get_shortest_paths(
-        weights="weight", v=ori_id, to=des_id, output="epath"
-    )
-    if not res[0]:
-        return []
-
-    return graph.es[res[0]]
-
-
 def _get_line_geometries(line_ids, roads, weight) -> GeoDataFrame:
-    road_mapper = roads.set_index(["source_target_weight"])[[weight, "geometry"]]
+    road_mapper = roads.set_index(["src_tgt_wt"])[[weight, "geometry"]]
     line_ids = line_ids.join(road_mapper)
     return GeoDataFrame(line_ids, geometry="geometry", crs=roads.crs)
 
 
-def _create_line_id_df(source_target_weight: list, ori_id, des_id) -> DataFrame:
-    line_ids = DataFrame(index=source_target_weight)
+def _create_line_id_df(src_tgt_wt: list, ori_id, des_id) -> DataFrame:
+    line_ids = DataFrame(index=src_tgt_wt)
 
     # remove edges from ori/des to the roads
     line_ids = line_ids.loc[~line_ids.index.str.endswith("_0")]
@@ -196,12 +168,15 @@ def _loop_k_routes(graph: Graph, ori_id, des_id, k, drop_middle_percent) -> Data
     lines: list[DataFrame] = []
 
     for i in range(k):
-        indices = _get_one_route(graph, ori_id, des_id)
-
-        if not indices:
+        res = graph.get_shortest_paths(
+            weights="weight", v=ori_id, to=des_id, output="epath"
+        )
+        if not res[0]:
             continue
 
-        line_ids = _create_line_id_df(indices["source_target_weight"], ori_id, des_id)
+        indices = graph.es[res[0]]
+
+        line_ids = _create_line_id_df(indices["src_tgt_wt"], ori_id, des_id)
         line_ids["k"] = i + 1
         lines.append(line_ids)
 
@@ -223,22 +198,3 @@ def _loop_k_routes(graph: Graph, ori_id, des_id, k, drop_middle_percent) -> Data
         return pd.concat(lines)
     else:
         return pd.DataFrame()
-
-
-def _make_keyerror_message(rowwise, weight_df, origins) -> str:
-    """Add help info to error message if key in weight_df is missing.
-
-    If empty resultlist, assume all indices are wrong. Else, assume
-    """
-    error_message = (
-        "'weight_df' does not contain all indices of each OD pair combination. "
-    )
-    if not rowwise and len(weight_df) == len(origins):
-        error_message = error_message + (
-            "Did you mean to set rowwise to True? "
-            "If not, make sure weight_df contains all combinations of "
-            "origin-destination pairs. Either specified as a MultiIndex or as the "
-            "first two columns of 'weight_df'. So (0, 0), (0, 1), (1, 0), (1, 1) etc."
-        )
-
-    return error_message

@@ -23,7 +23,7 @@ def _service_area(
     nodes = node_df.join(nodes)
 
     # double edge df with source/target as index
-    edge_df = lines.loc[:, ["source", "target", "source_target_weight", "geometry"]]
+    edge_df = lines.loc[:, ["source", "target", "src_tgt_wt", "geometry"]]
     edge_df = pd.concat(
         [
             edge_df.set_index("source", drop=False),

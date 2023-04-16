@@ -73,24 +73,45 @@ def not_test_get_route_frequency(nwa, p):
     # three columns (origin, destination and weight. Column names doesn't matter)
     for truefalse in [0, 1]:
         od_pairs = pd.MultiIndex.from_product([p.index, p.index])
-        weight_df_all_10 = pd.DataFrame(index=od_pairs)
-        weight_df_all_10["weight"] = 10
+        weight_df = pd.DataFrame(index=od_pairs)
+        weight_df["weight"] = 10
+
+        no_identical_ods = weight_df.loc[
+            weight_df.index.get_level_values(0) != weight_df.index.get_level_values(1)
+        ]
 
         if truefalse:
-            weight_df_all_10 = weight_df_all_10.reset_index()
+            no_identical_ods = no_identical_ods.reset_index()
 
-        frequencies = nwa.get_route_frequencies(p, p, weight_df=weight_df_all_10)
+        frequencies = nwa.get_route_frequencies(p, p, weight_df=no_identical_ods)
         assert frequencies["frequency"].max() == 440, frequencies["frequency"].max()
 
     if __name__ == "__main__":
         sg.qtm(frequencies, "frequency", title="weight_df all = * 10")
 
     od_pairs = pd.MultiIndex.from_product([p.index, p.index])
-    weight_df_one_pair_10 = pd.DataFrame(index=od_pairs)
-    weight_df_one_pair_10["weight"] = 1
-    weight_df_one_pair_10.loc[(349, 97), "weight"] = 100
+    one_pair_100 = pd.DataFrame(index=od_pairs).assign(weight=1)
+    one_pair_100.loc[(349, 97), "weight"] = 100
 
-    frequencies = nwa.get_route_frequencies(p, p, weight_df=weight_df_one_pair_10)
+    frequencies = nwa.get_route_frequencies(p, p, weight_df=one_pair_100)
+    if __name__ == "__main__":
+        sg.qtm(frequencies, "frequency", title="weight_df one = * 10")
+    assert frequencies["frequency"].max() == 141, frequencies["frequency"].max()
+
+    # this should give same results
+    od_pairs = pd.MultiIndex.from_product([[349], [97]])
+    one_pair_100 = pd.DataFrame({"weight": [100]}, index=od_pairs)
+
+    with_default_weight = nwa.get_route_frequencies(
+        p, p, weight_df=one_pair_100, default_weight=1
+    )
+    if __name__ == "__main__":
+        sg.qtm(with_default_weight, "frequency", title="weight_df one = * 10")
+    assert with_default_weight["frequency"].max() == 141, with_default_weight[
+        "frequency"
+    ].max()
+    assert frequencies.equals(with_default_weight)
+
     if __name__ == "__main__":
         sg.qtm(frequencies, "frequency", title="weight_df one = * 10")
     assert frequencies["frequency"].max() == 141, frequencies["frequency"].max()
@@ -218,6 +239,43 @@ def not_test_get_k_routes(nwa, p):
         sg.qtm(routes)
 
 
+def not_test_direction(roads_oslo):
+    """Check that a route that should go in separate tunnels, goes in correct tunnels."""
+    vippetangen = sg.to_gdf([10.741527, 59.9040595], crs=4326).to_crs(roads_oslo.crs)
+    ryen = sg.to_gdf([10.8047522, 59.8949826], crs=4326).to_crs(roads_oslo.crs)
+
+    # direction vippetangen-ryen should be 2-ish meters from this point
+    tunnel_fromto = sg.to_gdf([10.7730091, 59.899740], crs=4326).to_crs(roads_oslo.crs)
+
+    # direction ryen-vippetangen should be 2-ish meters from this point
+    tunnel_tofrom = sg.to_gdf([10.7724645, 59.899908], crs=4326).to_crs(roads_oslo.crs)
+
+    clipped = sg.clean_clip(roads_oslo, tunnel_fromto.buffer(2000))
+    nw = sg.DirectedNetwork(clipped).make_directed_network_norway().remove_isolated()
+    rules = sg.NetworkAnalysisRules(weight="minutes")
+    nwa = sg.NetworkAnalysis(nw, rules=rules)
+
+    route_fromto = nwa.get_route(vippetangen, ryen)
+    route_tofrom = nwa.get_route(ryen, vippetangen)
+
+    m = 5
+
+    should_be_within = route_fromto.sjoin_nearest(tunnel_fromto, distance_col="dist")
+    assert should_be_within["dist"].max() < m, should_be_within["dist"]
+    should_be_within = route_tofrom.sjoin_nearest(tunnel_tofrom, distance_col="dist")
+    assert should_be_within["dist"].max() < m, should_be_within["dist"]
+
+    should_not_be_within = route_fromto.sjoin_nearest(
+        tunnel_tofrom, distance_col="dist"
+    )
+    assert should_not_be_within["dist"].max() > m, should_not_be_within["dist"]
+
+    should_not_be_within = route_tofrom.sjoin_nearest(
+        tunnel_fromto, distance_col="dist"
+    )
+    assert should_not_be_within["dist"].max() > m, should_not_be_within["dist"]
+
+
 def test_network_analysis(points_oslo, roads_oslo):
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     pd.options.mode.chained_assignment = None
@@ -246,6 +304,7 @@ def test_network_analysis(points_oslo, roads_oslo):
     not_test_service_area(nwa, p)
     not_test_get_route(nwa, p)
     not_test_get_k_routes(nwa, p)
+    not_test_direction(roads_oslo)
 
 
 def main():
@@ -261,14 +320,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# %%
-"""
-roads_oslo = sg.read_parquet_url(
-    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
-)
-nw = sg.DirectedNetwork(roads_oslo).make_directed_network_norway().remove_isolated()
-rules = sg.NetworkAnalysisRules(weight="minutes")
-nwa = sg.NetworkAnalysis(nw, rules=rules)
-print(nwa)
-"""

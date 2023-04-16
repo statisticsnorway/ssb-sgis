@@ -1,4 +1,4 @@
-k-nearest neighbors
+Neighbors
 ===================
 
 .. automodule:: sgis.geopandas_tools.neighbors

@@ -31,26 +31,21 @@ class NetworkAnalysis:
     """Class for doing network analysis.
 
     The class takes a (Directed)Network and rules for the analyses
-    (NetworkAnalysisRules), and holds methods that calculate travel times/costs,
-    route geometries or travel frequencies.
+    (NetworkAnalysisRules), and holds methods for doing network analysis
+    based on GeoDataFrames of origin and destination points.
 
-    The analysis methods take a GeoDataFrame of origin points and a GeoDataFrame of
-    destination points. The exception is the service_area methods, which take only
-    origins. The travel cost or route between each OD (origin-destination) pair is
-    calculated and returned in a (Geo)DataFrame with the columns 'origin',
-    'destination' and the cost between the OD pairs. The route methods also return a
-    geometry column.
+    The 'od_cost_matrix' method is the fastest, and returns a DataFrame with only
+    indices and travel costs between each origin-destination pair.
 
-    The methods use the index of the origins and destinations as values in the
-    resulting DataFrames. To use a column instead, use the pandas set_index method
-    inside the method call.
+    The 'get_route' method does the same, but also returns the line geometry of the
+    routes. 'get_k_routes' can be used to find multiple routes between each OD pair.
+
+    The service_area methods only take a set of origins, and return the lines that
+    can be reached within one or more breaks.
 
     The 'get_route_frequencies' method is a bit different. It returns the individual
-    line segments that were visited with a column for how many times the segments
-    were used.
-
-    Also, the service area methods do not do calculations for OD pairs, but from either
-    origins to all roads or all roads to destinations.
+    line segments that were visited with an added column for how many times the
+    segments were used.
 
     Args:
         network: either the base Network class or a subclass, chiefly the
@@ -144,6 +139,8 @@ class NetworkAnalysis:
         if log:
             self.log = DataFrame()
 
+        self._graph_updated_count = 0
+
     def _check_if_holes_are_nan(self):
         HOLES_ARE_NAN = (
             "Network holes have been filled by straigt lines, but the rows have "
@@ -202,7 +199,6 @@ class NetworkAnalysis:
         Create some origin and destination points.
 
         >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
-
         >>> origins = points.loc[:99, ["geometry"]]
         >>> origins
                                   geometry
@@ -218,7 +214,6 @@ class NetworkAnalysis:
         98  POINT (272322.700 6653729.100)
         99  POINT (265622.800 6644644.200)
         [100 rows x 1 columns]
-
         >>> destinations = points.loc[100:199, ["geometry"]]
         >>> destinations
                                    geometry
@@ -255,7 +250,8 @@ class NetworkAnalysis:
 
         Join the results onto the 'origins' GeoDataFrame via the index.
 
-        >>> joined = origins.join(od.set_index("origin"))
+        >>> od = od.set_index("origin")
+        >>> joined = origins.join(od)
         >>> joined
                                   geometry  destination    minutes
         0   POINT (263122.700 6651184.900)          100   8.765621
@@ -274,7 +270,7 @@ class NetworkAnalysis:
         Get travel times below 10 minutes.
 
         >>> less_than_10_min = od.loc[od.minutes < 10]
-        >>> joined = origins.join(less_than_10_min.set_index("origin"))
+        >>> joined = origins.join(less_than_10_min)
         >>> joined
                                   geometry  destination   minutes
         0   POINT (263122.700 6651184.900)        100.0  8.765621
@@ -293,7 +289,7 @@ class NetworkAnalysis:
         Get the three fastest routes from each origin.
 
         >>> three_fastest = od.loc[od.groupby("origin")["minutes"].rank() <= 3]
-        >>> joined = origins.join(three_fastest.set_index("origin"))
+        >>> joined = origins.join(three_fastest)
         >>> joined
                                   geometry  destination   minutes
         0   POINT (263122.700 6651184.900)        135.0  0.966702
@@ -309,7 +305,7 @@ class NetworkAnalysis:
         99  POINT (265622.800 6644644.200)        156.0  1.368926
         [294 rows x 3 columns]
 
-        Assign aggregated values directly onto the origins via the index.
+        Assign aggregated values directly onto the origins.
 
         >>> origins["minutes_mean"] = od.groupby("origin")["minutes"].mean()
         >>> origins
@@ -330,39 +326,42 @@ class NetworkAnalysis:
         Use set_index to use column as identifier insted of the index.
 
         >>> origins["areacode"] = np.random.choice(["0301", "4601", "3401"], len(origins))
-        >>> od = nwa.od_cost_matrix(origins.set_index("areacode"), destinations)
+        >>> od = nwa.od_cost_matrix(
+        ...    origins.set_index("areacode"),
+        ...    destinations
+        ... )
         >>> od
              origin  destination    minutes
-        0         a          100   8.765621
-        1         a          101   6.383407
-        2         a          102  13.482324
-        3         a          103   6.410121
-        4         a          104   5.882124
+        0      0301          100   8.765621
+        1      0301          101   6.383407
+        2      0301          102  13.482324
+        3      0301          103   6.410121
+        4      0301          104   5.882124
         ...     ...          ...        ...
-        9995      b          195  20.488644
-        9996      b          196  16.721241
-        9997      b          197  19.977029
-        9998      b          198  15.233163
-        9999      b          199   6.439002
+        9995   3401          195  20.488644
+        9996   3401          196  16.721241
+        9997   3401          197  19.977029
+        9998   3401          198  15.233163
+        9999   3401          199   6.439002
         [10000 rows x 3 columns]
 
         Travel time from 1000 to 1000 points rowwise.
 
-        >>> points_reversed = points.iloc[::-1].reset_index(drop=True)
+        >>> points_reversed = points.iloc[::-1]
         >>> od = nwa.od_cost_matrix(points, points_reversed, rowwise=True)
         >>> od
              origin  destination    minutes
-        0         0            0  14.692667
-        1         1            1   8.452691
-        2         2            2  16.370569
-        3         3            3   9.486131
-        4         4            4  16.521346
+        0         0          999  14.692667
+        1         1          998   8.452691
+        2         2          997  16.370569
+        3         3          996   9.486131
+        4         4          995  16.521346
         ..      ...          ...        ...
-        995     995          995  16.794610
-        996     996          996   9.611700
-        997     997          997  19.968743
-        998     998          998   9.484374
-        999     999          999  14.892648
+        995     995            4  16.794610
+        996     996            3   9.611700
+        997     997            2  19.968743
+        998     998            1   9.484374
+        999     999            0  14.892648
         [1000 rows x 3 columns]
 
         """
@@ -406,6 +405,7 @@ class NetworkAnalysis:
         origins: GeoDataFrame,
         destinations: GeoDataFrame,
         weight_df: DataFrame | None = None,
+        default_weight: int | float | None = None,
         rowwise: bool = False,
         frequency_col: str = "frequency",
     ) -> GeoDataFrame:
@@ -441,9 +441,8 @@ class NetworkAnalysis:
 
         Raises:
             ValueError: If no paths were found.
-            ValueError: If weight_df is not a DataFrame with one or three columns.
-            ValueError: If weight_df is given and the index of origins/destinations
-                is not unique.
+            ValueError: If weight_df is not a DataFrame with one or three columns
+                that contain all indices of 'origins' and 'destinations'.
 
         Examples
         --------
@@ -456,12 +455,14 @@ class NetworkAnalysis:
         >>> rules = sg.NetworkAnalysisRules(weight="minutes")
         >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
 
-        Get number of times each road was visited for trips from 25 to 25 points.
+        Get some points.
 
         >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
-
         >>> origins = points.iloc[:25]
         >>> destinations = points.iloc[25:50]
+
+        Get number of times each road was visited for trips from 25 to 25 points.
+
         >>> frequencies = nwa.get_route_frequencies(origins, destinations)
         >>> frequencies[["source", "target", "frequency", "geometry"]]
                source target  frequency                                           geometry
@@ -550,11 +551,22 @@ class NetworkAnalysis:
             time_ = perf_counter()
 
         if weight_df is not None:
-            weight_df = self._prepare_weight_df(weight_df, origins, destinations)
+            weight_df = self._prepare_weight_df(weight_df)
+            od_pairs = self._create_od_pairs(origins, destinations, rowwise=rowwise)
+            self._make_sure_unique(weight_df, od_pairs)
+
+            weights_mapped = od_pairs.map(weight_df.iloc[:, 0])
+            if default_weight:
+                weights_mapped = weights_mapped.fillna(default_weight)
+            else:
+                self._make_sure_index_match(weight_df, od_pairs)
+            weight_df = DataFrame(index=od_pairs)
+            weight_df["weight"] = weights_mapped
 
         self._prepare_network_analysis(origins, destinations, rowwise)
 
         if weight_df is not None:
+            # map to temporary ids
             ori_idx_mapper = {v: k for k, v in self.origins.idx_dict.items()}
             des_idx_mapper = {v: k for k, v in self.destinations.idx_dict.items()}
             multiindex_mapper = lambda x: (
@@ -562,14 +574,19 @@ class NetworkAnalysis:
                 des_idx_mapper.get(x[1]),
             )
             weight_df.index = weight_df.index.map(multiindex_mapper)
+        else:
+            od_pairs = self._create_od_pairs(
+                self.origins.gdf.set_index("temp_idx"),
+                self.destinations.gdf.set_index("temp_idx"),
+                rowwise=rowwise,
+            )
+            weight_df = DataFrame(index=od_pairs)
+            weight_df["weight"] = 1
 
         results = _get_route_frequencies(
             graph=self.graph,
-            origins=self.origins.gdf,
-            destinations=self.destinations.gdf,
             roads=self.network.gdf,
             weight_df=weight_df,
-            rowwise=rowwise,
         )
 
         if isinstance(results, GeoDataFrame):
@@ -655,13 +672,17 @@ class NetworkAnalysis:
 
         self._prepare_network_analysis(origins, destinations, rowwise)
 
+        od_pairs = self._create_od_pairs(
+            self.origins.gdf.set_index("temp_idx"),
+            self.destinations.gdf.set_index("temp_idx"),
+            rowwise=rowwise,
+        )
+
         results = _get_route(
             graph=self.graph,
-            origins=self.origins.gdf,
-            destinations=self.destinations.gdf,
             weight=self.rules.weight,
             roads=self.network.gdf,
-            rowwise=rowwise,
+            od_pairs=od_pairs,
         )
 
         results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -798,13 +819,17 @@ class NetworkAnalysis:
 
         self._prepare_network_analysis(origins, destinations, rowwise)
 
+        od_pairs = self._create_od_pairs(
+            self.origins.gdf.set_index("temp_idx"),
+            self.destinations.gdf.set_index("temp_idx"),
+            rowwise=rowwise,
+        )
+
         results = _get_k_routes(
             graph=self.graph,
-            origins=self.origins.gdf,
-            destinations=self.destinations.gdf,
             weight=self.rules.weight,
             roads=self.network.gdf,
-            rowwise=rowwise,
+            od_pairs=od_pairs,
             k=k,
             drop_middle_percent=drop_middle_percent,
         )
@@ -920,7 +945,7 @@ class NetworkAnalysis:
         )
 
         if not all(results.geometry.isna()):
-            results = results.drop_duplicates(["source_target_weight", "origin"])
+            results = results.drop_duplicates(["src_tgt_wt", "origin"])
 
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
@@ -1047,7 +1072,7 @@ class NetworkAnalysis:
         )
 
         if not all(results.geometry.isna()):
-            results = results.drop_duplicates(["source_target_weight", "origin"])
+            results = results.drop_duplicates(["src_tgt_wt", "origin"])
 
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
@@ -1086,13 +1111,12 @@ class NetworkAnalysis:
         return results
 
     @staticmethod
-    def _prepare_weight_df(weight_df, origins, destinations):
-        """Copy weight_df, convert to MultiIndex (if needed), then validate it.
+    def _prepare_weight_df(weight_df: DataFrame) -> DataFrame:
+        """Copy weight_df, convert to MultiIndex (if needed), check if correct shape.
 
         The weight_df needs to have a very specific shape and index. If a 3-columned df
         is given, convert the first two to a MultiIndex.
 
-        Then make sure this index matches the index of origins and destinations.
         """
         error_message = (
             "'weight_df' should be a DataFrame with the columns "
@@ -1113,35 +1137,58 @@ class NetworkAnalysis:
         if len(weight_df.columns) != 1 and isinstance(weight_df.index, pd.MultiIndex):
             raise ValueError(error_message)
 
+        return weight_df
+
+    @staticmethod
+    def _make_sure_unique(weight_df: DataFrame, od_pairs: pd.MultiIndex) -> None:
+        """Make sure this index matches the index of origins and destinations."""
         if not weight_df.index.is_unique:
             raise ValueError("'weight_df' must contain only unique OD combinations.")
 
-        if not origins.index.is_unique:
+        if not od_pairs.is_unique:
             raise ValueError(
-                "The index of 'origins' must be unque when using a 'weight_df'."
-            )
-        if not destinations.index.is_unique:
-            raise ValueError(
-                "The index of 'destinations' must be unque when using a 'weight_df'."
+                "'origins' and 'destinations must contain only unique "
+                "indices when weight_df is specified."
             )
 
-        # check if any/all indices are in origins/destinations.
-        # Doing 'any' to give better error message
-        level_0 = weight_df.index.get_level_values(0)
-        if not level_0.isin(origins.index).any():
-            raise ValueError("None of the 'origins' indices are in 'weight_df'.")
+    @staticmethod
+    def _make_sure_index_match(
+        weight_df: DataFrame,
+        od_pairs: pd.MultiIndex,
+    ):
+        """Make sure this index matches the index of origins and destinations."""
+        if not od_pairs.isin(weight_df.index).all():
+            if not od_pairs.isin(weight_df.index).any():
+                raise ValueError(
+                    "None of the origin-destination pair indices are in 'weight_df'."
+                )
+            raise ValueError(
+                "Not all origin-destination pair indices are in 'weight_df'."
+            )
 
-        level_1 = weight_df.index.get_level_values(1)
-        if not level_1.isin(destinations.index).any():
-            raise ValueError("None of the 'destinations' indices are in 'weight_df'.")
+    @staticmethod
+    def _create_od_pairs(
+        origins: GeoDataFrame, destinations: GeoDataFrame, rowwise: bool
+    ) -> pd.MultiIndex:
+        """Get all OD combinaions without identical origin-destination geometry.
 
-        if not level_0.isin(origins.index).all():
-            raise ValueError("Not all 'origins' indices are in 'weight_df'.")
+        Returns a MultiIndex to be iterated over in get_route, get_k_routes and
+        get_route_frequencies. In get_route_frequencies, the MultiIndex is turned
+        into a DataFrame with a weight column.
+        """
+        if rowwise:
+            od_pairs = pd.MultiIndex.from_arrays([origins.index, destinations.index])
+        else:
+            od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
 
-        if not level_1.isin(destinations.index).all():
-            raise ValueError("Not all 'destinations' indices are in 'weight_df'.")
+        geoms_ori = od_pairs.get_level_values(0).map(origins.geometry)
+        geoms_des = od_pairs.get_level_values(1).map(destinations.geometry)
+        no_identical_geoms = od_pairs[geoms_ori != geoms_des]
 
-        return weight_df
+        if not len(no_identical_geoms) and len(origins) and len(destinations):
+            raise ValueError("All origin-destination pairs have identical geometries")
+
+        return no_identical_geoms
 
     def _log_df_template(self, method: str, minutes_elapsed: float) -> DataFrame:
         """Creates a DataFrame with one row and the main columns.
@@ -1268,6 +1315,8 @@ class NetworkAnalysis:
 
             self._add_missing_vertices()
 
+            self._graph_updated_count += 1
+
         self._update_wkts()
         self.rules._update_rules()
 
@@ -1294,9 +1343,7 @@ class NetworkAnalysis:
 
         weights = list(self.network.gdf[self.rules.weight])
 
-        self.network.gdf["source_target_weight"] = self.network._create_edge_ids(
-            edges, weights
-        )
+        self.network.gdf["src_tgt_wt"] = self.network._create_edge_ids(edges, weights)
 
         edges_start, weights_start = self.origins._get_edges_and_weights(
             nodes=self.network.nodes,
@@ -1402,7 +1449,7 @@ class NetworkAnalysis:
         graph = igraph.Graph.TupleList(edges, directed=directed)
 
         graph.es["weight"] = weights
-        graph.es["source_target_weight"] = edge_ids
+        graph.es["src_tgt_wt"] = edge_ids
         graph.es["edge_tuples"] = edges
         graph.es["source"] = [edge[0] for edge in edges]
         graph.es["target"] = [edge[1] for edge in edges]
@@ -1423,13 +1470,17 @@ class NetworkAnalysis:
         if self.rules._rules_have_changed():
             return False
 
+        if self.network.gdf["src_tgt_wt"].isna().any():
+            return False
+
         for points in ["origins", "destinations"]:
-            if not hasattr(self.wkts, points):
+            if self[points] is None:
+                continue
+            if points not in self.wkts:
                 return False
             if self._points_have_changed(self[points].gdf, what=points):
                 return False
 
-        #        if not self.gdf["source_target_weight"].
         return True
 
     def _points_have_changed(self, points: GeoDataFrame, what: str) -> bool:

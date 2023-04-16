@@ -45,7 +45,6 @@ def coordinate_array(
     2  POINT (0.74841 0.10627)
     3  POINT (0.00966 0.87868)
     4  POINT (0.38046 0.87879)
-
     >>> coordinate_array(points)
     array([[0.59376221, 0.92577159],
         [0.34074678, 0.91650446],
@@ -183,7 +182,6 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     9997  POINT (0.00330 0.79168)
     9998  POINT (0.90926 0.96215)
     9999  POINT (0.01386 0.22935)
-
     [10000 rows x 1 columns]
 
     Values with a mean of 100.
@@ -202,7 +200,6 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     9997    POINT (45.694 60.843)
     9998   POINT (73.261 101.881)
     9999  POINT (134.503 168.155)
-
     [10000 rows x 1 columns]
     """
     if isinstance(n, (str, float)):
@@ -252,7 +249,6 @@ def random_points_in_polygons(
     97  POLYGON ((1.30569 0.46956, 1.30520 0.43815, 1....
     98  POLYGON ((1.18172 0.10944, 1.18122 0.07803, 1....
     99  POLYGON ((1.06156 0.99893, 1.06107 0.96752, 1....
-
     [100 rows x 1 columns]
 
     >>> points = sg.random_points_in_polygons(polygons, 3)
@@ -269,7 +265,6 @@ def random_points_in_polygons(
     99  POINT (-0.79089 0.57835)
     99   POINT (0.39838 1.50881)
     99   POINT (0.98383 0.77298)
-
     [300 rows x 1 columns]
     """
 
@@ -308,8 +303,8 @@ def random_points_in_polygons(
             overlapping_indices = overlapping_indices + tuple(overlapping.index.values)
 
             gdf__ = gdf.loc[~gdf["temp_idx____"].isin(overlapping_indices)]
-            bounds = gdf__.bounds
             temp_idx____ = gdf__["temp_idx____"].values
+            bounds = gdf__.bounds
 
     all_points = all_points.sort_index().drop(["temp_idx____", "index_right"], axis=1)
 
@@ -596,26 +591,41 @@ def to_gdf(
                         geometry
     0  POINT (10.00000 60.00000)
 
+    From wkt.
+
     >>> wkt = "POINT (10 60)"
     >>> to_gdf(wkt, crs=4326)
                         geometry
     0  POINT (10.00000 60.00000)
 
-    Multiple coordinates will be converted to Points, unless a line or polygon geometry
-    is constructed beforehand.
+    From DataFrame with x, y (optionally z) coordinate columns. Index and
+    columns are preserved.
 
-    >>> coordslist = [(10, 60), (11, 59)]
-    >>> to_gdf(coordslist, crs=4326)
-                        geometry
-    0  POINT (10.00000 60.00000)
-    1  POINT (11.00000 59.00000)
+    >>> df = pd.DataFrame({"x": [10, 11], "y": [60, 59]}, index=[1,3])
+        x   y
+    1  10  60
+    3  11  59
+    >>> gdf = to_gdf(df, geometry=["x", "y"], crs=4326)
+    >>> gdf
+        x   y                   geometry
+    1  10  60  POINT (10.00000 60.00000)
+    3  11  59  POINT (11.00000 59.00000)
 
-    >>> from shapely.geometry import LineString
-    >>> to_gdf(LineString(coordslist), crs=4326)
-                                                geometry
-    0  LINESTRING (10.00000 60.00000, 11.00000 59.00000)
+    For DataFrame/dict with a geometry-like column, the geometry column can be
+    speficied with the geometry parameter, which is set to "geometry" by default.
 
-    Dictionaries/Series will preserve the keys/index.
+    >>> df = pd.DataFrame({"col": [1, 2], "geometry": ["point (10 60)", (11, 59)]})
+    >>> df
+       col       geometry
+    0    1  point (10 60)
+    1    2       (11, 59)
+    >>> gdf = to_gdf(df, crs=4326)
+    >>> gdf
+       col                   geometry
+    0    1  POINT (10.00000 60.00000)
+    1    2  POINT (11.00000 59.00000)
+
+    From Series or Series-like dictionary.
 
     >>> d = {1: (10, 60), 3: (11, 59)}
     >>> to_gdf(d)
@@ -629,36 +639,24 @@ def to_gdf(
     1  POINT (10.00000 60.00000)
     3  POINT (11.00000 59.00000)
 
-    DataFrame/dict with geometry-like column, will keep its column structure if
-    the geometry column matches the "geometry" parameter, which is set to "geometry" by
-    default.
+    Multiple coordinates will be converted to points, unless a line or polygon geometry
+    is constructed beforehand.
 
-    >>> df = pd.DataFrame({"col": [1, 2], "geometry": ["point (10 60)", (11, 59)]})
-    >>> df
-       col       geometry
-    0    1  point (10 60)
-    1    2       (11, 59)
-    >>> gdf = to_gdf(df, geometry="geometry)
-    >>> gdf
-       col                   geometry
-    0    1  POINT (10.00000 60.00000)
-    1    2  POINT (11.00000 59.00000)
+    >>> coordslist = [(10, 60), (11, 59)]
+    >>> to_gdf(coordslist, crs=4326)
+                        geometry
+    0  POINT (10.00000 60.00000)
+    1  POINT (11.00000 59.00000)
 
-    From DataFrame with x, y (optionally z) coordinate columns.
-
-    >>> df = pd.DataFrame({"x": [10, 11], "y": [60, 59]})
-        x   y
-    0  10  60
-    1  11  59
-    >>> gdf = to_gdf(df, geometry=["x", "y"])
-    >>> gdf
-        x   y                   geometry
-    0  10  60  POINT (10.00000 60.00000)
-    1  11  59  POINT (11.00000 59.00000)
+    >>> from shapely.geometry import LineString
+    >>> to_gdf(LineString(coordslist), crs=4326)
+                                                geometry
+    0  LINESTRING (10.00000 60.00000, 11.00000 59.00000)
 
     From 2 or 3 dimensional array.
 
-    >>> to_gdf(np.random.randint(100, size=(5, 3)))
+    >>> arr = np.random.randint(100, size=(5, 3))
+    >>> to_gdf(arr)
                              geometry
     0  POINT Z (82.000 88.000 82.000)
     1  POINT Z (70.000 92.000 20.000)
