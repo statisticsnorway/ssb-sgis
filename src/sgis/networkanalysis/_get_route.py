@@ -19,15 +19,23 @@ def _get_route(
 
     resultlist: list[DataFrame] = []
 
-    for ori_id, des_id in od_pairs:
-        indices = _get_one_route(graph, ori_id, des_id)
+    for ori_id in od_pairs.get_level_values(0).unique():
+        relevant_pairs = od_pairs[od_pairs.get_level_values(0) == ori_id]
+        destinations = relevant_pairs.get_level_values(1)
 
-        if not indices:
-            continue
+        res = graph.get_shortest_paths(
+            weights="weight", v=ori_id, to=destinations, output="epath"
+        )
 
-        line_ids = _create_line_id_df(indices["source_target_weight"], ori_id, des_id)
+        for i, des_id in enumerate(destinations):
+            indices = graph.es[res[i]]
 
-        resultlist.append(line_ids)
+            if not indices:
+                continue
+
+            line_ids = _create_line_id_df(indices["src_tgt_wt"], ori_id, des_id)
+
+            resultlist.append(line_ids)
 
     if not resultlist:
         warnings.warn(
@@ -94,53 +102,50 @@ def _get_route_frequencies(
 
     resultlist: list[DataFrame] = []
 
-    for ori_id, des_id in weight_df.index:
-        indices = _get_one_route(graph, ori_id, des_id)
+    od_pairs = weight_df.index
 
-        if not indices:
-            continue
+    for ori_id in od_pairs.get_level_values(0).unique():
+        relevant_pairs = od_pairs[od_pairs.get_level_values(0) == ori_id]
+        destinations = relevant_pairs.get_level_values(1)
 
-        line_ids = DataFrame({"source_target_weight": indices["source_target_weight"]})
-        line_ids["origin"] = ori_id
-        line_ids["destination"] = des_id
-        line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
+        res = graph.get_shortest_paths(
+            weights="weight", v=ori_id, to=destinations, output="epath"
+        )
 
-        resultlist.append(line_ids)
+        for i, des_id in enumerate(destinations):
+            indices = graph.es[res[i]]
+
+            if not indices:
+                continue
+
+            line_ids = DataFrame({"src_tgt_wt": indices["src_tgt_wt"]})
+            line_ids["origin"] = ori_id
+            line_ids["destination"] = des_id
+            line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
+
+            resultlist.append(line_ids)
 
     summarised = (
         pd.concat(resultlist, ignore_index=True)
-        .groupby("source_target_weight")["multiplier"]
+        .groupby("src_tgt_wt")["multiplier"]
         .sum()
     )
 
-    roads["frequency"] = roads["source_target_weight"].map(summarised)
+    roads["frequency"] = roads["src_tgt_wt"].map(summarised)
 
-    roads_visited = roads.loc[roads.frequency.notna()].drop(
-        "source_target_weight", axis=1
-    )
+    roads_visited = roads.loc[roads.frequency.notna()].drop("src_tgt_wt", axis=1)
 
     return roads_visited
 
 
-def _get_one_route(graph: Graph, ori_id: str, des_id: str):
-    """Get the edges for one route."""
-    res = graph.get_shortest_paths(
-        weights="weight", v=ori_id, to=des_id, output="epath"
-    )
-    if not res[0]:
-        return []
-
-    return graph.es[res[0]]
-
-
 def _get_line_geometries(line_ids, roads, weight) -> GeoDataFrame:
-    road_mapper = roads.set_index(["source_target_weight"])[[weight, "geometry"]]
+    road_mapper = roads.set_index(["src_tgt_wt"])[[weight, "geometry"]]
     line_ids = line_ids.join(road_mapper)
     return GeoDataFrame(line_ids, geometry="geometry", crs=roads.crs)
 
 
-def _create_line_id_df(source_target_weight: list, ori_id, des_id) -> DataFrame:
-    line_ids = DataFrame(index=source_target_weight)
+def _create_line_id_df(src_tgt_wt: list, ori_id, des_id) -> DataFrame:
+    line_ids = DataFrame(index=src_tgt_wt)
 
     # remove edges from ori/des to the roads
     line_ids = line_ids.loc[~line_ids.index.str.endswith("_0")]
@@ -163,12 +168,15 @@ def _loop_k_routes(graph: Graph, ori_id, des_id, k, drop_middle_percent) -> Data
     lines: list[DataFrame] = []
 
     for i in range(k):
-        indices = _get_one_route(graph, ori_id, des_id)
-
-        if not indices:
+        res = graph.get_shortest_paths(
+            weights="weight", v=ori_id, to=des_id, output="epath"
+        )
+        if not res[0]:
             continue
 
-        line_ids = _create_line_id_df(indices["source_target_weight"], ori_id, des_id)
+        indices = graph.es[res[0]]
+
+        line_ids = _create_line_id_df(indices["src_tgt_wt"], ori_id, des_id)
         line_ids["k"] = i + 1
         lines.append(line_ids)
 
