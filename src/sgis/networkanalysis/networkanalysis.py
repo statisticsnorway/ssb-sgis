@@ -945,7 +945,7 @@ class NetworkAnalysis:
         )
 
         if not all(results.geometry.isna()):
-            results = results.drop_duplicates(["source_target_weight", "origin"])
+            results = results.drop_duplicates(["src_tgt_wt", "origin"])
 
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
@@ -1072,7 +1072,7 @@ class NetworkAnalysis:
         )
 
         if not all(results.geometry.isna()):
-            results = results.drop_duplicates(["source_target_weight", "origin"])
+            results = results.drop_duplicates(["src_tgt_wt", "origin"])
 
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
@@ -1343,9 +1343,7 @@ class NetworkAnalysis:
 
         weights = list(self.network.gdf[self.rules.weight])
 
-        self.network.gdf["source_target_weight"] = self.network._create_edge_ids(
-            edges, weights
-        )
+        self.network.gdf["src_tgt_wt"] = self.network._create_edge_ids(edges, weights)
 
         edges_start, weights_start = self.origins._get_edges_and_weights(
             nodes=self.network.nodes,
@@ -1451,7 +1449,7 @@ class NetworkAnalysis:
         graph = igraph.Graph.TupleList(edges, directed=directed)
 
         graph.es["weight"] = weights
-        graph.es["source_target_weight"] = edge_ids
+        graph.es["src_tgt_wt"] = edge_ids
         graph.es["edge_tuples"] = edges
         graph.es["source"] = [edge[0] for edge in edges]
         graph.es["target"] = [edge[1] for edge in edges]
@@ -1472,7 +1470,7 @@ class NetworkAnalysis:
         if self.rules._rules_have_changed():
             return False
 
-        if self.network.gdf["source_target_weight"].isna().any():
+        if self.network.gdf["src_tgt_wt"].isna().any():
             return False
 
         for points in ["origins", "destinations"]:

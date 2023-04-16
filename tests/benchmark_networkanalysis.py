@@ -41,8 +41,6 @@ def not_test_get_route(nwa, p):
 def not_test_service_area(nwa, p):
     service_areas = nwa.service_area(p, breaks=20, dissolve=True)
 
-    service_areas = service_areas.drop_duplicates(["source", "target"])
-
 
 def not_test_network_analysis(points_oslo, roads_oslo):
     warnings.filterwarnings(action="ignore", category=FutureWarning)
@@ -50,7 +48,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
     split_lines = False
 
-    buffdist = 3500
+    buffdist = 2000
 
     p = points_oslo
     p = sg.clean_clip(p, p.geometry.iloc[0].buffer(buffdist))
