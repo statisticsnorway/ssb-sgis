@@ -99,7 +99,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
     split_lines = False
 
-    buffdist = 800
+    buffdist = 2500
 
     p = points_oslo
     p = sg.clean_clip(p, p.geometry.iloc[0].buffer(buffdist))
@@ -118,30 +118,7 @@ def not_test_network_analysis(points_oslo, roads_oslo):
     nwa = sg.NetworkAnalysis(nw, rules=rules)
     print(nwa)
 
-    for _ in range(5):
-        nwa.service_area(p, breaks=5)
-    print("_graph_updated_count", nwa._graph_updated_count)
-    for _ in range(5):
-        nwa.get_route_frequencies(p, p)
-    print("_graph_updated_count", nwa._graph_updated_count)
-    for _ in range(5):
-        nwa.get_route(p, p)
-    print("_graph_updated_count", nwa._graph_updated_count)
-    for _ in range(5):
-        nwa.od_cost_matrix(p, p)
-    print("_graph_updated_count", nwa._graph_updated_count)
-    for _ in range(5):
-        nwa.service_area(p, breaks=5)
-        nwa.get_route_frequencies(p, p)
-        nwa.get_route(p, p)
-        nwa.od_cost_matrix(p, p)
-    print("_graph_updated_count", nwa._graph_updated_count)
-    ss
-
     not_test_od_cost_matrix(nwa, p)
-    print(nwa.log.groupby("method")["minutes_elapsed"].sum())
-
-    not_test_service_area(nwa, p)
     print(nwa.log.groupby("method")["minutes_elapsed"].sum())
 
     not_test_get_route_frequency(nwa, p)
@@ -152,7 +129,10 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
     print("_graph_updated_count", nwa._graph_updated_count)
 
+    not_test_service_area(nwa, p)
     print(nwa.log.groupby("method")["minutes_elapsed"].sum())
+
+    print("_graph_updated_count", nwa._graph_updated_count)
 
 
 def main():

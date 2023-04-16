@@ -16,15 +16,12 @@ class DirectedNetwork(Network):
     Can be used as the 'network' parameter in the NetworkAnalysis class for directed
     network analysis.
 
-    DirectedNetwork can also access all methods of the Network class.
-
-    The DirectedNetwork class differs from the Network base class in two ways:
-    1) using a DirectedNetwork in the NetworkAnalysis class means the network graph
-    will be directed, meaning you can only travel in one direction on each line.
-    2) the class holds methods for making the network directed, mainly the
-    'make_directed_network' method, which reverses lines going the wrong direction
-    and duplicates and flips lines going both directions. It also creates a 'minute'
-    column.
+    The DirectedNetwork class has all the methods of the base Network class,
+    plus additional methods for making the network directed. If a DirectedNetwork
+    instance is used in NetworkAnalysis, the network graph will be directed,
+    meaning the lines can only be traversed in one direction. The network should
+    be make properly directed with the 'make_directed_network' method, or
+    'make_directed_network_norway' for Norwegian road data.
 
     Args:
         gdf: a GeoDataFrame of line geometries.

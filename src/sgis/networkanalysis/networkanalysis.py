@@ -1301,15 +1301,7 @@ class NetworkAnalysis:
         else:
             self.destinations = None
 
-        print(
-            "graph",
-            self._graph_is_up_to_date(),
-            "nodes",
-            self.network._nodes_are_up_to_date(),
-        )
-
         if not self._graph_is_up_to_date() or not self.network._nodes_are_up_to_date():
-            print("hei hei hei")
             self.network._update_nodes_if()
 
             edges, weights, ids = self._get_edges_and_weights()
@@ -1475,11 +1467,9 @@ class NetworkAnalysis:
         or if the points have changed.
         """
         if not hasattr(self, "graph") or not hasattr(self, "wkts"):
-            print("graph 1")
             return False
 
         if self.rules._rules_have_changed():
-            print("graph 2")
             return False
 
         if self.network.gdf["source_target_weight"].isna().any():
@@ -1489,10 +1479,8 @@ class NetworkAnalysis:
             if self[points] is None:
                 continue
             if points not in self.wkts:
-                print("graph 3")
                 return False
             if self._points_have_changed(self[points].gdf, what=points):
-                print("graph 4")
                 return False
 
         return True

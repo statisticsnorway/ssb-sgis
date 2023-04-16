@@ -244,9 +244,8 @@ class Map:
     def _to_common_crs_and_one_geom_col(self, gdfs: list[GeoDataFrame]):
         """Need common crs and max one geometry column."""
         crs_list = list({gdf.crs for gdf in gdfs if gdf.crs is not None})
-        if not crs_list:
-            return gdfs
-        self.crs = crs_list[0]
+        if crs_list:
+            self.crs = crs_list[0]
         new_gdfs = []
         for gdf in gdfs:
             gdf = drop_inactive_geometry_columns(gdf).pipe(rename_geometry_if)
