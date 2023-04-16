@@ -216,7 +216,7 @@ To generate the API-documentation locally, run the following command from the ro
 directory:
 
 ```shell
-poetry run sphinx-build docs docs/_build
+poetry run sphinx-build -W docs docs/_build
 ```
 
 Then open the file `docs/_build/index.html`.

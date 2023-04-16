@@ -9,17 +9,13 @@ from pandas import DataFrame
 
 def _get_route(
     graph: Graph,
-    origins: GeoDataFrame,
-    destinations: GeoDataFrame,
     weight: str,
     roads: GeoDataFrame,
-    rowwise: bool = False,
+    od_pairs: pd.MultiIndex,
 ) -> GeoDataFrame:
     """Function used in the get_route method of NetworkAnalysis."""
 
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-
-    od_pairs = _create_od_pairs(origins, destinations, rowwise)
 
     resultlist: list[DataFrame] = []
 
@@ -50,17 +46,14 @@ def _get_route(
 
 def _get_k_routes(
     graph: Graph,
-    origins: GeoDataFrame,
-    destinations: GeoDataFrame,
     weight: str,
     roads: GeoDataFrame,
     k: int,
     drop_middle_percent: int,
-    rowwise: bool,
+    od_pairs: pd.MultiIndex,
 ) -> GeoDataFrame:
     """Function used in the get_k_routes method of NetworkAnalysis."""
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    od_pairs = _create_od_pairs(origins, destinations, rowwise)
 
     resultlist: list[DataFrame] = []
 
@@ -93,23 +86,15 @@ def _get_k_routes(
 
 def _get_route_frequencies(
     graph,
-    origins,
-    destinations,
-    rowwise,
-    roads,
-    weight_df: DataFrame | None = None,
+    roads: GeoDataFrame,
+    weight_df: DataFrame,
 ):
     """Function used in the get_route_frequencies method of NetworkAnalysis."""
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    od_pairs = _create_od_pairs(origins, destinations, rowwise)
-
-    if weight_df is not None and len(weight_df) != len(od_pairs):
-        error_message = _make_keyerror_message(rowwise, weight_df, origins)
-        raise ValueError(error_message)
 
     resultlist: list[DataFrame] = []
 
-    for ori_id, des_id in od_pairs:
+    for ori_id, des_id in weight_df.index:
         indices = _get_one_route(graph, ori_id, des_id)
 
         if not indices:
@@ -118,15 +103,7 @@ def _get_route_frequencies(
         line_ids = DataFrame({"source_target_weight": indices["source_target_weight"]})
         line_ids["origin"] = ori_id
         line_ids["destination"] = des_id
-
-        if weight_df is not None:
-            try:
-                line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
-            except KeyError as e:
-                error_message = _make_keyerror_message(rowwise, weight_df, origins)
-                raise KeyError(error_message) from e
-        else:
-            line_ids["multiplier"] = 1
+        line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
 
         resultlist.append(line_ids)
 
@@ -138,21 +115,11 @@ def _get_route_frequencies(
 
     roads["frequency"] = roads["source_target_weight"].map(summarised)
 
-    roads_visited = roads.loc[
-        roads.frequency.notna(), roads.columns.difference(["source_target_weight"])
-    ]
+    roads_visited = roads.loc[roads.frequency.notna()].drop(
+        "source_target_weight", axis=1
+    )
 
     return roads_visited
-
-
-def _create_od_pairs(
-    origins: GeoDataFrame, destinations: GeoDataFrame, rowwise: bool
-) -> zip | pd.MultiIndex:
-    """Get all od combinaions if not rowwise."""
-    if rowwise:
-        return zip(origins.temp_idx, destinations.temp_idx)
-    else:
-        return pd.MultiIndex.from_product([origins.temp_idx, destinations.temp_idx])
 
 
 def _get_one_route(graph: Graph, ori_id: str, des_id: str):
@@ -223,22 +190,3 @@ def _loop_k_routes(graph: Graph, ori_id, des_id, k, drop_middle_percent) -> Data
         return pd.concat(lines)
     else:
         return pd.DataFrame()
-
-
-def _make_keyerror_message(rowwise, weight_df, origins) -> str:
-    """Add help info to error message if key in weight_df is missing.
-
-    If empty resultlist, assume all indices are wrong. Else, assume
-    """
-    error_message = (
-        "'weight_df' does not contain all indices of each OD pair combination. "
-    )
-    if not rowwise and len(weight_df) == len(origins):
-        error_message = error_message + (
-            "Did you mean to set rowwise to True? "
-            "If not, make sure weight_df contains all combinations of "
-            "origin-destination pairs. Either specified as a MultiIndex or as the "
-            "first two columns of 'weight_df'. So (0, 0), (0, 1), (1, 0), (1, 1) etc."
-        )
-
-    return error_message

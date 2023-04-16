@@ -209,8 +209,8 @@ def split_lines_by_nearest_point(
 
     # find the nearest snapped point for each source and target of the lines
     snapped = snapped.set_index("point_coords")
-    dists_source = get_k_nearest_neighbors(splitted_source, snapped, k=1)
-    dists_target = get_k_nearest_neighbors(splitted_target, snapped, k=1)
+    dists_source: DataFrame = get_k_nearest_neighbors(splitted_source, snapped, k=1)
+    dists_target: DataFrame = get_k_nearest_neighbors(splitted_target, snapped, k=1)
 
     dists_source = dists_source.loc[dists_source.distance <= BUFFDIST * 2]
     dists_target = dists_target.loc[dists_target.distance <= BUFFDIST * 2]

@@ -600,6 +600,7 @@ class Network:
         )
 
         if any(new_or_missing):
+            print("nodes 1")
             return False
 
         removed = ~(
@@ -608,6 +609,7 @@ class Network:
         )
 
         if any(removed):
+            print("nodes 2")
             return False
 
         return True

@@ -483,3 +483,15 @@ class Map:
             "Cannot change 'column' after init. Specify 'column' in the "
             "class initialiser."
         )
+
+    def __setitem__(self, item, new_item):
+        return setattr(self, item, new_item)
+
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except (KeyError, ValueError, IndexError, AttributeError):
+            return default

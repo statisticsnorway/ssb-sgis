@@ -28,15 +28,11 @@ def not_test_od_cost_matrix(nwa, p):
         nwa.rules.search_tolerance = search_tolerance
         od = nwa.od_cost_matrix(p, p)
 
+    od = nwa.od_cost_matrix(p.loc[[349]], p)
+
     print(
         nwa.log[["search_tolerance", "search_factor", "percent_missing", "cost_mean"]]
     )
-
-    od = nwa.od_cost_matrix(p, p, lines=True)
-
-    p = p.sort_index(ascending=True)
-    p_rev = p.sort_index(ascending=False)
-    od = nwa.od_cost_matrix(p, p_rev, rowwise=True)
 
 
 def not_test_get_route_frequency(nwa, p):
@@ -67,29 +63,20 @@ def not_test_get_route_frequency(nwa, p):
 
 def not_test_get_route(nwa, p):
     routes = nwa.get_route(p, p)
-
+    routes = nwa.get_route(p, p)
+    routes = nwa.get_route(p, p)
+    routes = nwa.get_route(p, p)
     routes = nwa.get_route(p.loc[[349]], p)
 
-    nwa.rules.search_factor = 0
-    nwa.rules.split_lines = False
-
-    routes = nwa.get_route(p.loc[[349]], p.loc[[440]])
-
-    nwa.rules.split_lines = True
-    routes = nwa.get_route(p.loc[[349]], p.loc[[440]])
-    routes = nwa.get_route(p.loc[[349]], p.loc[[440]])
-
-    nwa.rules.split_lines = False
-    routes = nwa.get_route(p.loc[[349]], p)
-
-    nwa.rules.split_lines = True
-    routes = nwa.get_route(p.loc[[349]], p)
-
-    routes = nwa.get_route(p.loc[[349]], p)
-
-    p = p.sort_index(ascending=True)
-    p_rev = p.sort_index(ascending=False)
-    routes = nwa.get_route(p, p_rev, rowwise=True)
+    # adding this for comparison purposes
+    od_pairs = pd.MultiIndex.from_product([p.index, p.index])
+    weight_df_all_10 = pd.DataFrame(index=od_pairs)
+    weight_df_all_10["weight"] = 10
+    weight_df_all_10 = weight_df_all_10.reset_index()
+    od_pairs = pd.MultiIndex.from_product([p.index, p.index])
+    weight_df_one_pair_10 = pd.DataFrame(index=od_pairs)
+    weight_df_one_pair_10["weight"] = 1
+    weight_df_one_pair_10.loc[(349, 97), "weight"] = 100
 
 
 def not_test_service_area(nwa, p):
@@ -101,31 +88,9 @@ def not_test_service_area(nwa, p):
 
     sa = sa.sort_values("minutes", ascending=False)
 
-
-def not_test_get_k_routes(nwa, p):
-    for x in [0, 100]:
-        routes = nwa.get_k_routes(
-            p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x
-        )
-
-    n = 0
-    for x in [-1, 101]:
-        try:
-            routes = nwa.get_k_routes(
-                p.loc[[349]],
-                p.loc[[440]],
-                k=5,
-                drop_middle_percent=x,
-            )
-        except ValueError:
-            n += 1
-            print("drop_middle_percent works as expected", x)
-
-    assert n == 2
-
-    routes = nwa.get_k_routes(p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=50)
-
-    routes = nwa.get_k_routes(p.loc[[349]], p, k=5, drop_middle_percent=50)
+    sa = nwa.service_area(p, breaks=10, dissolve=True)
+    sa = nwa.service_area(p, breaks=15, dissolve=False)
+    sa = nwa.service_area(p, breaks=25, dissolve=True)
 
 
 def not_test_network_analysis(points_oslo, roads_oslo):
@@ -134,13 +99,15 @@ def not_test_network_analysis(points_oslo, roads_oslo):
 
     split_lines = False
 
+    buffdist = 800
+
     p = points_oslo
-    p = sg.clean_clip(p, p.geometry.iloc[0].buffer(2500))
+    p = sg.clean_clip(p, p.geometry.iloc[0].buffer(buffdist))
     p["idx"] = p.index
     p["idx2"] = p.index
 
     r = roads_oslo
-    r = sg.clean_clip(r, p.geometry.loc[0].buffer(3000))
+    r = sg.clean_clip(r, p.geometry.loc[0].buffer(buffdist * 1.1))
 
     ### MAKE THE ANALYSIS CLASS
     nw = sg.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
@@ -151,11 +118,41 @@ def not_test_network_analysis(points_oslo, roads_oslo):
     nwa = sg.NetworkAnalysis(nw, rules=rules)
     print(nwa)
 
+    for _ in range(5):
+        nwa.service_area(p, breaks=5)
+    print("_graph_updated_count", nwa._graph_updated_count)
+    for _ in range(5):
+        nwa.get_route_frequencies(p, p)
+    print("_graph_updated_count", nwa._graph_updated_count)
+    for _ in range(5):
+        nwa.get_route(p, p)
+    print("_graph_updated_count", nwa._graph_updated_count)
+    for _ in range(5):
+        nwa.od_cost_matrix(p, p)
+    print("_graph_updated_count", nwa._graph_updated_count)
+    for _ in range(5):
+        nwa.service_area(p, breaks=5)
+        nwa.get_route_frequencies(p, p)
+        nwa.get_route(p, p)
+        nwa.od_cost_matrix(p, p)
+    print("_graph_updated_count", nwa._graph_updated_count)
+    ss
+
     not_test_od_cost_matrix(nwa, p)
-    not_test_get_route_frequency(nwa, p)
+    print(nwa.log.groupby("method")["minutes_elapsed"].sum())
+
     not_test_service_area(nwa, p)
+    print(nwa.log.groupby("method")["minutes_elapsed"].sum())
+
+    not_test_get_route_frequency(nwa, p)
+    print(nwa.log.groupby("method")["minutes_elapsed"].sum())
+
     not_test_get_route(nwa, p)
-    not_test_get_k_routes(nwa, p)
+    print(nwa.log.groupby("method")["minutes_elapsed"].sum())
+
+    print("_graph_updated_count", nwa._graph_updated_count)
+
+    print(nwa.log.groupby("method")["minutes_elapsed"].sum())
 
 
 def main():

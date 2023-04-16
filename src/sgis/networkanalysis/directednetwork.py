@@ -16,6 +16,8 @@ class DirectedNetwork(Network):
     Can be used as the 'network' parameter in the NetworkAnalysis class for directed
     network analysis.
 
+    DirectedNetwork can also access all methods of the Network class.
+
     The DirectedNetwork class differs from the Network base class in two ways:
     1) using a DirectedNetwork in the NetworkAnalysis class means the network graph
     will be directed, meaning you can only travel in one direction on each line.

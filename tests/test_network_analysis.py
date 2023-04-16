@@ -73,24 +73,45 @@ def not_test_get_route_frequency(nwa, p):
     # three columns (origin, destination and weight. Column names doesn't matter)
     for truefalse in [0, 1]:
         od_pairs = pd.MultiIndex.from_product([p.index, p.index])
-        weight_df_all_10 = pd.DataFrame(index=od_pairs)
-        weight_df_all_10["weight"] = 10
+        weight_df = pd.DataFrame(index=od_pairs)
+        weight_df["weight"] = 10
+
+        no_identical_ods = weight_df.loc[
+            weight_df.index.get_level_values(0) != weight_df.index.get_level_values(1)
+        ]
 
         if truefalse:
-            weight_df_all_10 = weight_df_all_10.reset_index()
+            no_identical_ods = no_identical_ods.reset_index()
 
-        frequencies = nwa.get_route_frequencies(p, p, weight_df=weight_df_all_10)
+        frequencies = nwa.get_route_frequencies(p, p, weight_df=no_identical_ods)
         assert frequencies["frequency"].max() == 440, frequencies["frequency"].max()
 
     if __name__ == "__main__":
         sg.qtm(frequencies, "frequency", title="weight_df all = * 10")
 
     od_pairs = pd.MultiIndex.from_product([p.index, p.index])
-    weight_df_one_pair_10 = pd.DataFrame(index=od_pairs)
-    weight_df_one_pair_10["weight"] = 1
-    weight_df_one_pair_10.loc[(349, 97), "weight"] = 100
+    one_pair_100 = pd.DataFrame(index=od_pairs).assign(weight=1)
+    one_pair_100.loc[(349, 97), "weight"] = 100
 
-    frequencies = nwa.get_route_frequencies(p, p, weight_df=weight_df_one_pair_10)
+    frequencies = nwa.get_route_frequencies(p, p, weight_df=one_pair_100)
+    if __name__ == "__main__":
+        sg.qtm(frequencies, "frequency", title="weight_df one = * 10")
+    assert frequencies["frequency"].max() == 141, frequencies["frequency"].max()
+
+    # this should give same results
+    od_pairs = pd.MultiIndex.from_product([[349], [97]])
+    one_pair_100 = pd.DataFrame({"weight": [100]}, index=od_pairs)
+
+    with_default_weight = nwa.get_route_frequencies(
+        p, p, weight_df=one_pair_100, default_weight=1
+    )
+    if __name__ == "__main__":
+        sg.qtm(with_default_weight, "frequency", title="weight_df one = * 10")
+    assert with_default_weight["frequency"].max() == 141, with_default_weight[
+        "frequency"
+    ].max()
+    assert frequencies.equals(with_default_weight)
+
     if __name__ == "__main__":
         sg.qtm(frequencies, "frequency", title="weight_df one = * 10")
     assert frequencies["frequency"].max() == 141, frequencies["frequency"].max()

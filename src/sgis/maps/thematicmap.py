@@ -368,15 +368,6 @@ class ThematicMap(Map):
 
         self._create_legend()
 
-    def __getitem__(self, item):
-        return getattr(self, item)
-
-    def get(self, key, default=None):
-        try:
-            return self[key]
-        except (KeyError, ValueError, IndexError, AttributeError):
-            return default
-
     @property
     def black(self):
         return self._black
