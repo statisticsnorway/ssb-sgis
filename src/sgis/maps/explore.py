@@ -72,8 +72,7 @@ class Explore(Map):
         self.max_zoom = max_zoom
         self.show_in_browser = show_in_browser
 
-        if any(get_geom_type(gdf) == "mixed" for gdf in self.gdfs):
-            self._make_all_polygon()
+        self._to_single_geom_type()
 
         if self._is_categorical:
             if len(self.gdfs) == 1:
@@ -176,16 +175,17 @@ class Explore(Map):
         self._gdf = pd.concat(new_gdfs, ignore_index=True)
         self.labels = new_labels
 
-    def _make_all_polygon(self):
-        """Buffer gdf if mixed geometry types
+    def _to_single_geom_type(self):
+        """Buffer gdf if mixed geometry types. Expode to singlepart.
 
-        Because Folium does not handle GeometryCollection well
+        Because Folium does not handle mixed geometries well.
         """
 
         new_gdfs = []
-        for gdf in self.gdfs:
+        for gdf in self._gdfs:
             if get_geom_type(gdf) == "mixed":
                 gdf[gdf._geometry_column_name] = gdf.buffer(0.1)
+            gdf = gdf.explode(index_parts=False)
             new_gdfs.append(gdf)
         self._gdfs = new_gdfs
         self._gdf = pd.concat(new_gdfs, ignore_index=True)
