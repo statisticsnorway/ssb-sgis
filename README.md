@@ -23,7 +23,7 @@ GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 [pre-commit]: https://github.com/pre-commit/pre-commit
 [black]: https://github.com/psf/black
 
-sgis builds on the geopandas package and provides functions that make it easier to do advanced GIS in python.
+sgis builds on the geopandas package and provides functions that make it easier to do GIS in python.
 Features include network analysis, functions for exploring multiple GeoDataFrames in a layered interactive map,
 and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 in polygons by size.
@@ -40,26 +40,25 @@ roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
 )
 
-nw = (
-    sg.DirectedNetwork(roads)
-    .remove_isolated()
-    .make_directed_network(
-        direction_col="oneway",
-        direction_vals_bft=("B", "FT", "TF"),
-        minute_cols=("drivetime_fw", "drivetime_bw"),
-    )
+connected_roads = sg.get_connected_components(roads).query("connected == 1")
+
+directed_roads = sg.make_directed_network(
+    connected_roads,
+    direction_col="oneway",
+    direction_vals_bft=("B", "FT", "TF"),
+    minute_cols=("drivetime_fw", "drivetime_bw"),
 )
 
-rules = sg.NetworkAnalysisRules(weight="minutes")
+rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
 
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules)
 
 nwa
 ```
 
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...),
+        rules=NetworkAnalysisRules(weight=minutes, directed=True, search_tolerance=250, search_factor=0, split_lines=False, ...),
         log=True, detailed_log=True,
     )
 

@@ -16,15 +16,18 @@ def _od_cost_matrix(
     lines: bool = False,
     rowwise: bool = False,
 ) -> DataFrame | GeoDataFrame:
-    distances: list[list[str]] = graph.distances(
+    assert origins.index.name == "temp_idx"
+    assert destinations.index.name == "temp_idx"
+
+    distances: list[list[float]] = graph.distances(
         weights="weight",
-        source=origins["temp_idx"],
-        target=destinations["temp_idx"],
+        source=origins.index,
+        target=destinations.index,
     )
 
     ori_idx, des_idx, costs = [], [], []
-    for i, f_idx in enumerate(origins["temp_idx"]):
-        for j, t_idx in enumerate(destinations["temp_idx"]):
+    for i, f_idx in enumerate(origins.index):
+        for j, t_idx in enumerate(destinations.index):
             ori_idx.append(f_idx)
             des_idx.append(t_idx)
             costs.append(distances[i][j])
@@ -40,32 +43,20 @@ def _od_cost_matrix(
     if rowwise:
         rowwise_df = DataFrame(
             {
-                "origin": origins["temp_idx"].reset_index(drop=True),
-                "destination": destinations["temp_idx"].reset_index(drop=True),
+                "origin": origins.index,
+                "destination": destinations.index,
             }
         )
         results = rowwise_df.merge(results, on=["origin", "destination"], how="left")
 
-    wkt_dict_origin = {
-        idx: geom.wkt
-        for idx, geom in zip(origins["temp_idx"], origins.geometry, strict=True)
-    }
-    wkt_dict_destination = {
-        idx: geom.wkt
-        for idx, geom in zip(
-            destinations["temp_idx"], destinations.geometry, strict=True
-        )
-    }
-    results["wkt_ori"] = results["origin"].map(wkt_dict_origin)
-    results["wkt_des"] = results["destination"].map(wkt_dict_destination)
+    results["wkt_ori"] = results["origin"].map(origins.geometry)
+    results["wkt_des"] = results["destination"].map(destinations.geometry)
 
-    results[weight] = np.where(results.wkt_ori == results.wkt_des, 0, results[weight])
+    results.loc[results.wkt_ori == results.wkt_des, weight] = 0
 
     # straight lines between origin and destination
     if lines:
-        origin = gpd.GeoSeries.from_wkt(results["wkt_ori"], crs=25833)
-        destination = gpd.GeoSeries.from_wkt(results["wkt_des"], crs=25833)
-        results["geometry"] = shortest_line(origin, destination)
+        results["geometry"] = shortest_line(results["wkt_ori"], results["wkt_des"])
         results = gpd.GeoDataFrame(results, geometry="geometry", crs=25833)
 
     results = results.drop(["wkt_ori", "wkt_des"], axis=1, errors="ignore")

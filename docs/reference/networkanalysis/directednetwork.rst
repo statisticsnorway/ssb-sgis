@@ -1,7 +1,7 @@
-DirectedNetwork
-===============
+Make directed network
+=====================
 
-.. autoclass:: sgis.networkanalysis.directednetwork.DirectedNetwork
+.. automodule:: sgis.networkanalysis.directednetwork
     :members:
     :exclude-members:
     :show-inheritance:

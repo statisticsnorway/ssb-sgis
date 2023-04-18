@@ -18,7 +18,7 @@ import sgis as sg
 
 
 def not_test_od_cost_matrix(nwa, p):
-    od = nwa.od_cost_matrix(p, p)
+    od = nwa.od_cost_matrix(p, p, lines=True)
 
 
 def not_test_get_route_frequency(nwa, p):
@@ -46,26 +46,15 @@ def not_test_network_analysis(points_oslo, roads_oslo):
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     pd.options.mode.chained_assignment = None
 
-    split_lines = False
-
-    buffdist = 2000
-
-    p = points_oslo
-    p = sg.clean_clip(p, p.geometry.iloc[0].buffer(buffdist))
-    p["idx"] = p.index
-    p["idx2"] = p.index
-
-    print("number of points", len(p))
-
-    r = roads_oslo
-    r = sg.clean_clip(r, p.geometry.loc[0].buffer(buffdist * 1.1))
+    p = points_oslo.loc[:100]
 
     ### MAKE THE ANALYSIS CLASS
-    nw = sg.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
-    rules = sg.NetworkAnalysisRules(
-        weight="minutes",
-        split_lines=split_lines,
+    nw = (
+        sg.get_connected_components(roads_oslo)
+        .query("connected == 1")
+        .pipe(sg.make_directed_network_norway)
     )
+    rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
     nwa = sg.NetworkAnalysis(nw, rules=rules)
     print(nwa)
 

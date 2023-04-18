@@ -12,14 +12,12 @@ def count_function_calls(points_oslo, roads_oslo):
 
     r = roads_oslo
 
-    nw = sg.DirectedNetwork(r)
-
-    nw = nw.remove_isolated()
-    nw.make_directed_network_norway()
+    nw = sg.remove_isolated_networks(r)
+    nw = sg.make_directed_network_norway(nw)
 
     nw = (
         nw.get_component_size()
-        .get_largest_component()
+        .get_connected_components()
         .close_network_holes(1.1)
         .remove_isolated()
         .cut_lines(250)

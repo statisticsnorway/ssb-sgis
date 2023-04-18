@@ -46,6 +46,7 @@ def not_test_explore(points_oslo, roads_oslo):
     sg.explore(r300, r200, r100)
     print("when numeric column, should be same color scheme:")
     sg.explore(r300, r200, r100, "meters", scheme="quantiles")
+    sg.explore(*(r300, r200, r100), "meters", scheme="quantiles")
 
     for explore in [1, 0]:
         sg.samplemap(

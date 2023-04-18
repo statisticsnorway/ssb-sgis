@@ -4,7 +4,8 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 from shapely import force_2d, reverse
 
-from ..geopandas_tools.line_operations import cut_lines_once, make_edge_wkt_cols
+from .cutting_lines import cut_lines_once
+from .nodes import make_edge_wkt_cols
 
 
 def _service_area(
@@ -18,6 +19,7 @@ def _service_area(
     precice: bool,
 ) -> GeoDataFrame:
     # make sure the nodes are alligned with the vertices in the graph
+    # the weight/distances can then be assigned directly onto the nodes
     node_df = pd.DataFrame(index=np.array(graph.vs["name"]))
     nodes = nodes.set_index("node_id").drop("geometry", axis=1)
     nodes = node_df.join(nodes)
@@ -39,7 +41,7 @@ def _service_area(
     # loop through every origin and every break
     service_areas: list[GeoDataFrame] = []
     for i, idx in enumerate(origins["temp_idx"]):
-        # assign distances to the nodes and give the column to the edges
+        # assign distances to the nodes and join the column to the edges
         nodes[weight] = all_distances[i]
         distance_df = edge_df.join(nodes)
 

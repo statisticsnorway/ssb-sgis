@@ -33,10 +33,11 @@ def test_service_area(points_oslo, roads_oslo):
     r100 = sg.clean_clip(r, point.buffer(310))
 
     rules = sg.NetworkAnalysisRules(
+        directed=False,
         weight="meters",
     )
 
-    nw = sg.Network(r).remove_isolated()
+    nw = sg.get_connected_components(r).query("connected == 1")
     nwa = sg.NetworkAnalysis(nw, rules=rules)
 
     x = nwa.service_area(point, breaks=30, dissolve=False)
@@ -64,13 +65,16 @@ def test_service_area(points_oslo, roads_oslo):
             x,
             point,
             title="undirected 125, precice,\n split_lines=True",
-            fontsize=10,
         )
     assert len(x) == 10, x
 
     rules.split_lines = False
 
-    nw = sg.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
+    nw = sg.make_directed_network_norway(nw)
+    rules = sg.NetworkAnalysisRules(
+        directed=True,
+        weight="meters",
+    )
     nwa = sg.NetworkAnalysis(nw, rules=rules)
 
     x = nwa.service_area(point, breaks=30, dissolve=False)
@@ -97,7 +101,6 @@ def test_service_area(points_oslo, roads_oslo):
             x,
             point,
             title="directed 125, precice,\n split_lines=True",
-            fontsize=10,
         )
     assert len(x) == 7, x
 
@@ -115,9 +118,9 @@ def not_test_service_area(points_oslo, roads_oslo):
     r = roads_oslo
     r = sg.clean_clip(r, p.geometry.loc[0].buffer(2200))
 
-    rules = sg.NetworkAnalysisRules(weight="meters")
+    rules = sg.NetworkAnalysisRules(directed=True, weight="meters")
 
-    nw = sg.Network(r).remove_isolated()
+    nw = sg.get_connected_components(r).query("connected == 1")
     nwa = sg.NetworkAnalysis(nw, rules=rules)
 
     precice = nwa.service_area(p, breaks=(100, 300, 500))
@@ -153,7 +156,7 @@ def main():
     roads_oslo = roads_oslo()
     points_oslo = points_oslo()
 
-    # test_service_area(points_oslo, roads_oslo)
+    test_service_area(points_oslo, roads_oslo)
     not_test_service_area(points_oslo, roads_oslo)
 
 
