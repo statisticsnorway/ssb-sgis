@@ -40,19 +40,18 @@ roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
 )
 
-nw = (
-    sg.DirectedNetwork(roads)
-    .remove_isolated()
-    .make_directed_network(
-        direction_col="oneway",
-        direction_vals_bft=("B", "FT", "TF"),
-        minute_cols=("drivetime_fw", "drivetime_bw"),
-    )
+connected_roads = sg.get_connected_components(roads).query("connected == 1")
+
+directed_roads = sg.make_directed_network(
+    connected_roads,
+    direction_col="oneway",
+    direction_vals_bft=("B", "FT", "TF"),
+    minute_cols=("drivetime_fw", "drivetime_bw"),
 )
 
 rules = sg.NetworkAnalysisRules(weight="minutes")
 
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules)
 
 nwa
 ```
