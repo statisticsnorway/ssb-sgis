@@ -11,14 +11,18 @@
 # # sgis
 # %%
 
-import os
+import sys
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 
-os.chdir("../../src")
+src = str(Path(__file__).parent.parent.parent) + "/src"
+print(src)
+sys.path.insert(0, src)
+
 import sgis as sg
 
 
