@@ -116,7 +116,6 @@ def make_directed_network(
             "Change crs or calculate minutes manually."
         )
 
-    gdf = gdf
     b, f, t = direction_vals_bft
 
     if minute_cols:
