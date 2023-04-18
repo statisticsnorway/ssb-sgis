@@ -272,6 +272,9 @@ def clipmap(
             clipped_ = gdf.clip(gdfs[-1])
             clipped = clipped + (clipped_,)
 
+    if not any(len(gdf) for gdf in clipped):
+        raise ValueError("None of the GeoDataFrames are within the mask extent.")
+
     if explore:
         m = Explore(
             *clipped,

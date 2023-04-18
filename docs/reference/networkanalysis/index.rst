@@ -1,11 +1,15 @@
 Network analysis
 ================
 
-This page gives an overview of the network analysis functionality of sgis. The analysis
-methods are found in the NetworkAnalysis class. This class takes a network in the form
-of a Network or DirectedNetwork instance. Using a Network instance will make the
-analyses undirected. The NetworkAnalysis class also takes a set of rules in the form of
-a NetworkAnalysisRules instance. See examples in the subsections of this page.
+This page includes all public network analysis functionality of sgis.
+
+The actual analysis is done in the NetworkAnalysis class.
+
+Rules for the analyses is set with the NetworkAnalysisRules class.
+
+The GeoDataFrame of line geometries can be prepared for analysis with the functions
+in the remaining sections. The 'Nodes' section is used internally in other functions,
+and is not commonly needed.
 
 .. toctree::
    :maxdepth: 3
@@ -13,4 +17,7 @@ a NetworkAnalysisRules instance. See examples in the subsections of this page.
    networkanalysis
    networkanalysisrules
    directednetwork
-   network
+   finding_isolated_networks
+   closing_network_holes
+   cutting_lines
+   nodes

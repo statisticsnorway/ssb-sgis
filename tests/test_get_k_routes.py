@@ -33,7 +33,11 @@ def not_test_network_analysis(roads_oslo, points_oslo):
 
     ### MAKE THE ANALYSIS CLASS
 
-    nw = sg.DirectedNetwork(r).remove_isolated().make_directed_network_norway()
+    nw = (
+        sg.get_connected_components(roads_oslo)
+        .query("connected == 1")
+        .pipe(sg.make_directed_network_norway)
+    )
     rules = sg.NetworkAnalysisRules(weight="minutes", split_lines=split_lines)
     nwa = sg.NetworkAnalysis(nw, rules=rules)
 
@@ -53,14 +57,9 @@ def not_test_network_analysis(roads_oslo, points_oslo):
 
 
 def main():
-    import cProfile
-
     from oslo import points_oslo, roads_oslo
 
     not_test_network_analysis(roads_oslo(), points_oslo())
-
-
-#    cProfile.run("not_test_network_analysis()", sort="cumtime")
 
 
 if __name__ == "__main__":

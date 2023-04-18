@@ -4,6 +4,7 @@ The class is to be used as the 'rules' parameter in the NetworkAnalysis
 class.
 """
 import warnings
+from copy import copy, deepcopy
 from dataclasses import dataclass
 
 from geopandas import GeoDataFrame
@@ -21,6 +22,7 @@ class NetworkAnalysisRules:
         weight: Either a column in the GeoDataFrame of the Network or
             'meters'/'metres'. A 'minutes' column can be created with the
             'make_directed_network' method of the DirectedNetwork class.
+        directed: Whether the lines will be considered traversable in both directions.
         search_tolerance: distance to search for nodes in the network. Origins and
             destinations further away from the network than the search_tolerance will
             not find any paths. Defaults to 250.
@@ -46,13 +48,6 @@ class NetworkAnalysisRules:
             them. Defaults to None, meaning 0 weight is added for these edges. If set
             to 1, the weight will be equal to the straigt line distance.
 
-    Note:
-        Whether the network analysis will be directed or undirected is not stored here,
-        although it can be considered a 'rule'. Whether to do directed network
-        analysis, depends on the network. So if the graph is made directed or not, is
-        decided by which network class you use, DirectedNetwork to make a directed
-        graph and the base Network class to make an undirected graph.
-
     Examples
     --------
     Read testdata.
@@ -61,15 +56,12 @@ class NetworkAnalysisRules:
     >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
 
-    Let's start by setting the default rules. 'weight' is the only parameter with no
-    default.
+    Let's start by setting the default rules. 'weight' and 'directed' has noe default
+    values.
 
-    >>> nw = (sg.DirectedNetwork(roads)
-    ...       .remove_isolated()
-    ...       .make_directed_network_norway()
-    ... )
-    >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-    >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+    >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
+    >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+    >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
@@ -161,7 +153,7 @@ class NetworkAnalysisRules:
     ...     weight="meters",
     ...     search_tolerance=5000,
     ... )
-    >>> nwa = NetworkAnalysis(network=nw, rules=rules)
+    >>> nwa = NetworkAnalysis(network=directed_roads, rules=rules)
     >>> od = nwa.od_cost_matrix(points, points)
     >>> nwa.rules.nodedist_multiplier = 1
     >>> od = nwa.od_cost_matrix(points, points)
@@ -172,6 +164,7 @@ class NetworkAnalysisRules:
     1                   1  10277.926186
     """
 
+    directed: bool
     weight: str
     search_tolerance: int = 250
     search_factor: int = 0
@@ -185,6 +178,7 @@ class NetworkAnalysisRules:
         Used for checking whether the rules have changed and the graph have to be
         remade.
         """
+        self._directed = self.directed
         self._weight = self.weight
         self._search_tolerance = self.search_tolerance
         self._search_factor = self.search_factor
@@ -198,6 +192,8 @@ class NetworkAnalysisRules:
         If no rules have changed, time can be saved by not remaking the graph
         (the network and the points have to be unchanged as well).
         """
+        if self.directed != self._directed:
+            return True
         if self.weight != self._weight:
             return True
         if self.search_factor != self._search_factor:
@@ -232,12 +228,12 @@ class NetworkAnalysisRules:
 
         elif self.weight in gdf.columns:
             gdf[self.weight] = gdf[self.weight].astype(float)
-            gdf = self._check_for_nans(gdf, self.weight)
-            gdf = self._check_for_negative_values(gdf, self.weight)
+            self._check_for_nans(gdf, self.weight)
+            self._check_for_negative_values(gdf, self.weight)
             gdf = self._try_to_float(gdf, self.weight)
             return gdf
 
-        # at this point, the weight is wrong. Now to determine the error/warning
+        # at this point, the weight is wrong. Now to determine the error
         # message
 
         if "meter" in self.weight or "metre" in self.weight:
@@ -266,28 +262,19 @@ class NetworkAnalysisRules:
 
         nans = sum(df[col].isna())
         if nans:
-            warnings.warn(
-                f"Warning: {nans} rows have missing values in the {col!r} column. "
-                "Removing these rows.",
-                stacklevel=2,
+            raise ValueError(
+                f"{nans} rows have missing values in the {col!r} column. "
+                "Fill these rows with 0 or another number.",
             )
-            df = df.loc[df[col].notna()]
-
-        return df
 
     @staticmethod
     def _check_for_negative_values(df, col):
         """Remove negative values and give warning if there are any."""
         negative = sum(df[col] < 0)
         if negative:
-            warnings.warn(
-                f"Warning: {negative} rows have a 'col' less than 0. Removing these "
-                "rows.",
-                stacklevel=2,
+            raise ValueError(
+                f": {negative} rows have {col!r} less than 0. Removing these " "rows.",
             )
-            df = df.loc[df[col] >= 0]
-
-        return df
 
     @staticmethod
     def _try_to_float(df, col):
@@ -300,3 +287,9 @@ class NetworkAnalysisRules:
                 "interpreted as numbers."
             ) from e
         return df
+
+    def copy(self):
+        return copy(self)
+
+    def deepcopy(self):
+        return deepcopy(self)

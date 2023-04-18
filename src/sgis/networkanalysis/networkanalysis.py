@@ -17,12 +17,11 @@ from igraph import Graph
 from pandas import DataFrame
 
 from ..geopandas_tools.general import _push_geom_col
-from ..geopandas_tools.line_operations import split_lines_by_nearest_point
 from ._get_route import _get_k_routes, _get_route, _get_route_frequencies
 from ._od_cost_matrix import _od_cost_matrix
 from ._points import Destinations, Origins
 from ._service_area import _service_area
-from .directednetwork import DirectedNetwork
+from .cutting_lines import split_lines_by_nearest_point
 from .network import Network
 from .networkanalysisrules import NetworkAnalysisRules
 
@@ -30,9 +29,9 @@ from .networkanalysisrules import NetworkAnalysisRules
 class NetworkAnalysis:
     """Class for doing network analysis.
 
-    The class takes a (Directed)Network and rules for the analyses
-    (NetworkAnalysisRules), and holds methods for doing network analysis
-    based on GeoDataFrames of origin and destination points.
+    The class takes a GeoDataFrame of line geometries and rules for the analyses,
+    and holds methods for doing network analysis based on GeoDataFrames of origin
+    and destination points.
 
     The 'od_cost_matrix' method is the fastest, and returns a DataFrame with only
     indices and travel costs between each origin-destination pair.
@@ -48,29 +47,22 @@ class NetworkAnalysis:
     segments were used.
 
     Args:
-        network: either the base Network class or a subclass, chiefly the
-            DirectedNetwork class. The network can be customized beforehand, or
-            accessed through the 'network' attribute of this class.
-        rules: NetworkAnalysisRules class instance.
+        network: A GeoDataFrame of line geometries.
+        rules: The rules for the analysis, either as an instance of
+            NetworkAnalysisRules or a dictionary with the parameters
+            as keys.
         log: If True (default), a DataFrame with information about each
             analysis run will be stored in the 'log' attribute.
-        detailed_log: If True (default), the log DataFrame will include columns for
-            all arguments held by the NetworkAnalysisRules class and the analysis
-            method used. Will also include standard deviation, 25th, 50th and 75th
-            percentile of the weight column in the results.
+        detailed_log: If True, the log DataFrame will include columns for
+            all arguments passed to the analysis method, plus standard deviation and
+            percentiles (25th, 50th, 75th) of the weight column in the results.
+            Defaults to False.
 
     Attributes:
-        network: The Network instance.
-        rules: The NetworkAnalysisRules instance.
+        network: A Network instance that holds the lines and nodes (points) of the
+            GeoDataFrame of line geometries.
+        rules: NetworkAnalysisRules instance.
         log: A DataFrame with information about each analysis run.
-
-    See also
-    --------
-    DirectedNetwork : For customising and optimising line data before directed network
-        analysis.
-
-    Network : For customising and optimising line data before undirected network
-        analysis.
 
     Examples
     --------
@@ -79,59 +71,51 @@ class NetworkAnalysis:
     >>> import sgis as sg
     >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
 
-    Creating a NetworkAnalysis class instance.
+    Preparing the lines for directed network analysis.
 
-    >>> nw = (
-    ...     sg.DirectedNetwork(roads)
-    ...     .remove_isolated()
-    ...     .make_directed_network(
-    ...         direction_col="oneway",
-    ...         direction_vals_bft=("B", "FT", "TF"),
-    ...         minute_cols=("drivetime_fw", "drivetime_bw"),
-    ...     )
+    >>> connected_roads = sg.get_connected_components(roads).query("connected == 1")
+
+    >>> directed_roads = sg.make_directed_network(
+    ...     connected_roads,
+    ...     direction_col="oneway",
+    ...     direction_vals_bft=("B", "FT", "TF"),
+    ...     minute_cols=("drivetime_fw", "drivetime_bw"),
     ... )
+
     >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-    >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+    >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
     >>> nwa
     NetworkAnalysis(
         network=DirectedNetwork(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...),
+        rules=NetworkAnalysisRules(weight=minutes, directed=True, search_tolerance=250, search_factor=0, split_lines=False, ...),
         log=True, detailed_log=True,
     )
 
-    Now it's ready for network analysis.
+    Now we're ready for network analysis.
 
     """
 
     def __init__(
         self,
-        network: Network | DirectedNetwork,
-        rules: NetworkAnalysisRules,
+        network: GeoDataFrame,
+        rules: NetworkAnalysisRules | dict,
         log: bool = True,
-        detailed_log: bool = True,
+        detailed_log: bool = False,
     ):
+        if not isinstance(rules, NetworkAnalysisRules):
+            rules = NetworkAnalysisRules(**rules)
+
+        if not isinstance(network, Network):
+            network = Network(network)
+
         self.network = network
-        self.rules = rules
+        self.rules = rules.copy()
         self._log = log
         self.detailed_log = detailed_log
 
-        if not isinstance(rules, NetworkAnalysisRules):
-            raise TypeError(
-                f"'rules' should be of type NetworkAnalysisRules. Got {type(rules)}"
-            )
-
-        if not isinstance(network, Network):
-            raise TypeError(
-                "'network' should of type DirectedNetwork or Network. "
-                f"Got {type(network)}"
-            )
-
-        self.network.gdf = self.rules._validate_weight(self.network.gdf)
-
         self._check_if_holes_are_nan()
 
-        if isinstance(self.network, DirectedNetwork):
-            self.network._warn_if_undirected()
+        self.network.gdf = self.rules._validate_weight(self.network.gdf)
 
         self._update_wkts()
         self.rules._update_rules()
@@ -147,13 +131,8 @@ class NetworkAnalysis:
             f"NaN values in the {self.rules.weight!r} column. Either remove NaNs "
             "or fill these values with a numeric value (e.g. 0)."
         )
-        if hasattr(self.network, "_hole_col") and all(
-            self.network.gdf[self.rules.weight].isna()
-        ):
-            raise ValueError(HOLES_ARE_NAN)
-
         if hasattr(self.network.gdf, "hole") and all(
-            self.network.gdf[self.rules.weight].isna()
+            self.network.gdf[self.network.gdf["hole"] == 1, self.rules.weight].isna()
         ):
             raise ValueError(HOLES_ARE_NAN)
 
@@ -192,9 +171,9 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
+        >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
         Create some origin and destination points.
 
@@ -370,10 +349,12 @@ class NetworkAnalysis:
 
         self._prepare_network_analysis(origins, destinations, rowwise)
 
+        ori = self.origins.gdf.set_index("temp_idx")
+        des = self.destinations.gdf.set_index("temp_idx")
         results = _od_cost_matrix(
             graph=self.graph,
-            origins=self.origins.gdf,
-            destinations=self.destinations.gdf,
+            origins=ori,
+            destinations=des,
             weight=self.rules.weight,
             lines=lines,
             rowwise=rowwise,
@@ -451,9 +432,9 @@ class NetworkAnalysis:
         >>> import sgis as sg
         >>> import pandas as pd
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
+        >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
         Get some points.
 
@@ -643,9 +624,9 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
+        >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
         Get routes from 1 to 1000 points.
 
@@ -754,9 +735,9 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url('https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet')
-        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-        >>> rules = sg.NetworkAnalysisRules(weight='minutes')
-        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
+        >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
         Getting 10 fastest routes from one point to another point.
 
@@ -892,9 +873,9 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
+        >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
         10 minute service area for three origin points.
 
@@ -940,7 +921,7 @@ class NetworkAnalysis:
             weight=self.rules.weight,
             lines=self.network.gdf,
             nodes=self.network.nodes,
-            directed=self.network._as_directed,
+            directed=self.rules.directed,
             precice=False,
         )
 
@@ -1020,9 +1001,9 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes")
-        >>> nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
+        >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
         10 minute service area for one origin point.
 
@@ -1067,7 +1048,7 @@ class NetworkAnalysis:
             weight=self.rules.weight,
             lines=self.network.gdf,
             nodes=self.network.nodes,
-            directed=self.network._as_directed,
+            directed=self.rules.directed,
             precice=True,
         )
 
@@ -1201,10 +1182,6 @@ class NetworkAnalysis:
 
         Returns:
             A one-row DataFrame with log info columns
-
-        Note:
-            The 'isolated_removed' column does not account for
-            preperation done before initialising the (Directed)Network class.
         """
         data = {
             "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
@@ -1215,11 +1192,8 @@ class NetworkAnalysis:
             "percent_missing": np.nan,
             "cost_mean": np.nan,
         }
-        if self.detailed_log:
-            data = data | {
-                "isolated_removed": self.network._isolated_removed,
-                "percent_bidirectional": self.network.percent_bidirectional,
-            }
+        if self.rules.directed:
+            data["percent_bidirectional"] = self.network.percent_bidirectional
 
         df = DataFrame(data, index=[0])
 
@@ -1310,7 +1284,7 @@ class NetworkAnalysis:
                 edges=edges,
                 weights=weights,
                 edge_ids=ids,
-                directed=self.network._as_directed,
+                directed=self.rules.directed,
             )
 
             self._add_missing_vertices()
@@ -1385,7 +1359,7 @@ class NetworkAnalysis:
         self.network.gdf["temp_idx__"] = range(len(self.network.gdf))
 
         lines = split_lines_by_nearest_point(
-            lines=self.network.gdf,
+            gdf=self.network.gdf,
             points=points,
             max_distance=self.rules.search_tolerance,
         )
@@ -1539,6 +1513,7 @@ class NetworkAnalysis:
         # drop the 'weight_to_nodes_' parameters in the repr of rules to avoid clutter
         rules = (
             f"{self.rules.__class__.__name__}(weight={self.rules.weight}, "
+            f"directed={self.rules.directed}, "
             f"search_tolerance={self.rules.search_tolerance}, "
             f"search_factor={self.rules.search_factor}, "
             f"split_lines={self.rules.split_lines}, "
@@ -1565,9 +1540,13 @@ class NetworkAnalysis:
         """To be able to write self['origins'] as well as self.origins."""
         return getattr(self, item)
 
-    def copy(self):
-        """Returns a shallow copy of the class instance."""
-        return copy(self)
+    def copy(self, deep=True):
+        """Returns a (deep) copy of the class instance.
 
-    def deepcopy(self):
-        return deepcopy(self)
+        Args:
+            deep: Whether to return a deep or shallow copy. Defaults to True.
+        """
+        if deep:
+            return deepcopy(self)
+        else:
+            return copy(self)

@@ -1,7 +1,7 @@
-Network
-=======
+Closing network holes
+=====================
 
-.. autoclass:: sgis.networkanalysis.network.Network
+.. automodule:: sgis.networkanalysis.closing_network_holes
     :members:
     :exclude-members:
     :show-inheritance:

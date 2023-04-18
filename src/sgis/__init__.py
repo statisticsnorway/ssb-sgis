@@ -22,18 +22,6 @@ from .geopandas_tools.geometry_types import (
     is_single_geom_type,
     to_single_geom_type,
 )
-from .geopandas_tools.line_operations import (
-    close_network_holes,
-    close_network_holes_to_deadends,
-    cut_lines,
-    cut_lines_once,
-    get_component_size,
-    get_largest_component,
-    make_edge_coords_cols,
-    make_edge_wkt_cols,
-    make_node_ids,
-    split_lines_by_nearest_point,
-)
 from .geopandas_tools.neighbors import (
     get_all_distances,
     get_k_nearest_neighbors,
@@ -45,10 +33,31 @@ from .geopandas_tools.polygon_operations import close_all_holes, close_small_hol
 from .maps.legend import Legend
 from .maps.maps import clipmap, explore, qtm, samplemap
 from .maps.thematicmap import ThematicMap
-from .networkanalysis.directednetwork import DirectedNetwork
+from .networkanalysis.closing_network_holes import (
+    close_network_holes,
+    close_network_holes_to_deadends,
+)
+from .networkanalysis.cutting_lines import (
+    cut_lines,
+    cut_lines_once,
+    split_lines_by_nearest_point,
+)
+from .networkanalysis.directednetwork import (
+    make_directed_network,
+    make_directed_network_norway,
+)
+from .networkanalysis.finding_isolated_networks import (
+    get_component_size,
+    get_connected_components,
+)
 from .networkanalysis.network import Network
 from .networkanalysis.networkanalysis import NetworkAnalysis
 from .networkanalysis.networkanalysisrules import NetworkAnalysisRules
+from .networkanalysis.nodes import (
+    make_edge_coords_cols,
+    make_edge_wkt_cols,
+    make_node_ids,
+)
 from .read_parquet import read_parquet_url
 
 

@@ -232,10 +232,10 @@ nw.gdf.head(3)
 #
 # origins and destinations located inside these isolated networks, will have a hard time finding their way out.
 #
-# The large, connected network component can be found (not removed) with the method get_largest_component:
+# The large, connected network component can be found (not removed) with the method get_connected_components:
 
 # %%
-nw = nw.get_largest_component()
+nw = nw.get_connected_components()
 
 # the GeoDataFrame of the network is stored in the gdf attribute:
 nw.gdf["connected_str"] = np.where(nw.gdf.connected == 1, "connected", "isolated")

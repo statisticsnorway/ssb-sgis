@@ -155,6 +155,18 @@ def overlay_update(
         GeoDataFrame with overlayed geometries and columns from both GeoDataFrames.
 
     """
+    geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
+
+    if keep_geom_type and not geom_type_left:
+        geom_type_left = get_geom_type(df1)
+
+    df1 = clean_geoms(df1)
+    if geom_type_left:
+        df1 = to_single_geom_type(df1, geom_type_left)
+    df2 = clean_geoms(df2)
+    if geom_type_right:
+        df2 = to_single_geom_type(df2, geom_type_right)
+
     try:
         overlayed = df1.overlay(df2, how="difference", **kwargs)
     except GEOSException:
@@ -222,9 +234,10 @@ def clean_shapely_overlay(
         geom_type_left = get_geom_type(df1)
 
     df1 = clean_geoms(df1)
+    df2 = clean_geoms(df2)
+
     if geom_type_left:
         df1 = to_single_geom_type(df1, geom_type_left)
-    df2 = clean_geoms(df2)
     if geom_type_right:
         df2 = to_single_geom_type(df2, geom_type_right)
 
@@ -232,6 +245,7 @@ def clean_shapely_overlay(
     df2 = df2.explode(ignore_index=True)
 
     overlayed = _shapely_overlay(df1, df2, how=how).pipe(clean_geoms)
+
     if geom_type_left:
         overlayed = to_single_geom_type(overlayed, geom_type_left)
 
@@ -241,7 +255,12 @@ def clean_shapely_overlay(
 def _get_geom_type_left_right(
     geom_type: str | tuple | list | None,
 ) -> tuple[str | None, str | None]:
-    if isinstance(geom_type, (tuple, list)):
+    if isinstance(geom_type, str):
+        return geom_type, geom_type
+    elif geom_type is None:
+        return None, None
+
+    elif hasattr(geom_type, "__iter__"):
         if len(geom_type) == 1:
             return geom_type[0], geom_type[0]
         elif len(geom_type) == 2:
@@ -250,10 +269,6 @@ def _get_geom_type_left_right(
             raise ValueError(
                 "'geom_type' should be one or two strings for the left and right gdf"
             )
-    elif isinstance(geom_type, str):
-        return geom_type, geom_type
-    elif geom_type is None:
-        return None, None
     else:
         raise ValueError(
             "'geom_type' should be one or two strings for the left and right gdf"

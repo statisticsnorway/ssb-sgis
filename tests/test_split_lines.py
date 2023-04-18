@@ -29,12 +29,15 @@ def test_split_lines(points_oslo, roads_oslo):
     points = sg.clean_clip(points, points.geometry.loc[0].buffer(700))
 
     ### MAKE THE ANALYSIS CLASS
-    nw = sg.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
+    connected_roads = sg.get_connected_components(r).query("connected == 1")
+    directed_roads = sg.make_directed_network_norway(connected_roads)
+
     rules = sg.NetworkAnalysisRules(
+        directed=True,
         weight="minutes",
     )
 
-    nwa = sg.NetworkAnalysis(nw, rules=rules, detailed_log=False)
+    nwa = sg.NetworkAnalysis(directed_roads, rules=rules, detailed_log=False)
     print(nwa)
 
     nwa.rules.split_lines = False

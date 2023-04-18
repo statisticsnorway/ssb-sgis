@@ -225,7 +225,11 @@ def networkanalysisrules_docstring():
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
     )
 
-    nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+    nw = (
+        sg.get_connected_components(roads)
+        .query("connected == 1")
+        .pipe(sg.make_directed_network_norway)
+    )
     rules = sg.NetworkAnalysisRules(weight="minutes")
     nwa = sg.NetworkAnalysis(network=nw, rules=rules)
     print(nwa)
@@ -524,7 +528,11 @@ def make_docstring_output():
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
     )
     roads = roads[["oneway", "drivetime_fw", "drivetime_bw", "geometry"]]
-    nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
+    nw = (
+        sg.get_connected_components(roads)
+        .query("connected == 1")
+        .pipe(sg.make_directed_network_norway)
+    )
     rules = sg.NetworkAnalysisRules(weight="minutes")
 
     from sgis import NetworkAnalysis

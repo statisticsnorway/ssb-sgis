@@ -19,7 +19,7 @@ def test_network_functions(points_oslo, roads_oslo):
     r = roads_oslo
     r = sg.clean_clip(r, p.buffer(1000)).explode(ignore_index=True)
 
-    r2 = sg.get_largest_component(r)
+    r2 = sg.get_connected_components(r)
     if __name__ == "__main__":
         sg.qtm(r2, column="connected", scheme="equalinterval", title="connected")
 

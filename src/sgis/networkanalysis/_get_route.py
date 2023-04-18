@@ -1,10 +1,55 @@
 import warnings
 
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
+
+
+def _get_route_frequencies(
+    graph,
+    roads: GeoDataFrame,
+    weight_df: DataFrame,
+) -> GeoDataFrame:
+    """Function used in the get_route_frequencies method of NetworkAnalysis."""
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+    resultlist: list[DataFrame] = []
+
+    od_pairs = weight_df.index
+
+    for ori_id in od_pairs.get_level_values(0).unique():
+        relevant_pairs = od_pairs[od_pairs.get_level_values(0) == ori_id]
+        destinations = relevant_pairs.get_level_values(1)
+
+        res = graph.get_shortest_paths(
+            weights="weight", v=ori_id, to=destinations, output="epath"
+        )
+
+        for i, des_id in enumerate(destinations):
+            indices = graph.es[res[i]]
+
+            if not indices:
+                continue
+
+            line_ids = DataFrame({"src_tgt_wt": indices["src_tgt_wt"]})
+            line_ids["origin"] = ori_id
+            line_ids["destination"] = des_id
+            line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
+
+            resultlist.append(line_ids)
+
+    summarised: pd.Series = (
+        pd.concat(resultlist, ignore_index=True)
+        .groupby("src_tgt_wt")["multiplier"]
+        .sum()
+    )
+
+    roads["frequency"] = roads["src_tgt_wt"].map(summarised)
+
+    roads_visited = roads.loc[roads.frequency.notna()].drop("src_tgt_wt", axis=1)
+
+    return roads_visited
 
 
 def _get_route(
@@ -92,71 +137,9 @@ def _get_k_routes(
     return lines[["origin", "destination", weight, "k", "geometry"]]
 
 
-def _get_route_frequencies(
-    graph,
-    roads: GeoDataFrame,
-    weight_df: DataFrame,
-):
-    """Function used in the get_route_frequencies method of NetworkAnalysis."""
-    warnings.filterwarnings("ignore", category=RuntimeWarning)
-
-    resultlist: list[DataFrame] = []
-
-    od_pairs = weight_df.index
-
-    for ori_id in od_pairs.get_level_values(0).unique():
-        relevant_pairs = od_pairs[od_pairs.get_level_values(0) == ori_id]
-        destinations = relevant_pairs.get_level_values(1)
-
-        res = graph.get_shortest_paths(
-            weights="weight", v=ori_id, to=destinations, output="epath"
-        )
-
-        for i, des_id in enumerate(destinations):
-            indices = graph.es[res[i]]
-
-            if not indices:
-                continue
-
-            line_ids = DataFrame({"src_tgt_wt": indices["src_tgt_wt"]})
-            line_ids["origin"] = ori_id
-            line_ids["destination"] = des_id
-            line_ids["multiplier"] = weight_df.loc[ori_id, des_id].iloc[0]
-
-            resultlist.append(line_ids)
-
-    summarised = (
-        pd.concat(resultlist, ignore_index=True)
-        .groupby("src_tgt_wt")["multiplier"]
-        .sum()
-    )
-
-    roads["frequency"] = roads["src_tgt_wt"].map(summarised)
-
-    roads_visited = roads.loc[roads.frequency.notna()].drop("src_tgt_wt", axis=1)
-
-    return roads_visited
-
-
-def _get_line_geometries(line_ids, roads, weight) -> GeoDataFrame:
-    road_mapper = roads.set_index(["src_tgt_wt"])[[weight, "geometry"]]
-    line_ids = line_ids.join(road_mapper)
-    return GeoDataFrame(line_ids, geometry="geometry", crs=roads.crs)
-
-
-def _create_line_id_df(src_tgt_wt: list, ori_id, des_id) -> DataFrame:
-    line_ids = DataFrame(index=src_tgt_wt)
-
-    # remove edges from ori/des to the roads
-    line_ids = line_ids.loc[~line_ids.index.str.endswith("_0")]
-
-    line_ids["origin"] = ori_id
-    line_ids["destination"] = des_id
-
-    return line_ids
-
-
-def _loop_k_routes(graph: Graph, ori_id, des_id, k, drop_middle_percent) -> DataFrame:
+def _loop_k_routes(
+    graph: Graph, ori_id: str, des_id: str, k: int, drop_middle_percent: int
+) -> DataFrame:
     """Workaround for igraph's get_k_shortest_paths.
 
     igraph's get_k_shorest_paths doesn't seem to work (gives just the same path k
@@ -198,3 +181,23 @@ def _loop_k_routes(graph: Graph, ori_id, des_id, k, drop_middle_percent) -> Data
         return pd.concat(lines)
     else:
         return pd.DataFrame()
+
+
+def _get_line_geometries(
+    line_ids: DataFrame, roads: GeoDataFrame, weight: str
+) -> GeoDataFrame:
+    road_mapper = roads.set_index(["src_tgt_wt"])[[weight, "geometry"]]
+    line_ids = line_ids.join(road_mapper)
+    return GeoDataFrame(line_ids, geometry="geometry", crs=roads.crs)
+
+
+def _create_line_id_df(src_tgt_wt: list, ori_id: str, des_id: str) -> DataFrame:
+    line_ids = DataFrame(index=src_tgt_wt)
+
+    # remove edges from ori/des to the roads
+    line_ids = line_ids.loc[~line_ids.index.str.endswith("_0")]
+
+    line_ids["origin"] = ori_id
+    line_ids["destination"] = des_id
+
+    return line_ids

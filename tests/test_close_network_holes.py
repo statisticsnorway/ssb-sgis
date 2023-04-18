@@ -24,34 +24,30 @@ def test_line_angle_0():
         ),
         crs=25833,
     )
-    should_work = sg.Network(lines_angle_0).close_network_holes(
-        1, fillna=0, max_angle=90
-    )
+    should_work = sg.close_network_holes(lines_angle_0, max_distance=1, max_angle=90)
     if __name__ == "__main__":
         lines_angle_0.plot()
-        should_work.gdf.plot("hole")
+        should_work.plot("hole")
     assert len(should_work) == 4, len(should_work)
 
-    directed_should_give_same = sg.DirectedNetwork(lines_angle_0).close_network_holes(
-        1,
+    directed_should_give_same = sg.close_network_holes(
+        lines_angle_0,
+        max_distance=1,
         max_angle=90,
-        fillna=0,
     )
     if __name__ == "__main__":
         lines_angle_0.plot()
-        directed_should_give_same.gdf.plot("hole")
+        directed_should_give_same.plot("hole")
     assert len(directed_should_give_same) == 4, len(directed_should_give_same)
 
-    cannot_reach = sg.Network(lines_angle_0).close_network_holes(
-        0.5, fillna=0, max_angle=10
-    )
+    cannot_reach = sg.close_network_holes(lines_angle_0, max_distance=0.5, max_angle=10)
     assert len(cannot_reach) == 2, len(cannot_reach)
 
-    can_reach = sg.Network(lines_angle_0).close_network_holes(1, fillna=0, max_angle=10)
+    can_reach = sg.close_network_holes(lines_angle_0, max_distance=1, max_angle=10)
     assert len(can_reach) == 4, len(can_reach)
 
-    angle_0_should_be_fine = sg.Network(lines_angle_0).close_network_holes(
-        1, fillna=0, max_angle=0
+    angle_0_should_be_fine = sg.close_network_holes(
+        lines_angle_0, max_distance=1, max_angle=0
     )
     assert len(angle_0_should_be_fine) == 4, len(angle_0_should_be_fine)
 
@@ -62,21 +58,21 @@ def test_line_angle_90():
         crs=25833,
     )
 
-    nw = sg.Network(lines_angle_90).close_network_holes(1, max_angle=180, fillna=0)
+    nw = sg.close_network_holes(lines_angle_90, max_distance=1, max_angle=180)
     if __name__ == "__main__":
         lines_angle_90.plot()
-        nw.gdf.plot("hole")
+        nw.plot("hole")
 
     assert len(nw) == 4, len(nw)
 
     # when 180 degrees allowed and 2 units, it should create duplicate lines on top of
     # existing ones
-    nw = sg.Network(lines_angle_90).close_network_holes(2, max_angle=180, fillna=0)
+    nw = sg.close_network_holes(lines_angle_90, max_distance=2, max_angle=180)
     assert len(nw) == 6, len(nw)
 
-    nw = sg.Network(lines_angle_90).close_network_holes(1, fillna=0, max_angle=45)
+    nw = sg.close_network_holes(lines_angle_90, max_distance=1, max_angle=45)
     if __name__ == "__main__":
-        nw.gdf.plot("hole")
+        nw.plot("hole")
     assert len(nw) == 3, len(nw)
 
     lines_angle_90_both = sg.to_gdf(
@@ -84,15 +80,15 @@ def test_line_angle_90():
         crs=25833,
     )
 
-    nw = sg.Network(lines_angle_90_both).close_network_holes(1, fillna=0, max_angle=45)
+    nw = sg.close_network_holes(lines_angle_90_both, max_distance=1, max_angle=45)
     if __name__ == "__main__":
         lines_angle_90_both.plot()
-        nw.gdf.plot("hole")
+        nw.plot("hole")
     assert len(nw) == 2, len(nw)
 
-    nw = sg.Network(lines_angle_90_both).close_network_holes(1, fillna=0, max_angle=90)
+    nw = sg.close_network_holes(lines_angle_90_both, max_distance=1, max_angle=90)
     if __name__ == "__main__":
-        nw.gdf.plot("hole")
+        nw.plot("hole")
     assert len(nw) == 4, len(nw)
 
     lines_angle_90_other_side = sg.to_gdf(
@@ -102,26 +98,22 @@ def test_line_angle_90():
         crs=25833,
     )
 
-    nw = sg.Network(lines_angle_90_other_side).close_network_holes(
-        1, fillna=0, max_angle=45
-    )
+    nw = sg.close_network_holes(lines_angle_90_other_side, max_distance=1, max_angle=45)
     if __name__ == "__main__":
         lines_angle_90_other_side.plot()
-        nw.gdf.plot("hole")
+        nw.plot("hole")
     assert len(nw) == 2, len(nw)
 
-    nw = sg.Network(lines_angle_90_other_side).close_network_holes(
-        1, fillna=0, max_angle=90
-    )
+    nw = sg.close_network_holes(lines_angle_90_other_side, max_distance=1, max_angle=90)
     if __name__ == "__main__":
-        nw.gdf.plot("hole")
+        nw.plot("hole")
     assert len(nw) == 4, len(nw)
 
-    should_fill_diagonals = sg.Network(lines_angle_90_other_side).close_network_holes(
-        2, fillna=0, max_angle=160
+    should_fill_diagonals = sg.close_network_holes(
+        lines_angle_90_other_side, max_distance=2, max_angle=160
     )
     if __name__ == "__main__":
-        should_fill_diagonals.gdf.plot("hole")
+        should_fill_diagonals.plot("hole")
     assert len(should_fill_diagonals) == 6, len(should_fill_diagonals)
 
 
@@ -133,26 +125,24 @@ def test_line_angle_45():
         crs=25833,
     )
 
-    should_not_reach = sg.Network(lines_angle_45).close_network_holes(
-        1, fillna=0, max_angle=45
+    should_not_reach = sg.close_network_holes(
+        lines_angle_45, max_distance=1, max_angle=45
     )
     if __name__ == "__main__":
         lines_angle_45.plot()
-        should_not_reach.gdf.plot("hole")
+        should_not_reach.plot("hole")
     assert len(should_not_reach) == 2, len(should_not_reach)
 
-    should_reach = sg.Network(lines_angle_45).close_network_holes(
-        2, fillna=0, max_angle=45
-    )
+    should_reach = sg.close_network_holes(lines_angle_45, max_distance=2, max_angle=45)
     if __name__ == "__main__":
-        should_reach.gdf.plot("hole")
+        should_reach.plot("hole")
     assert len(should_reach) == 4, len(should_reach)
 
-    not_small_enough_angle = sg.Network(lines_angle_45).close_network_holes(
-        2, fillna=0, max_angle=20
+    not_small_enough_angle = sg.close_network_holes(
+        lines_angle_45, max_distance=2, max_angle=20
     )
     if __name__ == "__main__":
-        not_small_enough_angle.gdf.plot("hole")
+        not_small_enough_angle.plot("hole")
     assert len(not_small_enough_angle) == 2, len(not_small_enough_angle)
 
     lines_angle_45_opposite = sg.to_gdf(
@@ -160,26 +150,26 @@ def test_line_angle_45():
         crs=25833,
     )
 
-    should_not_reach = sg.Network(lines_angle_45_opposite).close_network_holes(
-        1, fillna=0, max_angle=45
+    should_not_reach = sg.close_network_holes(
+        lines_angle_45_opposite, max_distance=1, max_angle=45
     )
     if __name__ == "__main__":
         lines_angle_45_opposite.plot()
-        should_not_reach.gdf.plot("hole")
+        should_not_reach.plot("hole")
     assert len(should_not_reach) == 2, len(should_not_reach)
 
-    should_reach = sg.Network(lines_angle_45_opposite).close_network_holes(
-        2, fillna=0, max_angle=45
+    should_reach = sg.close_network_holes(
+        lines_angle_45_opposite, max_distance=2, max_angle=45
     )
     if __name__ == "__main__":
-        should_reach.gdf.plot("hole")
+        should_reach.plot("hole")
     assert len(should_reach) == 4, len(should_reach)
 
-    not_small_enough_angle = sg.Network(lines_angle_45_opposite).close_network_holes(
-        2, fillna=0, max_angle=20
+    not_small_enough_angle = sg.close_network_holes(
+        lines_angle_45_opposite, max_distance=2, max_angle=20
     )
     if __name__ == "__main__":
-        not_small_enough_angle.gdf.plot("hole")
+        not_small_enough_angle.plot("hole")
     assert len(not_small_enough_angle) == 2, len(not_small_enough_angle)
 
 
@@ -194,47 +184,42 @@ def test_close_network_holes(roads_oslo, points_oslo):
 
     r = sg.clean_clip(r, p.buffer(600))
 
-    nw = sg.Network(r)
-
-    nw = nw.get_largest_component()
+    nw = sg.get_connected_components(r)
 
     if __name__ == "__main__":
-        sg.qtm(nw.gdf, "connected")
+        sg.qtm(nw, "connected", title="before filling holes")
 
-    assert sum(nw.gdf.connected == 1) == 650
-    assert sum(nw.gdf.connected == 0) == 104
+    assert sum(nw.connected == 1) == 650, sum(nw.connected == 1)
+    assert sum(nw.connected == 0) == 104, sum(nw.connected == 0)
 
-    nw = nw.close_network_holes_to_deadends(1.1, fillna=0)
-    assert sum(nw.gdf.hole == 1) == 68, sum(nw.gdf.hole == 1)
+    nw = sg.close_network_holes_to_deadends(r.copy(), max_distance=1.1)
+    assert sum(nw.hole == 1) == 68, sum(nw.hole == 1)
 
-    nw = sg.Network(r)
-    nw = nw.close_network_holes(1.1, max_angle=0, fillna=0)
-    assert sum(nw.gdf.hole == 1) == 0, sum(nw.gdf.hole == 1)
+    nw = sg.close_network_holes(r.copy(), max_distance=1.1, max_angle=0)
+    assert sum(nw.hole == 1) == 0, sum(nw.hole == 1)
 
-    nw = sg.Network(r)
-    nw = nw.close_network_holes(1.1, max_angle=10, fillna=0)
-    assert sum(nw.gdf.hole == 1) == 57, sum(nw.gdf.hole == 1)
+    nw = sg.close_network_holes(r.copy(), max_distance=1.1, max_angle=10)
+    assert sum(nw.hole == 1) == 57, sum(nw.hole == 1)
 
-    nw = nw.close_network_holes(1.1, max_angle=90, fillna=0)
-    assert sum(nw.gdf.hole == 1) == 59, sum(nw.gdf.hole == 1)
+    nw = sg.close_network_holes(r.copy(), max_distance=1.1, max_angle=90)
+    assert sum(nw.hole == 1) == 67, sum(nw.hole == 1)
 
-    nw = nw.close_network_holes(1.1, max_angle=180, fillna=0)
-    assert sum(nw.gdf.hole == 1) == 59, sum(nw.gdf.hole == 1)
+    nw2 = sg.close_network_holes(r.copy(), max_distance=1.1, max_angle=180)
+    assert sum(nw2.hole == 1) == 68, sum(nw2.hole == 1)
 
-    nw = nw.close_network_holes_to_deadends(10, fillna=0)
-    assert sum(nw.gdf.hole == 1) == 84, sum(nw.gdf.hole == 1)
+    nw = sg.close_network_holes_to_deadends(r.copy(), max_distance=10)
+    assert sum(nw.hole == 1) == 95, sum(nw.hole == 1)
 
-    nw = sg.Network(r)
-    nw = nw.close_network_holes(10, max_angle=90, fillna=0)
-    assert sum(nw.gdf.hole == 1) == 93, sum(nw.gdf.hole == 1)
+    nw = sg.close_network_holes(r.copy(), max_distance=10, max_angle=90)
+    assert sum(nw.hole == 1) == 93, sum(nw.hole == 1)
 
-    nw = nw.get_largest_component()
+    nw = sg.get_connected_components(nw)
 
     if __name__ == "__main__":
-        sg.qtm(nw.gdf, "connected")
+        sg.qtm(nw, "connected", title="after filling holes")
 
-    assert sum(nw.gdf.connected == 1) == 827, sum(nw.gdf.connected == 1)
-    assert sum(nw.gdf.connected == 0) == 20, sum(nw.gdf.connected == 0)
+    assert sum(nw.connected == 1) == 827, sum(nw.connected == 1)
+    assert sum(nw.connected == 0) == 20, sum(nw.connected == 0)
 
 
 def main():

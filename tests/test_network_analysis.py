@@ -251,9 +251,10 @@ def not_test_direction(roads_oslo):
     tunnel_tofrom = sg.to_gdf([10.7724645, 59.899908], crs=4326).to_crs(roads_oslo.crs)
 
     clipped = sg.clean_clip(roads_oslo, tunnel_fromto.buffer(2000))
-    nw = sg.DirectedNetwork(clipped).make_directed_network_norway().remove_isolated()
-    rules = sg.NetworkAnalysisRules(weight="minutes")
-    nwa = sg.NetworkAnalysis(nw, rules=rules)
+    connected_roads = sg.get_connected_components(clipped).query("connected == 1")
+    directed_roads = sg.make_directed_network_norway(connected_roads)
+    rules = sg.NetworkAnalysisRules(directed=True, weight="minutes")
+    nwa = sg.NetworkAnalysis(directed_roads, rules=rules)
 
     route_fromto = nwa.get_route(vippetangen, ryen)
     route_tofrom = nwa.get_route(ryen, vippetangen)
@@ -291,13 +292,33 @@ def test_network_analysis(points_oslo, roads_oslo):
     r = sg.clean_clip(r, p.geometry.loc[0].buffer(750))
 
     ### MAKE THE ANALYSIS CLASS
-    nw = sg.DirectedNetwork(r).make_directed_network_norway().remove_isolated()
     rules = sg.NetworkAnalysisRules(
+        directed=True,
         weight="minutes",
         split_lines=split_lines,
     )
-    nwa = sg.NetworkAnalysis(nw, rules=rules)
+
+    connected_roads = sg.get_connected_components(r).query("connected == 1")
+    directed_roads = sg.make_directed_network_norway(connected_roads)
+
+    nwa = sg.NetworkAnalysis(directed_roads, rules=rules, detailed_log=True)
     print(nwa)
+
+    not_test_od_cost_matrix(nwa, p)
+    not_test_get_route_frequency(nwa, p)
+    not_test_service_area(nwa, p)
+    not_test_get_route(nwa, p)
+    not_test_get_k_routes(nwa, p)
+    not_test_direction(roads_oslo)
+
+    rules = {
+        "directed": True,
+        "weight": "minutes",
+        "split_lines": split_lines,
+    }
+    nwa = sg.NetworkAnalysis(directed_roads, rules=rules, detailed_log=True)
+    print(nwa)
+    print(nwa.rules)
 
     not_test_od_cost_matrix(nwa, p)
     not_test_get_route_frequency(nwa, p)

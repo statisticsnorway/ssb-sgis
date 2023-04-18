@@ -4,7 +4,9 @@
 #     text_representation:
 #       extension: .py
 #       format_name: percent
+#       format_version: '1.3'
 # ---
+
 # %% [markdown]
 # # sgis
 # %%
@@ -32,11 +34,11 @@ points = sg.read_parquet_url(
 )
 
 ### !!!
-### COPY EVERYTHING BELOW INTO readme.md and change the png paths.
+### COPY EVERYTHING BELOW INTO README.md and change the png paths.
 ### !!!
 
 # %% [markdown]
-# sgis builds on the geopandas package and provides functions that make it easier to do advanced GIS in python.
+# sgis builds on the geopandas package and provides functions that make it easier to do GIS in python.
 # Features include network analysis, functions for exploring multiple GeoDataFrames in a layered interactive map,
 # and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 # in polygons by size.
@@ -52,19 +54,18 @@ roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
 )
 
-nw = (
-    sg.DirectedNetwork(roads)
-    .remove_isolated()
-    .make_directed_network(
-        direction_col="oneway",
-        direction_vals_bft=("B", "FT", "TF"),
-        minute_cols=("drivetime_fw", "drivetime_bw"),
-    )
+connected_roads = sg.get_connected_components(roads).query("connected == 1")
+
+directed_roads = sg.make_directed_network(
+    connected_roads,
+    direction_col="oneway",
+    direction_vals_bft=("B", "FT", "TF"),
+    minute_cols=("drivetime_fw", "drivetime_bw"),
 )
 
-rules = sg.NetworkAnalysisRules(weight="minutes")
+rules = sg.NetworkAnalysisRules(directed=True, weight="minutes")
 
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
+nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules)
 
 nwa
 # %% [markdown]
@@ -125,3 +126,7 @@ m.plot()
 # More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 #
 # Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
+
+# %%
+
+# %%
