@@ -9,7 +9,7 @@ def read_parquet_url(url: str) -> GeoDataFrame:
     """Reads geoparquet from a URL.
 
     Args:
-        url: url to a geoparquet file
+        url: URL containing a geoparquet file.
 
     Returns:
         A GeoDataFrame.

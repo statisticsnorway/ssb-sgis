@@ -59,8 +59,7 @@ class NetworkAnalysis:
             Defaults to False.
 
     Attributes:
-        network: A Network instance that holds the lines and nodes (points) of the
-            GeoDataFrame of line geometries.
+        network: A Network instance that holds the lines and nodes (points).
         rules: NetworkAnalysisRules instance.
         log: A DataFrame with information about each analysis run.
 
@@ -192,6 +191,7 @@ class NetworkAnalysis:
         97  POINT (263162.000 6650732.200)
         98  POINT (272322.700 6653729.100)
         99  POINT (265622.800 6644644.200)
+        <BLANKLINE>
         [100 rows x 1 columns]
         >>> destinations = points.loc[100:199, ["geometry"]]
         >>> destinations
@@ -207,6 +207,7 @@ class NetworkAnalysis:
         197  POINT (273135.300 6653198.100)
         198  POINT (270582.300 6652163.800)
         199  POINT (264980.800 6647231.300)
+        <BLANKLINE>
         [100 rows x 1 columns]
 
         Travel time from 100 to 100 points.
@@ -225,6 +226,7 @@ class NetworkAnalysis:
         9997      99          197  19.977029
         9998      99          198  15.233163
         9999      99          199   6.439002
+        <BLANKLINE>
         [10000 rows x 3 columns]
 
         Join the results onto the 'origins' GeoDataFrame via the index.
@@ -244,6 +246,7 @@ class NetworkAnalysis:
         99  POINT (265622.800 6644644.200)          197  19.977029
         99  POINT (265622.800 6644644.200)          198  15.233163
         99  POINT (265622.800 6644644.200)          199   6.439002
+        <BLANKLINE>
         [10000 rows x 3 columns]
 
         Get travel times below 10 minutes.
@@ -263,6 +266,7 @@ class NetworkAnalysis:
         99  POINT (265622.800 6644644.200)        177.0  5.944194
         99  POINT (265622.800 6644644.200)        183.0  8.449906
         99  POINT (265622.800 6644644.200)        199.0  6.439002
+        <BLANKLINE>
         [2195 rows x 3 columns]
 
         Get the three fastest routes from each origin.
@@ -282,6 +286,7 @@ class NetworkAnalysis:
         99  POINT (265622.800 6644644.200)        102.0  1.648705
         99  POINT (265622.800 6644644.200)        134.0  1.116209
         99  POINT (265622.800 6644644.200)        156.0  1.368926
+        <BLANKLINE>
         [294 rows x 3 columns]
 
         Assign aggregated values directly onto the origins.
@@ -300,6 +305,7 @@ class NetworkAnalysis:
         97  POINT (263162.000 6650732.200)     11.904372
         98  POINT (272322.700 6653729.100)     17.579399
         99  POINT (265622.800 6644644.200)     12.185800
+        <BLANKLINE>
         [100 rows x 2 columns]
 
         Use set_index to use column as identifier insted of the index.
@@ -322,6 +328,7 @@ class NetworkAnalysis:
         9997   3401          197  19.977029
         9998   3401          198  15.233163
         9999   3401          199   6.439002
+        <BLANKLINE>
         [10000 rows x 3 columns]
 
         Travel time from 1000 to 1000 points rowwise.
@@ -341,6 +348,7 @@ class NetworkAnalysis:
         997     997            2  19.968743
         998     998            1   9.484374
         999     999            0  14.892648
+        <BLANKLINE>
         [1000 rows x 3 columns]
 
         """
@@ -458,6 +466,7 @@ class NetworkAnalysis:
         151466  73802  73632      103.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
         151463  73799  73800      123.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
         152170  74418  74246      130.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
+        <BLANKLINE>
         [8556 rows x 4 columns]
 
         The frequencies can be weighted for each origin-destination pair by specifying
@@ -488,6 +497,7 @@ class NetworkAnalysis:
         622      24           47      10
         623      24           48      10
         624      24           49      10
+        <BLANKLINE>
         [625 rows x 3 columns]
 
         All frequencies will now be multiplied by 10.
@@ -506,6 +516,7 @@ class NetworkAnalysis:
         151466  73802  73632     1030.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
         151463  73799  73800     1230.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
         152170  74418  74246     1300.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
+        <BLANKLINE>
         [8556 rows x 4 columns]
 
         'weight_df' can also be a DataFrame with one column (the weight) and a
@@ -526,7 +537,8 @@ class NetworkAnalysis:
            47      10
            48      10
            49      10
-
+        <BLANKLINE>
+        [625 rows x 1 columns]
         """
         if self._log:
             time_ = perf_counter()
@@ -646,6 +658,7 @@ class NetworkAnalysis:
         994       1          998  10.698588  MULTILINESTRING Z ((263489.330 6645655.330 11....
         995       1          999  10.109855  MULTILINESTRING Z ((269217.997 6650654.895 166...
         996       1         1000  14.657289  MULTILINESTRING Z ((264475.675 6644245.782 114...
+        <BLANKLINE>
         [997 rows x 4 columns]
         """
         if self._log:
@@ -865,7 +878,7 @@ class NetworkAnalysis:
 
         See also:
             precice_service_area: Equivelent method where lines are also cut to get
-                precice results.
+            precice results.
 
         Examples
         --------

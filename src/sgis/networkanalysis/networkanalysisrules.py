@@ -56,7 +56,7 @@ class NetworkAnalysisRules:
     >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
 
-    Let's start by setting the default rules. 'weight' and 'directed' has noe default
+    Let's start by setting the default rules. 'weight' and 'directed' have no default
     values.
 
     >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)

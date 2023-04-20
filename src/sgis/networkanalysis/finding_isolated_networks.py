@@ -1,12 +1,5 @@
-"""Functions for line geometries.
+"""Functions for Finding network components in a GeoDataFrame of lines."""
 
-The module includes functions for cutting and splitting lines, cutting lines into
-pieces, filling holes in a network of lines, finding isolated network islands and
-creating unique node ids.
-
-The functions are also methods of the Network class, where some checks and
-preperation is done before each method is run, making sure the lines are correct.
-"""
 import networkx as nx
 from geopandas import GeoDataFrame
 
@@ -63,6 +56,10 @@ def get_connected_components(gdf: GeoDataFrame) -> GeoDataFrame:
 
     gdf["connected"] = gdf.source.map(largest_component_dict).fillna(0)
 
+    gdf = gdf.drop(
+        ["source_wkt", "target_wkt", "source", "target", "n_source", "n_target"], axis=1
+    )
+
     return gdf
 
 
@@ -108,5 +105,9 @@ def get_component_size(gdf: GeoDataFrame) -> GeoDataFrame:
     }
 
     gdf["component_size"] = gdf.source.map(componentsdict)
+
+    gdf = gdf.drop(
+        ["source_wkt", "target_wkt", "source", "target", "n_source", "n_target"], axis=1
+    )
 
     return gdf
