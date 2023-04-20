@@ -1,6 +1,6 @@
 """Contains the NetworkAnalysis class.
 
-The class has five methods: od_cost_matrix, get_route, get_k_routes,
+The class has five analysis methods: od_cost_matrix, get_route, get_k_routes,
 get_route_frequencies and service_area.
 """
 
