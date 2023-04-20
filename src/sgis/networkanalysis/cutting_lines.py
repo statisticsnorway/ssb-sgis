@@ -1,12 +1,4 @@
-"""Functions for line geometries.
-
-The module includes functions for cutting and splitting lines, cutting lines into
-pieces, filling holes in a network of lines, finding isolated network islands and
-creating unique node ids.
-
-The functions are also methods of the Network class, where some checks and
-preperation is done before each method is run, making sure the lines are correct.
-"""
+"""Cutting and splitting line geometries."""
 import warnings
 
 import numpy as np

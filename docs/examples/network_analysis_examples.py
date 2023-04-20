@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 
-src = str(Path(__file__).parent.parent.parent) + "/src"
+src = str(Path().resolve().parent.parent) + "/src"
 print(src)
 sys.path.insert(0, src)
 
@@ -76,8 +76,8 @@ nwa
 # Get number of times each line segment was visited, with optional weighting.
 
 # %%
-origins = points.iloc[:75]
-destinations = points.iloc[75:150]
+origins = points.iloc[:100]
+destinations = points.iloc[100:200]
 
 # creating uniform weights of 10
 od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])

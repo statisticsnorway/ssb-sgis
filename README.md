@@ -34,7 +34,7 @@ Preparing for network analysis:
 
 ```python
 import sgis as sg
-import pandas as pd
+
 
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -49,7 +49,7 @@ directed_roads = sg.make_directed_network(
     minute_cols=("drivetime_fw", "drivetime_bw"),
 )
 
-rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
+rules = sg.NetworkAnalysisRules(directed=True, weight="minutes")
 
 nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules)
 
@@ -57,16 +57,16 @@ nwa
 ```
 
     NetworkAnalysis(
-        network=DirectedNetwork(6364 km, percent_bidirectional=87),
+        network=Network(6364 km, percent_bidirectional=87),
         rules=NetworkAnalysisRules(weight=minutes, directed=True, search_tolerance=250, search_factor=0, split_lines=False, ...),
-        log=True, detailed_log=True,
+        log=True, detailed_log=False,
     )
 
 Get number of times each line segment was visited, with optional weighting.
 
 ```python
-origins = points.iloc[:75]
-destinations = points.iloc[75:150]
+origins = points.iloc[:100]
+destinations = points.iloc[100:200]
 
 # creating uniform weights of 10
 od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
@@ -138,6 +138,8 @@ m.plot()
 ```
 
 ![png](docs/examples/network_analysis_examples_files/network_analysis_examples_11_0.png)
+
+More network analysis examples can be found here: https://github.com/statisticsnorway/ssb-sgis/blob/main/docs/network_analysis_demo_template.md
 
 Road data for Norway can be downloaded here: https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
 

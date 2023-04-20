@@ -31,14 +31,14 @@ def exists(path: str) -> bool:
 
 
 def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
-    """Reads geoparquet or other geodata* from a file on GCS.
+    """Reads geoparquet or other geodata from a file on GCS.
 
     Note:
-        Does not currently read shapelfiles or filegeodatabases.
+        Does not currently read shapefiles or filegeodatabases.
 
     Args:
         path: path to a file on Google Cloud Storage.
-        **kwargs: additional keyword arguments passed to geopandas' read_parquet
+        **kwargs: Additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
      Returns:
@@ -61,9 +61,9 @@ def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
         Does not currently write to shapelfile or filegeodatabase.
 
     Args:
-        df: The GeoDataFrame to write
+        df: The GeoDataFrame to write.
         gcs_path: The path to the file you want to write to.
-        **kwargs: additional keyword arguments passed to parquet.write_table
+        **kwargs: Additional keyword arguments passed to parquet.write_table
             (for parquet) or geopandas' to_file method (if not parquet).
     """
     pd.io.parquet.BaseImpl.validate_dataframe(df)
