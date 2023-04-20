@@ -25,14 +25,14 @@ pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 # %% [markdown]
 # The network analysis happens in the NetworkAnalysis class.
-# It takes a network and a set of rules for the analysis:
+# It takes a GeoDataFrame of lines and a set of rules for the analysis:
 #
 # The rules can be instantiated like this:
 # %%
-rules = sg.NetworkAnalysisRules(weight="minutes")
+rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
 rules
 # %% [markdown]
-# To create the network, we need some road data:
+# First we need some road data:
 # %%
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -40,50 +40,35 @@ roads = sg.read_parquet_url(
 roads = roads[["oneway", "drivetime_fw", "drivetime_bw", "geometry"]]
 roads.head(3)
 # %% [markdown]
-# The road data can be made into a Network instance like this:
-# %%
-nw = sg.Network(roads)
-nw
-# %% [markdown]
-# The Network is now ready for undirected network analysis. The network can also be optimises with methods stored in the Network class. More about this further down in this notebook.
-# %%
-nw = (
-    nw.close_network_holes(1.5, max_angle=90, fillna=0).remove_isolated().cut_lines(250)
-)
-nw
-# %% [markdown]
-# For directed network analysis, the DirectedNetwork class can be used. This inherits all methods from the Network class, and also includes methods for making a directed network.
-# %%
-nw = sg.DirectedNetwork(roads).remove_isolated()
-nw
-# %% [markdown]
-# We now have a DirectedNetwork instance. However, the network isn't actually directed yet, as indicated by the percent_bidirectional attribute above.
-#
-# The roads going both ways have to be duplicated and the geometry of the new lines have to be flipped. The roads going backwards also have to be flipped.
-#
+# For directed network analysis, we need to duplicate roads going both directions and flip roads going backwards.
 # This can be done with the make_directed_network method:
 # %%
-nw = nw.make_directed_network(
+directed_roads = sg.make_directed_network(
+    roads,
     direction_col="oneway",
     direction_vals_bft=("B", "FT", "TF"),
     speed_col=None,
     minute_cols=("drivetime_fw", "drivetime_bw"),
     flat_speed=None,
 )
-nw
+directed_roads
 # %% [markdown]
-# The network has now almost doubled in length, since most roads are bidirectional in this network.
-#
-# Norwegian road data can be made directional with a custom method:
+# Norwegian road data can be made directional with a custom function:
 # %%
-nw = sg.DirectedNetwork(roads).remove_isolated().make_directed_network_norway()
-nw
+directed_roads = sg.make_directed_network_norway(roads)
+directed_roads
+
+# %% [markdown]
+# We should also remove isolated network islands. Roads behind road blocks etc.
+# %%
+connected_roads = sg.get_connected_components(directed_roads).query("connected == 1")
+connected_roads
 # %% [markdown]
 # ## NetworkAnalysis
 #
-# To start the network analysis, we put our network and our rules into the NetworkAnalysis class:
+# To start the network analysis, we put our roads and our rules into the NetworkAnalysis class:
 # %%
-nwa = sg.NetworkAnalysis(network=nw, rules=rules, detailed_log=False)
+nwa = sg.NetworkAnalysis(network=connected_roads, rules=rules)
 nwa
 # %% [markdown]
 # We also need some points that will be our origins and destinations:
@@ -106,12 +91,11 @@ od
 # %%
 od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
 
-sg.qtm(
-    od,
-    "minutes",
-    title="Travel time (minutes) from 1 to 1000 addresses.",
-    scheme="quantiles",
-)
+m = sg.ThematicMap(od, column="minutes", black=True)
+m.title = "Travel time (minutes) from 1 to 1000 addresses."
+m.scheme = "quantiles"
+m.plot()
+
 # %% [markdown]
 # Information about the analyses are stored in a DataFrame in the 'log' attribute.
 # %%
@@ -124,47 +108,76 @@ print(nwa.log)
 # %%
 routes = nwa.get_route(points.iloc[[0]], points.sample(100))
 
-sg.qtm(
-    sg.buff(routes, 12),
-    "minutes",
-    cmap="plasma",
-    title="Travel times (minutes)",
-)
-
-routes
+# plot the results
+m = sg.ThematicMap(sg.buff(routes, 15), column="minutes", black=True)
+m.cmap = "plasma"
+m.title = "Travel times (minutes)"
+m.plot()
 # %% [markdown]
 # ### Get route frequencies
 #
 # get_route_frequencies finds the number of times each road segment was used.
 
 # %%
-pointsample = points.sample(75)
-freq = nwa.get_route_frequencies(pointsample, pointsample)
+origins = points.iloc[:100]
+destinations = points.iloc[100:200]
 
-sg.qtm(
-    sg.buff(freq, 15),
-    "frequency",
-    scheme="naturalbreaks",
-    cmap="plasma",
-    title="Number of times each road was used (weight='minutes')",
-)
+frequencies = nwa.get_route_frequencies(origins, destinations)
+
+# plot the results
+m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
+m.cmap = "plasma"
+m.title = "Number of times each road was used"
+m.plot()
 # %% [markdown]
 # The results will be quite different when it is the shortest, rather than the fastest, route that is used:
 
 # %%
 nwa.rules.weight = "meters"
 
-frequencies = nwa.get_route_frequencies(pointsample, pointsample)
+frequencies = nwa.get_route_frequencies(origins, destinations)
 
-sg.qtm(
-    sg.buff(frequencies, 15),
-    "frequency",
-    scheme="naturalbreaks",
-    cmap="plasma",
-    title="Number of times each road was used (weight='meters')",
-)
+m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
+m.cmap = "plasma"
+m.title = "Number of times each road was used (weight='meters')"
+m.plot()
 # %%
 nwa.rules.weight = "minutes"
+# %% [markdown]
+# The routes can also be weighted with a DataFrame containing the indices of all
+# origins and destinations combinations and the weight for the trip between them.
+#
+# Creating uniform weights of 10 for illustration's sake.
+# %%
+# creating long DataFrame of all od combinations
+od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
+weights = pd.DataFrame(index=od_pairs)
+weights["weight"] = 10
+
+frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
+
+m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
+m.cmap = "plasma"
+m.title = "Number of times each road was used"
+m.plot()
+# %% [markdown]
+# If not all origin-destination combinations are in the weight_df,
+# a 'default_weight' has to be set. Setting the default to 1 and creating
+# a weight_df with one OD pair with a very high weight.
+# %%
+od_pair = pd.MultiIndex.from_product([[1], [101]])
+od_pair = pd.DataFrame({"weight": [100_000]}, index=od_pair)
+
+frequencies = nwa.get_route_frequencies(
+    origins, destinations, weight_df=od_pair, default_weight=1
+)
+
+# plot the results
+m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
+m.cmap = "plasma"
+m.title = "Number of times each road was used"
+m.plot()
+
 # %% [markdown]
 # ### Service area
 
@@ -179,13 +192,10 @@ service_areas
 # %%
 service_areas = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11))
 
-sg.qtm(
-    service_areas,
-    "minutes",
-    k=10,
-    title="Roads that can be reached within 1 to 10 minutes",
-)
-service_areas
+m = sg.ThematicMap(service_areas, column="minutes", black=True)
+m.k = 10
+m.title = "Roads that can be reached within 1 to 10 minutes"
+m.plot()
 # %% [markdown]
 # By default, only the lowest break is kept for overlapping areas from the same origin, meaning the area for minutes=10
 # covers not the entire area, only the outermost ring:
@@ -197,10 +207,7 @@ sg.qtm(
     title="Roads that can be reached within 10 minutes",
 )
 # %% [markdown]
-# This behaviour can be changed by setting drop_duplicates to False.
-
-# Duplicate lines from different origins will not be removed. To drop all duplicates, if many
-# origins in close proximity, set 'dissolve' to False to get each individual road or line returned,
+# Set 'dissolve' to False to get each individual road or line returned,
 # and then drop rows afterwards:
 
 # %%
@@ -215,38 +222,14 @@ print("rows after drop_duplicates:", len(service_areas))
 print(nwa.log)
 # %% [markdown]
 # ## Customising the network
-
 # %%
-nw = sg.Network(roads)
-nw
-# %% [markdown]
-# To manipulate the roads after instantiating the Network, the GeoDataFrame can be accessed in the 'gdf' attribute:
-# %%
-nw.gdf.head(3)
-# %% [markdown]
-# ### remove_isolated
-#
-# The above log file has a column called 'isolated_removed'. This is set to True because the method 'remove_isolated' was used before the analyses.
-#
-# Networks often consist of one large, connected network and many small, isolated "network islands".
-#
-# origins and destinations located inside these isolated networks, will have a hard time finding their way out.
-#
-# The large, connected network component can be found (not removed) with the method get_connected_components:
-
-# %%
-nw = nw.get_connected_components()
-
-# the GeoDataFrame of the network is stored in the gdf attribute:
-nw.gdf["connected_str"] = np.where(nw.gdf.connected == 1, "connected", "isolated")
-
-to_plot = nw.gdf.clip(points.iloc[[0]].buffer(1000))
-sg.qtm(
-    to_plot,
-    column="connected_str",
-    title="Connected and isolated networks",
-    cmap="bwr",
+connected_and_not = sg.get_connected_components(directed_roads)
+connected_and_not["connected_str"] = np.where(
+    connected_and_not.connected == 1, "yes", "no"
 )
+
+to_plot = connected_and_not.clip(points.iloc[[0]].buffer(1000))
+sg.qtm(to_plot, column="connected_str", title="Connected and isolated networks")
 # %% [markdown]
 # Use the remove_isolated method to remove the unconnected roads:
 # %%

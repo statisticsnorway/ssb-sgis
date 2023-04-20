@@ -9,7 +9,6 @@ GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 
 [![Documentation](https://img.shields.io/badge/Documentation-GitHub_Pages-green.svg)](https://statisticsnorway.github.io/ssb-sgis/index.html)
 [![Tests](https://github.com/statisticsnorway/ssb-sgis/workflows/Tests/badge.svg)][tests]
-[![Coverage](https://sonarcloud.io/component_measures?id=statisticsnorway_ssb-gis-utils&metric=new_coverage&view=list)][coverage]
 
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)][pre-commit]
 [![Black](https://img.shields.io/badge/code%20style-black-000000.svg)][black]
@@ -27,6 +26,13 @@ sgis builds on the geopandas package and provides functions that make it easier 
 Features include network analysis, functions for exploring multiple GeoDataFrames in a layered interactive map,
 and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 in polygons by size.
+
+To install, one of:
+
+```shell
+poetry add ssb-sgis
+pip install ssb-sgis
+```
 
 ## Network analysis examples
 

@@ -161,10 +161,11 @@ class ThematicMap(Map):
 
         elif self._is_categorical:
             kwargs = self._prepare_categorical_plot(kwargs)
-            self.legend._prepare_categorical_legend(
-                categories_colors=self._categories_colors_dict,
-                nan_label=self.nan_label,
-            )
+            if self.legend:
+                self.legend._prepare_categorical_legend(
+                    categories_colors=self._categories_colors_dict,
+                    nan_label=self.nan_label,
+                )
 
         else:
             kwargs = self._prepare_continous_plot(kwargs)
@@ -193,9 +194,6 @@ class ThematicMap(Map):
 
         if self.legend:
             self.ax = self.legend._actually_add_legend(ax=self.ax)
-
-        #        if self.legend:
-        #           self._actually_add_legend()
 
         self._gdf.plot(legend=include_legend, ax=self.ax, **kwargs)
 

@@ -16,7 +16,7 @@ maxdepth: 5
 ---
 reference/index
 examples/index
-Changelog <https://github.com/statisticsnorway/ssb-sgis/releases>
+GitHub <https://github.com/statisticsnorway/ssb-sgis>
 contributing
 Code of Conduct <codeofconduct>
 License <license>
