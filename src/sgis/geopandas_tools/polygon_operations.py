@@ -4,7 +4,6 @@ import geopandas as gpd
 import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
-    Geometry,
     area,
     get_exterior_ring,
     get_interior_ring,

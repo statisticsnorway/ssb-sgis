@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
-from numpy.random import random as _np_random
 from pandas.api.types import is_dict_like
 from shapely import (
     Geometry,
@@ -87,7 +86,7 @@ def drop_inactive_geometry_columns(gdf: GeoDataFrame) -> GeoDataFrame:
     return gdf
 
 
-def rename_geometry_if(gdf):
+def rename_geometry_if(gdf: GeoDataFrame) -> GeoDataFrame:
     geom_col = gdf._geometry_column_name
     if geom_col == "geometry":
         return gdf
@@ -276,6 +275,8 @@ def random_points_in_polygons(
     99   POINT (0.98383 0.77298)
     [300 rows x 1 columns]
     """
+    if not isinstance(gdf, GeoDataFrame):
+        gdf = to_gdf(gdf)
 
     if not all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
         raise ValueError("Geometry types must be polygon.")
@@ -333,7 +334,7 @@ def random_points_in_polygons(
     return all_points
 
 
-def points_in_bounds(gdf: GeoDataFrame, n2: int):
+def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int):
     minx, miny, maxx, maxy = gdf.total_bounds
     xs = np.linspace(minx, maxx, num=n2)
     ys = np.linspace(miny, maxy, num=n2)
@@ -445,22 +446,19 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 
 
 def to_multipoint(
-    gdf: GeoDataFrame | GeoSeries | Geometry, copy: bool = True
-) -> GeoDataFrame | GeoSeries | Geometry:
-    """Creates a multipoint geometry of any geometry object.
+    gdf: GeoDataFrame | GeoSeries, copy: bool = True
+) -> GeoDataFrame | GeoSeries:
+    """Creates multipoint geometries from GeoDataFrame or GeoSeries.
 
-    Takes a GeoDataFrame, GeoSeries or Shapely geometry and turns it into a MultiPoint.
-    If the input is a GeoDataFrame or GeoSeries, the rows and columns will be preserved,
-    but with a geometry column of MultiPoints.
+    Takes a GeoDataFrame or GeoSeries and turns it into a MultiPoint.
 
     Args:
-        gdf: The geometry to be converted to MultiPoint. Can be a GeoDataFrame,
-            GeoSeries or a shapely geometry.
+        gdf: The geometry to be converted to MultiPoint.
         copy: If True, the geometry will be copied. Defaults to True.
 
     Returns:
-        A GeoDataFrame with the geometry column as a MultiPoint, or Point if the
-        original geometry was a point.
+        A GeoDataFrame or GeoSeries with MultiPoint geometries. If the input type
+        if GeoDataFrame, the other columns will be preserved.
 
     Examples
     --------
@@ -485,12 +483,10 @@ def to_multipoint(
     1      MULTIPOINT (1.00000 1.00000, 2.00000 2.00000)
     2  MULTIPOINT (3.00000 3.00000, 3.00000 4.00000, ...
     """
-    if copy and not isinstance(gdf, Geometry):
+    if copy:
         gdf = gdf.copy()
 
-    if isinstance(gdf, (GeoDataFrame, GeoSeries)) and gdf.is_empty.any():
-        raise ValueError("Cannot create multipoints from empty geometry.")
-    if isinstance(gdf, Geometry) and gdf.is_empty:
+    if gdf.is_empty.any():
         raise ValueError("Cannot create multipoints from empty geometry.")
 
     def _to_multipoint(gdf):
@@ -516,8 +512,10 @@ def to_multipoint(
         gdf = gdf.apply(lambda x: _to_multipoint(x))
 
     else:
-        gdf = force_2d(gdf)
-        gdf = _to_multipoint(unary_union(gdf))
+        gdf = to_gdf(gdf)
+        gdf["geometry"] = (
+            gdf["geometry"].pipe(force_2d).apply(lambda x: _to_multipoint(x))
+        )
 
     return gdf
 

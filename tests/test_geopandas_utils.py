@@ -41,6 +41,21 @@ def test_random():
             joined = points.sjoin(buffered, how="inner")
             assert all(points.temp_idx.isin(joined.temp_idx))
 
+            points = sg.random_points_in_polygons(buffered.geometry, 100)
+            assert all(points.index.isin([0, 1, 2]))
+
+
+def test_points_in_bounds():
+    from shapely import box
+
+    circle = sg.to_gdf([0, 0]).pipe(sg.buff, 1)
+    box_ = sg.to_gdf(box(*circle.total_bounds))
+    points = sg.points_in_bounds(circle, 100)
+    assert len(points) == 10_000, len(points)
+
+    joined = points.sjoin(box_, how="inner")
+    assert len(joined) == 10_000, len(points)
+
 
 def test_area(gdf_fixture):
     copy = sg.buffdissexp(gdf_fixture, 25)

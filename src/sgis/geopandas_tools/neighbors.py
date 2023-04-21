@@ -395,7 +395,9 @@ def k_nearest_neighbors(
     return dists, indices
 
 
-def _get_edges(gdf: GeoDataFrame, indices: np.ndarray[int]) -> np.ndarray[tuple[int]]:
+def _get_edges(
+    gdf: GeoDataFrame | GeoSeries, indices: np.ndarray[int]
+) -> np.ndarray[tuple[int]]:
     """Takes a GeoDataFrame and array of indices, and returns a 2d array of edges.
 
     Args:
