@@ -27,7 +27,7 @@ Features include network analysis, functions for exploring multiple GeoDataFrame
 and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 in polygons by size.
 
-To install, one of:
+To install, use one of:
 
 ```shell
 poetry add ssb-sgis
