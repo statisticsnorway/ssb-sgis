@@ -6,7 +6,9 @@ from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame, Series
 from sklearn.neighbors import NearestNeighbors
 
+from ..helpers import unit_is_degrees
 from .general import coordinate_array
+from .geometry_types import get_geom_type
 
 
 def get_neighbor_indices(
@@ -94,20 +96,16 @@ def get_neighbor_indices(
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
     # buffer and keep only geometry column
-    if max_distance:
-        if gdf.crs == 4326:
-            warnings.warn(
-                "'gdf' has latlon crs, meaning the 'max_distance' paramter "
-                "will not be in meters, but degrees."
-            )
+    if max_distance and predicate != "nearest":
         gdf = gdf.buffer(max_distance).to_frame()
     else:
         gdf = gdf.geometry.to_frame()
 
     if predicate == "nearest":
-        joined = gdf.sjoin_nearest(neighbors, how="inner").rename(
-            columns={"index_right": "neighbor_index"}, errors="raise"
-        )
+        max_distance = None if max_distance == 0 else max_distance
+        joined = gdf.sjoin_nearest(
+            neighbors, how="inner", max_distance=max_distance
+        ).rename(columns={"index_right": "neighbor_index"}, errors="raise")
     else:
         joined = gdf.sjoin(neighbors, how="inner", predicate=predicate).rename(
             columns={"index_right": "neighbor_index"}, errors="raise"
@@ -116,80 +114,9 @@ def get_neighbor_indices(
     return joined["neighbor_index"]
 
 
-def _get_unique_neighbor_indices(
-    gdf: GeoDataFrame | GeoSeries,
-    neighbors: GeoDataFrame | GeoSeries,
-    max_distance: int = 0,
-    predicate: str = "intersects",
-) -> list:
-    """Returns a list of the indices of a GeoDataFrame's neigbours.
-
-    Finds all the geometries in 'neighbors' that intersect with 'gdf' and returns a
-    list of the indices of the neighbors. Use set_index on the neighbors inside the
-    function call to get values from a column instead of the current index.
-
-    Args:
-        gdf: GeoDataFrame or GeoSeries
-        neighbors: GeoDataFrame or GeoSeries
-        max_distance: The maximum distance between the two geometries. Defaults to 0.
-        predicate: Spatial predicate to use in sjoin. Defaults to "intersects", meaning
-            the geometry itself and geometries within will be considered neighbors if
-            they are part of the 'neighbors' GeoDataFrame.
-
-    Returns:
-        A list of the indices of the intersecting neighbors.
-
-    Raises:
-        ValueError: If gdf and neighbors do not have the same coordinate reference
-            system.
-
-    Examples
-    --------
-    >>> from sgis import get_neighbor_indices, to_gdf
-    >>> points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
-    >>> points
-                    geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (0.50000 0.50000)
-    2  POINT (2.00000 2.00000)
-
-    >>> p1 = points.iloc[[0]]
-    >>> get_neighbor_indices(p1, points)
-    [0]
-    >>> get_neighbor_indices(p1, points, max_distance=1)
-    [0, 1]
-    >>> get_neighbor_indices(p1, points, max_distance=3)
-    [0, 1, 2]
-
-    Using a column instead of the index.
-
-    >>> points["text"] = [*"abc"]
-    >>> get_neighbor_indices(p1, points.set_index("text"), max_distance=3)
-    ['a', 'b', 'c']
-    """
-
-    if gdf.crs != neighbors.crs:
-        raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
-
-    id_col = "index_right"
-
-    # buffer and keep only geometry column
-    if max_distance:
-        if gdf.crs == 4326:
-            warnings.warn(
-                "'gdf' has latlon crs, meaning the 'max_distance' paramter "
-                "will not be in meters, but degrees."
-            )
-        gdf = gdf.buffer(max_distance).to_frame()
-    else:
-        gdf = gdf.geometry.to_frame()
-
-    joined = gdf.sjoin(neighbors, how="inner", predicate=predicate)
-
-    return [x for x in joined[id_col].unique()]
-
-
-def get_all_distances(gdf: GeoDataFrame, neighbors: GeoDataFrame) -> DataFrame:
+def get_all_distances(
+    gdf: GeoDataFrame | GeoSeries, neighbors: GeoDataFrame | GeoSeries
+) -> DataFrame:
     """Get distances from 'gdf' to all points in 'neighbors'.
 
     Find the distance from each point in 'gdf' to each point in 'neighbors'. Preserves
@@ -297,8 +224,8 @@ def get_all_distances(gdf: GeoDataFrame, neighbors: GeoDataFrame) -> DataFrame:
 
 
 def get_k_nearest_neighbors(
-    gdf: GeoDataFrame,
-    neighbors: GeoDataFrame,
+    gdf: GeoDataFrame | GeoSeries,
+    neighbors: GeoDataFrame | GeoSeries,
     k: int,
     *,
     strict: bool = False,
@@ -417,6 +344,9 @@ def get_k_nearest_neighbors(
     """
     if gdf.crs != neighbors.crs:
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
+
+    if get_geom_type(gdf) != "point" or get_geom_type(neighbors) != "point":
+        raise ValueError("Geometries must be points.")
 
     # using the range index
     idx_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf.index, strict=True)}

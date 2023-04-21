@@ -26,6 +26,7 @@ from .geopandas_tools.neighbors import (
     get_all_distances,
     get_k_nearest_neighbors,
     get_neighbor_indices,
+    k_nearest_neighbors,
 )
 from .geopandas_tools.overlay import clean_shapely_overlay, overlay, overlay_update
 from .geopandas_tools.point_operations import snap_all, snap_within_distance

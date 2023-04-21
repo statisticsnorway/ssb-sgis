@@ -36,7 +36,8 @@ def split_lines_by_nearest_point(
 
     Returns:
         A GeoDataFrame with the same columns as the input lines, but with the lines
-        split at the closest point to the points.
+        split at the closest point to the points. If no lines are within 'max_distance'
+        from any points, 'gdf' is returned as it came.
 
     Raises:
         ValueError: If the crs of the input data differs.
@@ -80,9 +81,13 @@ def split_lines_by_nearest_point(
 
     # find the lines that were snapped to (or are very close)
     snapped_buff = buff(snapped, BUFFDIST)
-    intersect = gdf.intersects(snapped_buff.unary_union)
-    relevant_lines = gdf.loc[intersect]
-    the_other_lines = gdf.loc[~intersect]
+    intersects = gdf.intersects(snapped_buff.unary_union)
+
+    relevant_lines = gdf.loc[intersects]
+    the_other_lines = gdf.loc[~intersects]
+
+    if max_distance and not len(relevant_lines):
+        return gdf
 
     # need consistent coordinate dimensions later
     # (doing it down here to not overwrite the original data)

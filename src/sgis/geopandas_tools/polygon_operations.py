@@ -16,25 +16,25 @@ from shapely.ops import unary_union
 
 
 def close_small_holes(
-    gdf: GeoDataFrame | GeoSeries | Geometry,
+    gdf: GeoDataFrame | GeoSeries,
     max_area: int | float,
     *,
     copy: bool = True,
-) -> GeoDataFrame | GeoSeries | Geometry:
+) -> GeoDataFrame | GeoSeries:
     """Closes holes in polygons if the area is less than the given maximum.
 
-    It takes a GeoDataFrame, GeoSeries or shapely geometry of polygons object and
+    It takes a GeoDataFrame or GeoSeries of polygons and
     fills the holes that are smaller than the specified area given in units of
     either square meters ('max_m2') or square kilometers ('max_km2').
 
     Args:
-        gdf: GeoDataFrame, GeoSeries or shapely Geometry.
+        gdf: GeoDataFrame or GeoSeries of polygons.
         max_area: The maximum area in the unit of the GeoDataFrame's crs.
         copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
             Defaults to True.
 
     Returns:
-        A GeoDataFrame, GeoSeries or shapely Geometry with closed holes in the geometry
+        A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
         column.
 
     Raises:
@@ -80,34 +80,34 @@ def close_small_holes(
         gdf["geometry"] = gdf.geometry.map(
             lambda x: _close_small_holes_poly(x, max_area)
         )
+        return gdf
 
     elif isinstance(gdf, gpd.GeoSeries):
-        gdf = gdf.map(lambda x: _close_small_holes_poly(x, max_area))
-        gdf = gpd.GeoSeries(gdf)
+        return gdf.map(lambda x: _close_small_holes_poly(x, max_area))
 
     else:
-        gdf = _close_small_holes_poly(gdf, max_area)
-
-    return gdf
+        raise ValueError(
+            f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
+        )
 
 
 def close_all_holes(
-    gdf: GeoDataFrame | GeoSeries | Geometry,
+    gdf: GeoDataFrame | GeoSeries,
     *,
     copy: bool = True,
-) -> GeoDataFrame | GeoSeries | Geometry:
+) -> GeoDataFrame | GeoSeries:
     """Closes all holes in polygons.
 
-    It takes a GeoDataFrame, GeoSeries or shapely geometry of polygons object and
+    It takes a GeoDataFrame or GeoSeries of polygons and
     returns the outer circle.
 
     Args:
-        gdf: GeoDataFrame, GeoSeries or shapely Geometry.
+        gdf: GeoDataFrame or GeoSeries of polygons.
         copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
             Defaults to True.
 
     Returns:
-        A GeoDataFrame, GeoSeries or shapely Geometry with closed holes in the geometry
+        A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
         column.
 
     Examples
@@ -143,14 +143,15 @@ def close_all_holes(
 
     if isinstance(gdf, GeoDataFrame):
         gdf["geometry"] = close_all_holes_func(gdf.geometry)
-
         return gdf
 
     elif isinstance(gdf, gpd.GeoSeries):
         return close_all_holes_func(gdf)
 
     else:
-        return polygons(get_exterior_ring(get_parts(gdf)))
+        raise ValueError(
+            f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
+        )
 
 
 def _close_small_holes_poly(poly, max_area):

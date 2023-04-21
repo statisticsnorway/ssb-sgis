@@ -24,12 +24,12 @@ from shapely.ops import unary_union
 
 
 def coordinate_array(
-    gdf: GeoDataFrame,
+    gdf: GeoDataFrame | GeoSeries,
 ) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
-    """Creates a 2d ndarray of coordinates from a GeoDataFrame of points.
+    """Creates a 2d ndarray of coordinates from point geometries.
 
     Args:
-        gdf: GeoDataFrame of point geometries.
+        gdf: GeoDataFrame or GeoSeries of point geometries.
 
     Returns:
         np.ndarray of np.ndarrays of coordinates.
@@ -51,8 +51,17 @@ def coordinate_array(
         [0.74840912, 0.10626954],
         [0.00965935, 0.87867915],
         [0.38045827, 0.87878816]])
+    >>> coordinate_array(points.geometry)
+    array([[0.59376221, 0.92577159],
+        [0.34074678, 0.91650446],
+        [0.74840912, 0.10626954],
+        [0.00965935, 0.87867915],
+        [0.38045827, 0.87878816]])
     """
-    return np.array([(geom.x, geom.y) for geom in gdf.geometry])
+    if isinstance(gdf, GeoDataFrame):
+        return np.array([(geom.x, geom.y) for geom in gdf.geometry])
+    else:
+        return np.array([(geom.x, geom.y) for geom in gdf])
 
 
 def _push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:

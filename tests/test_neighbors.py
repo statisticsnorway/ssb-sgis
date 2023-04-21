@@ -28,6 +28,14 @@ def test_k_neighbors(points_oslo):
     assert len(df) == len(p) * 50
     assert max(df.index) == 999
 
+    df_from_geoseries = sg.get_k_nearest_neighbors(
+        gdf=p.geometry,
+        neighbors=p.geometry,
+        k=50,
+    )
+
+    assert df.equals(df_from_geoseries)
+
     p2 = p.join(df)
     assert len(p2) == len(p) * 50
     p2["k"] = p2.groupby(level=0)["distance"].transform("rank")
@@ -98,6 +106,28 @@ def test_k_neighbors(points_oslo):
 
     assert len(df) == len(p) * len(p)
 
+    # should give exact same results with geoseries
+    df_from_geoseries = sg.get_all_distances(
+        gdf=p.geometry,
+        neighbors=p.set_index("idx2").geometry,
+    )
+
+    print(df_from_geoseries)
+
+    assert df.equals(df_from_geoseries)
+
+    # from array of geometries to arrays of distances and indices
+    distances, indices = sg.k_nearest_neighbors(
+        sg.coordinate_array(p), sg.coordinate_array(p)
+    )
+    assert isinstance(distances, np.ndarray)
+    assert isinstance(indices, np.ndarray)
+    distances2, indices2 = sg.k_nearest_neighbors(
+        sg.coordinate_array(p.geometry), sg.coordinate_array(p.geometry)
+    )
+    assert np.array_equal(distances, distances2)
+    assert np.array_equal(indices, indices2)
+
 
 def test_get_neighbor_indices():
     points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
@@ -133,6 +163,21 @@ def test_get_neighbor_indices():
 
     assert list(neighbor_indices.values) == ["a", "a", "b", "b"]
     assert list(neighbor_indices.index) == [0, 1, 0, 1]
+
+    neighbor_indices = sg.get_neighbor_indices(
+        two_points, two_points.set_index("text"), predicate="nearest"
+    )
+    assert neighbor_indices.equals(pd.Series(["a", "b"], index=[0, 1]))
+    assert list(neighbor_indices.values) == ["a", "b"]
+    assert list(neighbor_indices.index) == [0, 1]
+
+    neighbor_indices = sg.get_neighbor_indices(
+        two_points.iloc[[0]],
+        two_points.iloc[[1]],
+        predicate="nearest",
+        max_distance=0.5,
+    )
+    assert not len(neighbor_indices)
 
 
 def main():

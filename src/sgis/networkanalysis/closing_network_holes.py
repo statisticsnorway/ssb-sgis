@@ -4,6 +4,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
+from pandas import DataFrame
 from shapely import shortest_line
 
 from ..geopandas_tools.general import coordinate_array
@@ -195,7 +196,7 @@ def _find_holes_all_lines(
     nodes: GeoDataFrame,
     max_distance: int | float,
     max_angle: int,
-):
+) -> GeoDataFrame | DataFrame:
     """Creates lines between deadends and closest node.
 
     Creates lines if distance is less than max_distance and angle less than max_angle.
@@ -225,7 +226,7 @@ def _find_holes_all_lines(
     deadends = pd.concat([deadends_source, deadends_target], ignore_index=True)
 
     if len(deadends) <= 1:
-        return []
+        return DataFrame()
 
     deadends_other_end = deadends.copy()
     deadends_other_end["geometry"] = gpd.GeoSeries.from_wkt(
@@ -313,7 +314,9 @@ def _find_holes_all_lines(
     return new_lines
 
 
-def _find_holes_deadends(nodes: GeoDataFrame, max_distance: float | int):
+def _find_holes_deadends(
+    nodes: GeoDataFrame, max_distance: float | int
+) -> GeoDataFrame | DataFrame:
     """Creates lines between two deadends if between max_distance and min_dist.
 
     It takes a GeoDataFrame of nodes, chooses the deadends, and creates a straight line
@@ -335,7 +338,7 @@ def _find_holes_deadends(nodes: GeoDataFrame, max_distance: float | int):
     deadends = deadends.reset_index(drop=True)
 
     if len(deadends) <= 1:
-        return []
+        return pd.DataFrame()
 
     deadends_array = coordinate_array(deadends)
 

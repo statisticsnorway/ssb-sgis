@@ -125,6 +125,7 @@ def _get_k_routes(
         return pd.DataFrame(columns=["origin", "destination", weight, "geometry"])
 
     results: DataFrame = pd.concat(resultlist)
+
     assert list(results.columns) == ["origin", "destination", "k"], list(
         results.columns
     )
@@ -138,7 +139,11 @@ def _get_k_routes(
 
 
 def _loop_k_routes(
-    graph: Graph, ori_id: str, des_id: str, k: int, drop_middle_percent: int
+    graph: Graph,
+    ori_id: str,
+    des_id: str,
+    k: int,
+    drop_middle_percent: int,
 ) -> DataFrame:
     """Workaround for igraph's get_k_shortest_paths.
 
@@ -180,7 +185,7 @@ def _loop_k_routes(
     if lines:
         return pd.concat(lines)
     else:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=["origin", "destination", "k"])
 
 
 def _get_line_geometries(

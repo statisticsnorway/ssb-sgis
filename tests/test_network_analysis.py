@@ -175,6 +175,11 @@ def not_test_get_route(nwa, p):
     routes = nwa.get_route(p, p_rev, rowwise=True)
     assert not routes.isna().any().any(), routes.isna().any()
 
+    nwa.rules.search_tolerance = 1
+    routes = nwa.get_route(p.loc[[349]], p)
+    assert not len(routes), routes
+    nwa.rules.search_tolerance = sg.NetworkAnalysisRules.search_tolerance
+
 
 def not_test_service_area(nwa, p):
     sa = nwa.service_area(p, breaks=5, dissolve=False)
@@ -240,6 +245,11 @@ def not_test_get_k_routes(nwa, p):
     routes = nwa.get_k_routes(p.loc[[349]], p, k=5, drop_middle_percent=50)
     if __name__ == "__main__":
         sg.qtm(routes)
+
+    nwa.rules.search_tolerance = 1
+    routes = nwa.get_k_routes(p.loc[[349]], p, k=5, drop_middle_percent=50)
+    assert not len(routes), routes
+    nwa.rules.search_tolerance = sg.NetworkAnalysisRules.search_tolerance
 
 
 def not_test_direction(roads_oslo):

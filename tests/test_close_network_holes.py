@@ -123,7 +123,7 @@ def test_line_angle_45():
             [LineString([(0, 0), (1, 0)]), LineString([(-1, -1), (-2, -1)])]
         ),
         crs=25833,
-    )
+    ).explode(index_parts=False)
 
     should_not_reach = sg.close_network_holes(
         lines_angle_45, max_distance=1, max_angle=45
@@ -131,7 +131,7 @@ def test_line_angle_45():
     if __name__ == "__main__":
         lines_angle_45.plot()
         should_not_reach.plot("hole")
-    assert len(should_not_reach) == 2, len(should_not_reach)
+    assert len(should_not_reach) == len(lines_angle_45)
 
     should_reach = sg.close_network_holes(lines_angle_45, max_distance=2, max_angle=45)
     if __name__ == "__main__":

@@ -75,6 +75,16 @@ def snap_within_distance(
     0  POINT (2.00000 2.00000)      2.828427
     1  POINT (2.00000 2.00000)      1.414214
     """
+
+    if isinstance(points, GeoSeries):
+        points = GeoDataFrame(points)
+        _was_geoseries = True
+    else:
+        _was_geoseries = False
+
+    if isinstance(to, GeoSeries):
+        to = GeoDataFrame(to)
+
     to = _polygons_to_lines(to)
 
     copied = points.copy()
@@ -91,6 +101,8 @@ def snap_within_distance(
         copied[distance_col] = np.where(
             copied[distance_col] == 0, pd.NA, copied[distance_col]
         )
+    elif _was_geoseries:
+        return copied[geom_col]
 
     return copied
 
@@ -148,6 +160,16 @@ def snap_all(
     0  POINT (2.00000 2.00000)       2.828427
     1  POINT (2.00000 2.00000)       1.414214
     """
+
+    if isinstance(points, GeoSeries):
+        points = GeoDataFrame(points)
+        _was_geoseries = True
+    else:
+        _was_geoseries = False
+
+    if isinstance(to, GeoSeries):
+        to = GeoDataFrame(to)
+
     to = _polygons_to_lines(to)
 
     copied = points.copy()
@@ -164,6 +186,8 @@ def snap_all(
         copied[distance_col] = np.where(
             copied[distance_col] == 0, pd.NA, copied[distance_col]
         )
+    elif _was_geoseries:
+        return copied[geom_col]
 
     return copied
 
