@@ -544,12 +544,19 @@ class NetworkAnalysis:
             time_ = perf_counter()
 
         if weight_df is not None:
-            weight_df = self._prepare_weight_df(weight_df)
-            od_pairs = self._create_od_pairs(origins, destinations, rowwise=rowwise)
+            weight_df: DataFrame = self._prepare_weight_df(weight_df)
+            od_pairs: pd.MultiIndex = self._create_od_pairs(
+                origins, destinations, rowwise=rowwise
+            )
             self._make_sure_unique(weight_df, od_pairs)
 
             weights_mapped = od_pairs.map(weight_df.iloc[:, 0])
             if default_weight:
+                if not weight_df.index.isin(od_pairs).all():
+                    raise ValueError(
+                        "All origin-destination indices in 'weight_df' must "
+                        "be in 'origins' and 'destinations'."
+                    )
                 weights_mapped = weights_mapped.fillna(default_weight)
             else:
                 self._make_sure_index_match(weight_df, od_pairs)
@@ -1135,7 +1142,7 @@ class NetworkAnalysis:
 
     @staticmethod
     def _make_sure_unique(weight_df: DataFrame, od_pairs: pd.MultiIndex) -> None:
-        """Make sure this index matches the index of origins and destinations."""
+        """It's nesseccary with unique index when using weight_df."""
         if not weight_df.index.is_unique:
             raise ValueError("'weight_df' must contain only unique OD combinations.")
 

@@ -3,9 +3,9 @@ import sys
 import warnings
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pytest
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -116,9 +116,12 @@ def not_test_get_route_frequency(nwa, p):
         sg.qtm(frequencies, "frequency", title="weight_df one = * 10")
     assert frequencies["frequency"].max() == 141, frequencies["frequency"].max()
 
-    frequencies = nwa.get_route_frequencies(p.loc[[349]], p)
-    if __name__ == "__main__":
-        sg.qtm(frequencies)
+    # wrong indices should raise error
+    od_pairs = pd.MultiIndex.from_product([["wrong_index"], ["wrong_index"]])
+    od_pairs = pd.DataFrame({"weight": [1]}, index=od_pairs)
+
+    with pytest.raises(ValueError):
+        nwa.get_route_frequencies(p, p, weight_df=od_pairs, default_weight=1)
 
 
 def not_test_get_route(nwa, p):
@@ -329,14 +332,9 @@ def test_network_analysis(points_oslo, roads_oslo):
 
 
 def main():
-    roads_oslo = sg.read_parquet_url(
-        "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
-    )
-    points_oslo = sg.read_parquet_url(
-        "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
-    )
+    from oslo import points_oslo, roads_oslo
 
-    test_network_analysis(points_oslo, roads_oslo)
+    test_network_analysis(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":
