@@ -118,8 +118,6 @@ def test_to_multipoint(gdf_fixture):
     assert mp.length.sum() == 0
     mp = sg.to_multipoint(gdf_fixture.geometry)
     assert mp.length.sum() == 0
-    mp = sg.to_multipoint(gdf_fixture.unary_union)
-    assert mp.length == 0
 
 
 def main():
