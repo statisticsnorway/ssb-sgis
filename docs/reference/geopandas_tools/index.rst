@@ -1,8 +1,11 @@
 Geopandas tools
 ================
 
-This page contains the vector geometry operations in sgis. The exception is line
+This page contains all vector geometry functions in sgis, except for line
 geometry operations, which is located in the network analysis section.
+
+Most functions accept GeoDataFrame and GeoSeries as input types, and return
+the same type as the input.
 
 .. toctree::
    :maxdepth: 3

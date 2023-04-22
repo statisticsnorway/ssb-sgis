@@ -68,28 +68,6 @@ nwa
         log=True, detailed_log=False,
     )
 
-Get number of times each line segment was visited, with optional weighting.
-
-```python
-origins = points.iloc[:100]
-destinations = points.iloc[100:200]
-
-# creating uniform weights of 10
-od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
-weights = pd.DataFrame(index=od_pairs)
-weights["weight"] = 10
-
-frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
-
-# plot the results
-m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
-m.cmap = "plasma"
-m.title = "Number of times each road was used,\nweighted * 10"
-m.plot()
-```
-
-![png](docs/examples/network_analysis_examples_files/network_analysis_examples_5_0.png)
-
 Fast many-to-many travel times/distances.
 
 ```python
@@ -112,6 +90,28 @@ print(od)
     999999     999          999   0.000000
 
     [1000000 rows x 3 columns]
+
+Get number of times each line segment was visited, with optional weighting.
+
+```python
+origins = points.iloc[:100]
+destinations = points.iloc[100:200]
+
+# creating uniform weights of 10
+od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
+weights = pd.DataFrame(index=od_pairs)
+weights["weight"] = 10
+
+frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
+
+# plot the results
+m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
+m.cmap = "plasma"
+m.title = "Number of times each road was used,\nweighted * 10"
+m.plot()
+```
+
+![png](docs/examples/network_analysis_examples_files/network_analysis_examples_5_0.png)
 
 Get the area that can be reached within one or more breaks.
 
