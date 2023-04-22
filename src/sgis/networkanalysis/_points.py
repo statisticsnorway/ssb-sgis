@@ -1,6 +1,5 @@
 import numpy as np
 from geopandas import GeoDataFrame
-from pandas import DataFrame
 
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from .networkanalysisrules import NetworkAnalysisRules
