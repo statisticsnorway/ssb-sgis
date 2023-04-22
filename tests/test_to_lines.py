@@ -5,6 +5,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pytest
 from shapely.geometry import LineString, Polygon
 
 
@@ -30,12 +31,15 @@ def test_to_lines():
     print(lines)
 
     if __name__ == "__main__":
-        sg.qtm(lines, "l", legend_title=len(lines))
+        sg.qtm(lines, "l", title=len(lines))
 
     poly2 = sg.to_gdf(Polygon([(0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5)]))
 
     if __name__ == "__main__":
         sg.qtm(poly1, poly2, inner_poly)
+
+    with pytest.raises(ValueError):
+        sg.to_lines(line, poly1, inner_poly, poly1_diff, sg.to_gdf([0, 0]))
 
     lines = sg.to_lines(line, poly1, inner_poly, poly1_diff)
 
@@ -43,31 +47,31 @@ def test_to_lines():
     print(lines)
 
     if __name__ == "__main__":
-        sg.qtm(lines, "l", legend_title=len(lines))
+        sg.qtm(lines, "l", title=len(lines))
 
     lines = sg.to_lines(poly1, poly2, inner_poly)
     lines["l"] = lines.length.astype(str)
     print(lines)
     if __name__ == "__main__":
-        sg.qtm(lines, "l", legend_title=len(lines))
+        sg.qtm(lines, "l", title=len(lines))
 
     lines = sg.to_lines(poly1, poly2)
     lines["l"] = lines.length.astype(str)
     print(lines)
     if __name__ == "__main__":
-        sg.qtm(lines, "l", legend_title=len(lines))
+        sg.qtm(lines, "l", title=len(lines))
 
     lines = sg.to_lines(poly1, poly2, inner_poly, poly2)
     lines["l"] = lines.length.astype(str)
     print(lines)
     if __name__ == "__main__":
-        sg.qtm(lines, "l", legend_title=len(lines))
+        sg.qtm(lines, "l", title=len(lines))
 
     lines = sg.to_lines(lines)
     lines["l"] = lines.length.astype(str)
     print(lines)
     if __name__ == "__main__":
-        sg.qtm(lines, "l", legend_title=len(lines))
+        sg.qtm(lines, "l", title=len(lines))
 
 
 def main():

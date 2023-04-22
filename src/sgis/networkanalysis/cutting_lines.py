@@ -36,7 +36,8 @@ def split_lines_by_nearest_point(
 
     Returns:
         A GeoDataFrame with the same columns as the input lines, but with the lines
-        split at the closest point to the points.
+        split at the closest point to the points. If no lines are within 'max_distance'
+        from any points, 'gdf' is returned as it came.
 
     Raises:
         ValueError: If the crs of the input data differs.
@@ -80,9 +81,13 @@ def split_lines_by_nearest_point(
 
     # find the lines that were snapped to (or are very close)
     snapped_buff = buff(snapped, BUFFDIST)
-    intersect = gdf.intersects(snapped_buff.unary_union)
-    relevant_lines = gdf.loc[intersect]
-    the_other_lines = gdf.loc[~intersect]
+    intersects = gdf.intersects(snapped_buff.unary_union)
+
+    relevant_lines = gdf.loc[intersects]
+    the_other_lines = gdf.loc[~intersects]
+
+    if max_distance and not len(relevant_lines):
+        return gdf
 
     # need consistent coordinate dimensions later
     # (doing it down here to not overwrite the original data)
@@ -109,11 +114,12 @@ def split_lines_by_nearest_point(
     # find the nearest snapped point for each source and target of the lines
     snapped = snapped.set_index("point_coords")
     dists_source: DataFrame = get_k_nearest_neighbors(splitted_source, snapped, k=1)
-    dists_target: DataFrame = get_k_nearest_neighbors(splitted_target, snapped, k=1)
-
     dists_source = dists_source.loc[dists_source.distance <= BUFFDIST * 2]
+
+    dists_target: DataFrame = get_k_nearest_neighbors(splitted_target, snapped, k=1)
     dists_target = dists_target.loc[dists_target.distance <= BUFFDIST * 2]
 
+    # neighbor_index == point_coords (coordinate tuple)
     pointmapper_source: pd.Series = dists_source["neighbor_index"]
     pointmapper_target: pd.Series = dists_target["neighbor_index"]
 

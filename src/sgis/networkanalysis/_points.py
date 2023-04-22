@@ -1,6 +1,5 @@
 import numpy as np
 from geopandas import GeoDataFrame
-from pandas import DataFrame
 
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from .networkanalysisrules import NetworkAnalysisRules
@@ -68,13 +67,14 @@ class Points:
         self,
         nodes: GeoDataFrame,
         rules: NetworkAnalysisRules,
+        k: int,
         from_col: str,
         to_col: str,
     ):
         distances = get_k_nearest_neighbors(
             gdf=self.gdf.set_index("temp_idx"),
             neighbors=nodes.set_index("node_id"),
-            k=50,
+            k=k,
         )
 
         distances["distance_min"] = distances.groupby(level=0)["distance"].min()
@@ -110,11 +110,12 @@ class Origins(Points):
         self,
         nodes: GeoDataFrame,
         rules: NetworkAnalysisRules,
+        k: int,
         from_col="temp_idx",
         to_col="neighbor_index",
     ):
         """Note: opposite order as in Destinations."""
-        return super()._get_edges_and_weights(nodes, rules, from_col, to_col)
+        return super()._get_edges_and_weights(nodes, rules, k, from_col, to_col)
 
 
 class Destinations(Points):
@@ -128,8 +129,9 @@ class Destinations(Points):
         self,
         nodes: GeoDataFrame,
         rules: NetworkAnalysisRules,
+        k: int,
         from_col="neighbor_index",
         to_col="temp_idx",
     ):
         """Note: opposite order as in Origins."""
-        return super()._get_edges_and_weights(nodes, rules, from_col, to_col)
+        return super()._get_edges_and_weights(nodes, rules, k, from_col, to_col)

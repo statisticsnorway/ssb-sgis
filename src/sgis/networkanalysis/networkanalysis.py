@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
-from pandas import DataFrame
+from pandas import DataFrame, MultiIndex
 
 from ..geopandas_tools.general import _push_geom_col
 from ._get_route import _get_k_routes, _get_route, _get_route_frequencies
@@ -123,6 +123,7 @@ class NetworkAnalysis:
             self.log = DataFrame()
 
         self._graph_updated_count = 0
+        self._k_nearest_points = 50
 
     def _check_if_holes_are_nan(self):
         HOLES_ARE_NAN = (
@@ -544,12 +545,19 @@ class NetworkAnalysis:
             time_ = perf_counter()
 
         if weight_df is not None:
-            weight_df = self._prepare_weight_df(weight_df)
-            od_pairs = self._create_od_pairs(origins, destinations, rowwise=rowwise)
+            weight_df: DataFrame = self._prepare_weight_df(weight_df)
+            od_pairs: MultiIndex = self._create_od_pairs(
+                origins, destinations, rowwise=rowwise
+            )
             self._make_sure_unique(weight_df, od_pairs)
 
             weights_mapped = od_pairs.map(weight_df.iloc[:, 0])
             if default_weight:
+                if not weight_df.index.isin(od_pairs).all():
+                    raise ValueError(
+                        "All origin-destination indices in 'weight_df' must "
+                        "be in 'origins' and 'destinations'."
+                    )
                 weights_mapped = weights_mapped.fillna(default_weight)
             else:
                 self._make_sure_index_match(weight_df, od_pairs)
@@ -954,7 +962,7 @@ class NetworkAnalysis:
             ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
             if len(missing):
-                missing["geometry"] = np.nan
+                missing["geometry"] = pd.NA
                 results = pd.concat([results, missing], ignore_index=True)
 
             results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -1081,7 +1089,7 @@ class NetworkAnalysis:
             ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
             if len(missing):
-                missing["geometry"] = np.nan
+                missing["geometry"] = pd.NA
                 results = pd.concat([results, missing], ignore_index=True)
 
             results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -1128,14 +1136,14 @@ class NetworkAnalysis:
         if len(weight_df.columns) == 3:
             weight_df = weight_df.set_index(list(weight_df.columns[:2]))
 
-        if len(weight_df.columns) != 1 and isinstance(weight_df.index, pd.MultiIndex):
+        if len(weight_df.columns) != 1 and isinstance(weight_df.index, MultiIndex):
             raise ValueError(error_message)
 
         return weight_df
 
     @staticmethod
-    def _make_sure_unique(weight_df: DataFrame, od_pairs: pd.MultiIndex) -> None:
-        """Make sure this index matches the index of origins and destinations."""
+    def _make_sure_unique(weight_df: DataFrame, od_pairs: MultiIndex) -> None:
+        """It's nesseccary with unique index when using weight_df."""
         if not weight_df.index.is_unique:
             raise ValueError("'weight_df' must contain only unique OD combinations.")
 
@@ -1148,7 +1156,7 @@ class NetworkAnalysis:
     @staticmethod
     def _make_sure_index_match(
         weight_df: DataFrame,
-        od_pairs: pd.MultiIndex,
+        od_pairs: MultiIndex,
     ):
         """Make sure this index matches the index of origins and destinations."""
         if not od_pairs.isin(weight_df.index).all():
@@ -1163,7 +1171,7 @@ class NetworkAnalysis:
     @staticmethod
     def _create_od_pairs(
         origins: GeoDataFrame, destinations: GeoDataFrame, rowwise: bool
-    ) -> pd.MultiIndex:
+    ) -> MultiIndex:
         """Get all OD combinaions without identical origin-destination geometry.
 
         Returns a MultiIndex to be iterated over in get_route, get_k_routes and
@@ -1171,9 +1179,9 @@ class NetworkAnalysis:
         into a DataFrame with a weight column.
         """
         if rowwise:
-            od_pairs = pd.MultiIndex.from_arrays([origins.index, destinations.index])
+            od_pairs = MultiIndex.from_arrays([origins.index, destinations.index])
         else:
-            od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
+            od_pairs = MultiIndex.from_product([origins.index, destinations.index])
 
         geoms_ori = od_pairs.get_level_values(0).map(origins.geometry)
         geoms_des = od_pairs.get_level_values(1).map(destinations.geometry)
@@ -1200,10 +1208,10 @@ class NetworkAnalysis:
             "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
             "minutes_elapsed": minutes_elapsed,
             "method": method,
-            "origins_count": np.nan,
-            "destinations_count": np.nan,
-            "percent_missing": np.nan,
-            "cost_mean": np.nan,
+            "origins_count": pd.NA,
+            "destinations_count": pd.NA,
+            "percent_missing": pd.NA,
+            "cost_mean": pd.NA,
         }
         if self.rules.directed:
             data["percent_bidirectional"] = self.network.percent_bidirectional
@@ -1335,6 +1343,7 @@ class NetworkAnalysis:
         edges_start, weights_start = self.origins._get_edges_and_weights(
             nodes=self.network.nodes,
             rules=self.rules,
+            k=self._k_nearest_points,
         )
 
         edges = edges + edges_start
@@ -1347,6 +1356,7 @@ class NetworkAnalysis:
         edges_end, weights_end = self.destinations._get_edges_and_weights(
             nodes=self.network.nodes,
             rules=self.rules,
+            k=self._k_nearest_points,
         )
 
         edges = edges + edges_end
@@ -1441,7 +1451,11 @@ class NetworkAnalysis:
         graph.es["source"] = [edge[0] for edge in edges]
         graph.es["target"] = [edge[1] for edge in edges]
 
-        assert min(graph.es["weight"]) >= 0
+        if min(graph.es["weight"]) < 0:
+            n = sum([1 for w in graph.es["weight"] if w < 0])
+            raise ValueError(
+                f"The graph has been built with {n} negative weight values."
+            )
 
         return graph
 

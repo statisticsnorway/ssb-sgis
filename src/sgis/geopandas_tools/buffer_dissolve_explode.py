@@ -4,23 +4,34 @@ Functions with the purpose of making the code cleaner when buffering, dissolving
 exploding and repairing geometries. The functions are identical to doing buffer,
 dissolve and explode individually, except for the following:
 
-- Geometries are always repaired after buffer and dissolve.
+- Geometries are always made valid after buffer and dissolve.
 
 - The buffer resolution defaults to 50, while geopandas' default is 16.
 
 - The buff function returns a GeoDataFrame, the geopandas method returns a GeoSeries.
 
-- index_parts is set to False, which will be the default value in a future version of geopandas.
+- index_parts is set to False, which will be the default in a future version of geopandas.
 """
 
 from geopandas import GeoDataFrame
 
 
-IGNORE_INDEX_ERROR_MESSAGE = (
-    "Cannot set ignore_index. Set as_index=False to reset the index and keep "
-    "the 'by' columns. Or use reset_index(drop=True) to remove the 'by' "
-    "columns completely"
-)
+def _check_ignore_index(kwargs: dict) -> dict:
+    """Raise ValueError if both 'by' and 'ignore_index' are in kwargs.
+
+    Because ignoring index will remove the 'by' columns completely, which
+    is unlikely wanted.
+    """
+    IGNORE_INDEX_ERROR_MESSAGE = (
+        "Cannot set ignore_index. Set as_index=False to reset the index and keep "
+        "the 'by' columns. Or use reset_index(drop=True) to remove the 'by' "
+        "columns completely."
+    )
+    if "ignore_index" in kwargs and kwargs.get("by", None):
+        raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
+
+    kwargs.pop("ignore_index", None)
+    return kwargs
 
 
 def buffdissexp(
@@ -51,8 +62,7 @@ def buffdissexp(
         A buffered GeoDataFrame where overlapping geometries are dissolved.
 
     """
-    if "ignore_index" in dissolve_kwargs:
-        raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
+    dissolve_kwargs = _check_ignore_index(dissolve_kwargs)
 
     geom_col = gdf._geometry_column_name
 
@@ -137,8 +147,7 @@ def buffdiss(
     1     b  MULTIPOLYGON (((258404.858 6647830.931, 258404...  0.687635
     2     d  MULTIPOLYGON (((258180.258 6647935.731, 258179...  0.580157
     """
-    if "ignore_index" in dissolve_kwargs:
-        raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
+    dissolve_kwargs = _check_ignore_index(dissolve_kwargs)
 
     geom_col = gdf._geometry_column_name
 
@@ -169,8 +178,7 @@ def dissexp(
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
-    if "ignore_index" in dissolve_kwargs:
-        raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
+    dissolve_kwargs = _check_ignore_index(dissolve_kwargs)
 
     geom_col = gdf._geometry_column_name
 
@@ -182,9 +190,9 @@ def dissexp(
 
 
 def buffexp(
-    gdf,
-    distance,
-    resolution=50,
+    gdf: GeoDataFrame,
+    distance: int | float,
+    resolution: int = 50,
     index_parts: bool = False,
     copy: bool = True,
     **buffer_kwargs,
@@ -207,8 +215,7 @@ def buffexp(
     Returns:
         A buffered GeoDataFrame where geometries are exploded.
     """
-    if "ignore_index" in buffer_kwargs:
-        raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
+    buffer_kwargs = _check_ignore_index(buffer_kwargs)
 
     return buff(
         gdf, distance, resolution=resolution, copy=copy, **buffer_kwargs

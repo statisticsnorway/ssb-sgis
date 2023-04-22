@@ -9,7 +9,6 @@ GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 
 [![Documentation](https://img.shields.io/badge/Documentation-GitHub_Pages-green.svg)](https://statisticsnorway.github.io/ssb-sgis/index.html)
 [![Tests](https://github.com/statisticsnorway/ssb-sgis/workflows/Tests/badge.svg)][tests]
-[![Coverage](https://sonarcloud.io/component_measures?id=statisticsnorway_ssb-gis-utils&metric=new_coverage&view=list)][coverage]
 
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)][pre-commit]
 [![Black](https://img.shields.io/badge/code%20style-black-000000.svg)][black]
@@ -27,6 +26,13 @@ sgis builds on the geopandas package and provides functions that make it easier 
 Features include network analysis, functions for exploring multiple GeoDataFrames in a layered interactive map,
 and vector operations like finding k-nearest neighbours, splitting lines by points, snapping and closing holes
 in polygons by size.
+
+To install, use one of:
+
+```shell
+poetry add ssb-sgis
+pip install ssb-sgis
+```
 
 ## Network analysis examples
 
@@ -62,28 +68,6 @@ nwa
         log=True, detailed_log=False,
     )
 
-Get number of times each line segment was visited, with optional weighting.
-
-```python
-origins = points.iloc[:100]
-destinations = points.iloc[100:200]
-
-# creating uniform weights of 10
-od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
-weights = pd.DataFrame(index=od_pairs)
-weights["weight"] = 10
-
-frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
-
-# plot the results
-m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
-m.cmap = "plasma"
-m.title = "Number of times each road was used,\nweighted * 10"
-m.plot()
-```
-
-![png](docs/examples/network_analysis_examples_files/network_analysis_examples_5_0.png)
-
 Fast many-to-many travel times/distances.
 
 ```python
@@ -106,6 +90,28 @@ print(od)
     999999     999          999   0.000000
 
     [1000000 rows x 3 columns]
+
+Get number of times each line segment was visited, with optional weighting.
+
+```python
+origins = points.iloc[:100]
+destinations = points.iloc[100:200]
+
+# creating uniform weights of 10
+od_pairs = pd.MultiIndex.from_product([origins.index, destinations.index])
+weights = pd.DataFrame(index=od_pairs)
+weights["weight"] = 10
+
+frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
+
+# plot the results
+m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
+m.cmap = "plasma"
+m.title = "Number of times each road was used,\nweighted * 10"
+m.plot()
+```
+
+![png](docs/examples/network_analysis_examples_files/network_analysis_examples_5_0.png)
 
 Get the area that can be reached within one or more breaks.
 

@@ -21,32 +21,18 @@ from .nodes import make_node_ids
 class Network:
     """Class used in NetworkAnalysis."""
 
-    def __init__(
-        self,
-        gdf: GeoDataFrame,
-        *,
-        allow_degree_units: bool = False,
-    ):
+    def __init__(self, gdf: GeoDataFrame):
         """The lines are fixed, welded together rowwise and exploded. Creates node-ids.
 
         Raises:
             TypeError: If 'gdf' is not of type GeoDataFrame.
             ZeroLinesError: If 'gdf' has zero rows.
-            ValueError: If the coordinate reference system is in degree units and
-                allow_degree_units is False.
         """
         if not isinstance(gdf, GeoDataFrame):
             raise TypeError(f"'lines' should be GeoDataFrame, got {type(gdf)}")
 
         if not len(gdf):
             raise ZeroLinesError
-
-        if not allow_degree_units and gdf.crs.axis_info[0].unit_name == "degree":
-            raise ValueError(
-                "The crs cannot have degrees as unit. Change to a projected crs with "
-                "e.g. 'metre' as unit. If you really want to use an unprojected crs, "
-                "set 'allow_degree_units' to True."
-            )
 
         self.gdf = self._prepare_network(gdf)
 

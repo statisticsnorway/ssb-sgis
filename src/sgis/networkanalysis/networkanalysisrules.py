@@ -3,7 +3,6 @@
 The class is to be used as the 'rules' parameter in the NetworkAnalysis
 class.
 """
-import warnings
 from copy import copy, deepcopy
 from dataclasses import dataclass
 
@@ -220,17 +219,20 @@ class NetworkAnalysisRules:
         ):
             if self.nodedist_multiplier:
                 raise ValueError(
-                    "Cannot set 'nodedist_multiplier' when 'weight' is minutes."
+                    "Cannot set 'nodedist_multiplier' when 'weight' is minutes. "
+                    "Set 'nodedist_kmh' instead."
                 )
             self.weight = "minutes"
             gdf["minutes"] = gdf[self.weight]
+            self._check_for_nans(gdf, self.weight)
+            gdf = self._try_to_float(gdf, self.weight)
+            self._check_for_negative_values(gdf, self.weight)
             return gdf
 
         elif self.weight in gdf.columns:
-            gdf[self.weight] = gdf[self.weight].astype(float)
             self._check_for_nans(gdf, self.weight)
-            self._check_for_negative_values(gdf, self.weight)
             gdf = self._try_to_float(gdf, self.weight)
+            self._check_for_negative_values(gdf, self.weight)
             return gdf
 
         # at this point, the weight is wrong. Now to determine the error
@@ -273,7 +275,8 @@ class NetworkAnalysisRules:
         negative = sum(df[col] < 0)
         if negative:
             raise ValueError(
-                f": {negative} rows have {col!r} less than 0. Removing these " "rows.",
+                f"{negative} negative values found in the {col!r} column. Fill these "
+                "with a number greater than or equal to zero.",
             )
 
     @staticmethod

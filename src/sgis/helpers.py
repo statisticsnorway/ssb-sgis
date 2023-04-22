@@ -45,6 +45,14 @@ def unit_is_metres(gdf: GeoDataFrame) -> bool:
     return unit_is_meters(gdf)
 
 
+def unit_is_degrees(gdf: GeoDataFrame) -> bool:
+    """Returns True if the crs unit is 'metre''."""
+    unit = gdf.crs.axis_info[0].unit_name
+    if "degree" in unit:
+        return True
+    return False
+
+
 def get_name(var: object, n: int = 5) -> str | None:
     """Searches through the local variables down one level at a time."""
     frame = inspect.currentframe().f_back.f_back

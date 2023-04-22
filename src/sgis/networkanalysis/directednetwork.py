@@ -58,8 +58,8 @@ def make_directed_network_norway(gdf: GeoDataFrame) -> GeoDataFrame:
     175623  0.003019  MULTILINESTRING Z ((268682.748 6651886.162 110...
     175624  0.036975  MULTILINESTRING Z ((268694.594 6651881.688 111...
     [175541 rows x 45 columns]
-
     """
+    gdf = gdf.loc[~((gdf.drivetime_fw == -1) & (gdf.drivetime_bw == -1))]
     return make_directed_network(
         gdf,
         direction_col="oneway",
@@ -73,8 +73,8 @@ def make_directed_network(
     direction_col: str,
     direction_vals_bft: tuple[str, str, str],
     minute_cols: tuple[str, str] | str | None = None,
-    speed_col: str | None = None,
-    flat_speed: int | None = None,
+    speed_col_kmh: str | None = None,
+    flat_speed_kmh: int | None = None,
     reverse_tofrom: bool = True,
 ) -> GeoDataFrame:
     """Flips the line geometries of roads going backwards and in both directions.
@@ -91,8 +91,8 @@ def make_directed_network(
             be used for both directions. If tuple/list with two column names,
             the first column will be used as the minute column for the forward
             direction, and the second column for roads going backwards.
-        speed_col (optional): name of column with the road speed limit.
-        flat_speed (optional): Speed in kilometers per hour to use as the speed for
+        speed_col_kmh (optional): name of column with the road speed limit.
+        flat_speed_kmh (optional): Speed in kilometers per hour to use as the speed for
             all roads.
         reverse_tofrom: If the geometries of the lines going backwards
             (i.e. has the last value in 'direction_vals_bft'). Defaults to True.
@@ -100,17 +100,17 @@ def make_directed_network(
     Returns:
         The Network class, with the network attribute updated with flipped
             geometries for lines going backwards and both directions.
-        Adds the column 'minutes' if either 'speed_col', 'minute_col' or
-            'flat_speed' is specified.
+        Adds the column 'minutes' if either 'speed_col_kmh', 'minute_col' or
+            'flat_speed_kmh' is specified.
 
     Raises:
-        ValueError: If 'flat_speed' or 'speed_col' is specified and the unit of the
-            coordinate reference system is not 'metre'
+        ValueError: If 'flat_speed_kmh' or 'speed_col_kmh' is specified and the unit of
+            the coordinate reference system is not 'metre'.
     """
-    _validate_minute_args(minute_cols, speed_col, flat_speed)
+    _validate_minute_args(minute_cols, speed_col_kmh, flat_speed_kmh)
     _validate_direction_args(gdf, direction_col, direction_vals_bft)
 
-    if (flat_speed or speed_col) and not unit_is_meters(gdf):
+    if (flat_speed_kmh or speed_col_kmh) and not unit_is_meters(gdf):
         raise ValueError(
             "The crs must have 'metre' as units when calculating minutes."
             "Change crs or calculate minutes manually."
@@ -118,7 +118,7 @@ def make_directed_network(
 
     b, f, t = direction_vals_bft
 
-    if minute_cols:
+    if minute_cols and minute_cols != "minutes" and minute_cols[0] != "minutes":
         gdf = gdf.drop("minutes", axis=1, errors="ignore")
 
     # select the directional and bidirectional rows.
@@ -143,10 +143,6 @@ def make_directed_network(
         ft = ft.rename(columns={min_f: "minutes"}, errors="raise")
         tf = tf.rename(columns={min_t: "minutes"}, errors="raise")
 
-        for gdf in [ft, tf, both_ways, both_ways2]:
-            if all(gdf["minutes"].fillna(0) <= 0):
-                raise ValueError("All values in minute col is NaN or less than 0.")
-
     both_ways2.geometry = reverse(both_ways2.geometry)
 
     if reverse_tofrom:
@@ -154,32 +150,31 @@ def make_directed_network(
 
     gdf = pd.concat([both_ways, both_ways2, ft, tf], ignore_index=True)
 
-    gdf = gdf.drop([min_f, min_t], axis=1)
+    if minute_cols and minute_cols != "minutes" and minute_cols[0] != "minutes":
+        gdf = gdf.drop([min_f, min_t], axis=1, errors="ignore")
 
-    if speed_col:
-        _get_speed_from_col(gdf, speed_col)
+    if speed_col_kmh:
+        gdf = _get_speed_from_col(gdf, speed_col_kmh)
 
-    if flat_speed:
-        gdf["minutes"] = gdf.length / flat_speed * 16.6666666667
-
-    if "minutes" in gdf.columns:
-        gdf = gdf.loc[gdf["minutes"] >= 0]
+    if flat_speed_kmh:
+        meters_per_min = (flat_speed_kmh / 60) * 1000
+        gdf["minutes"] = gdf.length / meters_per_min
 
     return gdf
 
 
-def _validate_minute_args(minute_cols, speed_col, flat_speed):
-    if not minute_cols and not speed_col and not flat_speed:
+def _validate_minute_args(minute_cols, speed_col_kmh, flat_speed_kmh):
+    if not minute_cols and not speed_col_kmh and not flat_speed_kmh:
         warnings.warn(
             "Minute column will not be calculated when both 'minute_cols', "
-            "'speed_col' and 'flat_speed' is None",
+            "'speed_col_kmh' and 'flat_speed_kmh' is None",
             stacklevel=2,
         )
 
-    if sum([bool(minute_cols), bool(speed_col), bool(flat_speed)]) > 1:
+    if sum([bool(minute_cols), bool(speed_col_kmh), bool(flat_speed_kmh)]) > 1:
         raise ValueError(
-            "Can only calculate minutes from either 'speed_col', "
-            "'minute_cols' or 'flat_speed'."
+            "Can only calculate minutes from either 'speed_col_kmh', "
+            "'minute_cols' or 'flat_speed_kmh'."
         )
 
 
@@ -208,10 +203,12 @@ def _validate_direction_args(gdf, direction_col, direction_vals_bft):
         )
 
 
-def _get_speed_from_col(gdf, speed_col):
-    if len(gdf.loc[(gdf[speed_col].isna()) | (gdf[speed_col] == 0)]) > len(gdf) * 0.05:
+def _get_speed_from_col(gdf: GeoDataFrame, speed_col_kmh: str) -> GeoDataFrame:
+    if len(gdf.loc[(gdf[speed_col_kmh].isna()) | (gdf[speed_col_kmh] == 0)]):
         raise ValueError(
-            f"speed_col {speed_col!r} has a lot of missing or 0 values. Fill these "
-            "with appropriate values"
+            f"speed_col_kmh {speed_col_kmh!r} cannot have missing values or zeros"
         )
-    gdf["minutes"] = gdf.length / gdf[speed_col].astype(float) * 16.6666666667
+
+    gdf["minutes"] = gdf.length / (gdf[speed_col_kmh].astype(float) * 1000 / 60)
+
+    return gdf

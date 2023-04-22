@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from shapely import Geometry
 from shapely.ops import nearest_points, snap, unary_union
 
 from ..geopandas_tools.general import to_lines
@@ -11,17 +10,17 @@ from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
 
 
 def snap_within_distance(
-    points: GeoDataFrame,
-    to: GeoDataFrame,
+    points: GeoDataFrame | GeoSeries,
+    to: GeoDataFrame | GeoSeries,
     max_distance: int | float,
     *,
     distance_col: str | None = None,
-) -> GeoDataFrame:
+) -> GeoDataFrame | GeoSeries:
     """Snaps points to nearest geometry if within given distance.
 
     It takes a GeoDataFrame of points and snaps them to the nearest geometry in a
-    second GeoDataFrame if the snap distance is less than 'max_distance'. Returns distance
-    column if specified.
+    second GeoDataFrame if the snap distance is less than 'max_distance'.
+    Adds a distance column if specified.
 
     Args:
         points: The GeoDataFrame of points to snap.
@@ -75,6 +74,16 @@ def snap_within_distance(
     0  POINT (2.00000 2.00000)      2.828427
     1  POINT (2.00000 2.00000)      1.414214
     """
+
+    if isinstance(points, GeoSeries):
+        points = GeoDataFrame(points)
+        _was_geoseries = True
+    else:
+        _was_geoseries = False
+
+    if isinstance(to, GeoSeries):
+        to = GeoDataFrame(to)
+
     to = _polygons_to_lines(to)
 
     copied = points.copy()
@@ -91,20 +100,22 @@ def snap_within_distance(
         copied[distance_col] = np.where(
             copied[distance_col] == 0, pd.NA, copied[distance_col]
         )
+    elif _was_geoseries:
+        return copied[geom_col]
 
     return copied
 
 
 def snap_all(
-    points: GeoDataFrame,
-    to: GeoDataFrame,
+    points: GeoDataFrame | GeoSeries,
+    to: GeoDataFrame | GeoSeries,
     *,
     distance_col: str | None = None,
-) -> GeoDataFrame:
+) -> GeoDataFrame | GeoSeries:
     """Snaps points to the nearest geometry.
 
     It takes a GeoDataFrame of points and snaps them to the nearest geometry in a
-    second GeoDataFrame. Returns distance column if specified.
+    second GeoDataFrame. Adds a distance column if specified.
 
     Args:
         points: The GeoDataFrame of points to snap.
@@ -148,6 +159,16 @@ def snap_all(
     0  POINT (2.00000 2.00000)       2.828427
     1  POINT (2.00000 2.00000)       1.414214
     """
+
+    if isinstance(points, GeoSeries):
+        points = GeoDataFrame(points)
+        _was_geoseries = True
+    else:
+        _was_geoseries = False
+
+    if isinstance(to, GeoSeries):
+        to = GeoDataFrame(to)
+
     to = _polygons_to_lines(to)
 
     copied = points.copy()
@@ -164,6 +185,8 @@ def snap_all(
         copied[distance_col] = np.where(
             copied[distance_col] == 0, pd.NA, copied[distance_col]
         )
+    elif _was_geoseries:
+        return copied[geom_col]
 
     return copied
 
@@ -181,7 +204,7 @@ def _polygons_to_lines(gdf):
 
 def _series_snap(
     points: GeoSeries,
-    to: GeoSeries | GeoDataFrame | Geometry,
+    to: GeoSeries | GeoDataFrame,
     max_distance: int | float | None = None,
 ) -> GeoSeries:
     def snapfunc(point, to):

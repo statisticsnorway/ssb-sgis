@@ -72,6 +72,14 @@ rules = sg.NetworkAnalysisRules(directed=True, weight="minutes")
 nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules)
 
 nwa
+
+# %% [markdown]
+# Fast many-to-many travel times/distances.
+# %%
+od = nwa.od_cost_matrix(points, points)
+
+print(od)
+
 # %% [markdown]
 # Get number of times each line segment was visited, with optional weighting.
 
@@ -91,14 +99,6 @@ m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
 m.cmap = "plasma"
 m.title = "Number of times each road was used,\nweighted * 10"
 m.plot()
-
-# %% [markdown]
-# Fast many-to-many travel times/distances.
-
-# %%
-od = nwa.od_cost_matrix(points, points)
-
-print(od)
 # %% [markdown]
 # Get the area that can be reached within one or more breaks.
 
