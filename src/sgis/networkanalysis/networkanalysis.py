@@ -962,7 +962,7 @@ class NetworkAnalysis:
             ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
             if len(missing):
-                missing["geometry"] = np.nan
+                missing["geometry"] = pd.NA
                 results = pd.concat([results, missing], ignore_index=True)
 
             results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -1089,7 +1089,7 @@ class NetworkAnalysis:
             ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
             if len(missing):
-                missing["geometry"] = np.nan
+                missing["geometry"] = pd.NA
                 results = pd.concat([results, missing], ignore_index=True)
 
             results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -1208,10 +1208,10 @@ class NetworkAnalysis:
             "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
             "minutes_elapsed": minutes_elapsed,
             "method": method,
-            "origins_count": np.nan,
-            "destinations_count": np.nan,
-            "percent_missing": np.nan,
-            "cost_mean": np.nan,
+            "origins_count": pd.NA,
+            "destinations_count": pd.NA,
+            "percent_missing": pd.NA,
+            "cost_mean": pd.NA,
         }
         if self.rules.directed:
             data["percent_bidirectional"] = self.network.percent_bidirectional

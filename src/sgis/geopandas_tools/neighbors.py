@@ -6,7 +6,6 @@ from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame, Series
 from sklearn.neighbors import NearestNeighbors
 
-from ..helpers import unit_is_degrees
 from .general import coordinate_array
 from .geometry_types import get_geom_type
 
@@ -301,8 +300,8 @@ def get_k_nearest_neighbors(
 
     [1000 rows x 2 columns]
 
-    The index from 'points' is preserved. Use join to get the distance and neighbor ids
-    onto the 'points' GeoDataFrame.
+    The index from 'points' is preserved. Use join to get the distance and neighbor
+    index onto the 'points' GeoDataFrame.
 
     >>> joined = points.join(distances)
     >>> joined["k"] = joined.groupby(level=0)["distance"].transform("rank")

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -18,6 +19,13 @@ def test_k_neighbors(points_oslo):
 
     p["idx"] = p.index
     p["idx2"] = np.random.randint(10_000, 20_000, size=len(p))
+
+    with pytest.raises(ValueError):
+        sg.get_neighbor_indices(gdf=p, neighbors=p.to_crs(4326))
+    with pytest.raises(ValueError):
+        sg.get_k_nearest_neighbors(gdf=p, neighbors=p.to_crs(4326), k=50)
+    with pytest.raises(ValueError):
+        sg.get_all_distances(gdf=p, neighbors=p.to_crs(4326))
 
     df = sg.get_k_nearest_neighbors(
         gdf=p,

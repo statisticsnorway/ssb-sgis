@@ -4,7 +4,7 @@ The main function is 'explore', which displays one of more GeoDataFrames togethe
 interactive map with layers that can be toggled on and off. The 'samplemap' and
 'clipmap' functions do the same, but displays a random and chosen area respectfully.
 
-The 'qtm' function shows a static map of one or more GeoDataFrames.
+The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry

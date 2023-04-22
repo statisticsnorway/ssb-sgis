@@ -119,6 +119,7 @@ def split_lines_by_nearest_point(
     dists_source = dists_source.loc[dists_source.distance <= BUFFDIST * 2]
     dists_target = dists_target.loc[dists_target.distance <= BUFFDIST * 2]
 
+    # neighbor_index == point_coords (coordinate tuple)
     pointmapper_source: pd.Series = dists_source["neighbor_index"]
     pointmapper_target: pd.Series = dists_target["neighbor_index"]
 

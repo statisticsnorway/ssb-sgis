@@ -88,9 +88,21 @@ def drop_inactive_geometry_columns(gdf: GeoDataFrame) -> GeoDataFrame:
 
 def rename_geometry_if(gdf: GeoDataFrame) -> GeoDataFrame:
     geom_col = gdf._geometry_column_name
-    if geom_col == "geometry":
+    if geom_col == "geometry" and geom_col in gdf.columns:
         return gdf
-    return gdf.rename_geometry("geometry")
+    elif geom_col in gdf.columns:
+        return gdf.rename_geometry("geometry")
+
+    geom_cols = list(
+        {col for col in gdf.columns if isinstance(gdf[col].dtype, GeometryDtype)}
+    )
+    if len(geom_cols) == 1:
+        gdf._geometry_column_name = geom_cols[0]
+        return gdf.rename_geometry("geometry")
+
+    raise ValueError(
+        "There are multiple geometry columns and none are the active geometry"
+    )
 
 
 def clean_geoms(

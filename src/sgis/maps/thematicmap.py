@@ -1,4 +1,4 @@
-"""Creating static maps with geopandas and matplotlib."""
+"""Make static maps with geopandas and matplotlib."""
 import warnings
 
 import matplotlib
