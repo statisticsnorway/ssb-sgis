@@ -1,6 +1,12 @@
-"""Get neighbors and K-nearest neighbors."""
-import warnings
+"""Get neighbors and K-nearest neighbors.
 
+The functions rely on the pandas index as identifiers for the geometries and their
+neighbors. This makes it easy to join or aggregate the results onto the input
+GeoDataFrames.
+
+The results of all functions will be identical with GeoDataFrame and GeoSeries as input
+types.
+"""
 import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame, Series
@@ -18,25 +24,22 @@ def get_neighbor_indices(
 ) -> Series:
     """Returns a pandas Series of neighbor indices.
 
-    The returned Series will contain values of all indices of 'neighbors' for each row
-    in 'gdf'. will be the 'neighbours' indices. The Series index will be the 'gdf'
-    indices.
-
     Finds all the geometries in 'neighbors' that intersect with 'gdf' and returns a
-    list of the indices of the neighbors. Use set_index on the neighbors inside the
-    function call to get values from a column instead of the current index.
+    Series where the values are the 'neighbors' indices and the index is the indices of
+    'gdf'. Use set_index inside the function call to get values from a column instead of
+    the current index.
 
     Args:
-        gdf: GeoDataFrame or GeoSeries
-        neighbors: GeoDataFrame or GeoSeries
-        max_distance: The maximum distance between the two geometries. Defaults to 0.
+        gdf: GeoDataFrame or GeoSeries.
+        neighbors: GeoDataFrame or GeoSeries.
+        max_distance: The maximum distance between the geometries. Defaults to 0.
         predicate: Spatial predicate to use in sjoin. Defaults to "intersects", meaning
             the geometry itself and geometries within will be considered neighbors if
             they are part of the 'neighbors' GeoDataFrame.
 
     Returns:
-        A pandas Series with indices of the intersecting 'neighbors'. The Series'
-        index will follow the index of the 'gdf'.
+        A pandas Series with values of the intersecting 'neighbors' indices.
+        The Series' index will follow the index of 'gdf'.
 
     Raises:
         ValueError: If gdf and neighbors do not have the same coordinate reference
@@ -118,17 +121,17 @@ def get_all_distances(
 ) -> DataFrame:
     """Get distances from 'gdf' to all points in 'neighbors'.
 
-    Find the distance from each point in 'gdf' to each point in 'neighbors'. Preserves
-    the index of 'gdf' and adds column 'neighbor_index' with the indices of the
-    neighbors.
+    Find the distance from each point in 'gdf' to each point in 'neighbors'. Also
+    returns the indices of 'neighbors' (as the column 'neighbor_index') and 'gdf'
+    (as the index).
 
     Args:
-        gdf: a GeoDataFrame of points
-        neighbors: a GeoDataFrame of points
+        gdf: a GeoDataFrame of points.
+        neighbors: a GeoDataFrame of points.
 
     Returns:
-        DataFrame with distances and index values from the 'gdf'. Also includes the
-        column 'neighbor_index'.
+        DataFrame with the columns 'neighbor_index' and 'distance'. The index follows
+        the index of 'gdf'.
 
     Raises:
         ValueError: If the coordinate reference system of 'gdf' and 'neighbors' are
@@ -233,8 +236,8 @@ def get_k_nearest_neighbors(
 
     Uses the K-nearest neighbors algorithm method from scikit-learn to find the given
     number of neighbors for each point in 'gdf'. Identical points are considered
-    neighbors. Preserves the index of 'gdf' and adds 'neighbor_index' with the indices
-    of the neighbors.
+    neighbors. Preserves the index of 'gdf' and adds the column 'neighbor_index'
+    with the indices of the neighbors, as well as a column 'distance'.
 
     Args:
         gdf: a GeoDataFrame of points
@@ -245,9 +248,8 @@ def get_k_nearest_neighbors(
             to the number of points in 'neighbors'.
 
     Returns:
-        A DataFrame with the distance from gdf to the k nearest neighbours. The
-        index follows the index of 'gdf' and a column 'neighbor_index' is added
-        as identifier for the 'neighbors'.
+        DataFrame with the columns 'neighbor_index' and 'distance'. The index follows
+        the index of 'gdf'.
 
     Raises:
         ValueError: If the coordinate reference system of 'gdf' and 'neighbors' are

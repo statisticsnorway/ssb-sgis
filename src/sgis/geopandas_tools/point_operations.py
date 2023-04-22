@@ -19,8 +19,8 @@ def snap_within_distance(
     """Snaps points to nearest geometry if within given distance.
 
     It takes a GeoDataFrame of points and snaps them to the nearest geometry in a
-    second GeoDataFrame if the snap distance is less than 'max_distance'. Returns distance
-    column if specified.
+    second GeoDataFrame if the snap distance is less than 'max_distance'.
+    Adds a distance column if specified.
 
     Args:
         points: The GeoDataFrame of points to snap.
@@ -115,7 +115,7 @@ def snap_all(
     """Snaps points to the nearest geometry.
 
     It takes a GeoDataFrame of points and snaps them to the nearest geometry in a
-    second GeoDataFrame. Returns distance column if specified.
+    second GeoDataFrame. Adds a distance column if specified.
 
     Args:
         points: The GeoDataFrame of points to snap.
