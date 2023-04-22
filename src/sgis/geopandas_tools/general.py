@@ -234,7 +234,7 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
 
 
 def random_points_in_polygons(
-    gdf: GeoDataFrame, n: int, ignore_index=False
+    gdf: GeoDataFrame | GeoSeries, n: int, ignore_index=False
 ) -> GeoDataFrame:
     """Creates n random points inside each polygon of a GeoDataFrame.
 
