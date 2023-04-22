@@ -17,6 +17,8 @@ def test_buffdissexp(gdf_fixture):
     with pytest.raises(ValueError):
         sg.buffdissexp(gdf_fixture, 10, by="txtcol", ignore_index=True)
 
+    sg.buffdissexp(gdf_fixture, 10, ignore_index=True)
+
     for distance in [1, 10, 100, 1000, 10000]:
         copy = gdf_fixture.copy()
 
@@ -33,7 +35,10 @@ def test_buffdissexp(gdf_fixture):
 
 def test_buffdiss(gdf_fixture):
     with pytest.raises(ValueError):
-        sg.buffdissexp(gdf_fixture, 10, by="txtcol", ignore_index=True)
+        sg.buffdiss(gdf_fixture, 10, by="txtcol", ignore_index=True)
+
+    sg.buffdiss(gdf_fixture, 10, ignore_index=True)
+
     for distance in [1, 10, 100, 1000, 10000]:
         copy = gdf_fixture.copy()
 
@@ -49,7 +54,9 @@ def test_buffdiss(gdf_fixture):
 
 def test_dissexp(gdf_fixture):
     with pytest.raises(ValueError):
-        sg.buffdissexp(gdf_fixture, 10, by="txtcol", ignore_index=True)
+        sg.dissexp(gdf_fixture, by="txtcol", ignore_index=True)
+
+    sg.dissexp(gdf_fixture, ignore_index=True)
 
     copy = gdf_fixture.copy()
 
