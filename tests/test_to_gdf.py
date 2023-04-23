@@ -16,6 +16,8 @@ import sgis as sg
 
 
 def test_to_gdf():
+    _single_geom_in_dict()
+
     _dflike_single_col()
 
     _dflike_geom_col()
@@ -75,7 +77,7 @@ def _dflike_single_col():
 def _dflike_geom_col():
     dict_ = {"col": [1, 2], "geometry": [(10, 60), (11, 59)]}
     gdf = sg.to_gdf(dict_, crs=4326)
-    assert gdf.shape == (2, 2)
+    assert gdf.shape == (2, 2), gdf.shape
     assert gdf.index.to_list() == [0, 1]
     assert not gdf.geometry.isna().sum()
     assert gdf.columns.to_list() == ["col", "geometry"]
@@ -102,6 +104,28 @@ def _preserves_index():
     assert gdf.index.to_list() == index
     gdf = sg.to_gdf(df, index=index)
     assert gdf.index.to_list() == index
+
+
+def _single_geom_in_dict():
+    geom = {
+        0: [
+            (263206.1, 6651199.5),
+            (263206, 6651199),
+        ]
+    }
+    gdf = sg.to_gdf(geom)
+    print(gdf)
+    assert len(gdf) == 2
+
+    geom = {0: [263206.1, 6651199.5]}
+    gdf = sg.to_gdf(geom)
+    print(gdf)
+    assert len(gdf) == 1
+
+    geom = {"geometry": [263206.1, 6651199.5]}
+    gdf = sg.to_gdf(geom)
+    print(gdf)
+    assert len(gdf) == 1
 
 
 def _incorrect_geom_col():
@@ -168,6 +192,16 @@ def _recursive():
 def _xyz():
     dict_ = {"col": [1, 2], "x": [10, 11], "y": [60, 59], "z": [10, 20]}
     gdf = sg.to_gdf(dict_, geometry=["x", "y", "z"])
+    print(dict_)
+    print(gdf)
+    print("")
+    assert isinstance(gdf, gpd.GeoDataFrame)
+    assert gdf.shape == (2, 5)
+    assert not gdf.geometry.isna().sum()
+    assert gdf.geometry.has_z.all()
+
+    dict_ = {"col": [1, 2], "x": [10, 11], "y": [60, 59], "z": [10, 20]}
+    gdf = sg.to_gdf(dict_, geometry="xyz")
     print(dict_)
     print(gdf)
     print("")
