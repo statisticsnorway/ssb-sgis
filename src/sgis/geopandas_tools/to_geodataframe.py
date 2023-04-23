@@ -224,7 +224,6 @@ def _is_df_like(geom, geometry: str | None) -> bool:
 
     # geometry is a hashable key
     if len(geometry) == 1 and geometry[0] in geom:
-        print("hhhh000")
         return True
 
     # geometry is x, y (z)
@@ -235,7 +234,6 @@ def _is_df_like(geom, geometry: str | None) -> bool:
     if geometry in geom and not any(
         isinstance(g, numbers.Number) for g in geom[geometry]
     ):
-        print("hhhh444", geom)
         assert isinstance(geometry, str)
         return True
 
@@ -243,10 +241,7 @@ def _is_df_like(geom, geometry: str | None) -> bool:
     if len(geom.keys()) == 1 and not any(
         isinstance(g, numbers.Number) for g in list(geom.values())[0]
     ):
-        print("hhhh555")
         return True
-
-    print("hhhh666")
 
     return False
 
