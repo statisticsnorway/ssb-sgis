@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
-from pandas.api.types import is_dict_like
+from pandas.api.types import is_dict_like, is_list_like
 from shapely import (
     Geometry,
     force_2d,
@@ -146,45 +146,47 @@ def to_gdf(
     if isinstance(geom, GeoSeries):
         return _geoseries_to_gdf(geom, crs, **kwargs)
 
-    # now get done with the iterators that get consumed by 'all' statements
+    # get done with the iterators that get consumed by 'all' statements
     if isinstance(geom, Iterator) and not isinstance(geom, Sized):
-        geom = GeoSeries(_make_shapely_geom(x) for x in geom)
+        geom = GeoSeries(_make_one_shapely_geom(g) for g in geom)
         return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
 
-    # dataframes and dicts with geometry/xyz key(s)
-    geometry = "geometry" if not geometry else geometry
-    if _is_df_like(geom, geometry):
-        geom = geom.copy()
-        geom = _make_geomcol_df_like(geom, geometry, index=kwargs.get("index"))
-        if "geometry" in geom:
-            return GeoDataFrame(geom, geometry="geometry", crs=crs, **kwargs)
-        elif isinstance(geom, pd.DataFrame):
-            raise ValueError(f"Cannot find 'geometry' column {geometry!r}")
+    if not is_dict_like(geom):
+        geom = GeoSeries(_make_shapely_geoms(geom))
+        return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
 
-    if is_dict_like(geom):
+    # now we have dict, Series or DataFrame
+
+    geom = geom.copy()
+
+    if geometry:
+        geom["geometry"] = _geoseries_from_geometry_keys(geom, geometry)
+        return GeoDataFrame(geom, geometry="geometry", crs=crs, **kwargs)
+
+    if "geometry" in geom.keys():
+        geom["geometry"] = GeoSeries(_make_shapely_geoms(geom["geometry"]))
+        return GeoDataFrame(geom, geometry="geometry", crs=crs, **kwargs)
+
+    if len(geom.keys()) == 1:
         if isinstance(geom, dict):
-            geom = pd.Series(geom)
-        if "index" not in kwargs:
-            index_ = geom.index
+            geoseries = GeoSeries(_make_shapely_geoms(list(geom.values())[0]))
         else:
-            index_ = None
-        geom = GeoSeries(_make_shapely_geom(x) for x in geom)
-        gdf = GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
-        if index_ is not None:
-            gdf.index = index_
-        return gdf
+            geoseries = GeoSeries(_make_shapely_geoms(geom.iloc[:, 0]))
+        return GeoDataFrame(
+            {"geometry": geoseries}, geometry="geometry", crs=crs, **kwargs
+        )
 
-    # single geometry objects like wkt, wkb, shapely geometry or iterable of numbers
-    if _is_one_geometry(geom):
-        geom = GeoSeries(_make_shapely_geom(geom))
-        return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
+    geoseries = _series_like_to_geoseries(geom, index=kwargs.get("index", None))
+    return GeoDataFrame(geometry=geoseries, crs=crs, **kwargs)
 
-        # single geometry objects like wkt, wkb, shapely geometry or iterable of numbers
-    if hasattr(geom, "__iter__"):
-        geom = GeoSeries(_make_shapely_geom(x) for x in geom)
-        return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
 
-    raise TypeError(f"Got unexpected type {type(geom)}")
+def _series_like_to_geoseries(geom, index):
+    if not index:
+        index = geom.keys()
+    if isinstance(geom, dict):
+        return GeoSeries(_make_shapely_geoms(list(geom.values())), index=index)
+    else:
+        return GeoSeries(_make_shapely_geoms(geom.values), index=index)
 
 
 def _geoseries_to_gdf(geom: GeoSeries, crs, **kwargs) -> GeoDataFrame:
@@ -194,6 +196,30 @@ def _geoseries_to_gdf(geom: GeoSeries, crs, **kwargs) -> GeoDataFrame:
         geom = geom.to_crs(crs) if geom.crs else geom.set_crs(crs)
 
     return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
+
+
+def _geoseries_from_geometry_keys(geom, geometry) -> GeoSeries:
+    """Make geoseries from the geometry column or columns (x y (z))."""
+    if not is_list_like(geometry) and geometry in geom:
+        return GeoSeries(_make_shapely_geoms(geom[geometry]))
+
+    if len(geometry) == 1 and geometry[0] in geom:
+        return GeoSeries(_make_shapely_geoms(geom[geometry[0]]))
+
+    if len(geometry) == 2:
+        x, y = geometry
+        z = None
+
+    elif len(geometry) == 3:
+        x, y, z = geometry
+        z = geom[z]
+    else:
+        raise ValueError(
+            "geometry should be one geometry-like column or 2-3 x, y, z columns. Got",
+            geometry,
+        )
+
+    return gpd.GeoSeries.from_xy(x=geom[x], y=geom[y], z=z)
 
 
 def _is_one_geometry(geom) -> bool:
@@ -206,111 +232,13 @@ def _is_one_geometry(geom) -> bool:
     return False
 
 
-def _is_df_like(geom, geometry: str | None) -> bool:
-    """Check if object is DataFrame-like and not Series-like.
-
-    Series-like as in 1 dimension of geometry-like objects.
-
-    Dictionaries can be both.
-    """
-    if not is_dict_like(geom):
-        return False
-
-    if isinstance(geom, pd.DataFrame):
-        return True
-
-    if isinstance(geom, pd.Series):
-        return False
-
-    # geometry is a hashable key
-    if len(geometry) == 1 and geometry[0] in geom:
-        return True
-
-    # geometry is x, y (z)
-    if len(geometry) == 2 or len(geometry) == 3 and all(g in geom for g in geometry):
-        return True
-
-    # geometry is non-hashable key
-    if geometry in geom and not any(
-        isinstance(g, numbers.Number) for g in geom[geometry]
-    ):
-        assert isinstance(geometry, str)
-        return True
-
-    # 1 key and more than 1 geometry pair
-    if len(geom.keys()) == 1 and not any(
-        isinstance(g, numbers.Number) for g in list(geom.values())[0]
-    ):
-        return True
-
-    return False
+def _make_shapely_geoms(geom):
+    if _is_one_geometry(geom):
+        return _make_one_shapely_geom(geom)
+    return (_make_one_shapely_geom(g) for g in geom)
 
 
-def _make_geomcol_df_like(
-    geom: pd.DataFrame | dict,
-    geometry: str | tuple[str],
-    index: list | tuple | None,
-) -> pd.DataFrame | dict:
-    """Create GeoSeries column in DataFrame or dictionary that has a DataFrame structure
-    rather than a Series structure.
-
-    Use the same logic for DataFrame and dict, as long as the speficied 'geometry'
-    value or values (if x, y, z coordinate columns) are keys in the dictionary. If
-    not, nothing happens here, and the dict goes on to be treated as a Series where
-    keys are index and values the geometries.
-    """
-
-    if not index and hasattr(geom, "index"):
-        index = geom.index
-    elif index and hasattr(geom, "index"):
-        geom.index = index
-
-    if len(geometry) == 1 and geometry[0] in geom:
-        geometry = geometry[0]
-
-    if (
-        isinstance(geometry, (tuple, list))
-        or isinstance(geometry, str)
-        and all(g in geom for g in geometry)
-    ):
-        if len(geometry) == 2:
-            x, y = geometry
-            z = None
-        elif len(geometry) == 3:
-            x, y, z = geometry
-            z = geom[z]
-        else:
-            raise ValueError(
-                "geometry should be one geometry-like column or 2-3 x, y, z columns."
-            )
-        geom["geometry"] = gpd.GeoSeries.from_xy(x=geom[x], y=geom[y], z=z)
-    elif geometry in geom:
-        if not hasattr(geom[geometry], "__iter__"):
-            geom[geometry] = [geom[geometry]]
-        geom["geometry"] = GeoSeries(
-            map(_make_shapely_geom, geom[geometry]), index=index
-        )
-
-    elif isinstance(geom, pd.DataFrame) and len(geom.columns) == 1:
-        geometry = geom.columns[0]
-        geom["geometry"] = GeoSeries(
-            map(_make_shapely_geom, geom[geometry]), index=index
-        )
-
-    elif isinstance(geom, dict) and len(geom.keys()) == 1:
-        if not any(isinstance(g, numbers.Number) for g in list(geom.values())[0]):
-            geometry = next(iter(geom))
-            geom["geometry"] = GeoSeries(
-                map(_make_shapely_geom, geom[geometry]), index=index
-            )
-        else:
-            geometry = list(geom.values())[0]
-            geom["geometry"] = _make_shapely_geom(geometry)
-
-    return geom
-
-
-def _make_shapely_geom(geom):
+def _make_one_shapely_geom(geom):
     """Create shapely geometry from wkt, wkb or coordinate tuple.
 
     Works recursively if the object is a nested iterable.
@@ -338,9 +266,11 @@ def _make_shapely_geom(geom):
     if not any(isinstance(g, numbers.Number) for g in geom):
         # we're likely dealing with a nested iterable, so let's
         # recursively dig down to the coords/wkt/wkb
-        return unary_union([_make_shapely_geom(g) for g in geom])
+        return unary_union([_make_one_shapely_geom(g) for g in geom])
+
     elif len(geom) == 2 or len(geom) == 3:
         return Point(geom)
+
     else:
         raise ValueError(
             "If 'geom' is an iterable, each item should consist of "
