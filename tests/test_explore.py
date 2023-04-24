@@ -16,6 +16,27 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+def not_test_center(r300, r200, r100, p):
+    for center in [
+        (263206.184457095, 6651199.528012605),
+        "point (263206.184457095 6651199.528012605)",
+        {"geometry": [(263206.184457095, 6651199.528012605)]},
+        sg.to_gdf("point (263206.184457095 6651199.528012605)", crs=r300.crs),
+        sg.to_gdf("point (263206.184457095 6651199.528012605)", crs=r300.crs).buffer(
+            100
+        ),
+    ]:
+        sg.explore(r300, r200, r100, "length", cmap="plasma", center=center, size=100)
+        sg.clipmap(
+            r300,
+            r200,
+            r100,
+            "meters",
+            mask=p.buffer(100),
+            center=(263206.184457095, 6651199.528012605),
+        )
+
+
 def not_test_explore(points_oslo, roads_oslo):
     roads = roads_oslo
     points = points_oslo
@@ -35,6 +56,8 @@ def not_test_explore(points_oslo, roads_oslo):
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
 
+    not_test_center(r300, r200, r100, p)
+
     print(
         "when 1 gdf and categorical column, the gdf should be split into categories"
         " that can be toggled on/off:"
@@ -48,7 +71,7 @@ def not_test_explore(points_oslo, roads_oslo):
     sg.explore(r300, r200, r100, "meters", scheme="quantiles")
     sg.explore(*(r300, r200, r100), "meters", scheme="quantiles")
 
-    for explore in [1, 0]:
+    for explore in [0, 1]:
         sg.samplemap(
             r300,
             r200,

@@ -35,6 +35,8 @@ def explore(
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
     show_in_browser: bool = False,
+    center: tuple[float, float] | None = None,
+    size: int | None = None,
     **kwargs,
 ) -> None:
     """Interactive map of GeoDataFrames with layers that can be toggled on/off.
@@ -46,10 +48,6 @@ def explore(
     If the column is of type string and only one GeoDataFrame is given, the unique
     values will be split into separate GeoDataFrames so that each value can be toggled
     on/off.
-
-    The coloring can be changed with the 'cmap' parameter. The default colormap is a
-    custom, strongly colored palette. If a numerical colum is given, the 'viridis'
-    palette is used.
 
     Note:
         The maximum zoom level only works on the OpenStreetMap background map.
@@ -65,6 +63,11 @@ def explore(
             allowed. Defaults to 30, which is higher than the geopandas default.
         show_in_browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
+        center: Optional coordinate pair (x, y) to use as centerpoint for the map.
+            The geometries will then be clipped by a buffered circle around this point.
+            If 'size' is not given, 1000 will be used as the buffer distance.
+        size: The buffer distance. Only applies when center is specified. Defaults to
+            1000 if center is given.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -98,7 +101,7 @@ def explore(
         max_zoom=max_zoom,
         **kwargs,
     )
-    m.explore()
+    m.explore(center=center, size=size)
 
 
 def samplemap(
@@ -117,6 +120,10 @@ def samplemap(
     It takes all the GeoDataFrames specified, takes a random sample point from the
     first, and shows all geometries within a given radius of this point. Otherwise
     works like the explore function.
+
+    To re-use the sample area, use the line that is printed in this function,
+    containing the size and centerpoint. This line can be copypasted directly
+    into the explore or clipmap functions.
 
     Note:
         The maximum zoom level only works on the OpenStreetMap background map.
@@ -177,6 +184,7 @@ def samplemap(
             **kwargs,
         )
         m.samplemap(size, sample_from_first=sample_from_first)
+
     else:
         m = Map(
             *gdfs,
@@ -199,7 +207,10 @@ def samplemap(
 
         # if point or mixed geometries
         else:
-            random_point = sample.centroid.buffer
+            random_point = sample.centroid
+
+        center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
+        print(f"center={center}, size={size}")
 
         m._gdf = m._gdf.clip(random_point.buffer(size))
 
@@ -214,6 +225,8 @@ def clipmap(
     explore: bool = True,
     max_zoom: int = 30,
     show_in_browser: bool = False,
+    center: tuple[float, float] | None = None,
+    size: int | None = None,
     **kwargs,
 ) -> None:
     """Shows an interactive map of a of GeoDataFrames clipped to the mask extent.
@@ -284,7 +297,7 @@ def clipmap(
             max_zoom=max_zoom,
             **kwargs,
         )
-        m.explore()
+        m.explore(center=center, size=size)
     else:
         m = Map(
             *gdfs,

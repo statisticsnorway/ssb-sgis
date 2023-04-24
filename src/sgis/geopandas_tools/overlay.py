@@ -1,12 +1,12 @@
 """Overlay function that avoids a nasty GEOSException from geopandas.overlay.
 
-This module includes the function 'clean_shapely_overlay', which bypasses a
+This module includes the function 'clean_overlay', which bypasses a
 GEOSException from the regular geopandas.overlay. The function is a generalized
 version of the solution from GH 2792. The module also includes the 'overlay' function,
 which first tries a geopandas.overlay, and if it raises a GEOSException, tries
-'clean_shapely_overlay'.
+'clean_overlay'.
 
-Both 'overlay' and 'clean_shapely_overlay' also include the overlay type "update",
+Both 'overlay' and 'clean_overlay' also include the overlay type "update",
 which can be specified in the "how" parameter, in addition to the five native geopandas
 how-s.
 """
@@ -120,7 +120,7 @@ def overlay(
     except GEOSException as e:
         if how == "update":
             raise e
-        overlayed = clean_shapely_overlay(df1, df2, how=how)
+        overlayed = clean_overlay(df1, df2, how=how)
 
     overlayed = clean_geoms(overlayed)
 
@@ -171,7 +171,7 @@ def overlay_update(
     try:
         overlayed = df1.overlay(df2, how="difference", **kwargs)
     except GEOSException:
-        overlayed = clean_shapely_overlay(
+        overlayed = clean_overlay(
             df1,
             df2,
             how="difference",
@@ -182,7 +182,7 @@ def overlay_update(
     return pd.concat([overlayed, df2], ignore_index=True)
 
 
-def clean_shapely_overlay(
+def clean_overlay(
     df1: GeoDataFrame,
     df2: GeoDataFrame,
     how: str = "intersection",

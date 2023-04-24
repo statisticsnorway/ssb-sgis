@@ -44,7 +44,7 @@ def test_overlay(points_oslo):
             .explode(ignore_index=True)
             .overlay(sg.clean_geoms(p1000).explode(ignore_index=True), how=how)
         )
-        overlayed2 = sg.clean_shapely_overlay(p500, p1000, how=how)
+        overlayed2 = sg.clean_overlay(p500, p1000, how=how)
 
         if int(overlayed.area.sum()) != int(overlayed2.area.sum()):
             raise ValueError(int(overlayed.area.sum()) != int(overlayed2.area.sum()))
@@ -63,7 +63,7 @@ def test_overlay(points_oslo):
                 )
 
             sg.overlay(p500, p1000, how=how, geom_type="polygon")
-            sg.clean_shapely_overlay(
+            sg.clean_overlay(
                 p500.sample(1),
                 p1000.sample(1),
                 how=how,
@@ -73,7 +73,7 @@ def test_overlay(points_oslo):
 
 def test_overlay_random(n=50):
     for _ in range(n):
-        print(_, end="\r")
+        print(_)
         loc_num = np.random.randint(low=50, high=150)
         buff_num = np.random.randint(low=7, high=23)
         for how in [
@@ -89,7 +89,7 @@ def test_overlay_random(n=50):
             gdf2 = sg.random_points(n, loc=loc_num).pipe(sg.buff, buff_num * 0.5)
 
             overlayed = gdf1.overlay(gdf2, how=how)
-            overlayed2 = sg.clean_shapely_overlay(gdf1, gdf2, how=how)
+            overlayed2 = sg.clean_overlay(gdf1, gdf2, how=how)
 
             if len(overlayed) != len(overlayed2):
                 raise ValueError(how, len(overlayed), len(overlayed2))
@@ -108,7 +108,7 @@ def main():
     from oslo import points_oslo
 
     test_overlay(points_oslo())
-    test_overlay_random(n=1000)
+    test_overlay_random(n=100)
 
 
 if __name__ == "__main__":

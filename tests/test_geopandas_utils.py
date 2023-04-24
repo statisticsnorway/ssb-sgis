@@ -95,6 +95,9 @@ def test_random():
             assert all(points.index.isin([0, 1, 2]))
 
 
+test_random()
+
+
 def test_points_in_bounds():
     from shapely import box
 

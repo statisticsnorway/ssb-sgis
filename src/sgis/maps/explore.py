@@ -16,6 +16,7 @@ from shapely.geometry import LineString
 
 from ..geopandas_tools.general import clean_geoms, random_points_in_polygons
 from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.to_geodataframe import to_gdf
 from .map import Map
 
 
@@ -83,12 +84,33 @@ class Explore(Map):
             self.cmap_start = kwargs.pop("cmap_start", 0)
             self.cmap_stop = kwargs.pop("cmap_stop", 256)
 
-    def explore(self, column: str | None = None, **kwargs) -> None:
+    def explore(
+        self, column: str | None = None, center=None, size=None, **kwargs
+    ) -> None:
         if column:
             self._column = column
             self._update_column()
             kwargs.pop("column", None)
-        self.to_show = self._gdfs
+
+        if center is None:
+            self.to_show = self._gdfs
+            self._explore(**kwargs)
+            return
+
+        size = size if size else 1000
+
+        centerpoint = (
+            to_gdf(center, crs=self.crs)
+            if not isinstance(center, GeoDataFrame)
+            else center
+        )
+
+        gdfs: tuple[GeoDataFrame] = ()
+        for gdf in self._gdfs:
+            gdf = gdf.clip(centerpoint.buffer(size))
+            gdfs = gdfs + (gdf,)
+        self._gdfs = gdfs
+        self._gdf = pd.concat(gdfs, ignore_index=True)
         self._explore(**kwargs)
 
     def samplemap(
@@ -120,6 +142,9 @@ class Explore(Map):
         # if point or mixed geometries
         else:
             random_point = sample.centroid
+
+        self.center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
+        print(f"center={self.center}, size={size}")
 
         gdfs: tuple[GeoDataFrame] = ()
         for gdf in self._gdfs:
@@ -293,7 +318,6 @@ class Explore(Map):
         self,
         df,
         return_: str,
-        column=None,
         color=None,
         attr=None,
         tiles="OpenStreetMap",
