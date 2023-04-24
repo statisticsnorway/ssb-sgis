@@ -1,24 +1,12 @@
 import numbers
-import warnings
 from collections.abc import Iterator, Sized
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryDtype
 from pandas.api.types import is_dict_like, is_list_like
-from shapely import (
-    Geometry,
-    force_2d,
-    get_exterior_ring,
-    get_interior_ring,
-    get_num_interior_rings,
-    get_parts,
-    wkb,
-    wkt,
-)
-from shapely.geometry import LineString, Point
+from shapely import Geometry, wkb, wkt
+from shapely.geometry import Point
 from shapely.ops import unary_union
 
 
@@ -34,23 +22,25 @@ def to_gdf(
     | pd.DataFrame
     | Iterator,
     crs: str | tuple[str] | None = None,
-    geometry: str | None = None,
+    geometry: str | tuple[str] | int | None = None,
     **kwargs,
 ) -> GeoDataFrame:
     """Converts geometry-like objects to a GeoDataFrame.
 
-    Constructs a GeoDataFrame from any geometry-like object, or an interable of such.
-    Accepted types are string (wkt), byte (wkb), coordinate tuples, shapely geometries,
-    GeoSeries, Series/DataFrame. The index/keys will be preserved if the input type is
-    Series, DataFrame or dictionary.
+    Constructs a GeoDataFrame from any geometry-like object (coordinates, wkt, wkb),
+    or any interable of such objects.
+
+    If geom is a DataFrame or dictionary, geometries can be in one column/key or 2-3
+    if coordiantes are in x and x (and z) columns. The column/key "geometry" is used
+    by default if it exists. The index and other columns/keys are preserved.
 
     Args:
-        geom: the object to be converted to a GeoDataFrame
+        geom: the object to be converted to a GeoDataFrame.
         crs: if None (default), it uses the crs of the GeoSeries if GeoSeries
             is the input type. Otherwise, no crs is used.
-        geometry: name of column(s) containing the geometry-like values. Can be
-            ['x', 'y', 'z'] if coordinate columns, or e.g. 'geometry' if one column.
-            The resulting geometry column will always be named 'geometry'.
+        geometry: Name of column(s) or key(s) in geom with geometry-like values.
+            If not specified, the key/column 'geometry' will be used if it
+            exists. If multiple columns, can be given as e.g. "xyz" or ["x", "y"].
         **kwargs: additional keyword arguments taken by the GeoDataFrame constructor.
 
     Returns:
@@ -87,8 +77,8 @@ def to_gdf(
     1  10  60  POINT (10.00000 60.00000)
     3  11  59  POINT (11.00000 59.00000)
 
-    For DataFrame/dict with a geometry-like column, the geometry column can be
-    speficied with the geometry parameter, which is set to "geometry" by default.
+    For DataFrame/dict with a geometry-like column named "geometry". If the column has
+    another name, it must be set with the geometry parameter.
 
     >>> df = pd.DataFrame({"col": [1, 2], "geometry": ["point (10 60)", (11, 59)]})
     >>> df
@@ -101,16 +91,10 @@ def to_gdf(
     0    1  POINT (10.00000 60.00000)
     1    2  POINT (11.00000 59.00000)
 
-    From Series or Series-like dictionary.
+    From Series.
 
-    >>> d = {1: (10, 60), 3: (11, 59)}
-    >>> to_gdf(d)
-                        geometry
-    1  POINT (10.00000 60.00000)
-    3  POINT (11.00000 59.00000)
-
-    >>> from pandas import Series
-    >>> to_gdf(Series(d))
+    >>> series = Series({1: (10, 60), 3: (11, 59)})
+    >>> to_gdf(series)
                         geometry
     1  POINT (10.00000 60.00000)
     3  POINT (11.00000 59.00000)
@@ -144,44 +128,52 @@ def to_gdf(
         raise TypeError("'to_gdf' doesn't accept GeoDataFrames as input type.")
 
     if isinstance(geom, GeoSeries):
-        return _geoseries_to_gdf(geom, crs, **kwargs)
+        geom_col = "geometry" if not geometry else geometry
+        return _geoseries_to_gdf(geom, geom_col, crs, **kwargs)
+
+    geom_col = _find_geometry_column(geom, geometry)
 
     # get done with the iterators that get consumed by 'all' statements
     if isinstance(geom, Iterator) and not isinstance(geom, Sized):
         geom = GeoSeries(_make_one_shapely_geom(g) for g in geom)
-        return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
+        return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
 
     if not is_dict_like(geom):
         geom = GeoSeries(_make_shapely_geoms(geom))
-        return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
+        return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
 
     # now we have dict, Series or DataFrame
 
     geom = geom.copy()
 
-    if geometry:
-        geom["geometry"] = _geoseries_from_geometry_keys(geom, geometry)
-        return GeoDataFrame(geom, geometry="geometry", crs=crs, **kwargs)
+    # preserve Series/DataFrame index, overrides kwargs for now
+    index = geom.index if hasattr(geom, "index") else kwargs.get("index", None)
 
-    if "geometry" in geom.keys():
-        geom["geometry"] = GeoSeries(_make_shapely_geoms(geom["geometry"]))
-        return GeoDataFrame(geom, geometry="geometry", crs=crs, **kwargs)
+    if geom_col in geom.keys():
+        geom[geom_col] = GeoSeries(_make_shapely_geoms(geom[geom_col]), index=index)
+        return GeoDataFrame(geom, geometry=geom_col, crs=crs, **kwargs)
+
+    if geometry and all(g in geom for g in geometry):
+        geom[geom_col] = _geoseries_from_xyz(geom, geometry, index=index)
+        return GeoDataFrame(geom, geometry=geom_col, crs=crs, **kwargs)
 
     if len(geom.keys()) == 1:
+        key = list(geom.keys())[0]
         if isinstance(geom, dict):
             geoseries = GeoSeries(_make_shapely_geoms(list(geom.values())[0]))
         else:
-            geoseries = GeoSeries(_make_shapely_geoms(geom.iloc[:, 0]))
-        return GeoDataFrame(
-            {"geometry": geoseries}, geometry="geometry", crs=crs, **kwargs
-        )
+            geoseries = GeoSeries(_make_shapely_geoms(geom.iloc[:, 0]), index=index)
+        return GeoDataFrame({key: geoseries}, geometry=key, crs=crs, **kwargs)
 
-    geoseries = _series_like_to_geoseries(geom, index=kwargs.get("index", None))
+    if geometry and geom_col not in geom or isinstance(geom, pd.DataFrame):
+        raise ValueError("Cannot find geometry column(s)", geometry)
+
+    geoseries = _series_like_to_geoseries(geom, index=index)
     return GeoDataFrame(geometry=geoseries, crs=crs, **kwargs)
 
 
 def _series_like_to_geoseries(geom, index):
-    if not index:
+    if index is None:
         index = geom.keys()
     if isinstance(geom, dict):
         return GeoSeries(_make_shapely_geoms(list(geom.values())), index=index)
@@ -189,22 +181,35 @@ def _series_like_to_geoseries(geom, index):
         return GeoSeries(_make_shapely_geoms(geom.values), index=index)
 
 
-def _geoseries_to_gdf(geom: GeoSeries, crs, **kwargs) -> GeoDataFrame:
+def _geoseries_to_gdf(geom: GeoSeries, geometry, crs, **kwargs) -> GeoDataFrame:
     if not crs:
         crs = geom.crs
     else:
         geom = geom.to_crs(crs) if geom.crs else geom.set_crs(crs)
 
-    return GeoDataFrame({"geometry": geom}, geometry="geometry", crs=crs, **kwargs)
+    return GeoDataFrame({geometry: geom}, geometry=geometry, crs=crs, **kwargs)
 
 
-def _geoseries_from_geometry_keys(geom, geometry) -> GeoSeries:
-    """Make geoseries from the geometry column or columns (x y (z))."""
+def _find_geometry_column(geom, geometry) -> str:
+    if not geometry:
+        return "geometry"
+
     if not is_list_like(geometry) and geometry in geom:
-        return GeoSeries(_make_shapely_geoms(geom[geometry]))
+        return geometry
 
     if len(geometry) == 1 and geometry[0] in geom:
-        return GeoSeries(_make_shapely_geoms(geom[geometry[0]]))
+        return geometry[0]
+
+    if len(geometry) == 2 or len(geometry) == 3:
+        return "geometry"
+
+    raise ValueError(
+        "geometry should be a geometry column or x, y (z) coordinate columns."
+    )
+
+
+def _geoseries_from_xyz(geom, geometry, index) -> GeoSeries:
+    """Make geoseries from the geometry column or columns (x y (z))."""
 
     if len(geometry) == 2:
         x, y = geometry
@@ -213,13 +218,13 @@ def _geoseries_from_geometry_keys(geom, geometry) -> GeoSeries:
     elif len(geometry) == 3:
         x, y, z = geometry
         z = geom[z]
+
     else:
         raise ValueError(
-            "geometry should be one geometry-like column or 2-3 x, y, z columns. Got",
-            geometry,
+            "geometry should be a geometry column or x, y (z) coordinate columns."
         )
 
-    return gpd.GeoSeries.from_xy(x=geom[x], y=geom[y], z=z)
+    return gpd.GeoSeries.from_xy(x=geom[x], y=geom[y], z=z, index=index)
 
 
 def _is_one_geometry(geom) -> bool:

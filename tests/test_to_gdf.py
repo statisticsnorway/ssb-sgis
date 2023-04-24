@@ -17,9 +17,11 @@ import sgis as sg
 
 
 def test_to_gdf():
-    _dflike_geom_col()
+    _incorrect_geom_col()
 
-    _single_geom_in_dict()
+    _series_like()
+
+    _dflike_geom_col()
 
     _preserves_index()
 
@@ -46,29 +48,32 @@ def test_to_gdf():
     _geoseries()
 
 
+def _series_like():
+    should_equal = gpd.GeoDataFrame(
+        {"geometry": [Point(10, 60), Point(11, 59)]}, geometry="geometry", index=[1, 3]
+    )
+    dict_ = {1: (10, 60), 3: (11, 59)}
+    gdf = sg.to_gdf(dict_, crs=4326)
+    assert gdf.equals(should_equal)
+
+    series = pd.Series([(10, 60), (11, 59)], index=[1, 3])
+    gdf = sg.to_gdf(series, crs=4326)
+    assert gdf.equals(should_equal)
+
+
 def _dflike_single_col():
     single_key = {"geom_col_name": [(10, 60), (11, 59)]}
     print(single_key)
     gdf = sg.to_gdf(single_key)
     print(gdf)
-    print("")
     assert gdf.shape == (2, 1), gdf.shape
     assert gdf.index.to_list() == [0, 1]
     assert not gdf.geometry.isna().any(), gdf
-    assert gdf.columns.to_list() == ["geometry"]
+    assert gdf.columns.to_list() == ["geom_col_name"]
 
     df = pd.DataFrame(single_key)
     print(df)
     gdf2 = sg.to_gdf(df)
-    assert gdf2.equals(gdf)
-
-    index = [1, 3]
-    gdf = sg.to_gdf(single_key, index=index)
-    assert gdf.index.to_list() == index
-    # should give a None
-    assert gdf.geometry.isna().any(), gdf
-
-    gdf2 = sg.to_gdf(df, index=index)
     assert gdf2.equals(gdf)
 
 
@@ -88,50 +93,74 @@ def _dflike_geom_col():
     gdf2 = sg.to_gdf(df, geometry="geometry", crs=4326)
     assert gdf2.equals(gdf), gdf2
 
+    # Invalid df becuse unequal length
     dict_ = {"col": [1, 2, 3], "geometry": [(10, 60), (11, 59)]}
-
     with pytest.raises(ValueError):
         sg.to_gdf(dict_)
 
 
 def _preserves_index():
-    dict_ = {"col": [1, 2], "geometry": [(10, 60), (11, 59)]}
-    index = [1, 3]
-    df = pd.DataFrame(dict_, index=index)
-
-    gdf = sg.to_gdf(dict_, index=index)
-    assert gdf.index.to_list() == index
-
-    gdf = sg.to_gdf(df, index=index)
-    assert gdf.index.to_list() == index
-
-
-def _single_geom_in_dict():
     should_equal = gpd.GeoDataFrame(
-        {"geometry": [Point(263206.1, 6651199.5)]}, geometry="geometry"
+        {"col": [1, 2], "geometry": [Point(10, 60), Point(11, 59)]}, geometry="geometry"
     )
+    assert not should_equal.col.isna().sum(), should_equal
+    assert not should_equal.geometry.isna().sum(), should_equal
 
-    geom = {0: [263206.1, 6651199.5]}
-    gdf = sg.to_gdf(geom)
+    dict_ = {"col": [1, 2], "geometry": [(10, 60), (11, 59)]}
+    gdf = sg.to_gdf(dict_)
     assert gdf.equals(should_equal), gdf
 
-    print("\n\n")
-    geom = {"geometry": [263206.1, 6651199.5]}
-    gdf = sg.to_gdf(geom)
+    df = pd.DataFrame(dict_)
+    gdf = sg.to_gdf(df)
     assert gdf.equals(should_equal), gdf
+
+    index = [1, 3]
+    should_equal.index = index
+    assert list(should_equal.index) == index
+    assert not should_equal.col.isna().sum(), should_equal
+    assert not should_equal.geometry.isna().sum(), should_equal
+
+    # setting index in DataFrame
+    df = pd.DataFrame(dict_, index=index)
+    gdf = sg.to_gdf(df)
+    assert gdf.equals(should_equal), gdf
+
+    # setting index in to_gdf
+    gdf = sg.to_gdf(dict_, index=index)
+    assert gdf.equals(should_equal), gdf
+
+    # setting index in to_gdf when df has different index
+    df = pd.DataFrame(dict_)
+    gdf = sg.to_gdf(df, index=[1, 3])
+    assert gdf.col.isna().sum() == 1, gdf
+    assert gdf.geometry.isna().sum() == 1, gdf
+
+    # the above should be same as calling DataFrame twice with different index
+    df = pd.DataFrame(pd.DataFrame(dict_), index=index)
+    gdf2 = gpd.GeoDataFrame(df)
+    assert gdf2.col.isna().sum() == 1, gdf2
+    assert gdf2.geometry.isna().sum() == 1, gdf2
 
 
 def _incorrect_geom_col():
     dict_ = {"col": [1, 2], "geom": [(10, 60), (11, 59)]}
     gdf = sg.to_gdf(dict_, geometry=["geom"])
+    assert gdf.shape == (2, 2)
 
     df = pd.DataFrame(dict_)
     gdf = sg.to_gdf(df, geometry="geom")
+    assert gdf.shape == (2, 2)
+
+    # this should work with dict and series, but not DataFrame because of wrong geometry column
+    print(sg.to_gdf(dict_))
+    print(sg.to_gdf(pd.Series(dict_)))
 
     with pytest.raises(ValueError):
-        sg.to_gdf(dict_, geometry="geometry")
+        print(sg.to_gdf(df))
     with pytest.raises(ValueError):
-        sg.to_gdf(df, geometry="geometry")
+        print(sg.to_gdf(dict_, geometry="geometry"))
+    with pytest.raises(ValueError):
+        print(sg.to_gdf(df, geometry="geometry"))
 
 
 def _df_mixed_types():
@@ -174,6 +203,7 @@ def _xyz():
     assert not gdf.geometry.isna().sum()
     assert gdf.geometry.has_z.all()
 
+    # should also work with string
     gdf2 = sg.to_gdf(dict_, geometry="xyz")
     print(dict_)
     print(gdf2)
@@ -199,40 +229,33 @@ def _xyz():
     print(gdf)
     print("")
 
+    xs = np.random.rand(100)
+    ys = np.random.rand(100)
+    points_df = pd.DataFrame({"x": xs, "y": ys})
+    points = sg.to_gdf(points_df, geometry=["x", "y"])
+
 
 def _iterators():
-    set_ = {(10, 60), (59, 10), (5, 10)}
+    set_ = {(1, 60), (5, 10), (7, 10)}
     gdf = sg.to_gdf(set_, crs=4326)
     assert not gdf.geometry.isna().sum()
-
-    dict_ = {1: (10, 60), 2: (11, 59)}
-    gdf = sg.to_gdf(dict_, crs=4326)
-    assert list(gdf.index) == [1, 2]
-    assert not gdf.geometry.isna().sum()
-    print(dict_)
-    print(gdf)
-    print("")
+    assert gdf.shape == (3, 1)
 
     geom_array_ = gdf.geometry.values
-    gdf = sg.to_gdf(geom_array_)
-    assert len(gdf) == 2
-    assert not gdf.geometry.isna().sum()
-    assert gdf.index.to_list() == [0, 1]
+    gdf2 = sg.to_gdf(geom_array_)
+    assert gdf2.equals(gdf)
 
     np_array = np.array(gdf.geometry.values)
-    gdf = sg.to_gdf(np_array)
-    assert not gdf.geometry.isna().sum()
-    assert len(gdf) == 2
+    gdf3 = sg.to_gdf(np_array)
+    assert gdf.equals(gdf3)
 
     list_ = [x for x in gdf.geometry.values]
-    gdf = sg.to_gdf(list_)
-    assert not gdf.geometry.isna().sum()
-    assert len(gdf) == 2
+    gdf4 = sg.to_gdf(list_)
+    assert gdf.equals(gdf4)
 
     generator_ = (x for x in gdf.geometry.values)
-    gdf = sg.to_gdf(generator_)
-    assert len(gdf) == 2, gdf
-    assert not gdf.geometry.isna().sum()
+    gdf5 = sg.to_gdf(generator_)
+    assert gdf.equals(gdf5)
 
     n = 10
     generator2_ = ((x, y) for x, y in np.random.randint(10, size=[n, 2]))
@@ -313,6 +336,9 @@ def _geoseries():
     geoseries.index = [1, 2]
     assert sg.to_gdf(geoseries).index.to_list() == [1, 2]
     assert not sg.to_gdf(geoseries).geometry.isna().sum()
+
+    gdf = sg.to_gdf(gdf.geometry, geometry="geom", crs=25833)
+    assert list(gdf.columns) == ["geom"]
 
 
 def _df():
