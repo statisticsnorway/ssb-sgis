@@ -29,7 +29,7 @@ from .geopandas_tools.neighbors import (
     get_neighbor_indices,
     k_nearest_neighbors,
 )
-from .geopandas_tools.overlay import clean_overlay, overlay, overlay_update
+from .geopandas_tools.overlay import clean_overlay, overlay_update
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import close_all_holes, close_small_holes
 from .geopandas_tools.to_geodataframe import to_gdf

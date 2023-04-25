@@ -23,6 +23,10 @@ def test_overlay(points_oslo):
     p1000 = sg.buff(p, 1000)
 
     updated = sg.overlay_update(p500, p1000)
+    updated2 = sg.clean_overlay(p500, p1000, how="update")
+    assert len(updated) == len(updated2)
+    assert round(sum(updated.area), 3) == round(sum(updated2.area), 3)
+
     if __name__ == "__main__":
         updated["area_"] = updated.area
         sg.qtm(updated, "area_")
@@ -62,7 +66,6 @@ def test_overlay(points_oslo):
                     round(sum(overlayed2.area), i),
                 )
 
-            sg.overlay(p500, p1000, how=how, geom_type="polygon")
             sg.clean_overlay(
                 p500.sample(1),
                 p1000.sample(1),
