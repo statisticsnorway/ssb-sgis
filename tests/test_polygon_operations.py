@@ -27,7 +27,7 @@ def test_close_holes():
     assert round(sum(no_holes_closed.area), 3) == round(sum(buff1.area), 3)
 
     buff2 = sg.buffdissexp(p, 200)
-    rings_with_holes = sg.overlay(buff2, buff1, how="difference")
+    rings_with_holes = sg.clean_overlay(buff2, buff1, how="difference")
 
     # run this for different geometry input types
     def _close_the_holes(rings_with_holes):

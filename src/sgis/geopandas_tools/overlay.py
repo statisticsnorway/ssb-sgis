@@ -1,14 +1,11 @@
-"""Overlay function that avoids a nasty GEOSException from geopandas.overlay.
+"""Overlay function that avoids a GEOSException from geopandas.overlay.
 
 This module includes the function 'clean_overlay', which bypasses a
 GEOSException from the regular geopandas.overlay. The function is a generalized
-version of the solution from GH 2792. The module also includes the 'overlay' function,
-which first tries a geopandas.overlay, and if it raises a GEOSException, tries
-'clean_overlay'.
+version of the solution from GH 2792.
 
-Both 'overlay' and 'clean_overlay' also include the overlay type "update",
-which can be specified in the "how" parameter, in addition to the five native geopandas
-how-s.
+'clean_overlay' also includes the overlay type "update", which can be specified in the
+"how" parameter, in addition to the five native geopandas how-s.
 """
 
 import geopandas as gpd
@@ -16,118 +13,10 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from pyproj import CRS
-from shapely import GEOSException, STRtree, difference, intersection, union_all
+from shapely import STRtree, difference, intersection, union_all
 
 from .general import _push_geom_col, clean_geoms
-from .geometry_types import get_geom_type, is_single_geom_type, to_single_geom_type
-
-
-def overlay(
-    df1: GeoDataFrame,
-    df2: GeoDataFrame,
-    how: str = "intersection",
-    keep_geom_type: bool = True,
-    geom_type: str | tuple[str, str] | None = None,
-    **kwargs,
-) -> GeoDataFrame:
-    """Overlay that bypasses a GEOSException raised by geopandas.overlay.
-
-    First fixes geometries and tries a regular geopandas.overlay. If it is
-    unsuccessful, tries a solution from GH 2792. This solution bypasses a
-    GEOSExceptions raised in the regular geopandas.overlay.
-
-    Like in geopandas, the default is to keep only the geometry type of df1. If
-    either 'df1' or 'df2' has mixed geometries, it will raise an
-    Exception if not 'geom_type' is specified. 'geom_type' can be a string or a tuple
-    of two strings for the geometry type of the left and right GeoDataFrame
-    respectfully.
-
-    Args:
-        df1: GeoDataFrame
-        df2: GeoDataFrame
-        how: Method of spatial overlay. Includes the 'update' method, plus the five
-            native geopandas methods 'intersection', 'union', 'identity',
-            'symmetric_difference' and 'difference'.
-        keep_geom_type: If True (default), return only geometries of the same
-            geometry type as df1 has, if False, return all resulting geometries.
-        geom_type: optionally specify what geometry type to keep before the overlay,
-            if there may be mixed geometry types. Either a string with one geom_type
-            or a tuple/list with geom_type for df1 and df2 respectfully.
-        **kwargs: Additional keyword arguments passed to geopandas.overlay
-
-    Returns:
-        GeoDataFrame with overlayed and fixed geometries and columns from both
-        GeoDataFrames.
-
-    Raises:
-        ValueError: If the geometries have mixed geometry types and 'geom_type' is not
-            specified.
-    """
-    # Allowed operations (includes 'update')
-    allowed_hows = [
-        "intersection",
-        "union",
-        "identity",
-        "symmetric_difference",
-        "difference",  # aka erase
-        "update",  # not in geopandas
-    ]
-    # Error Messages
-    if how not in allowed_hows:
-        raise ValueError(
-            f"'how' was {how!r} but is expected to be in {', '.join(allowed_hows)}"
-        )
-
-    if df1.crs != df2.crs:
-        raise ValueError(f"crs mismatch. Got {df1.crs} and {df2.crs}")
-
-    df1 = clean_geoms(df1)
-    df2 = clean_geoms(df2)
-
-    geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
-
-    if geom_type_left:
-        df1 = to_single_geom_type(df1, geom_type=geom_type_left)
-    if geom_type_right:
-        df2 = to_single_geom_type(df2, geom_type=geom_type_right)
-
-    if not is_single_geom_type(df1):
-        raise ValueError(
-            "mixed geometry types in 'df1'. Specify 'geom_type' as "
-            "'polygon', 'line' or 'point'."
-        )
-    if not is_single_geom_type(df2):
-        raise ValueError(
-            "mixed geometry types in 'df2'. Specify 'geom_type' as "
-            "'polygon', 'line' or 'point'."
-        )
-
-    if keep_geom_type and not geom_type_left:
-        geom_type_left = get_geom_type(df1)
-
-    df1 = df1.loc[:, ~df1.columns.str.contains("index|level_")]
-    df2 = df2.loc[:, ~df2.columns.str.contains("index|level_")]
-
-    # determine what function to use
-    if how == "update":
-        overlayfunc = overlay_update
-    else:
-        overlayfunc = gpd.overlay
-        kwargs = kwargs | {"how": how}
-
-    try:
-        overlayed = overlayfunc(df1, df2, **kwargs)
-    except GEOSException as e:
-        if how == "update":
-            raise e
-        overlayed = clean_overlay(df1, df2, how=how)
-
-    overlayed = clean_geoms(overlayed)
-
-    if keep_geom_type:
-        overlayed = to_single_geom_type(overlayed, geom_type_left)
-
-    return overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
+from .geometry_types import get_geom_type, to_single_geom_type
 
 
 def overlay_update(
@@ -168,16 +57,7 @@ def overlay_update(
     if geom_type_right:
         df2 = to_single_geom_type(df2, geom_type_right)
 
-    try:
-        overlayed = df1.overlay(df2, how="difference", **kwargs)
-    except GEOSException:
-        overlayed = clean_overlay(
-            df1,
-            df2,
-            how="difference",
-            keep_geom_type=keep_geom_type,
-            geom_type=geom_type,
-        )
+    overlayed = df1.overlay(df2, how="difference", **kwargs)
     overlayed = overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
     return pd.concat([overlayed, df2], ignore_index=True)
 
@@ -222,6 +102,7 @@ def clean_overlay(
         "identity",
         "symmetric_difference",
         "difference",  # aka erase
+        "update",
     ]
     # Error messages
     if how not in allowed_hows:
@@ -303,6 +184,15 @@ def _shapely_overlay(
 
     if how == "union":
         return _union(pairs, df1, df2, left, right, crs=crs)
+
+    if how == "update":
+        return _update(pairs, df1, df2, left=left, crs=crs)
+
+
+def _update(pairs, df1, df2, left, crs) -> GeoDataFrame:
+    overlayed = _difference(pairs, df1, left, crs=crs)
+    overlayed = overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
+    return pd.concat([overlayed, df2], ignore_index=True)
 
 
 def _intersection(pairs: GeoDataFrame, crs) -> GeoDataFrame:
