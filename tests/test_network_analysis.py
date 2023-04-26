@@ -61,6 +61,12 @@ def not_test_od_cost_matrix(nwa, p):
     assert all(nwa.log["cost_mean"] < 3), nwa.log["cost_mean"]
     assert all(nwa.log["cost_mean"] > 1), nwa.log["cost_mean"]
 
+    od = nwa.od_cost_matrix(p, p, cutoff=1)
+    assert all(od[nwa.rules.weight] <= 1), od[nwa.rules.weight].describe()
+
+    od = nwa.od_cost_matrix(p, p, destination_count=1)
+    assert all(od["origin"].value_counts() == 1), od["origin"].value_counts()
+
 
 def not_test_get_route_frequency(nwa, p):
     frequencies = nwa.get_route_frequencies(p, p)
@@ -180,6 +186,12 @@ def not_test_get_route(nwa, p):
     assert not len(routes), routes
     nwa.rules.search_tolerance = sg.NetworkAnalysisRules.search_tolerance
 
+    routes = nwa.get_route(p, p, cutoff=1)
+    assert all(routes[nwa.rules.weight] <= 1), routes[nwa.rules.weight].describe()
+
+    routes = nwa.get_route(p, p, destination_count=1)
+    assert all(routes["origin"].value_counts() == 1), routes["origin"].value_counts()
+
 
 def not_test_service_area(nwa, p):
     sa = nwa.service_area(p, breaks=5, dissolve=False)
@@ -250,6 +262,12 @@ def not_test_get_k_routes(nwa, p):
     routes = nwa.get_k_routes(p.loc[[349]], p, k=5, drop_middle_percent=50)
     assert not len(routes), routes
     nwa.rules.search_tolerance = sg.NetworkAnalysisRules.search_tolerance
+
+    routes = nwa.get_k_routes(p, p, cutoff=1, k=5, drop_middle_percent=50)
+    assert all(routes[nwa.rules.weight] <= 1), routes[nwa.rules.weight].describe()
+
+    routes = nwa.get_k_routes(p, p, destination_count=1, k=5, drop_middle_percent=50)
+    assert all(routes["origin"].value_counts() == 1), routes["origin"].value_counts()
 
 
 def not_test_direction(roads_oslo):
