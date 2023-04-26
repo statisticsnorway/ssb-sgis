@@ -402,3 +402,11 @@ class ThematicMap(Map):
             self.legend._fontsize = self._size
         if not hasattr(self.legend, "_markersize_has_been_set"):
             self.legend._markersize = self._size
+
+    def __setattr__(self, __name: str, __value) -> None:
+        if "legend_" in __name:
+            last_part = __name.split("legend_")[-1]
+            raise AttributeError(
+                f"Invalid attribute {__name!r}. Did you mean 'legend.{last_part}'?"
+            )
+        return super().__setattr__(__name, __value)
