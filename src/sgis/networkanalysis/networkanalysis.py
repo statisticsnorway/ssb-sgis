@@ -744,8 +744,8 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         *,
         k: int,
-        rowwise=False,
         drop_middle_percent: int,
+        rowwise: bool = False,
         destination_count: int | None = None,
         cutoff: int | float | None = None,
     ) -> GeoDataFrame:
@@ -1315,7 +1315,7 @@ class NetworkAnalysis:
         self.log = pd.concat([self.log, df], ignore_index=True)
 
     def _prepare_network_analysis(
-        self, origins, destinations=None, rowwise=False
+        self, origins, destinations=None, rowwise: bool = False
     ) -> None:
         """Prepares the weight column, node ids, origins, destinations and graph.
 

@@ -111,6 +111,9 @@ class Explore(Map):
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
         self._gdf = pd.concat(gdfs, ignore_index=True)
+
+        self._get_unique_values()
+
         self._explore(**kwargs)
 
     def samplemap(
