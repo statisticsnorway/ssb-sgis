@@ -110,6 +110,9 @@ class Map:
 
         self._nan_idx = self._gdf[self._column].isna()
 
+        self._get_unique_values()
+
+    def _get_unique_values(self):
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
             if self._k > len(self._unique_values):
@@ -403,14 +406,21 @@ class Map:
 
     def _classify_from_bins(self, gdf: GeoDataFrame, bins: np.ndarray) -> np.ndarray:
         """Place the column values into groups."""
+
+        # if equal lenght, convert to integer and check for equality
         if len(bins) == len(self._unique_values):
-            # if equal lenght, convert to integer and check for equality
+            if gdf[self._column].isna().all():
+                return np.repeat(len(bins), len(gdf))
+
             gdf["col_as_int"] = self._array_to_large_int(gdf[self._column])
             bins = self._array_to_large_int(self._unique_values)
             classified = np.searchsorted(bins, gdf["col_as_int"])
         else:
             if len(bins) == self._k + 1:
                 bins = bins[1:]
+
+            if gdf[self._column].isna().all():
+                return np.repeat(len(bins), len(gdf))
 
             classified = np.searchsorted(bins, gdf[self._column])
 

@@ -1,7 +1,7 @@
 # %%
 """Prints outputs to paste into docstrings. Run this in the terminal:
 
-poetry run python docs/output_for_docstrings.py
+poetry run python docs/docstring_outputs.py
 
 """
 
@@ -158,18 +158,26 @@ def networkanalysis_doctring(nwa, points):
     print(origins)
     destinations = points.loc[100:199, ["geometry"]]
     print(destinations)
+
     od = nwa.od_cost_matrix(origins, destinations)
     print(od)
+
     joined = origins.join(od.set_index("origin"))
     print(joined)
+
     less_than_10_min = od.loc[od.minutes < 10]
     joined = origins.join(less_than_10_min.set_index("origin"))
     print(joined)
+
     three_fastest = od.loc[od.groupby("origin")["minutes"].rank() <= 3]
     joined = origins.join(three_fastest.set_index("origin"))
     print(joined)
+
+    origins["minutes_min"] = od.groupby("origin")["minutes"].min()
     origins["minutes_mean"] = od.groupby("origin")["minutes"].mean()
+    origins["n_missing"] = len(origins) - od.groupby("origin")["minutes"].count()
     print(origins)
+
     origins["areacode"] = np.random.choice(["0301", "4601", "3401"], len(origins))
     od = nwa.od_cost_matrix(origins.set_index("areacode"), destinations)
     print(od)
@@ -182,6 +190,7 @@ def networkanalysis_doctring(nwa, points):
     routes = nwa.get_route(points.iloc[[0]], points)
     print(routes)
     print("\n")
+    ss
 
     origins = points.iloc[:25]
     destinations = points.iloc[25:50]
@@ -230,7 +239,7 @@ def networkanalysisrules_docstring():
         .query("connected == 1")
         .pipe(sg.make_directed_network_norway)
     )
-    rules = sg.NetworkAnalysisRules(weight="minutes")
+    rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
     nwa = sg.NetworkAnalysis(network=nw, rules=rules)
     print(nwa)
 
@@ -273,8 +282,7 @@ def networkanalysisrules_docstring():
     print(nwa.log.iloc[-3:][["nodedist_kmh", "cost_mean"]])
 
     rules = sg.NetworkAnalysisRules(
-        weight="meters",
-        search_tolerance=5000,
+        weight="meters", search_tolerance=5000, directed=True
     )
     nwa = sg.NetworkAnalysis(network=nw, rules=rules)
     od = nwa.od_cost_matrix(points, points)
@@ -533,13 +541,14 @@ def make_docstring_output():
         .query("connected == 1")
         .pipe(sg.make_directed_network_norway)
     )
-    rules = sg.NetworkAnalysisRules(weight="minutes")
+    rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
 
     from sgis import NetworkAnalysis
 
     directed_isolated_dropped = NetworkAnalysis(network=nw, rules=rules)
 
     networkanalysis_doctring(directed_isolated_dropped, points)
+    sss
 
     networkanalysisrules_docstring()
 

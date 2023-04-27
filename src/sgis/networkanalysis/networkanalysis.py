@@ -142,6 +142,8 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         *,
         rowwise: bool = False,
+        destination_count: int | None = None,
+        cutoff: int | float | None = None,
         lines: bool = False,
     ) -> DataFrame | GeoDataFrame:
         """Fast calculation of many-to-many travel costs.
@@ -156,6 +158,13 @@ class NetworkAnalysis:
             rowwise: if False (default), it will calculate the cost from each
                 origins to each destination. If true, it will calculate the cost from
                 origin 1 to destination 1, origin 2 to destination 2 and so on.
+            destination_count: number of closest destinations to keep for each origin.
+                If None (default), all trips will be included. The number of
+                destinations might be higher than the destination_count if trips have
+                equal cost.
+            cutoff: the maximum cost (weight) for the trips. Defaults to None,
+                meaning all rows will be included. NaNs will also be removed if cutoff
+                is specified.
             lines: if True, returns a geometry column with straight lines between
                 origin and destination. Defaults to False.
 
@@ -194,6 +203,7 @@ class NetworkAnalysis:
         99  POINT (265622.800 6644644.200)
         <BLANKLINE>
         [100 rows x 1 columns]
+
         >>> destinations = points.loc[100:199, ["geometry"]]
         >>> destinations
                                    geometry
@@ -230,10 +240,30 @@ class NetworkAnalysis:
         <BLANKLINE>
         [10000 rows x 3 columns]
 
-        Join the results onto the 'origins' GeoDataFrame via the index.
+        Assign aggregated values onto the origins (or destinations).
 
-        >>> od = od.set_index("origin")
-        >>> joined = origins.join(od)
+        >>> origins["minutes_min"] = od.groupby("origin")["minutes"].min()
+        >>> origins["minutes_mean"] = od.groupby("origin")["minutes"].mean()
+        >>> origins["n_missing"] = len(origins) - od.groupby("origin")["minutes"].count()
+        >>> origins
+                                  geometry  minutes_min  minutes_mean  n_missing
+        0   POINT (263122.700 6651184.900)     0.966702     11.628637          0
+        1   POINT (272456.100 6653369.500)     2.754545     16.084722          0
+        2   POINT (270082.300 6653032.700)     1.768334     15.304246          0
+        3   POINT (259804.800 6650339.700)     2.776873     14.044023          0
+        4   POINT (272876.200 6652889.100)     0.541074     17.565747          0
+        ..                             ...          ...           ...        ...
+        95  POINT (270348.000 6651899.400)     1.529400     15.427027          0
+        96  POINT (264845.600 6649005.800)     1.336207     11.239592          0
+        97  POINT (263162.000 6650732.200)     1.010721     11.904372          0
+        98  POINT (272322.700 6653729.100)     3.175472     17.579399          0
+        99  POINT (265622.800 6644644.200)     1.116209     12.185800          0
+        <BLANKLINE>
+        [100 rows x 4 columns]
+
+        Join the results onto the 'origins' via the index.
+
+        >>> joined = origins.join(od.set_index("origin"))
         >>> joined
                                   geometry  destination    minutes
         0   POINT (263122.700 6651184.900)          100   8.765621
@@ -250,10 +280,11 @@ class NetworkAnalysis:
         <BLANKLINE>
         [10000 rows x 3 columns]
 
-        Get travel times below 10 minutes.
+        Keep only travel times of 10 minutes or less. This is the same as using the
+        cutoff parameter.
 
-        >>> less_than_10_min = od.loc[od.minutes < 10]
-        >>> joined = origins.join(less_than_10_min)
+        >>> ten_min_or_less = od.loc[od.minutes <= 10]
+        >>> joined = origins.join(ten_min_or_less.set_index("origin"))
         >>> joined
                                   geometry  destination   minutes
         0   POINT (263122.700 6651184.900)        100.0  8.765621
@@ -270,10 +301,11 @@ class NetworkAnalysis:
         <BLANKLINE>
         [2195 rows x 3 columns]
 
-        Get the three fastest routes from each origin.
+        Keep the three fastest times from each origin. This is the same as using the
+        destination_count parameter.
 
         >>> three_fastest = od.loc[od.groupby("origin")["minutes"].rank() <= 3]
-        >>> joined = origins.join(three_fastest)
+        >>> joined = origins.join(three_fastest.set_index("origin"))
         >>> joined
                                   geometry  destination   minutes
         0   POINT (263122.700 6651184.900)        135.0  0.966702
@@ -290,28 +322,9 @@ class NetworkAnalysis:
         <BLANKLINE>
         [294 rows x 3 columns]
 
-        Assign aggregated values directly onto the origins.
-
-        >>> origins["minutes_mean"] = od.groupby("origin")["minutes"].mean()
-        >>> origins
-                                  geometry  minutes_mean
-        0   POINT (263122.700 6651184.900)     11.628637
-        1   POINT (272456.100 6653369.500)     16.084722
-        2   POINT (270082.300 6653032.700)     15.304246
-        3   POINT (259804.800 6650339.700)     14.044023
-        4   POINT (272876.200 6652889.100)     17.565747
-        ..                             ...           ...
-        95  POINT (270348.000 6651899.400)     15.427027
-        96  POINT (264845.600 6649005.800)     11.239592
-        97  POINT (263162.000 6650732.200)     11.904372
-        98  POINT (272322.700 6653729.100)     17.579399
-        99  POINT (265622.800 6644644.200)     12.185800
-        <BLANKLINE>
-        [100 rows x 2 columns]
-
         Use set_index to use column as identifier insted of the index.
 
-        >>> origins["areacode"] = np.random.choice(["0301", "4601", "3401"], len(origins))
+        >>> origins["areacode"] = np.random.choice(["0301", "3401"], len(origins))
         >>> od = nwa.od_cost_matrix(
         ...    origins.set_index("areacode"),
         ...    destinations
@@ -368,6 +381,14 @@ class NetworkAnalysis:
             lines=lines,
             rowwise=rowwise,
         )
+
+        if cutoff is not None:
+            results = results.loc[results[self.rules.weight] <= cutoff]
+
+        if destination_count:
+            results = results.loc[
+                results.groupby("origin")[self.rules.weight].rank() <= destination_count
+            ]
 
         results["origin"] = results["origin"].map(self.origins.idx_dict)
         results["destination"] = results["destination"].map(self.destinations.idx_dict)
@@ -430,9 +451,8 @@ class NetworkAnalysis:
             The resulting lines will keep all columns of the 'gdf' of the Network.
 
         Raises:
-            ValueError: If no paths were found.
             ValueError: If weight_df is not a DataFrame with one or three columns
-                that contain all indices of 'origins' and 'destinations'.
+                that contain weights and all indices of 'origins' and 'destinations'.
 
         Examples
         --------
@@ -616,6 +636,8 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         *,
         rowwise: bool = False,
+        destination_count: int | None = None,
+        cutoff: int | float | None = None,
     ) -> GeoDataFrame:
         """Returns the geometry of the low-cost route between origins and destinations.
 
@@ -629,14 +651,18 @@ class NetworkAnalysis:
             rowwise: if False (default), it will calculate the cost from each
                 origins to each destination. If true, it will calculate the cost from
                 origin 1 to destination 1, origin 2 to destination 2 and so on.
+            destination_count: number of closest destinations to keep for each origin.
+                If None (default), all trips will be included. The number of
+                destinations might be higher than the destination_count if trips have
+                equal cost.
+            cutoff: the maximum cost (weight) for the trips. Defaults to None,
+                meaning all rows will be included. NaNs will also be removed if cutoff
+                is specified.
 
         Returns:
             A DataFrame with the geometry of the routes between origin and destination.
             Also returns a weight column and the columns 'origin' and 'destination',
             containing the indices of the origins and destinations GeoDataFrames.
-
-        Raises:
-            ValueError: if no paths were found.
 
         Examples
         --------
@@ -687,6 +713,14 @@ class NetworkAnalysis:
             od_pairs=od_pairs,
         )
 
+        if cutoff is not None:
+            results = results.loc[results[self.rules.weight] <= cutoff]
+
+        if destination_count:
+            results = results.loc[
+                results.groupby("origin")[self.rules.weight].rank() <= destination_count
+            ]
+
         results["origin"] = results["origin"].map(self.origins.idx_dict)
         results["destination"] = results["destination"].map(self.destinations.idx_dict)
 
@@ -711,7 +745,9 @@ class NetworkAnalysis:
         *,
         k: int,
         drop_middle_percent: int,
-        rowwise=False,
+        rowwise: bool = False,
+        destination_count: int | None = None,
+        cutoff: int | float | None = None,
     ) -> GeoDataFrame:
         r"""Returns the geometry of 1 or more routes between origins and destinations.
 
@@ -732,6 +768,13 @@ class NetworkAnalysis:
             rowwise: if False (default), it will calculate the cost from each
                 origins to each destination. If true, it will calculate the cost from
                 origin 1 to destination 1, origin 2 to destination 2 and so on.
+            destination_count: number of closest destinations to keep for each origin.
+                If None (default), all trips will be included. The number of
+                destinations might be higher than the destination_count if trips have
+                equal cost.
+            cutoff: the maximum cost (weight) for the trips. Defaults to None,
+                meaning all rows will be included. NaNs will also be removed if cutoff
+                is specified.
 
         Returns:
             A DataFrame with the geometry of the k routes between origin and
@@ -747,7 +790,6 @@ class NetworkAnalysis:
             depending on the layout of the network.
 
         Raises:
-            ValueError: if no paths were found.
             ValueError: if drop_middle_percent is not between 0 and 100.
 
         Examples
@@ -835,6 +877,14 @@ class NetworkAnalysis:
             k=k,
             drop_middle_percent=drop_middle_percent,
         )
+
+        if cutoff is not None:
+            results = results.loc[results[self.rules.weight] <= cutoff]
+
+        if destination_count:
+            results = results.loc[
+                results.groupby("origin")[self.rules.weight].rank() <= destination_count
+            ]
 
         results["origin"] = results["origin"].map(self.origins.idx_dict)
         results["destination"] = results["destination"].map(self.destinations.idx_dict)
@@ -1188,7 +1238,7 @@ class NetworkAnalysis:
         no_identical_geoms = od_pairs[geoms_ori != geoms_des]
 
         if not len(no_identical_geoms) and len(origins) and len(destinations):
-            raise ValueError("All origin-destination pairs have identical geometries")
+            raise ValueError("All origin-destination pairs have identical geometries.")
 
         return no_identical_geoms
 
@@ -1265,7 +1315,7 @@ class NetworkAnalysis:
         self.log = pd.concat([self.log, df], ignore_index=True)
 
     def _prepare_network_analysis(
-        self, origins, destinations=None, rowwise=False
+        self, origins, destinations=None, rowwise: bool = False
     ) -> None:
         """Prepares the weight column, node ids, origins, destinations and graph.
 
@@ -1531,7 +1581,7 @@ class NetworkAnalysis:
             return [breaks]
 
         raise ValueError(
-            "'breaks' should not integer, float, string or an iterable of "
+            "'breaks' should be integer, float, string or an iterable of "
             f" one of these. Got {type(breaks)!r}"
         )
 

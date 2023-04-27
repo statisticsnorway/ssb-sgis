@@ -76,6 +76,9 @@ nwa
 # %% [markdown]
 # Fast many-to-many travel times/distances.
 # %%
+points = sg.read_parquet_url(
+    "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
+)
 od = nwa.od_cost_matrix(points, points)
 
 print(od)

@@ -6,6 +6,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pytest
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -29,6 +30,19 @@ def test_thematicmap(points_oslo):
     points = points.clip(points.iloc[[0]].buffer(500))
 
     points.geometry = points.buffer(np.arange(1, len(points) + 1) * 10)
+
+    def incorrect_attributes(points):
+        m = sg.ThematicMap(points, points, points, "meters")
+
+        with pytest.raises(AttributeError):
+            m.legend_title = "this should not work"
+
+        with pytest.raises(AttributeError):
+            m.legend_title_fontsize = "this should not work"
+
+        m.legend.title_fontsize = "this should work"
+
+    incorrect_attributes(points)
 
     def pretty_labels(points):
         m = sg.ThematicMap(points, points, points, "meters")
