@@ -271,6 +271,12 @@ def _make_one_shapely_geom(geom):
     if not any(isinstance(g, numbers.Number) for g in geom):
         # we're likely dealing with a nested iterable, so let's
         # recursively dig down to the coords/wkt/wkb
+        if len(geom) == 2 or len(geom) == 3:
+            try:
+                geom = [float(g) for g in geom]
+                return Point(geom)
+            except Exception:
+                pass
         return unary_union([_make_one_shapely_geom(g) for g in geom])
 
     elif len(geom) == 2 or len(geom) == 3:
