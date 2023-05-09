@@ -62,13 +62,13 @@ def buffdissexp(
     """
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
-    geom_col = gdf._geometry_column_name
-
-    buffered = buff(gdf, distance, resolution=resolution, copy=copy)
-
-    dissolved = buffered.dissolve(**dissolve_kwargs)
-
-    dissolved[geom_col] = dissolved.make_valid()
+    dissolved = buffdiss(
+        gdf,
+        distance,
+        resolution=resolution,
+        copy=copy,
+        **dissolve_kwargs,
+    )
 
     return dissolved.explode(index_parts=index_parts, ignore_index=ignore_index)
 
@@ -181,49 +181,6 @@ def dissexp(
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
     dissolved = gdf.dissolve(**dissolve_kwargs)
-
-    dissolved[geom_col] = dissolved.make_valid()
-
-    return dissolved.explode(index_parts=index_parts, ignore_index=ignore_index)
-
-
-def buffdissexp(
-    gdf: GeoDataFrame,
-    distance: int | float,
-    *,
-    resolution: int = 50,
-    index_parts: bool = False,
-    copy: bool = True,
-    **dissolve_kwargs,
-) -> GeoDataFrame:
-    """Buffers and dissolves overlapping geometries.
-
-    It takes a GeoDataFrame and buffer, fixes, dissolves, fixes and explodes geometries.
-    If the 'by' parameter is not specified, the index will labeled 0, 1, …, n - 1,
-    instead of 0, 0, …, 0. If 'by' is speficied, this will be the index.
-
-    Args:
-        gdf: the GeoDataFrame that will be buffered, dissolved and exploded.
-        distance: the distance (meters, degrees, depending on the crs) to buffer
-            the geometry by
-        resolution: The number of segments used to approximate a quarter circle.
-            Here defaults to 50, as opposed to the default 16 in geopandas.
-        index_parts: If False (default), the index after dissolve is respected. If
-            True, an integer index level is added during explode.
-        copy: Whether to copy the GeoDataFrame before buffering.
-        **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
-
-    Returns:
-        A buffered GeoDataFrame where overlapping geometries are dissolved.
-
-    """
-    dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
-
-    geom_col = gdf._geometry_column_name
-
-    buffered = buff(gdf, distance, resolution=resolution, copy=copy)
-
-    dissolved = buffered.dissolve(**dissolve_kwargs)
 
     dissolved[geom_col] = dissolved.make_valid()
 
