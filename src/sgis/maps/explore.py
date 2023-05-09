@@ -155,6 +155,7 @@ class Explore(Map):
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
         self._gdf = pd.concat(gdfs, ignore_index=True)
+        self._get_unique_values()
         self._explore(**kwargs)
 
     def clipmap(
@@ -221,7 +222,7 @@ class Explore(Map):
 
     def _update_column(self):
         self._is_categorical = self._check_if_categorical()
-        self._fill_missings()
+        self._fillna_if_col_is_missing()
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
     def _create_categorical_map(self):
