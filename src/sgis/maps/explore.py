@@ -17,8 +17,8 @@ from shapely.geometry import LineString
 from ..geopandas_tools.general import clean_geoms, random_points_in_polygons
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.to_geodataframe import to_gdf
-from .map import Map
 from .httpserver import run_html_server
+from .map import Map
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -66,13 +66,19 @@ class Explore(Map):
         column: str | None = None,
         popup: bool = True,
         max_zoom: int = 30,
-        show_in_browser: bool = False,
+        browser: bool = False,
         **kwargs,
     ):
+        self.browser = browser
+        if not self.browser and "show_in_browser" in kwargs:
+            self.browser = kwargs.pop("show_in_browser")
+        if not self.browser and "in_browser" in kwargs:
+            self.browser = kwargs.pop("in_browser")
+
         super().__init__(*gdfs, column=column, **kwargs)
+
         self.popup = popup
         self.max_zoom = max_zoom
-        self.show_in_browser = show_in_browser
 
         self._to_single_geom_type()
 
@@ -190,7 +196,7 @@ class Explore(Map):
         else:
             self._create_continous_map()
 
-        if self.show_in_browser:
+        if self.browser:
             run_html_server(self.map._repr_html_())
         else:
             display(self.map)

@@ -18,14 +18,14 @@ from .map import Map
 from .thematicmap import ThematicMap
 
 
-def _check_if_jupyter_is_needed(explore, show_in_browser):
-    if explore and not show_in_browser:
+def _check_if_jupyter_is_needed(explore, browser):
+    if explore and not browser:
         try:
             display
         except NameError as e:
             raise NotInJupyterError(
                 "Cannot display interactive map. Try setting "
-                "'show_in_browser' to True, or 'explore' to False."
+                "'browser' to True, or 'explore' to False."
             ) from e
 
 
@@ -56,7 +56,7 @@ def explore(
     column: str | None = None,
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
-    show_in_browser: bool = False,
+    browser: bool = False,
     center: tuple[float, float] | None = None,
     size: int | None = None,
     **kwargs,
@@ -83,7 +83,7 @@ def explore(
             length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
-        show_in_browser: If False (default), the maps will be shown in Jupyter.
+        browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
         center: Optional coordinate pair (x, y) to use as centerpoint for the map.
             The geometries will then be clipped by a buffered circle around this point.
@@ -123,7 +123,7 @@ def explore(
             column=column,
             mask=mask,
             labels=labels,
-            show_in_browser=show_in_browser,
+            browser=browser,
             max_zoom=max_zoom,
             **kwargs,
         )
@@ -132,7 +132,7 @@ def explore(
         *gdfs,
         column=column,
         labels=labels,
-        show_in_browser=show_in_browser,
+        browser=browser,
         max_zoom=max_zoom,
         **kwargs,
     )
@@ -148,7 +148,7 @@ def samplemap(
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
     explore: bool = True,
-    show_in_browser: bool = False,
+    browser: bool = False,
     **kwargs,
 ) -> None:
     """Shows an interactive map of a random area of GeoDataFrames.
@@ -179,7 +179,7 @@ def samplemap(
             allowed. Defaults to 30, which is higher than the geopandas default.
         explore: If True (default), an interactive map will be displayed. If False,
             or not in Jupyter, a static plot will be shown.
-        show_in_browser: If False (default), the maps will be shown in Jupyter.
+        browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
@@ -205,7 +205,7 @@ def samplemap(
     >>> samplemap(roads, points, size=5_000, column="meters")
 
     """
-    _check_if_jupyter_is_needed(explore, show_in_browser)
+    _check_if_jupyter_is_needed(explore, browser)
 
     if not size and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
@@ -221,23 +221,13 @@ def samplemap(
             labels=labels,
             **kwargs,
         )
-        """gdfs, column = clipmap(
-            *gdfs,
-            column=column,
-            mask=mask,
-            labels=labels,
-            show_in_browser=show_in_browser,
-            max_zoom=max_zoom,
-            _sample=True,
-            **kwargs,
-        )"""
 
     if explore:
         m = Explore(
             *gdfs,
             column=column,
             labels=labels,
-            show_in_browser=show_in_browser,
+            browser=browser,
             max_zoom=max_zoom,
             **kwargs,
         )
@@ -313,7 +303,7 @@ def clipmap(
     labels: tuple[str] | None = None,
     explore: bool = True,
     max_zoom: int = 30,
-    show_in_browser: bool = False,
+    browser: bool = False,
     **kwargs,
 ) -> None:
     """Shows an interactive map of a of GeoDataFrames clipped to the mask extent.
@@ -339,7 +329,7 @@ def clipmap(
             allowed. Defaults to 30, which is higher than the geopandas default.
         explore: If True (default), an interactive map will be displayed. If False,
             or not in Jupyter, a static plot will be shown.
-        show_in_browser: If False (default), the maps will be shown in Jupyter.
+        browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
@@ -351,7 +341,7 @@ def clipmap(
     samplemap: same functionality, but shows only a random area of a given size.
     """
 
-    _check_if_jupyter_is_needed(explore, show_in_browser)
+    _check_if_jupyter_is_needed(explore, browser)
 
     gdfs, column = Explore._separate_args(gdfs, column)
 
@@ -362,38 +352,6 @@ def clipmap(
         **kwargs,
     )
 
-    """gdfs, column = Explore._separate_args(gdfs, column)
-
-    if mask is None:
-        mask, kwargs = _get_mask(kwargs, crs=gdfs[0].crs)
-        if mask is None and len(gdfs) > 1:
-            *gdfs, mask = gdfs
-        elif mask is None:
-            raise ValueError("Must speficy mask.")
-
-    # storing object names in dict here, since the names disappear after clip
-    if not labels:
-        namedict = make_namedict(gdfs)
-        kwargs["namedict"] = namedict
-
-    clipped: tuple[GeoDataFrame] = ()
-
-    if mask is not None:
-        for gdf in gdfs:
-            clipped_ = clean_clip(gdf, mask)
-            clipped = clipped + (clipped_,)
-
-    else:
-        for gdf in gdfs[:-1]:
-            clipped_ = clean_clip(gdf, gdfs[-1])
-            clipped = clipped + (clipped_,)
-
-    if not any(len(gdf) for gdf in clipped):
-        raise ValueError("None of the GeoDataFrames are within the mask extent.")
-
-    if "_sample" in kwargs:
-        return clipped, column"""
-
     center = kwargs.pop("center", None)
     size = kwargs.pop("size", None)
 
@@ -402,7 +360,7 @@ def clipmap(
             *clipped,
             column=column,
             labels=labels,
-            show_in_browser=show_in_browser,
+            browser=browser,
             max_zoom=max_zoom,
             **kwargs,
         )
