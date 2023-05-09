@@ -4,7 +4,7 @@ from collections.abc import Iterator, Sized
 import geopandas as gpd
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from pandas.api.types import is_dict_like, is_list_like
+from pandas.api.types import is_array_like, is_dict_like, is_list_like
 from shapely import Geometry, wkb, wkt
 from shapely.geometry import Point
 from shapely.ops import unary_union
@@ -132,14 +132,19 @@ def to_gdf(
         return _geoseries_to_gdf(geom, geom_col, crs, **kwargs)
 
     geom_col = _find_geometry_column(geom, geometry)
+    index = kwargs.get("index", None)
+
+    if is_array_like(geom_col):
+        geometry = GeoSeries((_make_one_shapely_geom(g) for g in geometry), index=index)
+        return GeoDataFrame(geom, geometry=geometry, crs=crs, **kwargs)
 
     # get done with the iterators that get consumed by 'all' statements
     if isinstance(geom, Iterator) and not isinstance(geom, Sized):
-        geom = GeoSeries(_make_one_shapely_geom(g) for g in geom)
+        geom = GeoSeries((_make_one_shapely_geom(g) for g in geom), index=index)
         return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
 
     if not is_dict_like(geom):
-        geom = GeoSeries(_make_shapely_geoms(geom))
+        geom = GeoSeries(_make_shapely_geoms(geom), index=index)
         return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
 
     # now we have dict, Series or DataFrame
@@ -160,7 +165,9 @@ def to_gdf(
     if len(geom.keys()) == 1:
         key = list(geom.keys())[0]
         if isinstance(geom, dict):
-            geoseries = GeoSeries(_make_shapely_geoms(list(geom.values())[0]))
+            geoseries = GeoSeries(
+                _make_shapely_geoms(list(geom.values())[0]), index=index
+            )
         else:
             geoseries = GeoSeries(_make_shapely_geoms(geom.iloc[:, 0]), index=index)
         return GeoDataFrame({key: geoseries}, geometry=key, crs=crs, **kwargs)
@@ -191,7 +198,7 @@ def _geoseries_to_gdf(geom: GeoSeries, geometry, crs, **kwargs) -> GeoDataFrame:
 
 
 def _find_geometry_column(geom, geometry) -> str:
-    if not geometry:
+    if geometry is None:
         return "geometry"
 
     if not is_list_like(geometry) and geometry in geom:
@@ -202,6 +209,9 @@ def _find_geometry_column(geom, geometry) -> str:
 
     if len(geometry) == 2 or len(geometry) == 3:
         return "geometry"
+
+    if is_array_like(geometry) and len(geometry) == len(geom):
+        return geometry
 
     raise ValueError(
         "geometry should be a geometry column or x, y (z) coordinate columns."
@@ -271,6 +281,12 @@ def _make_one_shapely_geom(geom):
     if not any(isinstance(g, numbers.Number) for g in geom):
         # we're likely dealing with a nested iterable, so let's
         # recursively dig down to the coords/wkt/wkb
+        if len(geom) == 2 or len(geom) == 3:
+            try:
+                geom = [float(g) for g in geom]
+                return Point(geom)
+            except Exception:
+                pass
         return unary_union([_make_one_shapely_geom(g) for g in geom])
 
     elif len(geom) == 2 or len(geom) == 3:
@@ -279,5 +295,6 @@ def _make_one_shapely_geom(geom):
     else:
         raise ValueError(
             "If 'geom' is an iterable, each item should consist of "
-            "wkt, wkb or 2/3 coordinates (x, y, z)."
+            "wkt, wkb or 2/3 coordinates (x, y, z). Got ",
+            geom,
         )

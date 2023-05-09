@@ -26,7 +26,16 @@ def not_test_center(r300, r200, r100, p):
             100
         ),
     ]:
-        sg.explore(r300, r200, r100, "length", cmap="plasma", center=center, size=100)
+        sg.explore(
+            r300,
+            r200,
+            r100,
+            "length",
+            cmap="plasma",
+            center=center,
+            size=100,
+            show_in_browser=False,
+        )
         sg.clipmap(
             r300,
             r200,
@@ -34,6 +43,7 @@ def not_test_center(r300, r200, r100, p):
             "meters",
             mask=p.buffer(100),
             center=(263206.184457095, 6651199.528012605),
+            show_in_browser=False,
         )
 
 
@@ -56,6 +66,15 @@ def not_test_explore(points_oslo, roads_oslo):
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
 
+    print("One test of show in broser.")
+    sg.clipmap(r300, "meters", r100, show_in_browser=True)
+
+    sg.clipmap(r300, "meters", r100, show_in_browser=False)
+    sg.clipmap(r300, r200, "meters", show_in_browser=False)
+    sg.clipmap(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
+    sg.explore(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
+    sg.samplemap(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
+
     not_test_center(r300, r200, r100, p)
 
     print(
@@ -63,13 +82,13 @@ def not_test_explore(points_oslo, roads_oslo):
         " that can be toggled on/off:"
     )
     r300["category"] = np.random.choice([*"abc"], len(r300))
-    sg.explore(r300, "category")
+    sg.explore(r300, "category", show_in_browser=False)
 
     print("when multiple gdfs and no column, should be one color per gdf:")
-    sg.explore(r300, r200, r100)
+    sg.explore(r300, r200, r100, show_in_browser=False)
     print("when numeric column, should be same color scheme:")
-    sg.explore(r300, r200, r100, "meters", scheme="quantiles")
-    sg.explore(*(r300, r200, r100), "meters", scheme="quantiles")
+    sg.explore(r300, r200, r100, "meters", scheme="quantiles", show_in_browser=False)
+    sg.explore(*(r300, r200, r100), "meters", scheme="quantiles", show_in_browser=False)
 
     for explore in [0, 1]:
         sg.samplemap(
@@ -81,9 +100,10 @@ def not_test_explore(points_oslo, roads_oslo):
             cmap="plasma",
             explore=explore,
             size=100,
+            show_in_browser=False,
         )
 
-    sg.clipmap(r300, r200, r100, "meters", mask=p.buffer(100), explore=True)
+    sg.clipmap(r300, r200, r100, "meters", mask=p.buffer(100), show_in_browser=False)
     for explore in [1, 0]:
         sg.clipmap(
             r300,
@@ -93,10 +113,17 @@ def not_test_explore(points_oslo, roads_oslo):
             cmap="inferno",
             mask=p.buffer(100),
             explore=explore,
+            show_in_browser=False,
         )
 
     for sample_from_first in [1, 0]:
-        sg.samplemap(r300, roads_oslo, sample_from_first=sample_from_first, size=50)
+        sg.samplemap(
+            r300,
+            roads_oslo,
+            sample_from_first=sample_from_first,
+            size=50,
+            show_in_browser=False,
+        )
     monopoly = sg.to_gdf(r300.unary_union.convex_hull, crs=r300.crs)
 
     for _ in range(5):
@@ -105,15 +132,22 @@ def not_test_explore(points_oslo, roads_oslo):
             r300,
             roads_oslo,
             size=30,
+            show_in_browser=False,
         )
 
-    sg.clipmap(r300, r200, r100, "meters", mask=p.buffer(100))
+    sg.clipmap(r300, r200, r100, "meters", mask=p.buffer(100), show_in_browser=False)
 
     sg.samplemap(
-        r300, r200, r100, "meters", labels=("r30000", "r20000", "r10000"), cmap="plasma"
+        r300,
+        r200,
+        r100,
+        "meters",
+        labels=("r30000", "r20000", "r10000"),
+        cmap="plasma",
+        show_in_browser=False,
     )
 
-    sg.explore(roads, points, "meters")
+    sg.explore(roads, points, "meters", show_in_browser=False)
 
     roads_mcat = roads.assign(
         meters_cat=lambda x: (x.length / 50).astype(int).astype(str)
@@ -122,18 +156,18 @@ def not_test_explore(points_oslo, roads_oslo):
         meters_cat=lambda x: (x.length / 50).astype(int).astype(str)
     )
 
-    sg.explore(roads_mcat, points_mcat, "meters_cat")
+    sg.explore(roads_mcat, points_mcat, "meters_cat", show_in_browser=False)
     sg.qtm(roads_mcat, points_mcat, "meters_cat")
 
     print("creating a geometry collection")
     r100 = pd.concat([r100, lines], ignore_index=True).dissolve()
-    sg.explore(r300, r200, r100, "meters")
+    sg.explore(r300, r200, r100, "meters", show_in_browser=False)
 
     print("only one unique value per gdf")
     r300["col"] = 30323.32032
     r200["col"] = 232323.32032
     r100["col"] = 12243433.3223
-    sg.explore(r300, r200, r100, "col")
+    sg.explore(r300, r200, r100, "col", show_in_browser=False)
 
 
 def main():

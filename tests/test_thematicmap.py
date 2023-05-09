@@ -21,7 +21,7 @@ import sgis as sg
 
 # set to True to not actually create the plots
 # because pytest breaks with all these plots on github
-__test = True
+__test = 1
 
 
 def test_thematicmap(points_oslo):
@@ -70,7 +70,7 @@ def test_thematicmap(points_oslo):
             "315  - 440 ",
         ], m.legend._categories
 
-        # custom column with the exact bin values
+        # column with the exact bin values
         points["col"] = [63, 100, 150, 200, 250, 300, 440]
 
         m = sg.ThematicMap(points, points, points, "col")
@@ -92,6 +92,7 @@ def test_thematicmap(points_oslo):
         m.legend.title = "not pretty_labels, bins"
         m.legend.pretty_labels = False
         m.plot(__test=__test)
+        print(m.bins)
         assert m.legend._categories == [
             "63  - 100 ",
             "150  - 200 ",
@@ -126,7 +127,7 @@ def test_thematicmap(points_oslo):
             "301  - 440 ",
         ], m.legend._categories
 
-    pretty_labels(points)
+    # pretty_labels(points)
 
     def thousand_sep_decimal_mark(points):
         m = sg.ThematicMap(points, column="meters")

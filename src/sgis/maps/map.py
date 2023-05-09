@@ -90,7 +90,7 @@ class Map:
         if not self.labels:
             self._get_labels(gdfs)
 
-        self._gdfs: list[GeoDataFrame] = [gdf.copy() for gdf in gdfs]
+        self._gdfs: list[GeoDataFrame] = [gdf.reset_index(drop=True) for gdf in gdfs]
         self.kwargs = kwargs
 
         if not self.labels:
@@ -141,12 +141,17 @@ class Map:
 
         return np.sort(np.array(unique.loc[no_duplicates.index]))
 
-    def _array_to_large_int(self, array: np.ndarray):
+    def _array_to_large_int(self, array):
         """Multiply values in float array, then convert to integer."""
+        if not isinstance(array, pd.Series):
+            array = pd.Series(array)
 
-        unique_multiplied = array * self._multiplier
+        notna = array[array.notna()]
+        isna = array[array.isna()]
 
-        return unique_multiplied.astype(np.int64)
+        unique_multiplied = (notna * self._multiplier).astype(np.int64)
+
+        return pd.concat([unique_multiplied, isna]).sort_index()
 
     def _get_multiplier(self, array: np.ndarray):
         """Find the number of zeros needed to push the max value of the array above
@@ -154,6 +159,10 @@ class Map:
 
         Adding this as an attribute to use later in _classify_from_bins.
         """
+        if np.max(array) == 0:
+            self._multiplier: int = 1
+            return
+
         multiplier = 10
         max_ = np.max(array * multiplier)
 
@@ -224,8 +233,8 @@ class Map:
                 self._k = len(self.bins)
         else:
             self.bins = self._add_minmax_to_bins(self.bins)
-            if len(self._unique_values) > len(self.bins):
-                self._k = len(self.bins) - 1
+            if len(self._unique_values) <= len(self.bins):
+                self._k = len(self.bins)  # - 1
 
     def _get_labels(self, gdfs: tuple[GeoDataFrame]) -> None:
         """Putting the labels/names in a list before copying the gdfs."""
@@ -251,6 +260,7 @@ class Map:
             self.crs = crs_list[0]
         new_gdfs = []
         for gdf in gdfs:
+            gdf = gdf.reset_index(drop=True)
             gdf = drop_inactive_geometry_columns(gdf).pipe(rename_geometry_if)
             if crs_list:
                 try:
@@ -334,8 +344,11 @@ class Map:
             self._gdf[self._column] = self._gdf[self._column].fillna(self.nan_label)
             self._categories_colors_dict[self.nan_label] = self.nan_color
 
+        new_gdfs = []
         for gdf in self._gdfs:
             gdf["color"] = gdf[self._column].map(self._categories_colors_dict)
+            new_gdfs.append(gdf)
+        self._gdfs = new_gdfs
 
         self._gdf["color"] = self._gdf[self._column].map(self._categories_colors_dict)
 

@@ -130,6 +130,7 @@ def _preserves_index():
     assert gdf.equals(should_equal), gdf
 
     # setting index in to_gdf when df has different index
+    # should give NA
     df = pd.DataFrame(dict_)
     gdf = sg.to_gdf(df, index=[1, 3])
     assert gdf.col.isna().sum() == 1, gdf
@@ -140,6 +141,10 @@ def _preserves_index():
     gdf2 = gpd.GeoDataFrame(df)
     assert gdf2.col.isna().sum() == 1, gdf2
     assert gdf2.geometry.isna().sum() == 1, gdf2
+
+    # using a non-pandas type and spefifying index should work
+    gdf = sg.to_gdf([(0, 0), (1, 1)], index=pd.Index([1, 3]))
+    assert list(gdf.index) == [1, 3]
 
 
 def _incorrect_geom_col():

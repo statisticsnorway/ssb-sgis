@@ -2,9 +2,9 @@
 """
 import os
 
+import dapla as dp
 import geopandas as gpd
 import pandas as pd
-from dapla import FileClient, details
 from geopandas import GeoDataFrame
 from geopandas.io.arrow import _geopandas_to_arrow
 from pyarrow import parquet
@@ -22,7 +22,7 @@ def exists(path: str) -> bool:
         True if the path exists, False if not.
     """
     try:
-        details(path)
+        dp.details(path)
         return True
     except FileNotFoundError:
         return False
@@ -44,7 +44,7 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
      Returns:
          A GeoDataFrame.
     """
-    fs = FileClient.get_gcs_file_system()
+    fs = dp.FileClient.get_gcs_file_system()
 
     if "parquet" in path:
         with fs.open(path, mode="rb") as file:
@@ -68,7 +68,16 @@ def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
     """
     pd.io.parquet.BaseImpl.validate_dataframe(df)
 
-    fs = FileClient.get_gcs_file_system()
+    if not len(df):
+        try:
+            dp.write_pandas(df, gcs_path, **kwargs)
+        except Exception:
+            dp.write_pandas(
+                df.drop(df._geometry_column_name, axis=1), gcs_path, **kwargs
+            )
+        return
+
+    fs = dp.FileClient.get_gcs_file_system()
 
     if ".parquet" in gcs_path:
         with fs.open(gcs_path, mode="wb") as buffer:

@@ -1,7 +1,9 @@
 """Functions for polygon geometries."""
 
 import geopandas as gpd
+import networkx as nx
 import numpy as np
+import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
     area,
@@ -12,6 +14,175 @@ from shapely import (
     polygons,
 )
 from shapely.ops import unary_union
+
+from .neighbors import get_neighbor_indices
+from .overlay import clean_overlay
+
+
+def get_polygon_clusters(
+    *gdfs: GeoDataFrame | GeoSeries, cluster_col: str = "cluster", explode: bool = True
+) -> GeoDataFrame | tuple[GeoDataFrame]:
+    """Find which polygons overlap without dissolving.
+
+    Devides polygons into clusters in a fast and precice manner by using spatial join
+    and networkx to find the connected components, i.e. overlapping geometries.
+    If multiple GeoDataFrames are given, the clusters will be based on all
+    combined.
+
+    This can be used instead of dissolve+explode, or before dissolving by the cluster
+    column. This has been tested to be a lot faster if there are many
+    non-overlapping polygons, but somewhat slower than dissolve+explode if most
+    polygons overlap.
+
+    Args:
+        gdfs: One or more GeoDataFrames of polygons.
+        cluster_col: Name of the resulting cluster column.
+        explode: Whether to explode the geometries to singlepart before the spatial
+            join. Defaults to True. Index will be preserved.
+
+    Returns:
+        One or more GeoDataFrames (same amount as was given) with a new cluster column.
+
+    """
+    concated = pd.DataFrame()
+    for i, gdf in enumerate(gdfs):
+        if isinstance(gdf, GeoSeries):
+            gdf = gdf.to_frame()
+
+        if not isinstance(gdf, GeoDataFrame):
+            raise TypeError("'gdfs' should be one or more GeoDataFrames or GeoSeries.")
+
+        if explode:
+            gdf = gdf.explode(index_parts=False)
+
+        gdf["orig_idx___"] = gdf.index
+        gdf["_i___"] = i
+
+        concated = pd.concat([concated, gdf], ignore_index=True)
+
+    neighbors = get_neighbor_indices(concated, concated)
+
+    edges = [(source, target) for source, target in neighbors.items()]
+
+    graph = nx.Graph()
+    graph.add_edges_from(edges)
+
+    component_mapper = {
+        j: i
+        for i, component in enumerate(nx.connected_components(graph))
+        for j in component
+    }
+
+    concated[cluster_col] = concated.index.map(component_mapper)
+
+    concated.index = concated["orig_idx___"].values
+
+    _i___ = concated["_i___"].unique()
+
+    if len(_i___) == 1:
+        return concated.drop(["_i___", "orig_idx___"], axis=1)
+
+    unconcated = ()
+    for i in _i___:
+        gdf = concated[concated["_i___"] == i].drop(["_i___", "orig_idx___"], axis=1)
+        unconcated = unconcated + (gdf,)
+
+    return unconcated
+
+
+def get_overlapping_polygons(
+    gdf: GeoDataFrame | GeoSeries, ignore_index=False
+) -> GeoDataFrame | GeoSeries:
+    """Find the areas that overlap.
+
+    Does an intersection with itself and keeps only the duplicated geometries. The
+    index of 'gdf' is preserved.
+
+    Args:
+        gdf: GeoDataFrame of polygons.
+        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
+            Defaults to False.
+
+    Returns:
+        A GeoDataFrame of the overlapping polygons.
+    """
+    if not gdf.index.is_unique:
+        raise ValueError(
+            "Index must be unique in order to correctly find "
+            "overlapping polygon indices."
+        )
+
+    gdf = gdf.assign(overlap=gdf.index)
+
+    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
+
+    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
+
+    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
+
+    duplicated_geoms = intersected.loc[intersected.index.isin(duplicated_points.index)]
+    duplicated_geoms.index = duplicated_geoms["overlap"].values
+
+    if ignore_index:
+        duplicated_geoms = duplicated_geoms.reset_index(drop=True)
+
+    return duplicated_geoms.drop("overlap", axis=1)
+
+
+def get_overlapping_polygon_indices(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
+    """Get the index of the rows that contain overlapping geometries.
+
+    Args:
+        gdf: GeoDataFrame of polygons.
+
+    Returns:
+        A pandas Index with the overlapping polygon indices.
+    """
+    if not gdf.index.is_unique:
+        raise ValueError(
+            "Index must be unique in order to correctly find "
+            "overlapping polygon indices."
+        )
+
+    gdf = gdf.assign(overlap=gdf.index)
+
+    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
+
+    intersected = intersected.set_index("overlap")
+
+    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
+
+    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
+
+    return duplicated_points.index.unique()
+
+
+def get_overlapping_polygon_product(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
+    if not gdf.index.is_unique:
+        raise ValueError("Index must be unique to find overlapping polygon indices.")
+
+    gdf = gdf.assign(overlap=gdf.index)
+
+    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
+
+    intersected = intersected.set_index("overlap")
+
+    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
+
+    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
+
+    unique = (
+        duplicated_points.reset_index()
+        .groupby(["overlap", "index_right"])
+        .size()
+        .reset_index()
+    )
+
+    unique = unique[unique.overlap != unique.index_right]
+    series = unique.set_index("index_right").overlap
+    series.index.name = None
+
+    return series
 
 
 def close_small_holes(

@@ -57,7 +57,7 @@ def overlay_update(
     if geom_type_right:
         df2 = to_single_geom_type(df2, geom_type_right)
 
-    overlayed = df1.overlay(df2, how="difference", **kwargs)
+    overlayed = df1.overlay(df2[["geometry"]], how="difference", **kwargs)
     overlayed = overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
     return pd.concat([overlayed, df2], ignore_index=True)
 
@@ -131,7 +131,11 @@ def clean_overlay(
     df1 = df1.explode(ignore_index=True)
     df2 = df2.explode(ignore_index=True)
 
-    overlayed = _shapely_overlay(df1, df2, how=how, crs=crs).pipe(clean_geoms)
+    overlayed = (
+        _shapely_overlay(df1, df2, how=how, crs=crs)
+        .pipe(clean_geoms)
+        .pipe(_push_geom_col)
+    )
 
     if geom_type_left:
         overlayed = to_single_geom_type(overlayed, geom_type_left)
@@ -171,22 +175,27 @@ def _shapely_overlay(
     pairs = _get_intersects_pairs(df1, df2, left, right)
 
     if how == "intersection":
-        return _intersection(pairs, crs=crs)
+        overlayed = _intersection(pairs, crs=crs)
 
-    if how == "difference":
+    elif how == "difference":
+        # don't add suffix on difference
         return _difference(pairs, df1, left, crs=crs)
 
-    if how == "symmetric_difference":
-        return _symmetric_difference(pairs, df1, df2, left, right, crs=crs)
+    elif how == "symmetric_difference":
+        overlayed = _symmetric_difference(pairs, df1, df2, left, right, crs=crs)
 
-    if how == "identity":
-        return _identity(pairs, df1, left, crs=crs)
+    elif how == "identity":
+        overlayed = _identity(pairs, df1, df2, left, crs=crs)
 
-    if how == "union":
-        return _union(pairs, df1, df2, left, right, crs=crs)
+    elif how == "union":
+        overlayed = _union(pairs, df1, df2, left, right, crs=crs)
 
-    if how == "update":
+    elif how == "update":
+        # don't add suffix on update
         return _update(pairs, df1, df2, left=left, crs=crs)
+
+    overlayed = _add_suffix_left(overlayed, df1, df2)
+    return overlayed
 
 
 def _update(pairs, df1, df2, left, crs) -> GeoDataFrame:
@@ -195,12 +204,13 @@ def _update(pairs, df1, df2, left, crs) -> GeoDataFrame:
     return pd.concat([overlayed, df2], ignore_index=True)
 
 
-def _intersection(pairs: GeoDataFrame, crs) -> GeoDataFrame:
+def _intersection(pairs, crs) -> GeoDataFrame:
     intersections = pairs.copy()
     intersections["geometry"] = intersection(
         intersections.geometry.values, intersections.geom_right.values
     )
-    intersections = intersections.drop(columns=["index_right", "geom_right"])
+    intersections = intersections.drop(["index_right", "geom_right"], axis=1)
+
     if crs:
         intersections = intersections.to_crs(crs)
     return intersections
@@ -218,7 +228,7 @@ def _union(pairs, df1, df2, left, right, crs):
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
-def _identity(pairs, df1, left, crs):
+def _identity(pairs, df1, df2, left, crs):
     merged = []
     if len(left):
         intersections = _intersection(pairs, crs=crs)
@@ -269,6 +279,18 @@ def _get_intersects_pairs(
         df2.rename(columns={"geometry": "geom_right"}),
         on="index_right",
         rsuffix="_2",
+    )
+
+
+def _add_suffix_left(overlayed, df1, df2):
+    """Separating this from _add_from_left, since this suffix is not needed in difference."""
+    return overlayed.rename(
+        columns={
+            c: f"{c}_1"
+            if c in df1.columns and c in df2.columns and c != "geometry"
+            else c
+            for c in overlayed.columns
+        }
     )
 
 

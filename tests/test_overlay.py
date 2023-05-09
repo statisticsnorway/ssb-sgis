@@ -19,8 +19,8 @@ def test_overlay(points_oslo):
     p = points_oslo
     p = p.iloc[:50]
 
-    p500 = sg.buff(p, 500)
-    p1000 = sg.buff(p, 1000)
+    p500 = sg.buff(p, 500).assign(idx1=1)
+    p1000 = sg.buff(p, 1000).assign(idx2=1)
 
     updated = sg.overlay_update(p500, p1000)
     updated2 = sg.clean_overlay(p500, p1000, how="update")
@@ -36,19 +36,35 @@ def test_overlay(points_oslo):
         updated["area_"] = updated.area
         sg.qtm(updated, "area_")
 
-    for how in [
-        "intersection",
+    overlayed = sg.clean_overlay(p500, p1000, how="update")
+    cols_should_be = ["idx", "idx1", "idx2", "geometry"]
+    assert list(overlayed.columns) == cols_should_be, list(overlayed.columns)
+
+    hows = [
         "difference",
         "symmetric_difference",
         "union",
         "identity",
-    ]:
+        "intersection",
+    ]
+    cols_should_be = [
+        ["idx", "idx1", "geometry"],
+        ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
+        ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
+        ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
+        ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
+    ]
+    for cols, how in zip(cols_should_be, hows):
+        print(how)
         overlayed = (
             sg.clean_geoms(p500)
             .explode(ignore_index=True)
             .overlay(sg.clean_geoms(p1000).explode(ignore_index=True), how=how)
         )
+        assert list(overlayed.columns) == cols, list(overlayed.columns)
+
         overlayed2 = sg.clean_overlay(p500, p1000, how=how)
+        assert list(overlayed2.columns) == cols, list(overlayed2.columns)
 
         if int(overlayed.area.sum()) != int(overlayed2.area.sum()):
             raise ValueError(int(overlayed.area.sum()) != int(overlayed2.area.sum()))

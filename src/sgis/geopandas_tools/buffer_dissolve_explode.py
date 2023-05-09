@@ -1,44 +1,40 @@
 """Functions that buffer, dissolve and/or explodes geometries while fixing geometries.
 
-Functions with the purpose of making the code cleaner when buffering, dissolving,
-exploding and repairing geometries. The functions are identical to doing buffer,
-dissolve and explode individually, except for the following:
+The functions do the same as the geopandas buffer, dissolve and explode methods, except
+for the following:
 
-- Geometries are always made valid after buffer and dissolve.
+- Geometries are made valid after buffer and dissolve.
 
-- The buffer resolution defaults to 50, while geopandas' default is 16.
+- The buffer resolution defaults to 50 (geopandas' default is 16).
 
-- The buff function returns a GeoDataFrame, the geopandas method returns a GeoSeries.
+- If 'by' is not specified, the index will be labeled 0, 1, …, n - 1 after exploded, instead of 0, 0, …, 0 as it will with the geopandas defaults.
 
 - index_parts is set to False, which will be the default in a future version of geopandas.
+
+- The buff function returns a GeoDataFrame, the geopandas method returns a GeoSeries.
 """
 
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
 
 
-def _check_ignore_index(kwargs: dict) -> dict:
-    """Raise ValueError if both 'by' and 'ignore_index' are in kwargs.
+def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
+    if "ignore_index" in kwargs:
+        return kwargs, kwargs.pop("ignore_index")
 
-    Because ignoring index will remove the 'by' columns completely, which
-    is unlikely wanted.
-    """
-    IGNORE_INDEX_ERROR_MESSAGE = (
-        "Cannot set ignore_index. Set as_index=False to reset the index and keep "
-        "the 'by' columns. Or use reset_index(drop=True) to remove the 'by' "
-        "columns completely."
-    )
-    if "ignore_index" in kwargs and kwargs.get("by", None):
-        raise ValueError(IGNORE_INDEX_ERROR_MESSAGE)
+    if not kwargs.get("by", None):
+        return kwargs, True
 
-    kwargs.pop("ignore_index", None)
-    return kwargs
+    if kwargs.get("as_index", True):
+        return kwargs, False
+
+    return kwargs, True
 
 
 def buffdissexp(
     gdf: GeoDataFrame,
-    distance,
+    distance: int | float,
     *,
-    resolution=50,
+    resolution: int = 50,
     index_parts: bool = False,
     copy: bool = True,
     **dissolve_kwargs,
@@ -46,6 +42,8 @@ def buffdissexp(
     """Buffers and dissolves overlapping geometries.
 
     It takes a GeoDataFrame and buffer, fixes, dissolves, fixes and explodes geometries.
+    If the 'by' parameter is not specified, the index will labeled 0, 1, …, n - 1,
+    instead of 0, 0, …, 0. If 'by' is speficied, this will be the index.
 
     Args:
         gdf: the GeoDataFrame that will be buffered, dissolved and exploded.
@@ -62,29 +60,31 @@ def buffdissexp(
         A buffered GeoDataFrame where overlapping geometries are dissolved.
 
     """
-    dissolve_kwargs = _check_ignore_index(dissolve_kwargs)
+    dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
-    geom_col = gdf._geometry_column_name
+    dissolved = buffdiss(
+        gdf,
+        distance,
+        resolution=resolution,
+        copy=copy,
+        **dissolve_kwargs,
+    )
 
-    buffered = buff(gdf, distance, resolution=resolution, copy=copy)
-
-    dissolved = buffered.dissolve(**dissolve_kwargs)
-
-    dissolved[geom_col] = dissolved.make_valid()
-
-    return dissolved.explode(index_parts=index_parts)
+    return dissolved.explode(index_parts=index_parts, ignore_index=ignore_index)
 
 
 def buffdiss(
     gdf: GeoDataFrame,
-    distance,
-    resolution=50,
+    distance: int | float,
+    resolution: int = 50,
     copy: bool = True,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Buffers and dissolves geometries.
 
     It takes a GeoDataFrame and buffer, fixes, dissolves and fixes geometries.
+    If the 'by' parameter is not specified, the index will labeled 0, 1, …, n - 1,
+    instead of 0, 0, …, 0. If 'by' is speficied, this will be the index.
 
     Args:
         gdf: the GeoDataFrame that will be
@@ -147,8 +147,6 @@ def buffdiss(
     1     b  MULTIPOLYGON (((258404.858 6647830.931, 258404...  0.687635
     2     d  MULTIPOLYGON (((258180.258 6647935.731, 258179...  0.580157
     """
-    dissolve_kwargs = _check_ignore_index(dissolve_kwargs)
-
     geom_col = gdf._geometry_column_name
 
     buffered = buff(gdf, distance, resolution=resolution, copy=copy)
@@ -178,52 +176,19 @@ def dissexp(
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
-    dissolve_kwargs = _check_ignore_index(dissolve_kwargs)
-
     geom_col = gdf._geometry_column_name
+
+    dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
     dissolved = gdf.dissolve(**dissolve_kwargs)
 
     dissolved[geom_col] = dissolved.make_valid()
 
-    return dissolved.explode(index_parts=index_parts)
-
-
-def buffexp(
-    gdf: GeoDataFrame,
-    distance: int | float,
-    resolution: int = 50,
-    index_parts: bool = False,
-    copy: bool = True,
-    **buffer_kwargs,
-):
-    """Buffers and explodes geometries.
-
-    It takes a GeoDataFrame and buffer, fixes and explodes geometries.
-
-    Args:
-        gdf: the GeoDataFrame that will be buffered, dissolved and exploded.
-        distance: the distance (meters, degrees, depending on the crs) to buffer
-            the geometry by
-        resolution: The number of segments used to approximate a quarter circle.
-            Here defaults to 50, as opposed to the default 16 in geopandas.
-        index_parts: If False (default), the index after dissolve is respected. If
-            True, an integer index level is added during explode.
-        copy: Whether to copy the GeoDataFrame before buffering.
-        **buffer_kwargs: additional keyword arguments passed to geopandas' buffer.
-
-    Returns:
-        A buffered GeoDataFrame where geometries are exploded.
-    """
-    buffer_kwargs = _check_ignore_index(buffer_kwargs)
-
-    return buff(
-        gdf, distance, resolution=resolution, copy=copy, **buffer_kwargs
-    ).explode(index_parts=index_parts)
+    return dissolved.explode(index_parts=index_parts, ignore_index=ignore_index)
 
 
 def buff(
-    gdf: GeoDataFrame,
+    gdf: GeoDataFrame | GeoSeries,
     distance: int | float,
     resolution: int = 50,
     copy: bool = True,
@@ -243,6 +208,10 @@ def buff(
     Returns:
         A buffered GeoDataFrame.
     """
+
+    if isinstance(gdf, GeoSeries):
+        return gdf.buffer(distance, resolution=resolution, **buffer_kwargs).make_valid()
+
     geom_col = gdf._geometry_column_name
 
     if copy:

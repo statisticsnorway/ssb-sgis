@@ -7,6 +7,7 @@ from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
 from shapely import (
     Geometry,
+    box,
     force_2d,
     get_exterior_ring,
     get_interior_ring,
@@ -17,6 +18,7 @@ from shapely import (
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
+from .geometry_types import to_single_geom_type
 from .to_geodataframe import to_gdf
 
 
@@ -101,6 +103,92 @@ def rename_geometry_if(gdf: GeoDataFrame) -> GeoDataFrame:
     raise ValueError(
         "There are multiple geometry columns and none are the active geometry"
     )
+
+
+def make_grid_in_bounds(gdf: GeoDataFrame, size: int | float) -> GeoDataFrame:
+    """Create a polygon grid around a GeoDataFrame.
+
+    Creates a GeoDataFrame of grid cells of a given size within the bounds of
+    a given GeoDataFrame.
+
+    Args:
+        gdf: A GeoDataFrame.
+        size: Length of the grid walls.
+
+    Returns:
+        GeoDataFrame with grid polygons.
+    """
+    minx, miny, maxx, maxy = gdf.total_bounds
+    print(minx)
+    return make_grid(minx, miny, maxx, maxy, size=size, crs=gdf.crs)
+
+
+def make_grid(
+    minx: int | float,
+    miny: int | float,
+    maxx: int | float,
+    maxy: int | float,
+    *_,
+    size: int,
+    crs,
+) -> GeoDataFrame:
+    """Creates a polygon grid from a bounding box.
+
+    Creates a GeoDataFrame of grid cells of a given size within the given
+    maxumum and mimimum x and y values.
+
+    Args:
+        minx: Minumum x coordinate.
+        miny: Minumum y coordinate.
+        maxx: Maximum x coordinate.
+        maxy: Maximum y coordinate.
+        size: Length of the grid walls.
+        crs: Coordinate reference system.
+
+    Returns:
+        GeoDataFrame with grid polygons.
+    """
+    grid_cells1 = []
+    grid_cells2 = []
+    grid_cells3 = []
+    grid_cells4 = []
+    for x0 in np.arange(minx, maxx + size, size):
+        for y0 in np.arange(miny, maxy + size, size):
+            x1 = x0 - size
+            y1 = y0 + size
+            grid_cells1.append(x0)
+            grid_cells2.append(y0)
+            grid_cells3.append(x1)
+            grid_cells4.append(y1)
+
+    grid_cells = box(grid_cells1, grid_cells2, grid_cells3, grid_cells4)
+
+    return gpd.GeoDataFrame(grid_cells, columns=["geometry"], crs=crs)
+
+
+def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
+    """Creates a square around the geometry in each row of a GeoDataFrame.
+
+    Args:
+        gdf: The GeoDataFrame.
+
+    Returns:
+        GeoDataFrame of box polygons with same length and index as 'gdf'.
+    """
+    bbox_each_row = [box(*arr) for arr in gdf.bounds.values]
+    return to_gdf(bbox_each_row, index=gdf.index, crs=gdf.crs)
+
+
+def bounds_to_points(gdf: GeoDataFrame) -> GeoDataFrame:
+    """Creates a 4-noded multipoint around the geometry in each row of a GeoDataFrame.
+
+    Args:
+        gdf: The GeoDataFrame.
+
+    Returns:
+        GeoDataFrame of multipoints with same length and index as 'gdf'.
+    """
+    return bounds_to_polygon(gdf).pipe(to_multipoint)
 
 
 def clean_geoms(
@@ -326,7 +414,11 @@ def random_points_in_polygons(
             temp_idx____ = gdf__["temp_idx____"].values
             bounds = gdf__.bounds
 
-    all_points = all_points.sort_index().drop(["temp_idx____", "index_right"], axis=1)
+    all_points = all_points.sort_index()
+
+    all_points = all_points.loc[
+        :, ~all_points.columns.str.contains("temp_idx____|index_right")
+    ]
 
     if gdf.index.is_unique:
         gdf = gdf.drop("temp_idx____", axis=1)
@@ -440,6 +532,8 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         gdf[gdf._geometry_column_name] = gdf[gdf._geometry_column_name].map(
             _shapely_geometry_to_lines
         )
+
+        gdf = to_single_geom_type(gdf, "line")
 
         lines.append(gdf)
 

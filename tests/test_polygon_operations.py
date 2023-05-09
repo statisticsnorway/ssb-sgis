@@ -4,9 +4,7 @@ import sys
 from pathlib import Path
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
-from shapely.geometry import Polygon
 
 
 src = str(Path(__file__).parent.parent) + "/src"
@@ -14,6 +12,39 @@ src = str(Path(__file__).parent.parent) + "/src"
 sys.path.insert(0, src)
 
 import sgis as sg
+
+
+def test_get_overlapping_polygons():
+    with_overlap = sg.to_gdf([(0, 0), (4, 4), (1, 1)]).pipe(sg.buff, 1)
+    with_overlap["col"] = 1
+    if __name__ == "__main__":
+        sg.explore(with_overlap)
+
+    the_overlap = sg.get_overlapping_polygons(with_overlap)
+    print(the_overlap)
+    if __name__ == "__main__":
+        sg.explore(the_overlap)
+    assert list(the_overlap.index) == [0, 2]
+    assert list(the_overlap.columns) == ["col", "geometry"]
+    assert round(the_overlap.area.sum(), 5) == 1.14108, round(the_overlap.area.sum(), 5)
+
+    overlapping_polygons = sg.get_overlapping_polygon_indices(with_overlap)
+    print(overlapping_polygons)
+    assert isinstance(overlapping_polygons, pd.Index)
+    assert list(overlapping_polygons) == [0, 2], overlapping_polygons
+    without_the_overlapping = with_overlap.loc[
+        ~with_overlap.index.isin(overlapping_polygons)
+    ]
+    assert list(without_the_overlapping.index) == [1], without_the_overlapping
+
+    overlapping_polygons = sg.get_overlapping_polygon_product(with_overlap)
+    print(overlapping_polygons)
+    should_be = pd.Series([0, 2], index=[2, 0])
+    assert overlapping_polygons.equals(should_be), overlapping_polygons
+    without_the_overlapping = with_overlap.loc[
+        ~with_overlap.index.isin(overlapping_polygons)
+    ]
+    assert list(without_the_overlapping.index) == [1], without_the_overlapping
 
 
 def test_close_holes():
@@ -54,5 +85,59 @@ def test_close_holes():
     _close_the_holes(rings_with_holes.geometry)
 
 
+def test_get_polygon_clusters():
+    INDEX = [1, 3, 5, 7, 9, 11, 13]
+    # this should give three clusters
+    gdf = sg.to_gdf(
+        [(0, 0), (1, 1), (0, 1), (1, 0), (10, 10), (20, 20), (21, 21)]
+    ).pipe(sg.buff, 2)
+    gdf.index = INDEX
+
+    should_give = pd.Series([4, 2, 1], name="cluster", index=[0, 2, 1])
+
+    gdf_clustered = sg.get_polygon_clusters(gdf)
+
+    if __name__ == "__main__":
+        sg.explore(gdf_clustered, "cluster")
+
+    print(gdf_clustered)
+    assert gdf_clustered.cluster.value_counts().equals(
+        should_give
+    ), gdf_clustered.cluster.value_counts()
+
+    # two gdfs at the same time
+    clustered1, clustered2 = sg.get_polygon_clusters(gdf, gdf)
+    print(clustered1, clustered2)
+    assert clustered1.cluster.value_counts().equals(
+        should_give
+    ), clustered1.cluster.value_counts()
+    assert clustered2.cluster.value_counts().equals(
+        should_give
+    ), clustered2.cluster.value_counts()
+
+    assert list(clustered1.index) == INDEX
+    assert list(clustered2.index) == INDEX
+
+    s_clustered = sg.get_polygon_clusters(gdf.geometry)
+    print(s_clustered)
+    assert s_clustered.cluster.value_counts().equals(
+        should_give
+    ), s_clustered.cluster.value_counts()
+
+    should_give = pd.Series([7], name="cluster", index=[0])
+
+    buffered_clustered = sg.get_polygon_clusters(gdf.buffer(10))
+    print(buffered_clustered)
+    assert buffered_clustered.cluster.value_counts().equals(
+        should_give
+    ), buffered_clustered.cluster.value_counts()
+
+    if __name__ == "__main__":
+        sg.explore(buffered_clustered, "cluster")
+
+
 if __name__ == "__main__":
+    test_get_overlapping_polygons()
+    test_get_polygon_clusters()
+
     test_close_holes()
