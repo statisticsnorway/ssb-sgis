@@ -214,7 +214,14 @@ def samplemap(
     kwargs.pop("size")
 
     if mask is not None:
-        gdfs, column = clipmap(
+        gdfs, column = Explore._separate_args(gdfs, column)
+        gdfs, kwargs = _prepare_clipmap(
+            *gdfs,
+            mask=mask,
+            labels=labels,
+            **kwargs,
+        )
+        """gdfs, column = clipmap(
             *gdfs,
             column=column,
             mask=mask,
@@ -223,7 +230,7 @@ def samplemap(
             max_zoom=max_zoom,
             _sample=True,
             **kwargs,
-        )
+        )"""
 
     if explore:
         m = Explore(
@@ -266,6 +273,37 @@ def samplemap(
         m._gdf = clean_clip(m._gdf, random_point.buffer(size))
 
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
+
+
+def _prepare_clipmap(*gdfs, mask, labels, **kwargs):
+    if mask is None:
+        mask, kwargs = _get_mask(kwargs, crs=gdfs[0].crs)
+        if mask is None and len(gdfs) > 1:
+            *gdfs, mask = gdfs
+        elif mask is None:
+            raise ValueError("Must speficy mask.")
+
+    # storing object names in dict here, since the names disappear after clip
+    if not labels:
+        namedict = make_namedict(gdfs)
+        kwargs["namedict"] = namedict
+
+    clipped: tuple[GeoDataFrame] = ()
+
+    if mask is not None:
+        for gdf in gdfs:
+            clipped_ = clean_clip(gdf, mask)
+            clipped = clipped + (clipped_,)
+
+    else:
+        for gdf in gdfs[:-1]:
+            clipped_ = clean_clip(gdf, gdfs[-1])
+            clipped = clipped + (clipped_,)
+
+    if not any(len(gdf) for gdf in clipped):
+        raise ValueError("None of the GeoDataFrames are within the mask extent.")
+
+    return clipped, kwargs
 
 
 def clipmap(
@@ -317,6 +355,15 @@ def clipmap(
 
     gdfs, column = Explore._separate_args(gdfs, column)
 
+    clipped, kwargs = _prepare_clipmap(
+        *gdfs,
+        mask=mask,
+        labels=labels,
+        **kwargs,
+    )
+
+    """gdfs, column = Explore._separate_args(gdfs, column)
+
     if mask is None:
         mask, kwargs = _get_mask(kwargs, crs=gdfs[0].crs)
         if mask is None and len(gdfs) > 1:
@@ -345,7 +392,7 @@ def clipmap(
         raise ValueError("None of the GeoDataFrames are within the mask extent.")
 
     if "_sample" in kwargs:
-        return clipped, column
+        return clipped, column"""
 
     center = kwargs.pop("center", None)
     size = kwargs.pop("size", None)

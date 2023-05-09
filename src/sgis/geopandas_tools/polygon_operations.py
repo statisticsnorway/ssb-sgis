@@ -22,7 +22,7 @@ from .overlay import clean_overlay
 def get_polygon_clusters(
     *gdfs: GeoDataFrame | GeoSeries, cluster_col: str = "cluster", explode: bool = True
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
-    """Find overlapping polygons without dissolving.
+    """Find which polygons overlap without dissolving.
 
     Devides polygons into clusters in a fast and precice manner by using spatial join
     and networkx to find the connected components, i.e. overlapping geometries.

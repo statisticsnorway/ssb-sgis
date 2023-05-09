@@ -175,7 +175,7 @@ def _shapely_overlay(
     pairs = _get_intersects_pairs(df1, df2, left, right)
 
     if how == "intersection":
-        overlayed = _intersection(pairs, df1, df2, crs=crs)
+        overlayed = _intersection(pairs, crs=crs)
 
     elif how == "difference":
         # don't add suffix on difference
@@ -204,7 +204,7 @@ def _update(pairs, df1, df2, left, crs) -> GeoDataFrame:
     return pd.concat([overlayed, df2], ignore_index=True)
 
 
-def _intersection(pairs, df1, df2, crs) -> GeoDataFrame:
+def _intersection(pairs, crs) -> GeoDataFrame:
     intersections = pairs.copy()
     intersections["geometry"] = intersection(
         intersections.geometry.values, intersections.geom_right.values
@@ -219,7 +219,7 @@ def _intersection(pairs, df1, df2, crs) -> GeoDataFrame:
 def _union(pairs, df1, df2, left, right, crs):
     merged = []
     if len(left):
-        intersections = _intersection(pairs, df1, df2, crs=crs)
+        intersections = _intersection(pairs, crs=crs)
         merged.append(intersections)
     symmdiff = _symmetric_difference(pairs, df1, df2, left, right, crs=crs)
     merged.append(symmdiff)
@@ -231,7 +231,7 @@ def _union(pairs, df1, df2, left, right, crs):
 def _identity(pairs, df1, df2, left, crs):
     merged = []
     if len(left):
-        intersections = _intersection(pairs, df1, df2, crs=crs)
+        intersections = _intersection(pairs, crs=crs)
         merged.append(intersections)
     diff = _difference(pairs, df1, left, crs=crs)
     merged.append(diff)
