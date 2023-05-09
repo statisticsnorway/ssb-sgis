@@ -33,6 +33,7 @@ scikit-learn = "^1.2.1"
 shapely = "^2.0.1"
 xyzservices = "^2023.2.0"
 jenkspy = "^0.3.2"
+ipython = "^8.13.2"
 
 [tool.poetry.group.dev.dependencies]
 black = {extras = ["d", "jupyter"], version = "^23.1.0"}

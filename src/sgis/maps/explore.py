@@ -18,6 +18,7 @@ from ..geopandas_tools.general import clean_geoms, random_points_in_polygons
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.to_geodataframe import to_gdf
 from .map import Map
+from .httpserver import run_html_server
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -189,7 +190,7 @@ class Explore(Map):
             self._create_continous_map()
 
         if self.show_in_browser:
-            self.map.show_in_browser()
+            run_html_server(self.map._repr_html_())
         else:
             display(self.map)
 
