@@ -22,7 +22,7 @@ def get_neighbor_indices(
     max_distance: int = 0,
     predicate: str = "intersects",
 ) -> Series:
-    """Returns a pandas Series of neighbor indices.
+    """Creates a pandas Series with the index of 'gdf' and values of 'neighbors'.
 
     Finds all the geometries in 'neighbors' that intersect with 'gdf' and returns a
     Series where the values are the 'neighbors' indices and the index is the indices of

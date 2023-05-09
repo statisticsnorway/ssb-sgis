@@ -6,6 +6,8 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp,
 )
 from .geopandas_tools.general import (
+    bounds_to_points,
+    bounds_to_polygon,
     clean_clip,
     clean_geoms,
     coordinate_array,
@@ -32,11 +34,9 @@ from .geopandas_tools.neighbors import (
 )
 from .geopandas_tools.overlay import clean_overlay, overlay_update
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
-from .geopandas_tools.polygon_operations import (
+from .geopandas_tools.polygon_operations import (  # get_polygon_clusters,; get_overlapping_polygon_indices,; get_overlapping_polygon_product,; get_overlapping_polygons,
     close_all_holes,
     close_small_holes,
-    get_overlapping_polygon_indices,
-    get_overlapping_polygons,
 )
 from .geopandas_tools.to_geodataframe import to_gdf
 from .maps.legend import Legend
