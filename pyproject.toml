@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ssb-sgis"
-version = "0.1.14.1"
+version = "0.1.14.2"
 description = "GIS functions used at Statistics Norway."
 authors = ["Statistics Norway <ort@ssb.no>"]
 license = "MIT"
@@ -20,7 +20,7 @@ Changelog = "https://github.com/statisticsnorway/ssb-sgis/releases"
 python = ">=3.10,<3.12"
 branca = "^0.6.0"
 folium = "^0.14.0"
-geopandas = "^0.12.2"
+geopandas = "0.13.0"
 igraph = "^0.10.4"
 mapclassify = "^2.5.0"
 matplotlib = "^3.7.0"
