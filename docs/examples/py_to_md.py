@@ -53,6 +53,10 @@ def py_to_md(
     os.remove(nb_file)
 
 
+file = "network_analysis_demo_template"
+py_to_md(file, move_n_folders_up=0)
+sss
+
 file = "network_analysis_examples"
 py_to_md(file, move_n_folders_up=0)
 

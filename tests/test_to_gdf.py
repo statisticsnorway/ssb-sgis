@@ -129,16 +129,15 @@ def _preserves_index():
     gdf = sg.to_gdf(dict_, index=index)
     assert gdf.equals(should_equal), gdf
 
-    # setting index in to_gdf when df has different index
-    # should give NA
+    # setting index in to_gdf when df has different index should give NA
     df = pd.DataFrame(dict_)
     gdf = sg.to_gdf(df, index=[1, 3])
     assert gdf.col.isna().sum() == 1, gdf
     assert gdf.geometry.isna().sum() == 1, gdf
 
     # the above should be same as calling DataFrame twice with different index
-    df = pd.DataFrame(pd.DataFrame(dict_), index=index)
-    gdf2 = gpd.GeoDataFrame(df)
+    df = pd.DataFrame(sg.to_gdf(dict_, geometry="geometry"), index=index)
+    gdf2 = gpd.GeoDataFrame(df, geometry="geometry")
     assert gdf2.col.isna().sum() == 1, gdf2
     assert gdf2.geometry.isna().sum() == 1, gdf2
 

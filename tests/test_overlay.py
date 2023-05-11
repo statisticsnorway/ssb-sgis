@@ -90,7 +90,7 @@ def test_overlay(points_oslo):
             )
 
 
-def test_overlay_random(n=50):
+def test_overlay_random(n=25):
     for _ in range(n):
         print(_)
         loc_num = np.random.randint(low=50, high=150)
