@@ -165,6 +165,44 @@ def make_grid(
 
     return gpd.GeoDataFrame(grid_cells, columns=["geometry"], crs=crs)
 
+# Function for making polygon gridwith SSB-id and standard SSB grids
+# Courtesy https://gis.stackexchange.com/questions/269243/creating-polygon-grid-using-geopandas
+def make_SSB_grid(in_gdf, gridsize=1000):
+    features = in_gdf.copy()
+    xmin, ymin, xmax, ymax = features.total_bounds
+    
+    # Adjust for SSB-grid
+    xmin = int(xmin / int(gridsize)) * int(gridsize)
+    ymin = int(ymin / int(gridsize)) * int(gridsize)
+    
+    cols = list(np.arange(xmin, xmax + gridsize, gridsize))
+    rows = list(np.arange(ymin, ymax + gridsize, gridsize))
+    
+    polygons = []
+    for x in cols[:-1]:
+        for y in rows[:-1]:
+            polygons.append(Polygon([(x,y), (x+gridsize, y), (x+gridsize, y+gridsize), (x, y+gridsize)]))
+    
+    grid = gpd.GeoDataFrame({'geometry':polygons})
+    grid = grid.set_crs('epsg:25833')
+    # Make SSB-id
+    grid['ostc'] = ((np.floor(((grid.geometry.centroid.x + 2000000)/gridsize))*gridsize).apply(int)).apply(str)
+    grid['nordc'] = ((np.floor(((grid.geometry.centroid.y)/gridsize))*gridsize).apply(int)).apply(str)
+    grid['SSBID'] = grid['ostc'] + grid['nordc']
+    grid = grid.drop(columns=['ostc','nordc'])
+    return grid
+
+# Function for adding GRID-ID (SSB) to points gdf
+def add_grid_id(ingdf_pkt, out_column, gridsize):
+    midlrdf = ingdf_pkt.copy()
+    if midlrdf.crs is None:
+        return print("Geodataframe missing crs. Use df.set_crs(25833) to set proj. (Usually 25833).")
+    midlrdf = midlrdf.to_crs(25833)
+    midlrdf['ostc'] = ((np.floor(((midlrdf.geometry.x + 2000000)/gridsize))*gridsize).apply(int)).apply(str)
+    midlrdf['nordc'] = ((np.floor(((midlrdf.geometry.y)/gridsize))*gridsize).apply(int)).apply(str)
+    midlrdf[out_column] = midlrdf['ostc'] + midlrdf['nordc']
+    midlrdf = midlrdf.drop(columns=['nordc', 'ostc'])
+    return midlrdf
 
 def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
     """Creates a square around the geometry in each row of a GeoDataFrame.
