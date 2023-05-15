@@ -35,6 +35,8 @@ def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame, dict | None, dict]:
         "Bygdoy": (10.6976899, 59.9081695),
         "kongsvinger": (12.0035242, 60.1875279),
         "Kongsvinger": (12.0035242, 60.1875279),
+        "stavanger": (5.6960601, 58.8946196),
+        "Stavanger": (5.6960601, 58.8946196),
     }
 
     if "size" in kwargs and kwargs["size"] is not None:

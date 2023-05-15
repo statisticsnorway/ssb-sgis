@@ -182,11 +182,15 @@ class Map:
         # make sure they are lists
         bins = [bin for bin in bins]
 
-        if min(bins) > 0 and min(self._gdf[self._column]) < min(bins):
-            bins = [min(self._gdf[self._column])] + bins
+        if min(bins) > 0 and min(self._gdf.loc[~self._nan_idx, self._column]) < min(
+            bins
+        ):
+            bins = [min(self._gdf.loc[~self._nan_idx, self._column])] + bins
 
-        if min(bins) < 0 and min(self._gdf[self._column]) < min(bins):
-            bins = [min(self._gdf[self._column])] + bins
+        if min(bins) < 0 and min(self._gdf.loc[~self._nan_idx, self._column]) < min(
+            bins
+        ):
+            bins = [min(self._gdf.loc[~self._nan_idx, self._column])] + bins
 
         if max(bins) > 0 and max(self._gdf[self._column]) > max(bins):
             bins = bins + [max(self._gdf[self._column])]
@@ -220,8 +224,10 @@ class Map:
     def _prepare_continous_map(self):
         """Create bins if not already done and adjust k if needed."""
 
+        default_scheme = "fisherjenks"
+
         if not hasattr(self, "scheme"):
-            self.scheme = self.kwargs.pop("scheme", "fisherjenks")
+            self.scheme = self.kwargs.pop("scheme", default_scheme)
 
         if self.scheme is None:
             return
