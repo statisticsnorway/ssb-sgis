@@ -6,4 +6,5 @@ Examples
 
    maps
    networkanalysis
+   networkanalysis_demo_template
    geopandas_tools

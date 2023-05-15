@@ -8,31 +8,27 @@
 # %% [markdown]
 # # Network analysis demo
 # %%
-import os
 import warnings
 
 import numpy as np
 import pandas as pd
 
-
-os.chdir("../../src")
-
 import sgis as sg
 
 
-# ignore some warnings
+# ignore some (for this purpose) irrelevant warnings
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=FutureWarning)
 # %% [markdown]
 # The network analysis happens in the NetworkAnalysis class.
-# It takes a GeoDataFrame of lines and a set of rules for the analysis:
+# It takes a GeoDataFrame of lines and a set of rules for the analysis.
 #
-# The rules can be instantiated like this:
+# The default rules can be instantiated like this (weight and directed do not have default values):
 # %%
 rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
 rules
 # %% [markdown]
-# First we need some road data:
+# Now we need some road data:
 # %%
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -40,16 +36,16 @@ roads = sg.read_parquet_url(
 roads = roads[["oneway", "drivetime_fw", "drivetime_bw", "geometry"]]
 roads.head(3)
 # %% [markdown]
-# For directed network analysis, we need to duplicate roads going both directions and flip roads going backwards.
-# This can be done with the make_directed_network method:
+# For directed network analysis, we have to duplicate roads going both directions and
+# flip roads going backwards. This can be done with the make_directed_network method:
 # %%
 directed_roads = sg.make_directed_network(
     roads,
     direction_col="oneway",
     direction_vals_bft=("B", "FT", "TF"),
-    speed_col=None,
+    speed_col_kmh=None,
     minute_cols=("drivetime_fw", "drivetime_bw"),
-    flat_speed=None,
+    flat_speed_kmh=None,
 )
 directed_roads
 # %% [markdown]
@@ -77,17 +73,34 @@ points = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
 )
 points
+# %%
+origins = points.iloc[:100]
+destinations = points.iloc[100:200]
 # %% [markdown]
 # ### OD cost matrix
 
 # od_cost_matrix calculates the traveltime from a set of origins to a set of destinations:
 # %%
-od = nwa.od_cost_matrix(origins=points, destinations=points)
+od = nwa.od_cost_matrix(origins, destinations)
 od
+# %% [markdown]
+# The results can be joined with the origins or destinations via the index:
+# %%
+joined = origins.join(od.set_index("origin"))
+joined
+
+# %% [markdown]
+# Or aggregate values can be assigned directly onto the origins/destinations:
+# %%
+origins["minutes_min"] = od.groupby("origin")["minutes"].min()
+origins["minutes_mean"] = od.groupby("origin")["minutes"].mean()
+origins["n_missing"] = len(origins) - od.groupby("origin")["minutes"].count()
+origins
+# %%
+origins = origins.drop(["minutes_min", "minutes_mean", "n_missing"], axis=1)
 # %% [markdown]
 # Set 'lines' to True to get a geometry column with straight lines between origin and
 # destination:
-
 # %%
 od = nwa.od_cost_matrix(points.iloc[[0]], points, lines=True)
 
@@ -106,7 +119,7 @@ print(nwa.log)
 # The get_route method can be used to get the actual lowest cost path:
 
 # %%
-routes = nwa.get_route(points.iloc[[0]], points.sample(100))
+routes = nwa.get_route(origins.iloc[[0]], destinations)
 
 # plot the results
 m = sg.ThematicMap(sg.buff(routes, 15), column="minutes", black=True)
@@ -119,9 +132,6 @@ m.plot()
 # get_route_frequencies finds the number of times each road segment was used.
 
 # %%
-origins = points.iloc[:100]
-destinations = points.iloc[100:200]
-
 frequencies = nwa.get_route_frequencies(origins, destinations)
 
 # plot the results
@@ -130,8 +140,8 @@ m.cmap = "plasma"
 m.title = "Number of times each road was used"
 m.plot()
 # %% [markdown]
-# The results will be quite different when it is the shortest, rather than the fastest, route that is used:
-
+# The results will be quite different when it is the shortest, rather than the fastest,
+# route that is used:
 # %%
 nwa.rules.weight = "meters"
 
@@ -185,10 +195,10 @@ m.plot()
 #
 # Here, we find the areas that can be reached within 5, 10 and 15 minutes for five random points:
 # %%
-
-service_areas = nwa.service_area(points.sample(5), breaks=(5, 10, 15))
+service_areas = nwa.service_area(origins.sample(5), breaks=(5, 10, 15))
 service_areas
-
+# %% [markdown]
+# Here we get the areas that can be reached within 1 to 10 minutes from one point:
 # %%
 service_areas = nwa.service_area(points.iloc[[0]], breaks=np.arange(1, 11))
 
@@ -209,7 +219,6 @@ sg.qtm(
 # %% [markdown]
 # Set 'dissolve' to False to get each individual road or line returned,
 # and then drop rows afterwards:
-
 # %%
 service_areas = nwa.service_area(points.sample(100), breaks=5, dissolve=False)
 print("rows before drop_duplicates:", len(service_areas))
@@ -217,7 +226,6 @@ service_areas = service_areas.drop_duplicates(["source", "target"])
 print("rows after drop_duplicates:", len(service_areas))
 # %% [markdown]
 # Let's check the log.
-
 # %%
 print(nwa.log)
 # %% [markdown]
@@ -231,119 +239,19 @@ connected_and_not["connected_str"] = np.where(
 to_plot = connected_and_not.clip(points.iloc[[0]].buffer(1000))
 sg.qtm(to_plot, column="connected_str", title="Connected and isolated networks")
 # %% [markdown]
-# Use the remove_isolated method to remove the unconnected roads:
+# Use the get_connected_components method to get the largest network, then remove rows not part of this network:
 # %%
-
-nwa = sg.NetworkAnalysis(network=nw, rules=sg.NetworkAnalysisRules(weight="meters"))
-
-od = nwa.od_cost_matrix(points, points)
-
-percent_missing = od[nwa.rules.weight].isna().mean() * 100
-print(f"Before removing isolated: {percent_missing=:.2f}")
-
-# %%
-nwa.network = nwa.network.remove_isolated()
-
-od = nwa.od_cost_matrix(points, points)
-percent_missing = od[nwa.rules.weight].isna().mean() * 100
-print(f"After removing isolated: {percent_missing=:.2f}")
+connected_roads = sg.get_connected_components(roads).query("connected == 1")
 # %% [markdown]
-# If the road data has some gaps between the segments, these can be filled with straight lines:
+# If the road data has some gaps between the segments, these can be filled with straight lines (the weight column will then have NaN values):
 # %%
 
-nw = nw.close_network_holes(max_distance=1.5, max_angle=90, fillna=0.1)
-nw
-# %% [markdown]
-# The network analysis is done from node to node. In a service area analysis, the results will be inaccurate for long lines, since the destination will either be reached or not within the breaks. This can be fixed by cutting all lines to a maximum distance.
-#
-# Note: cutting the lines can take a lot of time for large networks and low cut distances.
-# %%
-nw = nw.cut_lines(100)  # meters
-nw.gdf.length.max()
-# %% [markdown]
-# ### DirectedNetwork
-
-# Using the DirectedNetwork instead of the Network class, doesn't do anything to the network initially.
-#
-# But if we use it directly in the NetworkAnalysis, we see that 0 percent of the lines go in both directions:
-# %%
-
-nw = sg.DirectedNetwork(roads)
-rules = sg.NetworkAnalysisRules(weight="metres")
-nwa = sg.NetworkAnalysis(nw, rules=rules)
-# %% [markdown]
-# To make this network bidirectional, roads going both ways have to be duplicated and flipped. Roads going the opposite way also need to be flipped.
-#
-# The key here is in the 'oneway' column:
-# %%
-nw.gdf.oneway.value_counts()
-# %% [markdown]
-# We use this to make the network bidirectional with the 'make_directed_network' method.
-#
-# If we want a minute column, we also have to specify how to calculate this. Here, I use the two minute columns in the data:
-# %%
-nw.gdf[["oneway", "drivetime_fw", "drivetime_bw"]].drop_duplicates(
-    "oneway"
-)  # dropping duplicates for illustration's sake
-# %% [markdown]
-# Specify the values of the direction column in a tuple/list with the order "both ways", "from/forward", "to/backward".
-# %%
-nw = nw.make_directed_network(
-    direction_col="oneway",
-    direction_vals_bft=("B", "FT", "TF"),
-    minute_cols=("drivetime_fw", "drivetime_bw"),
+connected_roads = sg.close_network_holes(
+    connected_roads, max_distance=1.5, max_angle=90
 )
-
-nw.gdf["minutes"]
-# %% [markdown]
-# You can also calculate minutes from a speed limit column. But you might want to do some manual adjusting, since keeping the speed limit at all times is unrealistic in most cases.
-#
-# You can set a flat speed that will be used for the entire network. Decent if the travel mode is walking, bike, boat etc.
-# %%
-bike_nw = nw.make_directed_network(
-    direction_col="oneway",
-    direction_vals_bft=("B", "FT", "TF"),
-    flat_speed=20,
-)
-
-bike_nw.gdf["minutes"]
-# %% [markdown]
-# ## The NetworkAnalysisRules
-#
-# ### weight
-# The weight parameter has to be specified. The weight can be the name of any numeric column in network.gdf.
-#
-# Or, if the weight is 'meters' or 'metres', a meter column will be created. The coordinate reference system of the network has to be meters as well.
-# %%
-rules = sg.NetworkAnalysisRules(weight="metres")
-sg.NetworkAnalysis(nw, rules=rules).network.gdf["metres"]
-# %% [markdown]
-# If you want other distance units, create the column beforehand.
-# %%
-nw.gdf = nw.gdf.to_crs(6576).assign(feet=lambda x: x.length)
-rules = sg.NetworkAnalysisRules(weight="feet")
-sg.NetworkAnalysis(nw, rules=rules).network.gdf.feet
-# %% [markdown]
-# A minute column can be created through the 'make_directed_network' or 'make_directed_network_norway' methods.
-# %%
-nw = (
-    sg.DirectedNetwork(roads)
-    .remove_isolated()
-    .make_directed_network(
-        direction_col="oneway",
-        direction_vals_bft=("B", "FT", "TF"),
-        minute_cols=("drivetime_fw", "drivetime_bw"),
-    )
-)
-
-rules = sg.NetworkAnalysisRules(weight="minutes")
-
-nwa = sg.NetworkAnalysis(network=nw, rules=rules)
-
-nwa
+connected_roads
 # %% [markdown]
 # ### split_lines
-#
 # By default, the origins and destinations are connected to the closest nodes of the network:
 # %%
 
@@ -447,28 +355,3 @@ nwa.rules.search_tolerance = 250
 nwa.rules.search_factor = 0
 # %% [markdown]
 # Note: one of the points that had all missing values at a search_tolerance of 500, is on an island without a car ferry (but a regular ferry). With a search_tolerance of 5000, trips from this point will originate at the mainland with 0 weight penalty. If you want to include trips like this, it might be a good idea to give a weight for the trip to the mainland. this can be done with one of the 'weight_to_nodes_' parameters.
-
-# ### weight_to_nodes_
-# The class has three 'weight_to_nodes_' parameters. This is about the cost between the origins and destinations and the network nodes. All three paramters are set to False or None by default, meaning the cost will be 0.
-#
-# This will produce inaccurate results for points that are far away from the network. Especially when the search_factor is high.
-#
-# Therefore, you can set one of the 'weight_to_nodes_' parameters. If the weight is 'meters' (i.e. the length unit of the crs), setting 'nodedist_multiplier' to True will make the weight equivelant to the straight-line distance:
-# %%
-
-sg.NetworkAnalysisRules(weight="meters", nodedist_multiplier=True)
-# %% [markdown]
-# If the weight is "minutes", you specify the speed in kilometers:
-# %%
-
-sg.NetworkAnalysisRules(weight="minutes", nodedist_kmh=5)
-# %% [markdown]
-# Let's check how the speed to the nodes influences the average speed:
-
-# %%
-for nodedist_kmh in [5, 20, 50, 0]:
-    nwa.rules.nodedist_kmh = nodedist_kmh
-    od = nwa.od_cost_matrix(points, points)
-
-nwa.log.iloc[-4:][["nodedist_kmh", "cost_mean"]]
-# %%
