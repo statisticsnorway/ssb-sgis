@@ -129,7 +129,7 @@ def make_grid(
     maxx: int | float,
     maxy: int | float,
     *_,
-    size: int,
+    size: int | float,
     crs,
 ) -> GeoDataFrame:
     """Creates a polygon grid from a bounding box.
@@ -167,7 +167,7 @@ def make_grid(
 
 
 def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
-    """Creates a square around the geometry in each row of a GeoDataFrame.
+    """Creates a box around the geometry in each row of a GeoDataFrame.
 
     Args:
         gdf: The GeoDataFrame.
