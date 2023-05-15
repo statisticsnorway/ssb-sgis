@@ -1,6 +1,7 @@
 """Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla.
 """
 import os
+from pathlib import Path
 
 import dapla as dp
 import geopandas as gpd
@@ -46,12 +47,22 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
     """
     fs = dp.FileClient.get_gcs_file_system()
 
-    if "parquet" in path:
-        with fs.open(path, mode="rb") as file:
-            return gpd.read_parquet(file, **kwargs)
-    else:
-        with fs.open(path, mode="rb") as file:
-            return gpd.read_file(file, **kwargs)
+    try:
+        if "parquet" in path:
+            with fs.open(path, mode="rb") as file:
+                return gpd.read_parquet(file, **kwargs)
+        else:
+            with fs.open(path, mode="rb") as file:
+                return gpd.read_file(file, **kwargs)
+    except FileNotFoundError as e:
+        parent = str(Path(path).parent)
+        if exists(parent):
+            print(
+                f"Didn't find the file {path}"
+                "\nHere are the files in the given parent directory:"
+            )
+            print(dp.FileClient().ls(parent))
+        raise e
 
 
 def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
