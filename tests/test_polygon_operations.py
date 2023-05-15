@@ -135,6 +135,12 @@ def test_get_polygon_clusters():
     if __name__ == "__main__":
         sg.explore(buffered_clustered, "cluster")
 
+    buffered_clustered = sg.get_polygon_clusters(gdf, "col")
+    print(buffered_clustered)
+    assert list(buffered_clustered.columns) == ["col", "geometry"], list(
+        buffered_clustered.columns
+    )
+
 
 if __name__ == "__main__":
     test_get_overlapping_polygons()

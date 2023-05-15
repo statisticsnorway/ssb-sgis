@@ -4,6 +4,7 @@ import sys
 import timeit
 from pathlib import Path
 
+import geopandas as gpd
 import numpy as np
 import pytest
 
