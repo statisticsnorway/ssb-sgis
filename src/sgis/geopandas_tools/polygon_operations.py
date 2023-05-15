@@ -15,6 +15,7 @@ from shapely import (
 )
 from shapely.ops import unary_union
 
+from .general import _push_geom_col
 from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
 
@@ -44,6 +45,9 @@ def get_polygon_clusters(
         One or more GeoDataFrames (same amount as was given) with a new cluster column.
 
     """
+    if isinstance(gdfs[-1], str):
+        *gdfs, cluster_col = gdfs
+
     concated = pd.DataFrame()
     for i, gdf in enumerate(gdfs):
         if isinstance(gdf, GeoSeries):
@@ -76,6 +80,8 @@ def get_polygon_clusters(
     concated[cluster_col] = concated.index.map(component_mapper)
 
     concated.index = concated["orig_idx___"].values
+
+    concated = _push_geom_col(concated)
 
     _i___ = concated["_i___"].unique()
 
