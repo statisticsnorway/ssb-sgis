@@ -6,6 +6,8 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 
 The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
+from numbers import Number
+
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
@@ -48,7 +50,7 @@ def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame, dict | None, dict]:
         if key in masks:
             mask = masks[key]
             kwargs.pop(key)
-            if value > 1:
+            if isinstance(value, Number) and value > 1:
                 size = value
             return to_gdf([mask], crs=4326).to_crs(crs).buffer(size), kwargs
 
@@ -61,7 +63,7 @@ def explore(
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
     browser: bool = False,
-    smooth_factor: int = 2.5,
+    smooth_factor: int | float = 1.5,
     center: tuple[float, float] | None = None,
     size: int | None = None,
     **kwargs,
@@ -90,6 +92,8 @@ def explore(
             allowed. Defaults to 30, which is higher than the geopandas default.
         browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
+        smooth_factor: How much to simplify the geometries. 1 is the minimum,
+            5 is quite a lot of simplification.
         center: Optional coordinate pair (x, y) to use as centerpoint for the map.
             The geometries will then be clipped by a buffered circle around this point.
             If 'size' is not given, 1000 will be used as the buffer distance.
@@ -153,7 +157,7 @@ def samplemap(
     sample_from_first: bool = True,
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
-    smooth_factor: int = 2.5,
+    smooth_factor: int = 1.5,
     explore: bool = True,
     browser: bool = False,
     **kwargs,
@@ -184,6 +188,8 @@ def samplemap(
             length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
+        smooth_factor: How much to simplify the geometries. 1 is the minimum,
+            5 is quite a lot of simplification.
         explore: If True (default), an interactive map will be displayed. If False,
             or not in Jupyter, a static plot will be shown.
         browser: If False (default), the maps will be shown in Jupyter.
@@ -311,7 +317,7 @@ def clipmap(
     labels: tuple[str] | None = None,
     explore: bool = True,
     max_zoom: int = 30,
-    smooth_factor: int = 2.5,
+    smooth_factor: int = 1.5,
     browser: bool = False,
     **kwargs,
 ) -> None:
@@ -336,6 +342,8 @@ def clipmap(
             length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
+        smooth_factor: How much to simplify the geometries. 1 is the minimum,
+            5 is quite a lot of simplification.
         explore: If True (default), an interactive map will be displayed. If False,
             or not in Jupyter, a static plot will be shown.
         browser: If False (default), the maps will be shown in Jupyter.
