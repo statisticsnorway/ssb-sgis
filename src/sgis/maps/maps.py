@@ -44,10 +44,12 @@ def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame, dict | None, dict]:
     else:
         size = 1000
 
-    for kwarg in kwargs:
-        if kwarg in masks:
-            mask = masks[kwarg]
-            kwargs.pop(kwarg)
+    for key, value in kwargs.items():
+        if key in masks:
+            mask = masks[key]
+            kwargs.pop(key)
+            if value > 1:
+                size = value
             return to_gdf([mask], crs=4326).to_crs(crs).buffer(size), kwargs
 
     return None, kwargs
@@ -59,6 +61,7 @@ def explore(
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
     browser: bool = False,
+    smooth_factor: int = 2.5,
     center: tuple[float, float] | None = None,
     size: int | None = None,
     **kwargs,
@@ -136,6 +139,7 @@ def explore(
         labels=labels,
         browser=browser,
         max_zoom=max_zoom,
+        smooth_factor=smooth_factor,
         **kwargs,
     )
 
@@ -149,6 +153,7 @@ def samplemap(
     sample_from_first: bool = True,
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
+    smooth_factor: int = 2.5,
     explore: bool = True,
     browser: bool = False,
     **kwargs,
@@ -231,6 +236,7 @@ def samplemap(
             labels=labels,
             browser=browser,
             max_zoom=max_zoom,
+            smooth_factor=smooth_factor,
             **kwargs,
         )
         m.samplemap(size, sample_from_first=sample_from_first)
@@ -305,6 +311,7 @@ def clipmap(
     labels: tuple[str] | None = None,
     explore: bool = True,
     max_zoom: int = 30,
+    smooth_factor: int = 2.5,
     browser: bool = False,
     **kwargs,
 ) -> None:
@@ -364,6 +371,7 @@ def clipmap(
             labels=labels,
             browser=browser,
             max_zoom=max_zoom,
+            smooth_factor=smooth_factor,
             **kwargs,
         )
         m.explore(center=center, size=size)

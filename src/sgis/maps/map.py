@@ -374,7 +374,7 @@ class Map:
         if self._k == len(self._unique_values) - 1:
             n_classes = self._k - 1
 
-        if self.scheme == "fisherjenks":
+        if self.scheme == "jenks":
             bins = jenks_breaks(gdf.loc[~self._nan_idx, column], n_classes=n_classes)
         else:
             binning = classify(
