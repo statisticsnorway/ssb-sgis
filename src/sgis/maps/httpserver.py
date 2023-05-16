@@ -35,6 +35,8 @@ def run_html_server(contents_path: str | None = None, port: int = 3000):
         def do_GET(self):
             """Handle GET requests."""
             self.send_response(200)
+            fileSize = os.path.getsize(contents_path)
+            self.send_header("Content-Length", str(fileSize))
             self.send_header('Content-type', 'text/html')
             self.end_headers()
             if self.path == '/stop':
