@@ -1,6 +1,7 @@
 import os
 import webbrowser
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+import shutil
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from IPython.core.display import HTML, display
 
@@ -27,7 +28,7 @@ def run_html_server(contents_path: str | None = None, port: int = 3000):
             f"Click http://localhost:{port}/stop to stop server."
         )
 
-    class HTTPServerRequestHandler(SimpleHTTPRequestHandler):
+    class HTTPServerRequestHandler(BaseHTTPRequestHandler):
         """
         A handler of request for the server, hosting static content.
         """
@@ -41,8 +42,8 @@ def run_html_server(contents_path: str | None = None, port: int = 3000):
                 os.remove(contents_path)
                 raise KeyboardInterrupt
             else:
-                self.path = contents_path
-                return SimpleHTTPRequestHandler.do_GET(self)
+                with open(contents_path, 'rb') as contents:
+                    shutil.copyfileobj(contents, self.wfile)
 
     HTTPServerRequestHandler.allow_reuse_address = True
 

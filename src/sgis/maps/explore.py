@@ -4,7 +4,7 @@ This module holds the Explore class, which is the basis for the explore, samplem
 clipmap functions from the 'maps' module.
 """
 import warnings
-import os
+import tempfile
 from statistics import mean
 
 import branca as bc
@@ -198,9 +198,9 @@ class Explore(Map):
             self._create_continous_map()
 
         if self.browser:
-            with open(os.getcwd() + "/temp.html", "w") as f:
-                f.write(self.map._repr_html_())
-            run_html_server(os.getcwd() + "/temp.html")
+            file_name = tempfile.mkdtemp(suffix='.html')
+            self.map.save(file_name)
+            run_html_server(file_name)
         else:
             display(self.map)
 
