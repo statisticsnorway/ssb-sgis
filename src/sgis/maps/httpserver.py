@@ -1,11 +1,11 @@
 import os
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 from IPython.core.display import HTML, display
 
 
-def run_html_server(contents: str | None = None, port: int = 3000):
+def run_html_server(contents_path: str | None = None, port: int = 3000):
     """
     Run a simple, temporary http web server for serving static HTML content.
     """
@@ -27,21 +27,22 @@ def run_html_server(contents: str | None = None, port: int = 3000):
             f"Click http://localhost:{port}/stop to stop server."
         )
 
-    class HTTPServerRequestHandler(BaseHTTPRequestHandler):
+    class HTTPServerRequestHandler(SimpleHTTPRequestHandler):
         """
         A handler of request for the server, hosting static content.
         """
-
         def do_GET(self):
             """Handle GET requests."""
             self.send_response(200)
-            self.send_header("Content-type", "text/html")
+            self.send_header('Content-type', 'text/html')
             self.end_headers()
-            if self.path == "/stop":
-                self.wfile.write(bytes("The server is stopped", encoding="utf-8"))
+            if self.path == '/stop':
+                self.wfile.write(bytes('The server is stopped', encoding='utf-8'))
+                os.remove(contents_path)
                 raise KeyboardInterrupt
             else:
-                self.wfile.write(bytes(contents, encoding="utf-8"))
+                self.path = contents_path
+                return SimpleHTTPRequestHandler.do_GET(self)
 
     HTTPServerRequestHandler.allow_reuse_address = True
 
