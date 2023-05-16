@@ -15,7 +15,7 @@ from shapely import (
     get_parts,
     wkt,
 )
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
 from .geometry_types import to_single_geom_type
@@ -105,31 +105,13 @@ def rename_geometry_if(gdf: GeoDataFrame) -> GeoDataFrame:
     )
 
 
-def make_grid_in_bounds(gdf: GeoDataFrame, size: int | float) -> GeoDataFrame:
-    """Create a polygon grid around a GeoDataFrame.
-
-    Creates a GeoDataFrame of grid cells of a given size within the bounds of
-    a given GeoDataFrame.
-
-    Args:
-        gdf: A GeoDataFrame.
-        size: Length of the grid walls.
-
-    Returns:
-        GeoDataFrame with grid polygons.
-    """
-    minx, miny, maxx, maxy = gdf.total_bounds
-    print(minx)
-    return make_grid(minx, miny, maxx, maxy, size=size, crs=gdf.crs)
-
-
-def make_grid(
+def make_grid_from_bbox(
     minx: int | float,
     miny: int | float,
     maxx: int | float,
     maxy: int | float,
     *_,
-    size: int,
+    size: int | float,
     crs,
 ) -> GeoDataFrame:
     """Creates a polygon grid from a bounding box.
@@ -146,7 +128,7 @@ def make_grid(
         crs: Coordinate reference system.
 
     Returns:
-        GeoDataFrame with grid polygons.
+        GeoDataFrame with grid geometries.
     """
     grid_cells1 = []
     grid_cells2 = []
@@ -165,44 +147,101 @@ def make_grid(
 
     return gpd.GeoDataFrame(grid_cells, columns=["geometry"], crs=crs)
 
-# Function for making polygon gridwith SSB-id and standard SSB grids
-# Courtesy https://gis.stackexchange.com/questions/269243/creating-polygon-grid-using-geopandas
-def make_SSB_grid(in_gdf, gridsize=1000):
-    features = in_gdf.copy()
-    xmin, ymin, xmax, ymax = features.total_bounds
-    
+
+def make_grid(gdf: GeoDataFrame, size: int | float) -> GeoDataFrame:
+    """Create a polygon grid around a GeoDataFrame.
+
+    Creates a GeoDataFrame of grid cells of a given size within the bounds of
+    a given GeoDataFrame.
+
+    Args:
+        gdf: A GeoDataFrame.
+        size: Length of the grid walls.
+
+    Returns:
+        GeoDataFrame with grid polygons.
+    """
+    minx, miny, maxx, maxy = gdf.total_bounds
+    return make_grid_from_bbox(minx, miny, maxx, maxy, size=size, crs=gdf.crs)
+
+
+def make_ssb_grid(gdf, gridsize: int = 1000):
+    """Creates a polygon grid around a GeoDataFrame with an SSB id column.
+
+    The GeoDataFrame must have 25833 as crs (UTM 33 N).
+
+    Courtesy https://gis.stackexchange.com/questions/269243/creating-polygon-grid-using-geopandas
+
+    Args:
+        gdf: A GeoDataFrame.
+        gridsize: Size of the grid in meters.
+
+    Returns:
+        GeoDataFrame with grid geometries and a column 'SSBID'.
+    """
+    if gdf.crs != 25833:
+        raise ValueError(
+            "Geodataframe has no crs. Use df.set_crs(25833) to set "
+            "projection (usually 25833 for Norway)."
+        )
+
+    minx, miny, maxx, maxy = gdf.total_bounds
+
     # Adjust for SSB-grid
-    xmin = int(xmin / int(gridsize)) * int(gridsize)
-    ymin = int(ymin / int(gridsize)) * int(gridsize)
-    
-    cols = list(np.arange(xmin, xmax + gridsize, gridsize))
-    rows = list(np.arange(ymin, ymax + gridsize, gridsize))
-    
+    minx = int(minx / int(gridsize)) * int(gridsize)
+    miny = int(miny / int(gridsize)) * int(gridsize)
+
+    cols = list(np.arange(minx, maxx + gridsize, gridsize))
+    rows = list(np.arange(miny, maxy + gridsize, gridsize))
+
     polygons = []
     for x in cols[:-1]:
         for y in rows[:-1]:
-            polygons.append(Polygon([(x,y), (x+gridsize, y), (x+gridsize, y+gridsize), (x, y+gridsize)]))
-    
-    grid = gpd.GeoDataFrame({'geometry':polygons})
-    grid = grid.set_crs('epsg:25833')
+            polygons.append(
+                Polygon(
+                    [
+                        (x, y),
+                        (x + gridsize, y),
+                        (x + gridsize, y + gridsize),
+                        (x, y + gridsize),
+                    ]
+                )
+            )
+
+    grid = gpd.GeoDataFrame({"geometry": polygons}, crs=25833)
+
     # Make SSB-id
-    grid['ostc'] = ((np.floor(((grid.geometry.centroid.x + 2000000)/gridsize))*gridsize).apply(int)).apply(str)
-    grid['nordc'] = ((np.floor(((grid.geometry.centroid.y)/gridsize))*gridsize).apply(int)).apply(str)
-    grid['SSBID'] = grid['ostc'] + grid['nordc']
-    grid = grid.drop(columns=['ostc','nordc'])
+    grid["ostc"] = (
+        (np.floor((grid.geometry.centroid.x + 2000000) / gridsize) * gridsize).apply(
+            int
+        )
+    ).apply(str)
+    grid["nordc"] = (
+        (np.floor((grid.geometry.centroid.y) / gridsize) * gridsize).apply(int)
+    ).apply(str)
+    grid["SSBID"] = grid["ostc"] + grid["nordc"]
+    grid = grid.drop(columns=["ostc", "nordc"])
     return grid
 
-# Function for adding GRID-ID (SSB) to points gdf
-def add_grid_id(ingdf_pkt, out_column, gridsize):
-    midlrdf = ingdf_pkt.copy()
-    if midlrdf.crs is None:
-        return print("Geodataframe missing crs. Use df.set_crs(25833) to set proj. (Usually 25833).")
-    midlrdf = midlrdf.to_crs(25833)
-    midlrdf['ostc'] = ((np.floor(((midlrdf.geometry.x + 2000000)/gridsize))*gridsize).apply(int)).apply(str)
-    midlrdf['nordc'] = ((np.floor(((midlrdf.geometry.y)/gridsize))*gridsize).apply(int)).apply(str)
-    midlrdf[out_column] = midlrdf['ostc'] + midlrdf['nordc']
-    midlrdf = midlrdf.drop(columns=['nordc', 'ostc'])
+
+def add_grid_id(gdf: GeoDataFrame, gridsize: int, out_column: str = "SSBID"):
+    """Adds GRID ID (SSB) to a GeoDataFrame of points."""
+    if gdf.crs != 25833:
+        raise ValueError(
+            "Geodataframe has no crs. Use df.set_crs(25833) to set "
+            "projection (usually 25833 for Norway)."
+        )
+    midlrdf = gdf.to_crs(25833)
+    midlrdf["ostc"] = (
+        (np.floor((midlrdf.geometry.x + 2000000) / gridsize) * gridsize).apply(int)
+    ).apply(str)
+    midlrdf["nordc"] = (
+        (np.floor((midlrdf.geometry.y) / gridsize) * gridsize).apply(int)
+    ).apply(str)
+    midlrdf[out_column] = midlrdf["ostc"] + midlrdf["nordc"]
+    midlrdf = midlrdf.drop(columns=["nordc", "ostc"])
     return midlrdf
+
 
 def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
     """Creates a square around the geometry in each row of a GeoDataFrame.
