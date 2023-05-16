@@ -263,7 +263,7 @@ def add_grid_id(
 
 
 def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
-    """Creates a square around the geometry in each row of a GeoDataFrame.
+    """Creates a box around the geometry in each row of a GeoDataFrame.
 
     Args:
         gdf: The GeoDataFrame.
