@@ -198,7 +198,7 @@ class Explore(Map):
             self._create_continous_map()
 
         if self.browser:
-            file_name = tempfile.mkdtemp(suffix='.html')
+            file_name = tempfile.mktemp(suffix='.html')
             self.map.save(file_name)
             run_html_server(file_name)
         else:
