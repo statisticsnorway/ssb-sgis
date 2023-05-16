@@ -111,7 +111,7 @@ def make_grid_from_bbox(
     maxx: int | float,
     maxy: int | float,
     *_,
-    size: int | float,
+    gridsize: int | float,
     crs,
 ) -> GeoDataFrame:
     """Creates a polygon grid from a bounding box.
@@ -124,7 +124,7 @@ def make_grid_from_bbox(
         miny: Minumum y coordinate.
         maxx: Maximum x coordinate.
         maxy: Maximum y coordinate.
-        size: Length of the grid walls.
+        gridsize: Length of the grid walls.
         crs: Coordinate reference system.
 
     Returns:
@@ -134,10 +134,10 @@ def make_grid_from_bbox(
     grid_cells2 = []
     grid_cells3 = []
     grid_cells4 = []
-    for x0 in np.arange(minx, maxx + size, size):
-        for y0 in np.arange(miny, maxy + size, size):
-            x1 = x0 - size
-            y1 = y0 + size
+    for x0 in np.arange(minx, maxx + gridsize, gridsize):
+        for y0 in np.arange(miny, maxy + gridsize, gridsize):
+            x1 = x0 - gridsize
+            y1 = y0 + gridsize
             grid_cells1.append(x0)
             grid_cells2.append(y0)
             grid_cells3.append(x1)
@@ -148,7 +148,7 @@ def make_grid_from_bbox(
     return gpd.GeoDataFrame(grid_cells, columns=["geometry"], crs=crs)
 
 
-def make_grid(gdf: GeoDataFrame, size: int | float) -> GeoDataFrame:
+def make_grid(gdf: GeoDataFrame, gridsize: int | float) -> GeoDataFrame:
     """Create a polygon grid around a GeoDataFrame.
 
     Creates a GeoDataFrame of grid cells of a given size within the bounds of
@@ -156,18 +156,19 @@ def make_grid(gdf: GeoDataFrame, size: int | float) -> GeoDataFrame:
 
     Args:
         gdf: A GeoDataFrame.
-        size: Length of the grid walls.
+        gridsize: Length of the grid walls.
 
     Returns:
         GeoDataFrame with grid polygons.
     """
     minx, miny, maxx, maxy = gdf.total_bounds
-    return make_grid_from_bbox(minx, miny, maxx, maxy, size=size, crs=gdf.crs)
+    return make_grid_from_bbox(minx, miny, maxx, maxy, gridsize=gridsize, crs=gdf.crs)
 
 
-def make_ssb_grid(gdf, gridsize: int = 1000):
+def make_ssb_grid(gdf: GeoDataFrame, gridsize: int = 1000) -> GeoDataFrame:
     """Creates a polygon grid around a GeoDataFrame with an SSB id column.
 
+    Creates a grid that follows the grids produced by Statistics Norway.
     The GeoDataFrame must have 25833 as crs (UTM 33 N).
 
     Courtesy https://gis.stackexchange.com/questions/269243/creating-polygon-grid-using-geopandas
@@ -178,11 +179,14 @@ def make_ssb_grid(gdf, gridsize: int = 1000):
 
     Returns:
         GeoDataFrame with grid geometries and a column 'SSBID'.
+
+    Raises:
+        ValueError: If the GeoDataFrame does not have 25833 as crs.
     """
     if gdf.crs != 25833:
         raise ValueError(
-            "Geodataframe has no crs. Use df.set_crs(25833) to set "
-            "projection (usually 25833 for Norway)."
+            "Geodataframe must have crs = 25833. Use df.set_crs(25833) to set "
+            "projection or df.to_crs(25833) for transforming."
         )
 
     minx, miny, maxx, maxy = gdf.total_bounds
@@ -224,14 +228,29 @@ def make_ssb_grid(gdf, gridsize: int = 1000):
     return grid
 
 
-def add_grid_id(gdf: GeoDataFrame, gridsize: int, out_column: str = "SSBID"):
-    """Adds GRID ID (SSB) to a GeoDataFrame of points."""
+def add_grid_id(
+    gdf: GeoDataFrame, gridsize: int, out_column: str = "SSBID"
+) -> GeoDataFrame:
+    """Adds a grid ID column to a GeoDataFrame of points.
+
+    The GeoDataFrame must have 25833 as crs (UTM 33 N).
+
+    Args:
+        gdf: A GeoDataFrame.
+        gridsize: Size of the grid in meters.
+
+    Returns:
+        The input GeoDataFrame with a new grid id column.
+
+    Raises:
+        ValueError: If the GeoDataFrame does not have 25833 as crs.
+    """
     if gdf.crs != 25833:
         raise ValueError(
-            "Geodataframe has no crs. Use df.set_crs(25833) to set "
-            "projection (usually 25833 for Norway)."
+            "Geodataframe must have crs = 25833. Use df.set_crs(25833) to set "
+            "projection or df.to_crs(25833) for transforming."
         )
-    midlrdf = gdf.to_crs(25833)
+    midlrdf = gdf.copy()
     midlrdf["ostc"] = (
         (np.floor((midlrdf.geometry.x + 2000000) / gridsize) * gridsize).apply(int)
     ).apply(str)

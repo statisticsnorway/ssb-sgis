@@ -19,7 +19,7 @@ import sgis as sg
 def test_bounds_to_points():
     points = sg.random_points(1000, loc=10000).set_crs(25833)
 
-    grid = sg.make_grid(points, size=1000)
+    grid = sg.make_grid(points, gridsize=1000)
     assert all(points.intersects(grid.unary_union))
 
     ssb_grid = sg.make_ssb_grid(points, gridsize=1000)
@@ -28,7 +28,7 @@ def test_bounds_to_points():
     if __name__ == "__main__":
         sg.explore(grid, ssb_grid, points)
 
-    grid = sg.make_grid_from_bbox(0, 0, 1, 1, size=0.1, crs=25833)
+    grid = sg.make_grid_from_bbox(0, 0, 1, 1, gridsize=0.1, crs=25833)
     print(grid.total_bounds)
     grid["idx"] = grid.index
     assert len(grid) == 121, len(grid)
