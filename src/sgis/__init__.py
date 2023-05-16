@@ -13,7 +13,8 @@ from .geopandas_tools.general import (
     coordinate_array,
     drop_inactive_geometry_columns,
     make_grid,
-    make_grid_in_bounds,
+    make_grid_from_bbox,
+    make_ssb_grid,
     points_in_bounds,
     random_points,
     random_points_in_polygons,
@@ -43,6 +44,7 @@ from .geopandas_tools.polygon_operations import (
     get_polygon_clusters,
 )
 from .geopandas_tools.to_geodataframe import to_gdf
+from .maps.explore import Explore
 from .maps.legend import Legend
 from .maps.maps import clipmap, explore, qtm, samplemap
 from .maps.thematicmap import ThematicMap
