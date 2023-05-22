@@ -31,14 +31,11 @@ def _check_if_jupyter_is_needed(explore, browser):
             ) from e
 
 
-def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame, dict | None, dict]:
+def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame | None, dict]:
     masks = {
         "bygdoy": (10.6976899, 59.9081695),
-        "Bygdoy": (10.6976899, 59.9081695),
         "kongsvinger": (12.0035242, 60.1875279),
-        "Kongsvinger": (12.0035242, 60.1875279),
         "stavanger": (5.6960601, 58.8946196),
-        "Stavanger": (5.6960601, 58.8946196),
     }
 
     if "size" in kwargs and kwargs["size"] is not None:
@@ -47,12 +44,13 @@ def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame, dict | None, dict]:
         size = 1000
 
     for key, value in kwargs.items():
-        if key in masks:
+        if key.lower() in masks:
             mask = masks[key]
             kwargs.pop(key)
             if isinstance(value, Number) and value > 1:
                 size = value
-            return to_gdf([mask], crs=4326).to_crs(crs).buffer(size), kwargs
+            the_mask = to_gdf([mask], crs=4326).to_crs(crs).buffer(size)
+            return the_mask, kwargs
 
     return None, kwargs
 
@@ -125,8 +123,23 @@ def explore(
     >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
     """
     mask, kwargs = _get_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
+
     kwargs.pop("size", None)
+
     if mask is not None:
+        return clipmap(
+            *gdfs,
+            column=column,
+            mask=mask,
+            labels=labels,
+            browser=browser,
+            max_zoom=max_zoom,
+            **kwargs,
+        )
+
+    if center is not None:
+        size = size if size else 1000
+        mask = to_gdf(center, crs=gdfs[0].crs).buffer(size)
         return clipmap(
             *gdfs,
             column=column,
@@ -147,7 +160,7 @@ def explore(
         **kwargs,
     )
 
-    m.explore(center=center, size=size)
+    m.explore()
 
 
 def samplemap(
@@ -317,7 +330,7 @@ def clipmap(
     labels: tuple[str] | None = None,
     explore: bool = True,
     max_zoom: int = 30,
-    smooth_factor: int = 1.5,
+    smooth_factor: int | float = 1.5,
     browser: bool = False,
     **kwargs,
 ) -> None:
