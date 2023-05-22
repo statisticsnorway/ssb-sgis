@@ -139,7 +139,11 @@ def explore(
 
     if center is not None:
         size = size if size else 1000
-        mask = to_gdf(center, crs=gdfs[0].crs).buffer(size)
+        if not isinstance(center, GeoDataFrame):
+            mask = to_gdf(center, crs=gdfs[0].crs).buffer(size)
+        elif get_geom_type(center) == "point":
+            mask = center.buffer(size)
+
         return clipmap(
             *gdfs,
             column=column,

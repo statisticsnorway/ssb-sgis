@@ -54,6 +54,7 @@ def not_test_explore(points_oslo, roads_oslo):
     p = points.iloc[[0]]
     roads = roads[["geometry"]]
     roads["km"] = roads.length / 1000
+    roads["cat"] = np.random.choice([*"abc"], len(roads))
     points["km"] = points.length / 1000
     roads = roads.sjoin(p.buffer(500).to_frame()).drop("index_right", axis=1)
     points = points.sjoin(p.buffer(500).to_frame())
@@ -68,6 +69,8 @@ def not_test_explore(points_oslo, roads_oslo):
 
     print("One test of show in broser.")
     sg.clipmap(r300, "meters", r100, show_in_browser=True)
+
+    sg.explore(r300, "meters", r100, bygdoy=7000)
 
     sg.clipmap(r300, "meters", r100, show_in_browser=False)
     sg.clipmap(r300, r200, "meters", show_in_browser=False)

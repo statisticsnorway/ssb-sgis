@@ -66,6 +66,7 @@ class Explore(Map):
         column: str | None = None,
         popup: bool = True,
         max_zoom: int = 30,
+        smooth_factor: 2.5,
         browser: bool = False,
         **kwargs,
     ):
@@ -79,6 +80,7 @@ class Explore(Map):
 
         self.popup = popup
         self.max_zoom = max_zoom
+        self.smooth_factor = smooth_factor
 
         self._to_single_geom_type()
 
@@ -246,6 +248,7 @@ class Explore(Map):
         for gdf, label in zip(self._gdfs, self.labels, strict=True):
             if not len(gdf):
                 continue
+
             f = folium.FeatureGroup(name=label)
 
             gjs = self._explore_return(
@@ -253,6 +256,7 @@ class Explore(Map):
                 color=gdf["color"],
                 return_="geojson",
                 tooltip=self._tooltip_cols(gdf),
+                popup=self.popup,
                 **{
                     key: value
                     for key, value in self.kwargs.items()
@@ -261,6 +265,7 @@ class Explore(Map):
             )
             f.add_child(gjs)
             self.map.add_child(f)
+
         _categorical_legend(
             self.map,
             self._column,
@@ -293,7 +298,6 @@ class Explore(Map):
             vmax=self._gdf[self._column].max(),
             caption=self._column,
             index=self.bins,
-            #  **colormap_kwds,
         )
 
         for gdf, label in zip(self._gdfs, self.labels, strict=True):
@@ -309,6 +313,7 @@ class Explore(Map):
                 tooltip=self._tooltip_cols(gdf),
                 color=colorarray,
                 return_="geojson",
+                popup=self.popup,
                 **{key: value for key, value in self.kwargs.items() if key != "title"},
             )
             f.add_child(gjs)
@@ -416,6 +421,8 @@ class Explore(Map):
                 map_kwds["max_zoom"] = tiles.get("max_zoom", 30)
                 tiles = tiles.build_url(scale_factor="{r}")
 
+            map_kwds["zoom_start"] = self.kwargs.get("zoom_start", 15)
+
             m = folium.Map(
                 location=location,
                 control_scale=control_scale,
@@ -522,6 +529,7 @@ class Explore(Map):
                 marker=marker,
                 style_function=style_function,
                 highlight_function=highlight_function,
+                smooth_factor=self.smooth_factor,
                 **kwargs,
             )
             return gjs
