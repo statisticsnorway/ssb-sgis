@@ -44,6 +44,80 @@ def get_polygon_clusters(
     Returns:
         One or more GeoDataFrames (same amount as was given) with a new cluster column.
 
+    Examples
+    --------
+
+    Create polygon geometries where row 0, 1 and 2 overlap, 3 and 4 overlap
+    and 6 is on its own.
+
+    >>> import sgis as sg
+    >>> gdf = sg.to_gdf([(0, 0), (1, 1), (0, 1), (4, 4), (4, 3), (7, 7)])
+    >>> buffered = sg.buff(gdf, 1)
+    >>> gdf
+                                                geometry
+    0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
+    1  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
+    2  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
+    3  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
+    4  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
+    5  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+
+    This will add a cluster column to the GeoDataFrame:
+
+    >>> gdf = sg.get_polygon_clusters(gdf, cluster_col="cluster")
+    >>> gdf
+       cluster                                           geometry
+    0        0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
+    1        0  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
+    2        0  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
+    3        1  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
+    4        1  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
+    5        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+
+    If multiple GeoDataFrames are given, all are returned with common
+    cluster values.
+
+    >>> gdf2 = sg.to_gdf([(0, 0), (7, 7)])
+    >>> gdf, gdf2 = sg.get_polygon_clusters(gdf, gdf2, cluster_col="cluster")
+    >>> gdf2
+    cluster                 geometry
+    0        0  POINT (0.00000 0.00000)
+    1        2  POINT (7.00000 7.00000)
+    >>> gdf
+       cluster                                           geometry
+    0        0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
+    1        0  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
+    2        0  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
+    3        1  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
+    4        1  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
+    5        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+
+    Dissolving 'by' the cluster column will make the dissolve much
+    faster if there are a lot of non-overlapping polygons.
+
+    >>> dissolved = gdf.dissolve(by="cluster", as_index=False)
+    >>> dissolved
+       cluster                                           geometry
+    0        0  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
+    1        1  POLYGON ((4.99951 2.96859, 4.99803 2.93721, 4....
+    2        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+
+    Which is equivelen to this in straigt geopandas:
+
+    >>> dissolved2 = gdf.dissolve().explode(ignore_index=True).assign(cluster=lambda x: x.index)
+    >>> dissolved2
+       cluster                                           geometry
+    0        0  POLYGON ((0.99803 -0.06279, 0.99556 -0.09411, ...
+    1        1  POLYGON ((4.99803 2.93721, 4.99556 2.90589, 4....
+    2        2  POLYGON ((7.99556 6.90589, 7.99211 6.87467, 7....
+
+    Note that the order of the coordinates is different, and there is
+    some deviations in the rounding on microscopic levels.
+
+    >>> dissolved.area.sum()
+    15.016909720698278
+    >>> dissolved2.area.sum()
+    15.016909720698285
     """
     if isinstance(gdfs[-1], str):
         *gdfs, cluster_col = gdfs
