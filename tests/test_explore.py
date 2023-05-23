@@ -47,13 +47,14 @@ def not_test_center(r300, r200, r100, p):
         )
 
 
-def not_test_explore(points_oslo, roads_oslo):
+def test_explore(points_oslo, roads_oslo):
     roads = roads_oslo
     points = points_oslo
 
     p = points.iloc[[0]]
     roads = roads[["geometry"]]
     roads["km"] = roads.length / 1000
+    roads["cat"] = np.random.choice([*"abc"], len(roads))
     points["km"] = points.length / 1000
     roads = roads.sjoin(p.buffer(500).to_frame()).drop("index_right", axis=1)
     points = points.sjoin(p.buffer(500).to_frame())
@@ -66,8 +67,11 @@ def not_test_explore(points_oslo, roads_oslo):
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
 
-    print("One test of show in broser.")
-    sg.clipmap(r300, "meters", r100, show_in_browser=True)
+    if __name__ == "__main__":
+        print("One test of show in broser.")
+        sg.clipmap(r300, "meters", r100, show_in_browser=True)
+
+    sg.explore(r300, "meters", r100, bygdoy=7000)
 
     sg.clipmap(r300, "meters", r100, show_in_browser=False)
     sg.clipmap(r300, r200, "meters", show_in_browser=False)
@@ -173,7 +177,7 @@ def not_test_explore(points_oslo, roads_oslo):
 def main():
     from oslo import points_oslo, roads_oslo
 
-    not_test_explore(points_oslo(), roads_oslo())
+    test_explore(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":

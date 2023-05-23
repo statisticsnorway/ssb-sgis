@@ -31,18 +31,16 @@ pd.options.mode.chained_assignment = None
 _CATEGORICAL_CMAP = {
     0: "#4576ff",
     1: "#ff455e",
-    2: "#59d45f",
-    3: "#b51d8b",
-    4: "#ffa514",
-    5: "#f2dc4e",
-    6: "#ff8cc9",
-    7: "#6bf2eb",
-    8: "#916209",
-    9: "#008d94",
-    10: "#8a030a",
-    11: "#9c65db",
-    12: "#228000",
-    13: "#80ff00",
+    2: "#ffa617",
+    3: "#ff8cc9",
+    4: "#804e00",
+    5: "#99ff00",
+    6: "#fff700",
+    7: "#00ffee",
+    8: "#36d19b",
+    9: "#94006b",
+    10: "#750000",
+    11: "#1c6b00",
 }
 
 
@@ -235,7 +233,6 @@ class Map:
         if not self.bins:
             self.bins = self._create_bins(self._gdf, self._column)
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
-                warnings.warn(f"Could not create {self._k} classes.")
                 self._k = len(self.bins)
         else:
             self.bins = self._add_minmax_to_bins(self.bins)

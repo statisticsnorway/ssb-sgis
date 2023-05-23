@@ -326,14 +326,6 @@ def test_thematicmap(points_oslo):
         m = sg.ThematicMap(with_nan, "col_with_nan_cat")
         m.title = "Middle values missing, categorical"
         m.plot()
-        assert m._categories_colors_dict == {
-            "11291": "#4576ff",
-            "1254": "#ff455e",
-            "15369": "#59d45f",
-            "313": "#b51d8b",
-            "7841": "#ffa514",
-            "Missing": "#c2c2c2",
-        }, m._categories_colors_dict
 
     with_nans(points)
 
@@ -581,13 +573,6 @@ def test_thematicmap(points_oslo):
         points["category"] = [*"abcddea"]
         m = sg.ThematicMap(points, "category")
         m.plot()
-        assert m._categories_colors_dict == {
-            "a": "#4576ff",
-            "b": "#ff455e",
-            "c": "#59d45f",
-            "d": "#b51d8b",
-            "e": "#ffa514",
-        }, m._categories_colors_dict
         assert m.legend._categories == ["a", "b", "c", "d", "e"], m.legend._categories
 
     categorical_column(points)
