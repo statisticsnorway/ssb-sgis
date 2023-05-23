@@ -21,7 +21,9 @@ from .overlay import clean_overlay
 
 
 def get_polygon_clusters(
-    *gdfs: GeoDataFrame | GeoSeries, cluster_col: str = "cluster", explode: bool = True
+    *gdfs: GeoDataFrame | GeoSeries,
+    cluster_col: str = "cluster",
+    allow_multipart: bool = False,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Find which polygons overlap without dissolving.
 
@@ -38,8 +40,8 @@ def get_polygon_clusters(
     Args:
         gdfs: One or more GeoDataFrames of polygons.
         cluster_col: Name of the resulting cluster column.
-        explode: Whether to explode the geometries to singlepart before the spatial
-            join. Defaults to True. Index will be preserved.
+        allow_multipart: Whether to allow mutipart geometries in the gdfs.
+            Defaults to False to avoid confusing results.
 
     Returns:
         One or more GeoDataFrames (same amount as was given) with a new cluster column.
@@ -47,8 +49,7 @@ def get_polygon_clusters(
     Examples
     --------
 
-    Create polygon geometries where row 0, 1 and 2 overlap, 3 and 4 overlap
-    and 6 is on its own.
+    Create geometries with three clusters of overlapping polygons.
 
     >>> import sgis as sg
     >>> gdf = sg.to_gdf([(0, 0), (1, 1), (0, 1), (4, 4), (4, 3), (7, 7)])
@@ -62,7 +63,7 @@ def get_polygon_clusters(
     4  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
     5  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
 
-    This will add a cluster column to the GeoDataFrame:
+    Add a cluster column to the GeoDataFrame:
 
     >>> gdf = sg.get_polygon_clusters(gdf, cluster_col="cluster")
     >>> gdf
@@ -80,7 +81,7 @@ def get_polygon_clusters(
     >>> gdf2 = sg.to_gdf([(0, 0), (7, 7)])
     >>> gdf, gdf2 = sg.get_polygon_clusters(gdf, gdf2, cluster_col="cluster")
     >>> gdf2
-    cluster                 geometry
+       cluster                 geometry
     0        0  POINT (0.00000 0.00000)
     1        2  POINT (7.00000 7.00000)
     >>> gdf
@@ -101,28 +102,12 @@ def get_polygon_clusters(
     0        0  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
     1        1  POLYGON ((4.99951 2.96859, 4.99803 2.93721, 4....
     2        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
-
-    Which is equivelen to this in straigt geopandas:
-
-    >>> dissolved2 = gdf.dissolve().explode(ignore_index=True).assign(cluster=lambda x: x.index)
-    >>> dissolved2
-       cluster                                           geometry
-    0        0  POLYGON ((0.99803 -0.06279, 0.99556 -0.09411, ...
-    1        1  POLYGON ((4.99803 2.93721, 4.99556 2.90589, 4....
-    2        2  POLYGON ((7.99556 6.90589, 7.99211 6.87467, 7....
-
-    Note that the order of the coordinates is different, and there is
-    some deviations in the rounding on microscopic levels.
-
-    >>> dissolved.area.sum()
-    15.016909720698278
-    >>> dissolved2.area.sum()
-    15.016909720698285
     """
     if isinstance(gdfs[-1], str):
         *gdfs, cluster_col = gdfs
 
     concated = pd.DataFrame()
+    orig_indices = ()
     for i, gdf in enumerate(gdfs):
         if isinstance(gdf, GeoSeries):
             gdf = gdf.to_frame()
@@ -130,11 +115,15 @@ def get_polygon_clusters(
         if not isinstance(gdf, GeoDataFrame):
             raise TypeError("'gdfs' should be one or more GeoDataFrames or GeoSeries.")
 
-        if explode:
-            gdf = gdf.explode(index_parts=False)
+        if not allow_multipart and len(gdf) != len(gdf.explode(index_parts=False)):
+            raise ValueError(
+                "All geometries should be exploded to singlepart "
+                "in order to get correct polygon clusters. "
+                "To allow multipart geometries, set allow_multipart=True"
+            )
 
-        gdf["orig_idx___"] = gdf.index
-        gdf["_i___"] = i
+        orig_indices = orig_indices + (gdf.index,)
+        gdf["i__"] = i
 
         concated = pd.concat([concated, gdf], ignore_index=True)
 
@@ -151,20 +140,21 @@ def get_polygon_clusters(
         for j in component
     }
 
-    concated[cluster_col] = concated.index.map(component_mapper)
-
-    concated.index = concated["orig_idx___"].values
+    concated[cluster_col] = component_mapper
 
     concated = _push_geom_col(concated)
 
-    _i___ = concated["_i___"].unique()
+    n_gdfs = concated["i__"].unique()
 
-    if len(_i___) == 1:
-        return concated.drop(["_i___", "orig_idx___"], axis=1)
+    if len(n_gdfs) == 1:
+        concated.index = orig_indices[0]
+        return concated.drop(["i__"], axis=1)
 
     unconcated = ()
-    for i in _i___:
-        gdf = concated[concated["_i___"] == i].drop(["_i___", "orig_idx___"], axis=1)
+    for i in n_gdfs:
+        gdf = concated[concated["i__"] == i]
+        gdf.index = orig_indices[i]
+        gdf = gdf.drop(["i__"], axis=1)
         unconcated = unconcated + (gdf,)
 
     return unconcated
@@ -210,14 +200,6 @@ def get_overlapping_polygons(
 
 
 def get_overlapping_polygon_indices(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
-    """Get the index of the rows that contain overlapping geometries.
-
-    Args:
-        gdf: GeoDataFrame of polygons.
-
-    Returns:
-        A pandas Index with the overlapping polygon indices.
-    """
     if not gdf.index.is_unique:
         raise ValueError(
             "Index must be unique in order to correctly find "
