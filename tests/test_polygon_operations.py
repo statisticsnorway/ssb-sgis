@@ -5,6 +5,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+import pytest
 
 
 src = str(Path(__file__).parent.parent) + "/src"
@@ -118,7 +119,16 @@ def test_get_polygon_clusters():
     assert list(clustered1.index) == INDEX
     assert list(clustered2.index) == INDEX
 
+    # check that index is preserved if MultiIndex on one
+    multiindex = pd.MultiIndex.from_arrays([(0, 0, 0, 1, 1, 1, 2), list(range(7))])
+    gdf2 = gdf.copy()
+    gdf2.index = multiindex
+    clustered1, clustered2 = sg.get_polygon_clusters(gdf, gdf2)
+    assert list(clustered1.index) == INDEX
+    assert clustered2.index.equals(multiindex)
+
     s_clustered = sg.get_polygon_clusters(gdf.geometry)
+    print("s_clustered")
     print(s_clustered)
     assert s_clustered.cluster.value_counts().equals(
         should_give
@@ -141,9 +151,12 @@ def test_get_polygon_clusters():
         buffered_clustered.columns
     )
 
+    with pytest.raises(ValueError):
+        sg.get_polygon_clusters(gdf.dissolve())
+
 
 if __name__ == "__main__":
-    test_get_overlapping_polygons()
     test_get_polygon_clusters()
+    test_get_overlapping_polygons()
 
     test_close_holes()
