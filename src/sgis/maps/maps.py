@@ -11,24 +11,12 @@ from numbers import Number
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
-from ..exceptions import NotInJupyterError
 from ..geopandas_tools.general import clean_clip, random_points_in_polygons, to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..helpers import make_namedict
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
-
-
-def _check_if_jupyter_is_needed(explore, browser):
-    if explore and not browser:
-        try:
-            display
-        except NameError as e:
-            raise NotInJupyterError(
-                "Cannot display interactive map. Try setting "
-                "'browser' to True, or 'explore' to False."
-            ) from e
 
 
 def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame | None, dict]:
@@ -235,7 +223,6 @@ def samplemap(
     >>> samplemap(roads, points, size=5_000, column="meters")
 
     """
-    _check_if_jupyter_is_needed(explore, browser)
 
     if not size and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
@@ -374,8 +361,6 @@ def clipmap(
     explore: same functionality, but shows the entire area of the geometries.
     samplemap: same functionality, but shows only a random area of a given size.
     """
-
-    _check_if_jupyter_is_needed(explore, browser)
 
     gdfs, column = Explore._separate_args(gdfs, column)
 

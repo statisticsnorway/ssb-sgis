@@ -19,7 +19,3 @@ class NoPointsWithinSearchToleranceError(Exception):
 
 class ZeroLinesError(Exception):
     """DataFrame has 0 rows."""
-
-
-class NotInJupyterError(Exception):
-    """This functionality only works in Jupyter."""

@@ -12,6 +12,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
+from IPython.core.display import display
 from shapely.geometry import LineString
 
 from ..geopandas_tools.general import clean_geoms, random_points_in_polygons
