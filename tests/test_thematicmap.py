@@ -329,9 +329,9 @@ def test_thematicmap(points_oslo):
         assert m._categories_colors_dict == {
             "11291": "#4576ff",
             "1254": "#ff455e",
-            "15369": "#59d45f",
-            "313": "#b51d8b",
-            "7841": "#ffa514",
+            "15369": "#ffa617",
+            "313": "#36d19b",
+            "7841": "#ff8cc9",
             "Missing": "#c2c2c2",
         }, m._categories_colors_dict
 
@@ -584,9 +584,9 @@ def test_thematicmap(points_oslo):
         assert m._categories_colors_dict == {
             "a": "#4576ff",
             "b": "#ff455e",
-            "c": "#59d45f",
-            "d": "#b51d8b",
-            "e": "#ffa514",
+            "c": "#ffa617",
+            "d": "#36d19b",
+            "e": "#ff8cc9",
         }, m._categories_colors_dict
         assert m.legend._categories == ["a", "b", "c", "d", "e"], m.legend._categories
 
