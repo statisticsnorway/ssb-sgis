@@ -26,6 +26,43 @@ def print_function_name(func):
     return wrapper
 
 
+from shapely.geometry import Polygon
+
+
+@print_function_name
+def polygon_clusters_docstring():
+    import sgis as sg
+
+    gdf = sg.to_gdf(
+        [(0, 0), (1, 1), (0, 1), (4, 4), (4, 3), (7, 7)],
+    ).pipe(sg.buff, 1)
+    print(gdf)
+    gdf = sg.get_polygon_clusters(gdf, cluster_col="cluster")
+    print(gdf)
+
+    gdf2 = sg.to_gdf([(0, 0), (7, 7)])
+
+    gdf, gdf2 = sg.get_polygon_clusters(gdf, gdf2, cluster_col="cluster")
+    print(gdf)
+    print(gdf2)
+
+    print("dissolve by cluster")
+    dissolved = gdf.dissolve(by="cluster", as_index=False)
+    print(dissolved)
+
+    print("dissolve.explode")
+    dissolved2 = (
+        gdf.dissolve().explode(ignore_index=True).assign(cluster=lambda x: x.index)
+    )
+    print(dissolved2)
+
+    print(dissolved.area.sum())
+    print(dissolved2.area.sum())
+
+
+polygon_clusters_docstring()
+
+
 @print_function_name
 def legend_docstring():
     import sgis as sg
