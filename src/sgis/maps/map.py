@@ -233,7 +233,6 @@ class Map:
         if not self.bins:
             self.bins = self._create_bins(self._gdf, self._column)
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
-                warnings.warn(f"Could not create {self._k} classes.")
                 self._k = len(self.bins)
         else:
             self.bins = self._add_minmax_to_bins(self.bins)
