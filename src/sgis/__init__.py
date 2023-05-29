@@ -40,6 +40,7 @@ from .geopandas_tools.polygon_operations import (
     close_small_holes,
     eliminate_by_largest,
     eliminate_by_longest,
+    eliminate_by_smallest,
     get_overlapping_polygon_indices,
     get_overlapping_polygon_product,
     get_overlapping_polygons,
