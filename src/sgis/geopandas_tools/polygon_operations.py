@@ -15,9 +15,171 @@ from shapely import (
 )
 from shapely.ops import unary_union
 
-from .general import _push_geom_col
+from .general import _push_geom_col, to_lines
 from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
+
+
+def eliminate_by_longest(
+    gdf: GeoDataFrame,
+    min_area: int | float,
+    ignore_index: bool = False,
+    aggfunc: str | dict | list = "first",
+    **kwargs,
+) -> GeoDataFrame:
+    """Dissolves small polygons with the longest bordering neighbor polygon.
+
+    Eliminates small geometries by dissolving them with the neighboring
+    polygon with the longest shared border. The index and column values of the
+    large polygons will be kept, unless else is specified.
+
+    Args:
+        gdf: GeoDataFrame with polygon geometries.
+        min_area: minimum area for the polygons to be eliminated.
+        ignore_index: If False (default), the resulting GeoDataFrame will keep the
+            index of the large polygons. If True, the resulting axis will be labeled
+            0, 1, …, n - 1.
+        aggfunc: Aggregation function(s) to use when dissolving. Defaults to 'first',
+            meaning the column values of the large polygons are kept.
+        kwargs: Keyword arguments passed to the dissolve method.
+
+    Returns:
+        The GeoDataFrame with the small polygons dissolved into the large polygons.
+    """
+    if not ignore_index:
+        idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+        idx_name = gdf.index.name
+
+    gdf = gdf.reset_index(drop=True)
+
+    small = gdf.loc[gdf.area <= min_area].assign(small_idx=lambda x: x.index)
+    large = gdf.loc[gdf.area > min_area].assign(large_idx=lambda x: x.index)
+
+    lines = to_lines(small[["small_idx", "geometry"]], large[["large_idx", "geometry"]])
+    lines = lines[lines["small_idx"].notna()]
+    lines["length__"] = lines.length
+
+    longest = lines.sort_values("length__", ascending=False).drop_duplicates(
+        "small_idx"
+    )
+
+    small_to_large = longest.set_index("small_idx")["large_idx"]
+    small["dissolve_idx"] = small["small_idx"].map(small_to_large)
+    large["dissolve_idx"] = large["large_idx"]
+
+    kwargs.pop("as_index", None)
+    eliminated = (
+        pd.concat([large, small])
+        .dissolve("dissolve_idx", aggfunc=aggfunc, **kwargs)
+        .drop(
+            ["length__", "small_idx", "large_idx"],
+            axis=1,
+            errors="ignore",
+        )
+    )
+
+    if ignore_index:
+        return eliminated.reset_index(drop=True)
+
+    eliminated.index = eliminated.index.map(idx_mapper)
+    eliminated.index.name = idx_name
+
+    return eliminated
+
+
+def eliminate_by_largest(
+    gdf: GeoDataFrame,
+    min_area: int | float,
+    ignore_index: bool = False,
+    aggfunc: str | dict | list = "first",
+    **kwargs,
+) -> GeoDataFrame:
+    """Dissolves small polygons with the largest neighbor polygon.
+
+    Eliminates small geometries by dissolving them with the neighboring
+    polygon with the largest area. The index and column values of the
+    large polygons will be kept, unless else is specified.
+
+    Args:
+        gdf: GeoDataFrame with polygon geometries.
+        min_area: minimum area for the polygons to be eliminated.
+        ignore_index: If False (default), the resulting GeoDataFrame will keep the
+            index of the large polygons. If True, the resulting axis will be labeled
+            0, 1, …, n - 1.
+        aggfunc: Aggregation function(s) to use when dissolving. Defaults to 'first',
+            meaning the column values of the large polygons are kept.
+        kwargs: Keyword arguments passed to the dissolve method.
+
+    Returns:
+        The GeoDataFrame with the small polygons dissolved into the large polygons.
+    """
+    return _eliminate_by_area(
+        gdf,
+        min_area=min_area,
+        ignore_index=ignore_index,
+        sort_ascending=False,
+        aggfunc=aggfunc,
+        **kwargs,
+    )
+
+
+def eliminate_by_smallest(
+    gdf: GeoDataFrame,
+    min_area: int | float,
+    ignore_index: bool = False,
+    aggfunc: str | dict | list = "first",
+    **kwargs,
+) -> GeoDataFrame:
+    return _eliminate_by_area(
+        gdf,
+        min_area=min_area,
+        ignore_index=ignore_index,
+        sort_ascending=True,
+        aggfunc=aggfunc,
+        **kwargs,
+    )
+
+
+def _eliminate_by_area(
+    gdf: GeoDataFrame,
+    min_area: int | float,
+    sort_ascending: bool,
+    ignore_index: bool = False,
+    aggfunc="first",
+    **kwargs,
+) -> GeoDataFrame:
+    if not ignore_index:
+        idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+        idx_name = gdf.index.name
+
+    gdf = gdf.reset_index(drop=True)
+
+    small = gdf.loc[gdf.area <= min_area]
+    large = gdf.loc[gdf.area > min_area]
+    large["area__"] = large.area
+
+    joined = small.sjoin(
+        large[["area__", "geometry"]], predicate="touches"
+    ).sort_values("area__", ascending=sort_ascending)
+
+    largest = joined[~joined.index.duplicated()]
+
+    large = large.assign(index_right=lambda x: x.index)
+
+    kwargs.pop("as_index", None)
+    eliminated = (
+        pd.concat([large, largest])
+        .dissolve("index_right", aggfunc=aggfunc, **kwargs)
+        .drop(["area__"], axis=1, errors="ignore")
+    )
+
+    if ignore_index:
+        return eliminated.reset_index(drop=True)
+
+    eliminated.index = eliminated.index.map(idx_mapper)
+    eliminated.index.name = idx_name
+
+    return eliminated
 
 
 def get_polygon_clusters(
@@ -161,7 +323,7 @@ def get_polygon_clusters(
 
 
 def get_overlapping_polygons(
-    gdf: GeoDataFrame | GeoSeries, ignore_index=False
+    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
 ) -> GeoDataFrame | GeoSeries:
     """Find the areas that overlap.
 
