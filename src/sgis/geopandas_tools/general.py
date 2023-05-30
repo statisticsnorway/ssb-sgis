@@ -8,6 +8,7 @@ from geopandas.array import GeometryDtype
 from shapely import (
     Geometry,
     box,
+    extract_unique_points,
     force_2d,
     get_exterior_ring,
     get_interior_ring,
@@ -284,7 +285,9 @@ def bounds_to_points(gdf: GeoDataFrame) -> GeoDataFrame:
     Returns:
         GeoDataFrame of multipoints with same length and index as 'gdf'.
     """
-    return bounds_to_polygon(gdf).pipe(to_multipoint)
+    gdf = bounds_to_polygon(gdf)
+    gdf["geometry"] = extract_unique_points(gdf)
+    return gdf
 
 
 def clean_geoms(
@@ -643,81 +646,6 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
             unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
 
     return unioned.explode(ignore_index=True)
-
-
-def to_multipoint(
-    gdf: GeoDataFrame | GeoSeries, copy: bool = True
-) -> GeoDataFrame | GeoSeries:
-    """Creates multipoint geometries from GeoDataFrame or GeoSeries.
-
-    Takes a GeoDataFrame or GeoSeries and turns it into a MultiPoint.
-
-    Args:
-        gdf: The geometry to be converted to MultiPoint.
-        copy: If True, the geometry will be copied. Defaults to True.
-
-    Returns:
-        A GeoDataFrame or GeoSeries with MultiPoint geometries. If the input type
-        if GeoDataFrame, the other columns will be preserved.
-
-    Examples
-    --------
-    Let's create a GeoDataFrame with a point, a line and a polygon.
-
-    >>> from sgis import to_multipoint, to_gdf
-    >>> from shapely.geometry import LineString, Polygon
-    >>> gdf = to_gdf([
-    ...     (0, 0),
-    ...     LineString([(1, 1), (2, 2)]),
-    ...     Polygon([(3, 3), (4, 4), (3, 4), (3, 3)])
-    ...     ])
-    >>> gdf
-                                                geometry
-    0                            POINT (0.00000 0.00000)
-    1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
-    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
-
-    >>> to_multipoint(gdf)
-                                                geometry
-    0                            POINT (0.00000 0.00000)
-    1      MULTIPOINT (1.00000 1.00000, 2.00000 2.00000)
-    2  MULTIPOINT (3.00000 3.00000, 3.00000 4.00000, ...
-    """
-    if copy:
-        gdf = gdf.copy()
-
-    if gdf.is_empty.any():
-        raise ValueError("Cannot create multipoints from empty geometry.")
-
-    def _to_multipoint(gdf):
-        koordinater = "".join(
-            [x for x in gdf.wkt if x.isdigit() or x.isspace() or x == "." or x == ","]
-        ).strip()
-
-        alle_punkter = [
-            wkt.loads(f"POINT ({punkt.strip()})") for punkt in koordinater.split(",")
-        ]
-
-        return unary_union(alle_punkter)
-
-    if isinstance(gdf, GeoDataFrame):
-        gdf[gdf._geometry_column_name] = (
-            gdf[gdf._geometry_column_name]
-            .pipe(force_2d)
-            .apply(lambda x: _to_multipoint(x))
-        )
-
-    elif isinstance(gdf, gpd.GeoSeries):
-        gdf = force_2d(gdf)
-        gdf = gdf.apply(lambda x: _to_multipoint(x))
-
-    else:
-        gdf = to_gdf(gdf)
-        gdf["geometry"] = (
-            gdf["geometry"].pipe(force_2d).apply(lambda x: _to_multipoint(x))
-        )
-
-    return gdf
 
 
 def clean_clip(

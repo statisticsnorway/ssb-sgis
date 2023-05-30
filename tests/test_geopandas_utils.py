@@ -172,22 +172,6 @@ def test_clean():
     assert list(gdf.index) == [0], list(gdf.index)
 
 
-def test_to_multipoint():
-    gdf = create_all_geometry_types()
-    mp = sg.to_multipoint(gdf)
-    assert mp.length.sum() == 0
-    assert mp.shape == gdf.shape
-    assert sg.get_geom_type(mp) == "point"
-    mp = sg.to_multipoint(gdf.geometry)
-    assert sg.get_geom_type(mp) == "point"
-
-    empty_geometry = sg.to_gdf("POINT (0 0)").pipe(sg.buff, 0)
-    with pytest.raises(ValueError):
-        sg.to_multipoint(empty_geometry)
-    with pytest.raises(ValueError):
-        sg.to_multipoint(empty_geometry.geometry)
-
-
 def main():
     info = """
     The test was created 08.01.2023 with the following package versions.
