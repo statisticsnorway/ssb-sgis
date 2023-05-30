@@ -20,7 +20,6 @@ from .geopandas_tools.general import (
     random_points_in_polygons,
     rename_geometry_if,
     to_lines,
-    to_multipoint,
 )
 from .geopandas_tools.geometry_types import (
     get_geom_type,
