@@ -22,20 +22,21 @@ from .overlay import clean_overlay
 
 def eliminate_by_longest(
     gdf: GeoDataFrame,
-    min_area: int | float,
+    to_eliminate: GeoDataFrame,
+    *,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
 ) -> GeoDataFrame:
-    """Dissolves small polygons with the longest bordering neighbor polygon.
+    """Dissolves selected polygons with the longest bordering neighbor polygon.
 
-    Eliminates small geometries by dissolving them with the neighboring
+    Eliminates selected geometries by dissolving them with the neighboring
     polygon with the longest shared border. The index and column values of the
     large polygons will be kept, unless else is specified.
 
     Args:
         gdf: GeoDataFrame with polygon geometries.
-        min_area: minimum area for the polygons to be eliminated.
+        to_eliminate: The geometries to be eliminated by 'gdf'.
         ignore_index: If False (default), the resulting GeoDataFrame will keep the
             index of the large polygons. If True, the resulting axis will be labeled
             0, 1, …, n - 1.
@@ -46,33 +47,39 @@ def eliminate_by_longest(
     Returns:
         The GeoDataFrame with the small polygons dissolved into the large polygons.
     """
+
+    # remove polygons in gdf that are present in to_eliminatec
+    gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
+
     if not ignore_index:
         idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
         idx_name = gdf.index.name
 
     gdf = gdf.reset_index(drop=True)
 
-    small = gdf.loc[gdf.area <= min_area].assign(small_idx=lambda x: x.index)
-    large = gdf.loc[gdf.area > min_area].assign(large_idx=lambda x: x.index)
+    gdf = gdf.assign(poly_idx=lambda x: x.index)
+    to_eliminate = to_eliminate.assign(eliminate_idx=lambda x: range(len(x)))
 
-    lines = to_lines(small[["small_idx", "geometry"]], large[["large_idx", "geometry"]])
-    lines = lines[lines["small_idx"].notna()]
+    lines = to_lines(
+        gdf[["poly_idx", "geometry"]], to_eliminate[["eliminate_idx", "geometry"]]
+    )
+    lines = lines[lines["eliminate_idx"].notna()]
     lines["length__"] = lines.length
 
     longest = lines.sort_values("length__", ascending=False).drop_duplicates(
-        "small_idx"
+        "eliminate_idx"
     )
 
-    small_to_large = longest.set_index("small_idx")["large_idx"]
-    small["dissolve_idx"] = small["small_idx"].map(small_to_large)
-    large["dissolve_idx"] = large["large_idx"]
+    small_to_large = longest.set_index("eliminate_idx")["poly_idx"]
+    to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(small_to_large)
+    gdf["dissolve_idx"] = gdf["poly_idx"]
 
     kwargs.pop("as_index", None)
     eliminated = (
-        pd.concat([large, small])
+        pd.concat([gdf, to_eliminate])
         .dissolve("dissolve_idx", aggfunc=aggfunc, **kwargs)
         .drop(
-            ["length__", "small_idx", "large_idx"],
+            ["length__", "eliminate_idx", "poly_idx"],
             axis=1,
             errors="ignore",
         )
@@ -89,20 +96,20 @@ def eliminate_by_longest(
 
 def eliminate_by_largest(
     gdf: GeoDataFrame,
-    min_area: int | float,
+    to_eliminate: GeoDataFrame,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
 ) -> GeoDataFrame:
-    """Dissolves small polygons with the largest neighbor polygon.
+    """Dissolves selected polygons with the largest neighbor polygon.
 
-    Eliminates small geometries by dissolving them with the neighboring
+    Eliminates selected geometries by dissolving them with the neighboring
     polygon with the largest area. The index and column values of the
     large polygons will be kept, unless else is specified.
 
     Args:
         gdf: GeoDataFrame with polygon geometries.
-        min_area: minimum area for the polygons to be eliminated.
+        to_eliminate: The geometries to be eliminated by 'gdf'.
         ignore_index: If False (default), the resulting GeoDataFrame will keep the
             index of the large polygons. If True, the resulting axis will be labeled
             0, 1, …, n - 1.
@@ -111,11 +118,12 @@ def eliminate_by_largest(
         kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
-        The GeoDataFrame with the small polygons dissolved into the large polygons.
+        The GeoDataFrame with the selected polygons dissolved into the polygons of
+        'gdf'.
     """
     return _eliminate_by_area(
         gdf,
-        min_area=min_area,
+        to_eliminate=to_eliminate,
         ignore_index=ignore_index,
         sort_ascending=False,
         aggfunc=aggfunc,
@@ -125,14 +133,14 @@ def eliminate_by_largest(
 
 def eliminate_by_smallest(
     gdf: GeoDataFrame,
-    min_area: int | float,
+    to_eliminate: GeoDataFrame,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
 ) -> GeoDataFrame:
     return _eliminate_by_area(
         gdf,
-        min_area=min_area,
+        to_eliminate=to_eliminate,
         ignore_index=ignore_index,
         sort_ascending=True,
         aggfunc=aggfunc,
@@ -142,33 +150,34 @@ def eliminate_by_smallest(
 
 def _eliminate_by_area(
     gdf: GeoDataFrame,
-    min_area: int | float,
+    to_eliminate: GeoDataFrame,
     sort_ascending: bool,
     ignore_index: bool = False,
     aggfunc="first",
     **kwargs,
 ) -> GeoDataFrame:
+    # remove polygons in gdf that are present in to_eliminatec
+    gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
+
     if not ignore_index:
         idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
         idx_name = gdf.index.name
 
     gdf = gdf.reset_index(drop=True)
 
-    small = gdf.loc[gdf.area <= min_area]
-    large = gdf.loc[gdf.area > min_area]
-    large["area__"] = large.area
+    gdf["area__"] = gdf.area
 
-    joined = small.sjoin(
-        large[["area__", "geometry"]], predicate="touches"
+    joined = to_eliminate.sjoin(
+        gdf[["area__", "geometry"]], predicate="touches"
     ).sort_values("area__", ascending=sort_ascending)
 
     largest = joined[~joined.index.duplicated()]
 
-    large = large.assign(index_right=lambda x: x.index)
+    gdf = gdf.assign(index_right=lambda x: x.index)
 
     kwargs.pop("as_index", None)
     eliminated = (
-        pd.concat([large, largest])
+        pd.concat([gdf, largest])
         .dissolve("index_right", aggfunc=aggfunc, **kwargs)
         .drop(["area__"], axis=1, errors="ignore")
     )
