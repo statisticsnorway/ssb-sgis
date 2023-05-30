@@ -48,30 +48,32 @@ def eliminate_by_longest(
         The GeoDataFrame with the small polygons dissolved into the large polygons.
     """
 
-    # remove polygons in gdf that are present in to_eliminatec
+    # remove polygons in gdf that are present in to_eliminated
     gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
 
     if not ignore_index:
         idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
         idx_name = gdf.index.name
 
+    # resetting in case not unique index
     gdf = gdf.reset_index(drop=True)
 
     gdf = gdf.assign(poly_idx=lambda x: x.index)
     to_eliminate = to_eliminate.assign(eliminate_idx=lambda x: range(len(x)))
 
+    # convert to lines to get the border lines
     lines = to_lines(
         gdf[["poly_idx", "geometry"]], to_eliminate[["eliminate_idx", "geometry"]]
     )
     lines = lines[lines["eliminate_idx"].notna()]
     lines["length__"] = lines.length
 
-    longest = lines.sort_values("length__", ascending=False).drop_duplicates(
+    longest_border = lines.sort_values("length__", ascending=False).drop_duplicates(
         "eliminate_idx"
     )
 
-    small_to_large = longest.set_index("eliminate_idx")["poly_idx"]
-    to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(small_to_large)
+    to_poly_idx = longest_border.set_index("eliminate_idx")["poly_idx"]
+    to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(to_poly_idx)
     gdf["dissolve_idx"] = gdf["poly_idx"]
 
     kwargs.pop("as_index", None)
@@ -156,7 +158,7 @@ def _eliminate_by_area(
     aggfunc="first",
     **kwargs,
 ) -> GeoDataFrame:
-    # remove polygons in gdf that are present in to_eliminatec
+    # remove polygons in gdf that are present in to_eliminated
     gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
 
     if not ignore_index:
