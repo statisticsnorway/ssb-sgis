@@ -217,8 +217,8 @@ def test_eliminate():
 
 
 if __name__ == "__main__":
-    test_eliminate()
     test_get_polygon_clusters()
+    test_eliminate()
     test_get_overlapping_polygons()
 
     test_close_holes()

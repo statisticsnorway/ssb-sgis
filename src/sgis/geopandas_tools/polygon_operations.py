@@ -48,7 +48,7 @@ def eliminate_by_longest(
         The GeoDataFrame with the small polygons dissolved into the large polygons.
     """
 
-    # remove polygons in gdf that are present in to_eliminated
+    # remove polygons in gdf that are present in to_eliminate
     gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
 
     if not ignore_index:
@@ -158,7 +158,7 @@ def _eliminate_by_area(
     aggfunc="first",
     **kwargs,
 ) -> GeoDataFrame:
-    # remove polygons in gdf that are present in to_eliminated
+    # remove polygons in gdf that are present in to_eliminate
     gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
 
     if not ignore_index:

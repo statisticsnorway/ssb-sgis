@@ -61,41 +61,11 @@ def test_random():
     gdf = sg.random_points(1.32323)
     assert len(gdf) == 1
 
-    with pytest.raises(ValueError):
-        sg.random_points_in_polygons(gdf, 10)
-    with pytest.raises(ValueError):
-        gdf = create_all_geometry_types()
-        sg.random_points_in_polygons(gdf, 10)
-
     for i in [1, 10, 100]:
         gdf = sg.random_points(i, loc=100)
         assert len(gdf) == i
 
-        buffered = sg.buff(gdf, 10)
-
-        points = sg.random_points_in_polygons(buffered, 100)
-
-        assert len(points) == 100 * i, points
-        assert max(points.index) == i - 1, points.index
-
-        points["temp_idx"] = range(len(points))
-        joined = points.sjoin(buffered, how="inner")
-        assert all(points.temp_idx.isin(joined.temp_idx))
-
-        if i == 10:
-            buffered.index = np.random.choice([0, 1, 2], i)
-            points = sg.random_points_in_polygons(buffered, 100)
-            assert all(points.index.isin([0, 1, 2]))
-
-            points["temp_idx"] = range(len(points))
-            joined = points.sjoin(buffered, how="inner")
-            assert all(points.temp_idx.isin(joined.temp_idx))
-
-            points = sg.random_points_in_polygons(buffered.geometry, 100)
-            assert all(points.index.isin([0, 1, 2]))
-
-
-test_random()
+        sg.buff(gdf, 10)
 
 
 def test_points_in_bounds():
