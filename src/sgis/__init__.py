@@ -17,7 +17,6 @@ from .geopandas_tools.general import (
     make_ssb_grid,
     points_in_bounds,
     random_points,
-    random_points_in_polygons,
     rename_geometry_if,
     to_lines,
 )

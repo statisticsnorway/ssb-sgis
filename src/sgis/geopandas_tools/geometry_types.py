@@ -69,7 +69,9 @@ def to_single_geom_type(
     # explode collections to single-typed geometries
     collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
     if len(collections):
-        collections = collections.explode(ignore_index=ignore_index, index_parts=False)
+        collections = collections.explode(
+            ignore_index=ignore_index, index_parts=False
+        ).explode(ignore_index=ignore_index, index_parts=False)
 
         gdf = pd.concat([gdf, collections], ignore_index=ignore_index)
 

@@ -128,8 +128,8 @@ def clean_overlay(
     if geom_type_right:
         df2 = to_single_geom_type(df2, geom_type_right)
 
-    df1 = df1.explode(ignore_index=True)
-    df2 = df2.explode(ignore_index=True)
+    df1 = df1.explode(ignore_index=True).explode(ignore_index=True)
+    df2 = df2.explode(ignore_index=True).explode(ignore_index=True)
 
     overlayed = (
         _shapely_overlay(df1, df2, how=how, crs=crs)

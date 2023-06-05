@@ -70,7 +70,9 @@ def buffdissexp(
         **dissolve_kwargs,
     )
 
-    return dissolved.explode(index_parts=index_parts, ignore_index=ignore_index)
+    return dissolved.explode(
+        index_parts=index_parts, ignore_index=ignore_index
+    ).explode(index_parts=index_parts, ignore_index=ignore_index)
 
 
 def buffdiss(
@@ -184,7 +186,9 @@ def dissexp(
 
     dissolved[geom_col] = dissolved.make_valid()
 
-    return dissolved.explode(index_parts=index_parts, ignore_index=ignore_index)
+    return dissolved.explode(
+        index_parts=index_parts, ignore_index=ignore_index
+    ).explode(index_parts=index_parts, ignore_index=ignore_index)
 
 
 def buff(
