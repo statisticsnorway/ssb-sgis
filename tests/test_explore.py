@@ -77,9 +77,7 @@ def test_explore(points_oslo, roads_oslo):
     sg.clipmap(r300, r200, "meters", show_in_browser=False)
     sg.clipmap(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
     sg.explore(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
-    print("\n\n\n\nhei\n\n")
     sg.samplemap(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
-    ss
     not_test_center(r300, r200, r100, p)
 
     print(
