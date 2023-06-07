@@ -29,7 +29,6 @@ def test_buffdissexp(gdf_fixture):
         copy = copy.explode(index_parts=False)
 
         copy2 = sg.buffdissexp(gdf_fixture, distance, by="txtcol")
-
         assert copy.equals(copy2)
 
 
@@ -89,7 +88,7 @@ def test_buffdissexp_index():
 
     singlepart = sg.buffdissexp(gdf, 1)
     assert list(singlepart.index) == [0], singlepart
-    assert list(singlepart.columns) == ["cat", "geometry"], singlepart
+    assert (list(singlepart.columns)) == (["cat", "geometry"]), singlepart.columns
 
     # if the index is set, it will be gone after dissolve (same in geopandas)
     singlepart = sg.buffdissexp(gdf.set_index("cat"), 0.1)
@@ -106,7 +105,7 @@ def test_dissexp_index():
     # this is what is returned with the geopandas defaults
     singlepart = sg.dissexp(gdf, ignore_index=False)
     assert list(singlepart.index) == [0, 0, 0], singlepart
-    assert list(singlepart.columns) == ["cat", "geometry"], singlepart
+    assert (list(singlepart.columns)) == (["cat", "geometry"]), singlepart
 
     # if dissolve by and default explode, the by column is removed completely
     singlepart = sg.dissexp(gdf, by="cat", ignore_index=True)

@@ -107,4 +107,4 @@ def testgdf(cols: str | None = None) -> GeoDataFrame:
     if cols:
         return gdf[cols]
     else:
-        return gdf
+        return gdf[["txtcol", "numcol", "geometry"]]
