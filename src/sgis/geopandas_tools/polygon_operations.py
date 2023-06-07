@@ -1,4 +1,5 @@
 """Functions for polygon geometries."""
+import warnings
 
 import geopandas as gpd
 import networkx as nx
@@ -16,6 +17,7 @@ from shapely import (
 from shapely.ops import unary_union
 
 from .general import _push_geom_col, to_lines
+from .geometry_types import get_geom_type
 from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
 
@@ -89,9 +91,9 @@ def eliminate_by_longest(
 
     if ignore_index:
         return eliminated.reset_index(drop=True)
-
-    eliminated.index = eliminated.index.map(idx_mapper)
-    eliminated.index.name = idx_name
+    else:
+        eliminated.index = eliminated.index.map(idx_mapper)
+        eliminated.index.name = idx_name
 
     return eliminated
 
@@ -349,15 +351,21 @@ def get_overlapping_polygons(
     Returns:
         A GeoDataFrame of the overlapping polygons.
     """
-    if not gdf.index.is_unique:
-        raise ValueError(
-            "Index must be unique in order to correctly find "
-            "overlapping polygon indices."
-        )
+    if not any(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
+        raise ValueError("'gdf' has no polygons.")
 
-    gdf = gdf.assign(overlap=gdf.index)
+    elif not all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
+        warnings.warn("'gdf' has mixed geometries. Non-polygons will be removed.")
 
-    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
+    if not ignore_index:
+        idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+        idx_name = gdf.index.name
+
+    gdf = gdf.reset_index(drop=True).assign(overlap=gdf.index)
+
+    intersected = clean_overlay(
+        gdf, gdf[["geometry"]], how="intersection", geom_type="polygon"
+    )
 
     points_joined = intersected.representative_point().to_frame().sjoin(intersected)
 
@@ -368,6 +376,9 @@ def get_overlapping_polygons(
 
     if ignore_index:
         duplicated_geoms = duplicated_geoms.reset_index(drop=True)
+    else:
+        duplicated_geoms.index = duplicated_geoms.index.map(idx_mapper)
+        duplicated_geoms.index.name = idx_name
 
     return duplicated_geoms.drop("overlap", axis=1)
 
@@ -379,15 +390,23 @@ def get_overlapping_polygon_indices(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
             "overlapping polygon indices."
         )
 
-    gdf = gdf.assign(overlap=gdf.index)
+    idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+    idx_name = gdf.index.name
 
-    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
+    gdf = gdf.reset_index(drop=True).assign(overlap=gdf.index)
+
+    intersected = clean_overlay(
+        gdf, gdf[["geometry"]], how="intersection", geom_type="polygon"
+    )
 
     intersected = intersected.set_index("overlap")
 
     points_joined = intersected.representative_point().to_frame().sjoin(intersected)
 
     duplicated_points = points_joined.loc[points_joined.index.duplicated()]
+
+    duplicated_points.index = duplicated_points.index.map(idx_mapper)
+    duplicated_points.index.name = idx_name
 
     return duplicated_points.index.unique()
 
