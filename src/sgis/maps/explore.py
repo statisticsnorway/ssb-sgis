@@ -210,8 +210,11 @@ class Explore(Map):
             self._create_continous_map()
 
         if self.save:
-            with open(self.save.strip(".html") + ".html", "w") as f:
+            import os
+
+            with open(os.getcwd() + "/" + self.save.strip(".html") + ".html", "w") as f:
                 f.write(self.map._repr_html_())
+            return
         elif self.browser:
             run_html_server(self.map._repr_html_())
         else:

@@ -96,15 +96,15 @@ class Map:
         if not self.labels:
             self._set_labels()
 
+        self._gdfs = self._to_common_crs_and_one_geom_col(self._gdfs)
+        self._is_categorical = self._check_if_categorical()
+
         if self._column:
             self._fillna_if_col_is_missing()
         else:
             for gdf, label in zip(self._gdfs, self.labels, strict=True):
                 gdf["label"] = label
             self._column = "label"
-
-        self._gdfs = self._to_common_crs_and_one_geom_col(self._gdfs)
-        self._is_categorical = self._check_if_categorical()
 
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
@@ -129,7 +129,6 @@ class Map:
         similar values count as the same value in the color classification.
         """
         array = self._gdf.loc[~self._nan_idx, self._column]
-
         self._min = np.min(array)
         self._max = np.max(array)
         self._get_multiplier(array)
@@ -285,15 +284,16 @@ class Map:
         for gdf in self._gdfs:
             if self._column in gdf.columns:
                 gdf[self._column] = gdf[self._column].fillna(pd.NA)
+                n += 1
             else:
                 gdf[self._column] = pd.NA
-                n += 1
 
         maybe_area = 1 if "area" in self._column else 0
         maybe_length = (
             1 if any(x in self._column for x in ["meter", "metre", "leng"]) else 0
         )
         n = n + maybe_area + maybe_length
+
         if n == 0:
             raise ValueError(
                 f"The column {self._column!r} is not present in any "
