@@ -45,7 +45,9 @@ from .geopandas_tools.polygon_operations import (
     get_polygon_clusters,
 )
 from .geopandas_tools.to_geodataframe import to_gdf
+from .helpers import get_name
 from .maps.explore import Explore
+from .maps.httpserver import run_html_server
 from .maps.legend import Legend
 from .maps.maps import clipmap, explore, qtm, samplemap
 from .maps.thematicmap import ThematicMap
