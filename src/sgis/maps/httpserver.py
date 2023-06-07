@@ -2,7 +2,7 @@ import os
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from IPython.core.display import HTML, display
+from IPython.display import HTML, display
 
 
 def run_html_server(contents: str | None = None, port: int = 3000):

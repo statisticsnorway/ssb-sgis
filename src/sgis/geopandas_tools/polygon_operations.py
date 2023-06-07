@@ -17,7 +17,6 @@ from shapely import (
 from shapely.ops import unary_union
 
 from .general import _push_geom_col, to_lines
-from .geometry_types import get_geom_type
 from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
 
@@ -26,6 +25,7 @@ def eliminate_by_longest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
     *,
+    remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
@@ -75,9 +75,13 @@ def eliminate_by_longest(
     )
 
     to_poly_idx = longest_border.set_index("eliminate_idx")["poly_idx"]
-    to_eliminate["dissolve_idx"] = (
-        to_eliminate["eliminate_idx"].map(to_poly_idx).fillna("no_bordering")
-    )
+    to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(to_poly_idx)
+
+    if not remove_isolated:
+        to_eliminate["dissolve_idx"] = to_eliminate["dissolve_idx"].fillna(
+            "no_bordering"
+        )
+
     gdf["dissolve_idx"] = gdf["poly_idx"]
 
     kwargs.pop("as_index", None)
@@ -103,6 +107,7 @@ def eliminate_by_longest(
 def eliminate_by_largest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
@@ -130,6 +135,7 @@ def eliminate_by_largest(
     return _eliminate_by_area(
         gdf,
         to_eliminate=to_eliminate,
+        remove_isolated=remove_isolated,
         ignore_index=ignore_index,
         sort_ascending=False,
         aggfunc=aggfunc,
@@ -140,6 +146,7 @@ def eliminate_by_largest(
 def eliminate_by_smallest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
@@ -147,6 +154,7 @@ def eliminate_by_smallest(
     return _eliminate_by_area(
         gdf,
         to_eliminate=to_eliminate,
+        remove_isolated=remove_isolated,
         ignore_index=ignore_index,
         sort_ascending=True,
         aggfunc=aggfunc,
@@ -157,6 +165,7 @@ def eliminate_by_smallest(
 def _eliminate_by_area(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    remove_isolated: bool,
     sort_ascending: bool,
     ignore_index: bool = False,
     aggfunc="first",
@@ -178,7 +187,9 @@ def _eliminate_by_area(
     ).sort_values("area__", ascending=sort_ascending)
 
     largest = joined[~joined.index.duplicated()]
-    largest["index_right"] = largest["index_right"].fillna("no_bordering")
+
+    if not remove_isolated:
+        largest["index_right"] = largest["index_right"].fillna("no_bordering")
 
     gdf = gdf.assign(index_right=lambda x: x.index)
 

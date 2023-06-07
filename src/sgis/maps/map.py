@@ -412,6 +412,9 @@ class Map:
         if len(unique_bins) == len(self._unique_values):
             return np.array(unique_bins)
 
+        if len(unique_bins) == len(bins) - 1:
+            self._k -= 1
+
         return np.array(bins)
 
     def change_cmap(self, cmap: str, start: int = 0, stop: int = 256):
