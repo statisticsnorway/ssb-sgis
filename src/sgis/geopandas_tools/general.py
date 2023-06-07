@@ -181,7 +181,7 @@ def make_ssb_grid(gdf: GeoDataFrame, gridsize: int = 1000) -> GeoDataFrame:
     Raises:
         ValueError: If the GeoDataFrame does not have 25833 as crs.
     """
-    if gdf.crs != 25833:
+    if not gdf.crs.equals(25833):
         raise ValueError(
             "Geodataframe must have crs = 25833. Use df.set_crs(25833) to set "
             "projection or df.to_crs(25833) for transforming."
