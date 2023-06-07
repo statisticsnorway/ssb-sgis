@@ -16,7 +16,7 @@ from shapely import (
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
-from .geometry_types import to_single_geom_type
+from .geometry_types import make_all_singlepart, to_single_geom_type
 from .to_geodataframe import to_gdf
 
 
@@ -525,7 +525,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         for line_gdf in lines[2:]:
             unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
 
-    return unioned.explode(ignore_index=True).explode(ignore_index=True)
+    return make_all_singlepart(unioned, ignore_index=True)
 
 
 def clean_clip(

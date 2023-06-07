@@ -75,7 +75,9 @@ def eliminate_by_longest(
     )
 
     to_poly_idx = longest_border.set_index("eliminate_idx")["poly_idx"]
-    to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(to_poly_idx)
+    to_eliminate["dissolve_idx"] = (
+        to_eliminate["eliminate_idx"].map(to_poly_idx).fillna("no_bordering")
+    )
     gdf["dissolve_idx"] = gdf["poly_idx"]
 
     kwargs.pop("as_index", None)
@@ -172,10 +174,11 @@ def _eliminate_by_area(
     gdf["area__"] = gdf.area
 
     joined = to_eliminate.sjoin(
-        gdf[["area__", "geometry"]], predicate="touches"
+        gdf[["area__", "geometry"]], predicate="touches", how="left"
     ).sort_values("area__", ascending=sort_ascending)
 
     largest = joined[~joined.index.duplicated()]
+    largest["index_right"] = largest["index_right"].fillna("no_bordering")
 
     gdf = gdf.assign(index_right=lambda x: x.index)
 

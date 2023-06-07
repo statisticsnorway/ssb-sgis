@@ -12,10 +12,10 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from IPython.core.display import display
+from IPython.display import display
 from shapely.geometry import LineString
 
-from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.general import clean_geoms, make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import unit_is_degrees
@@ -192,9 +192,7 @@ class Explore(Map):
             gdf = gdf.clip(mask)
             collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
             if len(collections):
-                collections = collections.explode(index_parts=False).explode(
-                    index_parts=False
-                )
+                collections = make_all_singlepart(collections)
                 gdf = pd.concat([gdf, collections], ignore_index=False)
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
@@ -240,11 +238,7 @@ class Explore(Map):
         for gdf in self._gdfs:
             if get_geom_type(gdf) == "mixed" and not unit_is_degrees(gdf):
                 gdf[gdf._geometry_column_name] = gdf.buffer(0.01)
-            while not all(
-                gdf.geom_type.isin(["Polygon", "Point", "LineString", "LinearRing"])
-            ):
-                gdf = gdf.explode(index_parts=False)
-            # gdf = gdf.explode(index_parts=False).explode(index_parts=False)
+            gdf = make_all_singlepart(gdf)
             new_gdfs.append(gdf)
         self._gdfs = new_gdfs
         self._gdf = pd.concat(new_gdfs, ignore_index=True)

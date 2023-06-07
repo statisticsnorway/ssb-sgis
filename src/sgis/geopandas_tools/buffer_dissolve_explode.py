@@ -16,6 +16,8 @@ for the following:
 
 from geopandas import GeoDataFrame, GeoSeries
 
+from .geometry_types import make_all_singlepart
+
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
     if "ignore_index" in kwargs:
@@ -58,7 +60,6 @@ def buffdissexp(
 
     Returns:
         A buffered GeoDataFrame where overlapping geometries are dissolved.
-
     """
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
@@ -70,9 +71,9 @@ def buffdissexp(
         **dissolve_kwargs,
     )
 
-    return dissolved.explode(
-        index_parts=index_parts, ignore_index=ignore_index
-    ).explode(index_parts=index_parts, ignore_index=ignore_index)
+    return make_all_singlepart(
+        dissolved, ignore_index=ignore_index, index_parts=index_parts
+    )
 
 
 def buffdiss(
@@ -149,13 +150,11 @@ def buffdiss(
     1     b  MULTIPOLYGON (((258404.858 6647830.931, 258404...  0.687635
     2     d  MULTIPOLYGON (((258180.258 6647935.731, 258179...  0.580157
     """
-    geom_col = gdf._geometry_column_name
-
     buffered = buff(gdf, distance, resolution=resolution, copy=copy)
 
     dissolved = buffered.dissolve(**dissolve_kwargs)
 
-    dissolved[geom_col] = dissolved.make_valid()
+    dissolved[gdf._geometry_column_name] = dissolved.make_valid()
 
     return dissolved
 
@@ -186,9 +185,9 @@ def dissexp(
 
     dissolved[geom_col] = dissolved.make_valid()
 
-    return dissolved.explode(
-        index_parts=index_parts, ignore_index=ignore_index
-    ).explode(index_parts=index_parts, ignore_index=ignore_index)
+    return make_all_singlepart(
+        dissolved, ignore_index=ignore_index, index_parts=index_parts
+    )
 
 
 def buff(
@@ -216,12 +215,10 @@ def buff(
     if isinstance(gdf, GeoSeries):
         return gdf.buffer(distance, resolution=resolution, **buffer_kwargs).make_valid()
 
-    geom_col = gdf._geometry_column_name
-
     if copy:
         gdf = gdf.copy()
 
-    gdf[geom_col] = gdf.buffer(
+    gdf[gdf._geometry_column_name] = gdf.buffer(
         distance, resolution=resolution, **buffer_kwargs
     ).make_valid()
 
