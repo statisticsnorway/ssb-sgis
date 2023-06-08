@@ -237,7 +237,7 @@ class Map:
             self.bins = self._create_bins(self._gdf, self._column)
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
                 self._k = len(self.bins)
-        if not all(self._gdf[self._column].isna()):
+        elif not all(self._gdf[self._column].isna()):
             self.bins = self._add_minmax_to_bins(self.bins)
             if len(self._unique_values) <= len(self.bins):
                 self._k = len(self.bins)  # - 1
@@ -391,6 +391,11 @@ class Map:
 
         if self._k == len(self._unique_values) - 1:
             n_classes = self._k - 1
+            self._k = self._k - 1
+
+        if self._k > len(self._unique_values):
+            self._k = len(self._unique_values)
+            n_classes = len(self._unique_values)
 
         if self.scheme == "jenks":
             bins = jenks_breaks(gdf.loc[~self._nan_idx, column], n_classes=n_classes)
