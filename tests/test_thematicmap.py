@@ -21,7 +21,7 @@ import sgis as sg
 
 # set to True to not actually create the plots
 # because pytest breaks with all these plots on github
-__test = 0
+__test = 1
 
 
 def test_thematicmap(points_oslo):
