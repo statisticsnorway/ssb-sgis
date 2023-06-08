@@ -68,7 +68,7 @@ def test_explore(points_oslo, roads_oslo):
     r100 = roads.clip(p.buffer(100))
 
     if __name__ == "__main__":
-        print("One test of show in broser.")
+        print("One test of show in browser.")
         sg.clipmap(r300, "meters", r100, show_in_browser=True)
 
     sg.explore(r300, "meters", r100, bygdoy=7000)
@@ -78,7 +78,6 @@ def test_explore(points_oslo, roads_oslo):
     sg.clipmap(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
     sg.explore(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
     sg.samplemap(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
-
     not_test_center(r300, r200, r100, p)
 
     print(

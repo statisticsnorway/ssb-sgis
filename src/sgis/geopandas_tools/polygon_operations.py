@@ -1,4 +1,5 @@
 """Functions for polygon geometries."""
+import warnings
 
 import geopandas as gpd
 import networkx as nx
@@ -24,6 +25,7 @@ def eliminate_by_longest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
     *,
+    remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
@@ -37,6 +39,9 @@ def eliminate_by_longest(
     Args:
         gdf: GeoDataFrame with polygon geometries.
         to_eliminate: The geometries to be eliminated by 'gdf'.
+        remove_isolated: If False (default), polygons in 'to_eliminate' that share
+            no border with any polygon in 'gdf' will be kept. If True, the isolated
+            polygons will be removed.
         ignore_index: If False (default), the resulting GeoDataFrame will keep the
             index of the large polygons. If True, the resulting axis will be labeled
             0, 1, …, n - 1.
@@ -48,7 +53,7 @@ def eliminate_by_longest(
         The GeoDataFrame with the small polygons dissolved into the large polygons.
     """
 
-    # remove polygons in gdf that are present in to_eliminated
+    # remove polygons in gdf that are present in to_eliminate
     gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
 
     if not ignore_index:
@@ -74,31 +79,35 @@ def eliminate_by_longest(
 
     to_poly_idx = longest_border.set_index("eliminate_idx")["poly_idx"]
     to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(to_poly_idx)
+
     gdf["dissolve_idx"] = gdf["poly_idx"]
 
     kwargs.pop("as_index", None)
-    eliminated = (
-        pd.concat([gdf, to_eliminate])
-        .dissolve("dissolve_idx", aggfunc=aggfunc, **kwargs)
-        .drop(
-            ["length__", "eliminate_idx", "poly_idx"],
-            axis=1,
-            errors="ignore",
-        )
+    eliminated = pd.concat([gdf, to_eliminate]).dissolve(
+        "dissolve_idx", aggfunc=aggfunc, **kwargs
     )
 
     if ignore_index:
         return eliminated.reset_index(drop=True)
+    else:
+        eliminated.index = eliminated.index.map(idx_mapper)
+        eliminated.index.name = idx_name
 
-    eliminated.index = eliminated.index.map(idx_mapper)
-    eliminated.index.name = idx_name
+    if not remove_isolated:
+        isolated = to_eliminate.loc[to_eliminate["dissolve_idx"].isna()]
+        eliminated = pd.concat([eliminated, isolated])
 
-    return eliminated
+    return eliminated.drop(
+        ["dissolve_idx", "length__", "eliminate_idx", "poly_idx"],
+        axis=1,
+        errors="ignore",
+    )
 
 
 def eliminate_by_largest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
@@ -112,6 +121,9 @@ def eliminate_by_largest(
     Args:
         gdf: GeoDataFrame with polygon geometries.
         to_eliminate: The geometries to be eliminated by 'gdf'.
+        remove_isolated: If False (default), polygons in 'to_eliminate' that share
+            no border with any polygon in 'gdf' will be kept. If True, the isolated
+            polygons will be removed.
         ignore_index: If False (default), the resulting GeoDataFrame will keep the
             index of the large polygons. If True, the resulting axis will be labeled
             0, 1, …, n - 1.
@@ -126,6 +138,7 @@ def eliminate_by_largest(
     return _eliminate_by_area(
         gdf,
         to_eliminate=to_eliminate,
+        remove_isolated=remove_isolated,
         ignore_index=ignore_index,
         sort_ascending=False,
         aggfunc=aggfunc,
@@ -136,6 +149,7 @@ def eliminate_by_largest(
 def eliminate_by_smallest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
     **kwargs,
@@ -143,6 +157,7 @@ def eliminate_by_smallest(
     return _eliminate_by_area(
         gdf,
         to_eliminate=to_eliminate,
+        remove_isolated=remove_isolated,
         ignore_index=ignore_index,
         sort_ascending=True,
         aggfunc=aggfunc,
@@ -153,12 +168,13 @@ def eliminate_by_smallest(
 def _eliminate_by_area(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    remove_isolated: bool,
     sort_ascending: bool,
     ignore_index: bool = False,
     aggfunc="first",
     **kwargs,
 ) -> GeoDataFrame:
-    # remove polygons in gdf that are present in to_eliminated
+    # remove polygons in gdf that are present in to_eliminate
     gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
 
     if not ignore_index:
@@ -170,7 +186,7 @@ def _eliminate_by_area(
     gdf["area__"] = gdf.area
 
     joined = to_eliminate.sjoin(
-        gdf[["area__", "geometry"]], predicate="touches"
+        gdf[["area__", "geometry"]], predicate="touches", how="left"
     ).sort_values("area__", ascending=sort_ascending)
 
     largest = joined[~joined.index.duplicated()]
@@ -189,6 +205,10 @@ def _eliminate_by_area(
 
     eliminated.index = eliminated.index.map(idx_mapper)
     eliminated.index.name = idx_name
+
+    if not remove_isolated:
+        isolated = joined.loc[joined["index_right"].isna()]
+        eliminated = pd.concat([eliminated, isolated])
 
     return eliminated
 
@@ -349,15 +369,21 @@ def get_overlapping_polygons(
     Returns:
         A GeoDataFrame of the overlapping polygons.
     """
-    if not gdf.index.is_unique:
-        raise ValueError(
-            "Index must be unique in order to correctly find "
-            "overlapping polygon indices."
-        )
+    if not any(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
+        raise ValueError("'gdf' has no polygons.")
 
-    gdf = gdf.assign(overlap=gdf.index)
+    elif not all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
+        warnings.warn("'gdf' has mixed geometries. Non-polygons will be removed.")
 
-    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
+    if not ignore_index:
+        idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+        idx_name = gdf.index.name
+
+    gdf = gdf.reset_index(drop=True).assign(overlap=gdf.index)
+
+    intersected = clean_overlay(
+        gdf, gdf[["geometry"]], how="intersection", geom_type="polygon"
+    )
 
     points_joined = intersected.representative_point().to_frame().sjoin(intersected)
 
@@ -368,6 +394,9 @@ def get_overlapping_polygons(
 
     if ignore_index:
         duplicated_geoms = duplicated_geoms.reset_index(drop=True)
+    else:
+        duplicated_geoms.index = duplicated_geoms.index.map(idx_mapper)
+        duplicated_geoms.index.name = idx_name
 
     return duplicated_geoms.drop("overlap", axis=1)
 
@@ -379,15 +408,23 @@ def get_overlapping_polygon_indices(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
             "overlapping polygon indices."
         )
 
-    gdf = gdf.assign(overlap=gdf.index)
+    idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+    idx_name = gdf.index.name
 
-    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
+    gdf = gdf.reset_index(drop=True).assign(overlap=gdf.index)
+
+    intersected = clean_overlay(
+        gdf, gdf[["geometry"]], how="intersection", geom_type="polygon"
+    )
 
     intersected = intersected.set_index("overlap")
 
     points_joined = intersected.representative_point().to_frame().sjoin(intersected)
 
     duplicated_points = points_joined.loc[points_joined.index.duplicated()]
+
+    duplicated_points.index = duplicated_points.index.map(idx_mapper)
+    duplicated_points.index.name = idx_name
 
     return duplicated_points.index.unique()
 

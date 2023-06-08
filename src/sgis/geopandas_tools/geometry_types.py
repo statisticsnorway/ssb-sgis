@@ -3,6 +3,19 @@ import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 
 
+def make_all_singlepart(
+    gdf: GeoDataFrame, index_parts: bool = False, ignore_index: bool = False
+) -> GeoDataFrame:
+    gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
+
+    while not gdf.geom_type.isin(
+        ["Polygon", "Point", "LineString", "LinearRing"]
+    ).all():
+        gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
+
+    return gdf
+
+
 def to_single_geom_type(
     gdf: GeoDataFrame | GeoSeries,
     geom_type: str,
@@ -69,7 +82,7 @@ def to_single_geom_type(
     # explode collections to single-typed geometries
     collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
     if len(collections):
-        collections = collections.explode(ignore_index=ignore_index, index_parts=False)
+        collections = make_all_singlepart(collections, ignore_index=ignore_index)
 
         gdf = pd.concat([gdf, collections], ignore_index=ignore_index)
 

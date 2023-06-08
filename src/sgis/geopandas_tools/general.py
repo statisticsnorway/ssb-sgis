@@ -2,24 +2,21 @@ import warnings
 
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
 from shapely import (
     Geometry,
     box,
     extract_unique_points,
-    force_2d,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
-    wkt,
 )
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
-from .geometry_types import to_single_geom_type
+from .geometry_types import make_all_singlepart, to_single_geom_type
 from .to_geodataframe import to_gdf
 
 
@@ -184,7 +181,7 @@ def make_ssb_grid(gdf: GeoDataFrame, gridsize: int = 1000) -> GeoDataFrame:
     Raises:
         ValueError: If the GeoDataFrame does not have 25833 as crs.
     """
-    if gdf.crs != 25833:
+    if not gdf.crs.equals(25833):
         raise ValueError(
             "Geodataframe must have crs = 25833. Use df.set_crs(25833) to set "
             "projection or df.to_crs(25833) for transforming."
@@ -418,123 +415,6 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     )
 
 
-def random_points_in_polygons(
-    gdf: GeoDataFrame | GeoSeries, n: int, ignore_index=False
-) -> GeoDataFrame:
-    """Creates n random points inside each polygon of a GeoDataFrame.
-
-    Args:
-        gdf: GeoDataFrame to use as mask for the points.
-        n: Number of points to create per polygon in 'gdf'.
-        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-            Defaults to False, meaning the points will have the index of the polygon
-            it is within.
-
-    Returns:
-        A GeoDataFrame of points with 'n' rows per row in 'gdf'. It uses the index
-        values of 'gdf'.
-
-    Examples
-    --------
-    First create and buffer 100 random points.
-
-    >>> import sgis as sg
-    >>> gdf = sg.random_points(100)
-    >>> polygons = sg.buff(gdf, 1)
-    >>> polygons
-                                                 geometry
-    0   POLYGON ((1.49436 0.36088, 1.49387 0.32947, 1....
-    1   POLYGON ((1.38427 0.21069, 1.38378 0.17928, 1....
-    2   POLYGON ((1.78894 0.94134, 1.78845 0.90992, 1....
-    3   POLYGON ((1.47174 0.81259, 1.47125 0.78118, 1....
-    4   POLYGON ((1.13941 0.20821, 1.13892 0.17680, 1....
-    ..                                                ...
-    95  POLYGON ((1.13462 0.18908, 1.13412 0.15767, 1....
-    96  POLYGON ((1.96391 0.43191, 1.96342 0.40050, 1....
-    97  POLYGON ((1.30569 0.46956, 1.30520 0.43815, 1....
-    98  POLYGON ((1.18172 0.10944, 1.18122 0.07803, 1....
-    99  POLYGON ((1.06156 0.99893, 1.06107 0.96752, 1....
-    [100 rows x 1 columns]
-
-    >>> points = sg.random_points_in_polygons(polygons, 3)
-    >>> points
-                        geometry
-    0   POINT (0.74944 -0.41658)
-    0    POINT (1.27490 0.54076)
-    0    POINT (0.22523 0.49323)
-    1   POINT (0.25302 -0.34825)
-    1    POINT (0.21124 0.89223)
-    ..                       ...
-    98  POINT (-0.39865 0.87135)
-    98   POINT (0.03573 0.50788)
-    99  POINT (-0.79089 0.57835)
-    99   POINT (0.39838 1.50881)
-    99   POINT (0.98383 0.77298)
-    [300 rows x 1 columns]
-    """
-    if not isinstance(gdf, GeoDataFrame):
-        gdf = to_gdf(gdf)
-
-    if not all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
-        raise ValueError("Geometry types must be polygon.")
-
-    if gdf.index.is_unique:
-        gdf["temp_idx____"] = gdf.index
-    else:
-        gdf["temp_idx____"] = range(len(gdf))
-
-    all_points = pd.DataFrame()
-
-    for _ in range(n):
-        bounds = gdf.bounds
-        temp_idx____ = gdf["temp_idx____"].values
-        overlapping = pd.DataFrame()
-        overlapping_indices = ()
-
-        while len(bounds):
-            xs = np.random.uniform(bounds.minx, bounds.maxx)
-            ys = np.random.uniform(bounds.miny, bounds.maxy)
-
-            points_df = pd.DataFrame({"x": xs, "y": ys}, index=temp_idx____)
-
-            points = to_gdf(points_df, geometry=["x", "y"], crs=gdf.crs).drop(
-                ["x", "y"], axis=1
-            )
-
-            overlapping = points.sjoin(gdf[["temp_idx____", "geometry"]], how="inner")
-
-            overlapping = overlapping.loc[overlapping.index == overlapping.temp_idx____]
-
-            all_points = pd.concat([all_points, overlapping], ignore_index=ignore_index)
-
-            overlapping_indices = overlapping_indices + tuple(overlapping.index.values)
-
-            gdf__ = gdf.loc[~gdf["temp_idx____"].isin(overlapping_indices)]
-            temp_idx____ = gdf__["temp_idx____"].values
-            bounds = gdf__.bounds
-
-    all_points = all_points.sort_index()
-
-    all_points = all_points.loc[
-        :, ~all_points.columns.str.contains("temp_idx____|index_right")
-    ]
-
-    if gdf.index.is_unique:
-        gdf = gdf.drop("temp_idx____", axis=1)
-        return all_points
-
-    original_index = {
-        temp_idx: idx for temp_idx, idx in zip(gdf.temp_idx____, gdf.index)
-    }
-
-    all_points.index = all_points.index.map(original_index)
-    all_points.index.name = None
-
-    gdf = gdf.drop("temp_idx____", axis=1)
-
-    return all_points
-
-
 def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int):
     minx, miny, maxx, maxy = gdf.total_bounds
     xs = np.linspace(minx, maxx, num=n2)
@@ -645,7 +525,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         for line_gdf in lines[2:]:
             unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
 
-    return unioned.explode(ignore_index=True)
+    return make_all_singlepart(unioned, ignore_index=True)
 
 
 def clean_clip(

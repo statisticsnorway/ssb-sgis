@@ -59,6 +59,7 @@ class Map:
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
         nan_color="#c2c2c2",
+        scheme="fisherjenks",
         **kwargs,
     ):
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
@@ -70,6 +71,7 @@ class Map:
         self.nan_label = nan_label
         self.nan_color = nan_color
         self._cmap = kwargs.pop("cmap", None)
+        self.scheme = scheme
 
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
             raise ValueError("gdfs must be GeoDataFrames.")
@@ -94,31 +96,30 @@ class Map:
         if not self.labels:
             self._set_labels()
 
-        if not self._column:
+        self._gdfs = self._to_common_crs_and_one_geom_col(self._gdfs)
+        self._is_categorical = self._check_if_categorical()
+
+        if self._column:
+            self._fillna_if_col_is_missing()
+        else:
             for gdf, label in zip(self._gdfs, self.labels, strict=True):
                 gdf["label"] = label
             self._column = "label"
 
-        self._gdfs = self._to_common_crs_and_one_geom_col(self._gdfs)
-        self._is_categorical = self._check_if_categorical()
-
-        self._fillna_if_col_is_missing()
-
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
         self._nan_idx = self._gdf[self._column].isna()
-
         self._get_unique_values()
 
     def _get_unique_values(self):
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
-            if self._k > len(self._unique_values):
-                self._k = len(self._unique_values)
         else:
             self._unique_values = sorted(
                 list(self._gdf.loc[~self._nan_idx, self._column].unique())
             )
+        if self._k > len(self._unique_values):
+            self._k = len(self._unique_values)
 
     def _get_unique_floats(self) -> np.array:
         """Get unique floats by multiplying, then converting to integer.
@@ -128,7 +129,6 @@ class Map:
         similar values count as the same value in the color classification.
         """
         array = self._gdf.loc[~self._nan_idx, self._column]
-
         self._min = np.min(array)
         self._max = np.max(array)
         self._get_multiplier(array)
@@ -190,11 +190,19 @@ class Map:
         ):
             bins = [min(self._gdf.loc[~self._nan_idx, self._column])] + bins
 
-        if max(bins) > 0 and max(self._gdf[self._column]) > max(bins):
-            bins = bins + [max(self._gdf[self._column])]
+        if max(bins) > 0 and max(
+            self._gdf.loc[self._gdf[self._column].notna(), self._column]
+        ) > max(bins):
+            bins = bins + [
+                max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
+            ]
 
-        if max(bins) < 0 and max(self._gdf[self._column]) < max(bins):
-            bins = bins + [max(self._gdf[self._column])]
+        if max(bins) < 0 and max(
+            self._gdf.loc[self._gdf[self._column].notna(), self._column]
+        ) < max(bins):
+            bins = bins + [
+                max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
+            ]
 
         return bins
 
@@ -222,11 +230,6 @@ class Map:
     def _prepare_continous_map(self):
         """Create bins if not already done and adjust k if needed."""
 
-        default_scheme = "fisherjenks"
-
-        if not hasattr(self, "scheme"):
-            self.scheme = self.kwargs.pop("scheme", default_scheme)
-
         if self.scheme is None:
             return
 
@@ -234,10 +237,13 @@ class Map:
             self.bins = self._create_bins(self._gdf, self._column)
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
                 self._k = len(self.bins)
-        else:
+        elif not all(self._gdf[self._column].isna()):
             self.bins = self._add_minmax_to_bins(self.bins)
             if len(self._unique_values) <= len(self.bins):
                 self._k = len(self.bins)  # - 1
+        else:
+            self._unique_values = self.nan_label
+            self._k = 1
 
     def _get_labels(self, gdfs: tuple[GeoDataFrame]) -> None:
         """Putting the labels/names in a list before copying the gdfs."""
@@ -274,10 +280,25 @@ class Map:
         return new_gdfs
 
     def _fillna_if_col_is_missing(self) -> None:
+        n = 0
         for gdf in self._gdfs:
             if self._column in gdf.columns:
-                continue
-            gdf[self._column] = pd.NA
+                gdf[self._column] = gdf[self._column].fillna(pd.NA)
+                n += 1
+            else:
+                gdf[self._column] = pd.NA
+
+        maybe_area = 1 if "area" in self._column else 0
+        maybe_length = (
+            1 if any(x in self._column for x in ["meter", "metre", "leng"]) else 0
+        )
+        n = n + maybe_area + maybe_length
+
+        if n == 0:
+            raise ValueError(
+                f"The column {self._column!r} is not present in any "
+                "of the passed GeoDataFrames."
+            )
 
     def _check_if_categorical(self) -> bool:
         """Quite messy this..."""
@@ -370,6 +391,11 @@ class Map:
 
         if self._k == len(self._unique_values) - 1:
             n_classes = self._k - 1
+            self._k = self._k - 1
+
+        if self._k > len(self._unique_values):
+            self._k = len(self._unique_values)
+            n_classes = len(self._unique_values)
 
         if self.scheme == "jenks":
             bins = jenks_breaks(gdf.loc[~self._nan_idx, column], n_classes=n_classes)
@@ -390,6 +416,9 @@ class Map:
 
         if len(unique_bins) == len(self._unique_values):
             return np.array(unique_bins)
+
+        if len(unique_bins) == len(bins) - 1:
+            self._k -= 1
 
         return np.array(bins)
 

@@ -11,7 +11,7 @@ from numbers import Number
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
-from ..geopandas_tools.general import clean_clip, random_points_in_polygons, to_gdf
+from ..geopandas_tools.general import clean_clip, to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..helpers import make_namedict
 from .explore import Explore
@@ -224,7 +224,7 @@ def samplemap(
 
     """
 
-    if not size and isinstance(gdfs[-1], (float, int)):
+    if isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
     mask, kwargs = _get_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
@@ -269,7 +269,7 @@ def samplemap(
             sample["geometry"] = sample.buffer(1)
 
         if get_geom_type(sample) == "polygon":
-            random_point = random_points_in_polygons(sample, 1)
+            random_point = sample.sample_points(size=1)
 
         # if point or mixed geometries
         else:

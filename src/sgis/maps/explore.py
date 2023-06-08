@@ -12,12 +12,13 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from IPython.core.display import display
+from IPython.display import display
 from shapely.geometry import LineString
 
-from ..geopandas_tools.general import clean_geoms, random_points_in_polygons
+from ..geopandas_tools.general import clean_geoms, make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.to_geodataframe import to_gdf
+from ..helpers import unit_is_degrees
 from .httpserver import run_html_server
 from .map import Map
 
@@ -67,8 +68,10 @@ class Explore(Map):
         column: str | None = None,
         popup: bool = True,
         max_zoom: int = 30,
-        smooth_factor: 2.5,
+        smooth_factor: float = 1.5,
         browser: bool = False,
+        prefer_canvas: bool = True,
+        save=None,
         **kwargs,
     ):
         self.browser = browser
@@ -82,6 +85,8 @@ class Explore(Map):
         self.popup = popup
         self.max_zoom = max_zoom
         self.smooth_factor = smooth_factor
+        self.prefer_canvas = prefer_canvas
+        self.save = save
 
         self._to_single_geom_type()
 
@@ -93,6 +98,9 @@ class Explore(Map):
                 self._cmap = "viridis"
             self.cmap_start = kwargs.pop("cmap_start", 0)
             self.cmap_stop = kwargs.pop("cmap_stop", 256)
+
+        if self._gdf.crs is None:
+            self.kwargs["crs"] = "Simple"
 
     def explore(
         self, column: str | None = None, center=None, size=None, **kwargs
@@ -150,7 +158,7 @@ class Explore(Map):
             sample["geometry"] = sample.buffer(1)
 
         if get_geom_type(sample) == "polygon":
-            random_point = random_points_in_polygons(sample, 1)
+            random_point = sample.sample_points(size=1)
 
         # if point or mixed geometries
         else:
@@ -184,7 +192,7 @@ class Explore(Map):
             gdf = gdf.clip(mask)
             collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
             if len(collections):
-                collections = collections.explode(index_parts=False)
+                collections = make_all_singlepart(collections)
                 gdf = pd.concat([gdf, collections], ignore_index=False)
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
@@ -199,7 +207,13 @@ class Explore(Map):
         else:
             self._create_continous_map()
 
-        if self.browser:
+        if self.save:
+            import os
+
+            with open(os.getcwd() + "/" + self.save.strip(".html") + ".html", "w") as f:
+                f.write(self.map._repr_html_())
+            return
+        elif self.browser:
             run_html_server(self.map._repr_html_())
         else:
             display(self.map)
@@ -222,9 +236,9 @@ class Explore(Map):
 
         new_gdfs = []
         for gdf in self._gdfs:
-            if get_geom_type(gdf) == "mixed":
-                gdf[gdf._geometry_column_name] = gdf.buffer(0.1)
-            gdf = gdf.explode(index_parts=False)
+            if get_geom_type(gdf) == "mixed" and not unit_is_degrees(gdf):
+                gdf[gdf._geometry_column_name] = gdf.buffer(0.01)
+            gdf = make_all_singlepart(gdf)
             new_gdfs.append(gdf)
         self._gdfs = new_gdfs
         self._gdf = pd.concat(new_gdfs, ignore_index=True)
@@ -238,11 +252,12 @@ class Explore(Map):
     def _create_categorical_map(self):
         self._get_categorical_colors()
 
-        self.map = self._explore_return(
-            self._gdf,
-            return_="empty_map",
+        gdf = self._prepare_gdf_for_map(self._gdf)
+        self.map = self._make_folium_map(
+            gdf,
             max_zoom=self.max_zoom,
             popup=self.popup,
+            prefer_canvas=self.prefer_canvas,
             **self.kwargs,
         )
 
@@ -252,10 +267,10 @@ class Explore(Map):
 
             f = folium.FeatureGroup(name=label)
 
-            gjs = self._explore_return(
+            gdf = self._prepare_gdf_for_map(gdf)
+            gjs = self._make_geojson(
                 gdf,
                 color=gdf["color"],
-                return_="geojson",
                 tooltip=self._tooltip_cols(gdf),
                 popup=self.popup,
                 **{
@@ -264,8 +279,11 @@ class Explore(Map):
                     if key not in ["title"]
                 },
             )
-            f.add_child(gjs)
-            self.map.add_child(f)
+
+            gjs.layer_name = label
+
+            gjs.add_to(f)
+            gjs.add_to(self.map)
 
         _categorical_legend(
             self.map,
@@ -285,11 +303,12 @@ class Explore(Map):
             n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
             unique_colors = self._get_continous_colors(n=n_colors)
 
-        self.map = self._explore_return(
-            self._gdf,
-            return_="empty_map",
+        gdf = self._prepare_gdf_for_map(self._gdf)
+        self.map = self._make_folium_map(
+            gdf,
             max_zoom=self.max_zoom,
             popup=self.popup,
+            prefer_canvas=self.prefer_canvas,
             **self.kwargs,
         )
 
@@ -309,14 +328,20 @@ class Explore(Map):
             classified = self._classify_from_bins(gdf, bins=self.bins)
             colorarray = unique_colors[classified]
 
-            gjs = self._explore_return(
+            gdf = self._prepare_gdf_for_map(gdf)
+            gjs = self._make_geojson(
                 gdf,
-                tooltip=self._tooltip_cols(gdf),
                 color=colorarray,
-                return_="geojson",
+                tooltip=self._tooltip_cols(gdf),
                 popup=self.popup,
-                **{key: value for key, value in self.kwargs.items() if key != "title"},
+                prefer_canvas=self.prefer_canvas,
+                **{
+                    key: value
+                    for key, value in self.kwargs.items()
+                    if key not in ["title"]
+                },
             )
+
             f.add_child(gjs)
             self.map.add_child(f)
 
@@ -331,45 +356,37 @@ class Explore(Map):
             return tooltip
         return [col for col in gdf.columns if col not in COLS_TO_DROP]
 
-    def _explore_return(
+    @staticmethod
+    def _prepare_gdf_for_map(gdf):
+        # convert LinearRing to LineString
+        rings_mask = gdf.geom_type == "LinearRing"
+        if rings_mask.any():
+            gdf.geometry[rings_mask] = gdf.geometry[rings_mask].apply(
+                lambda g: LineString(g)
+            )
+
+        if gdf.crs is not None and not gdf.crs.equals(4326):
+            gdf = gdf.to_crs(4326)
+
+        return gdf
+
+    def _make_folium_map(
         self,
         df,
-        return_: str,
-        color=None,
         attr=None,
         tiles="OpenStreetMap",
-        tooltip=True,
-        popup=False,
-        highlight=True,
         width="100%",
         height="100%",
         control_scale=True,
-        marker_type=None,
-        marker_kwds={},
-        style_kwds={},
-        highlight_kwds={},
-        tooltip_kwds={},
-        popup_kwds={},
         map_kwds={},
         **kwargs,
     ):
-        """Contains the nessecary parts of the geopandas _explore function.
-
-        Also has a return_ parameter that controls what is returned. This should be
-        replaced by separate functions, and irrelevant parameters should be removed.
-        """
-        # xyservices is an optional dependency
-        try:
-            import xyzservices
-
-            has_xyzservices = True
-        except ImportError:
-            has_xyzservices = False
+        import xyzservices
 
         gdf = df.copy()
 
         # convert LinearRing to LineString
-        rings_mask = df.geom_type == "LinearRing"
+        rings_mask = gdf.geom_type == "LinearRing"
         if rings_mask.any():
             gdf.geometry[rings_mask] = gdf.geometry[rings_mask].apply(
                 lambda g: LineString(g)
@@ -408,35 +425,76 @@ class Explore(Map):
             **{i: kwargs[i] for i in kwargs.keys() if i in _MAP_KWARGS},
         }
 
-        if has_xyzservices:
-            # match provider name string to xyzservices.TileProvider
-            if isinstance(tiles, str):
-                try:
-                    tiles = xyzservices.providers.query_name(tiles)
-                except ValueError:
-                    pass
+        # match provider name string to xyzservices.TileProvider
+        if isinstance(tiles, str):
+            try:
+                tiles = xyzservices.providers.query_name(tiles)
+            except ValueError:
+                pass
 
-            if isinstance(tiles, xyzservices.TileProvider):
-                attr = attr if attr else tiles.html_attribution
-                map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
-                map_kwds["max_zoom"] = tiles.get("max_zoom", 30)
-                tiles = tiles.build_url(scale_factor="{r}")
+        if isinstance(tiles, xyzservices.TileProvider):
+            attr = attr if attr else tiles.html_attribution
+            map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
+            map_kwds["max_zoom"] = tiles.get("max_zoom", 30)
+            tiles = tiles.build_url(scale_factor="{r}")
 
-            map_kwds["zoom_start"] = self.kwargs.get("zoom_start", 15)
+        m = folium.Map(
+            location=location,
+            control_scale=control_scale,
+            tiles=tiles,
+            attr=attr,
+            width=width,
+            height=height,
+            **map_kwds,
+        )
 
-            m = folium.Map(
-                location=location,
-                control_scale=control_scale,
-                tiles=tiles,
-                attr=attr,
-                width=width,
-                height=height,
-                **map_kwds,
+        # fit bounds to get a proper zoom level
+        if fit and "zoom_start" not in kwargs:
+            m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+
+        return m
+
+    def _make_geojson(
+        self,
+        df,
+        color=None,
+        tooltip=True,
+        popup=False,
+        highlight=True,
+        marker_type=None,
+        marker_kwds={},
+        style_kwds={},
+        highlight_kwds={},
+        tooltip_kwds={},
+        popup_kwds={},
+        map_kwds={},
+        **kwargs,
+    ):
+        gdf = df.copy()
+
+        # convert LinearRing to LineString
+        rings_mask = gdf.geom_type == "LinearRing"
+        if rings_mask.any():
+            gdf.geometry[rings_mask] = gdf.geometry[rings_mask].apply(
+                lambda g: LineString(g)
             )
 
-            # fit bounds to get a proper zoom level
-            if fit:
-                m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+        if gdf.crs is None:
+            kwargs["crs"] = "Simple"
+        elif not gdf.crs.equals(4326):
+            gdf = gdf.to_crs(4326)
+
+        # get a subset of kwargs to be passed to folium.Map
+        for i in _MAP_KWARGS:
+            if i in map_kwds:
+                raise ValueError(
+                    f"'{i}' cannot be specified in 'map_kwds'. "
+                    f"Use the '{i}={map_kwds[i]}' argument instead."
+                )
+        map_kwds = {
+            **map_kwds,
+            **{i: kwargs[i] for i in kwargs.keys() if i in _MAP_KWARGS},
+        }
 
         for map_kwd in _MAP_KWARGS:
             kwargs.pop(map_kwd, None)
@@ -521,21 +579,16 @@ class Explore(Map):
             tooltip = None
             popup = None
 
-        if "geojson" in return_:
-            # add dataframe to map
-            gjs = folium.GeoJson(
-                gdf.__geo_interface__,
-                tooltip=tooltip,
-                popup=popup,
-                marker=marker,
-                style_function=style_function,
-                highlight_function=highlight_function,
-                smooth_factor=self.smooth_factor,
-                **kwargs,
-            )
-            return gjs
-
-        return m
+        return folium.GeoJson(
+            gdf.__geo_interface__,
+            tooltip=tooltip,
+            popup=popup,
+            marker=marker,
+            style_function=style_function,
+            highlight_function=highlight_function,
+            smooth_factor=self.smooth_factor,
+            **kwargs,
+        )
 
 
 def _tooltip_popup(type, fields, gdf, **kwds):

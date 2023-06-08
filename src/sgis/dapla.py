@@ -14,7 +14,7 @@ from pyarrow import parquet
 def exists(path: str) -> bool:
     """Returns True if the path exists, and False if it doesn't.
 
-    Works in dapla and outside of dapla.
+    Works in Dapla and outside of Dapla.
 
     Args:
         path (str): The path to the file or directory.
@@ -58,14 +58,16 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
         parent = str(Path(path).parent)
         if exists(parent):
             print(
-                f"Didn't find the file {path}"
-                "\nHere are the files in the given parent directory:"
+                f"Didn't find the file {path}."
+                "\nHere are the files in the parent directory:"
             )
             print(dp.FileClient().ls(parent))
         raise e
 
 
-def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
+def write_geopandas(
+    df: gpd.GeoDataFrame, gcs_path: str, overwrite: bool = True, **kwargs
+) -> None:
     """Writes a GeoDataFrame to the speficied format.
 
     Note:
@@ -74,10 +76,14 @@ def write_geopandas(df: gpd.GeoDataFrame, gcs_path: str, **kwargs) -> None:
     Args:
         df: The GeoDataFrame to write.
         gcs_path: The path to the file you want to write to.
+        overwrite: Whether to overwrite the file if it exists. Defaults to True.
         **kwargs: Additional keyword arguments passed to parquet.write_table
             (for parquet) or geopandas' to_file method (if not parquet).
     """
     pd.io.parquet.BaseImpl.validate_dataframe(df)
+
+    if not overwrite and exists(gcs_path):
+        raise ValueError("File already exists.")
 
     if not len(df):
         try:

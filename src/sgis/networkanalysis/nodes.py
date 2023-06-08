@@ -35,7 +35,7 @@ def make_node_ids(
         The lines must be singlepart linestrings.
     """
 
-    gdf = gdf.explode(index_parts=False)
+    gdf = gdf.explode(index_parts=False).explode(index_parts=False)
 
     if wkt:
         gdf = make_edge_wkt_cols(gdf)

@@ -9,6 +9,7 @@ from shapely import force_2d
 from shapely.geometry import LineString, Point
 
 from ..geopandas_tools.buffer_dissolve_explode import buff
+from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from ..geopandas_tools.point_operations import snap_all, snap_within_distance
 from ..geopandas_tools.to_geodataframe import to_gdf
@@ -70,6 +71,12 @@ def split_lines_by_nearest_point(
 
     if points.crs != gdf.crs:
         raise ValueError("crs mismatch:", points.crs, "and", gdf.crs)
+
+    if get_geom_type(gdf) != "line":
+        raise ValueError("'gdf' should only have line geometries.")
+
+    if get_geom_type(points) != "point":
+        raise ValueError("'points' should only have point geometries.")
 
     gdf["temp_idx_"] = gdf.index
 
@@ -192,6 +199,9 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
     max         100.0
     dtype: float64
     """
+    if get_geom_type(gdf) != "line":
+        raise ValueError("'gdf' should only have line geometries.")
+
     gdf["geometry"] = force_2d(gdf.geometry)
 
     gdf = gdf.explode(ignore_index=ignore_index, index_parts=False)
