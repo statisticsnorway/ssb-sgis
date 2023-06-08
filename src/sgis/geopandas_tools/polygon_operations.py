@@ -39,6 +39,9 @@ def eliminate_by_longest(
     Args:
         gdf: GeoDataFrame with polygon geometries.
         to_eliminate: The geometries to be eliminated by 'gdf'.
+        remove_isolated: If False (default), polygons in 'to_eliminate' that share
+            no border with any polygon in 'gdf' will be kept. If True, the isolated
+            polygons will be removed.
         ignore_index: If False (default), the resulting GeoDataFrame will keep the
             index of the large polygons. If True, the resulting axis will be labeled
             0, 1, …, n - 1.
@@ -77,22 +80,11 @@ def eliminate_by_longest(
     to_poly_idx = longest_border.set_index("eliminate_idx")["poly_idx"]
     to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(to_poly_idx)
 
-    if not remove_isolated:
-        to_eliminate["dissolve_idx"] = to_eliminate["dissolve_idx"].fillna(
-            "no_bordering"
-        )
-
     gdf["dissolve_idx"] = gdf["poly_idx"]
 
     kwargs.pop("as_index", None)
-    eliminated = (
-        pd.concat([gdf, to_eliminate])
-        .dissolve("dissolve_idx", aggfunc=aggfunc, **kwargs)
-        .drop(
-            ["length__", "eliminate_idx", "poly_idx"],
-            axis=1,
-            errors="ignore",
-        )
+    eliminated = pd.concat([gdf, to_eliminate]).dissolve(
+        "dissolve_idx", aggfunc=aggfunc, **kwargs
     )
 
     if ignore_index:
@@ -101,7 +93,15 @@ def eliminate_by_longest(
         eliminated.index = eliminated.index.map(idx_mapper)
         eliminated.index.name = idx_name
 
-    return eliminated
+    if not remove_isolated:
+        isolated = to_eliminate.loc[to_eliminate["dissolve_idx"].isna()]
+        eliminated = pd.concat([eliminated, isolated])
+
+    return eliminated.drop(
+        ["dissolve_idx", "length__", "eliminate_idx", "poly_idx"],
+        axis=1,
+        errors="ignore",
+    )
 
 
 def eliminate_by_largest(
@@ -121,6 +121,9 @@ def eliminate_by_largest(
     Args:
         gdf: GeoDataFrame with polygon geometries.
         to_eliminate: The geometries to be eliminated by 'gdf'.
+        remove_isolated: If False (default), polygons in 'to_eliminate' that share
+            no border with any polygon in 'gdf' will be kept. If True, the isolated
+            polygons will be removed.
         ignore_index: If False (default), the resulting GeoDataFrame will keep the
             index of the large polygons. If True, the resulting axis will be labeled
             0, 1, …, n - 1.
@@ -188,9 +191,6 @@ def _eliminate_by_area(
 
     largest = joined[~joined.index.duplicated()]
 
-    if not remove_isolated:
-        largest["index_right"] = largest["index_right"].fillna("no_bordering")
-
     gdf = gdf.assign(index_right=lambda x: x.index)
 
     kwargs.pop("as_index", None)
@@ -205,6 +205,10 @@ def _eliminate_by_area(
 
     eliminated.index = eliminated.index.map(idx_mapper)
     eliminated.index.name = idx_name
+
+    if not remove_isolated:
+        isolated = joined.loc[joined["index_right"].isna()]
+        eliminated = pd.concat([eliminated, isolated])
 
     return eliminated
 

@@ -169,8 +169,13 @@ def test_eliminate():
     large_poly = sg.to_gdf(
         Polygon([(0, 0), (0.1, 1), (1, 2), (2, 2), (3, 2), (3, 0)])
     ).assign(what="large", num=3)
+    isolated = sg.to_gdf(
+        Polygon([(10, 10), (-10.1, 11), (10, 12), (-11, 12), (-12, 12), (-11, 11)])
+    ).assign(what="isolated", num=4)
+
     polys1 = pd.concat([small_poly, large_poly], ignore_index=True)
     polys2 = pd.concat([sliver, small_poly, large_poly], ignore_index=True)
+
     if __name__ == "__main__":
         sg.qtm(polys2, "what", alpha=0.8)
     polys1.index = [5, 7]
@@ -214,6 +219,20 @@ def test_eliminate():
         assert list(eliminated.num) == [3, 3], list(eliminated.num)
         assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
         assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
+
+    eliminated = sg.eliminate_by_longest(polys1, isolated)
+    assert list(eliminated.what) == ["small", "large", "isolated"], list(
+        eliminated.what
+    )
+    assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
+    if __name__ == "__main__":
+        sg.qtm(eliminated, "what", title="with isolated", alpha=0.8)
+
+    eliminated = sg.eliminate_by_largest(polys1, isolated)
+    assert list(eliminated.what) == ["small", "large", "isolated"], list(
+        eliminated.what
+    )
+    assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
 
 
 if __name__ == "__main__":
