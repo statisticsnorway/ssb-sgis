@@ -16,7 +16,7 @@ from pyproj import CRS
 from shapely import STRtree, difference, intersection, union_all
 
 from .general import _push_geom_col, clean_geoms
-from .geometry_types import get_geom_type, to_single_geom_type
+from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
 def overlay_update(
@@ -128,8 +128,8 @@ def clean_overlay(
     if geom_type_right:
         df2 = to_single_geom_type(df2, geom_type_right)
 
-    df1 = df1.explode(ignore_index=True).explode(ignore_index=True)
-    df2 = df2.explode(ignore_index=True).explode(ignore_index=True)
+    df1 = make_all_singlepart(df1, ignore_index=True)
+    df2 = make_all_singlepart(df2, ignore_index=True)
 
     overlayed = (
         _shapely_overlay(df1, df2, how=how, crs=crs)

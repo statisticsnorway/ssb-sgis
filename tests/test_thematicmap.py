@@ -243,7 +243,7 @@ def test_thematicmap(points_oslo):
             "440 ",
         ], m.legend._categories
 
-    # k_is_7_equal_to_n_unique(points)
+    k_is_7_equal_to_n_unique(points)
 
     def k_is_3(points):
         m = sg.ThematicMap(points, points, points, "meters")
