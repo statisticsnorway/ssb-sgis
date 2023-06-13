@@ -11,8 +11,10 @@ import folium
 import matplotlib
 import numpy as np
 import pandas as pd
+from folium import plugins
 from geopandas import GeoDataFrame
 from IPython.display import display
+from jinja2 import Template
 from shapely.geometry import LineString
 
 from ..geopandas_tools.general import clean_geoms, make_all_singlepart
@@ -61,6 +63,30 @@ _MAP_KWARGS = [
 ]
 
 
+class MeasureControlFix(plugins.MeasureControl):
+    """To fix a bug in the lenght measurement control.
+
+    Kudos to abewartech (https://github.com/ljagis/leaflet-measure/issues/171).
+    """
+
+    _template = Template(
+        """
+{% macro script(this, kwargs) %}
+    L.Control.Measure.include({ _setCaptureMarkerIcon: function () { this._captureMarker.options.autoPanOnFocus = false; this._captureMarker.setIcon( L.divIcon({ iconSize: this._map.getSize().multiplyBy(2), }), ); }, });
+    var {{ this.get_name() }} = new L.Control.Measure(
+        {{ this.options|tojson }});
+    {{this._parent.get_name()}}.addControl({{this.get_name()}});
+
+{% endmacro %}
+    """
+    )
+
+    def __init__(self, active_color="red", completed_color="red", **kwargs):
+        super().__init__(
+            active_color=active_color, completed_color=completed_color, **kwargs
+        )
+
+
 class Explore(Map):
     def __init__(
         self,
@@ -71,6 +97,8 @@ class Explore(Map):
         smooth_factor: float = 1.5,
         browser: bool = False,
         prefer_canvas: bool = True,
+        measure_control: bool = True,
+        geocoder: bool = True,
         save=None,
         **kwargs,
     ):
@@ -86,6 +114,8 @@ class Explore(Map):
         self.max_zoom = max_zoom
         self.smooth_factor = smooth_factor
         self.prefer_canvas = prefer_canvas
+        self.measure_control = measure_control
+        self.geocoder = geocoder
         self.save = save
 
         self._to_single_geom_type()
@@ -291,8 +321,8 @@ class Explore(Map):
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
-        folium.TileLayer("stamentoner").add_to(self.map)
-        folium.TileLayer("cartodbdark_matter").add_to(self.map)
+        folium.TileLayer("stamentoner", max_zoom=self.max_zoom).add_to(self.map)
+        folium.TileLayer("cartodbdark_matter", max_zoom=self.max_zoom).add_to(self.map)
         self.map.add_child(folium.LayerControl())
 
     def _create_continous_map(self):
@@ -447,6 +477,26 @@ class Explore(Map):
             height=height,
             **map_kwds,
         )
+
+        if self.measure_control:
+            MeasureControlFix(
+                primary_length_unit="meters",
+                secondary_length_unit="kilometers",
+                primary_area_unit="sqmeters",
+                secondary_area_unit="sqkilometers",
+                position="bottomleft",
+                capture_z_index=False,
+            ).add_to(m)
+
+        plugins.Fullscreen(
+            position="topleft",
+            title="Expand me",
+            title_cancel="Exit me",
+            force_separate_button=True,
+        ).add_to(m)
+
+        if self.geocoder:
+            plugins.Geocoder(position="topright").add_to(m)
 
         # fit bounds to get a proper zoom level
         if fit and "zoom_start" not in kwargs:
