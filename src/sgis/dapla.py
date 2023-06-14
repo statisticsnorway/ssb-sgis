@@ -47,22 +47,26 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
     """
     fs = dp.FileClient.get_gcs_file_system()
 
-    try:
-        if "parquet" in path:
-            with fs.open(path, mode="rb") as file:
+    if "parquet" in path:
+        with fs.open(path, mode="rb") as file:
+            try:
                 return gpd.read_parquet(file, **kwargs)
-        else:
-            with fs.open(path, mode="rb") as file:
+            except ValueError as e:
+                df = dp.read_pandas(path, **kwargs)
+                if not len(df):
+                    return df
+                else:
+                    raise e
+    else:
+        with fs.open(path, mode="rb") as file:
+            try:
                 return gpd.read_file(file, **kwargs)
-    except FileNotFoundError as e:
-        parent = str(Path(path).parent)
-        if exists(parent):
-            print(
-                f"Didn't find the file {path}."
-                "\nHere are the files in the parent directory:"
-            )
-            print(dp.FileClient().ls(parent))
-        raise e
+            except ValueError as e:
+                df = dp.read_pandas(path, **kwargs)
+                if not len(df):
+                    return df
+                else:
+                    raise e
 
 
 def write_geopandas(
