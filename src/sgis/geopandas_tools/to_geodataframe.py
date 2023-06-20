@@ -5,7 +5,7 @@ import geopandas as gpd
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_array_like, is_dict_like, is_list_like
-from shapely import Geometry, wkb, wkt
+from shapely import Geometry, box, wkb, wkt
 from shapely.geometry import Point
 from shapely.ops import unary_union
 
@@ -168,6 +168,8 @@ def to_gdf(
             geoseries = GeoSeries(
                 _make_shapely_geoms(list(geom.values())[0]), index=index
             )
+        elif isinstance(geom, pd.Series):
+            geoseries = GeoSeries(_make_shapely_geoms(geom), index=index)
         else:
             geoseries = GeoSeries(_make_shapely_geoms(geom.iloc[:, 0]), index=index)
         return GeoDataFrame({key: geoseries}, geometry=key, crs=crs, **kwargs)
@@ -292,9 +294,11 @@ def _make_one_shapely_geom(geom):
     elif len(geom) == 2 or len(geom) == 3:
         return Point(geom)
 
+    elif len(geom) == 4:
+        return box(*geom)
     else:
         raise ValueError(
             "If 'geom' is an iterable, each item should consist of "
-            "wkt, wkb or 2/3 coordinates (x, y, z). Got ",
+            "wkt, wkb or (x, y (z) or bbox). Got ",
             geom,
         )
