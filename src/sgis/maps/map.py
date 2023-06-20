@@ -467,6 +467,8 @@ class Map:
             if gdf[self._column].isna().all():
                 return np.repeat(len(bins), len(gdf))
 
+            # need numpy.nan instead of pd.NA as of now
+            gdf[self._column] = gdf[self._column].fillna(np.nan)
             classified = np.searchsorted(bins, gdf[self._column])
 
         return classified
