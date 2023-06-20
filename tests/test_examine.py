@@ -45,6 +45,10 @@ if __name__ == "__main__":
 
 # %%
 if __name__ == "__main__":
+    e.next(cmap="plasma")
+
+# %%
+if __name__ == "__main__":
     e = sg.Examine(roads, mask_gdf=points, column="oneway")
 
 # %%

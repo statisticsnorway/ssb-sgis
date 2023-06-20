@@ -10,9 +10,10 @@ class Examine:
     It takes one or more GeoDataFrames and shows an interactive map
     of one area at the time with the 'next', 'prev' and 'current' methods.
 
-    the area around one row at a time with the methods 'ne
-    Metodene 'next' og 'prev' må kjøres i en annen jupyter-celle enn
-    instantieringen of class-en. Ellers blir 'i' nullstilt hver gang.
+    After creating the examiner object, the 'next' method will create a map
+    showing all geometries within a given radius (the size parameter) of the
+    first geometry in 'mask_gdf' (or the first speficied gdf). The 'next' method
+    can then be repeated.
 
     Args:
         *gdfs: One or more GeoDataFrames. The rows of the first GeoDataFrame
@@ -24,6 +25,7 @@ class Examine:
             before clipping.
         sort_values: Optional sorting column(s) of the mask GeoDataFrame. Rows
             will be iterated through from the top.
+        **kwargs: Additional keyword arguments passed to sgis.clipmap.
 
     Examples
     --------
@@ -94,6 +96,13 @@ class Examine:
         self.kwargs = kwargs
 
     def next(self, *gdfs, i: int | None = None, **kwargs):
+        """Displays a map of geometries within the next row of the mask gdf.
+
+        Args:
+            *gdfs: Optional GeoDataFrames to be added on top of the current.
+            i: Optionally set the integer index of which row to use as mask.
+            **kwargs: Additional keyword arguments passed to sgis.clipmap.
+        """
         gdfs = () if not gdfs else gdfs
         self.gdfs = self.gdfs + gdfs
         if kwargs:
@@ -117,6 +126,13 @@ class Examine:
         self.i += 1
 
     def prev(self, *gdfs, i: int | None = None, **kwargs):
+        """Displays a map of geometries within the previus row of the mask gdf.
+
+        Args:
+            *gdfs: Optional GeoDataFrames to be added on top of the current.
+            i: Optionally set the integer index of which row to use as mask.
+            **kwargs: Additional keyword arguments passed to sgis.clipmap.
+        """
         gdfs = () if not gdfs else gdfs
         self.gdfs = self.gdfs + gdfs
         if kwargs:
@@ -137,6 +153,7 @@ class Examine:
         )
 
     def current(self, *gdfs, i: int | None = None, **kwargs):
+        """Repeat the last shown map."""
         gdfs = () if not gdfs else gdfs
         self.gdfs = self.gdfs + gdfs
         if kwargs:
@@ -159,14 +176,14 @@ class Examine:
         return self.mask_gdf.iloc[[self.i]]
 
     def get_current_geoms(self) -> tuple[gpd.GeoDataFrame]:
-        """Returns all GeoDataFrames of the last shown mask geometry."""
+        """Returns all GeoDataFrames in the area of the last shown mask geometry."""
         mask = self.mask_gdf.iloc[[self.i]]
         gdfs = ()
         for gdf in self.gdfs:
             gdfs = gdfs + (gdf.clip(mask.buffer(self.size)),)
         return gdfs
 
-    def _fix_kwargs(self, kwargs) -> None:
+    def _fix_kwargs(self, kwargs) -> dict:
         self.size = kwargs.pop("size", self.size)
         self.column = kwargs.pop("column", self.column)
         return kwargs
