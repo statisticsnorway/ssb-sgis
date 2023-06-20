@@ -101,15 +101,12 @@ def test_close_holes():
         all_closed3 = sg.close_small_holes(
             ring_with_hole, max_area=32_000, without_islands=without_islands
         )
-        sg.explore(all_closed3, all_closed2, all_closed)
-        sg.explore(all_closed3.iloc[[0]], all_closed2.iloc[[0]], all_closed.iloc[[0]])
 
         assert round(np.sum(all_closed3.area), 3) > round(np.sum(all_closed.area), 3)
 
         hole_not_closed3 = sg.close_small_holes(
             ring_with_hole, max_area=30_000, without_islands=without_islands
         )
-        sg.qtm(hole_not_closed3)
         assert np.sum(hole_not_closed.area) == np.sum(ring_with_hole.area)
 
     _close_the_holes(ring_with_hole_and_island)
@@ -267,7 +264,6 @@ def test_eliminate():
 
 if __name__ == "__main__":
     test_close_holes()
-    ss
     test_get_polygon_clusters()
     test_eliminate()
     test_get_overlapping_polygons()

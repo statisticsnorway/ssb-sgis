@@ -656,7 +656,6 @@ def _close_small_holes_no_islands(poly, max_area, all_geoms):
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
             no_islands = unary_union(hole.difference(all_geoms))
-            print("hei", area(no_islands))
             if area(no_islands) < max_area:
                 holes_closed.append(no_islands)
 
