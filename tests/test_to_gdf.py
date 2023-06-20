@@ -48,6 +48,14 @@ def test_to_gdf():
     _geoseries()
 
 
+def _bbox():
+    gdf = sg.to_gdf(
+        [600000.0, 7490220.0, 709800.0, 7600020.0],
+        crs=25833,
+    )
+    assert sg.get_geom_type(gdf) == "polygon", sg.get_geom_type(gdf)
+
+
 def _series_like():
     should_equal = gpd.GeoDataFrame(
         {"geometry": [Point(10, 60), Point(11, 59)]}, geometry="geometry", index=[1, 3]
