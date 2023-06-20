@@ -1,4 +1,5 @@
 """Functions for polygon geometries."""
+import functools
 import warnings
 
 import geopandas as gpd
@@ -8,6 +9,7 @@ import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
     area,
+    difference,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
@@ -457,10 +459,79 @@ def get_overlapping_polygon_product(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
     return series
 
 
+def close_all_holes(
+    gdf: GeoDataFrame | GeoSeries,
+    *,
+    without_islands: bool = True,
+    copy: bool = True,
+) -> GeoDataFrame | GeoSeries:
+    """Closes all holes in polygons.
+
+    It takes a GeoDataFrame or GeoSeries of polygons and
+    returns the outer circle.
+
+    Args:
+        gdf: GeoDataFrame or GeoSeries of polygons.
+        copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
+            Defaults to True.
+
+    Returns:
+        A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
+        column.
+
+    Examples
+    --------
+    Let's create a circle with a hole in it.
+
+    >>> from sgis import close_all_holes, buff, to_gdf
+    >>> point = to_gdf([260000, 6650000], crs=25833)
+    >>> point
+                            geometry
+    0  POINT (260000.000 6650000.000)
+    >>> circle = buff(point, 1000)
+    >>> small_circle = buff(point, 500)
+    >>> circle_with_hole = circle.overlay(small_circle, how="difference")
+    >>> circle_with_hole.area
+    0    2.355807e+06
+    dtype: float64
+
+    Close the hole.
+
+    >>> holes_closed = close_all_holes(circle_with_hole)
+    >>> holes_closed.area
+    0    3.141076e+06
+    dtype: float64
+    """
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+        raise ValueError(
+            f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
+        )
+
+    if copy:
+        gdf = gdf.copy()
+
+    if without_islands:
+        all_geoms = gdf.unary_union
+        if isinstance(gdf, GeoDataFrame):
+            gdf["geometry"] = gdf.geometry.map(
+                lambda x: _close_all_holes_no_islands(x, all_geoms)
+            )
+            return gdf
+        else:
+            return gdf.map(lambda x: _close_all_holes_no_islands(x, all_geoms))
+    else:
+        if isinstance(gdf, GeoDataFrame):
+            gdf["geometry"] = gdf.geometry.map(_close_all_holes)
+            return gdf
+        else:
+            return gdf.map(_close_all_holes)
+
+
 def close_small_holes(
     gdf: GeoDataFrame | GeoSeries,
     max_area: int | float,
     *,
+    without_islands: bool = True,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
     """Closes holes in polygons if the area is less than the given maximum.
@@ -515,88 +586,37 @@ def close_small_holes(
     0    2.355807e+06
     dtype: float64
     """
-    if copy:
-        gdf = gdf.copy()
-
-    if isinstance(gdf, GeoDataFrame):
-        gdf["geometry"] = gdf.geometry.map(
-            lambda x: _close_small_holes_poly(x, max_area)
-        )
-        return gdf
-
-    elif isinstance(gdf, gpd.GeoSeries):
-        return gdf.map(lambda x: _close_small_holes_poly(x, max_area))
-
-    else:
+    if not isinstance(gdf, (GeoSeries, GeoDataFrame)):
         raise ValueError(
             f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
         )
 
-
-def close_all_holes(
-    gdf: GeoDataFrame | GeoSeries,
-    *,
-    copy: bool = True,
-) -> GeoDataFrame | GeoSeries:
-    """Closes all holes in polygons.
-
-    It takes a GeoDataFrame or GeoSeries of polygons and
-    returns the outer circle.
-
-    Args:
-        gdf: GeoDataFrame or GeoSeries of polygons.
-        copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
-            Defaults to True.
-
-    Returns:
-        A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
-        column.
-
-    Examples
-    --------
-    Let's create a circle with a hole in it.
-
-    >>> from sgis import close_all_holes, buff, to_gdf
-    >>> point = to_gdf([260000, 6650000], crs=25833)
-    >>> point
-                            geometry
-    0  POINT (260000.000 6650000.000)
-    >>> circle = buff(point, 1000)
-    >>> small_circle = buff(point, 500)
-    >>> circle_with_hole = circle.overlay(small_circle, how="difference")
-    >>> circle_with_hole.area
-    0    2.355807e+06
-    dtype: float64
-
-    Close the hole.
-
-    >>> holes_closed = close_all_holes(circle_with_hole)
-    >>> holes_closed.area
-    0    3.141076e+06
-    dtype: float64
-    """
     if copy:
         gdf = gdf.copy()
 
-    def close_all_holes_func(poly):
-        return unary_union(polygons(get_exterior_ring(get_parts(poly))))
+    if without_islands:
+        all_geoms = gdf.unary_union
 
-    close_all_holes_func = np.vectorize(close_all_holes_func)
-
-    if isinstance(gdf, GeoDataFrame):
-        gdf["geometry"] = close_all_holes_func(gdf.geometry)
-        return gdf
-
-    elif isinstance(gdf, gpd.GeoSeries):
-        return close_all_holes_func(gdf)
-
+        if isinstance(gdf, GeoDataFrame):
+            gdf["geometry"] = gdf.geometry.map(
+                lambda x: _close_small_holes_no_islands(x, max_area, all_geoms)
+            )
+            return gdf
+        else:
+            return gdf.map(
+                lambda x: _close_small_holes_no_islands(x, max_area, all_geoms)
+            )
     else:
-        raise ValueError(
-            f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
-        )
+        if isinstance(gdf, GeoDataFrame):
+            gdf["geometry"] = gdf.geometry.map(
+                lambda x: _close_small_holes(x, max_area)
+            )
+            return gdf
+        else:
+            return gdf.map(lambda x: _close_small_holes(x, max_area))
 
 
-def _close_small_holes_poly(poly, max_area):
+def _close_small_holes(poly, max_area):
     """Closes cmall holes within one shapely geometry of polygons."""
 
     # start with a list containing the polygon,
@@ -612,7 +632,57 @@ def _close_small_holes_poly(poly, max_area):
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
 
+            print(area(hole))
+
             if area(hole) < max_area:
                 holes_closed.append(hole)
+
+    return unary_union(holes_closed)
+
+
+def _close_small_holes_no_islands(poly, max_area, all_geoms):
+    """Closes small holes within one shapely geometry of polygons."""
+
+    # start with a list containing the polygon,
+    # then append all holes smaller than 'max_km2' to the list.
+    holes_closed = [poly]
+    singlepart = get_parts(poly)
+    for part in singlepart:
+        n_interior_rings = get_num_interior_rings(part)
+
+        if not (n_interior_rings):
+            continue
+
+        for n in range(n_interior_rings):
+            hole = polygons(get_interior_ring(part, n))
+            no_islands = unary_union(hole.difference(all_geoms))
+            print("hei", area(no_islands))
+            if area(no_islands) < max_area:
+                holes_closed.append(no_islands)
+
+    return unary_union(holes_closed)
+
+
+def _close_all_holes(poly):
+    return unary_union(polygons(get_exterior_ring(get_parts(poly))))
+
+
+def _close_all_holes_no_islands(poly, all_geoms):
+    """Closes all holes within one shapely geometry of polygons."""
+
+    # start with a list containing the polygon,
+    # then append all holes smaller than 'max_km2' to the list.
+    holes_closed = [poly]
+    singlepart = get_parts(poly)
+    for part in singlepart:
+        n_interior_rings = get_num_interior_rings(part)
+
+        if not (n_interior_rings):
+            continue
+
+        for n in range(n_interior_rings):
+            hole = polygons(get_interior_ring(part, n))
+            no_islands = unary_union(hole.difference(all_geoms))
+            holes_closed.append(no_islands)
 
     return unary_union(holes_closed)

@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -54,36 +55,65 @@ def test_close_holes():
     buff1 = sg.buffdissexp(p, 100)
 
     no_holes_closed = sg.close_all_holes(buff1)
-    assert round(sum(no_holes_closed.area), 3) == round(sum(buff1.area), 3)
-    no_holes_closed = sg.close_small_holes(buff1, 10000 * 1_000_000)
-    assert round(sum(no_holes_closed.area), 3) == round(sum(buff1.area), 3)
+    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3)
+    no_holes_closed = sg.close_small_holes(buff1, max_area=1_000_000)
+    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3)
 
     buff2 = sg.buffdissexp(p, 200)
-    rings_with_holes = sg.clean_overlay(buff2, buff1, how="difference")
+    ring_with_hole = sg.clean_overlay(buff2, buff1, how="difference")
+
+    buff0 = sg.buffdissexp(p, 30)
+    ring_with_hole_and_island = pd.concat([ring_with_hole, buff0])
 
     # run this for different geometry input types
-    def _close_the_holes(rings_with_holes):
-        holes_closed = sg.close_all_holes(rings_with_holes)
-        if hasattr(holes_closed, "area"):
-            assert sum(holes_closed.area) > sum(rings_with_holes.area)
+    def _close_the_holes(ring_with_hole):
+        all_closed = sg.close_all_holes(ring_with_hole)
+        assert sum(all_closed.area) > sum(ring_with_hole.area)
 
-        holes_closed2 = sg.close_small_holes(
-            rings_with_holes, max_area=10000 * 1_000_000
+        # this should return the entire hole
+        closed_island_ignored = sg.close_all_holes(
+            ring_with_hole, without_islands=False
         )
-        if hasattr(holes_closed, "area"):
-            assert round(sum(holes_closed2.area), 3) == round(sum(holes_closed.area), 3)
-            assert sum(holes_closed2.area) > sum(rings_with_holes.area)
+        assert sum(closed_island_ignored.area) > sum(all_closed.area)
 
-        holes_not_closed = sg.close_small_holes(rings_with_holes, max_area=1)
-        if hasattr(holes_closed, "area"):
-            assert sum(holes_not_closed.area) == sum(rings_with_holes.area)
-        else:
-            assert sum(gpd.GeoSeries(holes_not_closed).area) == sum(
-                rings_with_holes.area
-            )
+        hole_not_closed = sg.close_small_holes(ring_with_hole, max_area=1)
+        assert sum(all_closed.area) > sum(ring_with_hole.area)
 
-    _close_the_holes(rings_with_holes)
-    _close_the_holes(rings_with_holes.geometry)
+        all_closed2 = sg.close_small_holes(ring_with_hole, max_area=30_000)
+
+        assert round(np.sum(all_closed2.area.iloc[0]), 3) == round(
+            np.sum(all_closed.area.iloc[0]), 3
+        ), (
+            round(np.sum(all_closed2.area.iloc[0]), 3),
+            round(np.sum(all_closed.area.iloc[0]), 3),
+        )
+
+        assert sum(all_closed2.area) > sum(ring_with_hole.area)
+
+        hole_not_closed2 = sg.close_small_holes(ring_with_hole, max_area=20_000)
+        assert np.sum(hole_not_closed2.area) == np.sum(ring_with_hole.area), (
+            np.sum(hole_not_closed2.area),
+            np.sum(ring_with_hole.area),
+        )
+
+        # this should return the entire hole
+        without_islands = False
+        all_closed3 = sg.close_small_holes(
+            ring_with_hole, max_area=32_000, without_islands=without_islands
+        )
+        sg.explore(all_closed3, all_closed2, all_closed)
+        sg.explore(all_closed3.iloc[[0]], all_closed2.iloc[[0]], all_closed.iloc[[0]])
+
+        assert round(np.sum(all_closed3.area), 3) > round(np.sum(all_closed.area), 3)
+
+        hole_not_closed3 = sg.close_small_holes(
+            ring_with_hole, max_area=30_000, without_islands=without_islands
+        )
+        sg.qtm(hole_not_closed3)
+        assert np.sum(hole_not_closed.area) == np.sum(ring_with_hole.area)
+
+    _close_the_holes(ring_with_hole_and_island)
+    _close_the_holes(ring_with_hole_and_island.geometry)
 
 
 def test_get_polygon_clusters():
@@ -236,8 +266,8 @@ def test_eliminate():
 
 
 if __name__ == "__main__":
+    test_close_holes()
+    ss
     test_get_polygon_clusters()
     test_eliminate()
     test_get_overlapping_polygons()
-
-    test_close_holes()
