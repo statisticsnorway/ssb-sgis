@@ -107,7 +107,7 @@ def test_close_holes():
         hole_not_closed3 = sg.close_small_holes(
             ring_with_hole, max_area=30_000, without_islands=without_islands
         )
-        assert np.sum(hole_not_closed.area) == np.sum(ring_with_hole.area)
+        assert np.sum(hole_not_closed3.area) == np.sum(ring_with_hole.area)
 
     _close_the_holes(ring_with_hole_and_island)
     _close_the_holes(ring_with_hole_and_island.geometry)
