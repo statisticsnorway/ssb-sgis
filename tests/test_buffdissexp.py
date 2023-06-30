@@ -16,6 +16,21 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+def test_dissexp_by_cluster(gdf_fixture):
+    by_cluster = sg.dissexp_by_cluster(gdf_fixture)
+    regular = sg.dissexp(gdf_fixture)
+    assert len(by_cluster) == len(regular)
+    assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
+
+
+def test_buffdissexp_by_cluster(gdf_fixture):
+    for distance in [1, 10, 100, 1000, 10000]:
+        by_cluster = sg.buffdissexp_by_cluster(gdf_fixture, distance)
+        regular = sg.buffdissexp(gdf_fixture, distance)
+        assert len(by_cluster) == len(regular)
+        assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
+
+
 def test_buffdissexp(gdf_fixture):
     sg.buffdissexp(gdf_fixture, 10, ignore_index=True)
 

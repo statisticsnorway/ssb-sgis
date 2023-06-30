@@ -23,6 +23,147 @@ from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
 
 
+def get_polygon_clusters(
+    *gdfs: GeoDataFrame | GeoSeries,
+    cluster_col: str = "cluster",
+    allow_multipart: bool = False,
+) -> GeoDataFrame | tuple[GeoDataFrame]:
+    """Find which polygons overlap without dissolving.
+
+    Devides polygons into clusters in a fast and precice manner by using spatial join
+    and networkx to find the connected components, i.e. overlapping geometries.
+    If multiple GeoDataFrames are given, the clusters will be based on all
+    combined.
+
+    This can be used instead of dissolve+explode, or before dissolving by the cluster
+    column. This has been tested to be a lot faster if there are many
+    non-overlapping polygons, but somewhat slower than dissolve+explode if most
+    polygons overlap.
+
+    Args:
+        gdfs: One or more GeoDataFrames of polygons.
+        cluster_col: Name of the resulting cluster column.
+        allow_multipart: Whether to allow mutipart geometries in the gdfs.
+            Defaults to False to avoid confusing results.
+
+    Returns:
+        One or more GeoDataFrames (same amount as was given) with a new cluster column.
+
+    Examples
+    --------
+
+    Create geometries with three clusters of overlapping polygons.
+
+    >>> import sgis as sg
+    >>> gdf = sg.to_gdf([(0, 0), (1, 1), (0, 1), (4, 4), (4, 3), (7, 7)])
+    >>> buffered = sg.buff(gdf, 1)
+    >>> gdf
+                                                geometry
+    0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
+    1  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
+    2  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
+    3  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
+    4  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
+    5  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+
+    Add a cluster column to the GeoDataFrame:
+
+    >>> gdf = sg.get_polygon_clusters(gdf, cluster_col="cluster")
+    >>> gdf
+       cluster                                           geometry
+    0        0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
+    1        0  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
+    2        0  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
+    3        1  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
+    4        1  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
+    5        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+
+    If multiple GeoDataFrames are given, all are returned with common
+    cluster values.
+
+    >>> gdf2 = sg.to_gdf([(0, 0), (7, 7)])
+    >>> gdf, gdf2 = sg.get_polygon_clusters(gdf, gdf2, cluster_col="cluster")
+    >>> gdf2
+       cluster                 geometry
+    0        0  POINT (0.00000 0.00000)
+    1        2  POINT (7.00000 7.00000)
+    >>> gdf
+       cluster                                           geometry
+    0        0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
+    1        0  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
+    2        0  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
+    3        1  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
+    4        1  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
+    5        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+
+    Dissolving 'by' the cluster column will make the dissolve much
+    faster if there are a lot of non-overlapping polygons.
+
+    >>> dissolved = gdf.dissolve(by="cluster", as_index=False)
+    >>> dissolved
+       cluster                                           geometry
+    0        0  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
+    1        1  POLYGON ((4.99951 2.96859, 4.99803 2.93721, 4....
+    2        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+    """
+    if isinstance(gdfs[-1], str):
+        *gdfs, cluster_col = gdfs
+
+    concated = pd.DataFrame()
+    orig_indices = ()
+    for i, gdf in enumerate(gdfs):
+        if isinstance(gdf, GeoSeries):
+            gdf = gdf.to_frame()
+
+        if not isinstance(gdf, GeoDataFrame):
+            raise TypeError("'gdfs' should be GeoDataFrames or GeoSeries.")
+
+        if not allow_multipart and len(gdf) != len(gdf.explode(index_parts=False)):
+            raise ValueError(
+                "All geometries should be exploded to singlepart "
+                "in order to get correct polygon clusters. "
+                "To allow multipart geometries, set allow_multipart=True"
+            )
+
+        orig_indices = orig_indices + (gdf.index,)
+
+        gdf["i__"] = i
+
+        concated = pd.concat([concated, gdf], ignore_index=True)
+
+    neighbors = get_neighbor_indices(concated, concated)
+
+    edges = [(source, target) for source, target in neighbors.items()]
+
+    graph = nx.Graph()
+    graph.add_edges_from(edges)
+
+    component_mapper = {
+        j: i
+        for i, component in enumerate(nx.connected_components(graph))
+        for j in component
+    }
+
+    concated[cluster_col] = component_mapper
+
+    concated = _push_geom_col(concated)
+
+    n_gdfs = concated["i__"].unique()
+
+    if len(n_gdfs) == 1:
+        concated.index = orig_indices[0]
+        return concated.drop(["i__"], axis=1)
+
+    unconcated = ()
+    for i in n_gdfs:
+        gdf = concated[concated["i__"] == i]
+        gdf.index = orig_indices[i]
+        gdf = gdf.drop(["i__"], axis=1)
+        unconcated = unconcated + (gdf,)
+
+    return unconcated
+
+
 def eliminate_by_longest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
@@ -213,146 +354,6 @@ def _eliminate_by_area(
         eliminated = pd.concat([eliminated, isolated])
 
     return eliminated
-
-
-def get_polygon_clusters(
-    *gdfs: GeoDataFrame | GeoSeries,
-    cluster_col: str = "cluster",
-    allow_multipart: bool = False,
-) -> GeoDataFrame | tuple[GeoDataFrame]:
-    """Find which polygons overlap without dissolving.
-
-    Devides polygons into clusters in a fast and precice manner by using spatial join
-    and networkx to find the connected components, i.e. overlapping geometries.
-    If multiple GeoDataFrames are given, the clusters will be based on all
-    combined.
-
-    This can be used instead of dissolve+explode, or before dissolving by the cluster
-    column. This has been tested to be a lot faster if there are many
-    non-overlapping polygons, but somewhat slower than dissolve+explode if most
-    polygons overlap.
-
-    Args:
-        gdfs: One or more GeoDataFrames of polygons.
-        cluster_col: Name of the resulting cluster column.
-        allow_multipart: Whether to allow mutipart geometries in the gdfs.
-            Defaults to False to avoid confusing results.
-
-    Returns:
-        One or more GeoDataFrames (same amount as was given) with a new cluster column.
-
-    Examples
-    --------
-
-    Create geometries with three clusters of overlapping polygons.
-
-    >>> import sgis as sg
-    >>> gdf = sg.to_gdf([(0, 0), (1, 1), (0, 1), (4, 4), (4, 3), (7, 7)])
-    >>> buffered = sg.buff(gdf, 1)
-    >>> gdf
-                                                geometry
-    0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
-    1  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
-    2  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
-    3  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
-    4  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
-    5  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
-
-    Add a cluster column to the GeoDataFrame:
-
-    >>> gdf = sg.get_polygon_clusters(gdf, cluster_col="cluster")
-    >>> gdf
-       cluster                                           geometry
-    0        0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
-    1        0  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
-    2        0  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
-    3        1  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
-    4        1  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
-    5        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
-
-    If multiple GeoDataFrames are given, all are returned with common
-    cluster values.
-
-    >>> gdf2 = sg.to_gdf([(0, 0), (7, 7)])
-    >>> gdf, gdf2 = sg.get_polygon_clusters(gdf, gdf2, cluster_col="cluster")
-    >>> gdf2
-       cluster                 geometry
-    0        0  POINT (0.00000 0.00000)
-    1        2  POINT (7.00000 7.00000)
-    >>> gdf
-       cluster                                           geometry
-    0        0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
-    1        0  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
-    2        0  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
-    3        1  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
-    4        1  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
-    5        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
-
-    Dissolving 'by' the cluster column will make the dissolve much
-    faster if there are a lot of non-overlapping polygons.
-
-    >>> dissolved = gdf.dissolve(by="cluster", as_index=False)
-    >>> dissolved
-       cluster                                           geometry
-    0        0  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
-    1        1  POLYGON ((4.99951 2.96859, 4.99803 2.93721, 4....
-    2        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
-    """
-    if isinstance(gdfs[-1], str):
-        *gdfs, cluster_col = gdfs
-
-    concated = pd.DataFrame()
-    orig_indices = ()
-    for i, gdf in enumerate(gdfs):
-        if isinstance(gdf, GeoSeries):
-            gdf = gdf.to_frame()
-
-        if not isinstance(gdf, GeoDataFrame):
-            raise TypeError("'gdfs' should be one or more GeoDataFrames or GeoSeries.")
-
-        if not allow_multipart and len(gdf) != len(gdf.explode(index_parts=False)):
-            raise ValueError(
-                "All geometries should be exploded to singlepart "
-                "in order to get correct polygon clusters. "
-                "To allow multipart geometries, set allow_multipart=True"
-            )
-
-        orig_indices = orig_indices + (gdf.index,)
-        gdf["i__"] = i
-
-        concated = pd.concat([concated, gdf], ignore_index=True)
-
-    neighbors = get_neighbor_indices(concated, concated)
-
-    edges = [(source, target) for source, target in neighbors.items()]
-
-    graph = nx.Graph()
-    graph.add_edges_from(edges)
-
-    component_mapper = {
-        j: i
-        for i, component in enumerate(nx.connected_components(graph))
-        for j in component
-    }
-
-    concated[cluster_col] = component_mapper
-
-    concated = _push_geom_col(concated)
-
-    n_gdfs = concated["i__"].unique()
-
-    if len(n_gdfs) == 1:
-        concated.index = orig_indices[0]
-        return concated.drop(["i__"], axis=1)
-
-    unconcated = ()
-    for i in n_gdfs:
-        gdf = concated[concated["i__"] == i]
-        gdf.index = orig_indices[i]
-        gdf = gdf.drop(["i__"], axis=1)
-        unconcated = unconcated + (gdf,)
-
-    return unconcated
 
 
 def get_overlapping_polygons(

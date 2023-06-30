@@ -4,6 +4,7 @@ This module holds the Explore class, which is the basis for the explore, samplem
 clipmap functions from the 'maps' module.
 """
 import warnings
+from numbers import Number
 from statistics import mean
 
 import branca as bc
@@ -15,10 +16,11 @@ from folium import plugins
 from geopandas import GeoDataFrame
 from IPython.display import display
 from jinja2 import Template
+from shapely import Geometry
 from shapely.geometry import LineString
 
 from ..geopandas_tools.general import clean_geoms, make_all_singlepart
-from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
 from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import unit_is_degrees
 from .httpserver import run_html_server
@@ -109,6 +111,17 @@ class Explore(Map):
             self.browser = kwargs.pop("in_browser")
 
         super().__init__(*gdfs, column=column, **kwargs)
+
+        # remove columns not renerable by leaflet (list columns etc.)
+        new_gdfs = []
+        for gdf in self.gdfs:
+            cols_to_keep = [
+                col
+                for col in gdf.columns
+                if isinstance(gdf[col].iloc[0], (Number, str, Geometry))
+            ]
+            new_gdfs.append(gdf[cols_to_keep])
+        self._gdfs = new_gdfs
 
         self.popup = popup
         self.max_zoom = max_zoom
@@ -266,6 +279,7 @@ class Explore(Map):
 
         new_gdfs = []
         for gdf in self._gdfs:
+            print(gdf)
             if get_geom_type(gdf) == "mixed" and not unit_is_degrees(gdf):
                 gdf[gdf._geometry_column_name] = gdf.buffer(0.01)
             gdf = make_all_singlepart(gdf)
@@ -615,7 +629,26 @@ class Explore(Map):
                     "supported as marker values"
                 )
 
-        gdf = clean_geoms(gdf)
+        gdf = clean_geoms(gdf).pipe(make_all_singlepart)
+        if get_geom_type(gdf) == "mixed":
+            if gdf.geom_type.str.lower().str.contains("polygon").any():
+                warnings.warn(
+                    "GeoJsonTooltip is not configured to render for GeoJson "
+                    "GeometryCollection geometries. Keeping only polygons."
+                )
+                gdf = to_single_geom_type(gdf, geom_type="polygon")
+            elif gdf.geom_type.str.lower().str.contains("line").any():
+                warnings.warn(
+                    "GeoJsonTooltip is not configured to render for GeoJson "
+                    "GeometryCollection geometries. Keeping only lines."
+                )
+                gdf = to_single_geom_type(gdf, geom_type="line")
+            else:
+                warnings.warn(
+                    "GeoJsonTooltip is not configured to render for GeoJson "
+                    "GeometryCollection geometries. Keeping only points."
+                )
+                gdf = to_single_geom_type(gdf, geom_type="point")
 
         # prepare tooltip and popup
         if isinstance(gdf, GeoDataFrame):

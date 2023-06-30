@@ -1,5 +1,6 @@
 # %%
 import sys
+from json import loads
 from pathlib import Path
 
 import geopandas as gpd
@@ -17,6 +18,8 @@ import sgis as sg
 
 
 def test_to_gdf():
+    _json()
+
     _incorrect_geom_col()
 
     _series_like()
@@ -47,6 +50,8 @@ def test_to_gdf():
 
     _geoseries()
 
+    _bbox()
+
 
 def _bbox():
     gdf = sg.to_gdf(
@@ -54,6 +59,29 @@ def _bbox():
         crs=25833,
     )
     assert sg.get_geom_type(gdf) == "polygon", sg.get_geom_type(gdf)
+
+
+def _json():
+    gdf = pd.concat([sg.random_points(10), sg.random_points(10).pipe(sg.buff, 1)])
+    gdf.crs = 25833
+    gdf2 = sg.to_gdf(gdf.__geo_interface__, crs=25833)
+    print(gdf2)
+    assert sg.get_geom_type(gdf2) == "mixed", sg.get_geom_type(gdf2)
+    assert gdf.shape == gdf2.shape
+    assert gdf.crs.equals(gdf2.crs)
+
+    gdf2 = sg.to_gdf(loads(gdf.to_json()))
+    assert gdf.crs.equals(gdf2.crs)
+    assert sg.get_geom_type(gdf) == "mixed", sg.get_geom_type(gdf)
+
+    gdf2 = sg.to_gdf(loads(gdf.to_json())["features"])
+    assert sg.get_geom_type(gdf) == "mixed", sg.get_geom_type(gdf)
+
+    gdf2 = sg.to_gdf([x["geometry"] for x in loads(gdf.to_json())["features"]])
+    gdf2 = sg.to_gdf(loads(gdf.to_json())["features"][0]["geometry"])
+    assert sg.get_geom_type(gdf2) == "point", sg.get_geom_type(gdf2)
+    gdf2 = sg.to_gdf(loads(gdf.to_json())["features"][0])
+    assert sg.get_geom_type(gdf2) == "point", sg.get_geom_type(gdf2)
 
 
 def _series_like():

@@ -3,7 +3,9 @@ from .geopandas_tools.buffer_dissolve_explode import (
     buff,
     buffdiss,
     buffdissexp,
+    buffdissexp_by_cluster,
     dissexp,
+    dissexp_by_cluster,
 )
 from .geopandas_tools.general import (
     bounds_to_points,
@@ -23,6 +25,7 @@ from .geopandas_tools.general import (
 from .geopandas_tools.geometry_types import (
     get_geom_type,
     is_single_geom_type,
+    make_all_singlepart,
     to_single_geom_type,
 )
 from .geopandas_tools.neighbors import (
