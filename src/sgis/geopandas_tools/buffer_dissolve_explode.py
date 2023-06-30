@@ -17,6 +17,7 @@ for the following:
 from geopandas import GeoDataFrame, GeoSeries
 
 from .geometry_types import make_all_singlepart
+from .polygon_operations import get_polygon_clusters
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
@@ -187,6 +188,31 @@ def dissexp(
 
     return make_all_singlepart(
         dissolved, ignore_index=ignore_index, index_parts=index_parts
+    )
+
+
+def dissexp_by_cluster(gdf: GeoDataFrame) -> GeoDataFrame:
+    return (
+        gdf.explode(ignore_index=True)
+        .pipe(get_polygon_clusters, cluster_col="cluster")
+        .pipe(dissexp, by="cluster")
+        .reset_index(drop=True)
+    )
+
+
+def buffdissexp_by_cluster(
+    gdf: GeoDataFrame,
+    distance: int | float,
+    *,
+    resolution: int = 50,
+    copy: bool = True,
+) -> GeoDataFrame:
+    return (
+        buff(gdf, distance, resolution=resolution, copy=copy)
+        .explode(ignore_index=True)
+        .pipe(get_polygon_clusters, cluster_col="cluster")
+        .pipe(dissexp, by="cluster")
+        .reset_index(drop=True)
     )
 
 
