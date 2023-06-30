@@ -58,9 +58,9 @@ def get_name(var: object, n: int = 5) -> str | None:
     frame = inspect.currentframe().f_back.f_back
 
     for _ in range(n):
-        locals_ = frame.f_locals
-
-        names = [var_name for var_name, var_val in locals_.items() if var_val is var]
+        names = [
+            var_name for var_name, var_val in frame.f_locals.items() if var_val is var
+        ]
         if names and len(names) == 1:
             return names[0]
 

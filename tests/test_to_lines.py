@@ -73,6 +73,15 @@ def test_to_lines():
     if __name__ == "__main__":
         sg.qtm(lines, "l", title=len(lines))
 
+    # empty
+    poly1["col"] = 1
+    poly2["col"] = 1
+    empty1 = poly1[poly1["col"] != 1]
+    empty2 = poly2[poly2["col"] != 1]
+    lines = sg.to_lines(empty1, empty2, empty2, empty1)
+    assert lines.shape == (0, 2)
+    assert list(lines.columns) == ["col", "geometry"]
+
 
 def main():
     test_to_lines()
