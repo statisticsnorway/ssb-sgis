@@ -3,6 +3,7 @@ from collections.abc import Iterator, Sized
 
 import geopandas as gpd
 import pandas as pd
+import shapely
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_array_like, is_dict_like, is_list_like
 from shapely import Geometry, box, wkb, wkt
@@ -128,7 +129,7 @@ def to_gdf(
         raise TypeError("'to_gdf' doesn't accept GeoDataFrames as input type.")
 
     if isinstance(geom, GeoSeries):
-        geom_col = "geometry" if not geometry else geometry
+        geom_col = geometry if geometry else "geometry"
         return _geoseries_to_gdf(geom, geom_col, crs, **kwargs)
 
     geom_col = _find_geometry_column(geom, geometry)
@@ -144,8 +145,26 @@ def to_gdf(
         return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
 
     if not is_dict_like(geom):
-        geom = GeoSeries(_make_shapely_geoms(geom), index=index)
-        return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
+        if not hasattr(geom, "__iter__") and hasattr(geom, "__dict__"):
+            if all(attr in geom.__dict__ for attr in ["minx", "miny", "maxx", "maxy"]):
+                geom = GeoSeries(
+                    shapely.box(*(geom.minx, geom.miny, geom.maxx, geom.maxy)),
+                    index=index,
+                )
+                return GeoDataFrame(
+                    {geom_col: geom}, geometry=geom_col, crs=crs, **kwargs
+                )
+        if hasattr(geom, "__iter__") and all(isinstance(g, dict) for g in geom):
+            crs = crs if crs else _get_crs(geom)
+            geom = pd.concat(GeoSeries(_from_json(g)) for g in geom)
+            if index is not None:
+                geom.index = index
+            else:
+                geom = geom.reset_index(drop=True)
+            return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
+        else:
+            geom = GeoSeries(_make_shapely_geoms(geom), index=index)
+            return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
 
     # now we have dict, Series or DataFrame
 
@@ -177,8 +196,59 @@ def to_gdf(
     if geometry and geom_col not in geom or isinstance(geom, pd.DataFrame):
         raise ValueError("Cannot find geometry column(s)", geometry)
 
+    # geojson, __geo_interface__
+    if (
+        isinstance(geom, dict)
+        and sum(key in geom for key in ["type", "coordinates", "features"]) >= 2
+    ):
+        if "geometry" in geom:
+            geometry = "geometry"
+
+        crs = crs if crs else _get_crs(geom)
+        print(crs)
+        geom = GeoSeries(_from_json(geom), index=index)
+        return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
+
     geoseries = _series_like_to_geoseries(geom, index=index)
     return GeoDataFrame(geometry=geoseries, crs=crs, **kwargs)
+
+
+def _get_crs(geom):
+    if not is_dict_like(geom) and is_dict_like(geom[0]):
+        crss = list({_get_crs(g) for g in geom})
+        if len(crss) == 1:
+            return crss[0]
+        return None
+    if "properties" in geom:
+        return _get_crs(geom["properties"])
+    if "crs" in geom:
+        geom = geom["crs"]
+        while is_dict_like(geom):
+            if "properties" in geom:
+                geom = geom["properties"]
+            elif "name" in geom:
+                geom = geom["name"]
+            else:
+                return None
+        return geom
+    return None
+
+
+def _from_json(geom: dict):
+    if not isinstance(geom, dict) and isinstance(geom[0], dict):
+        return [_from_json(g) for g in geom]
+    if "geometry" in geom:
+        return _from_json(geom["geometry"])
+    if "features" in geom:
+        return _from_json(geom["features"])
+    coords = geom["coordinates"]
+    constructor = eval("shapely.geometry." + geom.get("type", Point))
+    try:
+        return constructor(coords)
+    except TypeError:
+        while len(coords) == 1:
+            coords = coords[0]
+        return constructor(coords)
 
 
 def _series_like_to_geoseries(geom, index):
@@ -252,6 +322,8 @@ def _is_one_geometry(geom) -> bool:
 def _make_shapely_geoms(geom):
     if _is_one_geometry(geom):
         return _make_one_shapely_geom(geom)
+    if isinstance(geom, dict) and "coordinates" in geom:
+        return _from_json(geom)
     return (_make_one_shapely_geom(g) for g in geom)
 
 
