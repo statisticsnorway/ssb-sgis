@@ -2,6 +2,7 @@ import warnings
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
 from shapely import (
@@ -519,11 +520,17 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     if len(lines) == 1:
         return lines[0]
 
-    unioned = lines[0].overlay(lines[1], how="union", keep_geom_type=True)
+    if len(lines[0]) and len(lines[1]):
+        unioned = lines[0].overlay(lines[1], how="union", keep_geom_type=True)
+    else:
+        unioned = pd.concat([lines[0], lines[1]], ignore_index=True)
 
     if len(lines) > 2:
         for line_gdf in lines[2:]:
-            unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
+            if len(line_gdf):
+                unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
+            else:
+                unioned = pd.concat([unioned, line_gdf], ignore_index=True)
 
     return make_all_singlepart(unioned, ignore_index=True)
 
