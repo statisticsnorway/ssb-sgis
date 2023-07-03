@@ -1,15 +1,11 @@
 """Functions for polygon geometries."""
-import functools
 import warnings
 
-import geopandas as gpd
 import networkx as nx
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
     area,
-    difference,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
@@ -109,7 +105,7 @@ def get_polygon_clusters(
     if isinstance(gdfs[-1], str):
         *gdfs, cluster_col = gdfs
 
-    concated = pd.DataFrame()
+    concated = []
     orig_indices = ()
     for i, gdf in enumerate(gdfs):
         if isinstance(gdf, GeoSeries):
@@ -129,7 +125,12 @@ def get_polygon_clusters(
 
         gdf["i__"] = i
 
-        concated = pd.concat([concated, gdf], ignore_index=True)
+        concated.append(gdf)
+
+    concated = pd.concat(concated, ignore_index=True)
+
+    if not len(concated):
+        return concated.drop("i__", axis=1).assign(**{cluster_col: []})
 
     neighbors = get_neighbor_indices(concated, concated)
 
