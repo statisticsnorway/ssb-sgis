@@ -56,7 +56,7 @@ def buffdissexp(
             Here defaults to 50, as opposed to the default 16 in geopandas.
         index_parts: If False (default), the index after dissolve is respected. If
             True, an integer index level is added during explode.
-        copy: Whether to copy the GeoDataFrame before buffering.
+        copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -97,7 +97,7 @@ def buffdiss(
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
             Here defaults to 50, as opposed to the default 16 in geopandas.
-        copy: Whether to copy the GeoDataFrame before buffering.
+        copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -170,7 +170,7 @@ def dissexp(
     It takes a GeoDataFrame and dissolves, fixes and explodes geometries.
 
     Args:
-        gdf: the GeoDataFrame that will be buffered, dissolved and exploded.
+        gdf: the GeoDataFrame that will be dissolved and exploded.
         index_parts: If False (default), the index after dissolve is respected. If
             True, an integer index level is added during explode.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
@@ -191,13 +191,47 @@ def dissexp(
     )
 
 
-def dissexp_by_cluster(gdf: GeoDataFrame) -> GeoDataFrame:
-    return (
+def dissexp_by_cluster(gdf: GeoDataFrame, **dissolve_kwargs) -> GeoDataFrame:
+    """Dissolves overlapping geometries through clustering with sjoin and networkx.
+
+    Works exactly like dissexp, but, before dissolving, the geometries are divided
+    into clusters based on overlap (uses the function sgis.get_polygon_clusters).
+    The geometries are then dissolved based on this column (and optionally other
+    columns).
+
+    This might be many times faster than a regular dissexp, if there are many
+    non-overlapping geometries.
+
+    Args:
+        gdf: the GeoDataFrame that will be dissolved and exploded.
+        **dissolve_kwargs: Keyword arguments passed to geopandas' dissolve.
+
+    Returns:
+        A GeoDataFrame where overlapping geometries are dissolved.
+    """
+    by = dissolve_kwargs.pop("by", [])
+    if isinstance(by, str):
+        by = ["cluster_", by]
+    elif by is None:
+        by = ["cluster_"]
+    else:
+        by = ["cluster_"] + list(by)
+
+    dissolved = (
         gdf.explode(ignore_index=True)
-        .pipe(get_polygon_clusters, cluster_col="cluster")
-        .pipe(dissexp, by="cluster")
-        .reset_index(drop=True)
+        .explode(ignore_index=True)
+        .pipe(get_polygon_clusters, cluster_col="cluster_")
+        .pipe(dissexp, by=by, **dissolve_kwargs)
     )
+
+    if by == ["cluster_"]:
+        return dissolved.reset_index(drop=True)
+
+    if dissolve_kwargs.get("as_index", True):
+        dissolved.index = dissolved.index.droplevel(0)
+        return dissolved
+
+    return dissolved.drop("cluster_", axis=1)
 
 
 def buffdissexp_by_cluster(
@@ -206,14 +240,32 @@ def buffdissexp_by_cluster(
     *,
     resolution: int = 50,
     copy: bool = True,
+    **dissolve_kwargs,
 ) -> GeoDataFrame:
-    return (
-        buff(gdf, distance, resolution=resolution, copy=copy)
-        .explode(ignore_index=True)
-        .pipe(get_polygon_clusters, cluster_col="cluster")
-        .pipe(dissexp, by="cluster")
-        .reset_index(drop=True)
-    )
+    """Buffers and dissolves overlapping geometries.
+
+    Works exactly like buffdissexp, but, before dissolving, the geometries are divided
+    into clusters based on overlap (uses the function sgis.get_polygon_clusters).
+    The geometries are then dissolved based on this column (and optionally other
+    columns).
+
+    This might be many times faster than a regular buffdissexp, if there are many
+    non-overlapping geometries.
+
+    Args:
+        gdf: the GeoDataFrame that will be buffered, dissolved and exploded.
+        distance: the distance (meters, degrees, depending on the crs) to buffer
+            the geometry by
+        resolution: The number of segments used to approximate a quarter circle.
+            Here defaults to 50, as opposed to the default 16 in geopandas.
+        copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
+        **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
+
+    Returns:
+        A buffered GeoDataFrame where overlapping geometries are dissolved.
+    """
+    buffered = buff(gdf, distance, resolution=resolution, copy=copy)
+    return dissexp_by_cluster(buffered, **dissolve_kwargs)
 
 
 def buff(
@@ -231,7 +283,7 @@ def buff(
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
             Here defaults to 50, as opposed to the default 16 in geopandas.
-        copy: Whether to copy the GeoDataFrame before buffering.
+        copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         **buffer_kwargs: additional keyword arguments passed to geopandas' buffer.
 
     Returns:
