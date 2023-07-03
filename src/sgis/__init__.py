@@ -1,4 +1,12 @@
 # flake8: noqa: F401
+from .geopandas_tools.bounds import (
+    bounds_to_points,
+    bounds_to_polygon,
+    make_grid,
+    make_grid_from_bbox,
+    make_ssb_grid,
+    points_in_bounds,
+)
 from .geopandas_tools.buffer_dissolve_explode import (
     buff,
     buffdiss,
@@ -8,16 +16,10 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp_by_cluster,
 )
 from .geopandas_tools.general import (
-    bounds_to_points,
-    bounds_to_polygon,
     clean_clip,
     clean_geoms,
     coordinate_array,
     drop_inactive_geometry_columns,
-    make_grid,
-    make_grid_from_bbox,
-    make_ssb_grid,
-    points_in_bounds,
     random_points,
     rename_geometry_if,
     to_lines,

@@ -114,6 +114,10 @@ def test_close_holes():
 
 
 def test_get_polygon_clusters():
+    gdf = sg.to_gdf([(0, 0)]).loc[lambda x: x.index > 0]
+    assert len(gdf) == 0
+    c = sg.get_polygon_clusters(gdf)
+
     INDEX = [1, 3, 5, 7, 9, 11, 13]
     # this should give three clusters
     gdf = sg.to_gdf(

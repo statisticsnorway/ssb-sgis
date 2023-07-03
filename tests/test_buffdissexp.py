@@ -16,11 +16,31 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_dissexp_by_cluster(gdf_fixture):
-    by_cluster = sg.dissexp_by_cluster(gdf_fixture)
-    regular = sg.dissexp(gdf_fixture)
+def test_dissexp_by_cluster():
+    gdf = sg.random_points(100).assign(
+        x=np.random.choice([*"abc"]), y=np.random.choice([*"abc"])
+    )
+    by_cluster = sg.dissexp_by_cluster(gdf)
+    regular = sg.dissexp(gdf)
     assert len(by_cluster) == len(regular)
     assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
+
+    assert list(by_cluster.columns) == ["x", "y", "geometry"], by_cluster.columns
+    assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
+
+    diss = sg.dissexp_by_cluster(gdf, by="x")
+    assert list(diss.columns) == ["y", "geometry"], diss.columns
+    diss = sg.dissexp_by_cluster(gdf, by=["x", "y"])
+    assert list(diss.columns) == ["geometry"], diss.columns
+    diss = sg.dissexp_by_cluster(gdf, by=("y",))
+    assert list(diss.columns) == ["x", "geometry"], diss.columns
+
+    sg.buffdissexp_by_cluster(gdf, 0.1).pipe(sg.buff, 0.1).pipe(
+        sg.buffdissexp_by_cluster, 0.1
+    )
+
+
+test_dissexp_by_cluster()
 
 
 def test_buffdissexp_by_cluster(gdf_fixture):
@@ -29,6 +49,24 @@ def test_buffdissexp_by_cluster(gdf_fixture):
         regular = sg.buffdissexp(gdf_fixture, distance)
         assert len(by_cluster) == len(regular)
         assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
+
+    gdf = sg.random_points(100).assign(
+        x=np.random.choice([*"abc"]), y=np.random.choice([*"abc"])
+    )
+    by_cluster = sg.buffdissexp_by_cluster(gdf, 0.1)
+    regular = sg.buffdissexp(gdf, 0.1)
+    assert len(by_cluster) == len(regular)
+    assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
+
+    assert list(by_cluster.columns) == ["x", "y", "geometry"], by_cluster.columns
+    assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
+
+    diss = sg.buffdissexp_by_cluster(gdf, 1, by="x")
+    assert list(diss.columns) == ["y", "geometry"], diss.columns
+    diss = sg.buffdissexp_by_cluster(gdf, 1, by=["x", "y"])
+    assert list(diss.columns) == ["geometry"], diss.columns
+    diss = sg.buffdissexp_by_cluster(gdf, 1, by=("y",))
+    assert list(diss.columns) == ["x", "geometry"], diss.columns
 
 
 def test_buffdissexp(gdf_fixture):
