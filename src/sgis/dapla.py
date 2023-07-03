@@ -31,14 +31,14 @@ def exists(path: str) -> bool:
         return os.path.exists(path)
 
 
-def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
+def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
 
     Note:
         Does not currently read shapefiles or filegeodatabases.
 
     Args:
-        path: path to a file on Google Cloud Storage.
+        gcs_path: path to a file on Google Cloud Storage.
         **kwargs: Additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
@@ -47,22 +47,28 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
     """
     fs = dp.FileClient.get_gcs_file_system()
 
-    if "parquet" in path:
-        with fs.open(path, mode="rb") as file:
+    if not isinstance(gcs_path, str):
+        try:
+            gcs_path = str(gcs_path)
+        except TypeError:
+            raise TypeError(f"Unexpected type {type(gcs_path)}.")
+
+    if "parquet" in gcs_path:
+        with fs.open(gcs_path, mode="rb") as file:
             try:
                 return gpd.read_parquet(file, **kwargs)
             except ValueError as e:
-                df = dp.read_pandas(path, **kwargs)
+                df = dp.read_pandas(gcs_path, **kwargs)
                 if not len(df):
                     return df
                 else:
                     raise e
     else:
-        with fs.open(path, mode="rb") as file:
+        with fs.open(gcs_path, mode="rb") as file:
             try:
                 return gpd.read_file(file, **kwargs)
             except ValueError as e:
-                df = dp.read_pandas(path, **kwargs)
+                df = dp.read_pandas(gcs_path, **kwargs)
                 if not len(df):
                     return df
                 else:
@@ -70,7 +76,7 @@ def read_geopandas(path: str, **kwargs) -> GeoDataFrame:
 
 
 def write_geopandas(
-    df: gpd.GeoDataFrame, gcs_path: str, overwrite: bool = True, **kwargs
+    df: gpd.GeoDataFrame, gcs_path: str | Path, overwrite: bool = True, **kwargs
 ) -> None:
     """Writes a GeoDataFrame to the speficied format.
 
@@ -78,16 +84,23 @@ def write_geopandas(
         Does not currently write to shapelfile or filegeodatabase.
 
     Args:
-        df: The GeoDataFrame to write.
+        df:     The GeoDataFrame to write.
         gcs_path: The path to the file you want to write to.
         overwrite: Whether to overwrite the file if it exists. Defaults to True.
         **kwargs: Additional keyword arguments passed to parquet.write_table
             (for parquet) or geopandas' to_file method (if not parquet).
     """
-    pd.io.parquet.BaseImpl.validate_dataframe(df)
+
+    if not isinstance(gcs_path, str):
+        try:
+            gcs_path = str(gcs_path)
+        except TypeError:
+            raise TypeError(f"Unexpected type {type(gcs_path)}.")
 
     if not overwrite and exists(gcs_path):
         raise ValueError("File already exists.")
+
+    pd.io.parquet.BaseImpl.validate_dataframe(df)
 
     if not len(df):
         try:
