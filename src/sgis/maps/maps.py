@@ -6,13 +6,22 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 
 The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
-from numbers import Number
 
+from numbers import Number
+from typing import Any
+
+import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
-from ..geopandas_tools.general import clean_clip, to_gdf
+from ..geopandas_tools.general import (
+    address_to_coords,
+    address_to_gdf,
+    clean_clip,
+    is_wkt,
+)
 from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import make_namedict
 from .explore import Explore
 from .map import Map
@@ -24,6 +33,7 @@ def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame | None, dict]:
         "bygdoy": (10.6976899, 59.9081695),
         "kongsvinger": (12.0035242, 60.1875279),
         "stavanger": (5.6960601, 58.8946196),
+        "volda": (6.0705987, 62.146643),
     }
 
     if "size" in kwargs and kwargs["size"] is not None:
@@ -46,11 +56,11 @@ def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame | None, dict]:
 def explore(
     *gdfs: GeoDataFrame,
     column: str | None = None,
+    center: Any | None = None,
     labels: tuple[str] | None = None,
     max_zoom: int = 30,
     browser: bool = False,
     smooth_factor: int | float = 1.5,
-    center: tuple[float, float] | None = None,
     size: int | None = None,
     **kwargs,
 ) -> None:
@@ -60,17 +70,18 @@ def explore(
     interactive map with a common legend. If 'column' is not specified, each
     GeoDataFrame is given a unique color.
 
-    If the column is of type string and only one GeoDataFrame is given, the unique
-    values will be split into separate GeoDataFrames so that each value can be toggled
-    on/off.
-
-    Note:
-        The maximum zoom level only works on the OpenStreetMap background map.
+    The 'center' parameter can be used to show only parts of large datasets.
+    'center' can be a string of a city or address, a coordinate tuple or a
+    geometry-like object.
 
     Args:
         *gdfs: one or more GeoDataFrames.
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
+        center: Either an address string to be geocoded or a geometry like object
+            (coordinate pair (x, y), GeoDataFrame, bbox, etc.).
+            The geometries will be clipped by a buffered circle around this point.
+            If 'size' is not given, 1000 will be used as the buffer distance.
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings with the same
             length as the number of gdfs.
@@ -80,11 +91,8 @@ def explore(
             If True the maps will be opened in a browser folder.
         smooth_factor: How much to simplify the geometries. 1 is the minimum,
             5 is quite a lot of simplification.
-        center: Optional coordinate pair (x, y) to use as centerpoint for the map.
-            The geometries will then be clipped by a buffered circle around this point.
-            If 'size' is not given, 1000 will be used as the buffer distance.
-        size: The buffer distance. Only applies when center is specified. Defaults to
-            1000 if center is given.
+        size: The buffer distance. Only used when center is given. It then defaults to
+            1000.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -126,10 +134,12 @@ def explore(
         )
 
     if center is not None:
-        size = size if size else 1000
-        if not isinstance(center, GeoDataFrame):
+        size = size or 1000
+        if isinstance(center, str) and not is_wkt(center):
+            mask = address_to_gdf(center, crs=gdfs[0].crs).buffer(size)
+        elif not isinstance(center, GeoDataFrame):
             mask = to_gdf(center, crs=gdfs[0].crs).buffer(size)
-        elif get_geom_type(center) == "point":
+        elif get_geom_type(center) in ["point", "line"]:
             mask = center.buffer(size)
 
         return clipmap(

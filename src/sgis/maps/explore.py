@@ -131,8 +131,6 @@ class Explore(Map):
         self.geocoder = geocoder
         self.save = save
 
-        self._to_single_geom_type()
-
         if self._is_categorical:
             if len(self.gdfs) == 1:
                 self._split_categories()
@@ -168,7 +166,8 @@ class Explore(Map):
 
         gdfs: tuple[GeoDataFrame] = ()
         for gdf in self._gdfs:
-            gdf = gdf.clip(centerpoint.buffer(size))
+            keep_geom_type = False if get_geom_type(gdf) == "mixed" else True
+            gdf = gdf.clip(centerpoint.buffer(size), keep_geom_type=keep_geom_type)
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
         self._gdf = pd.concat(gdfs, ignore_index=True)
@@ -271,22 +270,28 @@ class Explore(Map):
         self._gdf = pd.concat(new_gdfs, ignore_index=True)
         self.labels = new_labels
 
-    def _to_single_geom_type(self):
-        """Buffer gdf if mixed geometry types. Expode to singlepart.
+    def _to_single_geom_type(self, gdf) -> GeoDataFrame:
+        gdf = clean_geoms(gdf)
 
-        Because Folium does not handle mixed geometries well.
-        """
+        if get_geom_type(gdf) != "mixed":
+            return gdf
 
-        new_gdfs = []
-        for gdf in self._gdfs:
-            print(gdf)
-            if get_geom_type(gdf) == "mixed" and not unit_is_degrees(gdf):
-                gdf[gdf._geometry_column_name] = gdf.buffer(0.01)
-            gdf = make_all_singlepart(gdf)
-            new_gdfs.append(gdf)
-        self._gdfs = new_gdfs
-        self._gdf = pd.concat(new_gdfs, ignore_index=True)
-        self._nan_idx = self._gdf[self._column].isna()
+        geom_types = gdf.geom_type.str.lower()
+        mess = "Leaflet cannot render mixed geometry types well. Keeping only "
+
+        if geom_types.str.contains("polygon").any():
+            mess += "polygons."
+            gdf = to_single_geom_type(gdf, geom_type="polygon")
+
+        elif geom_types.str.contains("lin").any():
+            mess += "lines."
+            gdf = to_single_geom_type(gdf, geom_type="line")
+
+        assert get_geom_type(gdf) != "mixed"
+
+        warnings.warn(mess)
+
+        return gdf
 
     def _update_column(self):
         self._is_categorical = self._check_if_categorical()
@@ -298,7 +303,7 @@ class Explore(Map):
 
         gdf = self._prepare_gdf_for_map(self._gdf)
         self.map = self._make_folium_map(
-            gdf,
+            bounds=gdf.total_bounds,
             max_zoom=self.max_zoom,
             popup=self.popup,
             prefer_canvas=self.prefer_canvas,
@@ -311,7 +316,9 @@ class Explore(Map):
 
             f = folium.FeatureGroup(name=label)
 
+            gdf = self._to_single_geom_type(gdf)
             gdf = self._prepare_gdf_for_map(gdf)
+
             gjs = self._make_geojson(
                 gdf,
                 color=gdf["color"],
@@ -349,7 +356,7 @@ class Explore(Map):
 
         gdf = self._prepare_gdf_for_map(self._gdf)
         self.map = self._make_folium_map(
-            gdf,
+            bounds=gdf.total_bounds,
             max_zoom=self.max_zoom,
             popup=self.popup,
             prefer_canvas=self.prefer_canvas,
@@ -372,6 +379,7 @@ class Explore(Map):
             classified = self._classify_from_bins(gdf, bins=self.bins)
             colorarray = unique_colors[classified]
 
+            gdf = self._to_single_geom_type(gdf)
             gdf = self._prepare_gdf_for_map(gdf)
             gjs = self._make_geojson(
                 gdf,
@@ -416,35 +424,22 @@ class Explore(Map):
 
     def _make_folium_map(
         self,
-        df,
+        bounds,
         attr=None,
         tiles="OpenStreetMap",
         width="100%",
         height="100%",
         control_scale=True,
-        map_kwds={},
+        map_kwds=None,
         **kwargs,
     ):
         import xyzservices
 
-        gdf = df.copy()
-
-        # convert LinearRing to LineString
-        rings_mask = gdf.geom_type == "LinearRing"
-        if rings_mask.any():
-            gdf.geometry[rings_mask] = gdf.geometry[rings_mask].apply(
-                lambda g: LineString(g)
-            )
-
-        if gdf.crs is None:
-            kwargs["crs"] = "Simple"
-            tiles = None
-        elif not gdf.crs.equals(4326):
-            gdf = gdf.to_crs(4326)
+        if not map_kwds:
+            map_kwds = {}
 
         # create folium.Map object
         # Get bounds to specify location and map extent
-        bounds = gdf.total_bounds
         location = kwargs.pop("location", None)
         if location is None:
             x = mean([bounds[0], bounds[2]])
@@ -628,27 +623,6 @@ class Explore(Map):
                     "Only 'marker', 'circle', and 'circle_marker' are "
                     "supported as marker values"
                 )
-
-        gdf = clean_geoms(gdf).pipe(make_all_singlepart)
-        if get_geom_type(gdf) == "mixed":
-            if gdf.geom_type.str.lower().str.contains("polygon").any():
-                warnings.warn(
-                    "GeoJsonTooltip is not configured to render for GeoJson "
-                    "GeometryCollection geometries. Keeping only polygons."
-                )
-                gdf = to_single_geom_type(gdf, geom_type="polygon")
-            elif gdf.geom_type.str.lower().str.contains("line").any():
-                warnings.warn(
-                    "GeoJsonTooltip is not configured to render for GeoJson "
-                    "GeometryCollection geometries. Keeping only lines."
-                )
-                gdf = to_single_geom_type(gdf, geom_type="line")
-            else:
-                warnings.warn(
-                    "GeoJsonTooltip is not configured to render for GeoJson "
-                    "GeometryCollection geometries. Keeping only points."
-                )
-                gdf = to_single_geom_type(gdf, geom_type="point")
 
         # prepare tooltip and popup
         if isinstance(gdf, GeoDataFrame):
