@@ -1,24 +1,44 @@
 import warnings
 
-import geopandas as gpd
+import geocoder
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
 from shapely import (
     Geometry,
-    box,
-    extract_unique_points,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
 )
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
 from .geometry_types import make_all_singlepart, to_single_geom_type
 from .to_geodataframe import to_gdf
+
+
+def address_to_gdf(address: str, crs=4326) -> GeoDataFrame:
+    """Takes an address and returns a point GeoDataFrame."""
+    g = geocoder.osm(address).json
+    coords = g["lng"], g["lat"]
+    return to_gdf(coords, crs=4326).to_crs(crs)
+
+
+def address_to_coords(address: str, crs=4326) -> tuple[float, float]:
+    """Takes an address and returns a tuple of xy coordinates."""
+    g = geocoder.osm(address).json
+    coords = g["lng"], g["lat"]
+    point = to_gdf(coords, crs=4326).to_crs(crs)
+    return point.geometry.iloc[0].x, point.geometry.iloc[0].y
+
+
+def is_wkt(text: str) -> bool:
+    gemetry_types = ["point", "polygon", "line", "geometrycollection"]
+    if any(x in text.lower() for x in gemetry_types):
+        return True
+    return False
 
 
 def coordinate_array(
