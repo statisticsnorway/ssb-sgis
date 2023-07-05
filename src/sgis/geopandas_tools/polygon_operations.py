@@ -111,6 +111,8 @@ def get_polygon_clusters(
         if isinstance(gdf, GeoSeries):
             gdf = gdf.to_frame()
 
+        gdf = gdf.copy()
+
         if not isinstance(gdf, GeoDataFrame):
             raise TypeError("'gdfs' should be GeoDataFrames or GeoSeries.")
 
