@@ -102,9 +102,12 @@ class Map:
         if self._column:
             self._fillna_if_col_is_missing()
         else:
+            gdfs = []
             for gdf, label in zip(self._gdfs, self.labels, strict=True):
                 gdf["label"] = label
+                gdfs.append(gdf)
             self._column = "label"
+            self._gdfs = gdfs
 
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
@@ -249,18 +252,20 @@ class Map:
         """Putting the labels/names in a list before copying the gdfs."""
         self.labels: list[str] = []
         for i, gdf in enumerate(gdfs):
-            if hasattr(gdf, "name"):
+            if hasattr(gdf, "name") and isinstance(gdf.name, str):
                 name = gdf.name
             else:
                 name = get_name(gdf)
-                if not name:
-                    name = str(i)
+                name = name or str(i)
             self.labels.append(name)
 
     def _set_labels(self) -> None:
         """Setting the labels after copying the gdfs."""
+        gdfs = []
         for i, gdf in enumerate(self._gdfs):
             gdf["label"] = self.labels[i]
+            gdfs.append(gdf)
+        self._gdfs = gdfs
 
     def _to_common_crs_and_one_geom_col(self, gdfs: list[GeoDataFrame]):
         """Need common crs and max one geometry column."""
