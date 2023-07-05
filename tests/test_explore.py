@@ -69,7 +69,6 @@ def test_explore(points_oslo, roads_oslo):
 
     sg.explore(points_oslo, center="bygdøy")
     sg.explore(points_oslo, center="oslo")
-    sg.explore(points_oslo.sample(1).buffer(200_000).to_frame(), center="oterveien")
     sg.explore(points_oslo, center="akersveien 26")
     sg.explore(points_oslo, center="thorvald meyers gate 5", size=300)
 

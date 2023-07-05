@@ -277,17 +277,22 @@ class Explore(Map):
             return gdf
 
         geom_types = gdf.geom_type.str.lower()
-        mess = "Leaflet cannot render mixed geometry types well. Keeping only "
+        mess = "Leaflet cannot render mixed geometry types well. "
+
+        if geom_types.str.contains("collection").any():
+            mess += "Exploding geometry collections. "
+            gdf = make_all_singlepart(gdf)
+            geom_types = gdf.geom_type.str.lower()
 
         if geom_types.str.contains("polygon").any():
-            mess += "polygons."
+            mess += "Keeping only polygons."
             gdf = to_single_geom_type(gdf, geom_type="polygon")
 
         elif geom_types.str.contains("lin").any():
-            mess += "lines."
+            mess += "Keeping only lines."
             gdf = to_single_geom_type(gdf, geom_type="line")
 
-        assert get_geom_type(gdf) != "mixed"
+        assert get_geom_type(gdf) != "mixed", gdf.geom_type.value_counts()
 
         warnings.warn(mess)
 
@@ -376,11 +381,12 @@ class Explore(Map):
                 continue
             f = folium.FeatureGroup(name=label)
 
+            gdf = self._to_single_geom_type(gdf)
+            gdf = self._prepare_gdf_for_map(gdf)
+
             classified = self._classify_from_bins(gdf, bins=self.bins)
             colorarray = unique_colors[classified]
 
-            gdf = self._to_single_geom_type(gdf)
-            gdf = self._prepare_gdf_for_map(gdf)
             gjs = self._make_geojson(
                 gdf,
                 color=colorarray,
