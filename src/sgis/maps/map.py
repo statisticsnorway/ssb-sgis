@@ -43,6 +43,8 @@ _CATEGORICAL_CMAP = {
     11: "#1c6b00",
 }
 
+DEFAULT_SCHEME = "quantiles"
+
 
 class Map:
     """Base class that prepares one or more GeoDataFrames for mapping.
@@ -59,7 +61,7 @@ class Map:
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
         nan_color="#c2c2c2",
-        scheme="fisherjenks",
+        scheme: str = DEFAULT_SCHEME,
         **kwargs,
     ):
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
@@ -403,7 +405,13 @@ class Map:
             n_classes = len(self._unique_values)
 
         if self.scheme == "jenks":
-            bins = jenks_breaks(gdf.loc[~self._nan_idx, column], n_classes=n_classes)
+            try:
+                bins = jenks_breaks(
+                    gdf.loc[~self._nan_idx, column], n_classes=n_classes
+                )
+                bins = self._add_minmax_to_bins(bins)
+            except Exception:
+                pass
         else:
             binning = classify(
                 np.asarray(gdf.loc[~self._nan_idx, column]),
@@ -472,8 +480,21 @@ class Map:
             if gdf[self._column].isna().all():
                 return np.repeat(len(bins), len(gdf))
 
-            # need numpy.nan instead of pd.NA as of now
+            # need numpy.nan instead of pd.NA
             gdf[self._column] = gdf[self._column].fillna(np.nan)
+
+            # also, fillna doesn't always work. So doing it manually
+            def proper_fillna(val):
+                try:
+                    if "NAType" in val.__class__.__name__:
+                        return np.nan
+                except Exception:
+                    return val
+
+                return val
+
+            gdf[self._column] = gdf[self._column].apply(proper_fillna)
+
             classified = np.searchsorted(bins, gdf[self._column])
 
         return classified

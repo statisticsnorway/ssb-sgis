@@ -115,12 +115,14 @@ class Explore(Map):
         # remove columns not renerable by leaflet (list columns etc.)
         new_gdfs = []
         for gdf in self.gdfs:
-            cols_to_keep = [
-                col
-                for col in gdf.columns
-                if isinstance(gdf[col].iloc[0], (Number, str, Geometry))
-            ]
-            new_gdfs.append(gdf[cols_to_keep])
+            for col in gdf.columns:
+                if not len(gdf.loc[gdf[col].notna()]):
+                    continue
+                if not isinstance(
+                    gdf.loc[gdf[col].notna(), col].iloc[0], (Number, str, Geometry)
+                ):
+                    gdf = gdf.drop(col, axis=1)
+            new_gdfs.append(gdf)
         self._gdfs = new_gdfs
 
         self.popup = popup
