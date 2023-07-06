@@ -1,11 +1,56 @@
+import numbers
+from typing import Any, Callable
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from shapely import box, extract_unique_points
+from pandas.api.types import is_dict_like
+from shapely import Geometry, box, extract_unique_points
 from shapely.geometry import Polygon
 
+from .general import clean_clip
 from .to_geodataframe import to_gdf
+
+
+def gridloop(
+    func: Callable,
+    mask: GeoDataFrame | GeoSeries | Geometry,
+    gridsize: int,
+    gridbuffer: int,
+    clip: bool = True,
+    **kwargs,
+) -> list[Any]:
+    """Clip geometries to a grid and loop cellwise.
+
+    Args:
+        func:
+    """
+    if not isinstance(mask, GeoDataFrame):
+        mask = to_gdf(mask)
+
+    if not len(mask):
+        raise ValueError("'mask' has no rows.")
+
+    grid = make_grid(mask, gridsize=gridsize)
+
+    results = []
+    for cell in grid.geometry.buffer(gridbuffer):
+        cell_kwargs = {}
+        for key, value in kwargs.items():
+            if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries)):
+                if clip:
+                    value = clean_clip(value, cell)
+                else:
+                    value = value.loc[value.intersects(cell)]
+
+            cell_kwargs[key] = value
+
+        cell_res = func(**cell_kwargs)
+
+        results.append(cell_res)
+
+    return results
 
 
 def make_grid_from_bbox(
@@ -48,30 +93,60 @@ def make_grid_from_bbox(
     return gpd.GeoDataFrame(grid_cells, columns=["geometry"], crs=crs)
 
 
-def make_grid(gdf: GeoDataFrame, gridsize: int | float) -> GeoDataFrame:
-    """Create a polygon grid around a GeoDataFrame.
+def make_grid(
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple, gridsize: int | float, crs=None
+) -> GeoDataFrame:
+    """Create a polygon grid around geometries.
 
-    Creates a GeoDataFrame of grid cells of a given size within the bounds of
-    a given GeoDataFrame.
+    Creates a GeoDataFrame of grid cells of a given size around the bounds of
+    a given GeoDataFrame. The corners are rounded to the nearest integer.
 
     Args:
-        gdf: A GeoDataFrame.
-        gridsize: Length of the grid walls.
+        obj: GeoDataFrame, GeoSeries, shapely geometry or bounding box
+            (an iterable with four values (minx, miny, maxx, maxy)).
+        gridsize: Length of the grid cell walls.
+        crs: Coordinate reference system if 'obj' is not GeoDataFrame or GeoSeries.
 
     Returns:
         GeoDataFrame with grid polygons.
 
     """
-    minx, miny, maxx, maxy = gdf.total_bounds
+    if not isinstance(obj, (GeoDataFrame, GeoSeries)):
+        if not crs:
+            raise ValueError(
+                "'crs' must be specified when 'obj' is not GeoDataFrame/GeoSeries."
+            )
+        if is_bbox_like(obj):
+            minx, miny, maxx, maxy = obj
+        elif isinstance(obj, Geometry):
+            minx, miny, maxx, maxy = obj.bounds
+        elif is_dict_like(obj) and all(
+            x in obj for x in ["minx", "miny", "maxx", "maxy"]
+        ):
+            try:
+                minx = np.min(obj["minx"])
+                miny = np.min(obj["miny"])
+                maxx = np.max(obj["maxx"])
+                maxy = np.max(obj["maxy"])
+            except TypeError:
+                minx = np.min(obj.minx)
+                miny = np.min(obj.miny)
+                maxx = np.max(obj.maxx)
+                maxy = np.max(obj.maxy)
+        else:
+            raise TypeError
+    else:
+        minx, miny, maxx, maxy = obj.total_bounds
+        crs = obj.crs or crs
 
     minx = int(minx) if minx > 0 else int(minx - 1)
     miny = int(miny) if miny > 0 else int(miny - 1)
 
-    return make_grid_from_bbox(minx, miny, maxx, maxy, gridsize=gridsize, crs=gdf.crs)
+    return make_grid_from_bbox(minx, miny, maxx, maxy, gridsize=gridsize, crs=crs)
 
 
 def make_ssb_grid(
-    gdf: GeoDataFrame, gridsize: int = 1000, add: int | float = 1
+    gdf: GeoDataFrame | GeoSeries, gridsize: int = 1000, add: int | float = 1
 ) -> GeoDataFrame:
     """Creates a polygon grid around a GeoDataFrame with an SSB id column.
 
@@ -90,6 +165,9 @@ def make_ssb_grid(
     Raises:
         ValueError: If the GeoDataFrame does not have 25833 as crs.
     """
+    if not isinstance(obj, (GeoDataFrame, GeoSeries)):
+        raise TypeError("gdf must be GeoDataFrame og GeoSeries.")
+
     if not gdf.crs.equals(25833):
         raise ValueError(
             "Geodataframe must have crs = 25833. Use df.set_crs(25833) to set "
@@ -133,7 +211,7 @@ def make_ssb_grid(
 
     grid = gpd.GeoDataFrame({"geometry": polygons}, crs=25833)
 
-    # Make SSB-id
+    # Make SSB id
     grid["ostc"] = (
         (np.floor((grid.geometry.centroid.x + 2000000) / gridsize) * gridsize).apply(
             int
@@ -187,7 +265,7 @@ def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
         gdf: The GeoDataFrame.
 
     Returns:
-        GeoDataFrame of box polygons with same length and index as 'gdf'.
+        GeoDataFrame of box polygons with length and index of 'gdf'.
     """
     bbox_each_row = [box(*arr) for arr in gdf.bounds.values]
     return to_gdf(bbox_each_row, index=gdf.index, crs=gdf.crs)
@@ -207,8 +285,21 @@ def bounds_to_points(gdf: GeoDataFrame) -> GeoDataFrame:
     return gdf
 
 
+def is_bbox_like(obj) -> bool:
+    if (
+        hasattr(obj, "__iter__")
+        and len(obj) == 4
+        and all(isinstance(x, numbers.Number) for x in obj)
+    ):
+        return True
+    return False
+
+
 def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int):
-    minx, miny, maxx, maxy = gdf.total_bounds
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)) and is_bbox_like(gdf):
+        minx, miny, maxx, maxy = gdf
+    else:
+        minx, miny, maxx, maxy = gdf.total_bounds
     xs = np.linspace(minx, maxx, num=n2)
     ys = np.linspace(miny, maxy, num=n2)
     x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")

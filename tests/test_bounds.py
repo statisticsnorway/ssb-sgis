@@ -16,8 +16,13 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_bounds_to_points():
+def test_bounds():
     points = sg.random_points(1000, loc=10000).set_crs(25833)
+
+    # should work with geoseries, tuple and polygon
+    sg.make_grid(points.geometry, 1000),
+    sg.make_grid(points.geometry.total_bounds, 1000, crs=points.crs)
+    sg.make_grid(points.unary_union, 1000, crs=points.crs)
 
     grid = sg.make_grid(points, gridsize=1000)
     assert all(points.intersects(grid.unary_union))
@@ -70,4 +75,4 @@ def test_bounds_to_points():
 
 
 if __name__ == "__main__":
-    test_bounds_to_points()
+    test_bounds()
