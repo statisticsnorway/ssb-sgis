@@ -21,10 +21,25 @@ def gridloop(
     clip: bool = True,
     **kwargs,
 ) -> list[Any]:
-    """Clip geometries to a grid and loop cellwise.
+    """Runs a function in a loop cellwise based on a grid.
+
+    Creates grid from a mask, and runs the function for each cell
+    with all GeoDataFrame keyword arguments clipped to the cell
+    extent.
 
     Args:
-        func:
+        func: Function to run cellwise.
+        mask: Geometry object to create a grid around.
+        gridsize: Size of the grid cells in units of the crs (meters, degrees).
+        gridbuffer: Units to buffer each gridcell by. For edge cases.
+        clip: If True (default) geometries are clipped by the grid cells.
+            If False, all geometries that intersect will be selected in each iteration.
+        **kwargs: Keyword arguments passed to the function (func). Arguments that are
+            of type GeoDataFrame or GeoSeries will be clipped by the mask in each
+            iteration.
+    Returns:
+        List of results with the same length as number of grid cells.
+
     """
     if not isinstance(mask, GeoDataFrame):
         mask = to_gdf(mask)
@@ -165,7 +180,7 @@ def make_ssb_grid(
     Raises:
         ValueError: If the GeoDataFrame does not have 25833 as crs.
     """
-    if not isinstance(obj, (GeoDataFrame, GeoSeries)):
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError("gdf must be GeoDataFrame og GeoSeries.")
 
     if not gdf.crs.equals(25833):
