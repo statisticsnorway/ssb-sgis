@@ -84,7 +84,7 @@ def write_geopandas(
         Does not currently write to shapelfile or filegeodatabase.
 
     Args:
-        df:     The GeoDataFrame to write.
+        df: The GeoDataFrame to write.
         gcs_path: The path to the file you want to write to.
         overwrite: Whether to overwrite the file if it exists. Defaults to True.
         **kwargs: Additional keyword arguments passed to parquet.write_table
