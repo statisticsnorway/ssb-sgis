@@ -161,7 +161,6 @@ def explore(
         smooth_factor=smooth_factor,
         **kwargs,
     )
-    print("hei ", len(gdfs[0].columns))
     m.explore()
 
 

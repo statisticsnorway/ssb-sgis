@@ -16,6 +16,8 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp_by_cluster,
 )
 from .geopandas_tools.general import (
+    address_to_coords,
+    address_to_gdf,
     clean_clip,
     clean_geoms,
     coordinate_array,
@@ -82,6 +84,7 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
+from .raster.raster import ElevationRaster, Raster
 from .read_parquet import read_parquet_url
 
 
