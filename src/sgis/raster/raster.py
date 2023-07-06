@@ -322,10 +322,6 @@ class Raster:
         """
         if self._raster_has_changed or self._array_has_changed():
             raise RasterHasChangedError("clip")
-            points = self.to_gdf()
-            clipped = points.clip(mask)
-            self._shape = self.get_shape(clipped, res=self.res)
-            self.transform = self.get_transform_from_bounds(clipped, self._shape)
 
         kwargs = self._pop_from_dict(kwargs)
 

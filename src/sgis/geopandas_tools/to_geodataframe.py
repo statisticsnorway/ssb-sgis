@@ -134,7 +134,7 @@ def to_gdf(
         return _geoseries_to_gdf(obj, geom_col, crs, **kwargs)
 
     if is_array_like(geometry) and len(geometry) == len(obj):
-        geometry = GeoSeries((_make_one_shapely_geom(g) for g in geometry), index=index)
+        geometry = GeoSeries(_make_one_shapely_geom(g) for g in geometry)
         return GeoDataFrame(obj, geometry=geometry, crs=crs, **kwargs)
 
     geom_col: str = find_geometry_column(obj, geometry)
