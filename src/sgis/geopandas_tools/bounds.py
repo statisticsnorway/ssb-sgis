@@ -19,6 +19,7 @@ def gridloop(
     gridsize: int,
     gridbuffer: int,
     clip: bool = True,
+    verbose: bool = False,
     **kwargs,
 ) -> list[Any]:
     """Runs a function in a loop cellwise based on a grid.
@@ -34,6 +35,7 @@ def gridloop(
         gridbuffer: Units to buffer each gridcell by. For edge cases.
         clip: If True (default) geometries are clipped by the grid cells.
             If False, all geometries that intersect will be selected in each iteration.
+        verbose: Whether to print progess. Defaults to False.
         **kwargs: Keyword arguments passed to the function (func). Arguments that are
             of type GeoDataFrame or GeoSeries will be clipped by the mask in each
             iteration.
@@ -49,8 +51,10 @@ def gridloop(
 
     grid = make_grid(mask, gridsize=gridsize)
 
+    n = len(grid)
+
     results = []
-    for cell in grid.geometry.buffer(gridbuffer):
+    for i, cell in enumerate(grid.geometry.buffer(gridbuffer)):
         cell_kwargs = {}
         for key, value in kwargs.items():
             if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries)):
@@ -64,6 +68,9 @@ def gridloop(
         cell_res = func(**cell_kwargs)
 
         results.append(cell_res)
+
+        if verbose:
+            print(f"Done with {i+1} of {n} grid cells", end="\r")
 
     return results
 
@@ -242,7 +249,7 @@ def make_ssb_grid(
 def add_grid_id(
     gdf: GeoDataFrame, gridsize: int, out_column: str = "SSBID"
 ) -> GeoDataFrame:
-    """Adds a grid ID column to a GeoDataFrame of points.
+    """Adds an SSB grid ID column to a GeoDataFrame of points.
 
     The GeoDataFrame must have 25833 as crs (UTM 33 N).
 
@@ -281,7 +288,23 @@ def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
 
     Returns:
         GeoDataFrame of box polygons with length and index of 'gdf'.
+
+    Examples
+    --------
+
+    >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
+    >>> gdf
+                                            geometry
+    0  MULTIPOINT (0.00000 0.00000, 1.00000 1.00000)
+    1                        POINT (0.00000 0.00000)
+
+    >>> sg.bounds_to_polygon(gdf)
+                                                geometry
+    0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....
+    1  POLYGON ((0.00000 0.00000, 0.00000 0.00000, 0....
+
     """
+
     bbox_each_row = [box(*arr) for arr in gdf.bounds.values]
     return to_gdf(bbox_each_row, index=gdf.index, crs=gdf.crs)
 
@@ -294,6 +317,19 @@ def bounds_to_points(gdf: GeoDataFrame) -> GeoDataFrame:
 
     Returns:
         GeoDataFrame of multipoints with same length and index as 'gdf'.
+
+    Examples
+    --------
+    >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
+    >>> gdf
+                                            geometry
+    0  MULTIPOINT (0.00000 0.00000, 1.00000 1.00000)
+    1                        POINT (0.00000 0.00000)
+
+    >>> sg.bounds_to_points(gdf)
+                                                geometry
+    0  MULTIPOINT (1.00000 0.00000, 1.00000 1.00000, ...
+    1                       MULTIPOINT (0.00000 0.00000)
     """
     gdf = bounds_to_polygon(gdf)
     gdf["geometry"] = extract_unique_points(gdf)
