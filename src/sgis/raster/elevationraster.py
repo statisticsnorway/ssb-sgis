@@ -1,32 +1,6 @@
-import numbers
-import warnings
-from copy import copy, deepcopy
-from json import loads
-from pathlib import Path
-from typing import Callable
-
-import geopandas as gpd
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import pyproj
-import rasterio
-import shapely
-from affine import Affine
-from geopandas import GeoDataFrame, GeoSeries
-from IPython.display import display
-from pandas.api.types import is_dict_like, is_list_like
-from rasterio import features, merge
-from rasterio.mask import mask as rast_mask
-from rasterio.warp import reproject
-from rtree.index import Index, Property
-from shapely import Geometry, box
-from shapely.geometry import shape
 
-from ..geopandas_tools.bounds import is_bbox_like
-from ..geopandas_tools.general import is_wkt
-from ..geopandas_tools.to_geodataframe import to_gdf
-from .raster import Raster, RasterHasChangedError
+from .raster import Raster
 
 
 class ElevationRaster(Raster):
@@ -175,6 +149,3 @@ class ElevationRaster(Raster):
         assert np.max(degrees) <= 90
 
         return degrees
-
-
-# %%

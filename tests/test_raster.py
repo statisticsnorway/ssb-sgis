@@ -21,6 +21,7 @@ sg.Raster.dapla = False
 
 
 def test_raster():
+    test_elevation()
     test_zonal()
 
     test_convertion()
@@ -28,8 +29,6 @@ def test_raster():
     test_transform()
 
     test_indexes_and_shape()
-
-    test_elevation()
 
     test_res()
 
@@ -78,23 +77,26 @@ def test_elevation():
     assert np.max(degrees.array) == 45, degrees.array
 
     r = sg.ElevationRaster.from_path(path_two_bands).load()
+
     assert r.shape == (2, 201, 201)
 
     max_ = int(np.nanmax(r.array))
     gradient = r.gradient(copy=True)
+
     assert max_ == int(np.nanmax(r.array))
-    assert int(np.nanmax(gradient.array)) == 17
+    assert int(np.nanmax(gradient.array)) == 17, int(np.nanmax(gradient.array))
     print(np.nanmax(gradient.array))
     degrees = r.degrees()
-    assert int(np.nanmax(degrees.array)) == 86
+    assert int(np.nanmax(degrees.array)) == 86, int(np.nanmax(degrees.array))
     print(np.nanmax(degrees.array))
     assert len(degrees.shape) == 3
     print(degrees.shape)
     print(degrees.array.shape)
     display(degrees.to_gdf())
     gdf = degrees.to_gdf()
-    sg.explore(gdf[gdf["band"] == 1], "value")
-    sg.explore(gdf[gdf["band"] == 2], "value")
+    if __name__ == "__main__":
+        sg.explore(gdf[gdf["band"] == 1], "value")
+        sg.explore(gdf[gdf["band"] == 2], "value")
 
 
 def test_zonal():
@@ -123,10 +125,10 @@ def test_convertion():
 
     # multiple columns give multiple bands
     gdf["val_x2"] = gdf["val"] * -1
-    r_from_gdf = sg.Raster.from_gdf(gdf, column=["val", "val_x2"], res=r.res)
+    r_from_gdf = sg.Raster.from_gdf(gdf, columns=["val", "val_x2"], res=r.res)
     assert r_from_gdf.shape == (2, 201, 201)
 
-    r_from_gdf = sg.Raster.from_gdf(gdf, column="val", res=r.res)
+    r_from_gdf = sg.Raster.from_gdf(gdf, columns="val", res=r.res)
     assert r_from_gdf.shape == (201, 201)
     assert r_from_gdf.name == "val"
 
@@ -195,7 +197,7 @@ def test_indexes_and_shape():
 def not_test_raster():
     testpath = testdata + "/test.tif"
     r = sg.Raster.from_path(path_singleband, indexes=1).load()
-    r.write_tif(testpath)
+    r.write(testpath)
 
 
 def save_two_band_image():
@@ -207,7 +209,8 @@ def save_two_band_image():
     assert len(r2.shape) == 3, r2.shape
     assert r2.shape[0] == 2, r2.shape
     r2.plot()
-    r2.write_tif(path_two_bands)
+    r = sg.Raster.from_path(path_two_bands).load()
+    r2.write(path_two_bands)
 
     r2 = sg.Raster.from_path(path_two_bands)
     assert r2.shape[0] == 2, r2.shape
