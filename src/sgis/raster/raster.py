@@ -1,5 +1,5 @@
-# %%
 import numbers
+import uuid
 import warnings
 from copy import copy, deepcopy
 from json import loads
@@ -15,12 +15,10 @@ import rasterio
 import shapely
 from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
-from IPython.display import display
 from pandas.api.types import is_dict_like, is_list_like
-from rasterio import features, merge
+from rasterio import features
 from rasterio.mask import mask as rast_mask
 from rasterio.warp import reproject
-from rtree.index import Index, Property
 from shapely import Geometry, box
 from shapely.geometry import shape
 
@@ -30,8 +28,6 @@ from ..geopandas_tools.to_geodataframe import to_gdf
 
 
 class RasterHasChangedError(ValueError):
-    method = "This method"
-
     def __init__(self, method: str):
         self.method = method
 
@@ -44,7 +40,99 @@ class RasterHasChangedError(ValueError):
         )
 
 
-class Raster:
+class RasterBase:
+    @staticmethod
+    def _crs_to_string(crs):
+        if crs is None:
+            return "None"
+        crs = pyproj.CRS(crs)
+        return str(crs.to_json_dict()["name"])
+
+
+class Raster(RasterBase):
+    """For reading, writing and working with rasters.
+
+    Raster instances should be created with the methods 'from_path', 'from_array' or
+    'from_gdf'.
+
+
+    Examples
+    --------
+
+    Read tif file.
+
+    >>> path = 'https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/dtm_10.tif'
+    >>> raster = sg.Raster.from_path(path)
+    >>> raster
+    Raster(shape=(1, 201, 201), res=10, crs=ETRS89 / UTM zone 33N (N-E), path=https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/dtm_10.tif)
+
+    Load the entire image as an numpy ndarray.
+    Operations are done in place to save memory.
+    The array is stored in the array attribute.
+
+    >>> r.load()
+    >>> r.array[r.array < 0] = 0
+    >>> r.array
+    [[[  0.    0.    0.  ... 158.4 155.6 152.6]
+    [  0.    0.    0.  ... 158.  154.8 151.9]
+    [  0.    0.    0.  ... 158.5 155.1 152.3]
+    ...
+    [  0.  150.2 150.6 ...   0.    0.    0. ]
+    [  0.  149.9 150.1 ...   0.    0.    0. ]
+    [  0.  149.2 149.5 ...   0.    0.    0. ]]]
+
+    Save as tif file.
+
+    >>> r.write("path/to/file.tif")
+
+    Convert to GeoDataFrame.
+
+    >>> gdf = r.to_gdf(column="elevation")
+    >>> gdf
+           elevation                                           geometry  band
+    0            1.9  POLYGON ((-25665.000 6676005.000, -25665.000 6...     1
+    1           11.0  POLYGON ((-25655.000 6676005.000, -25655.000 6...     1
+    2           18.1  POLYGON ((-25645.000 6676005.000, -25645.000 6...     1
+    3           15.8  POLYGON ((-25635.000 6676005.000, -25635.000 6...     1
+    4           11.6  POLYGON ((-25625.000 6676005.000, -25625.000 6...     1
+    ...          ...                                                ...   ...
+    25096       13.4  POLYGON ((-24935.000 6674005.000, -24935.000 6...     1
+    25097        9.4  POLYGON ((-24925.000 6674005.000, -24925.000 6...     1
+    25098        5.3  POLYGON ((-24915.000 6674005.000, -24915.000 6...     1
+    25099        2.3  POLYGON ((-24905.000 6674005.000, -24905.000 6...     1
+    25100        0.1  POLYGON ((-24895.000 6674005.000, -24895.000 6...     1
+
+    The image can also be clipped by a mask while loading.
+
+    >>> small_circle = gdf.centroid.buffer(50)
+    >>> raster = sg.Raster.from_path(path).clip(small_circle, crop=True)
+    Raster(shape=(1, 11, 11), res=10, crs=ETRS89 / UTM zone 33N (N-E), path=https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/dtm_10.tif)
+
+    Construct raster from GeoDataFrame.
+    The arrays are put on top of each other in a 3 dimensional array.
+
+    >>> r2 = r.from_gdf(gdf, columns=["elevation", "elevation_x2"], res=20)
+    >>> r2
+    Raster(shape=(2, 100, 100), res=20, crs=ETRS89 / UTM zone 33N (N-E), path=None)
+
+    Calculate zonal statistics for each polygon in 'gdf'.
+
+    >>> zonal = r.zonal(gdf, aggfunc=["sum", np.mean])
+            sum  mean                                           geometry
+    0       1.9   1.9  POLYGON ((-25665.000 6676005.000, -25665.000 6...
+    1      11.0  11.0  POLYGON ((-25655.000 6676005.000, -25655.000 6...
+    2      18.1  18.1  POLYGON ((-25645.000 6676005.000, -25645.000 6...
+    3      15.8  15.8  POLYGON ((-25635.000 6676005.000, -25635.000 6...
+    4      11.6  11.6  POLYGON ((-25625.000 6676005.000, -25625.000 6...
+    ...     ...   ...                                                ...
+    25096  13.4  13.4  POLYGON ((-24935.000 6674005.000, -24935.000 6...
+    25097   9.4   9.4  POLYGON ((-24925.000 6674005.000, -24925.000 6...
+    25098   5.3   5.3  POLYGON ((-24915.000 6674005.000, -24915.000 6...
+    25099   2.3   2.3  POLYGON ((-24905.000 6674005.000, -24905.000 6...
+    25100   0.1   0.1  POLYGON ((-24895.000 6674005.000, -24895.000 6...
+
+    """
+
     def __init__(
         self,
         *,
@@ -112,6 +200,7 @@ class Raster:
             self.indexes = self._add_indexes_from_array(indexes)
 
         self._raster_has_changed = False
+        self._hash = uuid.uuid4()
 
     @classmethod
     def from_path(
@@ -189,7 +278,7 @@ class Raster:
     def from_gdf(
         cls,
         gdf: GeoDataFrame,
-        column: str,
+        columns: str | list[str],
         res: int,
         **kwargs,
     ):
@@ -248,17 +337,17 @@ class Raster:
             if kwarg not in rasterize_kwargs:
                 meta[kwarg] = kwargs.pop(kwarg)
 
-        if isinstance(column, str):
+        if isinstance(columns, str):
             array = features.rasterize(
-                cls._to_geojson_geom_val(gdf, column),
+                cls._to_geojson_geom_val(gdf, columns),
                 out_shape=shape,
                 transform=transform,
                 **kwargs,
             )
-            name = kwargs.get("name", column)
-        elif hasattr(column, "__iter__"):
+            name = kwargs.get("name", columns)
+        elif hasattr(columns, "__iter__"):
             array = []
-            for col in column:
+            for col in columns:
                 arr = features.rasterize(
                     cls._to_geojson_geom_val(gdf, col),
                     out_shape=shape,
@@ -444,7 +533,7 @@ class Raster:
 
         return aggs
 
-    def write_tif(self, path: str, window=None, colormap=None, **kwargs):
+    def write(self, path: str, window=None, colormap=None, **kwargs):
         """Write the raster as a single file.
 
         Multiband arrays will result in a multiband image file.
@@ -770,6 +859,21 @@ class Raster:
                 for val, feature in zip(gdf[column], loads(gdf.to_json())["features"])
             ]
 
+    def _max(self):
+        if self.array is None:
+            return np.nan
+        return np.max(self.array)
+
+    def _min(self):
+        if self.array is None:
+            return np.nan
+        return np.min(self.array)
+
+    def _mean(self):
+        if self.array is None:
+            return np.nan
+        return np.mean(self.array)
+
     @property
     def meta(self):
         if not hasattr(self, "_meta"):
@@ -889,13 +993,6 @@ class Raster:
             return to_gdf(obj, crs=self.crs)
 
     @staticmethod
-    def _crs_to_string(crs):
-        if crs is None:
-            return "None"
-        crs = pyproj.CRS(crs)
-        return str(crs.to_json_dict()["name"])
-
-    @staticmethod
     def _bounds_as_tuple(obj) -> tuple[float, float, float, float]:
         """Try to return 4-length tuple of bounds."""
         if (
@@ -939,7 +1036,7 @@ class Raster:
         raise TypeError
 
     def __hash__(self):
-        return hash(self)
+        return hash(self._hash)
 
     def __eq__(self, other):
         if isinstance(other, Raster):
@@ -967,50 +1064,44 @@ class Raster:
     def __mul__(self, scalar):
         if self.array is None:
             raise ValueError
-        copy = self.copy()
-        copy.array = copy.array * scalar
+        self.array = self.array * scalar
         self._raster_has_changed = True
-        return copy
+        return self
 
     def __add__(self, scalar):
         if self.array is None:
             raise ValueError
-        copy = self.copy()
-        copy.array = copy.array + scalar
+        self.array = self.array + scalar
         self._raster_has_changed = True
-        return copy
+        return self
 
     def __sub__(self, scalar):
         if self.array is None:
             raise ValueError
-        copy = self.copy()
-        copy.array = copy.array - scalar
+        self.array = self.array - scalar
         self._raster_has_changed = True
-        return copy
+        return self
 
     def __truediv__(self, scalar):
         if self.array is None:
             raise ValueError
-        copy = self.copy()
-        copy.array = copy.array / scalar
+        self.array = self.array / scalar
         self._raster_has_changed = True
-        return copy
+        return self
 
     def __floordiv__(self, scalar):
         if self.array is None:
             raise ValueError
-        copy = self.copy()
-        copy.array = copy.array // scalar
+        self.array = self.array // scalar
         self._raster_has_changed = True
-        return copy
+        return self
 
     def __pow__(self, exponent):
         if self.array is None:
             raise ValueError
-        copy = self.copy()
-        copy.array = copy.array**exponent
+        self.array = self.array**exponent
         self._raster_has_changed = True
-        return copy
+        return self
 
     def _return_self_or_copy(self, array, copy: bool):
         if not copy:
@@ -1020,154 +1111,3 @@ class Raster:
             copy = self.copy()
             copy.array = array
             return copy
-
-
-class ElevationRaster(Raster):
-    """For raster calculation on elevation images."""
-
-    def degrees(self, copy: bool = False):
-        """Get the slope of an elevation raster in degrees.
-
-        Calculates the absolute slope between the grid cells
-        based on the image resolution and converts it to degrees
-        (between 0 and 90).
-
-        For multiband images, the calculation is done for each band.
-
-        Args:
-            copy: Whether to copy or overwrite the original Raster.
-                Defaults to False to save memory.
-
-        Returns:
-            The class instance with new array values, or a copy if copy is True.
-
-        Examples
-        --------
-        Making an array where the gradient to the center is always 10.
-
-        >>> import sgis as sg
-        >>> import numpy as np
-        >>> arr = np.array(
-        ...         [
-        ...             [100, 100, 100, 100, 100],
-        ...             [100, 110, 110, 110, 100],
-        ...             [100, 110, 120, 110, 100],
-        ...             [100, 110, 110, 110, 100],
-        ...             [100, 100, 100, 100, 100],
-        ...         ]
-        ...     )
-
-        Now let's create an ElevationRaster from this array with a resolution of 10.
-
-        >>> r = sg.ElevationRaster.from_array(arr, crs=None, bounds=(0, 0, 50, 50))
-        >>> r.res
-        (10.0, 10.0)
-
-        The gradient will be 1 (1 meter up for every meter forward),
-        meaning the angle is 45.
-        The calculation is by default done in place to save memory.
-
-        >>> r.degrees()
-        >>> r.array
-        array([[ 0., 45., 45., 45.,  0.],
-            [45., 45., 45., 45., 45.],
-            [45., 45.,  0., 45., 45.],
-            [45., 45., 45., 45., 45.],
-            [ 0., 45., 45., 45.,  0.]])
-        """
-        if self.array is None:
-            self.load()
-
-        if len(self.array.shape) == 2:
-            array = self._slope_2d(self.array, degrees=True)
-        else:
-            out_array = []
-            for array in self.array:
-                results = self._slope_2d(array, degrees=True)
-                out_array.append(results)
-            array = np.array(out_array)
-
-        return self._return_self_or_copy(array, copy)
-
-    def gradient(self, copy: bool = False):
-        """Get the slope of an elevation raster in gradient ratio.
-
-        Calculates the absolute slope between the grid cells
-        based on the image resolution. The returned values will be in
-        ratios. A value of 1 means the elevation difference is equal
-        to the image resolution.
-
-        For multiband images, the calculation is done for each band.
-
-        Args:
-            copy: Whether to copy or overwrite the original Raster.
-                Defaults to False to save memory.
-
-        Returns:
-            The class instance with new array values, or a copy if copy is True.
-
-
-        Examples
-        --------
-        Making an array where the gradient to the center is always 10.
-
-        >>> import sgis as sg
-        >>> import numpy as np
-        >>> arr = np.array(
-        ...         [
-        ...             [100, 100, 100, 100, 100],
-        ...             [100, 110, 110, 110, 100],
-        ...             [100, 110, 120, 110, 100],
-        ...             [100, 110, 110, 110, 100],
-        ...             [100, 100, 100, 100, 100],
-        ...         ]
-        ...     )
-
-        Now let's create an ElevationRaster from this array with a resolution of 10.
-
-        >>> r = sg.ElevationRaster.from_array(arr, crs=None, bounds=(0, 0, 50, 50))
-        >>> r.res
-        (10.0, 10.0)
-
-        The gradient will be 1 (1 meter up for every meter forward).
-        The calculation is by default done in place to save memory.
-
-        >>> r.gradient()
-        >>> r.array
-        array([[0., 1., 1., 1., 0.],
-            [1., 1., 1., 1., 1.],
-            [1., 1., 0., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [0., 1., 1., 1., 0.]])
-        """
-        if self.array is None:
-            self.load()
-
-        if len(self.array.shape) == 2:
-            array = self._slope_2d(self.array, degrees=False)
-        else:
-            out_array = []
-            for array in self.array:
-                results = self._slope_2d(array, degrees=False)
-                out_array.append(results)
-            array = np.array(out_array)
-
-        return self._return_self_or_copy(array, copy)
-
-    def _slope_2d(self, array, degrees) -> np.ndarray:
-        gradient_x, gradient_y = np.gradient(array, self.res[0], self.res[1])
-
-        gradient = abs(gradient_x) + abs(gradient_y)
-
-        if not degrees:
-            return gradient
-
-        radians = np.arctan(gradient)
-        degrees = np.degrees(radians)
-
-        assert np.max(degrees) <= 90
-
-        return degrees
-
-
-# %%
