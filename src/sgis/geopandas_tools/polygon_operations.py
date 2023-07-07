@@ -19,10 +19,25 @@ from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
 
 
+def get_centroid_ids(gdf: GeoDataFrame, groupby: str) -> pd.Series:
+    centerpoints = gdf.assign(geometry=lambda x: x.centroid)
+
+    grouped_centerpoints = centerpoints.dissolve(by=groupby).assign(
+        geometry=lambda x: x.centroid
+    )
+    xs = grouped_centerpoints.geometry.x
+    ys = grouped_centerpoints.geometry.y
+
+    grouped_centerpoints["wkt"] = [f"{int(x)}_{int(y)}" for x, y in zip(xs, ys)]
+
+    return gdf[groupby].map(grouped_centerpoints["wkt"])
+
+
 def get_polygon_clusters(
     *gdfs: GeoDataFrame | GeoSeries,
     cluster_col: str = "cluster",
     allow_multipart: bool = False,
+    wkt_col: bool = False,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Find which polygons overlap without dissolving.
 
@@ -41,6 +56,9 @@ def get_polygon_clusters(
         cluster_col: Name of the resulting cluster column.
         allow_multipart: Whether to allow mutipart geometries in the gdfs.
             Defaults to False to avoid confusing results.
+        wkt_col: Whether to return the cluster column values as a string with x and y
+            coordinates. Convinient to always get unique ids.
+            Defaults to False because of speed.
 
     Returns:
         One or more GeoDataFrames (same amount as was given) with a new cluster column.
@@ -155,6 +173,9 @@ def get_polygon_clusters(
     }
 
     concated[cluster_col] = component_mapper
+
+    if wkt_col:
+        concated[cluster_col] = get_centroid_ids(concated, groupby=cluster_col)
 
     concated = _push_geom_col(concated)
 

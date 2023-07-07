@@ -187,6 +187,9 @@ def test_get_polygon_clusters():
 
     sg.get_polygon_clusters(gdf.dissolve(), allow_multipart=True)
 
+    c = sg.get_polygon_clusters(gdf, wkt_col=True)
+    assert c["cluster"].isin(["0_0", "9_9", "20_20"]).all()
+
 
 def test_eliminate():
     from shapely.geometry import Polygon
