@@ -70,6 +70,24 @@ raster()
 
 
 @print_function_name
+def gridloop():
+    def overlay_func(df1, df2):
+        return df1.overlay(df2)
+
+    df1 = sg.random_points(100)
+    df2 = sg.buff(df1, 0.1)
+
+    results = sg.gridloop(func=overlay_func, mask=df2, df1=df1, df2=df2)
+    print(type(results))
+    print(len(results))
+
+    results = pd.concat(results, ignore_index=True)
+
+
+gridloop()
+
+
+@print_function_name
 def bounds():
     gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     print(gdf)

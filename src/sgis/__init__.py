@@ -53,6 +53,7 @@ from .geopandas_tools.polygon_operations import (
 )
 from .geopandas_tools.to_geodataframe import to_gdf
 from .helpers import get_name
+from .io.read_parquet import read_parquet_url
 from .maps.examine import Examine
 from .maps.explore import Explore
 from .maps.httpserver import run_html_server
@@ -84,11 +85,19 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
-from .raster.raster import ElevationRaster, Raster
-from .read_parquet import read_parquet_url
+
+# from .raster.cube import GeoDataCube
+from .raster.elevationraster import ElevationRaster
+from .raster.raster import Raster
 
 
 try:
-    from .dapla import exists, read_geopandas, write_geopandas
+    from .io.dapla import exists, read_geopandas, write_geopandas
+    from .io.write_municipality_data import (
+        write_municipality_data,
+        write_neighbor_municipality_data,
+    )
+    from .multiprocessing.multiprocessingmapper import MultiProcessingMapper
+    from .multiprocessing.multiprocessingpool import MultiProcessingPool
 except ImportError:
     pass
