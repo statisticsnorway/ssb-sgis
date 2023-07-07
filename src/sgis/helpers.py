@@ -5,6 +5,37 @@ import warnings
 from geopandas import GeoDataFrame
 
 
+def dict_zip_intersection(*dicts):
+    """From mCoding (YouTube)."""
+    if not dicts:
+        return
+
+    keys = set(dicts[0]).intersection(*dicts[1:])
+    for key in keys:
+        yield key, *(d[key] for d in dicts)
+
+
+def dict_zip(*dicts):
+    """From mCoding (YouTube)."""
+    if not dicts:
+        return
+
+    n = len(dicts[0])
+    if any(len(d) != n for d in dicts):
+        raise ValueError("arguments must have the same length")
+
+    for key, first_val in dicts[0].items():
+        yield key, first_val, *(other[key] for other in dicts[1:])
+
+
+def in_jupyter():
+    try:
+        get_ipython
+        return True
+    except NameError:
+        return False
+
+
 def return_two_vals(
     vals: tuple[str | None, str | None] | list[str] | str | int | float
 ) -> tuple[str | int | float, str | int | float | None]:
