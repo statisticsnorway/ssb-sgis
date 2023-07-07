@@ -9,6 +9,7 @@ The bullet list below contains all public functions and classes in sgis.
 
    networkanalysis/index
    geopandas_tools/index
+   raster/index
    maps/index
-   read_parquet_url
-   dapla
+   io/index
+   multiprocessing/index

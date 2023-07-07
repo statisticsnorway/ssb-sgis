@@ -1,7 +1,7 @@
 Read parquet from url
 =====================
 
-.. automodule:: sgis.read_parquet
+.. automodule:: sgis.io.read_parquet
     :members:
     :exclude-members:
     :show-inheritance:

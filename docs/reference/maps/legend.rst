@@ -1,5 +1,5 @@
 Legend
-===================
+======
 
 .. automodule:: sgis.maps.legend
     :members:

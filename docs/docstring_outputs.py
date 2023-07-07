@@ -13,9 +13,15 @@ import pandas as pd
 
 
 src = str(Path(__file__).parent.parent / "src")
+testdata = str(Path(__file__).parent.parent) + "/tests/testdata"
 sys.path.insert(0, src)
 
 import sgis as sg
+
+
+path_singleband = testdata + "/dtm_10.tif"
+path_two_bands = testdata + "/dtm_10_two_bands.tif"
+sg.Raster.dapla = False
 
 
 def print_function_name(func):
@@ -26,7 +32,52 @@ def print_function_name(func):
     return wrapper
 
 
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPoint, Point, Polygon
+
+
+@print_function_name
+def raster():
+    r = sg.Raster.from_path(path_singleband)
+    print(r)
+
+    r.load()
+    print(r.array)
+
+    r.array[r.array < 0] = 0
+    print(r.array)
+
+    gdf = r.to_gdf(column="elevation")
+    print(gdf)
+
+    gdf["elevation_x2"] = gdf["elevation"] * 2
+    r2 = r.from_gdf(gdf, columns=["elevation", "elevation_x2"], res=20)
+    print(r2)
+
+    small_circle = gdf.unary_union.centroid.buffer(50)
+
+    r = sg.Raster.from_path(path_singleband).clip(small_circle, crop=True)
+    print("clipped")
+    print(r)
+
+    r = sg.Raster.from_path(path_singleband).load()
+    r.array[r.array < 0] = 0
+    zonal = r.zonal(gdf, aggfunc=["sum", np.mean])
+    print(zonal)
+    ss
+
+
+raster()
+
+
+@print_function_name
+def bounds():
+    gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
+    print(gdf)
+    print(sg.bounds_to_points(gdf))
+    print(sg.bounds_to_polygon(gdf))
+
+
+bounds()
 
 
 @print_function_name
