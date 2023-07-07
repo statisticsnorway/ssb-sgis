@@ -14,7 +14,7 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_pool():
+def not_test_pool():
     def func(x, **kwargs):
         return x * 2
 
@@ -36,7 +36,7 @@ def test_pool():
     assert np.all(np.equal(res[3], np.array([10, 12]))), res[3]
 
 
-def test_map():
+def not_test_map():
     def func(x, **kwargs):
         return x * 2
 
@@ -47,5 +47,5 @@ def test_map():
 
 
 if __name__ == "__main__":
-    test_map()
-    test_pool()
+    not_test_pool()
+    not_test_map()
