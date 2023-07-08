@@ -129,10 +129,7 @@ def get_polygon_clusters(
     # take a copy only if there are gdfs with the same id
     # To not get any overwriting in the for loop
     if sum(df1 is df2 for df1 in gdfs for df2 in gdfs) > len(gdfs):
-        new_gdfs = ()
-        for gdf in gdfs:
-            new_gdfs = new_gdfs + (gdf.copy(),)
-        gdfs = new_gdfs
+        gdfs = [gdf.copy() for gdf in gdfs]
 
     for i, gdf in enumerate(gdfs):
         if isinstance(gdf, GeoSeries):

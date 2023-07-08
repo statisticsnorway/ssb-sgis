@@ -85,7 +85,7 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
-from .raster.cube import GeoDataCube
+from .raster.cube import GeoDataCube, concat_cubes
 from .raster.elevationraster import ElevationRaster
 from .raster.raster import Raster
 

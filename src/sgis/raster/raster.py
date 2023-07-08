@@ -33,9 +33,9 @@ class RasterHasChangedError(ValueError):
 
     def __str__(self):
         return (
-            f"{self.method} requires reading of tif files, but the "
+            f"{self.method} requires reading of image files, but the "
             "current file paths are outdated. "
-            "Use the to_tifs method to save new tif files. "
+            "Use the write method to save new files. "
             "This also updates the file paths of the rasters."
         )
 
@@ -409,12 +409,16 @@ class Raster(RasterBase):
         Returns:
             Self, but with the array loaded.
         """
+        print("Hei")
+        print(self._raster_has_changed)
         if self._raster_has_changed or self._array_has_changed():
             raise RasterHasChangedError("clip")
 
         kwargs = self._pop_from_dict(kwargs)
 
         self._from_path(mask=mask, **kwargs)
+        self._raster_has_changed = True
+
         return self
 
     def zonal(
@@ -568,6 +572,8 @@ class Raster(RasterBase):
             args = (str(path), "w")
             with rasterio.open(*args, **kwargs) as dst:
                 self._write(dst, colormap, window)
+
+        self.path = str(path)
 
     @staticmethod
     def _array_to_geojson(array: np.ndarray, transform: Affine):
@@ -732,10 +738,7 @@ class Raster(RasterBase):
         except ValueError:
             pass
 
-    def _array_has_changed(self):
-        if not hasattr(self, "array") or self.array is None:
-            return False
-
+    def _get_array_stats(self):
         _stats = (
             self.array.shape,
             np.min(self.array),
@@ -745,15 +748,29 @@ class Raster(RasterBase):
             np.sum(self.array),
         )
 
-        if not hasattr(self, "_stats"):
-            self._stats = _stats
+    def _set_array_stats(self):
+        self._stats = self._get_array_stats()
+
+    def _array_has_changed(self) -> bool:
+        if not hasattr(self, "array") or self.array is None:
             return False
 
-        # if any(s1 != s2 for s1, s2 in zip(_stats, self._stats, strict=True)):
+        if not hasattr(self, "_stats"):
+            self._set_array_stats()
+            return False
+
+        _stats = self._get_array_stats()
+
         if _stats == self._stats:
             return False
 
+        self._stats = _stats
+
         return True
+
+    @property
+    def array_list(self):
+        return self._to_2d_array_list(self.array)
 
     @staticmethod
     def _to_2d_array_list(array: np.ndarray) -> list[np.ndarray]:
