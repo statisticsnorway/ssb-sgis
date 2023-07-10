@@ -1,7 +1,7 @@
 Dapla (statnorway)
 ==================
 
-.. automodule:: sgis.dapla
+.. automodule:: sgis.io.dapla
     :members:
     :exclude-members:
     :show-inheritance:

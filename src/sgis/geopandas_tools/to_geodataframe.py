@@ -2,6 +2,7 @@ import numbers
 from collections.abc import Iterator, Sized
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import shapely
 from geopandas import GeoDataFrame, GeoSeries
@@ -12,7 +13,7 @@ from shapely.ops import unary_union
 
 
 def to_gdf(
-    geom: Geometry
+    obj: Geometry
     | str
     | bytes
     | list
@@ -31,15 +32,15 @@ def to_gdf(
     Constructs a GeoDataFrame from any geometry-like object (coordinates, wkt, wkb),
     or any interable of such objects.
 
-    If geom is a DataFrame or dictionary, geometries can be in one column/key or 2-3
+    If obj is a DataFrame or dictionary, geometries can be in one column/key or 2-3
     if coordiantes are in x and x (and z) columns. The column/key "geometry" is used
     by default if it exists. The index and other columns/keys are preserved.
 
     Args:
-        geom: the object to be converted to a GeoDataFrame.
+        obj: the object to be converted to a GeoDataFrame.
         crs: if None (default), it uses the crs of the GeoSeries if GeoSeries
             is the input type. Otherwise, no crs is used.
-        geometry: Name of column(s) or key(s) in geom with geometry-like values.
+        geometry: Name of column(s) or key(s) in obj with geometry-like values.
             If not specified, the key/column 'geometry' will be used if it
             exists. If multiple columns, can be given as e.g. "xyz" or ["x", "y"].
         **kwargs: additional keyword arguments taken by the GeoDataFrame constructor.
@@ -48,7 +49,7 @@ def to_gdf(
         A GeoDataFrame with one column, the geometry column.
 
     Raises:
-        TypeError: If geom is a GeoDataFrame.
+        TypeError: If obj is a GeoDataFrame.
 
     Examples
     --------
@@ -125,124 +126,168 @@ def to_gdf(
     3   POINT Z (1.000 50.000 77.000)
     4  POINT Z (58.000 49.000 46.000)
     """
-    if isinstance(geom, GeoDataFrame):
+    if isinstance(obj, GeoDataFrame):
         raise TypeError("'to_gdf' doesn't accept GeoDataFrames as input type.")
 
-    if isinstance(geom, GeoSeries):
-        geom_col = geometry if geometry else "geometry"
-        return _geoseries_to_gdf(geom, geom_col, crs, **kwargs)
+    if isinstance(obj, GeoSeries):
+        geom_col = geometry or "geometry"
+        return _geoseries_to_gdf(obj, geom_col, crs, **kwargs)
 
-    geom_col = _find_geometry_column(geom, geometry)
-    index = kwargs.get("index", None)
+    if is_array_like(geometry) and len(geometry) == len(obj):
+        geometry = GeoSeries(_make_one_shapely_geom(g) for g in geometry)
+        return GeoDataFrame(obj, geometry=geometry, crs=crs, **kwargs)
 
-    if is_array_like(geom_col):
-        geometry = GeoSeries((_make_one_shapely_geom(g) for g in geometry), index=index)
-        return GeoDataFrame(geom, geometry=geometry, crs=crs, **kwargs)
+    geom_col: str = find_geometry_column(obj, geometry)
+    index = kwargs.pop("index", None)
 
-    # get done with the iterators that get consumed by 'all' statements
-    if isinstance(geom, Iterator) and not isinstance(geom, Sized):
-        geom = GeoSeries((_make_one_shapely_geom(g) for g in geom), index=index)
-        return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
+    # get done with iterators that get consumed by 'all'
+    if isinstance(obj, Iterator) and not isinstance(obj, Sized):
+        obj = GeoSeries((_make_one_shapely_geom(g) for g in obj), index=index)
+        return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
 
-    if not is_dict_like(geom):
-        if not hasattr(geom, "__iter__") and hasattr(geom, "__dict__"):
-            if all(attr in geom.__dict__ for attr in ["minx", "miny", "maxx", "maxy"]):
-                geom = GeoSeries(
-                    shapely.box(*(geom.minx, geom.miny, geom.maxx, geom.maxy)),
-                    index=index,
-                )
-                return GeoDataFrame(
-                    {geom_col: geom}, geometry=geom_col, crs=crs, **kwargs
-                )
-        if hasattr(geom, "__iter__") and all(isinstance(g, dict) for g in geom):
-            crs = crs if crs else _get_crs(geom)
-            geom = pd.concat(GeoSeries(_from_json(g)) for g in geom)
+    crs = crs or get_crs_from_dict(obj)
+
+    if not is_dict_like(obj):
+        if is_boundingbox(obj):
+            obj = GeoSeries(shapely.box(*obj), index=index)
+            return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
+        if is_nested_geojson(obj):
+            # crs = crs or get_crs_from_dict(obj)
+            obj = pd.concat((GeoSeries(_from_json(g)) for g in obj), ignore_index=True)
             if index is not None:
-                geom.index = index
-            else:
-                geom = geom.reset_index(drop=True)
-            return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
+                obj.index = index
+            return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
+        # list etc.
         else:
-            geom = GeoSeries(_make_shapely_geoms(geom), index=index)
-            return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
+            obj = GeoSeries(make_shapely_geoms(obj), index=index)
+            return GeoDataFrame(
+                {geom_col: obj}, geometry=geom_col, index=index, crs=crs, **kwargs
+            )
 
     # now we have dict, Series or DataFrame
 
-    geom = geom.copy()
+    obj = obj.copy()
 
-    # preserve Series/DataFrame index, overrides kwargs for now
-    index = geom.index if hasattr(geom, "index") else kwargs.get("index", None)
+    # preserve Series/DataFrame index
+    index = obj.index if hasattr(obj, "index") and index is None else index
 
-    if geom_col in geom.keys():
-        geom[geom_col] = GeoSeries(_make_shapely_geoms(geom[geom_col]), index=index)
-        return GeoDataFrame(geom, geometry=geom_col, crs=crs, **kwargs)
-
-    if geometry and all(g in geom for g in geometry):
-        geom[geom_col] = _geoseries_from_xyz(geom, geometry, index=index)
-        return GeoDataFrame(geom, geometry=geom_col, crs=crs, **kwargs)
-
-    if len(geom.keys()) == 1:
-        key = list(geom.keys())[0]
-        if isinstance(geom, dict):
-            geoseries = GeoSeries(
-                _make_shapely_geoms(list(geom.values())[0]), index=index
+    if geom_col in obj.keys():
+        if isinstance(obj, pd.DataFrame):
+            obj[geom_col] = GeoSeries(make_shapely_geoms(obj[geom_col]), index=index)
+            return GeoDataFrame(obj, geometry=geom_col, crs=crs, **kwargs)
+        if isinstance(obj[geom_col], Geometry):
+            return GeoDataFrame(
+                dict(obj), geometry=geom_col, crs=crs, index=[0], **kwargs
             )
-        elif isinstance(geom, pd.Series):
-            geoseries = GeoSeries(_make_shapely_geoms(geom), index=index)
+        if not hasattr(obj[geom_col], "__iter__") or len(obj[geom_col]) == 1:
+            obj[geom_col] = make_shapely_geoms(obj[geom_col])
+            return GeoDataFrame(
+                dict(obj), geometry=geom_col, crs=crs, index=index, **kwargs
+            )
+        obj[geom_col] = GeoSeries(make_shapely_geoms(obj[geom_col]), index=index)
+        return GeoDataFrame(dict(obj), geometry=geom_col, crs=crs, **kwargs)
+
+    if geometry and all(g in obj for g in geometry):
+        obj[geom_col] = _geoseries_from_xyz(obj, geometry, index=index)
+        return GeoDataFrame(obj, geometry=geom_col, crs=crs, **kwargs)
+
+    if len(obj.keys()) == 1:
+        key = list(obj.keys())[0]
+        if isinstance(obj, dict):
+            geoseries = GeoSeries(
+                make_shapely_geoms(list(obj.values())[0]), index=index
+            )
+        elif isinstance(obj, pd.Series):
+            geoseries = GeoSeries(make_shapely_geoms(obj), index=index)
         else:
-            geoseries = GeoSeries(_make_shapely_geoms(geom.iloc[:, 0]), index=index)
+            geoseries = GeoSeries(make_shapely_geoms(obj.iloc[:, 0]), index=index)
         return GeoDataFrame({key: geoseries}, geometry=key, crs=crs, **kwargs)
 
-    if geometry and geom_col not in geom or isinstance(geom, pd.DataFrame):
+    if geometry and geom_col not in obj or isinstance(obj, pd.DataFrame):
         raise ValueError("Cannot find geometry column(s)", geometry)
 
     # geojson, __geo_interface__
     if (
-        isinstance(geom, dict)
-        and sum(key in geom for key in ["type", "coordinates", "features"]) >= 2
+        isinstance(obj, dict)
+        and sum(key in obj for key in ["type", "coordinates", "features"]) >= 2
     ):
-        if "geometry" in geom:
+        if "geometry" in obj:
             geometry = "geometry"
 
-        crs = crs if crs else _get_crs(geom)
-        print(crs)
-        geom = GeoSeries(_from_json(geom), index=index)
-        return GeoDataFrame({geom_col: geom}, geometry=geom_col, crs=crs, **kwargs)
+        # crs = crs or get_crs_from_dict(obj)
+        obj = GeoSeries(_from_json(obj), index=index)
+        return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
 
-    geoseries = _series_like_to_geoseries(geom, index=index)
+    geoseries = _series_like_to_geoseries(obj, index=index)
     return GeoDataFrame(geometry=geoseries, crs=crs, **kwargs)
 
 
-def _get_crs(geom):
-    if not is_dict_like(geom) and is_dict_like(geom[0]):
-        crss = list({_get_crs(g) for g in geom})
-        if len(crss) == 1:
-            return crss[0]
+def make_shapely_geoms(obj):
+    if _is_one_geometry(obj):
+        return _make_one_shapely_geom(obj)
+    if isinstance(obj, dict) and "coordinates" in obj:
+        return _from_json(obj)
+    return (_make_one_shapely_geom(g) for g in obj)
+
+
+def is_boundingbox(obj) -> bool:
+    if not hasattr(obj, "__iter__"):
+        return False
+
+    classname = obj.__class__.__name__.lower()
+    if "bounding" not in classname and "box" not in classname:
+        return False
+
+    if len(obj) == 4 and all(isinstance(x, numbers.Number) for x in obj):
+        return True
+
+    return False
+
+
+def is_nested_geojson(obj) -> bool:
+    if hasattr(obj, "__iter__") and all(isinstance(g, dict) for g in obj):
+        return True
+    return False
+
+
+def get_crs_from_dict(obj):
+    if (
+        not hasattr(obj, "__iter__")
+        or not is_dict_like(obj)
+        and not is_dict_like(obj[0])
+    ):
         return None
-    if "properties" in geom:
-        return _get_crs(geom["properties"])
-    if "crs" in geom:
-        geom = geom["crs"]
-        while is_dict_like(geom):
-            if "properties" in geom:
-                geom = geom["properties"]
-            elif "name" in geom:
-                geom = geom["name"]
+
+    if not is_dict_like(obj) and is_dict_like(obj[0]):
+        crss = list({get_crs_from_dict(g) for g in obj})
+        return crss[0] if len(crss) == 1 else None
+
+    if "properties" in obj:
+        return get_crs_from_dict(obj["properties"])
+
+    if "crs" in obj:
+        obj = obj["crs"]
+        while is_dict_like(obj):
+            if "properties" in obj:
+                obj = obj["properties"]
+            elif "name" in obj:
+                obj = obj["name"]
             else:
                 return None
-        return geom
+        return obj
+
     return None
 
 
-def _from_json(geom: dict):
-    if not isinstance(geom, dict) and isinstance(geom[0], dict):
-        return [_from_json(g) for g in geom]
-    if "geometry" in geom:
-        return _from_json(geom["geometry"])
-    if "features" in geom:
-        return _from_json(geom["features"])
-    coords = geom["coordinates"]
-    constructor = eval("shapely.geometry." + geom.get("type", Point))
+def _from_json(obj: dict):
+    if not isinstance(obj, dict) and isinstance(obj[0], dict):
+        return [_from_json(g) for g in obj]
+    if "geometry" in obj:
+        return _from_json(obj["geometry"])
+    if "features" in obj:
+        return _from_json(obj["features"])
+    coords = obj["coordinates"]
+    constructor = eval("shapely.geometry." + obj.get("type", Point))
     try:
         return constructor(coords)
     except TypeError:
@@ -251,46 +296,45 @@ def _from_json(geom: dict):
         return constructor(coords)
 
 
-def _series_like_to_geoseries(geom, index):
+def _series_like_to_geoseries(obj, index):
     if index is None:
-        index = geom.keys()
-    if isinstance(geom, dict):
-        return GeoSeries(_make_shapely_geoms(list(geom.values())), index=index)
+        index = obj.keys()
+    if isinstance(obj, dict):
+        return GeoSeries(make_shapely_geoms(list(obj.values())), index=index)
     else:
-        return GeoSeries(_make_shapely_geoms(geom.values), index=index)
+        return GeoSeries(make_shapely_geoms(obj.values), index=index)
 
 
-def _geoseries_to_gdf(geom: GeoSeries, geometry, crs, **kwargs) -> GeoDataFrame:
+def _geoseries_to_gdf(obj: GeoSeries, geometry, crs, **kwargs) -> GeoDataFrame:
     if not crs:
-        crs = geom.crs
+        crs = obj.crs
     else:
-        geom = geom.to_crs(crs) if geom.crs else geom.set_crs(crs)
+        obj = obj.to_crs(crs) if obj.crs else obj.set_crs(crs)
 
-    return GeoDataFrame({geometry: geom}, geometry=geometry, crs=crs, **kwargs)
+    return GeoDataFrame({geometry: obj}, geometry=geometry, crs=crs, **kwargs)
 
 
-def _find_geometry_column(geom, geometry) -> str:
+def find_geometry_column(obj, geometry) -> str:
     if geometry is None:
         return "geometry"
 
-    if not is_list_like(geometry) and geometry in geom:
+    # dict key
+    if not is_list_like(geometry) and geometry in obj:
         return geometry
 
-    if len(geometry) == 1 and geometry[0] in geom:
+    # nested dict key
+    if len(geometry) == 1 and geometry[0] in obj:
         return geometry[0]
 
-    if len(geometry) == 2 or len(geometry) == 3:
+    if len(geometry) in {2, 3}:
         return "geometry"
-
-    if is_array_like(geometry) and len(geometry) == len(geom):
-        return geometry
 
     raise ValueError(
         "geometry should be a geometry column or x, y (z) coordinate columns."
     )
 
 
-def _geoseries_from_xyz(geom, geometry, index) -> GeoSeries:
+def _geoseries_from_xyz(obj, geometry, index) -> GeoSeries:
     """Make geoseries from the geometry column or columns (x y (z))."""
 
     if len(geometry) == 2:
@@ -299,78 +343,70 @@ def _geoseries_from_xyz(geom, geometry, index) -> GeoSeries:
 
     elif len(geometry) == 3:
         x, y, z = geometry
-        z = geom[z]
+        z = obj[z]
 
     else:
         raise ValueError(
             "geometry should be a geometry column or x, y (z) coordinate columns."
         )
 
-    return gpd.GeoSeries.from_xy(x=geom[x], y=geom[y], z=z, index=index)
+    return gpd.GeoSeries.from_xy(x=obj[x], y=obj[y], z=z, index=index)
 
 
-def _is_one_geometry(geom) -> bool:
+def _is_one_geometry(obj) -> bool:
     if (
-        isinstance(geom, (str, bytes, Geometry))
-        or all(isinstance(i, numbers.Number) for i in geom)
-        or not hasattr(geom, "__iter__")
+        isinstance(obj, (str, bytes, Geometry))
+        or all(isinstance(i, numbers.Number) for i in obj)
+        or not hasattr(obj, "__iter__")
     ):
         return True
     return False
 
 
-def _make_shapely_geoms(geom):
-    if _is_one_geometry(geom):
-        return _make_one_shapely_geom(geom)
-    if isinstance(geom, dict) and "coordinates" in geom:
-        return _from_json(geom)
-    return (_make_one_shapely_geom(g) for g in geom)
-
-
-def _make_one_shapely_geom(geom):
+def _make_one_shapely_geom(obj):
     """Create shapely geometry from wkt, wkb or coordinate tuple.
 
     Works recursively if the object is a nested iterable.
     """
-    if isinstance(geom, str):
-        return wkt.loads(geom)
+    if isinstance(obj, str):
+        return wkt.loads(obj)
 
-    if isinstance(geom, bytes):
-        return wkb.loads(geom)
+    if isinstance(obj, bytes):
+        return wkb.loads(obj)
 
-    if isinstance(geom, Geometry):
-        return geom
+    if isinstance(obj, Geometry):
+        return obj
 
-    if not hasattr(geom, "__iter__"):
+    if not hasattr(obj, "__iter__"):
         raise ValueError(
-            f"Couldn't create shapely geometry from {geom} of type {type(geom)}"
+            f"Couldn't create shapely geometry from {obj} of type {type(obj)}"
         )
 
-    if isinstance(geom, GeoSeries):
+    if isinstance(obj, GeoSeries):
         raise TypeError(
             "to_gdf doesn't accept iterable of GeoSeries. Instead use: "
-            "pd.concat(to_gdf(geom) for geom in geoseries_iterable)"
+            "pd.concat(to_gdf(obj) for obj in geoseries_iterable)"
         )
 
-    if not any(isinstance(g, numbers.Number) for g in geom):
+    if not any(isinstance(g, numbers.Number) for g in obj):
         # we're likely dealing with a nested iterable, so let's
         # recursively dig down to the coords/wkt/wkb
-        if len(geom) == 2 or len(geom) == 3:
+        if len(obj) == 2 or len(obj) == 3:
             try:
-                geom = [float(g) for g in geom]
-                return Point(geom)
+                obj = [float(g) for g in obj]
+                return Point(obj)
             except Exception:
                 pass
-        return unary_union([_make_one_shapely_geom(g) for g in geom])
+        return unary_union([_make_one_shapely_geom(g) for g in obj])
 
-    elif len(geom) == 2 or len(geom) == 3:
-        return Point(geom)
+    elif len(obj) == 2 or len(obj) == 3:
+        return Point(obj)
 
-    elif len(geom) == 4:
-        return box(*geom)
+    elif len(obj) == 4:
+        return box(*obj)
     else:
         raise ValueError(
             "If 'geom' is an iterable, each item should consist of "
             "wkt, wkb or (x, y (z) or bbox). Got ",
-            geom,
+            obj,
         )

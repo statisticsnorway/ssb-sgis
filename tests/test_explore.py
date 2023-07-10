@@ -48,8 +48,8 @@ def not_test_center(r300, r200, r100, p):
 
 
 def test_explore(points_oslo, roads_oslo):
-    roads = roads_oslo
-    points = points_oslo
+    roads = roads_oslo.copy()
+    points = points_oslo.copy()
 
     p = points.iloc[[0]]
     roads = roads[["geometry"]]
@@ -66,6 +66,11 @@ def test_explore(points_oslo, roads_oslo):
     r300 = roads.clip(p.buffer(300))
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
+
+    sg.explore(points_oslo, center="bygdøy")
+    sg.explore(points_oslo, center="oslo")
+    sg.explore(points_oslo, center="akersveien 26")
+    sg.explore(points_oslo, center="thorvald meyers gate 5", size=300)
 
     if __name__ == "__main__":
         print("One test of show in browser.")

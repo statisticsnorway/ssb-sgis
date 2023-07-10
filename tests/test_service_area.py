@@ -70,7 +70,7 @@ def test_service_area(points_oslo, roads_oslo):
 
     rules.split_lines = False
 
-    nw = sg.make_directed_network_norway(nw)
+    nw = sg.make_directed_network_norway(nw, dropnegative=True)
     rules = sg.NetworkAnalysisRules(
         directed=True,
         weight="meters",

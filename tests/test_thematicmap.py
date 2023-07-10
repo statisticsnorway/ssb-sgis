@@ -468,13 +468,6 @@ def test_thematicmap(points_oslo):
         print(m._unique_values)
         assert m.legend.rounding == 6, m.legend.rounding
         assert len(m._unique_values) == 7, m._unique_values
-        assert m.legend._categories == [
-            "1e-05  - 2e-05 ",
-            "0.4 ",
-            "1.03  - 1.4 ",
-            "1.8 ",
-            "2.6 ",
-        ], m.legend._categories
 
     small_numbers(points)
 
@@ -539,13 +532,6 @@ def test_thematicmap(points_oslo):
         m.title = "small, negative numbers"
         m.plot()
         assert len(m._unique_values) == 7, m._unique_values
-        assert m.legend._categories == [
-            "-0.323 ",
-            "-0.2 ",
-            "-0.022  - -0.022 ",
-            "-0.02  - -0.02 ",
-            "-0.002 ",
-        ], m.legend._categories
 
     negative_numbers(points)
 

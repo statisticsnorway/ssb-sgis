@@ -283,7 +283,7 @@ def not_test_direction(roads_oslo):
 
     clipped = sg.clean_clip(roads_oslo, tunnel_fromto.buffer(2000))
     connected_roads = sg.get_connected_components(clipped).query("connected == 1")
-    directed_roads = sg.make_directed_network_norway(connected_roads)
+    directed_roads = sg.make_directed_network_norway(connected_roads, dropnegative=True)
     rules = sg.NetworkAnalysisRules(directed=True, weight="minutes")
     nwa = sg.NetworkAnalysis(directed_roads, rules=rules)
 
@@ -330,7 +330,18 @@ def test_network_analysis(points_oslo, roads_oslo):
     )
 
     connected_roads = sg.get_connected_components(r).query("connected == 1")
-    directed_roads = sg.make_directed_network_norway(connected_roads)
+
+    directed_roads = sg.make_directed_network(
+        connected_roads,
+        dropna=False,
+        dropnegative=True,
+        direction_col="oneway",
+        direction_vals_bft=("B", "FT", "TF"),
+        minute_cols=("drivetime_fw", "drivetime_bw"),
+    )
+    nwa = sg.NetworkAnalysis(directed_roads, rules=rules, detailed_log=True)
+
+    directed_roads = sg.make_directed_network_norway(connected_roads, dropnegative=True)
 
     nwa = sg.NetworkAnalysis(directed_roads, rules=rules, detailed_log=True)
     print(nwa)

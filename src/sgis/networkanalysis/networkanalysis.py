@@ -131,8 +131,14 @@ class NetworkAnalysis:
             f"NaN values in the {self.rules.weight!r} column. Either remove NaNs "
             "or fill these values with a numeric value (e.g. 0)."
         )
-        if hasattr(self.network.gdf, "hole") and all(
-            self.network.gdf[self.network.gdf["hole"] == 1, self.rules.weight].isna()
+        if (
+            hasattr(self.network.gdf, "hole")
+            and len(self.network.gdf.loc[lambda x: x["hole"] == 1])
+            and (
+                self.network.gdf.loc[lambda x: x["hole"] == 1, self.rules.weight]
+                .isna()
+                .all()
+            )
         ):
             raise ValueError(HOLES_ARE_NAN)
 

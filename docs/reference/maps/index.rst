@@ -1,5 +1,5 @@
 Maps
-================
+====
 
 .. toctree::
    :maxdepth: 3

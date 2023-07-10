@@ -1,4 +1,12 @@
 # flake8: noqa: F401
+from .geopandas_tools.bounds import (
+    bounds_to_points,
+    bounds_to_polygon,
+    make_grid,
+    make_grid_from_bbox,
+    make_ssb_grid,
+    points_in_bounds,
+)
 from .geopandas_tools.buffer_dissolve_explode import (
     buff,
     buffdiss,
@@ -8,16 +16,12 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp_by_cluster,
 )
 from .geopandas_tools.general import (
-    bounds_to_points,
-    bounds_to_polygon,
+    address_to_coords,
+    address_to_gdf,
     clean_clip,
     clean_geoms,
     coordinate_array,
     drop_inactive_geometry_columns,
-    make_grid,
-    make_grid_from_bbox,
-    make_ssb_grid,
-    points_in_bounds,
     random_points,
     rename_geometry_if,
     to_lines,
@@ -49,6 +53,7 @@ from .geopandas_tools.polygon_operations import (
 )
 from .geopandas_tools.to_geodataframe import to_gdf
 from .helpers import get_name
+from .io.read_parquet import read_parquet_url
 from .maps.examine import Examine
 from .maps.explore import Explore
 from .maps.httpserver import run_html_server
@@ -80,10 +85,19 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
-from .read_parquet import read_parquet_url
+
+# from .raster.cube import GeoDataCube
+from .raster.elevationraster import ElevationRaster
+from .raster.raster import Raster
 
 
 try:
-    from .dapla import exists, read_geopandas, write_geopandas
+    from .io.dapla import exists, read_geopandas, write_geopandas
+    from .io.write_municipality_data import (
+        write_municipality_data,
+        write_neighbor_municipality_data,
+    )
+    from .multiprocessing.multiprocessingmapper import MultiProcessingMapper
+    from .multiprocessing.multiprocessingpool import MultiProcessingPool
 except ImportError:
     pass

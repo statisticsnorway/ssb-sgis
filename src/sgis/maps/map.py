@@ -43,6 +43,8 @@ _CATEGORICAL_CMAP = {
     11: "#1c6b00",
 }
 
+DEFAULT_SCHEME = "quantiles"
+
 
 class Map:
     """Base class that prepares one or more GeoDataFrames for mapping.
@@ -59,7 +61,7 @@ class Map:
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
         nan_color="#c2c2c2",
-        scheme="fisherjenks",
+        scheme: str = DEFAULT_SCHEME,
         **kwargs,
     ):
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
@@ -102,9 +104,12 @@ class Map:
         if self._column:
             self._fillna_if_col_is_missing()
         else:
+            gdfs = []
             for gdf, label in zip(self._gdfs, self.labels, strict=True):
                 gdf["label"] = label
+                gdfs.append(gdf)
             self._column = "label"
+            self._gdfs = gdfs
 
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
@@ -249,18 +254,20 @@ class Map:
         """Putting the labels/names in a list before copying the gdfs."""
         self.labels: list[str] = []
         for i, gdf in enumerate(gdfs):
-            if hasattr(gdf, "name"):
+            if hasattr(gdf, "name") and isinstance(gdf.name, str):
                 name = gdf.name
             else:
                 name = get_name(gdf)
-                if not name:
-                    name = str(i)
+                name = name or str(i)
             self.labels.append(name)
 
     def _set_labels(self) -> None:
         """Setting the labels after copying the gdfs."""
+        gdfs = []
         for i, gdf in enumerate(self._gdfs):
             gdf["label"] = self.labels[i]
+            gdfs.append(gdf)
+        self._gdfs = gdfs
 
     def _to_common_crs_and_one_geom_col(self, gdfs: list[GeoDataFrame]):
         """Need common crs and max one geometry column."""
@@ -398,7 +405,13 @@ class Map:
             n_classes = len(self._unique_values)
 
         if self.scheme == "jenks":
-            bins = jenks_breaks(gdf.loc[~self._nan_idx, column], n_classes=n_classes)
+            try:
+                bins = jenks_breaks(
+                    gdf.loc[~self._nan_idx, column], n_classes=n_classes
+                )
+                bins = self._add_minmax_to_bins(bins)
+            except Exception:
+                pass
         else:
             binning = classify(
                 np.asarray(gdf.loc[~self._nan_idx, column]),
@@ -467,8 +480,21 @@ class Map:
             if gdf[self._column].isna().all():
                 return np.repeat(len(bins), len(gdf))
 
-            # need numpy.nan instead of pd.NA as of now
+            # need numpy.nan instead of pd.NA
             gdf[self._column] = gdf[self._column].fillna(np.nan)
+
+            # also, fillna doesn't always work. So doing it manually
+            def proper_fillna(val):
+                try:
+                    if "NAType" in val.__class__.__name__:
+                        return np.nan
+                except Exception:
+                    return val
+
+                return val
+
+            gdf[self._column] = gdf[self._column].apply(proper_fillna)
+
             classified = np.searchsorted(bins, gdf[self._column])
 
         return classified

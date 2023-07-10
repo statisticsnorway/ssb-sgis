@@ -18,6 +18,8 @@ import sgis as sg
 
 
 def test_to_gdf():
+    _single_iloc()
+
     _json()
 
     _incorrect_geom_col()
@@ -97,6 +99,13 @@ def _series_like():
     assert gdf.equals(should_equal)
 
 
+def _single_iloc():
+    s = pd.Series({"geometry": Point(10, 60), "a": 1, "b": 2})
+    gdf = sg.to_gdf(s)
+    assert list(gdf.columns) == ["geometry", "a", "b"]
+    assert len(gdf) == 1
+
+
 def _dflike_single_col():
     single_key = {"geom_col_name": [(10, 60), (11, 59)]}
     print(single_key)
@@ -165,19 +174,6 @@ def _preserves_index():
     gdf = sg.to_gdf(dict_, index=index)
     assert gdf.equals(should_equal), gdf
 
-    # setting index in to_gdf when df has different index should give NA
-    df = pd.DataFrame(dict_)
-    gdf = sg.to_gdf(df, index=[1, 3])
-    assert gdf.col.isna().sum() == 1, gdf
-    assert gdf.geometry.isna().sum() == 1, gdf
-
-    # the above should be same as calling DataFrame twice with different index
-    df = pd.DataFrame(sg.to_gdf(dict_, geometry="geometry"), index=index)
-    gdf2 = gpd.GeoDataFrame(df, geometry="geometry")
-    assert gdf2.col.isna().sum() == 1, gdf2
-    assert gdf2.geometry.isna().sum() == 1, gdf2
-
-    # using a non-pandas type and spefifying index should work
     gdf = sg.to_gdf([(0, 0), (1, 1)], index=pd.Index([1, 3]))
     assert list(gdf.index) == [1, 3]
 

@@ -1,15 +1,11 @@
 """Functions for polygon geometries."""
-import functools
 import warnings
 
-import geopandas as gpd
 import networkx as nx
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
     area,
-    difference,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
@@ -23,10 +19,25 @@ from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
 
 
+def get_centroid_ids(gdf: GeoDataFrame, groupby: str) -> pd.Series:
+    centerpoints = gdf.assign(geometry=lambda x: x.centroid)
+
+    grouped_centerpoints = centerpoints.dissolve(by=groupby).assign(
+        geometry=lambda x: x.centroid
+    )
+    xs = grouped_centerpoints.geometry.x
+    ys = grouped_centerpoints.geometry.y
+
+    grouped_centerpoints["wkt"] = [f"{int(x)}_{int(y)}" for x, y in zip(xs, ys)]
+
+    return gdf[groupby].map(grouped_centerpoints["wkt"])
+
+
 def get_polygon_clusters(
     *gdfs: GeoDataFrame | GeoSeries,
     cluster_col: str = "cluster",
     allow_multipart: bool = False,
+    wkt_col: bool = False,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Find which polygons overlap without dissolving.
 
@@ -45,6 +56,9 @@ def get_polygon_clusters(
         cluster_col: Name of the resulting cluster column.
         allow_multipart: Whether to allow mutipart geometries in the gdfs.
             Defaults to False to avoid confusing results.
+        wkt_col: Whether to return the cluster column values as a string with x and y
+            coordinates. Convinient to always get unique ids.
+            Defaults to False because of speed.
 
     Returns:
         One or more GeoDataFrames (same amount as was given) with a new cluster column.
@@ -109,8 +123,17 @@ def get_polygon_clusters(
     if isinstance(gdfs[-1], str):
         *gdfs, cluster_col = gdfs
 
-    concated = pd.DataFrame()
+    concated = []
     orig_indices = ()
+
+    # take a copy only if there are gdfs with the same id
+    # To not get any overwriting in the for loop
+    if sum(df1 is df2 for df1 in gdfs for df2 in gdfs) > len(gdfs):
+        new_gdfs = ()
+        for gdf in gdfs:
+            new_gdfs = new_gdfs + (gdf.copy(),)
+        gdfs = new_gdfs
+
     for i, gdf in enumerate(gdfs):
         if isinstance(gdf, GeoSeries):
             gdf = gdf.to_frame()
@@ -129,7 +152,12 @@ def get_polygon_clusters(
 
         gdf["i__"] = i
 
-        concated = pd.concat([concated, gdf], ignore_index=True)
+        concated.append(gdf)
+
+    concated = pd.concat(concated, ignore_index=True)
+
+    if not len(concated):
+        return concated.drop("i__", axis=1).assign(**{cluster_col: []})
 
     neighbors = get_neighbor_indices(concated, concated)
 
@@ -145,6 +173,9 @@ def get_polygon_clusters(
     }
 
     concated[cluster_col] = component_mapper
+
+    if wkt_col:
+        concated[cluster_col] = get_centroid_ids(concated, groupby=cluster_col)
 
     concated = _push_geom_col(concated)
 

@@ -21,11 +21,22 @@ def speed_col_to_minutes():
     line_1000m = sg.to_gdf(LineString([(0, 0), (0, 1000)]), crs=25833)
     line_1000m["oneway"] = "B"
 
+    # need top specify dropna and dropnegative
+    with pytest.raises(ValueError):
+        sg.make_directed_network(
+            line_1000m.assign(speed=60),
+            direction_col="oneway",
+            direction_vals_bft=("B", "FT", "TF"),
+            speed_col_kmh="speed",
+        )
+
     should_take_1_min = sg.make_directed_network(
         line_1000m.assign(speed=60),
         direction_col="oneway",
         direction_vals_bft=("B", "FT", "TF"),
         speed_col_kmh="speed",
+        dropna=True,
+        dropnegative=True,
     )
 
     assert (
@@ -71,7 +82,10 @@ def test_directed_network():
 
     # now to create the same directed lines in different ways
 
-    directed_lines = sg.make_directed_network_norway(lines)
+    with pytest.raises(TypeError):
+        sg.make_directed_network_norway(lines)
+
+    directed_lines = sg.make_directed_network_norway(lines, dropnegative=True)
 
     _run_od_costs(directed_lines, rules, points)
 
@@ -89,6 +103,8 @@ def test_directed_network():
         direction_col="oneway",
         direction_vals_bft=("B", "FT", "TF"),
         minute_cols="minutes",
+        dropna=True,
+        dropnegative=True,
     )
     _run_od_costs(directed_lines, rules, points)
 
@@ -97,6 +113,8 @@ def test_directed_network():
         direction_col="oneway",
         direction_vals_bft=("B", "FT", "TF"),
         minute_cols=["minutes", "minutes"],
+        dropna=True,
+        dropnegative=True,
     )
     _run_od_costs(directed_lines, rules, points)
 
@@ -115,6 +133,8 @@ def test_directed_network():
         direction_vals_bft=("B", "FT", "TF"),
         minute_cols=("drivetime_fw", "drivetime_bw"),
         reverse_tofrom=False,
+        dropna=True,
+        dropnegative=True,
     )
     with pytest.raises(AssertionError):
         _run_od_costs(directed_lines, rules, points)

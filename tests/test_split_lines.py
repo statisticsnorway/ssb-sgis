@@ -30,7 +30,7 @@ def test_split_lines(points_oslo, roads_oslo):
 
     ### MAKE THE ANALYSIS CLASS
     connected_roads = sg.get_connected_components(r).query("connected == 1")
-    directed_roads = sg.make_directed_network_norway(connected_roads)
+    directed_roads = sg.make_directed_network_norway(connected_roads, dropnegative=True)
 
     rules = sg.NetworkAnalysisRules(
         directed=True,

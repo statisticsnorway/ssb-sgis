@@ -9,7 +9,7 @@ from shapely.constructive import reverse
 from ..helpers import return_two_vals, unit_is_meters
 
 
-def make_directed_network_norway(gdf: GeoDataFrame) -> GeoDataFrame:
+def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDataFrame:
     """Runs the method make_directed_network for Norwegian road data.
 
     The parameters in make_directed_network are set to the correct values for
@@ -17,6 +17,13 @@ def make_directed_network_norway(gdf: GeoDataFrame) -> GeoDataFrame:
 
     The data can be downloaded here:
     https://kartkatalog.geonorge.no/metadata/nvdb-ruteplan-nettverksdatasett/8d0f9066-34f9-4423-be12-8e8523089313
+
+    Args:
+        gdf: Road GeoDataFrame.
+        dropnegative: Whether to keep rows with negative minute values in both directions.
+            These are mostly circles with no impact on the analyses, but there might be
+            exceptions. Keeping negative values will cause an error when building the
+            network graph. Recode these rows to a non-negative values to keep them.
 
     Examples
     --------
@@ -59,12 +66,18 @@ def make_directed_network_norway(gdf: GeoDataFrame) -> GeoDataFrame:
     175624  0.036975  MULTILINESTRING Z ((268694.594 6651881.688 111...
     [175541 rows x 45 columns]
     """
-    gdf = gdf.loc[~((gdf.drivetime_fw == -1) & (gdf.drivetime_bw == -1))]
+    if gdf["drivetime_fw"].isna().any():
+        raise ValueError("Missing values in the columns 'drivetime_fw'")
+    if gdf["drivetime_bw"].isna().any():
+        raise ValueError("Missing values in the columns 'drivetime_bw'")
+
     return make_directed_network(
         gdf,
         direction_col="oneway",
         direction_vals_bft=("B", "FT", "TF"),
         minute_cols=("drivetime_fw", "drivetime_bw"),
+        dropnegative=dropnegative,
+        dropna=False,
     )
 
 
@@ -72,6 +85,8 @@ def make_directed_network(
     gdf: GeoDataFrame,
     direction_col: str,
     direction_vals_bft: tuple[str, str, str],
+    dropna: bool | None = None,
+    dropnegative: bool | None = None,
     minute_cols: tuple[str, str] | str | None = None,
     speed_col_kmh: str | None = None,
     flat_speed_kmh: int | None = None,
@@ -86,6 +101,13 @@ def make_directed_network(
         direction_vals_bft: tuple or list with the values of the direction
             column. Must be in the order 'both directions', 'from', 'to'.
             E.g. ('B', 'F', 'T').
+        dropna: When minutes_cols is set, whether to drop rows with missing values
+            in both columns. Alternatively, set these rows to a positive value before
+            making the directed network.
+        dropnegative: When minutes_cols is set, whether to drop rows with negative values
+            in both columns. Not dropping them will cause an error when building a
+            network graph. Alternatively, set these rows to a positive value before
+            making the directed network.
         minute_cols (optional): column or columns containing the number of minutes
             it takes to traverse the line. If one column name is given, this will
             be used for both directions. If tuple/list with two column names,
@@ -110,6 +132,16 @@ def make_directed_network(
     _validate_minute_args(minute_cols, speed_col_kmh, flat_speed_kmh)
     _validate_direction_args(gdf, direction_col, direction_vals_bft)
 
+    if minute_cols is not None and any(x is None for x in [dropnegative, dropna]):
+        raise ValueError(
+            "Must specify 'dropna' and 'dropnegative' when 'minute_cols' is given."
+        )
+
+    if speed_col_kmh is not None and any(x is None for x in [dropnegative, dropna]):
+        raise ValueError(
+            "Must specify 'dropna' and 'dropnegative' when 'speed_col_kmh' is given."
+        )
+
     if (flat_speed_kmh or speed_col_kmh) and not unit_is_meters(gdf):
         raise ValueError(
             "The crs must have 'metre' as units when calculating minutes."
@@ -121,12 +153,6 @@ def make_directed_network(
     if minute_cols and minute_cols != "minutes" and minute_cols[0] != "minutes":
         gdf = gdf.drop("minutes", axis=1, errors="ignore")
 
-    # select the directional and bidirectional rows.
-    ft = gdf.loc[gdf[direction_col] == f]
-    tf = gdf.loc[gdf[direction_col] == t]
-    both_ways = gdf.loc[gdf[direction_col] == b]
-    both_ways2 = both_ways.copy()
-
     if minute_cols:
         try:
             min_f, min_t = return_two_vals(minute_cols)
@@ -136,7 +162,19 @@ def make_directed_network(
                 "values of directions forwards and backwards, in that order."
             ) from e
 
-        # rename the two minute cols
+        if dropna:
+            gdf = gdf.loc[~((gdf[min_f].isna()) & (gdf[min_t].isna()))]
+        if dropnegative:
+            gdf = gdf.loc[~((gdf[min_f] < 0) & (gdf[min_t] < 0))]
+
+    # select the directional and bidirectional rows.
+    ft = gdf.loc[gdf[direction_col] == f]
+    tf = gdf.loc[gdf[direction_col] == t]
+    both_ways = gdf.loc[gdf[direction_col] == b]
+    both_ways2 = both_ways.copy()
+
+    if minute_cols:
+        # to single minute column
         both_ways = both_ways.rename(columns={min_f: "minutes"}, errors="raise")
         both_ways2 = both_ways2.rename(columns={min_t: "minutes"}, errors="raise")
 
