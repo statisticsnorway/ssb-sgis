@@ -5,6 +5,12 @@ import warnings
 from geopandas import GeoDataFrame
 
 
+def is_property(obj, attribute) -> bool:
+    return hasattr(obj.__class__, attribute) and isinstance(
+        getattr(obj.__class__, attribute), property
+    )
+
+
 def dict_zip_intersection(*dicts):
     """From mCoding (YouTube)."""
     if not dicts:

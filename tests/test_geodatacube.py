@@ -22,27 +22,49 @@ path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
 sg.Raster.dapla = False
 
-"""
-støvsuge
-rydde
-
-maten
-briller
-
-"""
-
 
 def x2(x):
     return x * 2
+
+
+def test_add_meta():
+    cubesti_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
+
+    cube = sg.GeoDataCube.from_root(cubesti_sentinel, contains=".tif", dapla=False)
+    assert all(hasattr(r, "_meta_added") for r in cube), [
+        hasattr(r, "_meta_added") for r in cube
+    ]
+    display(cube.df)
+    cube.update_df()
+    display(cube.df)
+
+    cube2 = sg.GeoDataCube.from_df(cube.df.drop(["raster"], axis=1))
+    assert not any(hasattr(r, "_meta_added") for r in cube2), [
+        hasattr(r, "_meta_added") for r in cube2
+    ]
 
 
 def test_cube(use_multiprocessing=False, processes=None):
     cubesti_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
 
     cube = sg.GeoDataCube.from_root(cubesti_sentinel, contains=".tif", dapla=False)
+    cube.bounds
+    cube.height
+    cube.width
+    cube2 = sg.GeoDataCube.from_root(
+        cubesti_sentinel, contains=".tif", dapla=False
+    ).add_meta()
 
-    mask = cube.unary_union.centroid.buffer(100)
-    cube = (cube.clip(mask) * 2).explode()
+    display(cube.df)
+    display(cube2.df)
+
+    mask = cube2.unary_union.centroid.buffer(100)
+    # mask = sg.to_gdf([0, 0], crs=cube2.crs)
+
+    cube2 = cube2.clip(mask, crop=True)
+    display(cube2.df)
+
+    cube = (cube.clip(mask, crop=True) * 2).explode()
     print(cube)
     return
 
@@ -54,6 +76,15 @@ def test_cube(use_multiprocessing=False, processes=None):
 
     r = sg.Raster.from_path(path_singleband)
     r2 = sg.ElevationRaster.from_path(path_two_bands)
+
+    cube = sg.GeoDataCube(
+        [r2],
+        use_multiprocessing=use_multiprocessing,
+        processes=processes,
+    )
+
+    print(cube.gradient())
+    print(cube.degrees())
 
     cube = sg.GeoDataCube.from_root(
         Path(path_singleband).parent, contains=".tif", dapla=False
@@ -141,10 +172,11 @@ def test_cube(use_multiprocessing=False, processes=None):
 
 
 if __name__ == "__main__":
+    test_add_meta()
+
     time = perf_counter()
 
-    test_cube(use_multiprocessing=False)
-    print("use_multiprocessing=False", perf_counter() - time)
+    for truefalse in [False, True]:
+        test_cube(use_multiprocessing=truefalse)
 
-    test_cube(use_multiprocessing=True, processes=multiprocessing.cpu_count() - 2)
-    print("use_multiprocessing=True", perf_counter() - time)
+        print(f"use_multiprocessing={truefalse}", perf_counter() - time)

@@ -2,6 +2,7 @@ import numbers
 import uuid
 import warnings
 from copy import copy, deepcopy
+from functools import lru_cache
 from json import loads
 from pathlib import Path
 from typing import Callable
@@ -17,6 +18,7 @@ from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_dict_like, is_list_like
 from rasterio import features
+from rasterio.enums import MergeAlg
 from rasterio.mask import mask as rast_mask
 from rasterio.warp import reproject
 from shapely import Geometry, box
@@ -25,28 +27,8 @@ from shapely.geometry import shape
 from ..geopandas_tools.bounds import is_bbox_like
 from ..geopandas_tools.general import is_wkt
 from ..geopandas_tools.to_geodataframe import to_gdf
-
-
-class RasterHasChangedError(ValueError):
-    def __init__(self, method: str):
-        self.method = method
-
-    def __str__(self):
-        return (
-            f"{self.method} requires reading of image files, but the "
-            "current file paths are outdated. "
-            "Use the write method to save new files. "
-            "This also updates the file paths of the rasters."
-        )
-
-
-class RasterBase:
-    @staticmethod
-    def _crs_to_string(crs):
-        if crs is None:
-            return "None"
-        crs = pyproj.CRS(crs)
-        return str(crs.to_json_dict()["name"])
+from ..helpers import is_property
+from .base import RasterBase, RasterHasChangedError
 
 
 class Raster(RasterBase):
@@ -138,104 +120,97 @@ class Raster(RasterBase):
         *,
         path: str | None = None,
         array: np.ndarray | None = None,
-        nodata: int | float | None = None,
-        indexes: int | list[int] | None = None,
+        band_indexes: int | list[int] | None = None,
         name: str | None = None,
-        meta: dict | None = None,
         dapla: bool = False,
         **kwargs,
     ):
-        if path is not None and array is not None:
-            raise ValueError("Cannot supply both 'path' and 'array'.")
-        if path is None and array is None:
-            raise ValueError("Must supply either 'path' or 'array'.")
+        self._path = path
+        self.array = array
+        self._band_indexes = band_indexes
 
+        self.name = Path(path).stem if path and not name else name
+
+        # so this can be set on class as well as instance
         if not hasattr(self, "dapla"):
             self.dapla = dapla
 
-        self.array = array
-        self.path = path
-        self.nodata = nodata
-        self.indexes = indexes
-
-        if path and not name:
-            self.name = Path(path).stem
-        else:
-            self.name = name
-
-        if path is not None:
-            self._add_meta()
-        else:
-            if not isinstance(array, np.ndarray):
-                raise TypeError
-
-            self.array = array
-
-            self._meta = {} if meta is None else meta
-
-            if not isinstance(self._meta, (dict, pd.Series, rasterio.profiles.Profile)):
-                raise TypeError
-
-            self._meta = dict(self._meta)
-
-            if "crs" not in self._meta and "crs" not in kwargs:
-                raise TypeError("Must specify crs when constructing raster from array.")
-
-            self._crs = self._meta.pop("crs", kwargs.pop("crs", None))
-            self.transform = self._meta.pop("transform", kwargs.pop("transform", None))
-
-            # bounds is a property, but can be used to create Affine transform
-            bounds = self._meta.pop("bounds", kwargs.pop("bounds", None))
-
-            if bounds and not self.transform:
-                bounds: tuple = self._bounds_as_tuple(bounds)
-                self.transform = rasterio.transform.from_bounds(
-                    *bounds, self.width, self.height
-                )
-            if not self.transform:
-                raise TypeError(
-                    "Must specify either bounds or transform when constructing raster from array."
-                )
-
-            self.indexes = self._add_indexes_from_array(indexes)
-
         self._raster_has_changed = False
         self._hash = uuid.uuid4()
+
+        # override the above with kwargs
+        self.update(**kwargs)
+
+        if self._path is not None and self.array is not None:
+            raise ValueError("Cannot supply both 'path' and 'array'.")
+        if self._path is None and self.array is None:
+            raise ValueError("Must supply either 'path' or 'array'.")
+
+        attributes = {x for x in self.__dict__.keys()}.difference(set(self.properties))
+
+        if self._path is not None and not self.has_nessecary_attrs(attributes):
+            self.add_meta()
+            self._meta_added = True
+
+        if self._path is not None:
+            return
+
+        if not isinstance(self.array, np.ndarray):
+            raise TypeError
+
+        if not hasattr(self, "crs"):
+            raise TypeError("Must specify crs when constructing raster from array.")
+
+        self.transform = kwargs.get("transform")
+
+        # bounds is a property, so not adding to self
+        bounds = kwargs.get("bounds")
+
+        if bounds and not self.transform:
+            bounds = self._bounds_as_tuple(bounds)
+            self.transform = rasterio.transform.from_bounds(
+                *bounds, self.width, self.height
+            )
+        if not self.transform:
+            raise TypeError(
+                "Must specify either bounds or transform when constructing raster from array."
+            )
+
+        self._band_indexes = self._add_band_indexes_from_array(band_indexes)
 
     @classmethod
     def from_path(
         cls,
         path: str,
         *,
-        indexes: int | list[int] | None = None,
-        nodata: float | int | None = None,
-        dapla: bool = False,
+        band_indexes: int | list[int] | None = None,
         name: str | None = None,
+        dapla: bool = False,
+        **kwargs,
     ):
         """Construct Raster from file path.
 
         Args:
             path: Path to a raster image file.
-            indexes: Band indexes to read. Defaults to None, meaning all.
-            nodata: The value to give to missing values. Defaults to the
-                nodata value of the raster, if it has one.
+            band_indexes: Band indexes to read. Defaults to None, meaning all.
             dapla: Whether to read in Dapla.
             name: Optional name to give the raster.
 
         Returns:
             A Raster instance.
         """
-        return cls(path=path, indexes=indexes, nodata=nodata, dapla=dapla, name=name)
+        return cls(
+            path=path, band_indexes=band_indexes, dapla=dapla, name=name, **kwargs
+        )
 
     @classmethod
     def from_array(
         cls,
         array: np.ndarray,
         *,
-        crs=None,
+        crs=None,  # TODO: greit med None???
         transform: Affine | None = None,
         bounds: tuple | Geometry | None = None,
-        meta: dict | None = None,
         name: str | None = None,
         **kwargs,
     ):
@@ -253,10 +228,7 @@ class Raster(RasterBase):
                 of bounds.
             bounds: Minimum and maximum x and y coordinates. Can be specified instead
                 of transform.
-            meta: dictionary with at least the keys 'crs' and 'transform'/'bounds'.
-                These can be fetched from an existing Raster in the meta attribute.
             name: Optional name to give the raster.
-            **kwargs: Additional keyword arguments passed to the Raster initialiser.
 
         Returns:
             A Raster instance.
@@ -269,7 +241,6 @@ class Raster(RasterBase):
             crs=crs,
             transform=transform,
             bounds=bounds,
-            meta=meta,
             name=name,
             **kwargs,
         )
@@ -280,6 +251,11 @@ class Raster(RasterBase):
         gdf: GeoDataFrame,
         columns: str | list[str],
         res: int,
+        fill=0,
+        all_touched=False,
+        merge_alg=MergeAlg.replace,
+        default_value=1,
+        dtype=None,
         **kwargs,
     ):
         """Construct Raster from a GeoDataFrame.
@@ -287,13 +263,19 @@ class Raster(RasterBase):
         Args:
             gdf: The GeoDataFrame.
             column: The column to be used as values for the array.
+            res: Resolution of the raster in units of gdf's coordinate
+                reference system.
+
         """
         if not isinstance(gdf, GeoDataFrame):
             gdf = to_gdf(gdf)
 
-        crs = gdf.crs or kwargs.get("crs")
+        if "transform" in kwargs:
+            raise TypeError("Unexpected argument 'transform'")
 
-        if crs is None:
+        kwargs["crs"] = gdf.crs or kwargs.get("crs")
+
+        if kwargs["crs"] is None:
             raise TypeError("Must specify crs if the object doesn't have crs.")
 
         if isinstance(res, numbers.Number):
@@ -311,64 +293,80 @@ class Raster(RasterBase):
 
         shape = int(diffx / resx), int(diffy / resy)
         transform = cls.get_transform_from_bounds(gdf, shape)
+        kwargs["transform"] = transform
 
-        if "meta" not in kwargs:
-            meta = {}
-        elif not isinstance(kwargs["meta"], dict):
-            raise TypeError("'meta' must be dict.")
-        else:
-            meta = kwargs.pop("meta")
-
-        meta = {
-            "transform": transform,
-            "crs": gdf.crs,
-        } | meta
-
-        rasterize_kwargs = [
-            "fill",
-            "out",
-            "all_touched",
-            "merge_alg",
-            "default_value",
-            "dtype",
-        ]
-
-        for kwarg in kwargs:
-            if kwarg not in rasterize_kwargs:
-                meta[kwarg] = kwargs.pop(kwarg)
-
-        if isinstance(columns, str):
-            array = features.rasterize(
-                cls._to_geojson_geom_val(gdf, columns),
+        def _rasterize(gdf, col):
+            return features.rasterize(
+                cls._to_geojson_geom_val(gdf, col),
                 out_shape=shape,
                 transform=transform,
-                **kwargs,
+                fill=fill,
+                all_touched=all_touched,
+                merge_alg=merge_alg,
+                default_value=default_value,
+                dtype=dtype,
             )
+
+        # make 2d array
+        if isinstance(columns, str):
+            array = _rasterize(gdf, columns)
+            assert len(array.shape) == 2
             name = kwargs.get("name", columns)
+
+        # 3d array even if single column in list/tuple
         elif hasattr(columns, "__iter__"):
             array = []
             for col in columns:
-                arr = features.rasterize(
-                    cls._to_geojson_geom_val(gdf, col),
-                    out_shape=shape,
-                    transform=transform,
-                    **kwargs,
-                )
+                arr = _rasterize(gdf, col)
                 array.append(arr)
             array = np.array(array)
+            assert len(array.shape) == 3
             name = kwargs.get("name", None)
 
-        return cls.from_array(array=array, meta=meta, name=name)
+        return cls.from_array(array=array, name=name, **kwargs)
 
-    def open(self):
-        pass
+    @classmethod
+    def from_dict(cls, dictionary: dict):
+        """Construct Raster from metadata dict to fastpass the initializer.
 
-    def __enter__(self):
-        return self.open
+        This is the fastest way to create a Raster since a metadata lookup is not
+        needed. The dictionary must have the following keys:
+        - path
+        - band_indexes
 
-    def __exit__(self, *args):
-        if self.src is not None:
-            self.src.close()
+        Other rasterio Profile keys can also be used.
+
+        Args:
+            dictionary: Dictionary with the nessecary and optional information
+                about the raster. This can be fetched from an existing raster with
+                the to_dict method.
+
+        Returns:
+            A Raster instance.
+        """
+
+        cls.verify_dict(dictionary)
+
+        return cls(**dictionary)
+
+    def to_dict(self) -> dict:
+        out = {}
+        for col in self.ALL_ATTRS:
+            try:
+                out[col] = self[col]
+            except AttributeError:
+                pass
+        return out
+
+    def update(self, **kwargs):
+        for key, value in kwargs.items():
+            self.validate_key(key)
+            if key == "indexes":
+                self["band_indexes"] = value
+            if is_property(self, key):
+                self["_" + key] = value
+            else:
+                self[key] = value
 
     @classmethod
     def get_transform_from_bounds(cls, obj, shape: tuple[float, ...]) -> Affine:
@@ -391,7 +389,7 @@ class Raster(RasterBase):
 
         kwargs = self._pop_from_dict(kwargs)
 
-        self._from_path(mask=None, **kwargs)
+        self._read_tif(**kwargs)
 
         return self
 
@@ -409,14 +407,15 @@ class Raster(RasterBase):
         Returns:
             Self, but with the array loaded.
         """
-        print("Hei")
-        print(self._raster_has_changed)
         if self._raster_has_changed or self._array_has_changed():
             raise RasterHasChangedError("clip")
 
         kwargs = self._pop_from_dict(kwargs)
 
-        self._from_path(mask=mask, **kwargs)
+        if not isinstance(mask, GeoDataFrame):
+            mask = self._return_gdf(mask)
+        self._read_with_mask(mask=mask, **kwargs)
+
         self._raster_has_changed = True
 
         return self
@@ -486,13 +485,13 @@ class Raster(RasterBase):
                 import dapla as dp
 
                 fs = dp.FileClient.get_gcs_file_system()
-                with fs.open(self.path, mode="rb") as file:
+                with fs.open(self._path, mode="rb") as file:
                     with rasterio.open(file) as src:
                         aggs = self._zonal_one_poly(
                             src, poly, aggfunc, raster_calc_func, i
                         )
             else:
-                with rasterio.open(self.path) as src:
+                with rasterio.open(self._path) as src:
                     aggs = self._zonal_one_poly(src, poly, aggfunc, raster_calc_func, i)
 
             aggregated = aggregated | aggs
@@ -537,7 +536,28 @@ class Raster(RasterBase):
 
         return aggs
 
-    def write(self, path: str, window=None, colormap=None, **kwargs):
+    def write_tif(self, path: str, window=None, **kwargs):
+        """Write the raster as a tif file with default.
+
+        Multiband arrays will result in a multiband image file.
+
+        Args:
+            path: File path to write to.
+            window: Optional window to clip the image to.
+            **kwargs: To overwrite the default profile parameters.
+        """
+        profile = {
+            "driver": "GTiff",
+            "interleave": "band",
+            "tiled": True,
+            "blockxsize": 256,
+            "blockysize": 256,
+            "compress": "lzw",
+            "dtype": np.uint8,
+        }
+        return self.write(path, window=window, profile=profile, **kwargs)
+
+    def write(self, path: str, window=None, profile=None):
         """Write the raster as a single file.
 
         Multiband arrays will result in a multiband image file.
@@ -546,19 +566,27 @@ class Raster(RasterBase):
             path: File path to write to.
             window: Optional window to clip the image to.
         """
+
         if self.array is None:
             raise AttributeError("The image hasn't been loaded yet.")
-        kwargs = kwargs | {
-            "driver": kwargs.get("driver", "GTiff"),
-            "dtype": str(self.array.dtype),
-            "crs": self.crs,
-            "transform": self.transform,
-            "nodata": self.nodata,
-            "count": self.count,
-            "height": self.height,
-            "width": self.width,
-            "compress": kwargs.get("compress", "LZW"),
-        }
+        if profile and not is_dict_like(profile):
+            raise TypeError
+
+        profile = (
+            {
+                "driver": "GTiff",
+                "dtype": str(self.array.dtype),
+                "crs": self.crs,
+                "transform": self.transform,
+                "nodata": self.nodata,
+                "count": self.count,
+                "height": self.height,
+                "width": self.width,
+                "compress": "compress",
+            }
+            # overwrite with profile
+            | dict(profile or {})
+        )
 
         if self.dapla:
             import dapla as dp
@@ -566,21 +594,14 @@ class Raster(RasterBase):
             fs = dp.FileClient.get_gcs_file_system()
             with fs.open(path, mode="rb") as file:
                 args = (str(file), "w")
-                with rasterio.open(*args, **kwargs) as dst:
-                    self._write(dst, colormap, window)
+                with rasterio.open(*args, **profile) as dst:
+                    self._write(dst, window)
         else:
             args = (str(path), "w")
-            with rasterio.open(*args, **kwargs) as dst:
-                self._write(dst, colormap, window)
+            with rasterio.open(*args, **profile) as dst:
+                self._write(dst, window)
 
-        self.path = str(path)
-
-    @staticmethod
-    def _array_to_geojson(array: np.ndarray, transform: Affine):
-        return [
-            (value, shape(geom))
-            for geom, value in features.shapes(array, transform=transform)
-        ]
+        self._path = str(path)
 
     def to_gdf(self, column: str | list[str] | None = None, mask=None) -> GeoDataFrame:
         """Create a GeoDataFrame from the raster.
@@ -660,7 +681,7 @@ class Raster(RasterBase):
             return self
 
         if self.array is None:
-            self.load()
+            raise ValueError("array must be loaded/clipped before to_crs")
 
         self.array, self.transform = reproject(
             source=self.array,
@@ -681,228 +702,42 @@ class Raster(RasterBase):
             for arr in self.array:
                 self._plot_2d(arr)
 
-    @staticmethod
-    def _plot_2d(array, mask=None) -> None:
-        ax = plt.axes()
-        ax.imshow(array)
-        ax.axis("off")
-        plt.show()
-        plt.close()
+    def add_meta(self):
+        if self._raster_has_changed or self._array_has_changed():
+            raise RasterHasChangedError("add_meta")
 
-    def _add_indexes_from_array(self, indexes):
-        if indexes is not None:
-            return indexes
-        elif indexes is None and len(self.array.shape) == 3:
-            return [x + 1 for x in range(len(self.array))]
-        elif indexes is None and len(self.array.shape) == 2:
-            return 1
-        else:
-            raise ValueError
-
-    def _add_meta(self):
         if self.dapla:
             import dapla as dp
 
             fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self.path, mode="rb") as file:
+            with fs.open(self._path, mode="rb") as file:
                 with rasterio.open(file) as src:
                     self._add_meta_from_src(src)
         else:
-            with rasterio.open(self.path) as src:
+            with rasterio.open(self._path) as src:
                 self._add_meta_from_src(src)
+        return self
 
-    def _add_meta_from_src(self, src):
-        self._shape = src.shape
+    @property
+    def path(self):
+        return self._path
 
-        self.transform = src.transform
-
-        self._height = src.height
-        self._width = src.width
-        self._bounds = src.bounds
-
-        self._meta = dict(src.profile) | dict(src.meta)
-        self.profile = src.profile
-
-        if self.indexes is None:
-            self.indexes = src.indexes
-
-        if self.nodata is None:
-            self.nodata = src.nodata
-
-        self._crs = pyproj.CRS(src.crs)
-
-        try:
-            self.colormap = {}
-            for i in src.indexes:
-                self.colormap[i] = src.colormap(i)
-        except ValueError:
-            pass
-
-    def _get_array_stats(self):
-        _stats = (
-            self.array.shape,
-            np.min(self.array),
-            np.max(self.array),
-            np.mean(self.array),
-            np.std(self.array),
-            np.sum(self.array),
-        )
-
-    def _set_array_stats(self):
-        self._stats = self._get_array_stats()
-
-    def _array_has_changed(self) -> bool:
-        if not hasattr(self, "array") or self.array is None:
-            return False
-
-        if not hasattr(self, "_stats"):
-            self._set_array_stats()
-            return False
-
-        _stats = self._get_array_stats()
-
-        if _stats == self._stats:
-            return False
-
-        self._stats = _stats
-
-        return True
+    @property
+    def band_indexes(self):
+        return self._band_indexes
 
     @property
     def array_list(self):
         return self._to_2d_array_list(self.array)
 
-    @staticmethod
-    def _to_2d_array_list(array: np.ndarray) -> list[np.ndarray]:
-        if len(array.shape) == 2:
-            return [array]
-        elif len(array.shape) == 3:
-            return [array for array in array]
-        else:
-            raise ValueError
-
-    def _from_path(self, mask, **kwargs):
-        if mask is not None:
-            if not isinstance(mask, GeoDataFrame):
-                mask = self._return_gdf(mask)
-            self.array, self.transform = self._read_with_mask(mask=mask, **kwargs)
-        else:
-            self.array = self._read_tif(**kwargs)
-
-    def _read_tif(self, **kwargs) -> np.ndarray:
-        if self.dapla:
-            import dapla as dp
-
-            fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self.path, mode="rb") as file:
-                with rasterio.open(file) as src:
-                    return src.read(
-                        indexes=self.indexes,
-                        **kwargs,
-                    )
-        else:
-            with rasterio.open(self.path) as src:
-                return src.read(indexes=self.indexes, **kwargs)
-
-    def _read_with_mask(self, mask, **kwargs):
-        if isinstance(mask, (GeoDataFrame, GeoSeries)):
-            mask = self._to_geojson(mask)
-
-        if self.dapla:
-            import dapla as dp
-
-            fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self.path, mode="rb") as file:
-                with rasterio.open(file) as src:
-                    array, transform = rast_mask(
-                        dataset=src,
-                        shapes=mask,
-                        indexes=self.indexes,
-                        nodata=self.nodata,
-                        **kwargs,
-                    )
-        else:
-            with rasterio.open(self.path) as src:
-                array, transform = rast_mask(
-                    dataset=src,
-                    shapes=mask,
-                    nodata=self.nodata,
-                    indexes=self.indexes,
-                    **kwargs,
-                )
-
-        return array, transform
-
-    def _write(self, dst, colormap, window):
-        if colormap is None and hasattr(self, "colormap"):
-            colormap = self.colormap
-
-        if colormap is not None:
-            for i in range(len(self.indexes_as_tuple())):
-                dst.write_colormap(i + 1, {int(k): v for k, v in colormap.items()})
-
-        if np.ma.is_masked(self.array):
-            if len(self.array.shape) == 2:
-                return dst.write(
-                    self.array.filled(self.nodata), indexes=1, window=window
-                )
-
-            for i in range(len(self.indexes_as_tuple())):
-                dst.write(
-                    self.array[i].filled(self.nodata),
-                    indexes=i + 1,
-                    window=window,
-                )
-
-        else:
-            if len(self.array.shape) == 2:
-                return dst.write(self.array, indexes=1, window=window)
-
-            for i, idx in enumerate(self.indexes_as_tuple()):
-                dst.write(self.array[i], indexes=idx, window=window)
-
-    @staticmethod
-    def _to_geojson(gdf: GeoDataFrame) -> list[dict]:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning)
-            return [x["geometry"] for x in loads(gdf.to_json())["features"]]
-
-    @staticmethod
-    def _to_geojson_geom_val(gdf: GeoDataFrame, column: str) -> list[dict]:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning)
-            return [
-                (feature["geometry"], val)
-                for val, feature in zip(gdf[column], loads(gdf.to_json())["features"])
-            ]
-
-    def _max(self):
-        if self.array is None:
-            return np.nan
-        return np.max(self.array)
-
-    def _min(self):
-        if self.array is None:
-            return np.nan
-        return np.min(self.array)
-
-    def _mean(self):
-        if self.array is None:
-            return np.nan
-        return np.mean(self.array)
-
     @property
-    def meta(self):
-        if not hasattr(self, "_meta"):
-            self._meta = {}
-        return self._meta | {
-            "crs": self.crs,
-            "res": self.res,
-            "height": self.height,
-            "width": self.width,
-            "shape": self.shape,
-            "bounds": self.bounds,
-        }
+    def dtype(self):
+        return self.array.dtype
+
+    @dtype.setter
+    def dtype(self, new_dtype):
+        self.array = self.array.astype(new_dtype)
+        return self.array.dtype
 
     def get_coords(self) -> np.ndarray:
         xs = np.arange(self.bounds[0], self.bounds[2], self.res[0])
@@ -910,9 +745,13 @@ class Raster(RasterBase):
 
     @property
     def crs(self):
-        if hasattr(self, "_warped_crs"):
+        try:
             return self._warped_crs
-        return self._crs
+        except AttributeError:
+            try:
+                return self._crs
+            except AttributeError:
+                return None
 
     @property
     def res(self) -> tuple[float, float]:
@@ -947,16 +786,16 @@ class Raster(RasterBase):
                 return self.array.shape[0]
             if len(self.array.shape) == 2:
                 return 1
-        if not hasattr(self.indexes, "__iter__"):
+        if not hasattr(self._band_indexes, "__iter__"):
             return 1
-        return len(self.indexes)
+        return len(self._band_indexes)
 
     @property
     def shape(self):
         """Shape that is consistent with the array, whether it is loaded or not."""
         if self.array is not None:
             return self.array.shape
-        if self.indexes is None or hasattr(self.indexes, "__iter__"):
+        if self._band_indexes is None or hasattr(self._band_indexes, "__iter__"):
             return self.count, self.width, self.height
         return self.width, self.height
 
@@ -968,7 +807,16 @@ class Raster(RasterBase):
     def total_bounds(self) -> tuple[float, float, float, float]:
         return self.bounds
 
-    def indexes_as_tuple(self) -> tuple[int, ...]:
+    @classmethod
+    def has_nessecary_attrs(cls, dict_like):
+        """Check if Raster init got enough kwargs to not need to read src."""
+        try:
+            cls.verify_dict(dict_like)
+            return True
+        except AttributeError:
+            return False
+
+    def band_indexes_as_tuple(self) -> tuple[int, ...]:
         if len(self.shape) == 2:
             return (1,)
         return tuple(i + 1 for i in range(self.shape[0]))
@@ -990,13 +838,153 @@ class Raster(RasterBase):
         else:
             return copy(self)
 
-    def _pop_from_dict(self, the_dict) -> dict:
+    @staticmethod
+    def _plot_2d(array, mask=None) -> None:
+        ax = plt.axes()
+        ax.imshow(array)
+        ax.axis("off")
+        plt.show()
+        plt.close()
+
+    def _add_band_indexes_from_array(self, band_indexes):
+        if band_indexes is not None:
+            return band_indexes
+        elif len(self.array.shape) == 3:
+            return [x + 1 for x in range(len(self.array))]
+        elif len(self.array.shape) == 2:
+            return 1
+        else:
+            raise ValueError
+
+    def _add_meta_from_src(self, src):
+        self.transform = src.transform
+        self._height = src.height
+        self._width = src.width
+
+        if self._band_indexes is None:
+            self._band_indexes = src.indexes
+
+        if not hasattr(self, "nodata"):
+            self.nodata = src.nodata
+
+        try:
+            self._crs = pyproj.CRS(src.crs)
+        except pyproj.exceptions.CRSError:
+            self._crs = None
+
+    def _get_array_stats(self):
+        return (
+            self.array.shape,
+            np.min(self.array),
+            np.max(self.array),
+            np.mean(self.array),
+            np.std(self.array),
+            np.sum(self.array),
+        )
+
+    def _set_array_stats(self):
+        self._stats = self._get_array_stats()
+
+    def _array_has_changed(self) -> bool:
+        if not hasattr(self, "array") or self.array is None:
+            return False
+
+        if not hasattr(self, "_stats"):
+            self._set_array_stats()
+            return False
+
+        _stats = self._get_array_stats()
+
+        if _stats == self._stats:
+            return False
+
+        self._stats = _stats
+
+        return True
+
+    @staticmethod
+    def _to_2d_array_list(array: np.ndarray) -> list[np.ndarray]:
+        if len(array.shape) == 2:
+            return [array]
+        elif len(array.shape) == 3:
+            return [array for array in array]
+        else:
+            raise ValueError
+
+    def _read_tif(self, **kwargs) -> None:
+        if self.dapla:
+            import dapla as dp
+
+            fs = dp.FileClient.get_gcs_file_system()
+            with fs.open(self._path, mode="rb") as file:
+                with rasterio.open(file) as src:
+                    self._add_meta_from_src(src)
+                    self.array = src.read(
+                        indexes=self.band_indexes,
+                        **kwargs,
+                    )
+        else:
+            with rasterio.open(self._path) as src:
+                self._add_meta_from_src(src)
+                self.array = src.read(indexes=self.band_indexes, **kwargs)
+
+    def _read_with_mask(self, mask, **kwargs):
+        if isinstance(mask, (GeoDataFrame, GeoSeries)):
+            mask = self._to_geojson(mask)
+
+        if self.dapla:
+            import dapla as dp
+
+            fs = dp.FileClient.get_gcs_file_system()
+            with fs.open(self._path, mode="rb") as file:
+                with rasterio.open(file) as src:
+                    self._add_meta_from_src(src)
+                    self.array, self.transform = rast_mask(
+                        dataset=src,
+                        shapes=mask,
+                        indexes=self.band_indexes,
+                        nodata=self.nodata,
+                        **kwargs,
+                    )
+        else:
+            with rasterio.open(self._path) as src:
+                self._add_meta_from_src(src)
+                self.array, self.transform = rast_mask(
+                    dataset=src,
+                    shapes=mask,
+                    nodata=self.nodata,
+                    indexes=self.band_indexes,
+                    **kwargs,
+                )
+
+    def _write(self, dst, window):
+        if np.ma.is_masked(self.array):
+            if len(self.array.shape) == 2:
+                return dst.write(
+                    self.array.filled(self.nodata), indexes=1, window=window
+                )
+
+            for i in range(len(self.band_indexes_as_tuple())):
+                dst.write(
+                    self.array[i].filled(self.nodata),
+                    indexes=i + 1,
+                    window=window,
+                )
+
+        else:
+            if len(self.array.shape) == 2:
+                return dst.write(self.array, indexes=1, window=window)
+
+            for i, idx in enumerate(self.band_indexes_as_tuple()):
+                dst.write(self.array[i], indexes=idx, window=window)
+
+    def _pop_from_dict(self, dictionary) -> dict:
         for key in self.__dict__.keys():
-            if key in the_dict:
-                if hasattr(self, key) and isinstance(getattr(self, key), property):
+            if key in dictionary:
+                if is_property(self, key):
                     continue
-                self[key] = the_dict.pop(key)
-        return the_dict
+                self[key] = dictionary.pop(key)
+        return dictionary
 
     def _return_gdf(self, obj) -> GeoDataFrame:
         if isinstance(obj, str) and not is_wkt(obj):
@@ -1008,6 +996,28 @@ class Raster(RasterBase):
             return to_gdf(shapely.box(*bounds), crs=self.crs)
         else:
             return to_gdf(obj, crs=self.crs)
+
+    @staticmethod
+    def _to_geojson(gdf: GeoDataFrame) -> list[dict]:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            return [x["geometry"] for x in loads(gdf.to_json())["features"]]
+
+    @staticmethod
+    def _to_geojson_geom_val(gdf: GeoDataFrame, column: str) -> list[dict]:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            return [
+                (feature["geometry"], val)
+                for val, feature in zip(gdf[column], loads(gdf.to_json())["features"])
+            ]
+
+    @staticmethod
+    def _array_to_geojson(array: np.ndarray, transform: Affine):
+        return [
+            (value, shape(geom))
+            for geom, value in features.shapes(array, transform=transform)
+        ]
 
     @staticmethod
     def _bounds_as_tuple(obj) -> tuple[float, float, float, float]:
@@ -1066,7 +1076,7 @@ class Raster(RasterBase):
         shp = ", ".join([str(x) for x in shape])
         res = int(self.res[0])
         crs = str(self._crs_to_string(self.crs))
-        path = str(self.path)
+        path = str(self._path)
         return f"{self.__class__.__name__}(shape=({shp}), res={res}, crs={crs}, path={path})"
 
     def __setattr__(self, __name: str, __value) -> None:
