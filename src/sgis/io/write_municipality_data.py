@@ -1,13 +1,22 @@
-import os
 from pathlib import Path
 from typing import Callable
 
-import dapla as dp
 import pandas as pd
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 
-import sgis as sg
+
+def _validate_data(data: str | list[str]) -> str:
+    if isinstance(data, (str, Path)):
+        return data
+    if hasattr(data, "__iter__") and len(data) == 1:
+        return data[0]
+    elif not isinstance(data, GeoDataFrame):
+        raise TypeError("'data' Must be a file path or a GeoDataFrame. Got", type(data))
+
+
+def _out_path(out_folder, muni, file_type):
+    return Path(out_folder) / f"{muni}.{file_type.strip('.')}"
 
 
 def write_municipality_data(
@@ -18,13 +27,7 @@ def write_municipality_data(
     file_type: str = "parquet",
     func: Callable | None = None,
 ) -> None:
-    if not isinstance(data, (str, Path)):
-        if hasattr(data, "__iter__") and len(data) == 1:
-            data = data[0]
-        elif not isinstance(data, GeoDataFrame):
-            raise TypeError(
-                "'data' Must be a file path or a GeoDataFrame. Got", type(data)
-            )
+    data = _validate_data(data)
 
     if isinstance(data, (str, Path)):
         gdf = sg.read_geopandas(str(data))
@@ -43,7 +46,7 @@ def write_municipality_data(
         if not len(gdf_muni):
             continue
 
-        out = Path(out_folder) / f"{muni}.{file_type}"
+        out = _out_path(out_folder, muni, file_type)
 
         sg.write_geopandas(gdf_muni, out)
 
@@ -56,13 +59,7 @@ def write_neighbor_municipality_data(
     file_type: str = "parquet",
     func: Callable | None = None,
 ) -> None:
-    if not isinstance(data, (str, Path)):
-        if hasattr(data, "__iter__") and len(data) == 1:
-            data = data[0]
-        elif not isinstance(data, GeoDataFrame):
-            raise TypeError(
-                "'data' Must be a file path or a GeoDataFrame. Got", type(data)
-            )
+    data = _validate_data(data)
 
     if isinstance(data, (str, Path)):
         gdf = sg.read_geopandas(str(data))
@@ -86,31 +83,9 @@ def write_neighbor_municipality_data(
         if func is not None:
             gdf_neighbor = func(gdf_neighbor)
 
-        out = Path(out_folder) / f"{muni}.{file_type.strip('.')}"
+        out = _out_path(out_folder, muni, file_type)
 
         sg.write_geopandas(gdf_neighbor, out)
-
-
-def in_jupyter():
-    try:
-        get_ipython
-        return True
-    except NameError:
-        return False
-
-
-def exists(path: str) -> bool:
-    """Returns True if the path exists, and False if it doesn't.
-
-    Works in Dapla and outside of Dapla.
-    """
-    try:
-        dp.details(path)
-        return True
-    except FileNotFoundError:
-        return False
-    except Exception:
-        return os.path.exists(path)
 
 
 def fix_missing_muni_numbers(gdf, municipalities, muni_number_col):

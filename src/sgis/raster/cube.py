@@ -260,7 +260,6 @@ class GeoDataCube(RasterBase):
         return cls(rasters, multiprocessingmapper=multiprocessingmapper)
 
     def to_dict(self) -> dict[int, dict]:
-        """TODO: Trengs???"""
         return {i: r.to_dict() for i, r in self.df["raster"].items()}
 
     def update_df(self):

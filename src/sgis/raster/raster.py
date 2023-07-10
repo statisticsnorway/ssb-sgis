@@ -208,7 +208,7 @@ class Raster(RasterBase):
         cls,
         array: np.ndarray,
         *,
-        crs=None,  # TODO: greit med None???
+        crs=None,
         transform: Affine | None = None,
         bounds: tuple | Geometry | None = None,
         name: str | None = None,

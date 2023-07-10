@@ -4,14 +4,11 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sized
 
-import dapla as dp
 import numpy as np
-import pandas as pd
 from geopandas import GeoDataFrame
-from pandas import DataFrame
 
 from ..helpers import dict_zip, dict_zip_intersection
-from ..io.dapla import exists, read_geopandas
+from ..io.dapla import read_geopandas
 from ..io.write_municipality_data import (
     write_municipality_data,
     write_neighbor_municipality_data,
