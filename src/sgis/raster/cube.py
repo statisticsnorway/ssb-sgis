@@ -1,10 +1,19 @@
 import functools
 import glob
 import itertools
+import multiprocessing
+import re
 import uuid
+import warnings
 from copy import copy, deepcopy
-from pathlib import Path
-from typing import Any, Callable
+from pathlib import Path, WindowsPath
+from typing import Any, Callable, Iterable
+
+
+try:
+    import dapla as dp
+except ModuleNotFoundError:
+    pass
 
 import numpy as np
 import pandas as pd
@@ -14,20 +23,47 @@ from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame, Series
 from pandas.api.types import is_list_like
+from rasterio import merge
 from shapely import Geometry
 
+from ..geopandas_tools.bounds import is_bbox_like, to_bbox
+from ..geopandas_tools.general import to_shapely
 from ..geopandas_tools.to_geodataframe import to_gdf
 from ..io.dapla import check_files
 from ..multiprocessing.multiprocessingmapper import MultiProcessingMapper
 from .base import RasterBase
+from .cubechain import CubeChain
 from .elevationraster import ElevationRaster
-from .raster import Raster
+from .raster import Raster, get_numpy_func
 
 
 CANON_RASTER_TYPES = {
     "Raster": Raster,
     "ElevationRaster": ElevationRaster,
 }
+
+CUBE_DF_NAME = "cube_df.parquet"
+
+
+# class RandomCubeSampler:
+class RandomCubeSample:
+    def __init__(self, cube, n):
+        self.cube = cube
+        self.samples
+
+    @property
+    def index(self):
+        pass
+
+    @property
+    def arrays(self):
+        pass
+
+    def __iter__(self):
+        return iter(self.samples)
+
+    def __len__(self):
+        return len(self.samples)
 
 
 class BaseCubeTemplate:
@@ -90,96 +126,136 @@ class Sentinel2:
 
 
 class GeoDataCube(RasterBase):
-
-    """
-    'load' will read all the images as numpy ndarrays.
-    'clip' reads only the part of the images in the mask extent.
-    'add_meta' will load all the
-    """
+    _chain = None
+    _executing = False
 
     def __init__(
         self,
-        rasters: Raster | list[Raster] | None = None,
-        index=None,
-        df=None,
-        multiprocessingmapper: MultiProcessingMapper | None = None,
-        copy=False,
-        dapla=False,
+        data: Raster | Iterable[Raster] | None = None,
+        df: DataFrame | None = None,
+        copy: bool = False,
+        dapla: bool = False,
     ) -> None:
-        if isinstance(rasters, Raster):
-            rasters = [rasters]
-        if not is_list_like(rasters) and all(isinstance(r, Raster) for r in rasters):
-            raise TypeError("'rasters' must be a Raster instance or an iterable.")
+        self._arrays = None
+        self._crs = None
+        self._hash = uuid.uuid4()
+
+        # so this can be set on class as well as instance
+        if not hasattr(self, "dapla"):
+            self.dapla = dapla
+
+        if data is None:
+            self._df = self.get_cube_template()
+            return
+
+        if isinstance(data, GeoDataCube):
+            for key, value in data.__dict__.items():
+                self[key] = value
+            return
+
+        if isinstance(data, Raster):
+            data = [data]
+        if not is_list_like(data) and all(isinstance(r, Raster) for r in data):
+            raise TypeError("'data' must be a Raster instance or an iterable.")
 
         if copy:
-            rasters = [raster.copy() for raster in rasters]
+            data = [raster.copy() for raster in data]
         else:
             # take a copy only if there are gdfs with the same id
-            if sum(r1 is r2 for r1 in rasters for r2 in rasters) > len(rasters):
-                rasters = [raster.copy() for raster in rasters]
+            if sum(r1 is r2 for r1 in data for r2 in data) > len(data):
+                data = [raster.copy() for raster in data]
 
-        if df is None:
-            # concat rows
-            df = self.get_cube_template()
-            self._df = pd.concat([df, pd.DataFrame({"raster": rasters})])
+        if df is not None and len(df) != len(data):
+            raise ValueError("'df' must be same length as data.")
 
-        elif len(df) != len(rasters):
-            raise ValueError("'df' must be same length as rasters.")
+        self._df = self.get_cube_template(data)
+
+        """elif len(df) != len(data):
+            raise ValueError("'df' must be same length as data.")
         else:
             # concat columns
             self._df = pd.concat(
-                [df, pd.DataFrame({"raster": rasters}, index=df.index)], axis=1
-            )
+                [df, pd.DataFrame({"raster": data}, index=df.index)], axis=1
+            )"""
 
-        crs = list({r.crs for r in self._df["raster"]})
-        if len(crs) > 1:
-            raise ValueError("'crs' mismatch.")
-        elif len(crs) == 0:
-            self._crs = None
-        else:
-            self._crs = crs[0]
-
-        if multiprocessingmapper:
-            self.validate_mapper(multiprocessingmapper)
-
-        self.mapper = multiprocessingmapper
-
-        self._hash = uuid.uuid4()
-
-    def _get_crs(self):
-        crs = list({r.crs for r in self._df["raster"]})
-        if len(crs) > 1:
-            raise ValueError("'crs' mismatch.")
-        return crs[0]
+        self._crs = self._get_crs()
 
     @classmethod
     def from_root(
         cls,
         root: str | Path,
         *,
-        raster_dtype: Raster = Raster,
-        contains: str | None = None,
-        endswith: str | None = None,
-        regex: str | None = None,
         band_indexes: int | list[int] | None = None,
-        nodata: float | int | None = None,
+        raster_dtype: Raster = Raster,
+        check_for_df: bool = True,
+        cube_names="folder",
+        contains: str | None = None,
+        endswith: str = ".tif",
+        regex: str | None = None,
         template: Any = BaseCubeTemplate,
         dapla: bool = False,
-        name: str | None = None,
         **kwargs,
     ):
+        kwargs = {
+            "dapla": dapla,
+            "raster_dtype": raster_dtype,
+        } | kwargs
         if dapla:
-            files = check_files(root, contains=contains)["path"]
+            files = list(check_files(root, contains=contains)["path"])
         else:
             files = [file for file in glob.glob(str(Path(root)) + "/*")]
-            if contains:
-                files = [file for file in files if contains in file]
-            if endswith:
-                files = [file for file in files if file.endswith(endswith)]
 
-        return cls.from_paths(
-            files, template=template, raster_dtype=raster_dtype, **kwargs
-        )
+        dfs = [file for file in files if file.endswith(CUBE_DF_NAME)]
+
+        if contains:
+            files = [file for file in files if contains in file]
+        if endswith:
+            files = [file for file in files if file.endswith(endswith)]
+        if regex:
+            regex = re.compile(regex)
+            files = [file for file in files if re.search(regex, file)]
+
+        if not files:
+            raise ValueError("Found no files matching the pattern.")
+
+        if not check_for_df or not len(dfs):
+            return cls.from_paths(files, band_indexes=band_indexes, **kwargs)
+
+        folders_with_df = {Path(file).parent for file in dfs if file}
+        if len(dfs) != len(folders_with_df):
+            raise ValueError(
+                "More than one cube_df.parquet file found in at least one folder."
+            )
+
+        cubes = [cls.from_df(df, **kwargs) for df in dfs]
+
+        files_in_folders_without_df = [
+            file for file in files if Path(file).parent not in folders_with_df
+        ]
+
+        if files_in_folders_without_df:
+            cubes = cubes + [
+                cls.from_paths(
+                    files_in_folders_without_df, band_indexes=band_indexes, **kwargs
+                )
+            ]
+
+        if len(cubes) == 1:
+            return cubes[0]
+
+        cube = concat_cubes(cubes, ignore_index=True)
+
+        def get_folder(path):
+            try:
+                return Path(Path(path).parent).stem
+            except TypeError:
+                return None
+
+        if cube_names == "folder":
+            cube.df["cube_name"] = [get_folder(path) for path in cube.df["path"]]
+
+        cube._from_df = True
+        return cube
 
     @classmethod
     def from_paths(
@@ -187,11 +263,9 @@ class GeoDataCube(RasterBase):
         paths: list[str | Path],
         *,
         raster_dtype: Raster = Raster,
-        band_indexes: int | list[int] | None = None,
-        nodata: float | int | None = None,
+        band_indexes: int | tuple[int] | None = None,
         dapla: bool = False,
         template: Any = BaseCubeTemplate,
-        multiprocessingmapper: MultiProcessingMapper | None = None,
         **kwargs,
     ):
         if not isinstance(raster_dtype, type):
@@ -205,101 +279,98 @@ class GeoDataCube(RasterBase):
         ):
             raise TypeError
 
-        if multiprocessingmapper:
-            cls.validate_mapper(multiprocessingmapper)
-            orig_processes = multiprocessingmapper.processes
-            if multiprocessingmapper.processes > len(paths) / 50:
-                multiprocessingmapper.processes = len(paths) / 50
-            rasters = multiprocessingmapper.map(
-                _init_raster_from_path,
-                paths,
-                raster_dtype=raster_dtype,
+        rasters = [
+            raster_dtype.from_path(
+                path,
+                band_indexes=band_indexes,
                 dapla=dapla,
-                **kwargs,
             )
-            multiprocessingmapper.processes = orig_processes
-
-        else:
-            rasters = [
-                raster_dtype.from_path(
-                    path, band_indexes=band_indexes, nodata=nodata, dapla=dapla
-                )
-                for path in paths
-            ]
-        df = DataFrame(
-            {
-                "name": [r.name for r in rasters],
-                "path": paths,
-                # "band_indexes": [x.band_indexes_as_tuple() for x in rasters],
-            }
-        )
+            for path in paths
+        ]
 
         return cls(
             rasters,
-            df=df,
-            multiprocessingmapper=multiprocessingmapper,
             dapla=dapla,
             **kwargs,
         )
 
     @classmethod
-    def from_gdfs(cls, gdfs: list[GeoDataFrame]):
-        if isinstance(gdfs, GeoDataFrame):
-            gdfs = [gdfs]
-        if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
+    def from_gdf(
+        cls,
+        gdfs: GeoDataFrame | list[GeoDataFrame],
+        tilesize: int,
+    ):
+        if isinstance(gdf, GeoDataFrame):
+            gdf = [gdf]
+        if not all(isinstance(frame, GeoDataFrame) for frame in gdf):
             raise TypeError
 
     @classmethod
     def from_df(
-        cls, df: DataFrame, raster_dtype: Raster = Raster, multiprocessingmapper=None
+        cls,
+        df: DataFrame | str | Path,
+        raster_dtype: Raster = Raster,
+        dapla: bool = False,
     ):
-        raster_dtype = cls.get_raster_type(raster_dtype)
+        raster_dtype = cls.get_raster_dtype(raster_dtype)
 
-        rasters = [raster_dtype.from_dict(dict(row[1])) for row in df.iterrows()]
+        if isinstance(df, (str, Path)):
+            df = dp.read_pandas(df) if dapla else pd.read_parquet(df)
 
-        return cls(rasters, multiprocessingmapper=multiprocessingmapper)
+        if isinstance(df, DataFrame):
+            rasters = [raster_dtype.from_dict(dict(row[1])) for row in df.iterrows()]
+            cube = cls(rasters, dapla=dapla)
+            cube._from_df = True
+            return cube
 
-    def to_dict(self) -> dict[int, dict]:
-        return {i: r.to_dict() for i, r in self.df["raster"].items()}
+        elif all(isinstance(x, (str, Path, DataFrame)) for x in df):
+            names = [cls.get_name(x) for x in df]
+            cubes = [cls.from_df(x, raster_dtype=raster_dtype, dapla=dapla) for x in df]
+            cube = concat_cubes(cubes, cube_index=names, ignore_index=True)
+            cube._from_df = True
+            return cube
+
+        raise TypeError("df must be DataFrame or file path to a parquet file.")
+
+    def update_rasters(self, *args):
+        if not all(isinstance(arg, str) for arg in args):
+            raise TypeError("Arguments must be strings.")
+        if not all(arg in self.df for arg in args):
+            raise KeyError
+
+        rasters = self._df["raster"]
+        updates = self._df[[*args]]
+
+        self._df["raster"] = [
+            raster.update(dict(row[1]))
+            for raster, row in zip(rasters, updates.iterrows())
+        ]
+
+        return self
 
     def update_df(self):
         df = self._df
-        # df["__i"] = range(len(df))
 
-        for col in self.BASE_CUBE_COLS:
+        # for col in ["width", "height", "transform", "bounds", "path", "name"]:
+        for col in ["bounds", "path", "name"]:
             try:
-                new_values = {
-                    i: getattr(row["raster"], col) for i, row in df.iterrows()
-                }
+                new_values = [getattr(row["raster"], col) for _, row in df.iterrows()]
             except AttributeError as e:
                 if col not in str(e):
                     raise e
             df[col.lstrip("_")] = new_values
-            """for i in df["__i"]:
-                raster: Raster = df.loc[df["__i"] == i, "raster"].iloc[0]
-                try:
-                    # df.loc[df["__i"] == i, col] = getattr(raster, col)
-                    df.loc[df["__i"] == i, col] = {i: getattr(raster, col)}
-                except AttributeError:
-                    pass"""
 
-        self._df = df  # .drop("__i", axis=1)
+        for col in [
+            "band_indexes",
+            "crs",
+        ]:
+            df[col] = getattr(self, col)
+
+        self._df = df
         return self
 
-    def to_df(self, path: str | Path):
-        self.update_df()
-        df = self.df.drop("raster", axis=1)
-        if self.dapla:
-            dp.write_pandas(df, path)
-        elif ".parquet" in path:
-            df.to_parquet(path)
-        elif ".csv" in path:
-            df.to_csv(path)
-        elif ".json" in path:
-            df.to_json(path)
-
     @staticmethod
-    def get_raster_type(raster_dtype):
+    def get_raster_dtype(raster_dtype):
         if not isinstance(raster_dtype, type):
             if isinstance(raster_dtype, str) and raster_dtype in CANON_RASTER_TYPES:
                 return CANON_RASTER_TYPES[raster_dtype]
@@ -312,12 +383,24 @@ class GeoDataCube(RasterBase):
         return raster_dtype
 
     def astype(self, dtype: type):
-        dtype = self.get_raster_type(dtype)
+        self._write_in_chain()
+        if self._chain is not None and not self._executing:
+            self._chain.append_method("astype", dtype=dtype)
+            return self
 
-        for i in self._df["_ii"]:
-            pass
+        dtype = self.get_raster_dtype(dtype)
+
+        self._df["raster"] = [dtype(raster) for raster in self._df["raster"]]
+
+        return self
 
     def astype_array(self, dtype):
+        self.check_for_array("dtype can be set as a parameter in load and clip.")
+        self._write_in_chain()
+        if self._chain is not None:
+            self._chain.append_array_func(_array_astype_func, dtype=dtype)
+            return self
+
         self._delegate_array_func(_array_astype_func, dtype=dtype)
 
     def zonal(
@@ -327,6 +410,7 @@ class GeoDataCube(RasterBase):
         raster_calc_func: Callable | None = None,
         dropna: bool = True,
     ) -> GeoDataFrame:
+        self._check_not_chain()
         kwargs = {
             "polygons": polygons,
             "aggfunc": aggfunc,
@@ -348,15 +432,74 @@ class GeoDataCube(RasterBase):
             out.append(gdf)
         return pd.concat(out, ignore_index=True)
 
+    def chain(self, *, processes: int):
+        """TODO: navn pool? multiprocessing_chain?"""
+        if self._chain is not None and len(self._chain):
+            warnings.warn("A chain is already started. Starting a new one.")
+        self.mapper = MultiProcessingMapper(processes=processes)
+        self.processes = processes
+        self._chain = CubeChain()
+        return self
+
+    def execute(self):
+        if self._chain is None:
+            raise ValueError("Execution chain hasn't been created.")
+        if not self._chain:
+            raise ValueError("Execution chain is of length 0.")
+
+        self._executing = True
+
+        with multiprocessing.get_context("spawn").Pool(self.processes) as pool:
+            for func, _, typ, kwargs in self._chain:
+                if typ == "raster":
+                    func = functools.partial(func, **kwargs)
+                    self._df["raster"] = pool.map(func, self._df["raster"])
+                elif typ == "array":
+                    func = functools.partial(func, **kwargs)
+                    self.arrays = pool.map(func, self.arrays)
+                elif hasattr(self, func):
+                    self = getattr(self, func)(**kwargs)
+                else:
+                    raise ValueError
+
+        self.update_df()
+        self._chain = None
+        self._executing = False
+        return self
+
+    def map(self, func: Callable, **kwargs):
+        """Maps each raster array to a function.
+
+        The function must take a numpu array as first positional argument,
+        and return a single numpy array. The function should be defined in
+        the leftmost indentation level. If in Jupyter, the function also
+        have to be defined in and imported from another file.
+        """
+        self.check_for_array()
+        self._write_in_chain()
+        if self._chain is not None:
+            try:
+                self.mapper.validate_execution(func)
+            except AttributeError:
+                pass
+            self._chain.append_array_func(func, **kwargs)
+            return self
+        return self._delegate_array_func(func, **kwargs)
+
     def load(self, **kwargs):
+        # TODO til felles laveste res???
+        self.check_not_array()
+        if self._chain:
+            self._chain.append_raster_func(_load_func, **kwargs)
+            return self
         self._delegate_raster_func(_load_func, **kwargs)
         self.update_df()
         return self
 
-    def map(self, func, **kwargs):
-        return self._delegate_array_func(func, **kwargs)
+    def clip(self, mask, crop=True, **kwargs):
+        # TODO til felles laveste res???
+        self.check_not_array()
 
-    def clip(self, mask, **kwargs):
         if (
             hasattr(mask, "crs")
             and mask.crs
@@ -365,199 +508,140 @@ class GeoDataCube(RasterBase):
             raise ValueError("crs mismatch.")
 
         # first remove rows not within mask
-        clipped = self.boxes.clip(mask)
-        self._df = self._df.loc[self._df.index.isin(clipped.index)]
+        self._df = self._df.loc[self.boxes.isin(to_shapely(mask))]
 
         if not len(self._df):
             return self
 
-        self._delegate_raster_func(_clip_func, mask=mask, **kwargs)
+        if self._chain is not None:
+            self._chain.append_raster_func(_clip_func, mask=mask, crop=crop, **kwargs)
+            return self
+
+        self._delegate_raster_func(_clip_func, mask=mask, crop=crop, **kwargs)
         self.update_df()
+
         return self
 
-    def write_df(self, path: str):
-        """Write the DataFrame of the Cube with all metadata but not the rastercolumn."""
-        pass
+    def sample(self, size=256, length=1, mask=None, crop=True, **kwargs):
+        self.check_not_array()
 
-    def write(self, folder: str):
-        """Writes all arrays as tif files in given folder and updates path attribute.
+        if self._chain:
+            self._chain.append_method("sample", **kwargs)
+
+        if mask is not None:
+            points = GeoSeries(self.unary_union).clip(mask).sample_points(size=length)
+        else:
+            points = GeoSeries(self.unary_union).sample_points(size=length)
+        buffered = points.buffer(size / self.res[0])
+        boxes = to_gdf(
+            [shapely.box(*arr) for arr in buffered.bounds.values], crs=self.crs
+        )
+
+        return self.clip(boxes, crop=crop, **kwargs)
+
+    def write(self, folder: str, **kwargs):
+        """Writes arrays as tif files and df with file info.
 
         This method should be run after the rasters have been clipped, merged or
         its array values have been recalculated.
         """
-        if self._df["name"].isna().any():
-            raise ValueError("")
-        self._df["__i"] = range(len(self._df))
-        filt = lambda x: x["__i"] == i
-        for i, raster in zip(self._df["__i"], self._df["raster"]):
-            path = str(Path(folder) / Path(raster.name).stem) + ".tif"
-            values = self.get_raster_dict(self._df[filt])
-            raster.update(**values)
-            raster.write(path)
-            raster.path = path
-            self._df.loc[filt, "path"] = path
-        self._df = self._df.drop("__i", axis=1)
+        self.check_for_array()
 
-    def to_gdf(self, ignore_index: bool = False, mask=None):
+        if self._df["name"].isna().any():
+            raise ValueError(
+                "Cannot have NA values in the 'name' column when writing files."
+            )
+
+        self.verify_cube_df(self._df)
+
+        if self._chain is not None and not self._executing:
+            self._chain.append_raster_func(_write_func, folder=folder, **kwargs)
+            return self
+
+        # the only two attributes where cube.df is to be trusted over Raster
+        self.update_rasters("band_indexes", "path")
+
+        self = self._delegate_raster_func(_write_func, folder=folder, **kwargs)
+        self.update_df()
+
+        df = self._prepare_df_for_parquet()
+
+        if self.dapla:
+            dp.write_pandas(df, Path(folder) / CUBE_DF_NAME)
+        else:
+            df.drop("raster", axis=1).to_parquet(Path(folder) / CUBE_DF_NAME)
+
+        return self
+
+    def _prepare_df_for_parquet(self):
+        df = self._df.drop(columns=["raster"])
+        df["crs"] = df["crs"].astype(str)
+        try:
+            df["transform"] = df["transform"].apply(tuple)
+        except KeyError:
+            pass
+        if not all(col in df for col in self.BASE_CUBE_COLS + ["bounds"]):
+            raise ValueError(
+                f"Must have all columns {', '.join(self.BASE_CUBE_COLS + ['bounds'])}"
+            )
+        return df
+
+    def to_gdf(self, ignore_index: bool = False, concat: bool = True):
+        self.check_for_array()
         gdf_list = []
         for i, raster in enumerate(self._df["raster"]):
             row = self._df.iloc[[i]].drop("raster", axis=1)
-            gdf = raster.to_gdf(mask=mask)
-            gdf.index = np.repeat(i, len(gdf))
+            gdf = raster.to_gdf()
+            idx = row.index[0]
+            gdf.index = np.repeat(idx, len(gdf))
             for col in row.columns:
-                gdf[col] = row[col].iloc[0]
+                gdf[col] = {idx: row[col].iloc[0]}
             gdf_list.append(gdf)
+        if not concat:
+            return gdf_list
         return GeoDataFrame(
             pd.concat(gdf_list, ignore_index=ignore_index),
             geometry="geometry",
             crs=self.crs,
         )
 
-    def filter_by_bounds(self, other):
+    def filter_by_location(self, other):
         self._df = self._df[self.boxes.interesects(other)]
         return self
 
     def intersects(self, other):
+        self._check_not_chain()
         return self.boxes.intersects(other)
 
     def to_crs(self, crs):
-        self = self._delegate_raster_func(_to_crs_func, crs=crs)
+        if self._chain is not None:
+            self._chain.append_raster_func(_to_crs_func, crs=crs)
+            return self
+        self.update_df()
         self._warped_crs = crs
         return self
 
     def set_crs(self, crs, allow_override: bool = False):
+        if self._chain is not None:
+            self._chain.append_raster_func(
+                _set_crs_func, crs=crs, allow_override=allow_override
+            )
+            return self
         self = self._delegate_raster_func(
             _set_crs_func, crs=crs, allow_override=allow_override
         )
+        self.update_df()
         self._warped_crs = crs
         return self
 
     def reindex_by_band(self, **kwargs):
-        pass
-
-    def merge_by_band(self, **kwargs):
-        if self._rasters_have_changed or any(
-            r._raster_has_changed or r._array_has_changed() for r in self._df["raster"]
-        ):
-            raise RasterHasChangedError("merge_by_band")
-
-        band_df = pd.DataFrame({"band": self._df["band"].unique()})
-        new_df: list[pd.DataFrame] = [
-            pd.DataFrame(columns=_df_template),
-            band_df,
-        ]
-        for i, band_idx in band_df["band"].items():
-            band_group = self._df.loc[self._df["band"] == band_idx]
-
-            array, transform = merge.merge(
-                list(band_group["path"]), indexes=band_idx, **kwargs
-            )
-
-            meta = {
-                "res": self._get_single_res(band_group),
-                "transform": transform,
-                "crs": self.crs,
-            }
-            band_df.at[i, "raster"] = Raster(array=array, meta=meta)
-
-            new_df.append(band_df)
-
-        new_df = pd.concat(new_df)
-        cube = self.copy()
-        cube.df = new_df
-        return cube
-
-    def add_meta(self):
-        """Adds metadata columns to the instance's df attribute."""
-        self._delegate_raster_func(_add_meta)
-        for col in self.ALL_ATTRS:
-            try:
-                self.df[col] = self._get_attribute_series(col)
-            except AttributeError:
-                pass
-        return self
-
-    def merge_tiles(self):
-        for band in self._df["band"].unique():
-            df = self._df[self._df["band"] == band]
-
-            src_idx = src_indexes.loc[band]
-            dst_idx = dst_indexes.loc[band]
-
-            array = np.stack([raster.array for raster in df["raster"]], axis=1)
-            res = df["res"].value_counts()[0]
-            minx = np.min(bounds[0] for bounds in df["bounds"])
-            miny = np.min(bounds[1] for bounds in df["bounds"])
-            maxx = np.min(bounds[2] for bounds in df["bounds"])
-            maxy = np.min(bounds[3] for bounds in df["bounds"])
-            diffx = maxx - minx
-            diffy = maxy - miny
-            width, height = int(diffx / res), int(diffy / res)
-            _transform = transform.from_bounds(minx, miny, maxx, maxy, width, height)
-            raster = Raster.from_array(array, transform=_transform)
-            df = pd.DataFrame(
-                {
-                    "cube": cube,
-                    "raster": raster,
-                    "tile": tile,
-                    "src_index": src_idx,
-                    "dst_index": dst_idx,
-                    # "bounds": self.bounds,
-                }
-            )
-
-    def merge_bands(self):
-        df = self._df.copy()
-        df[["src_index", "cube"]] = df[["src_index", "cube"]].astype(str)
-        src_indexes = (
-            df.groupby("tile")["src_index"].apply(list).str.join("-").str.strip("-")
-        )
-        cubes = df.groupby("tile")["cube"].unique().str.join("-").str.strip("-")
-
-        for tile in self._df["tile"]:
-            df = self._df[self._df["tile"] == tile]
-
-            src_idx = src_indexes.loc[tile]
-            cube = cubes.loc[tile]
-
-            arrays = []
-            for raster in df["raster"]:
-                arrays += raster._to_2d_array_list(raster.array)
-
-            array = np.stack(arrays, axis=0)
-            res = df["res"].value_counts().iloc[0]
-            minx = np.min([r.bounds[0] for r in df["raster"]])
-            miny = np.min([r.bounds[1] for r in df["raster"]])
-            maxx = np.min([r.bounds[2] for r in df["raster"]])
-            maxy = np.min([r.bounds[3] for r in df["raster"]])
-            diffx = maxx - minx
-            diffy = maxy - miny
-            width, height = int(diffx / res), int(diffy / res)
-            _transform = transform.from_bounds(minx, miny, maxx, maxy, width, height)
-            name = f"{cube}_{tile}_{src_idx}"
-            raster = Raster.from_array(
-                array,
-                transform=_transform,
-                res=res,
-                crs=self.crs,
-                name=name,
-            )
-
-            self._df = pd.DataFrame(
-                {
-                    "cube": cube,
-                    "raster": raster,
-                    "tile": tile,
-                    "src_index": src_idx,
-                    "name": raster.name,
-                    "res": res,
-                },
-                index=[0],
-            )
-            # self._df["bounds"] = self.bounds
-            return self
+        self.update_rasters("band_indexes")
 
     def explode(self, ignore_index: bool = False):
+        if self._chain and not self._executing:
+            self._chain.append_method("explode", ignore_index=ignore_index)
+            return self
+
         df = self._df
 
         # Raster object is mutable, so dupicates after explode must be copied
@@ -576,155 +660,243 @@ class GeoDataCube(RasterBase):
 
             if len(raster.shape) == 3 and raster.array is not None:
                 raster.array = raster.array[band_idx - 1]
-                raster._set_array_stats()
-            elif raster.array is None:
-                raster.indexes = band_idx
+
+            raster._band_indexes = band_idx
 
             df.loc[filt, "raster"] = raster
 
         self._df = df.drop(["__i", "id", "duplicate_id"], axis=1)
+
         return self
 
-    def merge(self, by: str | list[str] | None = None, **kwargs):
-        if self._rasters_have_changed or any(
-            r._raster_has_changed or r._array_has_changed() for r in self._df["raster"]
-        ):
-            raise RasterHasChangedError("merge")
+    def merge(
+        self,
+        by: str | list[str] | None = None,
+        bounds=None,
+        res=None,
+        raster_dtype=None,
+        aggfunc="first",
+        **kwargs,
+    ):
+        self.check_not_array()
+        if self._chain is not None and not self._executing:
+            self._chain.append_method(
+                "merge",
+                by=by,
+                bounds=bounds,
+                res=res,
+                raster_dtype=raster_dtype,
+                aggfunc=aggfunc,
+                **kwargs,
+            )
+            return self
+
+        if bounds is None:
+            self._df[["minx", "miny", "maxx", "maxy"]] = self.bounds.values
+        elif is_bbox_like(bounds):
+            bounds = to_bbox(bounds)
+        else:
+            raise TypeError("bounds should be bbox like.")
+
+        if raster_dtype is None:
+            raster_dtype = list(self.raster_dtype.unique())
+            if len(raster_dtype) > 1:
+                raise ValueError
+            raster_dtype = raster_dtype[0]
+        else:
+            raster_dtype = self.get_raster_dtype(raster_dtype)
+
+        if res is None:
+            self._df["res"] = self.res
 
         if by is None:
-            return self._merge_all(**kwargs)
+            return self._merge_all(bounds, res, raster_dtype, **kwargs)
 
         if isinstance(by, str):
             by = [by]
         if not is_list_like(by):
             raise TypeError("'by' should be string or list like.")
 
-        unique = self._df[by].drop_duplicates().set_index(by)
+        unique = self._df[by + ["raster"]].drop_duplicates(by).set_index(by)
 
-        def _get_merged_raster(group, **kwargs):
-            res = self._get_single_res(group)
-            bands = list(group["band"].unique())
-            array, transform = merge.merge(list(group["path"]), indexes=bands, **kwargs)
+        if len(unique) == len(self._df):
+            self._df = unique.reset_index()
+            return self
 
-            meta = {
-                "res": res,
-                "transform": transform,
-                "crs": self.crs,
-            }
-
-            return Raster(array=array, meta=meta)
-
-        unique["raster"] = self._df.groupby(by, as_index=False, dropna=False).apply(
-            lambda x: _get_merged_raster(x, **kwargs)
+        unique["raster"] = self._df.groupby(by).apply(
+            lambda x: self._grouped_merge(
+                x,
+                bounds=bounds,
+                res=res,
+                raster_dtype=raster_dtype,
+                **kwargs,
+            )
         )
 
-        self._df = unique.reset_index()
+        remaining_cols = self._df.columns.difference(by + ["raster"])
+        unique[remaining_cols] = self._df.groupby(by)[remaining_cols].agg(aggfunc)
+
+        self._df = unique.reset_index().drop(
+            ["minx", "miny", "maxx", "maxy", "res"], axis=1, errors="ignore"
+        )
+
+        self.update_df()
 
         return self
 
-        if isinstance(by, str):
-            by = [by]
-        if not is_list_like(by):
-            raise TypeError("'by' should be string or list like.")
-
-        unique = self._df[by].drop_duplicates().reset_index(drop=True)
-        new_df = [
-            pd.DataFrame(columns=_df_template),
-            unique,
-        ]
-
-        for i in unique.index:
-            group = self._df.loc[[i]]
-
-            array, transform = merge.merge(
-                list(group["path"]), indexes=band_idx, **kwargs
+    def merge_by_band(
+        self,
+        bounds=None,
+        res=None,
+        raster_dtype=None,
+        aggfunc="first",
+        **kwargs,
+    ):
+        """Merge rasters with the same band_index to a large 2d array."""
+        if self._chain is not None and not self._executing:
+            self._chain.append_method(
+                "merge_by_band",
+                bounds=bounds,
+                res=res,
+                raster_dtype=raster_dtype,
+                aggfunc=aggfunc,
+                **kwargs,
             )
+            return self
+        self = self.explode().merge(
+            by="band_indexes",
+            bounds=bounds,
+            res=res,
+            raster_dtype=raster_dtype,
+            aggfunc=aggfunc,
+            **kwargs,
+        )
+        self.update_df()
+        return self
 
-            meta = {
-                "res": self._get_single_res(group),
-                "transform": transform,
-                "crs": self.crs,
-            }
-            band_df.at[i, "raster"] = Raster(array=array, meta=meta)
+    def merge_by_bounds(
+        self,
+        bounds=None,
+        res=None,
+        raster_dtype=None,
+        aggfunc="first",
+        **kwargs,
+    ):
+        """Merge rasters with the same bounds to a 3 dimensional array."""
 
-            new_df.append(band_df)
-
-        new_df = pd.concat(new_df)
-        cube = self.copy()
-        cube.df = new_df
-        return cube
-
-    def merge_by_band(self, **kwargs):
-        if self._rasters_have_changed or any(
-            r._raster_has_changed or r._array_has_changed() for r in self._df["raster"]
-        ):
-            raise RasterHasChangedError("merge_by_band")
-
-        band_df = pd.DataFrame({"band": self._df["band"].unique()})
-        new_df: list[pd.DataFrame] = [
-            pd.DataFrame(columns=_df_template),
-            band_df,
-        ]
-        for i, band_idx in band_df["band"].items():
-            band_group = self._df.loc[self._df["band"] == band_idx]
-
-            res = []
-            for raster in band_group["raster"]:
-                res.append(raster.res)
-
-            if len(set(res)) > 1:
-                raise ValueError("res mismatch", res)
-            res = res[0]
-
-            array, transform = merge.merge(
-                list(band_group["path"]), indexes=band_idx, **kwargs
+        if self._chain is not None and not self._executing:
+            self._chain.append_method(
+                "merge_by_bounds",
+                bounds=bounds,
+                res=res,
+                raster_dtype=raster_dtype,
+                aggfunc=aggfunc,
+                **kwargs,
             )
+            return self
 
-            meta = {
-                "res": res,
-                "transform": transform,
-                "crs": self.crs,
-            }
-            band_df.at[i, "raster"] = Raster(array=array, meta=meta)
+        self._df["tile"] = self.bounds_tuples
 
-            new_df.append(band_df)
+        self = self.merge(
+            by="tile",
+            bounds=bounds,
+            res=res,
+            raster_dtype=raster_dtype,
+            _as_3d=True,
+            **kwargs,
+        )
 
-        new_df = pd.concat(new_df)
-        cube = self.copy()
-        cube.df = new_df
-        return cube
+        self._df = self._df.drop(columns=["tile"])
 
-    def _merge_all(self, **kwargs):
-        if self._rasters_have_changed or any(
-            r._raster_has_changed or r._array_has_changed() for r in self._df["raster"]
-        ):
-            raise RasterHasChangedError("merge_all")
+        self._df["band_indexes"] = self.band_indexes
 
-        array, transform = merge.merge(list(self._df["path"]), **kwargs)
-        meta = {
-            "res": self._get_single_res(self._df),
-            "transform": transform,
-            "crs": self.crs,
-        }
-        new_df = pd.DataFrame(columns=_df_template, index=[0])
-        new_df["raster"] = Raster(array=array, meta=meta)
+        return self
 
-        cube = self.copy()
-        cube.df = new_df
+    def dissolve_bands(self, aggfunc):
+        self.check_for_array()
+        if not callable(aggfunc) and not isinstance(aggfunc, str):
+            raise TypeError("Can only supply a single aggfunc")
+
+        aggfunc = get_numpy_func(aggfunc)
+
+        if self._chain is not None:
+            try:
+                self.mapper.validate_execution(aggfunc)
+            except AttributeError:
+                pass
+            self._chain.append_array_func(aggfunc, axis=0)
+            return self
+        self = self._delegate_array_func(aggfunc, axis=0)
+        self.update_df()
+        return self
+
+    def _grouped_merge(
+        self, group: DataFrame, bounds, raster_dtype, res, _as_3d=False, **kwargs
+    ):
+        if res is None:
+            res = group["res"].min()
+        if bounds is None:
+            bounds = (
+                group["minx"].min(),
+                group["miny"].min(),
+                group["maxx"].max(),
+                group["maxy"].max(),
+            )
+        exploded = group.explode(column="band_indexes")
+        band_indexes = tuple(exploded["band_indexes"].sort_values().unique())
+        arrays = []
+        for idx in band_indexes:
+            paths = exploded.loc[exploded["band_indexes"] == idx, "path"]
+            array, transform = merge.merge(
+                list(paths), indexes=(idx,), bounds=bounds, res=res, **kwargs
+            )
+            # merge doesn't allow single index (error in numpy), so changing afterwards
+            if len(array.shape) == 3:
+                assert array.shape[0] == 1
+                array = array[0]
+            arrays.append(array)
+        array = np.array(arrays)
+        assert len(array.shape) == 3
+        if not _as_3d and array.shape[0] == 1:
+            array = array[0]
+
+        return raster_dtype.from_array(
+            array,
+            transform=transform,
+            crs=self.crs,
+        )
+
+    def _merge_all(self, bounds, res, raster_dtype, **kwargs):
+        raster = self._grouped_merge(
+            self.df,
+            bounds=bounds,
+            res=res,
+            raster_dtype=raster_dtype,
+            **kwargs,
+        )
+        cube = GeoDataCube([raster])
+        cube = self._add_attributes_from_self(cube)
         return cube
 
     def min(self):
-        return min([x._min() for x in self._df["raster"]])
+        self._check_not_chain()
+        return min([x.min() for x in self._df["raster"]])
 
     def max(self):
-        return max([x._max() for x in self._df["raster"]])
+        self._check_not_chain()
+        return max([x.max() for x in self._df["raster"]])
 
-    def mean(self):
-        return np.mean([x._mean() for x in self._df["raster"]])
+    def _add_attributes_from_self(self, obj):
+        for key, value in self.__dict__.items():
+            if key == "_df":
+                continue
+            obj[key] = value
+        return obj
 
     def _get_attribute_series(self, attribute: str) -> pd.Series:
         return pd.Series(
-            {i: getattr(r, attribute) for i, r in self._df["raster"].items()},
+            [getattr(r, attribute) for r in self._df["raster"]],
+            index=self._df.index,
             name=attribute,
         )
 
@@ -744,30 +916,55 @@ class GeoDataCube(RasterBase):
         return self._df
 
     @property
-    def _rasters_have_changed(self) -> bool:
-        return any(r._raster_has_changed for r in self._df["raster"])
+    def raster_dtype(self):
+        return pd.Series(
+            [r.__class__ for r in self._df["raster"]],
+            index=self._df.index,
+            name="raster_dtype",
+        )
 
     @property
     def arrays(self) -> list[np.ndarray]:
         return self._get_attribute_series("array")
 
+    @arrays.setter
+    def arrays(self, new_arrays: list[np.ndarray]):
+        if len(new_arrays) != len(self._df):
+            arr, df = len(new_arrays), len(self._df)
+            raise ValueError(
+                f"Number of arrays ({arr}) must be same as length as df ({df})."
+            )
+        if not all(isinstance(arr, np.ndarray) for arr in new_arrays):
+            raise ValueError("Must be list of numpy ndarrays")
+
+        if self.df.index.is_unique:
+            self.df["raster"] = {
+                i: raster.update(array=arr)
+                for (i, raster), arr in zip(self._df["raster"].items(), new_arrays)
+            }
+        self._df["__i"] = range(len(self._df))
+        mapper = {
+            i: raster.update(array=arr)
+            for i, raster, arr in zip(self._df["__i"], self._df["raster"], new_arrays)
+        }
+        self._df["raster"] = self._df["__i"].map(mapper)
+        self._df = self._df.drop("__i", axis=1)
+
     @property
     def band_indexes(self) -> pd.Series:
-        if "band_indexes" in self._df:
-            return self._df["band_indexes"]
         return pd.Series(
-            {i: r.band_indexes_as_tuple() for i, r in self._df["raster"].items()},
+            [r.band_indexes_as_tuple() for r in self._df["raster"]],
+            index=self._df.index,
             name="band_indexes",
         )
 
     @property
-    def cube_indexes(self):
-        pass
+    def area(self):
+        return self._get_attribute_series("area")
 
     @property
-    def tiles(self) -> Series:
-        self._set_tile_values()
-        return self._df["tile"]
+    def length(self):
+        return self._get_attribute_series("length")
 
     @property
     def height(self):
@@ -791,44 +988,57 @@ class GeoDataCube(RasterBase):
 
     @property
     def crs(self):
-        if hasattr(self, "_warped_crs"):
-            return self._warped_crs
-        return self._crs
+        return self._warped_crs if hasattr(self, "_warped_crs") else self._crs
 
     @property
     def unary_union(self) -> Geometry:
-        return shapely.unary_union([shapely.box(*bounds) for bounds in self.bounds])
+        return shapely.unary_union([shapely.box(*r.bounds) for r in self])
+
+    @property
+    def centroid(self):
+        return self._get_attribute_series("centroid")
 
     @property
     def bounds(self) -> Series:
-        return self._get_attribute_series("bounds")
+        return DataFrame(
+            [r.bounds for r in self._df["raster"]],
+            index=self._df.index,
+            columns=["minx", "miny", "maxx", "maxy"],
+        )
+
+    @property
+    def bounds_tuples(self) -> Series:
+        # TODO: bedre navn
+        return Series(
+            [r.bounds for r in self._df["raster"]],
+            index=self._df.index,
+            name="bounds_tuples",
+        )
 
     @property
     def boxes(self) -> GeoSeries:
         """GeoSeries of each raster's bounds as polygon."""
         return GeoSeries(
-            {i: shapely.box(*r.bounds) for i, r in self._df["raster"].items()},
+            [shapely.box(*r.bounds) for r in self._df["raster"]],
+            index=self._df.index,
             name="boxes",
             crs=self.crs,
         )
 
     @property
     def total_bounds(self) -> tuple[float, float, float, float]:
-        minx = np.min([r.bounds[0] for r in self._df["raster"]])
-        miny = np.min([r.bounds[1] for r in self._df["raster"]])
-        maxx = np.min([r.bounds[2] for r in self._df["raster"]])
-        maxy = np.min([r.bounds[3] for r in self._df["raster"]])
+        bounds = self.bounds
+        minx = bounds["minx"].min()
+        miny = bounds["miny"].min()
+        maxx = bounds["maxx"].min()
+        maxy = bounds["maxy"].min()
         return minx, miny, maxx, maxy
 
-    def _set_tile_values(self):
-        mapper = {bounds: i for i, bounds in enumerate(self.bounds.unique())}
-        self._df["tile"] = self.bounds.map(mapper)
-
     def _set_band_indexes(self):
-        self._df["src_index"] = (
+        self._df["band_indexes"] = (
             self.bounds.to_frame()
-            .assign(src_index=1)
-            .groupby("bounds")["src_index"]
+            .assign(band_indexes=1)
+            .groupby("bounds")["band_indexes"]
             .transform("cumsum")
         )
 
@@ -840,15 +1050,13 @@ class GeoDataCube(RasterBase):
         return self
 
     def copy(self, deep=True):
-        """Returns a (deep) copy of the class instance.
+        """Returns a (deep) copy of the class instance and its rasters.
 
         Args:
             deep: Whether to return a deep or shallow copy. Defaults to True.
         """
-        if deep:
-            copied = deepcopy(self)
-        else:
-            copied = copy(self)
+        self._check_not_chain()
+        copied = deepcopy(self) if deep else copy(self)
 
         df = copied.df.copy(deep=deep)
 
@@ -862,21 +1070,104 @@ class GeoDataCube(RasterBase):
 
     @classmethod
     def verify_cube_df(cls, df):
-        if not isinstance(df, (pd.DataFrame, pd.Series)):
+        if not isinstance(df, (DataFrame, Series)):
             raise TypeError
         # check that nessecary columns are not removed
         cls.verify_dict(df)
+        if "raster" not in df:
+            raise ValueError("Must have column 'raster'")
+
+        for col in cls.BASE_RASTER_PROPERTIES + cls.NEED_ONE_ATTR:
+            if col not in df:
+                continue
+            if df[col].isna().any():
+                raise ValueError(f"Column {col} cannot have missing values.")
 
     @classmethod
-    def get_cube_template(cls, with_meta: bool = False):
+    def get_name(cls, obj: str | Path | DataFrame) -> str | None:
+        if isinstance(obj, (str, Path)):
+            return Path(obj).parent
+        if not isinstance(obj, DataFrame):
+            raise TypeError
+
+        if "path" in obj:
+            folders = list(obj["path"].apply(lambda x: Path(x).parent).unique())
+            if len(folders) == 1:
+                return folders[0]
+            else:
+                return None
+
+    @classmethod
+    def get_cube_template(
+        cls, rasters: Iterable[Raster] | None = None, with_meta: bool = False
+    ):
         cols = cls.BASE_CUBE_COLS
         if with_meta:
             cols = cols + cls.PROFILE_ATTRS
-        return pd.DataFrame(columns=cols)
+        df = pd.DataFrame(columns=cols + ["raster"])
+        if rasters is not None:
+            if not all(isinstance(r, Raster) for r in rasters):
+                raise TypeError("rasters should be an iterable of Rasters.")
+            return pd.concat(
+                [
+                    df,
+                    DataFrame(
+                        {
+                            "name": [r.name for r in rasters],
+                            "path": [r.path for r in rasters],
+                            "band_indexes": [x.band_indexes for x in rasters],
+                            "bounds": [x.bounds for x in rasters],
+                            "raster": rasters,
+                        }
+                    ),
+                ]
+            )
 
     @classmethod
     def get_raster_dict(cls, df):
         return df[[key for key in cls.ALLOWED_KEYS if key in df]].to_dict()
+
+    def _delegate_raster_func(self, func, **kwargs):
+        self._df["raster"] = [func(r, **kwargs) for r in self._df["raster"]]
+        return self
+
+    def _delegate_array_func(self, func, **kwargs):
+        self.arrays = [func(arr, **kwargs) for arr in self.arrays]
+        return self
+
+    def _get_crs(self):
+        crs = list({r.crs for r in self if r.crs})
+        if not crs:
+            return None
+        if len(crs) > 1:
+            raise ValueError("'crs' mismatch.")
+        return pyproj.CRS(crs[0])
+
+    def check_for_array(self, text=""):
+        mess = "Arrays are not loaded. " + text
+        if self.arrays.isna().all():
+            raise ValueError(mess)
+
+    def check_not_array(self):
+        mess = super().check_not_array_mess()
+        if self.arrays.notna().any():
+            raise ValueError(mess)
+        if not self._chain:
+            return
+        loading_is_chained = any(
+            method in self._chain.names
+            for method in ["_load_func", "_clip_func", "sample", "merge"]
+        )
+        if loading_is_chained:
+            raise ValueError(mess)
+
+    def _check_not_chain(self):
+        if self._chain is not None:
+            raise ValueError("Cannot use this method in a chain.")
+
+    def _write_in_chain(self):
+        if self._chain and "_write_func" in self._chain.names:
+            raise ValueError("Cannot keep chain going after writing files.")
 
     def __hash__(self):
         return hash(self._hash)
@@ -885,7 +1176,7 @@ class GeoDataCube(RasterBase):
         return iter(self._df["raster"])
 
     def __len__(self):
-        return len(self._df["raster"])
+        return len(self._df)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(df=" "\n" f"{self._df.__repr__()}" "\n)"
@@ -897,44 +1188,56 @@ class GeoDataCube(RasterBase):
         setattr(self, key, value)
 
     def __getitem__(self, key):
+        if not isinstance(key, str):
+            return self._df["raster"][key]
         return getattr(self, key)
 
-    def _delegate_raster_func(self, func, **kwargs):
-        if self.mapper:
-            self._df["raster"] = self.mapper.map(func, self._df["raster"], **kwargs)
-        else:
-            self._df["raster"] = [func(r, **kwargs) for r in self._df["raster"]]
-
-        return self
-
-    def _delegate_array_func(self, func, **kwargs):
-        if self.mapper:
-            arrays = self.mapper.map(func, self.arrays, **kwargs)
-        else:
-            arrays = [func(arr, **kwargs) for arr in self.arrays]
-
-        for (i, raster), arr in zip(self._df["raster"].items(), arrays):
-            raster.array = arr
-            self._df.loc[i, "raster"] = raster
-
-        return self
-
     def __mul__(self, scalar):
+        self.check_for_array()
+        self._write_in_chain()
+        if self._chain is not None:
+            self._chain.append_array_func(_mul, scalar=scalar)
+            return self
         return self._delegate_array_func(_mul, scalar=scalar)
 
     def __add__(self, scalar):
+        self.check_for_array()
+        self._write_in_chain()
+        if self._chain is not None:
+            self._chain.append_array_func(_add, scalar=scalar)
+            return self
         return self._delegate_array_func(_add, scalar=scalar)
 
     def __sub__(self, scalar):
+        self.check_for_array()
+        self._write_in_chain()
+        if self._chain is not None:
+            self._chain.append_array_func(_sub, scalar=scalar)
+            return self
         return self._delegate_array_func(_sub, scalar=scalar)
 
     def __truediv__(self, scalar):
+        self.check_for_array()
+        self._write_in_chain()
+        if self._chain is not None:
+            self._chain.append_array_func(_truediv, scalar=scalar)
+            return self
         return self._delegate_array_func(_truediv, scalar=scalar)
 
     def __floordiv__(self, scalar):
+        self.check_for_array()
+        self._write_in_chain()
+        if self._chain is not None:
+            self._chain.append_array_func(_floordiv, scalar=scalar)
+            return self
         return self._delegate_array_func(_floordiv, scalar=scalar)
 
     def __pow__(self, scalar):
+        self.check_for_array()
+        self._write_in_chain()
+        if self._chain is not None:
+            self._chain.append_array_func(_pow, scalar=scalar)
+            return self
         return self._delegate_array_func(_pow, scalar=scalar)
 
 
@@ -953,16 +1256,28 @@ def concat_cubes(
     elif len(cube_index) != len(cube_list):
         raise ValueError("cube_index must be of same length as cube_list.")
 
-    crs = {cube.crs for cube in cube_list}
+    crs = list({cube.crs for cube in cube_list if cube.crs})
+    if not crs:
+        crs = None
     if len(crs) > 1:
-        raise ValueError("crs mismatch.")
+        raise ValueError("'crs' mismatch.")
+    crs = pyproj.CRS(crs[0])
 
+    cubes: list[GeoDataCube] = []
+    for idx, cube in zip(cube_index, cube_list):
+        cube.df["cube_name"] = idx
+        cubes.append(cube)
+
+    cube = GeoDataCube()
+    cube.df = pd.concat([cube.df for cube in cubes], ignore_index=ignore_index)
+    return cube
     rasters: list[Raster] = [x for cube in cube_list for x in cube.df["raster"]]
 
     rasters: list[Raster] = []
-    for i, cube in enumerate(cube_list):
-        for raster in cube.df["raster"]:
-            raster.cube = i
+    for idx, cube in zip(cube_list, cube_index):
+        cube.df["cube_name"] = idx
+        for raster in cube:
+            raster.cube = idx
             rasters.append(raster)
 
     if ignore_index:
@@ -976,49 +1291,38 @@ def concat_cubes(
         "raster", axis=1
     )
 
-    cube = GeoDataCube(rasters, index=indexes, df=df)
-
-    cube._set_tile_values()
-    cube._set_band_indexes()
+    cube = GeoDataCube(rasters, df=df)
 
     return cube
 
 
-def _init_raster_from_path(path, raster_dtype, **kwargs):
-    return raster_dtype.from_path(path, **kwargs)
+"""Method-to-function to use as mapping function."""
 
 
-def _add_meta(raster, **kwargs):
-    """Method-to-function to use as mapping function."""
-    return raster.add_meta(**kwargs)
+def _write_func(raster, folder, **kwargs):
+    path = str(Path(folder) / Path(raster.name).stem) + ".tif"
+    raster.write(path, **kwargs)
+    raster.path = path
+    return raster
 
 
 def _clip_func(raster, mask, **kwargs):
-    """Method-to-function to use as mapping function."""
-    # values = self.get_raster_dict(row)
-    # raster.update(**values)
     return raster.clip(mask, **kwargs)
 
 
 def _load_func(raster, **kwargs):
-    """Method-to-function to use as mapping function."""
-    # values = self.get_raster_dict(row)
-    # raster.update(**values)
     return raster.load(**kwargs)
 
 
 def _zonal_func(raster, **kwargs):
-    """Method-to-function to use as mapping function."""
     return raster.zonal(**kwargs)
 
 
 def _to_crs_func(raster, **kwargs):
-    """Method-to-function to use as mapping function."""
     return raster.to_crs(**kwargs)
 
 
 def _set_crs_func(raster, **kwargs):
-    """Method-to-function to use as mapping function."""
     return raster.set_crs(**kwargs)
 
 

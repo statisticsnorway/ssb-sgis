@@ -14,21 +14,35 @@ import pandas as pd
 import pyproj
 import rasterio
 import shapely
+import skimage
 from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_dict_like, is_list_like
+from pandas.util._decorators import doc
 from rasterio import features
 from rasterio.enums import MergeAlg
 from rasterio.mask import mask as rast_mask
 from rasterio.warp import reproject
 from shapely import Geometry, box
-from shapely.geometry import shape
+from shapely.geometry import Point, Polygon, shape
 
-from ..geopandas_tools.bounds import is_bbox_like
+from ..geopandas_tools.bounds import is_bbox_like, to_bbox
 from ..geopandas_tools.general import is_wkt
 from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import is_property
 from .base import RasterBase, RasterHasChangedError
+
+
+def get_numpy_func(text):
+    f = getattr(np, text, None)
+    if f is not None:
+        return f
+    f = getattr(np.ndarray, text, None)
+    if f is not None:
+        return f
+    raise ValueError(
+        "aggfunc must be functions or " "strings of numpy functions or methods."
+    )
 
 
 class Raster(RasterBase):
@@ -117,6 +131,7 @@ class Raster(RasterBase):
 
     def __init__(
         self,
+        raster=None,
         *,
         path: str | None = None,
         array: np.ndarray | None = None,
@@ -125,6 +140,13 @@ class Raster(RasterBase):
         dapla: bool = False,
         **kwargs,
     ):
+        if raster is not None:
+            if not isinstance(raster, Raster):
+                raise TypeError
+            for key, value in raster.__dict__.items():
+                self[key] = value
+            return
+
         self._path = path
         self.array = array
         self._band_indexes = band_indexes
@@ -135,7 +157,6 @@ class Raster(RasterBase):
         if not hasattr(self, "dapla"):
             self.dapla = dapla
 
-        self._raster_has_changed = False
         self._hash = uuid.uuid4()
 
         # override the above with kwargs
@@ -146,37 +167,40 @@ class Raster(RasterBase):
         if self._path is None and self.array is None:
             raise ValueError("Must supply either 'path' or 'array'.")
 
+        # the important attributes must be of correct type
+        crs = kwargs.get("crs")
+        transform = kwargs.get("transform")
+        bounds = kwargs.get("bounds")
+
+        if not any([path, transform, bounds]):
+            raise TypeError(
+                "Must specify either bounds or transform when constructing raster from array."
+            )
+
+        self._crs = pyproj.CRS(crs) if crs else None
+        transform = Affine(*transform) if transform is not None else None
+
+        if transform and not bounds:
+            self._bounds = rasterio.transform.array_bounds(
+                self.height, self.width, transform
+            )
+        elif not path:
+            self._bounds = to_bbox(bounds)
+
         attributes = {x for x in self.__dict__.keys()}.difference(set(self.properties))
 
         if self._path is not None and not self.has_nessecary_attrs(attributes):
             self.add_meta()
             self._meta_added = True
 
-        if self._path is not None:
-            return
+        if self._path is None:
+            if not isinstance(self.array, np.ndarray):
+                raise TypeError
 
-        if not isinstance(self.array, np.ndarray):
-            raise TypeError
+            if not hasattr(self, "crs"):
+                raise TypeError("Must specify crs when constructing raster from array.")
 
-        if not hasattr(self, "crs"):
-            raise TypeError("Must specify crs when constructing raster from array.")
-
-        self.transform = kwargs.get("transform")
-
-        # bounds is a property, so not adding to self
-        bounds = kwargs.get("bounds")
-
-        if bounds and not self.transform:
-            bounds = self._bounds_as_tuple(bounds)
-            self.transform = rasterio.transform.from_bounds(
-                *bounds, self.width, self.height
-            )
-        if not self.transform:
-            raise TypeError(
-                "Must specify either bounds or transform when constructing raster from array."
-            )
-
-        self._band_indexes = self._add_band_indexes_from_array(band_indexes)
+            self._band_indexes = self._add_band_indexes_from_array(band_indexes)
 
     @classmethod
     def from_path(
@@ -200,7 +224,7 @@ class Raster(RasterBase):
             A Raster instance.
         """
         return cls(
-            path=path, band_indexes=band_indexes, dapla=dapla, name=name, **kwargs
+            path=str(path), band_indexes=band_indexes, dapla=dapla, name=name, **kwargs
         )
 
     @classmethod
@@ -330,11 +354,10 @@ class Raster(RasterBase):
         """Construct Raster from metadata dict to fastpass the initializer.
 
         This is the fastest way to create a Raster since a metadata lookup is not
-        needed. The dictionary must have the following keys:
-        - path
-        - band_indexes
+        needed.
 
-        Other rasterio Profile keys can also be used.
+        The dictionary must have all the keys ...
+        and at least one of the keys 'transform' and 'bounds'.
 
         Args:
             dictionary: Dictionary with the nessecary and optional information
@@ -367,10 +390,11 @@ class Raster(RasterBase):
                 self["_" + key] = value
             else:
                 self[key] = value
+        return self
 
     @classmethod
     def get_transform_from_bounds(cls, obj, shape: tuple[float, ...]) -> Affine:
-        minx, miny, maxx, maxy = cls._bounds_as_tuple(obj)
+        minx, miny, maxx, maxy = to_bbox(obj)
         width, height = shape
         return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
 
@@ -384,8 +408,7 @@ class Raster(RasterBase):
             **kwargs: Keyword arguments passed to the rasterio read
                 method.
         """
-        if self._raster_has_changed or self._array_has_changed():
-            raise RasterHasChangedError("load")
+        self.check_not_array()
 
         kwargs = self._pop_from_dict(kwargs)
 
@@ -393,7 +416,7 @@ class Raster(RasterBase):
 
         return self
 
-    def clip(self, mask, **kwargs):
+    def clip(self, mask, crop=True, **kwargs):
         """Load the part of the image inside the mask.
 
         The returned array is stored in the 'array' attribute
@@ -401,24 +424,98 @@ class Raster(RasterBase):
 
         Args:
             mask: Geometry-like object or bounding box.
+            crop:
             **kwargs: Keyword arguments passed to the mask function
                 from the rasterio.mask module.
 
         Returns:
             Self, but with the array loaded.
         """
-        if self._raster_has_changed or self._array_has_changed():
-            raise RasterHasChangedError("clip")
+        self.check_not_array()
 
         kwargs = self._pop_from_dict(kwargs)
 
         if not isinstance(mask, GeoDataFrame):
             mask = self._return_gdf(mask)
-        self._read_with_mask(mask=mask, **kwargs)
-
-        self._raster_has_changed = True
+        self._read_with_mask(mask=mask, crop=crop, **kwargs)
 
         return self
+
+    def difference(self, mask, **kwargs):
+        """Load the part of the image outside the mask.
+
+        The part of the image inside the mask will be given the
+        'nodata' value if it is inside the image bounds.
+
+        The returned array is stored in the 'array' attribute
+        of the Raster.
+
+        Args:
+            mask: Geometry-like object or bounding box.
+            crop:
+            **kwargs: Keyword arguments passed to the mask function
+                from the rasterio.mask module.
+
+        Returns:
+            Self, but with the array loaded.
+        """
+        self.check_not_array()
+
+        kwargs = self._pop_from_dict(kwargs)
+
+        if not isinstance(mask, GeoDataFrame):
+            mask = self._return_gdf(mask)
+
+        kwargs.pop("invert", None)
+        kwargs.pop("crop", None)
+        self._read_with_mask(mask=mask, crop=False, invert=True, **kwargs)
+
+        return self
+
+    def upscale(self, factor: int):
+        self.check_for_array()
+        self.array = np.repeat(self.array, factor, axis=-1)
+        self.array = np.repeat(self.array, factor, axis=1)
+        return self
+
+    def downscale(self, factor: int, aggfunc="mean"):
+        self.check_for_array()
+        aggfunc = get_numpy_func(aggfunc)
+
+        if len(self.array.shape) == 2:
+            shape = int(self.shape[0] / (self.shape[0] / factor)), int(
+                self.shape[1] / (self.shape[1] / factor)
+            )
+            self.array = skimage.measure.block_reduce(self.array, shape, aggfunc)
+
+        elif len(self.array.shape) == 3:
+            shape = int(self.shape[1] / (self.shape[1] / factor)), int(
+                self.shape[2] / (self.shape[2] / factor)
+            )
+            new_array = []
+            for arr in self.array:
+                arr = skimage.measure.block_reduce(arr, shape, aggfunc)
+                new_array.append(arr)
+            self.array = np.array(new_array)
+        else:
+            raise ValueError
+
+        return self
+
+    def sample(self, n=1, size=20, mask=None, crop=True, copy=True, **kwargs):
+        self.check_not_array()
+        if mask is not None:
+            points = GeoSeries(self.unary_union).clip(mask).sample_points(n)
+        else:
+            points = GeoSeries(self.unary_union).sample_points(n)
+        buffered = points.buffer(size / self.res[0])
+        boxes = to_gdf(
+            [shapely.box(*arr) for arr in buffered.bounds.values], crs=self.crs
+        )
+        if copy:
+            copy = self.copy()
+            return copy.clip(boxes, crop=crop, **kwargs)
+        return self.clip(boxes, crop=crop, **kwargs)
 
     def zonal(
         self,
@@ -441,8 +538,7 @@ class Raster(RasterBase):
         Returns:
             A GeoDataFrame with the aggregate functions
         """
-        if self._raster_has_changed or self._array_has_changed():
-            raise RasterHasChangedError("zonal")
+        self.check_not_array()
         if not pyproj.CRS(self.crs).equals(pyproj.CRS(polygons.crs)):
             raise ValueError("crs mismatch.")
 
@@ -456,18 +552,7 @@ class Raster(RasterBase):
 
         new_cols = [_get_func_name(f) for f in aggfunc]
 
-        def _to_numpy_func(text):
-            f = getattr(np, text, None)
-            if f is not None:
-                return f
-            f = getattr(np.ndarray, text, None)
-            if f is not None:
-                return f
-            raise ValueError(
-                "aggfunc must be functions or " "strings of numpy functions or methods."
-            )
-
-        aggfunc = [f if callable(f) else _to_numpy_func(f) for f in aggfunc]
+        aggfunc = [f if callable(f) else get_numpy_func(f) for f in aggfunc]
 
         aggregated = {}
 
@@ -536,28 +621,7 @@ class Raster(RasterBase):
 
         return aggs
 
-    def write_tif(self, path: str, window=None, **kwargs):
-        """Write the raster as a tif file with default.
-
-        Multiband arrays will result in a multiband image file.
-
-        Args:
-            path: File path to write to.
-            window: Optional window to clip the image to.
-            **kwargs: To overwrite the default profile parameters.
-        """
-        profile = {
-            "driver": "GTiff",
-            "interleave": "band",
-            "tiled": True,
-            "blockxsize": 256,
-            "blockysize": 256,
-            "compress": "lzw",
-            "dtype": np.uint8,
-        }
-        return self.write(path, window=window, profile=profile, **kwargs)
-
-    def write(self, path: str, window=None, profile=None):
+    def write(self, path: str, window=None, **kwargs):
         """Write the raster as a single file.
 
         Multiband arrays will result in a multiband image file.
@@ -569,8 +633,6 @@ class Raster(RasterBase):
 
         if self.array is None:
             raise AttributeError("The image hasn't been loaded yet.")
-        if profile and not is_dict_like(profile):
-            raise TypeError
 
         profile = (
             {
@@ -584,8 +646,8 @@ class Raster(RasterBase):
                 "width": self.width,
                 "compress": "compress",
             }
-            # overwrite with profile
-            | dict(profile or {})
+            # overwrite with kwargs
+            | kwargs
         )
 
         if self.dapla:
@@ -603,7 +665,7 @@ class Raster(RasterBase):
 
         self._path = str(path)
 
-    def to_gdf(self, column: str | list[str] | None = None, mask=None) -> GeoDataFrame:
+    def to_gdf(self, column: str | list[str] | None = None) -> GeoDataFrame:
         """Create a GeoDataFrame from the raster.
 
         For multiband rasters, the bands are in separate rows with a "band" column
@@ -613,17 +675,12 @@ class Raster(RasterBase):
             column: Name of resulting column(s) that holds the raster values.
                 Can be a single string or an iterable with the same length as
                 the number of raster bands.
-            mask: Optional mask to clip the images by.
 
         Returns:
             A GeoDataFrame with a geometry column, a 'band' column and a
             one or more value columns.
         """
-        if self.array is None:
-            if mask is not None:
-                self.clip(mask=mask)
-            else:
-                self.load()
+        self.check_for_array()
 
         array_list = self._to_2d_array_list(self.array)
 
@@ -663,6 +720,9 @@ class Raster(RasterBase):
         if not allow_override and self.crs is not None:
             raise ValueError("Cannot overwrite crs when allow_override is False.")
 
+        if self.array is None:
+            raise ValueError("array must be loaded/clipped before set_crs")
+
         self._crs = crs
         return self
 
@@ -683,12 +743,16 @@ class Raster(RasterBase):
         if self.array is None:
             raise ValueError("array must be loaded/clipped before to_crs")
 
-        self.array, self.transform = reproject(
+        self.array, transform = reproject(
             source=self.array,
             src_crs=self.crs,
             src_transform=self.transform,
             dst_crs=pyproj.CRS(crs),
             **kwargs,
+        )
+
+        self._bounds = rasterio.transform.array_bounds(
+            self.height, self.width, transform
         )
 
         self._crs = pyproj.CRS(crs)
@@ -703,8 +767,11 @@ class Raster(RasterBase):
                 self._plot_2d(arr)
 
     def add_meta(self):
-        if self._raster_has_changed or self._array_has_changed():
-            raise RasterHasChangedError("add_meta")
+        mess = "Cannot add metadata after image has been "
+        if hasattr(self, "_clipped"):
+            raise ValueError(mess + "clipped.")
+        if hasattr(self, "_warped_crs"):
+            raise ValueError(mess + "reprojected.")
 
         if self.dapla:
             import dapla as dp
@@ -717,6 +784,10 @@ class Raster(RasterBase):
             with rasterio.open(self._path) as src:
                 self._add_meta_from_src(src)
         return self
+
+    def get_coords(self) -> np.ndarray:
+        xs = np.arange(self.bounds[0], self.bounds[2], self.res[0])
+        ys = np.arange(self.bounds[1], self.bounds[3], self.res[1])
 
     @property
     def path(self):
@@ -732,16 +803,23 @@ class Raster(RasterBase):
 
     @property
     def dtype(self):
-        return self.array.dtype
+        try:
+            return self.array.dtype
+        except Exception:
+            return getattr(self, "_dtype", None)
 
     @dtype.setter
     def dtype(self, new_dtype):
         self.array = self.array.astype(new_dtype)
         return self.array.dtype
 
-    def get_coords(self) -> np.ndarray:
-        xs = np.arange(self.bounds[0], self.bounds[2], self.res[0])
-        ys = np.arange(self.bounds[1], self.bounds[3], self.res[1])
+    @property
+    def area(self):
+        return shapely.area(self.unary_union)
+
+    @property
+    def length(self):
+        return shapely.length(self.unary_union)
 
     @property
     def crs(self):
@@ -762,8 +840,14 @@ class Raster(RasterBase):
         return resx, resy
 
     @property
-    def unary_union(self) -> shapely.geometry.Polygon:
+    def unary_union(self) -> Polygon:
         return shapely.box(*self.bounds)
+
+    @property
+    def centroid(self) -> Point:
+        x = (self.bounds[0] + self.bounds[2]) / 2
+        y = (self.bounds[1] + self.bounds[3]) / 2
+        return Point(x, y)
 
     @property
     def height(self):
@@ -800,12 +884,16 @@ class Raster(RasterBase):
         return self.width, self.height
 
     @property
+    def transform(self) -> Affine:
+        return rasterio.transform.from_bounds(*self.bounds, self.width, self.height)
+
+    @property
     def bounds(self) -> tuple[float, float, float, float]:
-        return rasterio.transform.array_bounds(self.height, self.width, self.transform)
+        return self._bounds
 
     @property
     def total_bounds(self) -> tuple[float, float, float, float]:
-        return self.bounds
+        return self._bounds
 
     @classmethod
     def has_nessecary_attrs(cls, dict_like):
@@ -846,6 +934,16 @@ class Raster(RasterBase):
         plt.show()
         plt.close()
 
+    def check_for_array(self, text=""):
+        mess = "Arrays are not loaded. " + text
+        if self.array is None:
+            raise ValueError(mess)
+
+    def check_not_array(self):
+        mess = super().check_not_array_mess()
+        if self.array is not None:
+            raise ValueError(mess)
+
     def _add_band_indexes_from_array(self, band_indexes):
         if band_indexes is not None:
             return band_indexes
@@ -857,7 +955,8 @@ class Raster(RasterBase):
             raise ValueError
 
     def _add_meta_from_src(self, src):
-        self.transform = src.transform
+        self._bounds = tuple(src.bounds)
+        self._transform = src.transform
         self._height = src.height
         self._width = src.width
 
@@ -871,36 +970,6 @@ class Raster(RasterBase):
             self._crs = pyproj.CRS(src.crs)
         except pyproj.exceptions.CRSError:
             self._crs = None
-
-    def _get_array_stats(self):
-        return (
-            self.array.shape,
-            np.min(self.array),
-            np.max(self.array),
-            np.mean(self.array),
-            np.std(self.array),
-            np.sum(self.array),
-        )
-
-    def _set_array_stats(self):
-        self._stats = self._get_array_stats()
-
-    def _array_has_changed(self) -> bool:
-        if not hasattr(self, "array") or self.array is None:
-            return False
-
-        if not hasattr(self, "_stats"):
-            self._set_array_stats()
-            return False
-
-        _stats = self._get_array_stats()
-
-        if _stats == self._stats:
-            return False
-
-        self._stats = _stats
-
-        return True
 
     @staticmethod
     def _to_2d_array_list(array: np.ndarray) -> list[np.ndarray]:
@@ -928,7 +997,7 @@ class Raster(RasterBase):
                 self._add_meta_from_src(src)
                 self.array = src.read(indexes=self.band_indexes, **kwargs)
 
-    def _read_with_mask(self, mask, **kwargs):
+    def _read_with_mask(self, mask, crop, **kwargs):
         if isinstance(mask, (GeoDataFrame, GeoSeries)):
             mask = self._to_geojson(mask)
 
@@ -944,6 +1013,7 @@ class Raster(RasterBase):
                         shapes=mask,
                         indexes=self.band_indexes,
                         nodata=self.nodata,
+                        crop=crop,
                         **kwargs,
                     )
         else:
@@ -954,6 +1024,7 @@ class Raster(RasterBase):
                     shapes=mask,
                     nodata=self.nodata,
                     indexes=self.band_indexes,
+                    crop=crop,
                     **kwargs,
                 )
 
@@ -979,6 +1050,7 @@ class Raster(RasterBase):
                 dst.write(self.array[i], indexes=idx, window=window)
 
     def _pop_from_dict(self, dictionary) -> dict:
+        # TODO...
         for key in self.__dict__.keys():
             if key in dictionary:
                 if is_property(self, key):
@@ -992,7 +1064,7 @@ class Raster(RasterBase):
         elif isinstance(obj, Raster):
             return obj.to_gdf()
         elif is_bbox_like(obj):
-            bounds = self._bounds_as_tuple(obj)
+            bounds = to_bbox(obj)
             return to_gdf(shapely.box(*bounds), crs=self.crs)
         else:
             return to_gdf(obj, crs=self.crs)
@@ -1019,48 +1091,11 @@ class Raster(RasterBase):
             for geom, value in features.shapes(array, transform=transform)
         ]
 
-    @staticmethod
-    def _bounds_as_tuple(obj) -> tuple[float, float, float, float]:
-        """Try to return 4-length tuple of bounds."""
-        if (
-            hasattr(obj, "__iter__")
-            and len(obj) == 4
-            and all(isinstance(x, numbers.Number) for x in obj)
-        ):
-            return obj
-        if isinstance(obj, (GeoDataFrame, GeoSeries)):
-            return obj.total_bounds
-        if isinstance(obj, Geometry):
-            return obj.bounds
-        if is_dict_like(obj) and all(
-            x in obj for x in ["minx", "miny", "maxx", "maxy"]
-        ):
-            try:
-                minx = np.min(obj["minx"])
-                miny = np.min(obj["miny"])
-                maxx = np.max(obj["maxx"])
-                maxy = np.max(obj["maxy"])
-            except TypeError:
-                minx = np.min(obj.minx)
-                miny = np.min(obj.miny)
-                maxx = np.max(obj.maxx)
-                maxy = np.max(obj.maxy)
-            return minx, miny, maxx, maxy
-        if is_dict_like(obj) and all(
-            x in obj for x in ["xmin", "ymin", "xmax", "ymax"]
-        ):
-            try:
-                xmin = np.min(obj["xmin"])
-                ymin = np.min(obj["ymin"])
-                xmax = np.max(obj["xmax"])
-                ymax = np.max(obj["ymax"])
-            except TypeError:
-                xmin = np.min(obj.xmin)
-                ymin = np.min(obj.ymin)
-                xmax = np.max(obj.xmax)
-                ymax = np.max(obj.ymax)
-            return xmin, ymin, xmax, ymax
-        raise TypeError
+    def min(self):
+        return np.min(self.array)
+
+    def max(self):
+        return np.max(self.array)
 
     def __hash__(self):
         return hash(self._hash)
@@ -1089,45 +1124,33 @@ class Raster(RasterBase):
         return getattr(self, key)
 
     def __mul__(self, scalar):
-        if self.array is None:
-            raise ValueError
+        self.check_for_array()
         self.array = self.array * scalar
-        self._raster_has_changed = True
         return self
 
     def __add__(self, scalar):
-        if self.array is None:
-            raise ValueError
+        self.check_for_array()
         self.array = self.array + scalar
-        self._raster_has_changed = True
         return self
 
     def __sub__(self, scalar):
-        if self.array is None:
-            raise ValueError
+        self.check_for_array()
         self.array = self.array - scalar
-        self._raster_has_changed = True
         return self
 
     def __truediv__(self, scalar):
-        if self.array is None:
-            raise ValueError
+        self.check_for_array()
         self.array = self.array / scalar
-        self._raster_has_changed = True
         return self
 
     def __floordiv__(self, scalar):
-        if self.array is None:
-            raise ValueError
+        self.check_for_array()
         self.array = self.array // scalar
-        self._raster_has_changed = True
         return self
 
     def __pow__(self, exponent):
-        if self.array is None:
-            raise ValueError
+        self.check_for_array()
         self.array = self.array**exponent
-        self._raster_has_changed = True
         return self
 
     def _return_self_or_copy(self, array, copy: bool):

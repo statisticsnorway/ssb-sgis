@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pyproj
 
@@ -18,13 +19,18 @@ class RasterHasChangedError(ValueError):
 
 
 class RasterBase:
-    BASE_RASTER_PROPERTIES = ["_path", "_band_indexes", "_crs", "_width", "_height"]
+    # BASE_RASTER_PROPERTIES = ["_path", "_band_indexes", "_crs", "_width", "_height"]
+    BASE_RASTER_PROPERTIES = ["_path", "_band_indexes", "_crs"]
     NEED_ONE_ATTR = ["transform", "bounds"]
+
+    BASE_CUBE_COLS = ["name", "path", "band_indexes", "crs"]
 
     PROFILE_ATTRS = [
         "driver",
         "dtype",  # kan endre med astype
         "nodata",
+        "height",
+        "width",
         "blockysize",
         "blockxsize",
         "tiled",  # Denne kan endres med merge?
@@ -32,13 +38,9 @@ class RasterBase:
         "interleave",
     ]
 
-    BASE_CUBE_COLS = (
-        ["name"] + [col.lstrip("_") for col in BASE_RASTER_PROPERTIES] + NEED_ONE_ATTR
-    )
+    ALL_ATTRS = list(set(BASE_CUBE_COLS + NEED_ONE_ATTR + PROFILE_ATTRS))
 
-    ALL_ATTRS = BASE_CUBE_COLS + PROFILE_ATTRS
-
-    ALLOWED_KEYS = ALL_ATTRS + []
+    ALLOWED_KEYS = ALL_ATTRS + ["array", "res"]
 
     @staticmethod
     def _crs_to_string(crs):
@@ -72,12 +74,19 @@ class RasterBase:
             raise AttributeError(f"Missing nessecary key {attr.lstrip('_')!r}")
 
         if not any(attr in dict_like for attr in cls.NEED_ONE_ATTR):
-            raise AttributeError("Must specify at least transform or bounds.")
+            raise AttributeError("Must specify at least 'transform' or 'bounds'.")
 
     @classmethod
     def validate_key(cls, key):
         if key not in cls.ALLOWED_KEYS:
             raise ValueError(
-                f"meta dict got an unexpected key {key!r}. Allowed keys are ",
+                f"Got an unexpected key {key!r}. Allowed keys are ",
                 ", ".join(cls.ALLOWED_KEYS),
             )
+
+    def check_not_array_mess(self):
+        return (
+            "Cannot load the arrays more than once. "
+            "Use the write method to write the arrays as image files. "
+            "This also updates the 'path' column of the cube's df."
+        )

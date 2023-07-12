@@ -2,7 +2,18 @@
 import inspect
 import warnings
 
+import numpy as np
 from geopandas import GeoDataFrame
+
+
+def to_numpy_func(text):
+    f = getattr(np, text, None)
+    if f is not None:
+        return f
+    f = getattr(np.ndarray, text, None)
+    if f is not None:
+        return f
+    raise ValueError
 
 
 def is_property(obj, attribute) -> bool:

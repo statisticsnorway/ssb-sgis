@@ -7,6 +7,7 @@ from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
 from shapely import (
     Geometry,
+    box,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
@@ -17,6 +18,20 @@ from shapely.ops import unary_union
 
 from .geometry_types import make_all_singlepart, to_single_geom_type
 from .to_geodataframe import to_gdf
+
+
+def to_shapely(obj) -> Geometry:
+    if isinstance(obj, Geometry):
+        return obj
+    if not hasattr(obj, "__iter__"):
+        raise TypeError(type(obj))
+    if hasattr(obj, "unary_union"):
+        return obj.unary_union
+    if len(obj) == 2:
+        return Point(*obj)
+    if len(obj) == 4:
+        return box(*obj)
+    raise TypeError
 
 
 def address_to_gdf(address: str, crs=4326) -> GeoDataFrame:

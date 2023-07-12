@@ -3,12 +3,13 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import skimage
 from IPython.display import display
 from shapely import box
 
 
 src = str(Path(__file__).parent.parent) + "/src"
-testdata = str(Path(__file__).parent.parent) + "/tests/testdata"
+testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 
 sys.path.insert(0, src)
 
@@ -21,7 +22,10 @@ sg.Raster.dapla = False
 
 
 def test_raster():
+    test_resize()
+    test_clip_difference()
     test_convertion()
+    test_sample()
 
     test_zonal()
 
@@ -34,6 +38,14 @@ def test_raster():
     test_res()
 
     test_to_crs()
+
+
+def test_sample():
+    r = sg.Raster.from_path(path_two_bands)
+    sample = r.sample(10)
+    sample2 = r.sample(10)
+    sg.explore(r.to_gdf(), sample.to_gdf(), sample2.to_gdf())
+    ss
 
 
 def test_transform():
@@ -99,7 +111,7 @@ def test_elevation():
 
 
 def test_zonal():
-    r = sg.Raster.from_path(path_singleband, indexes=1).load()
+    r = sg.Raster.from_path(path_singleband, band_indexes=1).load()
     gdf = sg.make_grid(r.bounds, 100, crs=r.crs)
 
     gdf.index = [np.random.choice([*"abc"]) for _ in range(len(gdf))]
@@ -114,8 +126,46 @@ def test_zonal():
         sg.explore(zonal_stats, "mean")
 
 
+def test_resize():
+    r = sg.Raster.from_path(path_singleband).load()
+    assert r.shape == (1, 201, 201), r.shape
+    assert r.res == (10, 10), r.res
+
+    r5 = r.copy().upscale(2)
+    assert r5.shape == (1, 402, 402), r5.shape
+    assert r5.res == (5, 5), r5.res
+
+    r20 = r.copy().downscale(2)
+    assert r20.shape == (1, 101, 101), r20.shape
+    assert tuple(int(x) for x in r20.res) == (19, 19), r20.res
+
+    r30 = r.copy().downscale(3)
+    assert r30.shape == (1, 67, 67), r30.shape
+    assert r30.res == (30, 30), r30.res
+
+    assert r5.unary_union.equals(r.unary_union)
+    assert r20.unary_union.equals(r.unary_union)
+    assert r30.unary_union.equals(r.unary_union)
+
+
+def test_clip_difference():
+    r = sg.Raster.from_path(path_singleband)
+    assert r.shape == (1, 201, 201), r.shape
+
+    circle = r.unary_union.centroid.buffer(100)
+
+    clipped = r.copy().clip(circle)
+    assert clipped.shape == (1, 21, 21), clipped.shape
+    erased = r.copy().difference(circle)
+    assert erased.shape == (1, 201, 201), erased.shape
+
+
 def test_convertion():
-    r = sg.Raster.from_path(path_singleband, indexes=1).load()
+    r = sg.Raster.from_path(path_singleband, band_indexes=1).load()
+    assert isinstance(r, sg.Raster)
+
+    r2 = sg.ElevationRaster(r)
+    assert isinstance(r2, sg.ElevationRaster)
 
     arr = r.array
     r_from_array = sg.Raster.from_array(arr, meta=r.meta)
@@ -145,18 +195,18 @@ def test_convertion():
 
 
 def test_res():
-    r = sg.Raster.from_path(path_singleband, indexes=1)
+    r = sg.Raster.from_path(path_singleband, band_indexes=1)
     mask_utm33 = sg.to_gdf(box(*r.bounds), crs=r.crs)
 
     for _ in range(5):
-        r = sg.Raster.from_path(path_singleband, indexes=1)
+        r = sg.Raster.from_path(path_singleband, band_indexes=1)
         mask_utm33["geometry"] = mask_utm33.sample_points(5).buffer(100)
         r = r.clip(mask_utm33, crop=True)
         assert r.res == (10, 10)
 
 
 def test_to_crs():
-    r = sg.Raster.from_path(path_singleband, indexes=1)
+    r = sg.Raster.from_path(path_singleband, band_indexes=1)
     mask_utm33 = sg.to_gdf(box(*r.bounds), crs=r.crs).centroid.buffer(50)
     r = r.clip(mask=mask_utm33)
     r = r.to_crs(25832)
@@ -167,17 +217,17 @@ def test_to_crs():
     r = r.to_crs(25833)
     assert r.to_gdf().intersects(mask_utm33.unary_union).any()
 
-    original = sg.Raster.from_path(path_singleband, indexes=1)
+    original = sg.Raster.from_path(path_singleband, band_indexes=1)
     assert original.to_gdf().intersects(r.unary_union).any()
 
 
 def test_indexes_and_shape():
     # specifying single index is only thing that returns 2dim ndarray
-    r = sg.Raster.from_path(path_singleband, indexes=1)
+    r = sg.Raster.from_path(path_singleband, band_indexes=1)
     assert len(r.shape) == 2, r.shape
     assert r.shape == (201, 201), r.shape
 
-    r = sg.Raster.from_path(path_singleband, indexes=(1,))
+    r = sg.Raster.from_path(path_singleband, band_indexes=(1,))
     assert len(r.shape) == 3, r.shape
     assert r.shape[0] == 1, r.shape
 
@@ -194,13 +244,27 @@ def test_indexes_and_shape():
 
 
 def not_test_raster():
-    testpath = testdata + "/test.tif"
-    r = sg.Raster.from_path(path_singleband, indexes=1).load()
-    r.write_tif(testpath)
+    testpath = testdata + "/res30.tif"
+    r = sg.Raster.from_path(path_singleband, band_indexes=1).load()
+
+    x = 3
+
+    r2 = r.copy()
+    shape = int(r2.shape[0] / (r2.shape[0] / x)), int(r2.shape[1] / (r2.shape[1] / x))
+    r2.array = skimage.measure.block_reduce(r2.array, shape, np.mean)
+    print(r2.array.shape, r.array.shape)
+    print(r2.res, r.res)
+    print(r2.bounds, r.bounds)
+    assert r2.res == (30, 30)
+    assert r2.bounds == r.bounds
+    r2.write(testpath)
 
 
 def save_two_band_image():
-    r = sg.Raster.from_path(path_singleband, indexes=1).load()
+    r = sg.Raster.from_path(path_singleband, band_indexes=1)
+
+    mask = sg.to_gdf(r.unary_union, crs=r.crs).buffer(-500)
+    r = r.clip(mask)
     r.array[r.array < 0] = 0
 
     r2 = r * -1

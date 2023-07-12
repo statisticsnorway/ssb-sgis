@@ -91,7 +91,7 @@ from .raster.raster import Raster
 
 
 try:
-    from .io.dapla import exists, read_geopandas, write_geopandas
+    from .io.dapla import check_files, exists, read_geopandas, write_geopandas
     from .io.write_municipality_data import (
         write_municipality_data,
         write_neighbor_municipality_data,

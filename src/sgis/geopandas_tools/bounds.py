@@ -346,6 +346,45 @@ def is_bbox_like(obj) -> bool:
     return False
 
 
+def to_bbox(obj) -> tuple[float, float, float, float]:
+    """Try to return 4-length tuple of bounds."""
+    if (
+        hasattr(obj, "__iter__")
+        and len(obj) == 4
+        and all(isinstance(x, numbers.Number) for x in obj)
+    ):
+        return obj
+    if isinstance(obj, (GeoDataFrame, GeoSeries)):
+        return obj.total_bounds
+    if isinstance(obj, Geometry):
+        return obj.bounds
+    if is_dict_like(obj) and all(x in obj for x in ["minx", "miny", "maxx", "maxy"]):
+        try:
+            minx = np.min(obj["minx"])
+            miny = np.min(obj["miny"])
+            maxx = np.max(obj["maxx"])
+            maxy = np.max(obj["maxy"])
+        except TypeError:
+            minx = np.min(obj.minx)
+            miny = np.min(obj.miny)
+            maxx = np.max(obj.maxx)
+            maxy = np.max(obj.maxy)
+        return minx, miny, maxx, maxy
+    if is_dict_like(obj) and all(x in obj for x in ["xmin", "ymin", "xmax", "ymax"]):
+        try:
+            xmin = np.min(obj["xmin"])
+            ymin = np.min(obj["ymin"])
+            xmax = np.max(obj["xmax"])
+            ymax = np.max(obj["ymax"])
+        except TypeError:
+            xmin = np.min(obj.xmin)
+            ymin = np.min(obj.ymin)
+            xmax = np.max(obj.xmax)
+            ymax = np.max(obj.ymax)
+        return xmin, ymin, xmax, ymax
+    raise TypeError
+
+
 def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int):
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)) and is_bbox_like(gdf):
         minx, miny, maxx, maxy = gdf
