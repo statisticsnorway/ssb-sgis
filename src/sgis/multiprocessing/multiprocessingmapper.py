@@ -14,8 +14,7 @@ from .base import MultiProcessingBase
 class MultiProcessingMapper(MultiProcessingBase):
     """Run single function in parallel based on iterable."""
 
-    def __init__(self, context: str = "spawn", processes=None, dapla: bool = True):
-        self.dapla = dapla
+    def __init__(self, context: str = "spawn", processes=None):
         self.context = context
         self.processes = processes
 
@@ -33,32 +32,10 @@ class MultiProcessingMapper(MultiProcessingBase):
             'iterable'.
         """
         self.validate_execution(func)
-        partial_func = functools.partial(func, **kwargs)
+        func_with_kwargs = functools.partial(func, **kwargs)
 
         with multiprocessing.get_context(self.context).Pool(self.processes) as pool:
-            return pool.map(partial_func, iterable)
-
-    def map(self, func: Callable, iterable: list, **kwargs) -> list[Any]:
-        """Run functions in parallel with items of an iterable as first arguemnt.
-
-        Args:
-            func: Function to be run.
-            iterable: An iterable where each item will be passed to func as
-                first positional argument.
-            **kwargs: Keyword arguments passed to 'func'.
-
-        Returns:
-            A list of the return values of the function, one for each item in
-            'iterable'.
-        """
-        self.validate_execution(func)
-        partial_func = functools.partial(func, **kwargs)
-        self.funcs.append(partial_func)
-        self._source.append("append")
-        return self
-
-        with multiprocessing.get_context(self.context).Pool(self.processes) as pool:
-            return pool.map(partial_func, iterable)
+            return pool.map(func_with_kwargs, iterable)
 
     def read_pandas(
         self,

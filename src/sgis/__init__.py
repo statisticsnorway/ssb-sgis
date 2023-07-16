@@ -86,8 +86,12 @@ from .networkanalysis.nodes import (
     make_node_ids,
 )
 from .raster.cube import GeoDataCube, concat_cubes
+
+# from .raster.cube2 import GeoDataCube, concat_cubes
 from .raster.elevationraster import ElevationRaster
+from .raster.indices import ndvi_index
 from .raster.raster import Raster
+from .raster.sentinel import Sentinel2  # , SentinelCube
 
 
 try:

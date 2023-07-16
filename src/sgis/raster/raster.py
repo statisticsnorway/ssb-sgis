@@ -26,10 +26,17 @@ from rasterio.warp import reproject
 from shapely import Geometry, box
 from shapely.geometry import Point, Polygon, shape
 
+
+try:
+    import dapla as dp
+except ImportError:
+    pass
+
 from ..geopandas_tools.bounds import is_bbox_like, to_bbox
 from ..geopandas_tools.general import is_wkt
 from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import is_property
+from ..io.dapla import is_dapla
 from .base import RasterBase, RasterHasChangedError
 
 
@@ -135,9 +142,9 @@ class Raster(RasterBase):
         *,
         path: str | None = None,
         array: np.ndarray | None = None,
-        band_indexes: int | list[int] | None = None,
-        name: str | None = None,
-        dapla: bool = False,
+        band_index: int | list[int] | None = None,
+        band_name: str | None = None,
+        date: str | None = None,
         **kwargs,
     ):
         if raster is not None:
@@ -147,30 +154,45 @@ class Raster(RasterBase):
                 self[key] = value
             return
 
-        self._path = path
         self.array = array
-        self._band_indexes = band_indexes
+        self.path = path
 
-        self.name = Path(path).stem if path and not name else name
+        # underscore to allow properties without setters in subclasses (e.g. Sentinel2)
+        self._date = date
+        self._band_name = band_name
 
-        # so this can be set on class as well as instance
-        if not hasattr(self, "dapla"):
-            self.dapla = dapla
+        self.root = kwargs.pop("root", None)
+
+        if isinstance(band_index, numbers.Number):
+            self._band_index = int(band_index)
+        elif band_index is None:
+            self._band_index = band_index
+        else:
+            try:
+                self._band_index = tuple(int(x) for x in band_index)
+            except Exception as e:
+                raise TypeError(
+                    "band_index should be an integer or an iterable of integers."
+                ) from e
+
+        self._band_index = band_index
 
         self._hash = uuid.uuid4()
 
         # override the above with kwargs
         self.update(**kwargs)
 
-        if self._path is not None and self.array is not None:
+        if self.path is not None and self.array is not None:
             raise ValueError("Cannot supply both 'path' and 'array'.")
-        if self._path is None and self.array is None:
+        if self.path is None and self.array is None:
             raise ValueError("Must supply either 'path' or 'array'.")
 
         # the important attributes must be of correct type
         crs = kwargs.get("crs")
         transform = kwargs.get("transform")
         bounds = kwargs.get("bounds")
+        if bounds is not None:
+            bounds = to_bbox(bounds)
 
         if not any([path, transform, bounds]):
             raise TypeError(
@@ -185,46 +207,46 @@ class Raster(RasterBase):
                 self.height, self.width, transform
             )
         elif not path:
-            self._bounds = to_bbox(bounds)
+            self._bounds = bounds
 
         attributes = {x for x in self.__dict__.keys()}.difference(set(self.properties))
 
-        if self._path is not None and not self.has_nessecary_attrs(attributes):
+        if self.path is not None and not self.has_nessecary_attrs(attributes):
             self.add_meta()
             self._meta_added = True
 
-        if self._path is None:
+        if self.path is None:
             if not isinstance(self.array, np.ndarray):
                 raise TypeError
 
             if not hasattr(self, "crs"):
                 raise TypeError("Must specify crs when constructing raster from array.")
 
-            self._band_indexes = self._add_band_indexes_from_array(band_indexes)
+            self._band_index = self._add_band_index_from_array(band_index)
 
     @classmethod
     def from_path(
         cls,
         path: str,
         *,
-        band_indexes: int | list[int] | None = None,
-        name: str | None = None,
-        dapla: bool = False,
+        band_index: int | list[int] | None = None,
+        band_name: str | None = None,
         **kwargs,
     ):
         """Construct Raster from file path.
 
         Args:
             path: Path to a raster image file.
-            band_indexes: Band indexes to read. Defaults to None, meaning all.
-            dapla: Whether to read in Dapla.
-            name: Optional name to give the raster.
+            band_index: Band indexes to read. Defaults to None, meaning all.
 
         Returns:
             A Raster instance.
         """
         return cls(
-            path=str(path), band_indexes=band_indexes, dapla=dapla, name=name, **kwargs
+            path=str(path),
+            band_index=band_index,
+            band_name=band_name,
+            **kwargs,
         )
 
     @classmethod
@@ -235,7 +257,7 @@ class Raster(RasterBase):
         crs=None,
         transform: Affine | None = None,
         bounds: tuple | Geometry | None = None,
-        name: str | None = None,
+        band_name: str | None = None,
         **kwargs,
     ):
         """Construct Raster from numpy array.
@@ -265,7 +287,7 @@ class Raster(RasterBase):
             crs=crs,
             transform=transform,
             bounds=bounds,
-            name=name,
+            band_name=band_name,
             **kwargs,
         )
 
@@ -302,21 +324,8 @@ class Raster(RasterBase):
         if kwargs["crs"] is None:
             raise TypeError("Must specify crs if the object doesn't have crs.")
 
-        if isinstance(res, numbers.Number):
-            resx, resy = res, res
-        elif not hasattr(res, "__iter__"):
-            raise TypeError
-        elif len(res) == 2:
-            resx, resy = res
-        else:
-            raise TypeError
-
-        minx, miny, maxx, maxy = gdf.total_bounds
-        diffx = maxx - minx
-        diffy = maxy - miny
-
-        shape = int(diffx / resx), int(diffy / resy)
-        transform = cls.get_transform_from_bounds(gdf, shape)
+        shape = cls.get_shape_from_bounds(gdf.total_bounds, res=res)
+        transform = cls.get_transform_from_bounds(gdf.total_bounds, shape)
         kwargs["transform"] = transform
 
         def _rasterize(gdf, col):
@@ -335,7 +344,7 @@ class Raster(RasterBase):
         if isinstance(columns, str):
             array = _rasterize(gdf, columns)
             assert len(array.shape) == 2
-            name = kwargs.get("name", columns)
+            band_name = kwargs.get("band_name", columns)
 
         # 3d array even if single column in list/tuple
         elif hasattr(columns, "__iter__"):
@@ -345,9 +354,9 @@ class Raster(RasterBase):
                 array.append(arr)
             array = np.array(array)
             assert len(array.shape) == 3
-            name = kwargs.get("name", None)
+            band_name = kwargs.get("band_name", None)
 
-        return cls.from_array(array=array, name=name, **kwargs)
+        return cls.from_array(array=array, band_name=band_name, **kwargs)
 
     @classmethod
     def from_dict(cls, dictionary: dict):
@@ -368,7 +377,7 @@ class Raster(RasterBase):
             A Raster instance.
         """
 
-        cls.verify_dict(dictionary)
+        cls.validate_dict(dictionary)
 
         return cls(**dictionary)
 
@@ -385,20 +394,14 @@ class Raster(RasterBase):
         for key, value in kwargs.items():
             self.validate_key(key)
             if key == "indexes":
-                self["band_indexes"] = value
+                self["band_index"] = value
             if is_property(self, key):
                 self["_" + key] = value
             else:
                 self[key] = value
         return self
 
-    @classmethod
-    def get_transform_from_bounds(cls, obj, shape: tuple[float, ...]) -> Affine:
-        minx, miny, maxx, maxy = to_bbox(obj)
-        width, height = shape
-        return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
-
-    def load(self, **kwargs):
+    def load(self, res: int | None = None, **kwargs):
         """Load the entire image as an np.array.
 
         The array is stored in the 'array' attribute
@@ -408,15 +411,15 @@ class Raster(RasterBase):
             **kwargs: Keyword arguments passed to the rasterio read
                 method.
         """
-        self.check_not_array()
+        # self.check_not_array()
 
         kwargs = self._pop_from_dict(kwargs)
 
-        self._read_tif(**kwargs)
+        self._read_tif(res=res, **kwargs)
 
         return self
 
-    def clip(self, mask, crop=True, **kwargs):
+    def clip(self, mask, res: int | None = None, **kwargs):
         """Load the part of the image inside the mask.
 
         The returned array is stored in the 'array' attribute
@@ -431,13 +434,11 @@ class Raster(RasterBase):
         Returns:
             Self, but with the array loaded.
         """
-        self.check_not_array()
-
         kwargs = self._pop_from_dict(kwargs)
 
         if not isinstance(mask, GeoDataFrame):
             mask = self._return_gdf(mask)
-        self._read_with_mask(mask=mask, crop=crop, **kwargs)
+        self._read_with_mask(mask=mask, res=res, **kwargs)
 
         return self
 
@@ -459,8 +460,6 @@ class Raster(RasterBase):
         Returns:
             Self, but with the array loaded.
         """
-        self.check_not_array()
-
         kwargs = self._pop_from_dict(kwargs)
 
         if not isinstance(mask, GeoDataFrame):
@@ -566,17 +565,15 @@ class Raster(RasterBase):
                 aggregated[i] = [pd.NA for _ in range(len(aggfunc))]
                 continue
 
-            if self.dapla:
-                import dapla as dp
-
+            if is_dapla():
                 fs = dp.FileClient.get_gcs_file_system()
-                with fs.open(self._path, mode="rb") as file:
+                with fs.open(self.path, mode="rb") as file:
                     with rasterio.open(file) as src:
                         aggs = self._zonal_one_poly(
                             src, poly, aggfunc, raster_calc_func, i
                         )
             else:
-                with rasterio.open(self._path) as src:
+                with rasterio.open(self.path) as src:
                     aggs = self._zonal_one_poly(src, poly, aggfunc, raster_calc_func, i)
 
             aggregated = aggregated | aggs
@@ -650,9 +647,7 @@ class Raster(RasterBase):
             | kwargs
         )
 
-        if self.dapla:
-            import dapla as dp
-
+        if is_dapla():
             fs = dp.FileClient.get_gcs_file_system()
             with fs.open(path, mode="rb") as file:
                 args = (str(file), "w")
@@ -663,7 +658,7 @@ class Raster(RasterBase):
             with rasterio.open(*args, **profile) as dst:
                 self._write(dst, window)
 
-        self._path = str(path)
+        self.path = str(path)
 
     def to_gdf(self, column: str | list[str] | None = None) -> GeoDataFrame:
         """Create a GeoDataFrame from the raster.
@@ -706,7 +701,7 @@ class Raster(RasterBase):
                 geometry="geometry",
                 crs=self.crs,
             )
-            gdf["band"] = i + 1
+            gdf["band_index"] = i + 1
             gdfs.append(gdf)
 
         return pd.concat(gdfs, ignore_index=True)
@@ -761,6 +756,7 @@ class Raster(RasterBase):
         return self
 
     def plot(self, mask=None) -> None:
+        self.check_for_array()
         """Plot the images. One image per band."""
         if len(self.shape) == 3:
             for arr in self.array:
@@ -773,15 +769,13 @@ class Raster(RasterBase):
         if hasattr(self, "_warped_crs"):
             raise ValueError(mess + "reprojected.")
 
-        if self.dapla:
-            import dapla as dp
-
+        if is_dapla():
             fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self._path, mode="rb") as file:
+            with fs.open(self.path, mode="rb") as file:
                 with rasterio.open(file) as src:
                     self._add_meta_from_src(src)
         else:
-            with rasterio.open(self._path) as src:
+            with rasterio.open(self.path) as src:
                 self._add_meta_from_src(src)
         return self
 
@@ -790,12 +784,62 @@ class Raster(RasterBase):
         ys = np.arange(self.bounds[1], self.bounds[3], self.res[1])
 
     @property
-    def path(self):
-        return self._path
+    def subfolder(self):
+        try:
+            folder = Path(Path(self.path).parent).name
+            if self.root:
+                return folder.difference(self.root)
+            else:
+                return folder
+        except TypeError:
+            return None
 
     @property
-    def band_indexes(self):
-        return self._band_indexes
+    def name(self):
+        date = self.date if self.date else ""
+        return f"{self.tile}_{date}_{self.band_name}".replace("__", "_")
+
+    @property
+    def tile(self) -> str:
+        return f"{int(self.minx)+2_000_000}{int(self.miny)}"
+        return "-".join([str(int(coord)) for coord in self.bounds])
+
+    @property
+    def band_index(self):
+        return self._band_index
+
+    @property
+    def band_name(self):
+        if self._band_name:
+            return self._band_name
+        if isinstance(self.band_index, int):
+            return str(self.band_index)
+        return "-".join(str(x) for x in self.band_index)
+
+    @band_name.setter
+    def band_name(self, value):
+        self._band_name = value
+        return self._band_name
+
+    @property
+    def band_color(self):
+        """To be implemented in subclasses."""
+        return None
+
+    @property
+    def date(self):
+        """To be implemented in subclasses."""
+        return self._date
+
+    @date.setter
+    def date(self, value):
+        self._date = value
+        return self._date
+
+    @property
+    def is_mask(self):
+        """To be implemented in subclasses."""
+        return None
 
     @property
     def array_list(self):
@@ -832,14 +876,6 @@ class Raster(RasterBase):
                 return None
 
     @property
-    def res(self) -> tuple[float, float]:
-        diffx = self.bounds[2] - self.bounds[0]
-        diffy = self.bounds[3] - self.bounds[1]
-        resx = diffx / self.width
-        resy = diffy / self.height
-        return resx, resy
-
-    @property
     def unary_union(self) -> Polygon:
         return shapely.box(*self.bounds)
 
@@ -850,16 +886,32 @@ class Raster(RasterBase):
         return Point(x, y)
 
     @property
+    def res(self) -> tuple[float, float]:
+        if self.width is None:
+            return None
+        diffx = self.bounds[2] - self.bounds[0]
+        diffy = self.bounds[3] - self.bounds[1]
+        resx = diffx / self.width
+        resy = diffy / self.height
+        return resx, resy
+
+    @property
     def height(self):
         if self.array is None:
-            return self._height
+            try:
+                return self._height
+            except AttributeError:
+                return None
         i = 2 if len(self.array.shape) == 3 else 1
         return self.array.shape[i]
 
     @property
     def width(self):
         if self.array is None:
-            return self._width
+            try:
+                return self._width
+            except AttributeError:
+                return None
         i = 1 if len(self.array.shape) == 3 else 0
         return self.array.shape[i]
 
@@ -870,16 +922,16 @@ class Raster(RasterBase):
                 return self.array.shape[0]
             if len(self.array.shape) == 2:
                 return 1
-        if not hasattr(self._band_indexes, "__iter__"):
+        if not hasattr(self._band_index, "__iter__"):
             return 1
-        return len(self._band_indexes)
+        return len(self._band_index)
 
     @property
     def shape(self):
         """Shape that is consistent with the array, whether it is loaded or not."""
         if self.array is not None:
             return self.array.shape
-        if self._band_indexes is None or hasattr(self._band_indexes, "__iter__"):
+        if self._band_index is None or hasattr(self._band_index, "__iter__"):
             return self.count, self.width, self.height
         return self.width, self.height
 
@@ -889,22 +941,31 @@ class Raster(RasterBase):
 
     @property
     def bounds(self) -> tuple[float, float, float, float]:
+        return pd.Series(to_bbox(self._bounds), index=["minx", "miny", "maxx", "maxy"])
         return self._bounds
 
     @property
     def total_bounds(self) -> tuple[float, float, float, float]:
-        return self._bounds
+        return self.bounds
+
+    @property
+    def minx(self) -> float:
+        return to_bbox(self._bounds)[0]
+
+    @property
+    def miny(self) -> float:
+        return to_bbox(self._bounds)[1]
 
     @classmethod
     def has_nessecary_attrs(cls, dict_like):
         """Check if Raster init got enough kwargs to not need to read src."""
         try:
-            cls.verify_dict(dict_like)
+            cls.validate_dict(dict_like)
             return True
         except AttributeError:
             return False
 
-    def band_indexes_as_tuple(self) -> tuple[int, ...]:
+    def band_index_tuple(self) -> tuple[int, ...]:
         if len(self.shape) == 2:
             return (1,)
         return tuple(i + 1 for i in range(self.shape[0]))
@@ -944,11 +1005,11 @@ class Raster(RasterBase):
         if self.array is not None:
             raise ValueError(mess)
 
-    def _add_band_indexes_from_array(self, band_indexes):
-        if band_indexes is not None:
-            return band_indexes
+    def _add_band_index_from_array(self, band_index):
+        if band_index is not None:
+            return band_index
         elif len(self.array.shape) == 3:
-            return [x + 1 for x in range(len(self.array))]
+            return tuple(x + 1 for x in range(len(self.array)))
         elif len(self.array.shape) == 2:
             return 1
         else:
@@ -956,12 +1017,11 @@ class Raster(RasterBase):
 
     def _add_meta_from_src(self, src):
         self._bounds = tuple(src.bounds)
-        self._transform = src.transform
-        self._height = src.height
         self._width = src.width
+        self._height = src.height
 
-        if self._band_indexes is None:
-            self._band_indexes = src.indexes
+        if self._band_index is None:
+            self._band_index = src.indexes
 
         if not hasattr(self, "nodata"):
             self.nodata = src.nodata
@@ -976,57 +1036,72 @@ class Raster(RasterBase):
         if len(array.shape) == 2:
             return [array]
         elif len(array.shape) == 3:
-            return [array for array in array]
+            return [arr for arr in array]
         else:
             raise ValueError
 
     def _read_tif(self, **kwargs) -> None:
-        if self.dapla:
-            import dapla as dp
-
+        if is_dapla():
             fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self._path, mode="rb") as file:
+            with fs.open(self.path, mode="rb") as file:
                 with rasterio.open(file) as src:
                     self._add_meta_from_src(src)
+                    out_shape = self.get_shape_from_res(kwargs.pop("res", None))
                     self.array = src.read(
-                        indexes=self.band_indexes,
+                        indexes=self.band_index,
+                        out_shape=out_shape,
                         **kwargs,
                     )
         else:
-            with rasterio.open(self._path) as src:
+            with rasterio.open(self.path) as src:
                 self._add_meta_from_src(src)
-                self.array = src.read(indexes=self.band_indexes, **kwargs)
-
-    def _read_with_mask(self, mask, crop, **kwargs):
-        if isinstance(mask, (GeoDataFrame, GeoSeries)):
-            mask = self._to_geojson(mask)
-
-        if self.dapla:
-            import dapla as dp
-
-            fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self._path, mode="rb") as file:
-                with rasterio.open(file) as src:
-                    self._add_meta_from_src(src)
-                    self.array, self.transform = rast_mask(
-                        dataset=src,
-                        shapes=mask,
-                        indexes=self.band_indexes,
-                        nodata=self.nodata,
-                        crop=crop,
-                        **kwargs,
-                    )
-        else:
-            with rasterio.open(self._path) as src:
-                self._add_meta_from_src(src)
-                self.array, self.transform = rast_mask(
-                    dataset=src,
-                    shapes=mask,
-                    nodata=self.nodata,
-                    indexes=self.band_indexes,
-                    crop=crop,
-                    **kwargs,
+                out_shape = self.get_shape_from_res(kwargs.pop("res", None))
+                self.array = src.read(
+                    indexes=self.band_index, out_shape=out_shape, **kwargs
                 )
+
+    def _read_with_mask(self, mask, res, **kwargs):
+        def _read(src):
+            """Local function with local variables to not clutter with parameters."""
+            self._add_meta_from_src(src)
+            if res:
+                out_shape = self.get_shape_from_bounds(mask, res=res)
+                transform = self.get_transform_from_bounds(mask, shape=out_shape)
+                window = rasterio.windows.from_bounds(
+                    *to_bbox(mask), transform=transform
+                )
+            self.array = src.read(
+                indexes=self.band_index,
+                window=window,
+                out_shape=out_shape,
+                masked=True,
+                **kwargs,
+            )
+
+        if is_dapla():
+            fs = dp.FileClient.get_gcs_file_system()
+            with fs.open(self.path, mode="rb") as file:
+                with rasterio.open(file) as src:
+                    _read(src)
+
+        else:
+            with rasterio.open(self.path) as src:
+                _read(src)
+
+        self._bounds = to_bbox(mask)
+
+    def get_shape_from_res(self, res):
+        if res is None:
+            return None
+        if hasattr(res, "__iter__") and len(res) == 2:
+            res, res = res
+        diffx = self.bounds[2] - self.bounds[0]
+        diffy = self.bounds[3] - self.bounds[1]
+        width = int(diffx / res)
+        height = int(diffy / res)
+        if hasattr(self.band_index, "__iter__"):
+            return len(self.band_index), width, height
+        return width, height
 
     def _write(self, dst, window):
         if np.ma.is_masked(self.array):
@@ -1035,7 +1110,7 @@ class Raster(RasterBase):
                     self.array.filled(self.nodata), indexes=1, window=window
                 )
 
-            for i in range(len(self.band_indexes_as_tuple())):
+            for i in range(len(self.band_index_tuple())):
                 dst.write(
                     self.array[i].filled(self.nodata),
                     indexes=i + 1,
@@ -1046,7 +1121,7 @@ class Raster(RasterBase):
             if len(self.array.shape) == 2:
                 return dst.write(self.array, indexes=1, window=window)
 
-            for i, idx in enumerate(self.band_indexes_as_tuple()):
+            for i, idx in enumerate(self.band_index_tuple()):
                 dst.write(self.array[i], indexes=idx, window=window)
 
     def _pop_from_dict(self, dictionary) -> dict:
@@ -1110,9 +1185,9 @@ class Raster(RasterBase):
         shape = self.shape
         shp = ", ".join([str(x) for x in shape])
         res = int(self.res[0])
-        crs = str(self._crs_to_string(self.crs))
-        path = str(self._path)
-        return f"{self.__class__.__name__}(shape=({shp}), res={res}, crs={crs}, path={path})"
+        crs = str(self.crs_to_string(self.crs))
+        name = self.name
+        return f"{self.__class__.__name__}(shape=({shp}), res={res}, crs={crs}, path={name})"
 
     def __setattr__(self, __name: str, __value) -> None:
         return super().__setattr__(__name, __value)

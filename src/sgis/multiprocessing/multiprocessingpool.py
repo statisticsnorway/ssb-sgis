@@ -34,13 +34,11 @@ class MultiProcessingPool(MultiProcessingBase):
     empty results with no errors raised.
 
     Args:
-        dapla: Whether to read the file in or outside of Dapla.
         context: Start method for the processes. Defaults to 'spawn',
             which avoids freezing.
     """
 
-    def __init__(self, context: str = "spawn", dapla: bool = True):
-        self.dapla = dapla
+    def __init__(self, context: str = "spawn"):
         self.context = context
         self.funcs: list[functools.partial] = []
         self.results: list[Any] = []

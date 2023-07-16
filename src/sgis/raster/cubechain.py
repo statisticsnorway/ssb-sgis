@@ -1,30 +1,57 @@
+import functools
+
+
 class CubeChain:
     def __init__(self):
         self.funcs = []
+        self.iterables = []
         self.names = []
         self.types = []
-        self.kwargs = []
 
-    def append_method(self, method, **kwargs):
-        assert isinstance(method, str)
-        self.funcs.append(method)
-        self.names.append(method)
-        self.types.append("method")
-        self.kwargs.append(kwargs)
+        self.write_in_chain = False
 
     def append_array_func(self, func, **kwargs):
-        assert callable(func)
-        self.funcs.append(func)
-        self.names.append(func.__name__)
+        self._append_func(func, **kwargs)
+        self.iterables.append(None)
         self.types.append("array")
-        self.kwargs.append(kwargs)
 
     def append_raster_func(self, func, **kwargs):
-        assert callable(func)
-        self.funcs.append(func)
-        self.names.append(func.__name__)
+        self._append_func(func, **kwargs)
+        self.iterables.append(None)
         self.types.append("raster")
-        self.kwargs.append(kwargs)
+
+    def append_cube_func(self, func, **kwargs):
+        self._append_func(func, **kwargs)
+        self.iterables.append(None)
+        self.types.append("cube")
+
+    def append_cube_iter(self, func, iterable, **kwargs):
+        self._append_func(func, **kwargs)
+        self.iterables.append(iterable)
+        self.types.append("cube_iter")
+
+    def append_raster_iter(self, func, iterable, **kwargs):
+        self._append_func(func, **kwargs)
+        self.iterables.append(iterable)
+        self.types.append("raster_iter")
+
+    def _append_func(self, func, **kwargs):
+        assert callable(func)
+        func_name = self.get_func_name(func)
+        if "write" in func_name:
+            if self.write_in_chain:
+                raise ValueError("Cannot keep chain going after writing files.")
+            else:
+                self.write_in_chain = True
+
+        func = functools.partial(func, **kwargs)
+        self.funcs.append(func)
+
+    def get_func_name(self, func):
+        try:
+            return func.__name__
+        except AttributeError:
+            return str(func)
 
     def __bool__(self):
         if len(self.funcs):
@@ -37,9 +64,12 @@ class CubeChain:
     def __iter__(self):
         return iter(
             [
-                (func, name, typ, kwargs)
-                for func, name, typ, kwargs in zip(
-                    self.funcs, self.names, self.types, self.kwargs, strict=True
+                (func, typ, iterable)
+                for func, typ, iterable in zip(
+                    self.funcs,
+                    self.types,
+                    self.iterables,
+                    strict=True,
                 )
             ]
         )
@@ -58,7 +88,6 @@ if __name__ == "__main__":
         print("hi")
     chain.append_array_func(x, {})
     chain.append_raster_func(x, {})
-    chain.append_method("x", {})
 
     if chain:
         print("hi hi")

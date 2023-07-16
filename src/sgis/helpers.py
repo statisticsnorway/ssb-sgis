@@ -1,5 +1,7 @@
 """Small helper functions."""
+import glob
 import inspect
+import os
 import warnings
 
 import numpy as np
@@ -51,6 +53,17 @@ def in_jupyter():
         return True
     except NameError:
         return False
+
+
+def get_all_files(root, recursive=True):
+    if not recursive:
+        return [path for path in glob.glob(str(Path(root)) + "/*")]
+    paths = []
+    for root_dir, _, files in os.walk(root):
+        for file in files:
+            path = os.path.join(root_dir, file)
+            paths.append(path)
+    return paths
 
 
 def return_two_vals(

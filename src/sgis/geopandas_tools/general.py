@@ -3,6 +3,7 @@ import warnings
 import geocoder
 import numpy as np
 import pandas as pd
+import pyproj
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
 from shapely import (
@@ -18,6 +19,29 @@ from shapely.ops import unary_union
 
 from .geometry_types import make_all_singlepart, to_single_geom_type
 from .to_geodataframe import to_gdf
+
+
+def get_utm33(lon, lat, crs=25833):
+    transformer = pyproj.Transformer.from_crs(
+        "EPSG:4326", f"EPSG:{crs}", always_xy=True
+    )
+    return transformer.transform(lon, lat)
+
+
+def get_lonlat(lon, lat, crs=25833):
+    transformer = pyproj.Transformer.from_crs(
+        f"EPSG:{crs}", "EPSG:4326", always_xy=True
+    )
+    return transformer.transform(lon, lat)
+
+
+def get_common_crs(obj: GeoDataFrame | GeoSeries) -> pyproj.CRS | None:
+    crs = list({r.crs for r in obj if r.crs})
+    if not crs:
+        return None
+    if len(crs) > 1:
+        raise ValueError("'crs' mismatch.", crs)
+    return pyproj.CRS(crs[0])
 
 
 def to_shapely(obj) -> Geometry:

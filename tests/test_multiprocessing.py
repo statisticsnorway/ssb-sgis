@@ -36,13 +36,14 @@ def not_test_pool():
     assert np.all(np.equal(res[3], np.array([10, 12]))), res[3]
 
 
-def not_test_map():
-    def func(x, **kwargs):
-        return x * 2
+def func(x, **kwargs):
+    return x * 2
 
+
+def not_test_map():
     iterable = [1, 2, 3, 4, 5, 6]
 
-    res = sg.MultiProcessingMapper(func, iterable)
+    res = sg.MultiProcessingMapper().map(func, iterable)
     print(res)
 
 

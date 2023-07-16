@@ -11,26 +11,6 @@ from geopandas.io.arrow import _geopandas_to_arrow
 from pyarrow import parquet
 
 
-def exists(path: str) -> bool:
-    """Returns True if the path exists, and False if it doesn't.
-
-    Works in Dapla and outside of Dapla.
-
-    Args:
-        path (str): The path to the file or directory.
-
-    Returns:
-        True if the path exists, False if not.
-    """
-    try:
-        dp.details(path)
-        return True
-    except FileNotFoundError:
-        return False
-    except ModuleNotFoundError:
-        return os.path.exists(path)
-
-
 def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
 
@@ -132,6 +112,32 @@ def write_geopandas(
 
     with fs.open(gcs_path, "wb") as file:
         df.to_file(file, driver=driver)
+
+
+def exists(path: str) -> bool:
+    """Returns True if the path exists, and False if it doesn't.
+
+    Works in Dapla and outside of Dapla.
+
+    Args:
+        path (str): The path to the file or directory.
+
+    Returns:
+        True if the path exists, False if not.
+    """
+    try:
+        dp.details(path)
+        return True
+    except FileNotFoundError:
+        return False
+    except ModuleNotFoundError:
+        return os.path.exists(path)
+
+
+def is_dapla() -> bool:
+    """From https://github.com/statisticsnorway/ssb-altinn-python/blob/main/src/altinn/utils.py."""
+    jupyter_image_spec = os.environ.get("JUPYTER_IMAGE_SPEC")
+    return bool(jupyter_image_spec and "dapla-jupyterlab" in jupyter_image_spec)
 
 
 def check_files(

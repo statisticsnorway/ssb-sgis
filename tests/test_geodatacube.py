@@ -21,12 +21,127 @@ import sgis as sg
 
 path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
-sg.Raster.dapla = False
-sg.GeoDataCube.dapla = False
 
 
 def x2(x):
     return x * 2
+
+
+def test_to_crs():
+    cube = sg.GeoDataCube.from_root(
+        testdata, endswith=".tif", raster_dtype=sg.ElevationRaster
+    ).load()
+    print(cube.bounds)
+    cube = cube.to_crs(25832)
+    print(cube.bounds)
+    cube = cube.load()
+    print(cube.bounds)
+
+
+def test_shape():
+    cube = sg.GeoDataCube.from_root(
+        testdata, endswith=".tif", raster_dtype=sg.ElevationRaster
+    )
+    cube = cube.load(res=10)
+    assert (cube.res == (10, 10)).all(), cube.res
+    cube = cube.load(res=30)
+
+    c = cube.unary_union.centroid.buffer(100)
+    cube = cube.clip(c, res=10)
+    assert (cube.res == (10, 10)).all(), cube.res
+    assert (cube.shape.str[1:] == (20, 20)).all(), cube.shape.str[1:]
+
+    cube = cube.clip(c, res=20)
+    assert (cube.res == (20, 20)).all(), cube.res
+    assert (cube.shape.str[1:] == (10, 10)).all(), cube.shape.str[1:]
+
+
+def test_copy():
+    cube = sg.GeoDataCube.from_root(
+        testdata, endswith=".tif", raster_dtype=sg.ElevationRaster
+    )
+
+    assert cube.arrays.isna().all()
+    cube2 = cube.load().load().load()
+    assert cube.arrays.isna().all()
+    assert cube2.arrays.notna().all()
+
+    cube3 = (cube2.chain(processes=2) * 2).execute()
+    assert int(cube3.max()) == int(cube2.max()) * 2
+
+
+def test_elevation():
+    cube = sg.GeoDataCube.from_root(
+        testdata, endswith=".tif", raster_dtype=sg.ElevationRaster
+    ).load()
+    print(cube.raster_attribute("degrees"))
+
+    print(cube.max())
+
+    print(cube.copy().raster_method("gradient").max())
+    print(cube.copy().raster_method("degrees").max())
+
+    print(cube.copy().chain(processes=3).raster_method("degrees").execute().max())
+
+
+def not_test_indices():
+    path_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
+
+    cube = sg.GeoDataCube.from_root(path_sentinel)
+    print(cube)
+
+
+def not_test_sentinel():
+    path_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
+
+    cube = sg.GeoDataCube.from_root(
+        path_sentinel, endswith=".tif", raster_dtype=sg.Sentinel2
+    ).query("band_name.notna()")
+    display(cube.df)
+
+    cube = sg.ndvi_index(cube, band_name_red="B4", band_name_nir="B8")
+    display(cube.df)
+
+    ss
+
+    cube = sg.SentinelCube.from_root(path_sentinel, with_masks=False)
+    print(cube)
+
+    ndvi = cube.ndvi()
+    print(ndvi)
+    ss
+
+    ndvi = cube.chain(processes=3).load().ndvi().execute()
+    print(ndvi)
+
+    ss
+    cube = sg.GeoDataCube.from_root(
+        path_sentinel, endswith=".tif", raster_dtype=sg.Sentinel2
+    )
+    cube._df = cube.df[cube.raster_attribute("is_mask")]
+    cube = cube.load()
+
+    for r in cube:
+        print(r.path)
+        r.plot()
+    ss
+
+    for col in cube.df:
+        print(cube.df[col])
+    display(cube.df)
+    print(cube.raster_attribute("band_name"))
+    print(cube.raster_attribute("date"))
+    print(cube.copy().merge(by="band_name"))
+
+    rbg = cube.copy().df[cube.raster_attribute("is_rbg")]
+    assert len(rbg) == 3
+    display(rbg)
+
+    rbg = cube.df[
+        lambda x: x.band_name.isin(cube.raster_attribute("rgb_bands").iloc[0])
+    ]
+    assert len(rbg) == 3
+    display(rbg)
 
 
 def not_test_df():
@@ -38,15 +153,19 @@ def not_test_df():
     try:
         cube = sg.GeoDataCube.from_root(testdata, endswith=".tif").explode()
         df = cube._prepare_df_for_parquet()
+        df["my_idx"] = range(len(df))
         df.to_parquet(df_path)
-        display(df)
-        cube_from_df = sg.GeoDataCube.from_df(df_path).explode()
-        assert hasattr(cube_from_df, "_from_df")
-        assert cube_from_df.boxes.intersects(cube.unary_union).all()
+        cube_from_cube_df = sg.GeoDataCube.from_cube_df(df_path).explode()
+        display(cube_from_cube_df.df)
+        assert "my_idx" in cube_from_cube_df.df
+        assert hasattr(cube_from_cube_df, "_from_cube_df")
+        assert cube_from_cube_df.boxes.intersects(cube.unary_union).all()
 
-        cube_from_df = sg.GeoDataCube.from_root(testdata, endswith=".tif").explode()
-        assert hasattr(cube_from_df, "_from_df")
-        assert cube_from_df.boxes.intersects(cube.unary_union).all()
+        cube_from_cube_df = sg.GeoDataCube.from_root(
+            testdata, endswith=".tif"
+        ).explode()
+        assert hasattr(cube_from_cube_df, "_from_cube_df")
+        assert cube_from_cube_df.boxes.intersects(cube.unary_union).all()
         os.remove(df_path)
     except Exception as e:
         os.remove(df_path)
@@ -68,12 +187,28 @@ def test_from_root():
     display(cube)
 
 
+def test_retile():
+    cube = sg.GeoDataCube.from_root(testdata, endswith=".tif")
+    assert cube.area.max() == 4040100
+    retiled = cube.retile(tilesize=100, res=10, band_id="name")
+    retiled.df["area"] = retiled.area
+    assert retiled.area.max() == 10000
+    print(retiled.df)
+
+    retiled = (
+        cube.chain(processes=4).retile(tilesize=100, res=10, band_id="name").execute()
+    )
+    retiled.df["area"] = retiled.area
+    assert retiled.area.max() == 10000
+    print(retiled.df)
+
+
 def test_merge():
     cube = sg.GeoDataCube.from_root(testdata, endswith=".tif").explode()
-    assert len(cube) == 4, len(cube)
-    cube.df["area"] = cube.area
     display(cube.df)
     print(cube.res)
+    assert len(cube) == 4, len(cube)
+    cube.df["area"] = cube.area
 
     cube2 = cube.copy().merge()
     assert len(cube2) == 1, len(cube2)
@@ -82,7 +217,7 @@ def test_merge():
     display(cube2.df)
     print(cube.res)
 
-    cube2 = cube.copy().merge(by=["band_indexes", "path"])
+    cube2 = cube.copy().merge(by=["band_index", "path"])
     assert list(cube2.res.values) == [(10, 10), (10, 10), (10, 10), (30, 30)], list(
         cube2.res.values
     )
@@ -91,7 +226,7 @@ def test_merge():
     display(cube2.df)
     print(cube.res)
 
-    cube2 = cube.copy().merge_by_band()
+    cube2 = cube.copy().merge(by="band_index")
     assert len(cube2) == 2, len(cube2)
     assert (cube2.shape.str.len() == 2).all(), "should return 2d array"
     assert list(cube2.res.values) == [(10, 10), (10, 10)], list(cube2.res.values)
@@ -101,7 +236,7 @@ def test_merge():
 
     cube2 = cube.copy().merge_by_bounds()
     display(cube2.df)
-    display(cube2.df["band_indexes"])
+    display(cube2.df["band_index"])
     assert len(cube2) == 2, len(cube2)
     assert (cube2.shape.str.len() == 3).all(), "should return 3d array"
     assert list(cube2.res.values) == [(10, 10), (10, 10)], list(cube2.res.values)
@@ -111,11 +246,11 @@ def test_merge():
 
 def test_dissolve():
     cube = sg.GeoDataCube.from_root(testdata, endswith=".tif")
-    cube.merge_by_bounds()
-    cube.shape == pd.Series([(1, 201, 201), (2, 201, 201)])
+    cube = cube.merge_by_bounds()
+    list(cube.shape) == [(1, 201, 201), (2, 201, 201)]
     print(cube)
-    cube.dissolve_bands("mean")
-    cube.shape == pd.Series([(201, 201), (201, 201)])
+    cube = cube.dissolve_bands("mean")
+    list(cube.shape) == [(201, 201), (201, 201)]
     print(cube)
 
 
@@ -139,15 +274,42 @@ def not_test_merge():
     assert cube.area.sum() == 12, cube.area.sum()
 
 
+def test_from_gdf():
+    cube = sg.GeoDataCube.from_root(testdata, endswith=".tif")
+    gdf = cube[0].load().to_gdf("val")
+    print(gdf)
+    cube = sg.GeoDataCube.from_gdf(
+        gdf, tilesize=100, processes=1, columns=["val"], res=10
+    )
+    print(cube.df)
+
+    cube = sg.GeoDataCube.from_gdf(
+        gdf, tilesize=100, processes=4, columns=["val"], res=10
+    )
+    print(cube.df)
+
+
+def test_sample():
+    cube = sg.GeoDataCube.from_root(testdata, endswith=".tif")
+    sample = cube.sample(buffer=100)
+    samples = cube.sample(10, buffer=100)
+    sg.explore(sample.to_gdf(), samples.to_gdf())
+    ss
+
+    for cube in samples:
+        for array in cube.arrays:
+            pass
+
+
 def test_chaining():
     cube = sg.GeoDataCube.from_root(testdata, endswith=".tif")
-    cube = ((cube.chain(processes=6).load().map(x2) * 2).explode() * 2).execute()
+    cube = ((cube.chain(processes=6).load().map(x2) * 2).explode() / 2).execute()
 
 
 def _test_add_meta():
     cubesti_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
 
-    cube = sg.GeoDataCube.from_root(cubesti_sentinel, endswith=".tif", dapla=False)
+    cube = sg.GeoDataCube.from_root(cubesti_sentinel, endswith=".tif")
 
     assert all(hasattr(r, "_meta_added") for r in cube), [
         hasattr(r, "_meta_added") for r in cube
@@ -156,150 +318,28 @@ def _test_add_meta():
     cube.update_df()
     display(cube.df)
 
-    cube2 = sg.GeoDataCube.from_df(cube.df.drop(["raster"], axis=1))
+    cube2 = sg.GeoDataCube.from_cube_df(cube.df.drop(["raster"], axis=1))
     assert not any(hasattr(r, "_meta_added") for r in cube2), [
         hasattr(r, "_meta_added") for r in cube2
     ]
 
 
-def test_cube(processes=None):
-    cubesti_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
-
-    cube = sg.GeoDataCube.from_root(
-        cubesti_sentinel,
-        endswith=".tif",
-        processes=processes,
-    )
-    cube.bounds
-    cube.height
-    cube.width
-    cube2 = sg.GeoDataCube.from_root(
-        cubesti_sentinel, endswith=".tif", dapla=False
-    ).add_meta()
-
-    mask = cube2.unary_union.centroid.buffer(10000)
-    # mask = sg.to_gdf([0, 0], crs=cube2.crs)
-
-    cube2 = cube2.clip(mask, crop=True)
-
-    cube = (cube.clip(mask, crop=True) * 2).explode()
-    return
-
-    print(cube.bounds)
-    print(cube.total_bounds)
-    print(cube.band_indexes)
-    print(cube.res)
-    print(cube.tiles)
-
-    r = sg.Raster.from_path(path_singleband)
-    r2 = sg.ElevationRaster.from_path(path_two_bands)
-
-    cube = sg.GeoDataCube(
-        [r2],
-        use_multiprocessing=use_multiprocessing,
-        processes=processes,
-    )
-
-    print(cube.gradient())
-    print(cube.degrees())
-
-    cube = sg.GeoDataCube.from_root(
-        Path(path_singleband).parent, endswith=".tif", dapla=False
-    )
-
-    concatted = sg.concat_cubes([cube, cube])
-    assert len(concatted) == len(cube) * 2, concatted
-
-    r.load()
-    r2.load()
-    cube = sg.GeoDataCube(
-        [r, r2, r, r, r, r, r],
-        use_multiprocessing=use_multiprocessing,
-        processes=processes,
-    )
-
-    assert len(cube) == 7, cube
-    assert all(len(r.shape) == 3 for r in cube.df["raster"]), cube
-
-    exploded = cube.copy().explode()
-    assert all(len(r.shape) == 3 for r in cube.df["raster"]), cube
-    assert exploded._rasters_have_changed is False
-
-    assert len(exploded) == 8, exploded
-    assert all(len(r.shape) == 2 for r in exploded.df["raster"]), exploded
-
-    # check that it's copying
-    assert len(exploded) == len({id(x) for x in exploded.df["raster"]})
-
-    cube = cube.load().explode()
-    assert len(cube) == 8, cube
-    assert all(len(r.shape) == 2 for r in cube.df["raster"]), cube
-    assert len(cube) == len({id(x) for x in cube.df["raster"]})
-
-    print("intersects")
-    print(cube.intersects(r.unary_union))
-
-    assert exploded._rasters_have_changed is False
-    cube = cube.clip(mask=cube.unary_union)
-    assert len(cube) == 8, cube
-    assert exploded._rasters_have_changed is True
-
-    print(cube)
-    print(cube.band_indexes)
-    print(cube.band_indexes)
-    print(cube.shape)
-    print(cube.res)
-    print(cube.crs)
-
-    # should not be possible with multiple clips without saving to files
-    i = 0
-    try:
-        cube = cube.clip(mask=cube.unary_union)
-    except ValueError:
-        i += 1
-    if i == 0:
-        raise ValueError("Did not raise...")
-
-    print(cube.mean())
-    print(cube.max())
-
-    cube = cube.map(x2)
-    cube = cube.map(abs)
-    print(cube.mean())
-    print(cube.max())
-
-    cube = cube * 2
-    print(cube.mean())
-    print(cube.max())
-
-    cube.df = cube.df.reset_index(drop=True)
-    print(cube)
-    assert isinstance(cube, sg.GeoDataCube), type(cube)
-    assert isinstance(cube.df, pd.DataFrame), type(cube.df)
-    assert isinstance(cube.df["raster"], pd.Series), type(cube.df["raster"])
-    assert isinstance(cube.df.loc[0, "raster"], sg.Raster), type(
-        cube.df.loc[0, "raster"]
-    )
-    assert isinstance(cube.df.loc[1, "raster"], sg.ElevationRaster), type(
-        cube.df.loc[1, "raster"]
-    )
-    assert isinstance(cube.df.loc[2, "raster"], sg.ElevationRaster), type(
-        cube.df.loc[2, "raster"]
-    )
-
-
 if __name__ == "__main__":
-    test_from_root()
-    test_dissolve()
-    not_test_df()
-    test_merge()
-    test_chaining()
+    import cProfile
 
-    for processes in [1, 6]:
-        time = perf_counter()
-        test_cube(processes=processes)
+    def test_cube():
+        # not_test_sentinel()
+        test_chaining()
+        test_merge()
+        test_retile()
+        test_shape()
+        test_copy()
+        test_elevation()
+        test_from_gdf()
+        not_test_df()
+        test_from_root()
+        test_dissolve()
+        test_sample()
 
-        if processes == 6:
-            print(f"with multiprocessing:", perf_counter() - time)
-        else:
-            print(f"without multiprocessing:", perf_counter() - time)
+    test_cube()
+    # cProfile.run("test_cube()", sort="cumtime")

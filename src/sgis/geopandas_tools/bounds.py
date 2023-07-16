@@ -133,33 +133,14 @@ def make_grid(
         GeoDataFrame with grid polygons.
 
     """
-    if not isinstance(obj, (GeoDataFrame, GeoSeries)):
-        if not crs:
-            raise ValueError(
-                "'crs' must be specified when 'obj' is not GeoDataFrame/GeoSeries."
-            )
-        if is_bbox_like(obj):
-            minx, miny, maxx, maxy = obj
-        elif isinstance(obj, Geometry):
-            minx, miny, maxx, maxy = obj.bounds
-        elif is_dict_like(obj) and all(
-            x in obj for x in ["minx", "miny", "maxx", "maxy"]
-        ):
-            try:
-                minx = np.min(obj["minx"])
-                miny = np.min(obj["miny"])
-                maxx = np.max(obj["maxx"])
-                maxy = np.max(obj["maxy"])
-            except TypeError:
-                minx = np.min(obj.minx)
-                miny = np.min(obj.miny)
-                maxx = np.max(obj.maxx)
-                maxy = np.max(obj.maxy)
-        else:
-            raise TypeError
-    else:
-        minx, miny, maxx, maxy = obj.total_bounds
+    if isinstance(obj, (GeoDataFrame, GeoSeries)):
         crs = obj.crs or crs
+    elif not crs:
+        raise ValueError(
+            "'crs' must be specified when 'obj' is not GeoDataFrame/GeoSeries."
+        )
+
+    minx, miny, maxx, maxy = to_bbox(obj)
 
     minx = int(minx) if minx > 0 else int(minx - 1)
     miny = int(miny) if miny > 0 else int(miny - 1)
@@ -353,11 +334,11 @@ def to_bbox(obj) -> tuple[float, float, float, float]:
         and len(obj) == 4
         and all(isinstance(x, numbers.Number) for x in obj)
     ):
-        return obj
+        return tuple(obj)
     if isinstance(obj, (GeoDataFrame, GeoSeries)):
-        return obj.total_bounds
+        return tuple(obj.total_bounds)
     if isinstance(obj, Geometry):
-        return obj.bounds
+        return tuple(obj.bounds)
     if is_dict_like(obj) and all(x in obj for x in ["minx", "miny", "maxx", "maxy"]):
         try:
             minx = np.min(obj["minx"])
@@ -382,7 +363,7 @@ def to_bbox(obj) -> tuple[float, float, float, float]:
             xmax = np.max(obj.xmax)
             ymax = np.max(obj.ymax)
         return xmin, ymin, xmax, ymax
-    raise TypeError
+    raise TypeError(obj)
 
 
 def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int):
