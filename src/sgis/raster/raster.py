@@ -158,8 +158,10 @@ class Raster(RasterBase):
         self.path = path
 
         # underscore to allow properties without setters in subclasses (e.g. Sentinel2)
-        self._date = date
-        self._band_name = band_name
+        if date:
+            self._date = date
+        if band_name:
+            self._band_name = band_name
 
         self.root = kwargs.pop("root", None)
 
@@ -795,14 +797,14 @@ class Raster(RasterBase):
             return None
 
     @property
+    def tile(self) -> str:
+        return f"{int(self.bounds[0])}{int(self.bounds[1])}"
+        return f"{int(self.minx)+2_000_000}{int(self.miny)}"
+
+    @property
     def name(self):
         date = self.date if self.date else ""
         return f"{self.tile}_{date}_{self.band_name}".replace("__", "_")
-
-    @property
-    def tile(self) -> str:
-        return f"{int(self.minx)+2_000_000}{int(self.miny)}"
-        return "-".join([str(int(coord)) for coord in self.bounds])
 
     @property
     def band_index(self):
@@ -810,7 +812,7 @@ class Raster(RasterBase):
 
     @property
     def band_name(self):
-        if self._band_name:
+        if hasattr(self, "_band_name"):
             return self._band_name
         if isinstance(self.band_index, int):
             return str(self.band_index)
@@ -824,12 +826,15 @@ class Raster(RasterBase):
     @property
     def band_color(self):
         """To be implemented in subclasses."""
-        return None
+        pass
 
     @property
     def date(self):
         """To be implemented in subclasses."""
-        return self._date
+        try:
+            return self._date
+        except AttributeError:
+            return None
 
     @date.setter
     def date(self, value):
@@ -839,7 +844,7 @@ class Raster(RasterBase):
     @property
     def is_mask(self):
         """To be implemented in subclasses."""
-        return None
+        pass
 
     @property
     def array_list(self):
@@ -941,20 +946,12 @@ class Raster(RasterBase):
 
     @property
     def bounds(self) -> tuple[float, float, float, float]:
-        return pd.Series(to_bbox(self._bounds), index=["minx", "miny", "maxx", "maxy"])
         return self._bounds
+        return pd.Series(to_bbox(self._bounds), index=["minx", "miny", "maxx", "maxy"])
 
     @property
     def total_bounds(self) -> tuple[float, float, float, float]:
         return self.bounds
-
-    @property
-    def minx(self) -> float:
-        return to_bbox(self._bounds)[0]
-
-    @property
-    def miny(self) -> float:
-        return to_bbox(self._bounds)[1]
 
     @classmethod
     def has_nessecary_attrs(cls, dict_like):
@@ -1187,7 +1184,11 @@ class Raster(RasterBase):
         res = int(self.res[0])
         crs = str(self.crs_to_string(self.crs))
         name = self.name
-        return f"{self.__class__.__name__}(shape=({shp}), res={res}, crs={crs}, path={name})"
+        date = self.date
+        band_name = self.band_name
+        path = self.path
+        return f"{self.__class__.__name__}(shape=({shp}), res={res}, name={name}, crs={crs}, path={path})"
+        return f"{self.__class__.__name__}(band_name={band_name}, date={date}, shape=({shp}), res={res}, crs={crs}, path={path})"
 
     def __setattr__(self, __name: str, __value) -> None:
         return super().__setattr__(__name, __value)

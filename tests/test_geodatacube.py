@@ -29,7 +29,7 @@ def x2(x):
 
 def test_to_crs():
     cube = sg.GeoDataCube.from_root(
-        testdata, endswith=".tif", raster_dtype=sg.ElevationRaster
+        testdata, endswith=".tif", raster_type=sg.ElevationRaster
     ).load()
     print(cube.bounds)
     cube = cube.to_crs(25832)
@@ -40,7 +40,7 @@ def test_to_crs():
 
 def test_shape():
     cube = sg.GeoDataCube.from_root(
-        testdata, endswith=".tif", raster_dtype=sg.ElevationRaster
+        testdata, endswith=".tif", raster_type=sg.ElevationRaster
     )
     cube = cube.load(res=10)
     assert (cube.res == (10, 10)).all(), cube.res
@@ -58,7 +58,7 @@ def test_shape():
 
 def test_copy():
     cube = sg.GeoDataCube.from_root(
-        testdata, endswith=".tif", raster_dtype=sg.ElevationRaster
+        testdata, endswith=".tif", raster_type=sg.ElevationRaster
     )
 
     assert cube.arrays.isna().all()
@@ -72,16 +72,16 @@ def test_copy():
 
 def test_elevation():
     cube = sg.GeoDataCube.from_root(
-        testdata, endswith=".tif", raster_dtype=sg.ElevationRaster
+        testdata, endswith=".tif", raster_type=sg.ElevationRaster
     ).load()
     print(cube.raster_attribute("degrees"))
 
     print(cube.max())
 
-    print(cube.copy().raster_method("gradient").max())
-    print(cube.copy().raster_method("degrees").max())
+    print(cube.copy().run_raster_method("gradient").max())
+    print(cube.copy().run_raster_method("degrees").max())
 
-    print(cube.copy().chain(processes=3).raster_method("degrees").execute().max())
+    print(cube.copy().chain(processes=3).run_raster_method("degrees").execute().max())
 
 
 def not_test_indices():
@@ -95,9 +95,10 @@ def not_test_sentinel():
     path_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
 
     cube = sg.GeoDataCube.from_root(
-        path_sentinel, endswith=".tif", raster_dtype=sg.Sentinel2
+        path_sentinel, endswith=".tif", raster_type=sg.Sentinel2
     ).query("band_name.notna()")
     display(cube.df)
+    display(cube.meta)
 
     cube = sg.ndvi_index(cube, band_name_red="B4", band_name_nir="B8")
     display(cube.df)
@@ -116,7 +117,7 @@ def not_test_sentinel():
 
     ss
     cube = sg.GeoDataCube.from_root(
-        path_sentinel, endswith=".tif", raster_dtype=sg.Sentinel2
+        path_sentinel, endswith=".tif", raster_type=sg.Sentinel2
     )
     cube._df = cube.df[cube.raster_attribute("is_mask")]
     cube = cube.load()
@@ -205,10 +206,14 @@ def test_retile():
 
 def test_merge():
     cube = sg.GeoDataCube.from_root(testdata, endswith=".tif").explode()
-    display(cube.df)
-    print(cube.res)
     assert len(cube) == 4, len(cube)
     cube.df["area"] = cube.area
+
+    cube2 = cube.copy().load().merge_by_bounds(by="res")
+    cube2.df["area"] = cube2.area
+    display(cube2.df)
+    print(cube2.res)
+    assert len(cube2) == 3, len(cube2)
 
     cube2 = cube.copy().merge()
     assert len(cube2) == 1, len(cube2)
@@ -303,7 +308,10 @@ def test_sample():
 
 def test_chaining():
     cube = sg.GeoDataCube.from_root(testdata, endswith=".tif")
-    cube = ((cube.chain(processes=6).load().map(x2) * 2).explode() / 2).execute()
+
+    cube = (
+        (cube.chain(processes=6).load().map(x2).map(np.float16) * 2).explode() / 2
+    ).execute()
 
 
 def _test_add_meta():
@@ -327,19 +335,22 @@ def _test_add_meta():
 if __name__ == "__main__":
     import cProfile
 
+    # TODO: band_name til band
+
     def test_cube():
         # not_test_sentinel()
-        test_chaining()
         test_merge()
-        test_retile()
         test_shape()
         test_copy()
+        test_chaining()
         test_elevation()
         test_from_gdf()
         not_test_df()
         test_from_root()
         test_dissolve()
-        test_sample()
+        test_merge()
+        test_retile()
+        # test_sample()
 
     test_cube()
     # cProfile.run("test_cube()", sort="cumtime")

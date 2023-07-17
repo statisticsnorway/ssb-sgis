@@ -13,21 +13,7 @@ from .raster import Raster
 
 
 class Sentinel2(Raster):
-    all_bands = [
-        "B2",
-        "B3",
-        "B4",
-        "B5",
-        "B6",
-        "B7",
-        "B8",
-        "B8A",
-        "B9",
-        "B11",
-        "B12",
-    ]
-
-    colors = {
+    band_colors = {
         "B1": "coastal aerosol",
         "B2": "blue",
         "B3": "green",
@@ -36,7 +22,7 @@ class Sentinel2(Raster):
         "B6": "vegetation red edge",
         "B7": "vegetation red edge",
         "B8": "nir",
-        "B8a": "narrow nir",
+        "B8A": "narrow nir",
         "B9": "water vapour",
         "B10": "swir - cirrus",
         "B11": "swir",
@@ -58,7 +44,7 @@ class Sentinel2(Raster):
             name = re.search(r"B\d{1,2}A", Path(self.path).name).group()
         except AttributeError:
             name = re.search(r"B\d{1,2}", Path(self.path).name).group()
-        if name in self.all_bands:
+        if name in self.band_colors:
             return name
         else:
             raise ValueError(name)
@@ -102,10 +88,10 @@ class SentinelCube(GeoDataCube):
         with_masks: bool = False,
         **kwargs,
     ):
-        raster_dtype = kwargs.pop("raster_dtype", Sentinel2)
+        raster_type = kwargs.pop("raster_type", Sentinel2)
         cube = super().from_root(
             root,
-            raster_dtype=raster_dtype,
+            raster_type=raster_type,
             **kwargs,
         )
         if not with_masks:

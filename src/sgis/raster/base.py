@@ -29,12 +29,19 @@ class RasterBase:
     NEED_ONE_ATTR = ["transform", "bounds"]
 
     BASE_CUBE_COLS = [
-        "name",  # file stem
-        "path",  # entire path
-        "subfolder",  # path below root without name
-        "band_index",  # the rasterio/gdal index
-        "band_name",
+        "name",  # tile + date + band_name
+        "band_name",  # to be implemented in Raster subclasses from e.g. regex
+        "date",
+        "tile",
+        "band_index",  # the rasterio/gdal index (starts at 1)
+        "subfolder",  # path below root without file name
+        "path",
         "raster",
+    ]
+
+    MORE_RASTER_ATTR = [
+        "shape",
+        "res",
     ]
 
     CUBE_GEOM_COL = "box"
@@ -54,7 +61,9 @@ class RasterBase:
     ]
 
     ALL_ATTRS = list(
-        set(BASE_CUBE_COLS + NEED_ONE_ATTR + PROFILE_ATTRS).difference({"raster"})
+        set(
+            BASE_CUBE_COLS + NEED_ONE_ATTR + MORE_RASTER_ATTR + PROFILE_ATTRS
+        ).difference({"raster"})
     )
 
     ALLOWED_KEYS = ALL_ATTRS + ["array", "res"]

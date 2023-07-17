@@ -36,7 +36,11 @@ def get_lonlat(lon, lat, crs=25833):
 
 
 def get_common_crs(obj: GeoDataFrame | GeoSeries) -> pyproj.CRS | None:
-    crs = list({r.crs for r in obj if r.crs})
+    try:
+        crs = list({r.crs for r in obj if r.crs})
+    except AttributeError:
+        crs = list(set(obj))
+
     if not crs:
         return None
     if len(crs) > 1:

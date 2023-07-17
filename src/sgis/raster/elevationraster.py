@@ -6,6 +6,12 @@ from .raster import Raster
 class ElevationRaster(Raster):
     """For raster calculation on elevation images."""
 
+    dtype = np.uint8
+
+    def __init__(self, dtype=np.uint8, **kwargs):
+        self._band_index = 1
+        super().__init__(dtype=dtype, **kwargs)
+
     def degrees(self, copy: bool = False):
         """Get the slope of an elevation raster in degrees.
 

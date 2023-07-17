@@ -8,33 +8,27 @@ from .raster import Raster
 
 
 def ndvi_formula(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    f = (nir - red) / (nir + red)
-    return np.where((red + nir) == 0, 0, f)
+    return np.where((red + nir) == 0, 0, (nir - red) / (nir + red))
 
 
 def gndvi_formula(green: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    f = (nir - green) / (nir + green)
-    return np.where((green + nir) == 0, 0, f)
+    return np.where((green + nir) == 0, 0, (nir - green) / (nir + green))
 
 
 def water_formula(green: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    f = (green - nir) / (green + nir)
-    return np.where((green + nir) == 0, 0, f)
+    return np.where((green + nir) == 0, 0, (green - nir) / (green + nir))
 
 
 def water_formula(swir: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    f = (nir - swir) / (nir + swir)
-    return np.where((swir + nir) == 0, 0, f)
+    return np.where((swir + nir) == 0, 0, (nir - swir) / (nir + swir))
 
 
 def builtup_formula(swir: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    f = (swir - nir) / (swir + nir)
-    return np.where((swir + nir) == 0, 0, f)
+    return np.where((swir + nir) == 0, 0, (swir - nir) / (swir + nir))
 
 
 def moisture_formula(swir: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    f = (nir - swir) / (nir + swir)
-    return np.where((swir + nir) == 0, 0, f)
+    return np.where((swir + nir) == 0, 0, (nir - swir) / (nir + swir))
 
 
 def moisture_index(

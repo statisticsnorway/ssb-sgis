@@ -4,14 +4,23 @@ from pandas import DataFrame
 from ..helpers import in_jupyter
 
 
+class LocalFunctionError(ValueError):
+    def __init__(self, func: str):
+        self.func = func.__name__
+
+    def __str__(self):
+        return (
+            f"{self.func}. "
+            "In Jupyter, functions to be multiprocessed must \n"
+            "be defined in and imported from another file when context='spawn'. \n"
+            "Note that setting context='fork' might cause freezing processes.\n"
+        )
+
+
 class MultiProcessingBase:
     def validate_execution(self, func):
         if func.__module__ == "__main__" and self.context == "spawn" and in_jupyter():
-            raise ValueError(
-                "in Jupyter, functions to be multiprocessed must "
-                "be defined in and imported from another file when context='spawn'. "
-                "Note that setting context='fork' might cause freezing processes."
-            )
+            raise LocalFunctionError(func)
 
     def chunksort_df(df: DataFrame | GeoDataFrame, n: int, column: str):
         df = df.sort_values(column).reset_index(drop=True)
