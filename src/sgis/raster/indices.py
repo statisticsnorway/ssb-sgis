@@ -3,7 +3,6 @@ from typing import Callable
 
 import numpy as np
 
-from .cube import GeoDataCube, concat_cubes, starmap_concat
 from .raster import Raster
 
 
@@ -31,74 +30,61 @@ def moisture_formula(swir: np.ndarray, nir: np.ndarray) -> np.ndarray:
     return np.where((swir + nir) == 0, 0, (nir - swir) / (nir + swir))
 
 
-def moisture_index(
-    cube: GeoDataCube, band_name_swir="B11", band_name_nir="B8", copy=True
-):
+def moisture_index(cube, band_name_swir="B11", band_name_nir="B8"):
     return index_calc(
         cube,
         band_name1=band_name_swir,
         band_name2=band_name_nir,
-        func=moisture_formula,
+        index_formula=moisture_formula,
         index_name="moisture_index",
-        copy=copy,
     )
 
 
-def water_index(cube: GeoDataCube, band_name_green="B3", band_name_nir="B8", copy=True):
+def water_index(cube, band_name_green="B3", band_name_nir="B8"):
     return index_calc(
         cube,
         band_name1=band_name_green,
         band_name2=band_name_nir,
-        func=water_formula,
+        index_formula=water_formula,
         index_name="water_index",
-        copy=copy,
     )
 
 
-def ndvi_index(cube: GeoDataCube, band_name_red="B4", band_name_nir="B8", copy=True):
+def ndvi_index(cube, band_name_red="B4", band_name_nir="B8"):
     return index_calc(
         cube,
         band_name1=band_name_red,
         band_name2=band_name_nir,
-        func=ndvi_formula,
+        index_formula=ndvi_formula,
         index_name="NDVI",
-        copy=copy,
     )
 
 
-def gndvi_index(cube: GeoDataCube, band_name_green="B3", band_name_nir="B8", copy=True):
+def gndvi_index(cube, band_name_green="B3", band_name_nir="B8"):
     return index_calc(
         cube,
         band_name1=band_name_green,
         band_name2=band_name_nir,
-        func=gndvi_formula,
+        index_formula=gndvi_formula,
         index_name="gndvi",
-        copy=copy,
     )
 
 
-def builtup_index(cube: GeoDataCube, band_name_red="B4", band_name_nir="B8", copy=True):
+def builtup_index(cube, band_name_red="B4", band_name_nir="B8"):
     return index_calc(
         cube,
         band_name1=band_name_red,
         band_name2=band_name_nir,
-        func=builtup_formula,
+        index_formula=builtup_formula,
         index_name="builtup_index",
-        copy=copy,
     )
 
 
-def index_calc(
-    cube: GeoDataCube,
+def get_raster_pairs(
+    cube,
     band_name1: str,
     band_name2: str,
-    func: Callable,
-    index_name: str,
-    copy=True,
 ):
-    if copy:
-        cube = cube.copy()
-
     cube._df["tile"] = cube.tile.values
     cube._df["date"] = cube.date.values
 
@@ -107,8 +93,8 @@ def index_calc(
     raster_pairs = []
     for tile, date in zip(unique["tile"], unique["date"]):
         query = (cube.df["tile"] == tile) & (cube.df["date"] == date)
-        red = cube.df.loc[query & (cube.band_name == band_name1), "raster"]
-        nir = cube.df.loc[query & (cube.band_name == band_name2), "raster"]
+        red = cube.df.loc[query & (cube.name == band_name1), "raster"]
+        nir = cube.df.loc[query & (cube.name == band_name2), "raster"]
         if len(red) > 1:
             raise ValueError("Cannot have more than one B4 band per tile.")
         if len(nir) > 1:
@@ -126,23 +112,14 @@ def index_calc(
         pair = red, nir
         raster_pairs.append(pair)
 
-    index_calc_partial = functools.partial(
-        index_calc_pair, func=func, index_name=index_name
-    )
-
-    if cube._chain is not None:
-        partial_func = functools.partial(starmap_concat, func=index_calc_partial)
-        cube._chain.append_cube_iter(partial_func, iterable=raster_pairs)
-        return cube
-
-    cubes = [index_calc_partial(*items) for items in raster_pairs]
-    return concat_cubes(cubes, ignore_index=True)
+    return raster_pairs
 
 
 def index_calc_pair(
-    r1: Raster, r2: Raster, func: Callable, index_name: str
-) -> GeoDataCube:
-    """Calculate an index for one raster pair to create a one-row Cube."""
+    raster_pair: tuple[Raster, Raster], index_formula: Callable, index_name: str
+) -> Raster:
+    """Calculate an index for one raster pair and return a single Raster."""
+    r1, r2 = raster_pair
     assert isinstance(r1, Raster), r1
     assert isinstance(r2, Raster), r2
 
@@ -154,10 +131,8 @@ def index_calc_pair(
     r1_arr: np.ndarray = r1.array.astype(np.float16)
     r2_arr: np.ndarray = r2.array.astype(np.float16)
 
-    out_array = func(r1_arr, r2_arr)
+    out_array = index_formula(r1_arr, r2_arr)
 
-    raster = Raster.from_array(
-        out_array, crs=r1.crs, bounds=r1.bounds, band_name=index_name, date=r1.date
+    return Raster.from_array(
+        out_array, crs=r1.crs, bounds=r1.bounds, name=index_name, date=r1.date
     )
-
-    return GeoDataCube(raster)

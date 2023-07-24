@@ -472,7 +472,9 @@ class Map:
 
             gdf["col_as_int"] = self._array_to_large_int(gdf[self._column])
             bins = self._array_to_large_int(self._unique_values)
+            gdf["col_as_int"] = gdf["col_as_int"].fillna(np.nan)
             classified = np.searchsorted(bins, gdf["col_as_int"])
+
         else:
             if len(bins) == self._k + 1:
                 bins = bins[1:]

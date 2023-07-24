@@ -22,6 +22,7 @@ from .geopandas_tools.general import (
     clean_geoms,
     coordinate_array,
     drop_inactive_geometry_columns,
+    geometries_almost_equal,
     random_points,
     rename_geometry_if,
     to_lines,

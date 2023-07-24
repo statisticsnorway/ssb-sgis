@@ -44,6 +44,12 @@ class CubeChain:
             else:
                 self.write_in_chain = True
 
+        if "to_gdf" in func_name:
+            if self.to_gdf_in_chain:
+                raise ValueError("Cannot keep chain going after to_gdf.")
+            else:
+                self.to_gdf_in_chain = True
+
         func = functools.partial(func, **kwargs)
         self.funcs.append(func)
 

@@ -1,3 +1,4 @@
+import numbers
 import warnings
 
 import geocoder
@@ -48,6 +49,62 @@ def get_common_crs(obj: GeoDataFrame | GeoSeries) -> pyproj.CRS | None:
     return pyproj.CRS(crs[0])
 
 
+def is_bbox_like(obj) -> bool:
+    if (
+        hasattr(obj, "__iter__")
+        and len(obj) == 4
+        and all(isinstance(x, numbers.Number) for x in obj)
+    ):
+        return True
+    return False
+
+
+def geometries_almost_equal(gdf1, gdf2, max_dist=0.1, verbose=True) -> bool:
+    equal = True
+    if len(gdf1) != len(gdf2):
+        if verbose:
+            print("Unequal df length:", len(gdf1), len(gdf2))
+        equal = False
+
+    gdf1 = gdf1.assign(
+        area_int=lambda x: x.area.astype(int),
+        length_int=lambda x: x.length.astype(int),
+    )
+    gdf2 = gdf2.assign(
+        area_int=lambda x: x.area.astype(int),
+        length_int=lambda x: x.length.astype(int),
+    )
+
+    for x in ["area", "length"]:
+        list1 = sorted(list(gdf1[f"{x}_int"]))
+        list2 = sorted(list(gdf2[f"{x}_int"]))
+        if list1 != list2:
+            if verbose:
+                n = 0
+                for a1, a2 in zip(list1, list2):
+                    if a1 != a2:
+                        n += 1
+            print(f"Unequal {x}: {n} of {len(list1)} rows.")
+            equal = False
+
+    gdf1_points = gdf1.centroid.explode()
+    gdf2_points = gdf2.centroid.explode()
+
+    distances = gdf1_points.distance(gdf2_points.unary_union)
+    if distances.max() > max_dist:
+        if verbose:
+            print("Max centroid distance:", distances.max())
+        equal = False
+
+    distances = gdf2_points.distance(gdf1_points.unary_union)
+    if distances.max() > max_dist:
+        if verbose:
+            print("Max centroid distance:", distances.max())
+        equal = False
+
+    return equal
+
+
 def to_shapely(obj) -> Geometry:
     if isinstance(obj, Geometry):
         return obj
@@ -55,11 +112,11 @@ def to_shapely(obj) -> Geometry:
         raise TypeError(type(obj))
     if hasattr(obj, "unary_union"):
         return obj.unary_union
-    if len(obj) == 2:
-        return Point(*obj)
-    if len(obj) == 4:
+    if is_bbox_like(obj):
         return box(*obj)
-    raise TypeError
+    if len(obj) == 2 and all():
+        return Point(*obj)
+    raise TypeError(obj)
 
 
 def address_to_gdf(address: str, crs=4326) -> GeoDataFrame:

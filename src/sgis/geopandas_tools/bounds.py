@@ -1,5 +1,5 @@
 import numbers
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import geopandas as gpd
 import numpy as np
@@ -137,7 +137,7 @@ def make_grid(
         crs = obj.crs or crs
     elif not crs:
         raise ValueError(
-            "'crs' must be specified when 'obj' is not GeoDataFrame/GeoSeries."
+            "'crs' cannot be None when 'obj' is not GeoDataFrame/GeoSeries."
         )
 
     minx, miny, maxx, maxy = to_bbox(obj)
@@ -317,16 +317,6 @@ def bounds_to_points(gdf: GeoDataFrame) -> GeoDataFrame:
     return gdf
 
 
-def is_bbox_like(obj) -> bool:
-    if (
-        hasattr(obj, "__iter__")
-        and len(obj) == 4
-        and all(isinstance(x, numbers.Number) for x in obj)
-    ):
-        return True
-    return False
-
-
 def to_bbox(obj) -> tuple[float, float, float, float]:
     """Try to return 4-length tuple of bounds."""
     if (
@@ -363,7 +353,24 @@ def to_bbox(obj) -> tuple[float, float, float, float]:
             xmax = np.max(obj.xmax)
             ymax = np.max(obj.ymax)
         return xmin, ymin, xmax, ymax
-    raise TypeError(obj)
+    if is_dict_like(obj) and hasattr(obj, "geometry"):
+        try:
+            return tuple(GeoSeries(obj["geometry"]).total_bounds)
+        except Exception:
+            return tuple(GeoSeries(obj.geometry).total_bounds)
+    raise TypeError(type(obj), obj)
+
+
+def get_total_bounds(
+    geometries: Iterable[GeoDataFrame | GeoSeries | Geometry],
+) -> tuple[float, float, float, float]:
+    xs, ys = [], []
+    for obj in geometries:
+        minx, miny, maxx, maxy = to_bbox(obj)
+        xs += [minx, maxx]
+        ys += [miny, maxy]
+
+    return min(xs), min(ys), max(xs), max(ys)
 
 
 def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int):

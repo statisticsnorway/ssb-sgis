@@ -1,14 +1,23 @@
 import numbers
 import re
+from contextlib import contextmanager
 
 import numpy as np
-import pandas as pd
 import pyproj
 import rasterio
 from affine import Affine
 
 from ..geopandas_tools.bounds import to_bbox
 from ..helpers import is_property
+
+
+@contextmanager
+def memfile_from_array(array, **profile):
+    with rasterio.MemoryFile() as memfile:
+        with memfile.open(**profile) as dataset:
+            dataset.write(array, indexes=profile["indexes"])
+        with memfile.open() as dataset:
+            yield dataset
 
 
 class RasterHasChangedError(ValueError):
@@ -29,8 +38,8 @@ class RasterBase:
     NEED_ONE_ATTR = ["transform", "bounds"]
 
     BASE_CUBE_COLS = [
-        "name",  # tile + date + band_name
-        "band_name",  # to be implemented in Raster subclasses from e.g. regex
+        "raster_id",  # tile + date + name
+        "name",  # to be implemented in Raster subclasses from e.g. regex
         "date",
         "tile",
         "band_index",  # the rasterio/gdal index (starts at 1)
@@ -58,6 +67,8 @@ class RasterBase:
         "tiled",
         "compress",
         "interleave",
+        "count",  # TODO: this should be based on band_index / array depth, so will have no effect
+        "indexes",  # TODO
     ]
 
     ALL_ATTRS = list(
@@ -118,13 +129,6 @@ class RasterBase:
                 ", ".join(cls.ALLOWED_KEYS),
             )
 
-    def check_not_array_mess(self):
-        return (
-            "Cannot load the arrays more than once. "
-            "Use the write method to write the arrays as image files. "
-            "This also updates the 'path' column of the cube's df."
-        )
-
     @staticmethod
     def get_transform_from_bounds(obj, shape: tuple[float, ...]) -> Affine:
         minx, miny, maxx, maxy = to_bbox(obj)
@@ -153,3 +157,38 @@ class RasterBase:
         width = int(diffx / resx)
         heigth = int(diffy / resy)
         return width, heigth
+
+    @staticmethod
+    def _to_2d_array_list(array: np.ndarray) -> list[np.ndarray]:
+        if len(array.shape) == 2:
+            return [array]
+        elif len(array.shape) == 3:
+            return [arr for arr in array]
+        else:
+            raise ValueError
+
+    @classmethod
+    def run_func_as_memfile(cls, func, array, profile, **kwargs):
+        with rasterio.MemoryFile() as memfile:
+            with memfile.open(**profile) as dataset:
+                for i, arr in enumerate(cls._to_2d_array_list(array)):
+                    dataset.write(arr, i + 1)
+            with memfile.open() as dataset:
+                return func(dataset, **kwargs)
+
+    @classmethod
+    def run_func_as_memfile(cls, func, arrays, profiles, **kwargs):
+        if isinstance(arrays, np.ndarray):
+            arrays = [arrays]
+        if not all(isinstance(arr, np.ndarray) for arr in arrays):
+            raise TypeError("arrays should be ndarrays.")
+        datasets = []
+        with rasterio.MemoryFile() as memfile:
+            for array, profile in zip(arrays, profiles, strict=True):
+                with memfile.open(**profile) as dataset:
+                    for i, arr in enumerate(cls._to_2d_array_list(array)):
+                        dataset.write(arr, i + 1)
+                        datasets.append(dataset)
+
+            with memfile.open() as dataset:
+                return func(datasets, **kwargs)

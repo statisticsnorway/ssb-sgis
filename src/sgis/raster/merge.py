@@ -1,11 +1,13 @@
 import numpy as np
-from pandas import NA, DataFrame
+import shapely
+from pandas import DataFrame
 from pandas.api.types import is_list_like
 from rasterio import merge
+from rioxarray.merge import merge_arrays
 
-from ..geopandas_tools.bounds import to_bbox
+from ..geopandas_tools.bounds import get_total_bounds, to_bbox
 from ..geopandas_tools.general import get_common_crs, to_shapely
-from .raster import Raster, get_numpy_func
+from .explode import explode_cube_df
 
 
 def merge_by_bounds(
@@ -35,25 +37,26 @@ def merge_by_bounds(
         except AttributeError:
             pass
 
-    if cube.arrays.isna().all():
-        return cube_merge(
-            cube,
-            bounds=bounds,
-            by=by,
-            res=res,
-            aggfunc=aggfunc,
-            _as_3d=True,
-            **kwargs,
-        )
+    has_arrays = cube.arrays.notna().all()
+    can_merge_arrays = res is None and bounds is None
+    if has_arrays and can_merge_arrays:
+        return merge_arrays_by_bounds(cube, by, aggfunc)
 
-    if res is not None:
-        raise ValueError
-    if bounds is not None:
-        raise ValueError
+    return cube_merge(
+        cube,
+        bounds=bounds,
+        by=by,
+        res=res,
+        aggfunc=aggfunc,
+        _as_3d=True,
+        **kwargs,
+    )
 
+
+def merge_arrays_by_bounds(cube, by, aggfunc):
     unique = cube.df[by].drop_duplicates(by).set_index(by)
 
-    unique["raster"] = cube.df.groupby(by).apply(merge_arrays)
+    unique["raster"] = cube.df.groupby(by).apply(merge_within_bounds)
 
     remaining_cols = cube._df.columns.difference(by + ["raster"])
     unique[remaining_cols] = cube._df.groupby(by)[remaining_cols].agg(aggfunc)
@@ -64,22 +67,18 @@ def merge_by_bounds(
 
     return cube
 
-    cube._df["name"] = [r.name for r in cube.df["raster"]]
-    cube._df["band_name"] = [r.band_name for r in cube.df["raster"]]
-    cube._df["band_index"] = [r.band_index for r in cube.df["raster"]]
-    display(cube.df)
 
-    return cube
-
-
-def merge_arrays(cube_df):
+def merge_within_bounds(cube_df):
     res = {r.res for r in cube_df["raster"]}
     if len(res) != 1:
         raise ValueError("Resolution mismatch.")
 
+    raster_types = {r.__class__ for r in cube_df["raster"]}
+    raster_type = list(raster_types)[0]
+
     arrays = []
     for raster in cube_df["raster"]:
-        for arr in raster.array_list:
+        for arr in raster.array_list():
             arrays += [arr]
     merged = np.array(arrays)
 
@@ -87,7 +86,7 @@ def merge_arrays(cube_df):
     bounds = list({tuple(r.bounds) for r in cube_df["raster"]})
     assert len(bounds) == 1
 
-    return Raster.from_array(merged, crs=crs, bounds=bounds[0])
+    return raster_type.from_array(merged, crs=crs, bounds=bounds[0])
 
 
 def cube_merge(
@@ -96,17 +95,19 @@ def cube_merge(
     by: str | list[str] | None = None,
     res=None,
     aggfunc="first",
-    copy: bool = True,
+    dropna: bool = False,
     **kwargs,
 ):
-    if copy:
-        cube = cube.copy()
+    temp_cols = ["minx", "miny", "maxx", "maxy", "res"]
 
     if bounds is None:
         cube._df[["minx", "miny", "maxx", "maxy"]] = cube.bounds.values
     else:
         bounds = to_bbox(bounds)
         cube._df = cube._df[cube.boxes.intersects(to_shapely(bounds))]
+
+    if not len(cube):
+        return cube
 
     raster_type = cube.most_common_raster_type()
 
@@ -118,60 +119,52 @@ def cube_merge(
     if by is not None and not is_list_like(by):
         raise TypeError("'by' should be string or list like.", by)
 
+    kwargs = {
+        "bounds": bounds,
+        "res": res,
+        "raster_type": raster_type,
+        "crs": cube.crs,
+        "nodata": cube.nodata.iloc[0],
+        **kwargs,
+    }
+
     if by is None:
-        raster = _grouped_merge(
-            cube._df,
-            bounds=bounds,
-            res=res,
-            raster_type=raster_type,
-            crs=cube.crs,
-            **kwargs,
-        )
-        cube._df = cube._df.iloc[[0]]
+        raster = _grouped_merge(cube._df, **kwargs)
+        cube._df = cube._df.iloc[[0]].drop(columns=temp_cols, errors="ignore")
         cube._df["raster"] = raster
         return cube
 
     unique = cube._df[by + ["raster"]].drop_duplicates(by).set_index(by)
 
     if len(unique) == len(cube._df):
+        # no merging is needed
+        cube._df = cube.df.drop(columns=temp_cols, errors="ignore")
         if bounds is not None:
             return cube.clip(bounds, res=res)
-        else:
+        elif cube.arrays.isna().all():
             return cube.load(res=res)
+        elif res is None:
+            return cube
+        # continue from here if arrays are loaded and res is specified
 
-    unique["raster"] = cube.df.groupby(by).apply(
-        lambda x: _grouped_merge(
-            x,
-            bounds=bounds,
-            res=res,
-            raster_type=raster_type,
-            crs=cube.crs,
-            **kwargs,
-        )
+    unique["raster"] = cube.df.groupby(by, dropna=dropna).apply(
+        lambda x: _grouped_merge(x, **kwargs)
     )
 
     remaining_cols = cube._df.columns.difference(by + ["raster"])
     unique[remaining_cols] = cube._df.groupby(by)[remaining_cols].agg(aggfunc)
 
-    cube._df = unique.reset_index().drop(
-        ["minx", "miny", "maxx", "maxy", "res"], axis=1, errors="ignore"
-    )
-    # cube._df["path"] = NA
-    # cube._df["name"] = [r.name for r in cube.df["raster"]]
-    # [
-    #   f"{int(minx)}_{int(miny)}_{name}"
-    #  for minx, miny, name in zip(cube.minx, cube.miny, cube.band_name)
-    # ]
+    cube._df = unique.reset_index().drop(columns=temp_cols, errors="ignore")
     cube.update_df()
 
     return cube
 
 
 def _grouped_merge(
-    group: DataFrame, bounds, raster_type, res, crs, _as_3d=False, **kwargs
+    group: DataFrame, bounds, raster_type, res, crs, nodata, _as_3d=False, **kwargs
 ):
-    # if res is None:
-    #   res = group["res"].min()
+    if res is None:
+        res = group["res"].min()
     if bounds is None:
         bounds = (
             group["minx"].min(),
@@ -179,27 +172,50 @@ def _grouped_merge(
             group["maxx"].max(),
             group["maxy"].max(),
         )
-    exploded = group.explode(column="band_index")
-    band_index = tuple(exploded["band_index"].sort_values().unique())
-    arrays = []
-    for idx in band_index:
-        paths = exploded.loc[exploded["band_index"] == idx, "path"]
 
-        array, transform = merge.merge(
-            list(paths), indexes=(idx,), bounds=bounds, res=res, **kwargs
-        )
-        # merge doesn't allow single index (numpy error), so changing afterwards
+    is_3d = max(len(r.shape) for r in group["raster"]) == 3
+
+    exploded = explode_cube_df(group)
+    arrays = []
+    for idx in sorted(exploded["band_index"].unique()):
+        rasters = exploded.loc[exploded["band_index"] == idx, "raster"]
+        if all(r.array is not None for r in rasters):
+            # skip if geometries only touch to avoid Invalid dataset dimensions : 0 x n
+            total_bounds = get_total_bounds(r.bounds for r in rasters)
+            if shapely.box(*bounds).touches(shapely.box(*total_bounds)):
+                continue
+
+            xarrays = [r.to_xarray().transpose("y", "x") for r in rasters]
+            merged = merge_arrays(
+                xarrays, bounds=bounds, res=res, nodata=nodata, **kwargs
+            )
+            array = merged.to_numpy()
+
+        else:
+            # paths = exploded.loc[exploded["band_index"] == idx, "path"]
+            datasets = [r._load_warp_file() for r in rasters]
+
+            array, _ = merge.merge(
+                datasets, indexes=(idx,), bounds=bounds, res=res, **kwargs
+            )
+            assert len(array.shape) == 3, array.shape
+
         if len(array.shape) == 3:
-            assert array.shape[0] == 1
             array = array[0]
+
         arrays.append(array)
+
+    if not arrays:
+        return raster_type()
+
     array = np.array(arrays)
-    assert len(array.shape) == 3
-    if not _as_3d and array.shape[0] == 1:
+    assert len(array.shape) == 3, array.shape
+    # if not _as_3d and array.shape[0] == 1:
+    if not is_3d and array.shape[0] == 1:
         array = array[0]
 
     return raster_type.from_array(
         array,
-        transform=transform,
+        bounds=bounds,
         crs=crs,
     )

@@ -34,6 +34,26 @@ def create_all_geometry_types():
     return pd.concat([gdf, collection], ignore_index=True)
 
 
+def test_move_geoms():
+    from shapely.geometry import LineString, Point
+
+    point = Point(20, 21)
+    moved = sg.move_geoms(point, 1, 2)
+    assert moved == Point(21, 23)
+
+    line = sg.to_gdf(LineString([(20, 20), (21, 21)]))
+    moved = sg.move_geoms(line, 1, 2)
+    assert moved.equals(sg.to_gdf(LineString([(21, 21), (23, 23)])))
+
+    all_geom_types = create_all_geometry_types()
+
+    sg.move_geoms(all_geom_types, 1, 2)
+
+
+test_move_geoms()
+ssa
+
+
 def test_drop_inactive():
     gdf = sg.to_gdf([0, 0])
     gdf["geom2"] = sg.to_gdf([0, 0]).geometry

@@ -387,7 +387,11 @@ class Explore(Map):
             gdf = self._prepare_gdf_for_map(gdf)
 
             classified = self._classify_from_bins(gdf, bins=self.bins)
-            colorarray = unique_colors[classified]
+            try:
+                colorarray = unique_colors[classified]
+            except IndexError:
+                classified[classified > 0] = classified[classified > 0] - 1
+                colorarray = unique_colors[classified]
 
             gjs = self._make_geojson(
                 gdf,

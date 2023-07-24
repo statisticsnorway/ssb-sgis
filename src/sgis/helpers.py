@@ -3,9 +3,33 @@ import glob
 import inspect
 import os
 import warnings
+from typing import Callable
 
 import numpy as np
 from geopandas import GeoDataFrame
+
+
+def get_numpy_func(text, error_message: str | None = None) -> Callable:
+    f = getattr(np, text, None)
+    if f is not None:
+        return f
+    f = getattr(np.ndarray, text, None)
+    if f is not None:
+        return f
+    raise ValueError(error_message)
+
+
+def get_func_name(func):
+    try:
+        return func.__name__
+    except AttributeError:
+        return str(func)
+
+
+def get_non_numpy_func_name(f):
+    if callable(f):
+        return f.__name__
+    return str(f).replace("np.", "").replace("numpy.", "")
 
 
 def to_numpy_func(text):
