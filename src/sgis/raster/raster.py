@@ -648,6 +648,11 @@ class Raster(RasterBase):
                 crs=self.crs,
             )
             gdf["band_index"] = i + 1
+
+            if hasattr(self, "_datadict"):
+                for name, value in self._datadict.items():
+                    gdf[name] = value
+
             gdfs.append(gdf)
 
         return pd.concat(gdfs, ignore_index=True)

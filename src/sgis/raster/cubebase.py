@@ -7,6 +7,7 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 import pyproj
+from geopandas import GeoDataFrame
 
 from ..geopandas_tools.general import get_common_crs, to_shapely
 from ..helpers import get_all_files, get_func_name, get_non_numpy_func_name, in_jupyter
@@ -36,6 +37,12 @@ class CubeBase(RasterBase):
 
         # first remove rows not within mask
         self._df = self._df.loc[self.boxes.intersects(to_shapely(mask))]
+
+        return self
+
+    def assign_datadict_to_rasters(self):
+        for raster, (_, row) in zip(self.df["raster"], self.df.iterrows()):
+            raster._datadict = row.drop("raster").to_dict()
 
         return self
 

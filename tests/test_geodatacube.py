@@ -179,6 +179,28 @@ def test_from_root():
     display(cube)
 
 
+def test_to_gdf():
+    query = "name.str.contains('two_bands')"
+    cube = (
+        sg.GeoDataCube.from_root(testdata, endswith=".tif", crs=25833, nodata=0)
+        .explode()
+        .query(query)
+        .load()
+    )
+    assert len(cube) == 2, len(cube)
+
+    cube.df["new_col"] = ["a", "b"]
+    cube.df["new_col2"] = [1, 3]
+
+    gdf = cube.to_gdf()
+
+    assert "new_col" in gdf and "new_col2" in gdf, gdf.columns
+
+    gdf = cube.pool(2).to_gdf().execute()
+
+    assert "new_col" in gdf and "new_col2" in gdf, gdf.columns
+
+
 def test_to_crs():
     query = "name.str.contains('two_bands')"
     cube = (
@@ -536,6 +558,7 @@ if __name__ == "__main__":
     # write_sentinel()
 
     def test_cube():
+        test_to_gdf()
         test_query()
         test_intersection()
         test_to_crs()

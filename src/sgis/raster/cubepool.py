@@ -408,7 +408,9 @@ class CubePool(CubeBase):
         return self
 
     def to_gdf(self, ignore_index: bool = False, concat: bool = True):
+        self.append_cube_func("assign_datadict_to_rasters")
         self.append_raster_func("to_gdf")
+
         if concat:
             self.append_func(
                 pd.concat, ignore_index=ignore_index, in_type="other", out_type="other"

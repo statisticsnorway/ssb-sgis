@@ -546,7 +546,10 @@ class GeoDataCube(CubeBase):
         return self
 
     def to_gdf(self, ignore_index: bool = False, concat: bool = True) -> GeoDataFrame:
+        self.assign_datadict_to_rasters()
+
         gdfs = self.run_raster_method("to_gdf")
+
         if concat:
             return pd.concat(gdfs, ignore_index=ignore_index)
         return gdfs
