@@ -199,9 +199,11 @@ def _shapely_overlay(
 
 
 def _update(pairs, df1, df2, left, crs) -> GeoDataFrame:
-    overlayed = _difference(pairs, df1, left, crs=crs)
-    overlayed = overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
-    return pd.concat([overlayed, df2], ignore_index=True)
+    overlayed = _difference(pairs, df1, left, crs=crs, concat=False)
+
+    return pd.concat(overlayed + [df2], ignore_index=True).loc[
+        :, lambda x: ~x.columns.str.contains("index|level_")
+    ]
 
 
 def _intersection(pairs, crs) -> GeoDataFrame:
@@ -254,7 +256,7 @@ def _symmetric_difference(pairs, df1, df2, left, right, crs):
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
-def _difference(pairs, df1, left, crs):
+def _difference(pairs, df1, left, crs, concat=True):
     merged = []
     if len(left):
         clip_left = _shapely_diffclip_left(pairs, df1)
@@ -263,7 +265,9 @@ def _difference(pairs, df1, left, crs):
     merged.append(diff_left)
     if crs:
         merged = [gdf.to_crs(crs) for gdf in merged]
-    return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
+    if concat:
+        return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
+    return merged
 
 
 def _get_intersects_pairs(

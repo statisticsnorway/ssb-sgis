@@ -20,10 +20,7 @@ from ..helpers import (
     get_numpy_func,
     in_jupyter,
 )
-from ..io.dapla import check_files, is_dapla, read_geopandas, write_geopandas
 from ..multiprocessing.base import LocalFunctionError
-from ..multiprocessing.multiprocessingmapper import MultiProcessingMapper
-from .base import RasterBase
 from .cubebase import (
     CubeBase,
     _add,
@@ -44,6 +41,7 @@ from .cubebase import (
     _to_gdf_func,
     _truediv,
     _write_func,
+    intersection_base,
 )
 from .cubechain import CubeChain
 from .elevationraster import ElevationRaster
@@ -57,6 +55,23 @@ from .zonal import make_geometry_iterrows, prepare_zonal, zonal_func, zonal_post
 
 def rasters_to_cube(rasters, cube):
     return cube.__class__(rasters)
+
+
+def make_iterrows(df):
+    return [row for _, row in df.iterrows()]
+
+
+def concat_cubes(
+    cube_list,
+    ignore_index: bool = False,
+):
+    """TODO: TEMP..."""
+    cube = cube_list[0].__class__()
+    cube._crs = get_common_crs(cube_list)
+
+    cube.df = pd.concat([cube.df for cube in cube_list], ignore_index=ignore_index)
+
+    return cube
 
 
 class CubePool(CubeBase):
@@ -307,7 +322,7 @@ class CubePool(CubeBase):
         self.append_raster_func("gradient", degrees=degrees)
         return self
 
-    def map(self, func: Callable, **kwargs):
+    def array_map(self, func: Callable, **kwargs):
         """Maps each raster array to a function.
 
         The function must take a numpu array as first positional argument,
@@ -333,6 +348,29 @@ class CubePool(CubeBase):
     def clip(self, mask, res: int | None = None, **kwargs):
         self.append_cube_func("clip_base", mask=mask)
         self.append_raster_func("clip", mask=mask, res=res, **kwargs)
+        return self
+
+    def intersection(self, df, res: int | None = None, **kwargs):
+        self.append_func(
+            make_iterrows,
+            df=df,
+            in_type="other",
+            out_type="iterable",
+        )
+        self.append_func(
+            intersection_base,
+            res=res,
+            **kwargs,
+            in_type="iterable",
+            out_type="other",
+        )
+
+        self.append_func(
+            concat_cubes,
+            ignore_index=True,
+            in_type="other",
+            out_type="cube",
+        )
         return self
 
     def gradient(self, degrees: bool = False, copy: bool = False):

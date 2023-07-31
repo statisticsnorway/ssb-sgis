@@ -58,6 +58,16 @@ def dict_zip_intersection(*dicts):
         yield key, *(d[key] for d in dicts)
 
 
+def dict_zip_union(*dicts, fillvalue=None):
+    """From mCoding (YouTube)."""
+    if not dicts:
+        return
+
+    keys = set(dicts[0]).union(*dicts[1:])
+    for key in keys:
+        yield key, *(d.get(key, fillvalue) for d in dicts)
+
+
 def dict_zip(*dicts):
     """From mCoding (YouTube)."""
     if not dicts:

@@ -3839,6 +3839,32 @@ pygments = ">=2.13.0,<3.0.0"
 jupyter = ["ipywidgets (>=7.5.1,<9)"]
 
 [[package]]
+name = "rioxarray"
+version = "0.14.1"
+description = "geospatial xarray extension powered by rasterio"
+category = "main"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "rioxarray-0.14.1-py3-none-any.whl", hash = "sha256:de8142fcc960fd2121632d1bf50a7e08adad958efc056f52aa78226a6f22e955"},
+    {file = "rioxarray-0.14.1.tar.gz", hash = "sha256:54e993828ee02f3cfc2f8a1c7a5c599cab95cedca965c16c76d8521cdda7d45b"},
+]
+
+[package.dependencies]
+numpy = ">=1.21"
+packaging = "*"
+pyproj = ">=2.2"
+rasterio = ">=1.2"
+xarray = ">=0.17"
+
+[package.extras]
+all = ["dask", "mypy", "nbsphinx", "netcdf4", "pre-commit", "pylint", "pytest (>=3.6)", "pytest-cov", "pytest-timeout", "scipy", "sphinx-click", "sphinx-rtd-theme"]
+dev = ["dask", "mypy", "nbsphinx", "netcdf4", "pre-commit", "pylint", "pytest (>=3.6)", "pytest-cov", "pytest-timeout", "scipy", "sphinx-click", "sphinx-rtd-theme"]
+doc = ["nbsphinx", "sphinx-click", "sphinx-rtd-theme"]
+interp = ["scipy"]
+test = ["dask", "netcdf4", "pytest (>=3.6)", "pytest-cov", "pytest-timeout"]
+
+[[package]]
 name = "rpds-py"
 version = "0.8.4"
 description = "Python bindings to Rust's persistent data structures (rpds)"
@@ -4762,6 +4788,31 @@ optional = ["python-socks", "wsaccel"]
 test = ["websockets"]
 
 [[package]]
+name = "xarray"
+version = "2023.7.0"
+description = "N-D labeled arrays and datasets in Python"
+category = "main"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "xarray-2023.7.0-py3-none-any.whl", hash = "sha256:af8b55bf78b792b8ad9326eb9d89980602f1a51e93d8465b445aeea3accca27e"},
+    {file = "xarray-2023.7.0.tar.gz", hash = "sha256:dace2fdbf1b7ff185d9c1226a24bf83c2ae52f3253dbfe80e17d1162600d055c"},
+]
+
+[package.dependencies]
+numpy = ">=1.21"
+packaging = ">=21.3"
+pandas = ">=1.4"
+
+[package.extras]
+accel = ["bottleneck", "flox", "numbagg", "scipy"]
+complete = ["bottleneck", "cftime", "dask[complete]", "flox", "fsspec", "h5netcdf", "matplotlib", "nc-time-axis", "netCDF4", "numbagg", "pooch", "pydap", "scipy", "seaborn", "zarr"]
+docs = ["bottleneck", "cftime", "dask[complete]", "flox", "fsspec", "h5netcdf", "ipykernel", "ipython", "jupyter-client", "matplotlib", "nbsphinx", "nc-time-axis", "netCDF4", "numbagg", "pooch", "pydap", "scanpydoc", "scipy", "seaborn", "sphinx-autosummary-accessors", "sphinx-rtd-theme", "zarr"]
+io = ["cftime", "fsspec", "h5netcdf", "netCDF4", "pooch", "pydap", "scipy", "zarr"]
+parallel = ["dask[complete]"]
+viz = ["matplotlib", "nc-time-axis", "seaborn"]
+
+[[package]]
 name = "xdoctest"
 version = "1.1.1"
 description = "A rewrite of the builtin doctest module"
@@ -4894,4 +4945,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "ba1bd4f868554804272cf156c8828bab985e038f55cdb5d74302adc05daf6313"
+content-hash = "34f352d15ee1fe556a3eb8133506b509bdd66665352be1c7865af94ace7a0bc7"

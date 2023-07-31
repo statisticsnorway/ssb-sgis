@@ -6,6 +6,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import pytest
 
 
@@ -18,7 +19,8 @@ import sgis as sg
 
 def test_dissexp_by_cluster():
     gdf = sg.random_points(100).assign(
-        x=np.random.choice([*"abc"]), y=np.random.choice([*"abc"])
+        x=[np.random.choice([*"abc"]) for _ in range(100)],
+        y=[np.random.choice([*"abc"]) for _ in range(100)],
     )
     by_cluster = sg.dissexp_by_cluster(gdf)
     regular = sg.dissexp(gdf)

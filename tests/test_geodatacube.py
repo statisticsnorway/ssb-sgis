@@ -39,11 +39,21 @@ def test_xdataset():
     )
 
     print(cube)
-    xdataset = cube.to_xdataset()
+    xdataset = cube.to_xarray()
     assert isinstance(xdataset, xr.Dataset)
     print(xdataset)
     print(xdataset.attrs)
     print(dir(xdataset))
+
+
+def test_query():
+    cube = sg.GeoDataCube.from_root(
+        testdata, endswith=".tif", raster_type=sg.ElevationRaster
+    )
+
+    for i in cube.date.unique():
+        c1 = cube.query(f"date == {i}")
+        assert isinstance(c1, sg.GeoDataCube)
 
 
 def test_shape():
@@ -170,74 +180,67 @@ def test_from_root():
 
 
 def test_to_crs():
+    query = "name.str.contains('two_bands')"
     cube = (
         sg.GeoDataCube.from_root(testdata, endswith=".tif", crs=25833, nodata=0)
         .explode()
-        .query("subfolder != 'sentinel2'")
+        .query(query)
     )
+    assert len(cube) == 2, len(cube)
 
-    merged_rio = cube.merge()
-    df_rio = merged_rio.to_gdf()
+    merged_rio = cube.merge().to_gdf()
 
-    merged_xarr = cube.load().merge()
-    df_xarr = merged_xarr.to_gdf()
+    merged_xarr = cube.load().merge().to_gdf()
 
     point = shapely.affinity.translate(cube.unary_union.centroid, xoff=0, yoff=300)
     buffered = sg.to_gdf(point, crs=25833).buffer(100)
 
-    assert sg.geometries_almost_equal(df_rio.clip(buffered), df_xarr.clip(buffered))
-    assert tuple(df_rio.total_bounds) == tuple(df_xarr.total_bounds)
+    assert (
+        merged_rio.clip(buffered)
+        .geom_almost_equals(merged_xarr.clip(buffered), decimal=3)
+        .all()
+    )
+    assert tuple(merged_rio.total_bounds) == tuple(merged_xarr.total_bounds)
 
     cube_25832 = (
         sg.GeoDataCube.from_root(testdata, endswith=".tif", crs=25832, nodata=0)
         .explode()
-        .query("subfolder != 'sentinel2'")
+        .query(query)
     )
 
     assert cube_25832.crs == 25832
-    wpd_rio = cube_25832.load().to_gdf().to_crs(25833)
+    wpd_rio = cube_25832.load().to_crs(25833).to_gdf()
 
-    assert tuple(df_rio.total_bounds) == tuple(wpd_rio.total_bounds)
-    display(df_rio, wpd_rio)
-    display(df_rio.clip(buffered), wpd_rio.clip(buffered))
-    sg.explore(df_rio.clip(buffered), wpd_rio.clip(buffered))
+    assert tuple(merged_rio.total_bounds) == tuple(wpd_rio.total_bounds)
+    assert (
+        merged_rio.clip(buffered)
+        .geom_almost_equals(wpd_rio.clip(buffered), decimal=0)
+        .all()
+    )
 
-    assert sg.geometries_almost_equal(df_rio.clip(buffered), wpd_rio.clip(buffered))
+    merged_xarr_32 = cube.load().to_crs(25832).merge().to_crs(25833).to_gdf()
+    assert (
+        merged_rio.clip(buffered)
+        .geom_almost_equals(merged_xarr_32.clip(buffered), decimal=0)
+        .all()
+    )
 
-    mergexarr32 = cube.to_crs(25832).merge()
-    df_rio_32 = mergexarr32.to_gdf().to_crs(25833)
-    assert sg.geometries_almost_equal(df_rio.clip(buffered), df_rio_32.clip(buffered))
-
-    merged_xarr_32 = cube.load().to_crs(25832).merge()
-    df_xarr_32 = merged_xarr_32.to_gdf().to_crs(25833)
-    assert sg.geometries_almost_equal(df_rio.clip(buffered), df_xarr_32.clip(buffered))
+    mergexarr32 = cube.to_crs(25832).merge().to_crs(25833).to_gdf()
+    assert (
+        merged_rio.clip(buffered)
+        .geom_almost_equals(mergexarr32.clip(buffered), decimal=0)
+        .all()
+    )
 
     sg.explore(
         wpd_rio,
-        df_rio,
-        # df_xarr,
-        df_rio_32,
-        df_xarr_32,
+        merged_rio,
+        # merged_xarr,
+        mergexarr32,
+        merged_xarr_32,
+        "value",
     )
     assert cube.arrays.isna().all()
-    # cube._crs = 25833
-    sss
-    print(cube.df)
-    merged = cube.merge()
-    sg.explore(merged.to_gdf())
-
-    # sg.explore(merged.to_gdf(), merged_32.to_gdf())
-    sss
-
-    cube = sg.GeoDataCube.from_root(
-        testdata, endswith=".tif", raster_type=sg.ElevationRaster
-    ).load()
-    print(cube.bounds)
-    cube = cube.to_crs(25832)
-    print(cube.bounds)
-    cube = cube.load()
-    print(cube.bounds)
-    sss
 
 
 def test_merge():
@@ -280,6 +283,30 @@ def test_dissolve():
     cube = cube.dissolve_bands("mean")
     list(cube.shape) == [(201, 201), (201, 201)]
     print(cube)
+
+
+def test_intersection():
+    cube = sg.GeoDataCube.from_root(testdata, endswith=".tif").query(
+        "subfolder != 'sentinel2'"
+    )
+    cube._crs = 25833
+    grid = sg.make_grid(cube.unary_union, gridsize=1000, crs=cube.crs)
+    grid["idx"] = range(len(grid))
+
+    print(len(grid))
+    print(len(cube))
+
+    intersected = cube.intersection(grid)
+    print(len(intersected))
+    print(intersected.df["idx"])
+    print(intersected)
+
+    intersected_pooled = cube.pool(3).intersection(grid).execute()
+    print(len(intersected))
+    print(intersected.df["idx"])
+    print(intersected)
+
+    assert intersected_pooled.equals(intersected)
 
 
 def test_explode():
@@ -455,10 +482,13 @@ def test_pool():
 
     center = cube.unary_union.centroid.buffer(200)
 
-    results = (cube.copy().clip(center) * 2).map(x2).map(np.float32).explode() // 2
+    results = (cube.copy().clip(center) * 2).array_map(x2).array_map(
+        np.float32
+    ).explode() // 2
 
     results_pooled = (
-        (cube.pool(4).clip(center) * 2).map(x2).map(np.float32).explode() // 2
+        (cube.pool(4).clip(center) * 2).array_map(x2).array_map(np.float32).explode()
+        // 2
     ).execute()
 
     assert results.equals(results_pooled)
@@ -506,6 +536,8 @@ if __name__ == "__main__":
     # write_sentinel()
 
     def test_cube():
+        test_query()
+        test_intersection()
         test_to_crs()
         test_explode()
         test_merge_from_array()
@@ -527,3 +559,5 @@ if __name__ == "__main__":
 
     test_cube()
     # cProfile.run("test_cube()", sort="cumtime")
+
+# %%

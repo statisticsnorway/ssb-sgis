@@ -3,8 +3,8 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from helpers import create_all_geometry_types
 from shapely.geometry import LineString
-from test_geopandas_utils import create_all_geometry_types
 
 
 src = str(Path(__file__).parent.parent) + "/src"

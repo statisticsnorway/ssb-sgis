@@ -22,7 +22,6 @@ from .geopandas_tools.general import (
     clean_geoms,
     coordinate_array,
     drop_inactive_geometry_columns,
-    geometries_almost_equal,
     random_points,
     rename_geometry_if,
     to_lines,
@@ -47,14 +46,13 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
-    get_overlapping_polygon_indices,
-    get_overlapping_polygon_product,
-    get_overlapping_polygons,
+    get_duplicate_areas,
     get_polygon_clusters,
 )
 from .geopandas_tools.to_geodataframe import to_gdf
 from .helpers import get_name
 from .io.read_parquet import read_parquet_url
+from .io.reader import reader
 from .maps.examine import Examine
 from .maps.explore import Explore
 from .maps.httpserver import run_html_server
@@ -87,12 +85,9 @@ from .networkanalysis.nodes import (
     make_node_ids,
 )
 from .raster.cube import GeoDataCube, concat_cubes
-
-# from .raster.cube2 import GeoDataCube, concat_cubes
 from .raster.elevationraster import ElevationRaster
-from .raster.indices import ndvi_index
 from .raster.raster import Raster
-from .raster.sentinel import Sentinel2  # , SentinelCube
+from .raster.sentinel import Sentinel2
 
 
 try:

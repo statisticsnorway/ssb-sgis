@@ -16,6 +16,15 @@ from .merge import cube_merge
 from .raster import Raster
 
 
+def intersection_base(row: pd.Series, cube, res: int, **kwargs):
+    cube = cube.copy()
+    geom = row.pop("geometry")
+    cube = cube.clip(geom, res=res, **kwargs)
+    for key, value in row.items():
+        cube.df[key] = value
+    return cube
+
+
 class CubeBase(RasterBase):
     def clip_base(self, mask):
         if (

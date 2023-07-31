@@ -15,7 +15,6 @@ import pandas as pd
 import pyproj
 import rasterio
 import shapely
-import skimage
 import xarray as xr
 from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
@@ -31,17 +30,11 @@ from rioxarray.rioxarray import _generate_spatial_coords
 from shapely import Geometry, box
 from shapely.geometry import Point, Polygon, shape
 
-
-try:
-    import dapla as dp
-except ImportError:
-    pass
-
 from ..geopandas_tools.bounds import to_bbox
 from ..geopandas_tools.general import is_bbox_like, is_wkt
 from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import get_non_numpy_func_name, get_numpy_func, is_property
-from ..io.dapla import is_dapla
+from ..io.reader import reader
 from .base import RasterBase, RasterHasChangedError, memfile_from_array
 
 
@@ -448,38 +441,6 @@ class Raster(RasterBase):
 
         return self
 
-    def upscale(self, factor: int):
-        # TODO: droppe
-        self.check_for_array()
-        self.array = np.repeat(self.array, factor, axis=-1)
-        self.array = np.repeat(self.array, factor, axis=1)
-        return self
-
-    def downscale(self, factor: int, aggfunc="mean"):
-        # TODO: droppe
-        self.check_for_array()
-        aggfunc = get_numpy_func(aggfunc, numpy_func_message)
-
-        if len(self.array.shape) == 2:
-            shape = int(self.shape[0] / (self.shape[0] / factor)), int(
-                self.shape[1] / (self.shape[1] / factor)
-            )
-            self.array = skimage.measure.block_reduce(self.array, shape, aggfunc)
-
-        elif len(self.array.shape) == 3:
-            shape = int(self.shape[1] / (self.shape[1] / factor)), int(
-                self.shape[2] / (self.shape[2] / factor)
-            )
-            new_array = []
-            for arr in self.array:
-                arr = skimage.measure.block_reduce(arr, shape, aggfunc)
-                new_array.append(arr)
-            self.array = np.array(new_array)
-        else:
-            raise ValueError
-
-        return self
-
     def sample(self, n=1, size=20, mask=None, copy=True, **kwargs):
         if mask is not None:
             points = GeoSeries(self.unary_union).clip(mask).sample_points(n)
@@ -549,16 +510,12 @@ class Raster(RasterBase):
                         i=i,
                     )
 
-            elif is_dapla():
-                fs = dp.FileClient.get_gcs_file_system()
-                with fs.open(self.path, mode="rb") as file:
+            else:
+                with reader(self.path) as file:
                     with rasterio.open(file, **self.profile) as src:
                         aggs = self._zonal_one_poly(
                             src, poly, aggfunc, raster_calc_func, i
                         )
-            else:
-                with rasterio.open(self.path, **self.profile) as src:
-                    aggs = self._zonal_one_poly(src, poly, aggfunc, raster_calc_func, i)
 
             aggregated = aggregated | aggs
 
@@ -617,15 +574,8 @@ class Raster(RasterBase):
 
         profile = self.profile | kwargs
 
-        if is_dapla():
-            fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(path, mode="rb") as file:
-                args = (str(file), "w")
-                with rasterio.open(*args, **profile) as dst:
-                    self._write(dst, window)
-        else:
-            args = (str(path), "w")
-            with rasterio.open(*args, **profile) as dst:
+        with reader(path) as file:
+            with rasterio.open(file, "w", **self.profile) as dst:
                 self._write(dst, window)
 
         self.path = str(path)
@@ -803,14 +753,10 @@ class Raster(RasterBase):
         if hasattr(self, "_warped_crs"):
             raise ValueError(mess + "reprojected.")
 
-        if is_dapla():
-            fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self.path, mode="rb") as file:
-                with rasterio.open(file) as src:
-                    self._add_meta_from_src(src)
-        else:
-            with rasterio.open(self.path) as src:
+        with reader(self.path) as file:
+            with rasterio.open(file) as src:
                 self._add_meta_from_src(src)
+
         return self
 
     def get_coords(self):
@@ -1106,7 +1052,7 @@ class Raster(RasterBase):
             self._crs = None
 
     def _load_warp_file(self) -> DatasetReader:
-        """From Torchgeo. Load and warp a file to the correct CRS and resolution.
+        """(from Torchgeo). Load and warp a file to the correct CRS and resolution.
 
         Args:
             filepath: file to load and warp
@@ -1114,12 +1060,8 @@ class Raster(RasterBase):
         Returns:
             file handle of warped VRT
         """
-        if is_dapla():
-            fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self.path, mode="rb") as file:
-                src = rasterio.open(self.path)
-        else:
-            src = rasterio.open(self.path)
+        with reader(self.path) as file:
+            src = rasterio.open(file)
 
         # Only warp if necessary
         if src.crs != self.crs:
@@ -1146,13 +1088,8 @@ class Raster(RasterBase):
                 min_dtype = rasterio.dtypes.get_minimum_dtype(self.array)
                 self.array = self.array.astype(min_dtype)
 
-        if is_dapla():
-            fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self.path, mode="rb") as file:
-                with rasterio.open(file, **self.profile) as src:
-                    _read(self, src)
-        else:
-            with rasterio.open(self.path, **self.profile) as src:
+        with reader(self.path) as file:
+            with rasterio.open(file) as src:
                 _read(self, src)
 
     def _read_with_mask(self, mask, res, boundless, **kwargs):
@@ -1169,14 +1106,16 @@ class Raster(RasterBase):
                 out_shape = self.get_shape_from_bounds(mask, res=self.res)
             transform = self.transform
             window = rasterio.windows.from_bounds(*to_bbox(mask), transform=transform)
+            kwargs = {
+                "window": window,
+                "out_shape": out_shape,
+                "boundless": boundless,
+                **self.read_kwargs(kwargs),
+            }
             if hasattr(self, "_warped_crs"):
                 src = WarpedVRT(src, crs=self.crs)
-            self.array = src.read(
-                window=window,
-                out_shape=out_shape,
-                boundless=boundless,
-                **self.read_kwargs(kwargs),
-            )
+                kwargs.pop("boundless")
+            self.array = src.read(**kwargs)
 
             self._bounds = src.window_bounds(window=window)
 
@@ -1189,23 +1128,18 @@ class Raster(RasterBase):
             if self._dtype:
                 self = self.astype(self._dtype)
             else:
-                min_dtype = rasterio.dtypes.get_minimum_dtype(self.array)
-                self.array = self.array.astype(min_dtype)
+                minimum_dtype = rasterio.dtypes.get_minimum_dtype(self.array)
+                self.array = self.array.astype(minimum_dtype)
             print(np.min(self.array))
             print(np.max(self.array))
 
         if self.array is not None:
             with memfile_from_array(self.array, **self.profile) as src:
                 _read(self, src, **kwargs)
+            return
 
-        elif is_dapla():
-            fs = dp.FileClient.get_gcs_file_system()
-            with fs.open(self.path, mode="rb") as file:
-                with rasterio.open(file, **self.profile) as src:
-                    _read(self, src, **kwargs)
-
-        else:
-            with rasterio.open(self.path, **self.profile) as src:
+        with reader(self.path) as file:
+            with rasterio.open(file, **self.profile) as src:
                 _read(self, src, **kwargs)
 
     def get_shape_from_res(self, res):

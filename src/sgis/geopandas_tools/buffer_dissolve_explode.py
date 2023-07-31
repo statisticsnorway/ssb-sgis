@@ -162,6 +162,9 @@ def buffdiss(
 
 def dissexp(
     gdf: GeoDataFrame,
+    by=None,
+    aggfunc="first",
+    as_index: bool = True,
     index_parts: bool = False,
     **dissolve_kwargs,
 ):
@@ -171,6 +174,10 @@ def dissexp(
 
     Args:
         gdf: the GeoDataFrame that will be dissolved and exploded.
+        by: Columns to dissolve by.
+        aggfunc: How to aggregate the non-geometry colums not in "by".
+        as_index: Whether the 'by' columns should be returned as index. Defaults to
+            True to be consistent with geopandas.
         index_parts: If False (default), the index after dissolve is respected. If
             True, an integer index level is added during explode.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
@@ -179,6 +186,12 @@ def dissexp(
         A GeoDataFrame where overlapping geometries are dissolved.
     """
     geom_col = gdf._geometry_column_name
+
+    dissolve_kwargs = dissolve_kwargs | {
+        "by": by,
+        "aggfunc": aggfunc,
+        "as_index": as_index,
+    }
 
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 

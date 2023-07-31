@@ -27,8 +27,14 @@ from ..helpers import (
     get_non_numpy_func_name,
     get_numpy_func,
 )
-from ..io.dapla import check_files, is_dapla, read_geopandas, write_geopandas
-from ..multiprocessing.multiprocessingmapper import MultiProcessingMapper
+from ..io._is_dapla import is_dapla
+from .raster import Raster
+
+
+try:
+    from ..io.dapla import check_files, read_geopandas, write_geopandas
+except ImportError:
+    pass
 from .cubebase import (
     CubeBase,
     _add,
@@ -47,13 +53,13 @@ from .cubebase import (
     _to_gdf_func,
     _truediv,
     _write_func,
+    intersection_base,
 )
 from .cubepool import CubePool
 from .elevationraster import ElevationRaster
 from .explode import explode
 from .indices import ndvi_formula
 from .merge import cube_merge, merge_by_bounds
-from .raster import Raster
 from .sample import RandomCubeSample
 from .sentinel import Sentinel2
 from .zonal import make_geometry_iterrows, prepare_zonal, zonal_func, zonal_post
@@ -320,22 +326,6 @@ class GeoDataCube(CubeBase):
 
         return cls(rasters)
 
-    """@classmethod
-    def from_arrays(
-        cls,
-        arrays: Iterable[np.ndarray],
-        crs,
-        bounds=None,
-        transform=None,
-        raster_type: Raster = Raster,
-    ):
-        raster_type = cls.get_raster_type(raster_type)
-        rasters = [
-            raster_type.from_array(arr, crs=crs, bounds=bounds, transform=transform)
-            for arr in arrays
-        ]
-        return cls(rasters, crs=crs)"""
-
     @classmethod
     def from_cube_df(
         cls,
@@ -388,6 +378,7 @@ class GeoDataCube(CubeBase):
         return self
 
     def update_df(self):
+        # TODO: internal?
         for col in self.BASE_CUBE_COLS:
             if col == "raster":
                 self._df[col] = [r for r in self]
@@ -402,6 +393,7 @@ class GeoDataCube(CubeBase):
 
     @staticmethod
     def get_raster_type(raster_type):
+        # TODO: internal?
         if not isinstance(raster_type, type):
             if isinstance(raster_type, str) and raster_type in CANON_RASTER_TYPES:
                 return CANON_RASTER_TYPES[raster_type]
@@ -414,6 +406,7 @@ class GeoDataCube(CubeBase):
         return raster_type
 
     def most_common_raster_type(self):
+        # TODO: internal?
         try:
             return list(self.raster_type.value_counts().index)[0]
         except IndexError:
@@ -452,18 +445,17 @@ class GeoDataCube(CubeBase):
         )
 
     def gradient(self, degrees: bool = False, copy: bool = False):
-        if not all(isinstance(r, ElevationRaster) for r in self):
+        cube = self.copy() if copy else self
+        if not all(isinstance(r, ElevationRaster) for r in cube):
             raise TypeError("raster_type must be ElevationRaster.")
-        self.df["raster"] = self.run_raster_method(
-            "gradient", degrees=degrees, copy=copy
-        )
-        return self
+        cube.df["raster"] = cube.run_raster_method("gradient", degrees=degrees)
+        return cube
 
     def pool(self, processes: int, copy: bool = True) -> CubePool:
         cube = self.copy() if copy else self
         return CubePool(cube, processes=processes)
 
-    def map(self, func: Callable, **kwargs):
+    def array_map(self, func: Callable, **kwargs):
         """Maps each raster array to a function.
 
         The function must take a numpu array as first positional argument,
@@ -473,7 +465,7 @@ class GeoDataCube(CubeBase):
         """
         return self._delegate_array_func(func, **kwargs)
 
-    def map_rasters(self, func: Callable, **kwargs):
+    def raster_map(self, func: Callable, **kwargs):
         """Maps each raster to a function.
 
         The function must take a Raster object as first positional argument,
@@ -483,9 +475,10 @@ class GeoDataCube(CubeBase):
         """
         return self._delegate_raster_func(func, **kwargs)
 
-    def query(self, query: str, **kwargs):
-        self.df = self.df.query(query, **kwargs)
-        return self
+    def query(self, query: str, copy: bool = True, **kwargs):
+        cube = self.copy() if copy else self
+        cube.df = cube.df.query(query, **kwargs)
+        return cube
 
     def load(self, res: int | None = None, copy: bool = True, **kwargs):
         cube = self.copy() if copy else self
@@ -500,6 +493,14 @@ class GeoDataCube(CubeBase):
 
         cube.df["raster"] = cube.run_raster_method("clip", mask=mask, res=res, **kwargs)
         return cube
+
+    def intersection(self, df, res: int | None = None, **kwargs):
+        cubes = []
+        for _, row in df.iterrows():
+            cube = intersection_base(row, cube=self, res=res, **kwargs)
+            cubes.append(cube)
+
+        return concat_cubes(cubes, ignore_index=True)
 
     def ndvi(self, band_name_red, band_name_nir, copy=True):
         return self._index_calc(
@@ -550,7 +551,7 @@ class GeoDataCube(CubeBase):
             return pd.concat(gdfs, ignore_index=ignore_index)
         return gdfs
 
-    def to_xdataset(self, index_col: str | None = None):
+    def to_xarray(self, index_col: str | None = None) -> xr.Dataset:
         if index_col and self.df[index_col].duplicated().any():
             raise ValueError("Cannot have duplicate indices.")
         if index_col:
@@ -586,6 +587,12 @@ class GeoDataCube(CubeBase):
 
     def explode(self, ignore_index: bool = False):
         return explode(self, ignore_index=ignore_index)
+
+    """def explode(self, column=None, ignore_index: bool = False, **kwargs):
+        # If no column is specified then default to the active geometry column
+        if column is None:
+            return super().explode(column, ignore_index=ignore_index, **kwargs)
+        return explode(self, ignore_index=ignore_index)"""
 
     def clipmerge(
         self,
@@ -690,6 +697,10 @@ class GeoDataCube(CubeBase):
 
         cube.df["raster"] = [method_as_func(r) for r in cube]
         return cube
+
+    @property
+    def raster(self):
+        return self._raster
 
     @property
     def df(self):
@@ -928,11 +939,6 @@ class GeoDataCube(CubeBase):
             if df[col].isna().any():
                 raise ValueError(f"Column {col!r} cannot have missing values.")
 
-    @staticmethod
-    def validate_mapper(mapper):
-        if not isinstance(mapper, MultiProcessingMapper):
-            raise TypeError
-
     @classmethod
     def get_cube_template(cls) -> DataFrame:
         return pd.DataFrame(columns=cls.BASE_CUBE_COLS)
@@ -994,30 +1000,12 @@ class GeoDataCube(CubeBase):
         return getattr(self, key)
 
     def _delegate_raster_func(self, func, **kwargs):
-        from joblib import Parallel, delayed
-
-        self.n_jobs = 1
-        if self.n_jobs == 1:
-            self.df["raster"] = [func(r, **kwargs) for r in self]
-        else:
-            self.df["raster"] = Parallel(n_jobs=self.n_jobs)(
-                delayed(func)(r, **kwargs) for r in self
-            )
-        # self.update_df()
+        self.df["raster"] = [func(r, **kwargs) for r in self]
         return self
 
     def _delegate_array_func(self, func, **kwargs):
         self.check_for_array()
-        from joblib import Parallel, delayed
-
-        self.n_jobs = 1
-        if self.n_jobs == 1:
-            self.arrays = [func(arr, **kwargs) for arr in self.arrays]
-        else:
-            self.arrays = Parallel(n_jobs=self.n_jobs)(
-                delayed(func)(arr, **kwargs) for arr in self.arrays
-            )
-        # self.update_df()
+        self.arrays = [func(arr, **kwargs) for arr in self.arrays]
         return self
 
     def __mul__(self, scalar):

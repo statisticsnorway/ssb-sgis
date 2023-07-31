@@ -1,3 +1,4 @@
+import pandas as pd
 import shapely
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
@@ -27,6 +28,12 @@ class RandomCubeSample:
         for box in boxes:
             clipped = cube.clip(box, **kwargs)
             self.cubes.append(clipped)
+
+    def to_cube(self):
+        cube = self.cubes.__class__()
+        cube._crs = self._crs
+        cube.df = pd.concat([cube.df for cube in self.cubes])
+        return cube
 
     @property
     def index(self):

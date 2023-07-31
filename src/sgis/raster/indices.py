@@ -1,4 +1,3 @@
-import functools
 from typing import Callable
 
 import numpy as np
@@ -30,56 +29,6 @@ def moisture_formula(swir: np.ndarray, nir: np.ndarray) -> np.ndarray:
     return np.where((swir + nir) == 0, 0, (nir - swir) / (nir + swir))
 
 
-def moisture_index(cube, band_name_swir="B11", band_name_nir="B8"):
-    return index_calc(
-        cube,
-        band_name1=band_name_swir,
-        band_name2=band_name_nir,
-        index_formula=moisture_formula,
-        index_name="moisture_index",
-    )
-
-
-def water_index(cube, band_name_green="B3", band_name_nir="B8"):
-    return index_calc(
-        cube,
-        band_name1=band_name_green,
-        band_name2=band_name_nir,
-        index_formula=water_formula,
-        index_name="water_index",
-    )
-
-
-def ndvi_index(cube, band_name_red="B4", band_name_nir="B8"):
-    return index_calc(
-        cube,
-        band_name1=band_name_red,
-        band_name2=band_name_nir,
-        index_formula=ndvi_formula,
-        index_name="NDVI",
-    )
-
-
-def gndvi_index(cube, band_name_green="B3", band_name_nir="B8"):
-    return index_calc(
-        cube,
-        band_name1=band_name_green,
-        band_name2=band_name_nir,
-        index_formula=gndvi_formula,
-        index_name="gndvi",
-    )
-
-
-def builtup_index(cube, band_name_red="B4", band_name_nir="B8"):
-    return index_calc(
-        cube,
-        band_name1=band_name_red,
-        band_name2=band_name_nir,
-        index_formula=builtup_formula,
-        index_name="builtup_index",
-    )
-
-
 def get_raster_pairs(
     cube,
     band_name1: str,
@@ -93,23 +42,25 @@ def get_raster_pairs(
     raster_pairs = []
     for tile, date in zip(unique["tile"], unique["date"]):
         query = (cube.df["tile"] == tile) & (cube.df["date"] == date)
-        red = cube.df.loc[query & (cube.name == band_name1), "raster"]
-        nir = cube.df.loc[query & (cube.name == band_name2), "raster"]
-        if len(red) > 1:
+        band1 = cube.df.loc[query & (cube.name == band_name1), "raster"]
+        band2 = cube.df.loc[query & (cube.name == band_name2), "raster"]
+        if not len(band1) and not len(band2):
+            continue
+        if len(band1) > 1:
             raise ValueError("Cannot have more than one B4 band per tile.")
-        if len(nir) > 1:
+        if len(band2) > 1:
             raise ValueError("Cannot have more than one B8 band per tile.")
-        if len(red) != 1 and len(nir) != 1:
+        if len(band1) != 1 and len(band2) != 1:
             raise ValueError("Must have one B4 and one B8 band per tile.")
-        red = red.iloc[0]
-        nir = nir.iloc[0]
-        assert isinstance(red, Raster), red
-        assert isinstance(nir, Raster), nir
+        band1 = band1.iloc[0]
+        band2 = band2.iloc[0]
+        assert isinstance(band1, Raster), band1
+        assert isinstance(band2, Raster), band2
 
-        if red.shape != nir.shape:
+        if band1.shape != band2.shape:
             raise ValueError("Rasters must have same shape")
 
-        pair = red, nir
+        pair = band1, band2
         raster_pairs.append(pair)
 
     return raster_pairs

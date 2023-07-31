@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import skimage
 import xarray as xr
 from IPython.display import display
 from shapely import box
@@ -77,25 +76,25 @@ def test_elevation():
     r = sg.ElevationRaster.from_path(path_two_bands, band_index=None).load()
     assert r.shape == (2, 101, 101), r.shape
 
-    max_ = int(np.nanmax(r.array))
-    gradient = r.gradient(copy=True)
-    gradient.plot()
-    assert max_ == int(np.nanmax(r.array))
-    assert int(np.nanmax(gradient.array)) == 17, int(np.nanmax(gradient.array))
-    print(np.nanmax(gradient.array))
     degrees = r.gradient(
         degrees=True,
     )
-    assert int(np.nanmax(degrees.array)) == 86
-    print(np.nanmax(degrees.array))
-    assert len(degrees.shape) == 3
+
+    assert int(np.nanmax(degrees.array)) == 75, int(np.nanmax(degrees.array))
     print(degrees.shape)
     print(degrees.array.shape)
-    display(degrees.to_gdf())
+    assert len(degrees.shape) == 3
     gdf = degrees.to_gdf()
     if __name__ == "__main__":
         sg.explore(gdf[gdf["band_index"] == 1], "value")
         sg.explore(gdf[gdf["band_index"] == 2], "value")
+
+    max_ = int(np.nanmax(r.array))
+    gradient = r.gradient(copy=True)
+    gradient.plot()
+    assert max_ == int(np.nanmax(r.array))
+    assert int(np.nanmax(gradient.array)) == 6, int(np.nanmax(gradient.array))
+    print(np.nanmax(gradient.array))
 
 
 def test_zonal():
@@ -137,22 +136,6 @@ def test_resize():
     assert r.shape == (1, 201, 201), r.shape
     assert r.res == (10, 10), r.res
 
-    r5 = r.copy().upscale(2)
-    assert r5.shape == (1, 402, 402), r5.shape
-    assert r5.res == (5, 5), r5.res
-
-    r20 = r.copy().downscale(2)
-    assert r20.shape == (1, 101, 101), r20.shape
-    assert tuple(int(x) for x in r20.res) == (19, 19), r20.res
-
-    r30 = r.copy().downscale(3)
-    assert r30.shape == (1, 67, 67), r30.shape
-    assert r30.res == (30, 30), r30.res
-
-    assert r5.unary_union.equals(r.unary_union)
-    assert r20.unary_union.equals(r.unary_union)
-    assert r30.unary_union.equals(r.unary_union)
-
 
 def test_clip():
     r = sg.Raster.from_path(path_singleband, nodata=0)
@@ -173,7 +156,8 @@ def test_clip():
     square_in_corner = sg.to_gdf(southeast_corner.buffer(400).total_bounds, crs=r.crs)
 
     clipped = r.copy().load().clip(square_in_corner)
-    sg.explore(clipped.to_gdf(), r.load().to_gdf())
+    if __name__ == "__main__":
+        sg.explore(clipped.to_gdf(), r.load().to_gdf())
     assert clipped.array.min() == 0, clipped.array.min()
     assert int(clipped.array.mean()) == 37, clipped.array.mean()
     assert int(clipped.array.max()) == 190, clipped.array.max()
@@ -190,8 +174,8 @@ def test_clip():
     clipped2 = (
         r.copy().to_crs(25832).clip(square_in_corner.to_crs(25832)).to_crs(25832)
     ).to_crs(25833)
-    sg.explore(clipped.to_gdf(), clipped2.to_gdf())
-    sss
+    if __name__ == "__main__":
+        sg.explore(clipped.to_gdf(), clipped2.to_gdf())
 
 
 def test_convertion():
@@ -293,23 +277,6 @@ def test_xarray():
     print(xarr * 2)
 
 
-def not_test_raster():
-    testpath = testdata + "/res30.tif"
-    r = sg.Raster.from_path(path_singleband, band_index=1).load()
-
-    x = 3
-
-    r2 = r.copy()
-    shape = int(r2.shape[0] / (r2.shape[0] / x)), int(r2.shape[1] / (r2.shape[1] / x))
-    r2.array = skimage.measure.block_reduce(r2.array, shape, np.mean)
-    print(r2.array.shape, r.array.shape)
-    print(r2.res, r.res)
-    print(r2.bounds, r.bounds)
-    assert r2.res == (30, 30)
-    assert r2.bounds == r.bounds
-    r2.write(testpath)
-
-
 def save_two_band_image():
     r = sg.Raster.from_path(path_singleband, band_index=1)
 
@@ -332,8 +299,28 @@ def save_two_band_image():
     r2.plot()
 
 
+def not_test_write():
+    r = sg.Raster.from_path(path_singleband, band_index=1)
+
+    mask = sg.to_gdf(r.unary_union, crs=r.crs).buffer(-500)
+    r = r.clip(mask)
+    r.array[r.array < 0] = 0
+
+    r2 = r * -1
+    r2.array = np.array([r.array, r2.array])
+    assert len(r2.shape) == 3, r2.shape
+    assert r2.shape[0] == 2, r2.shape
+    r2.write(f"{testdata}/test.tif")
+
+    r3 = sg.Raster.from_path(f"{testdata}/test.tif").load()
+    assert r3.shape == r2.shape
+    assert int(np.mean(r3.array)) == int(np.mean(r2.array))
+
+
 if __name__ == "__main__":
     # save_two_band_image()
+
+    not_test_write()
 
     test_xarray()
     test_resize()

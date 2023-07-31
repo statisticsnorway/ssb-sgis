@@ -16,37 +16,69 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_get_overlapping_polygons():
+def test_random_get_duplicate_areas():
+    circles = sg.random_points(15).set_crs(25833).buffer(0.1)
+    the_overlap = sg.get_duplicate_areas(circles)
+
+    the_overlap["idx"] = [str(x) for x in range(len(the_overlap))]
+
+    overlapping_now = sg.get_duplicate_areas(the_overlap)
+
+    assert not len(overlapping_now)
+
+
+def test_get_duplicate_areas():
+    circles = sg.to_gdf([(0, 0), (0, 1), (1, 1), (1, 0)]).pipe(sg.buff, 1)
+
+    dups = sg.get_duplicate_areas(circles, keep="first")
+    print(dups)
+    sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="x")
+    assert len(dups) == 8, len(dups)
+
+    dups = sg.get_duplicate_areas(circles, keep="last")
+    assert len(dups) == 8, len(dups)
+    print(dups)
+    sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
+
+    dups = sg.get_duplicate_areas(circles, keep=False)
+    assert len(dups) == 12, len(dups)
+    print(dups)
+    sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
+
+
+def _test_get_duplicate_areas():
     with_overlap = sg.to_gdf([(0, 0), (4, 4), (1, 1)]).pipe(sg.buff, 1)
     with_overlap["col"] = 1
     if __name__ == "__main__":
         sg.explore(with_overlap)
 
-    the_overlap = sg.get_overlapping_polygons(with_overlap)
-    print(the_overlap)
-    if __name__ == "__main__":
-        sg.explore(the_overlap)
-    assert list(the_overlap.index) == [0, 2]
-    assert list(the_overlap.columns) == ["col", "geometry"]
-    assert round(the_overlap.area.sum(), 5) == 1.14108, round(the_overlap.area.sum(), 5)
+    dissolved_overlap = sg.get_duplicate_areas(with_overlap)
+    print(dissolved_overlap)
+    assert len(dissolved_overlap) == 1
+    assert list(dissolved_overlap.columns) == ["geometry"]
+    assert round(dissolved_overlap.area.sum(), 2) == 0.57, dissolved_overlap.area.sum()
 
-    overlapping_polygons = sg.get_overlapping_polygon_indices(with_overlap)
-    print(overlapping_polygons)
-    assert isinstance(overlapping_polygons, pd.Index)
-    assert list(overlapping_polygons) == [0, 2], overlapping_polygons
-    without_the_overlapping = with_overlap.loc[
-        ~with_overlap.index.isin(overlapping_polygons)
-    ]
-    assert list(without_the_overlapping.index) == [1], without_the_overlapping
+    again = sg.get_duplicate_areas(dissolved_overlap)
+    print(again)
+    assert not len(again)
 
-    overlapping_polygons = sg.get_overlapping_polygon_product(with_overlap)
-    print(overlapping_polygons)
-    should_be = pd.Series([0, 2], index=[2, 0])
-    assert overlapping_polygons.equals(should_be), overlapping_polygons
-    without_the_overlapping = with_overlap.loc[
-        ~with_overlap.index.isin(overlapping_polygons)
-    ]
-    assert list(without_the_overlapping.index) == [1], without_the_overlapping
+    # index should be preserved and area should be twice
+    without_dissolve = sg.get_duplicate_areas(with_overlap, dissolve=False)
+    print(without_dissolve)
+    assert list(without_dissolve.index) == [0, 2], list(without_dissolve.index)
+    assert (
+        round(without_dissolve.area.sum(), 2) == 0.57 * 2
+    ), without_dissolve.area.sum()
+
+    assert list(without_dissolve.columns) == ["col", "geometry"]
+
+    again = sg.get_duplicate_areas(without_dissolve)
+    print(again)
+    assert len(again) == 1, len(again)
+
+    once_again = sg.get_duplicate_areas(again)
+    print(once_again)
+    assert not len(once_again)
 
 
 def test_close_holes():
@@ -270,7 +302,9 @@ def test_eliminate():
 
 
 if __name__ == "__main__":
+    test_get_duplicate_areas()
+    test_random_get_duplicate_areas()
+    sss
     test_close_holes()
     test_get_polygon_clusters()
     test_eliminate()
-    test_get_overlapping_polygons()

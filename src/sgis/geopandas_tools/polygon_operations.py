@@ -1,7 +1,9 @@
 """Functions for polygon geometries."""
+import functools
 import warnings
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
@@ -12,9 +14,11 @@ from shapely import (
     get_parts,
     polygons,
 )
+from shapely.errors import GEOSException
+from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union
 
-from .general import _push_geom_col, to_lines
+from .general import _push_geom_col, clean_geoms, to_lines
 from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
 
@@ -384,110 +388,6 @@ def _eliminate_by_area(
     return eliminated
 
 
-def get_overlapping_polygons(
-    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
-) -> GeoDataFrame | GeoSeries:
-    """Find the areas that overlap.
-
-    Does an intersection with itself and keeps only the duplicated geometries. The
-    index of 'gdf' is preserved.
-
-    Args:
-        gdf: GeoDataFrame of polygons.
-        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-            Defaults to False.
-
-    Returns:
-        A GeoDataFrame of the overlapping polygons.
-    """
-    if not any(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
-        raise ValueError("'gdf' has no polygons.")
-
-    elif not all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
-        warnings.warn("'gdf' has mixed geometries. Non-polygons will be removed.")
-
-    if not ignore_index:
-        idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
-        idx_name = gdf.index.name
-
-    gdf = gdf.reset_index(drop=True).assign(overlap=gdf.index)
-
-    intersected = clean_overlay(
-        gdf, gdf[["geometry"]], how="intersection", geom_type="polygon"
-    )
-
-    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
-
-    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
-
-    duplicated_geoms = intersected.loc[intersected.index.isin(duplicated_points.index)]
-    duplicated_geoms.index = duplicated_geoms["overlap"].values
-
-    if ignore_index:
-        duplicated_geoms = duplicated_geoms.reset_index(drop=True)
-    else:
-        duplicated_geoms.index = duplicated_geoms.index.map(idx_mapper)
-        duplicated_geoms.index.name = idx_name
-
-    return duplicated_geoms.drop("overlap", axis=1)
-
-
-def get_overlapping_polygon_indices(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
-    if not gdf.index.is_unique:
-        raise ValueError(
-            "Index must be unique in order to correctly find "
-            "overlapping polygon indices."
-        )
-
-    idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
-    idx_name = gdf.index.name
-
-    gdf = gdf.reset_index(drop=True).assign(overlap=gdf.index)
-
-    intersected = clean_overlay(
-        gdf, gdf[["geometry"]], how="intersection", geom_type="polygon"
-    )
-
-    intersected = intersected.set_index("overlap")
-
-    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
-
-    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
-
-    duplicated_points.index = duplicated_points.index.map(idx_mapper)
-    duplicated_points.index.name = idx_name
-
-    return duplicated_points.index.unique()
-
-
-def get_overlapping_polygon_product(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
-    if not gdf.index.is_unique:
-        raise ValueError("Index must be unique to find overlapping polygon indices.")
-
-    gdf = gdf.assign(overlap=gdf.index)
-
-    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
-
-    intersected = intersected.set_index("overlap")
-
-    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
-
-    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
-
-    unique = (
-        duplicated_points.reset_index()
-        .groupby(["overlap", "index_right"])
-        .size()
-        .reset_index()
-    )
-
-    unique = unique[unique.overlap != unique.index_right]
-    series = unique.set_index("index_right").overlap
-    series.index.name = None
-
-    return series
-
-
 def close_all_holes(
     gdf: GeoDataFrame | GeoSeries,
     *,
@@ -661,8 +561,6 @@ def _close_small_holes(poly, max_area):
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
 
-            print(area(hole))
-
             if area(hole) < max_area:
                 holes_closed.append(hole)
 
@@ -714,3 +612,115 @@ def _close_all_holes_no_islands(poly, all_geoms):
             holes_closed.append(no_islands)
 
     return unary_union(holes_closed)
+
+
+def get_duplicate_areas(
+    gdf: GeoDataFrame | GeoSeries,
+    ignore_index: bool = False,
+    keep="first",
+) -> GeoDataFrame:
+    """Find the areas that overlap.
+
+    Does an intersection with itself and keeps only the duplicated geometries.
+
+    Args:
+        gdf: GeoDataFrame of polygons.
+        ignore_index: Applies to when dissolve is False.
+
+    Returns:
+        A GeoDataFrame of the overlapping polygons.
+
+    Examples
+    --------
+    >>> import sgis as sg
+    >>> circles = sg.to_gdf([(0, 0), (1, 1)]).pipe(sg.buff, 1)
+    >>> dissolved = sg.get_duplicate_areas(circles)
+    >>> dissolved
+                                                geometry
+    0  POLYGON ((0.06279 0.99803, 0.09411 0.99556, 0....
+
+    Without dissolving.
+
+    >>> not_dissolved = sg.get_duplicate_areas(circles, dissolve=False)
+                                                geometry
+    0  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
+    2  POLYGON ((1.00000 0.00000, 0.96859 0.00049, 0....
+    """
+    idx_name = gdf.index.name
+    duplicated_geoms = _get_all_overlapping_areas(gdf)
+
+    if ignore_index:
+        duplicated_geoms = duplicated_geoms.reset_index(drop=True).drop(
+            columns="orig_idx"
+        )
+
+    if not keep:
+        duplicated_geoms.index = duplicated_geoms["orig_idx"].values
+        duplicated_geoms.index.name = idx_name
+        return duplicated_geoms.drop(columns="orig_idx")
+
+    return _get_no_dup_areas(duplicated_geoms, keep=keep)
+
+
+def _get_all_overlapping_areas(
+    gdf: GeoDataFrame | GeoSeries,
+) -> GeoDataFrame | GeoSeries:
+    any_polys = gdf.geom_type.isin(["Polygon", "MultiPolygon"]).any()
+    if not any_polys:
+        raise ValueError("'gdf' has no polygons.")
+
+    all_polys = gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all()
+    if not all_polys:
+        warnings.warn("'gdf' has mixed geometries. Non-polygons will be removed.")
+
+    if isinstance(gdf, GeoSeries):
+        gdf = gdf.to_frame(name="geometry")
+
+    gdf = gdf.assign(orig_idx=gdf.index).reset_index(drop=True)
+
+    left = gdf.assign(idx_left=gdf.index)
+    right = gdf[[gdf._geometry_column_name]].assign(idx_right=gdf.index)
+
+    intersected = clean_overlay(left, right, how="intersection", geom_type="polygon")
+
+    # these are identical as the input geometries
+    not_from_same_poly = intersected.loc[lambda x: x["idx_left"] != x["idx_right"]]
+
+    """points = not_from_same_poly.representative_point().to_frame(names="geometry")
+
+    not_from_same_poly.sjoin(points)"""
+
+    points_joined = (
+        not_from_same_poly.representative_point().to_frame().sjoin(not_from_same_poly)
+    )
+
+    duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
+
+    return intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
+        columns=["idx_left", "idx_right"]
+    )
+
+
+def _get_no_dup_areas(gdf, keep):
+    if keep == "first":
+        geometries = list(gdf.geometry)
+    elif keep == "last":
+        geometries = list(reversed(list(gdf.geometry)))
+
+    union = geometries[0]
+    geoms = {union}
+
+    for geom in geometries[1:]:
+        try:
+            new = geom.difference(union)
+        except GEOSException:
+            try:
+                new = geom.difference(union, grid_size=0.01)
+            except GEOSException:
+                new = geom.difference(union, grid_size=0.1)
+
+        if not new or not isinstance(new, (Polygon, MultiPolygon)):
+            continue
+        geoms.add(new)
+        union = unary_union([new, union])
+    return GeoDataFrame({"geometry": list(geoms)}, crs=gdf.crs)

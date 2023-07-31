@@ -194,6 +194,9 @@ def check_files(
     if contains:
         df = df.loc[df["path"].str.contains(contains)]
 
+    if not len(df):
+        return df
+
     df = df.set_index("updated").sort_index()
 
     df["name"] = df["path"].apply(lambda x: Path(x).name)

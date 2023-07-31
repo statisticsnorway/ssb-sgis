@@ -7,7 +7,7 @@ from typing import Any, Callable, Iterable, Sized
 import numpy as np
 from geopandas import GeoDataFrame
 
-from ..helpers import dict_zip, dict_zip_intersection
+from ..helpers import dict_zip, dict_zip_union
 from ..io.dapla import read_geopandas
 from ..io.write_municipality_data import (
     write_municipality_data,
@@ -208,6 +208,7 @@ class MultiProcessingPool(MultiProcessingBase):
         file_type: str = "parquet",
         muni_number_col: str = "KOMMUNENR",
         strict: bool = False,
+        write_empty: bool = False,
     ):
         """Split multiple datasets into municipalities and write as separate files.
 
@@ -228,6 +229,8 @@ class MultiProcessingPool(MultiProcessingBase):
                 to KOMMUNENR.
             strict: If False (default), the dictionaries 'out_data' and 'funcdict' does
                 not have to have the same length as 'in_data'.
+            write_empty: If False (default), municipalities with no data will be skipped.
+                If True, an empty parquet file will be written.
 
         """
         KARTDATA_ANALYSE = "ssb-prod-kart-data-delt/kartdata_analyse/klargjorte-data"
@@ -239,10 +242,11 @@ class MultiProcessingPool(MultiProcessingBase):
         if muni_number_col != "KOMMUNENR":
             muni = muni.rename(columns={"KOMMUNENR": muni_number_col}, errors="raise")
 
-        kwds_for_all = {
+        shared_kwds = {
             "municipalities": muni,
             "muni_number_col": muni_number_col,
             "file_type": file_type,
+            "write_empty": write_empty,
         }
 
         if isinstance(out_data, (str, Path)):
@@ -251,12 +255,14 @@ class MultiProcessingPool(MultiProcessingBase):
         if funcdict is None:
             funcdict = {}
 
-        zip_func = dict_zip if strict else dict_zip_intersection
+        zip_func = dict_zip if strict else dict_zip_union
 
         for _, data, folder, postfunc in zip_func(in_data, out_data, funcdict):
-            kwds = kwds_for_all | {
+            if data is None:
+                continue
+            kwds = shared_kwds | {
                 "data": data,
-                "postread_func": postfunc,
+                "func": postfunc,
                 "out_folder": folder,
             }
             partial_func = functools.partial(write_municipality_data, **kwds)
@@ -274,6 +280,7 @@ class MultiProcessingPool(MultiProcessingBase):
         file_type: str = "parquet",
         muni_number_col: str = "KOMMUNENR",
         strict: bool = False,
+        write_empty: bool = False,
     ):
         """Split datasets into municipalities+neighbors and write as separate files.
 
@@ -294,6 +301,8 @@ class MultiProcessingPool(MultiProcessingBase):
                 to KOMMUNENR.
             strict: If False (default), the dictionaries 'out_data' and 'funcdict' does
                 not have to have the same length as 'in_data'.
+            write_empty: If False (default), municipalities with no data will be skipped.
+                If True, an empty parquet file will be written.
         """
         KARTDATA_ANALYSE = "ssb-prod-kart-data-delt/kartdata_analyse/klargjorte-data"
 
@@ -304,10 +313,11 @@ class MultiProcessingPool(MultiProcessingBase):
         if muni_number_col != "KOMMUNENR":
             muni = muni.rename(columns={"KOMMUNENR": muni_number_col}, errors="raise")
 
-        kwds_for_all = {
+        shared_kwds = {
             "municipalities": muni,
             "muni_number_col": muni_number_col,
             "file_type": file_type,
+            "write_empty": write_empty,
         }
 
         if isinstance(out_data, (str, Path)):
@@ -316,12 +326,15 @@ class MultiProcessingPool(MultiProcessingBase):
         if funcdict is None:
             funcdict = {}
 
-        zip_func = dict_zip if strict else dict_zip_intersection
+        zip_func = dict_zip if strict else dict_zip_union
 
         for _, data, folder, postfunc in zip_func(in_data, out_data, funcdict):
-            kwds = kwds_for_all | {
+            if data is None:
+                continue
+
+            kwds = shared_kwds | {
                 "data": data,
-                "postread_func": postfunc,
+                "func": postfunc,
                 "out_folder": folder,
             }
             partial_func = functools.partial(write_neighbor_municipality_data, **kwds)
