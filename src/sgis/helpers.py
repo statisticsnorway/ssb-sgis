@@ -148,7 +148,7 @@ def unit_is_degrees(gdf: GeoDataFrame) -> bool:
     return False
 
 
-def get_name(var: object, n: int = 5) -> str | None:
+def get_object_name(var: object, n: int = 5) -> str | None:
     """Searches through the local variables down one level at a time."""
     frame = inspect.currentframe().f_back.f_back
 
@@ -182,7 +182,7 @@ def make_namedict(gdfs: tuple[GeoDataFrame]) -> dict[int, str]:
         if hasattr(gdf, "name"):
             namedict[i] = gdf.name
         else:
-            name = get_name(gdf)
+            name = get_object_name(gdf)
             if not name:
                 name = str(i)
             namedict[i] = name

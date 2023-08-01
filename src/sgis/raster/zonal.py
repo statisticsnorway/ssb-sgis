@@ -77,6 +77,11 @@ def _clip_and_aggregate(cube, polygon, array_func, aggfunc, func_names, date, i)
         return _no_overlap_df(func_names, i, date)
     assert len(clipped) == 1
     array = clipped[0].array
+    df = _aggregate(array, array_func, aggfunc, func_names, date, i)
+    return df
+
+
+def _aggregate(array, array_func, aggfunc, func_names, date, i):
     if array_func:
         array = array_func(array)
     # flat_array = array.astype(np.float64).flatten()

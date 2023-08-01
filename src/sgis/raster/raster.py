@@ -1,4 +1,3 @@
-import functools
 import numbers
 import re
 import uuid
@@ -18,8 +17,7 @@ import shapely
 import xarray as xr
 from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
-from pandas.api.types import is_dict_like, is_list_like
-from pandas.util._decorators import doc
+from pandas.api.types import is_list_like
 from rasterio import features
 from rasterio.enums import MergeAlg
 from rasterio.io import DatasetReader
@@ -35,7 +33,19 @@ from ..geopandas_tools.general import is_bbox_like, is_wkt
 from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import get_non_numpy_func_name, get_numpy_func, is_property
 from ..io.reader import reader
-from .base import RasterBase, RasterHasChangedError, memfile_from_array
+from .base import (
+    RasterBase,
+    RasterHasChangedError,
+    get_index_mapper,
+    memfile_from_array,
+)
+from .zonal import (
+    _aggregate,
+    _no_overlap_df,
+    make_geometry_iterrows,
+    prepare_zonal,
+    zonal_post,
+)
 
 
 numpy_func_message = (
@@ -145,7 +155,9 @@ class Raster(RasterBase):
     ):
         if raster is not None:
             if not isinstance(raster, Raster):
-                raise TypeError
+                raise TypeError(
+                    "Raster should be constructed with the from-classmethods."
+                )
             for key, value in raster.__dict__.items():
                 self[key] = value
             return
@@ -409,13 +421,11 @@ class Raster(RasterBase):
         if "window" in kwargs:
             raise ValueError("Got an unexpected keyword argument 'window'")
 
-        kwargs = self._pop_from_dict(kwargs)
-
         self._read_tif(res=res, **kwargs)
 
         return self
 
-    def clip(self, mask, res: int | None = None, boundless: bool = True, **kwargs):
+    def clip(self, mask, boundless: bool = True, **kwargs):
         """Load the part of the image inside the mask.
 
         The returned array is stored in the 'array' attribute
@@ -429,15 +439,13 @@ class Raster(RasterBase):
         Returns:
             Self, but with the array loaded.
         """
-        kwargs = self._pop_from_dict(kwargs)
-
         if not isinstance(mask, GeoDataFrame):
             mask = self._return_gdf(mask)
 
         if not self.crs.equals(pyproj.CRS(mask.crs)):
             raise ValueError("crs mismatch.")
 
-        self._read_with_mask(mask=mask, res=res, boundless=boundless, **kwargs)
+        self._read_with_mask(mask=mask, boundless=boundless, **kwargs)
 
         return self
 
@@ -459,7 +467,7 @@ class Raster(RasterBase):
         self,
         polygons: GeoDataFrame,
         aggfunc: str | Callable | list[Callable | str],
-        raster_calc_func: Callable | None = None,
+        array_func: Callable | None = None,
         dropna: bool = True,
     ) -> GeoDataFrame:
         """Calculate zonal statistics in polygons.
@@ -468,96 +476,34 @@ class Raster(RasterBase):
             polygons: A GeoDataFrame of polygon geometries.
             aggfunc: Function(s) of which to aggregate the values
                 within each polygon.
-            raster_calc_func: Optional calculation of the raster
+            array_func: Optional calculation of the raster
                 array before calculating the zonal statistics.
             dropna: If True (default), polygons with all missing
                 values will be removed.
 
         Returns:
-            A GeoDataFrame with the aggregate functions
+            A GeoDataFrame with aggregated values per polygon.
         """
-        if not pyproj.CRS(self.crs).equals(pyproj.CRS(polygons.crs)):
-            raise ValueError("crs mismatch.")
+        idx_mapper, idx_name = get_index_mapper(polygons)
+        polygons, aggfunc, func_names = prepare_zonal(polygons, aggfunc)
+        poly_iter = make_geometry_iterrows(polygons)
 
-        if isinstance(aggfunc, (str, Callable)):
-            aggfunc = [aggfunc]
+        aggregated = []
+        for i, poly in poly_iter:
+            clipped = self.clip(poly)
+            if not np.size(clipped.array):
+                aggregated.append(_no_overlap_df(func_names, i, date=self.date))
+            aggregated.append(
+                _aggregate(clipped.array, array_func, aggfunc, func_names, self.date, i)
+            )
 
-        new_cols = [get_non_numpy_func_name(f) for f in aggfunc]
-
-        aggfunc = [
-            f if callable(f) else get_numpy_func(f, numpy_func_message) for f in aggfunc
-        ]
-
-        aggregated = {}
-
-        for i in polygons.index:
-            poly = polygons.loc[[i]]
-
-            box1 = shapely.box(*self.total_bounds)
-            box2 = shapely.box(*poly.total_bounds)
-
-            if not box1.intersects(box2) or box1.touches(box2):
-                aggregated[i] = [pd.NA for _ in range(len(aggfunc))]
-                continue
-
-            if self.array is not None:
-                with memfile_from_array(self.array, **self.profile) as src:
-                    aggs = self._zonal_one_poly(
-                        src,
-                        poly=poly,
-                        aggfunc=aggfunc,
-                        raster_calc_func=raster_calc_func,
-                        i=i,
-                    )
-
-            else:
-                with reader(self.path) as file:
-                    with rasterio.open(file, **self.profile) as src:
-                        aggs = self._zonal_one_poly(
-                            src, poly, aggfunc, raster_calc_func, i
-                        )
-
-            aggregated = aggregated | aggs
-
-        out = gpd.GeoDataFrame(
-            pd.DataFrame(
-                polygons.index.map(aggregated).tolist(),
-                columns=new_cols,
-            ).astype("Float64"),
-            geometry=polygons.geometry.values,
-            crs=polygons.crs,
+        return zonal_post(
+            aggregated,
+            polygons=polygons,
+            idx_mapper=idx_mapper,
+            idx_name=idx_name,
+            dropna=dropna,
         )
-
-        index_mapper = {i: idx for i, idx in enumerate(polygons.index)}
-        out.index = out.index.map(index_mapper)
-
-        if dropna:
-            return out.loc[~out.isna().all(axis=1)]
-        else:
-            return out
-
-    def _zonal_one_poly(self, src, poly, aggfunc, raster_calc_func, i):
-        array, _ = rast_mask(
-            dataset=src,
-            shapes=self._to_geojson(poly),
-            crop=True,
-            filled=False,
-        )
-
-        flat_array = array.filled(np.nan).flatten()
-        no_nans = flat_array[~np.isnan(flat_array)]
-
-        if raster_calc_func:
-            array_shape = no_nans.shape
-            no_nans = raster_calc_func(no_nans)
-            if array_shape != no_nans.shape:
-                raise ValueError(
-                    "raster_calc_func cannot change the shape of the array."
-                )
-
-        aggs: dict[float | int, list[float]] = {i: [f(no_nans) for f in aggfunc]}
-
-        return aggs
 
     def write(self, path: str, window=None, **kwargs):
         """Write the raster as a single file.
@@ -575,7 +521,7 @@ class Raster(RasterBase):
         profile = self.profile | kwargs
 
         with reader(path) as file:
-            with rasterio.open(file, "w", **self.profile) as dst:
+            with rasterio.open(file, "w", **profile) as dst:
                 self._write(dst, window)
 
         self.path = str(path)
@@ -651,7 +597,17 @@ class Raster(RasterBase):
 
             if hasattr(self, "_datadict"):
                 for name, value in self._datadict.items():
-                    gdf[name] = value
+                    try:
+                        gdf[name] = value
+                    except Exception:
+                        # in case of iterable columns (band_index...)
+                        # reset index in case of duplicate index
+                        index = gdf.index
+                        gdf = gdf.reset_index(drop=True)
+                        gdf[name] = pd.Series(
+                            [value for _ in range(len(gdf))], index=gdf.index
+                        )
+                        gdf.index = index
 
             gdfs.append(gdf)
 
@@ -694,6 +650,8 @@ class Raster(RasterBase):
             old_box = shapely.box(*self.bounds)
             new_box = shapely.ops.transform(project, old_box)
             self._bounds = to_bbox(new_box)
+
+            # TODO: fix this
             print("old/new:", shapely.area(old_box) / shapely.area(new_box))
 
             """self._bounds = rasterio.warp.transform_bounds(
@@ -723,7 +681,6 @@ class Raster(RasterBase):
                 self.height, self.width, transform
             )
 
-        # self._crs = pyproj.CRS(crs)
         self._warped_crs = pyproj.CRS(crs)
         self._prev_crs = pyproj.CRS(crs)
 
@@ -746,7 +703,7 @@ class Raster(RasterBase):
         self._dtype = dtype
         return self
 
-    def as_mimimum_dtype(self):
+    def as_minimum_dtype(self):
         min_dtype = rasterio.dtypes.get_minimum_dtype(self.array)
         self.array = self.array.astype(min_dtype)
         return self
@@ -876,6 +833,10 @@ class Raster(RasterBase):
             "compress": self.compress,
             "indexes": self.band_index,
         }
+
+    @property
+    def raster_type(self) -> str:
+        return self.__class__.__name__
 
     @property
     def area(self):
@@ -1090,30 +1051,24 @@ class Raster(RasterBase):
             if self._dtype:
                 self = self.astype(self._dtype)
             else:
-                min_dtype = rasterio.dtypes.get_minimum_dtype(self.array)
-                self.array = self.array.astype(min_dtype)
+                self = self.as_minimum_dtype()
 
         with reader(self.path) as file:
             with rasterio.open(file) as src:
                 _read(self, src)
 
-    def _read_with_mask(self, mask, res, boundless, **kwargs):
-        kwargs = {"mask": mask, "res": res, "boundless": boundless} | kwargs
+    def _read_with_mask(self, mask, boundless, **kwargs):
+        kwargs = {"mask": mask, "boundless": boundless} | kwargs
 
-        def _read(self, src, mask, res, boundless, **kwargs):
+        def _read(self, src, mask, boundless, **kwargs):
             # to non-warped crs
             # mask = mask.to_crs(self._crs)
 
             self._add_meta_from_src(src)
-            if res:
-                out_shape = self.get_shape_from_bounds(mask, res=res)
-            else:
-                out_shape = self.get_shape_from_bounds(mask, res=self.res)
             transform = self.transform
             window = rasterio.windows.from_bounds(*to_bbox(mask), transform=transform)
             kwargs = {
                 "window": window,
-                "out_shape": out_shape,
                 "boundless": boundless,
                 **self.read_kwargs(kwargs),
             }
@@ -1124,19 +1079,13 @@ class Raster(RasterBase):
 
             self._bounds = src.window_bounds(window=window)
 
-            """if hasattr(self, "_warped_crs"):
-                self._bounds = to_bbox(mask.to_crs(self._warped_crs))
-            else:
-                self._bounds = to_bbox(mask)
-            print("hei1", self._bounds)"""
+            if not np.size(self.array):
+                return
 
             if self._dtype:
                 self = self.astype(self._dtype)
             else:
-                minimum_dtype = rasterio.dtypes.get_minimum_dtype(self.array)
-                self.array = self.array.astype(minimum_dtype)
-            print(np.min(self.array))
-            print(np.max(self.array))
+                self = self.as_minimum_dtype()
 
         if self.array is not None:
             with memfile_from_array(self.array, **self.profile) as src:
@@ -1181,20 +1130,11 @@ class Raster(RasterBase):
             for i, idx in enumerate(self.band_index_tuple()):
                 dst.write(self.array[i], indexes=idx, window=window)
 
-    def _pop_from_dict(self, dictionary) -> dict:
-        # TODO...
-        for key in self.__dict__.keys():
-            if key in dictionary:
-                if is_property(self, key):
-                    continue
-                self[key] = dictionary.pop(key)
-        return dictionary
-
     def _get_band_index(self, band_index):
         if isinstance(band_index, numbers.Number):
             return int(band_index)
         if band_index is None:
-            return band_index
+            return None
         try:
             return tuple(int(x) for x in band_index)
         except Exception as e:
@@ -1208,8 +1148,7 @@ class Raster(RasterBase):
         elif isinstance(obj, Raster):
             return obj.to_gdf()
         elif is_bbox_like(obj):
-            bounds = to_bbox(obj)
-            return to_gdf(shapely.box(*bounds), crs=self.crs)
+            return to_gdf(shapely.box(*to_bbox(obj)), crs=self.crs)
         else:
             return to_gdf(obj, crs=self.crs)
 
@@ -1243,17 +1182,21 @@ class Raster(RasterBase):
             ]
 
     def min(self):
-        return np.min(self.array)
+        if np.size(self.array):
+            return np.min(self.array)
+        return None
 
     def max(self):
-        return np.max(self.array)
+        if np.size(self.array):
+            return np.max(self.array)
+        return None
 
     def __hash__(self):
         return hash(self._hash)
 
     def __eq__(self, other):
         if isinstance(other, Raster):
-            return self.array == other.array
+            return np.all(np.array_equal(self.array, other.array))
         return NotImplemented
 
     def __repr__(self) -> str:
@@ -1266,8 +1209,6 @@ class Raster(RasterBase):
             res = None
         crs = str(self.crs_to_string(self.crs))
         raster_id = self.raster_id
-        date = self.date
-        name = self.name
         path = self.path
         return f"{self.__class__.__name__}(shape=({shp}), res={res}, raster_id={raster_id}, crs={crs}, path={path})"
 

@@ -20,13 +20,7 @@ from shapely import Geometry
 
 from ..geopandas_tools.bounds import make_grid
 from ..geopandas_tools.general import get_common_crs, to_shapely
-from ..helpers import (
-    dict_zip_intersection,
-    get_all_files,
-    get_func_name,
-    get_non_numpy_func_name,
-    get_numpy_func,
-)
+from ..helpers import dict_zip_intersection, get_all_files, get_numpy_func
 from ..io._is_dapla import is_dapla
 from .raster import Raster
 
@@ -35,14 +29,12 @@ try:
     from ..io.dapla import check_files, read_geopandas, write_geopandas
 except ImportError:
     pass
+from .base import get_index_mapper
 from .cubebase import (
     CubeBase,
     _add,
-    _clip_func,
-    _cube_merge,
     _floordiv,
     _from_gdf_func,
-    _load_func,
     _method_as_func,
     _mul,
     _pow,
@@ -50,7 +42,6 @@ from .cubebase import (
     _set_crs_func,
     _sub,
     _to_crs_func,
-    _to_gdf_func,
     _truediv,
     _write_func,
     intersection_base,
@@ -65,21 +56,6 @@ from .sentinel import Sentinel2
 from .zonal import make_geometry_iterrows, prepare_zonal, zonal_func, zonal_post
 
 
-# TODO: hvordan blir kolonnene etter merge/retile?
-# etter retile:
-# - name må beholdes
-# - name må være name+tile - altså groupby+grid_id
-#     - er det noe annet enn name man vil groupe by? Nei?
-# - må lagres i mappene de lå i, altså folder_name
-# -
-# - Merge by [name, folder_name] ??
-
-# name:
-# - raster: tile+name+date
-
-# TODO: raster has property navn, mens name kan settes?
-
-
 CANON_RASTER_TYPES = {
     "Raster": Raster,
     "ElevationRaster": ElevationRaster,
@@ -90,6 +66,16 @@ CUBE_DF_NAME = "cube_df.parquet"
 
 
 class GeoDataCube(CubeBase):
+    """Raster data stored in a DataFrame.
+
+    Examples
+    --------
+
+    >>> cube = sg.GeoDataCube.from_root(...)
+    >>> clipped = cube.clip(mask).merge(by="date")
+    >>>
+    """
+
     def __init__(
         self,
         data: Raster | Iterable[Raster] | None = None,
@@ -129,7 +115,7 @@ class GeoDataCube(CubeBase):
 
         self._df = df if df is not None else pd.DataFrame()
         self._df["raster"] = list(data)
-        self.update_df()
+        self._update_df()
 
         if crs:
             self._crs = pyproj.CRS(crs)
@@ -354,31 +340,7 @@ class GeoDataCube(CubeBase):
 
         raise TypeError("df must be DataFrame or file path to a parquet file.")
 
-    def update_rasters(self, *args):
-        # TODO: droppe?
-        if not all(isinstance(arg, str) for arg in args):
-            raise TypeError("Arguments must be strings.")
-        if not all(arg in self.df for arg in args):
-            raise KeyError
-
-        rasters = self._df["raster"]
-        updates = self._df[[*args]]
-
-        self._df["raster"] = [
-            raster.update(dict(row[1]))
-            for raster, row in zip(rasters, updates.iterrows())
-        ]
-
-        return self
-
-    def add_meta_to_df(self, *args):
-        # TODO: droppe?
-        for arg in args:
-            self._df[arg] = self.raster_attribute(arg).values
-        return self
-
-    def update_df(self):
-        # TODO: internal?
+    def _update_df(self):
         for col in self.BASE_CUBE_COLS:
             if col == "raster":
                 self._df[col] = [r for r in self]
@@ -393,7 +355,6 @@ class GeoDataCube(CubeBase):
 
     @staticmethod
     def get_raster_type(raster_type):
-        # TODO: internal?
         if not isinstance(raster_type, type):
             if isinstance(raster_type, str) and raster_type in CANON_RASTER_TYPES:
                 return CANON_RASTER_TYPES[raster_type]
@@ -420,7 +381,7 @@ class GeoDataCube(CubeBase):
         by_date: bool = True,
         dropna: bool = True,
     ) -> GeoDataFrame:
-        idx_mapper, idx_name = self.get_index_mapper(polygons)
+        idx_mapper, idx_name = get_index_mapper(polygons)
         polygons, aggfunc, func_names = prepare_zonal(polygons, aggfunc)
         poly_iter = make_geometry_iterrows(polygons)
 
@@ -476,6 +437,7 @@ class GeoDataCube(CubeBase):
         return self._delegate_raster_func(func, **kwargs)
 
     def query(self, query: str, copy: bool = True, **kwargs):
+        """Wrapper around pandas.DataFrame.query that returns GeoDataCube."""
         cube = self.copy() if copy else self
         cube.df = cube.df.query(query, **kwargs)
         return cube
@@ -486,18 +448,18 @@ class GeoDataCube(CubeBase):
         cube.df["raster"] = cube.run_raster_method("load", res=res, **kwargs)
         return cube
 
-    def clip(self, mask, res: int | None = None, copy: bool = True, **kwargs):
+    def clip(self, mask, copy: bool = True, **kwargs):
         cube = self.copy() if copy else self
 
         cube = cube.clip_base(mask)
 
-        cube.df["raster"] = cube.run_raster_method("clip", mask=mask, res=res, **kwargs)
+        cube.df["raster"] = cube.run_raster_method("clip", mask=mask, **kwargs)
         return cube
 
-    def intersection(self, df, res: int | None = None, **kwargs):
+    def intersection(self, df, **kwargs):
         cubes = []
         for _, row in df.iterrows():
-            cube = intersection_base(row, cube=self, res=res, **kwargs)
+            cube = intersection_base(row, cube=self, **kwargs)
             cubes.append(cube)
 
         return concat_cubes(cubes, ignore_index=True)
@@ -545,10 +507,12 @@ class GeoDataCube(CubeBase):
 
         return self
 
-    def to_gdf(self, ignore_index: bool = False, concat: bool = True) -> GeoDataFrame:
+    def to_gdf(
+        self, column: str | None = None, ignore_index: bool = False, concat: bool = True
+    ) -> GeoDataFrame:
         self.assign_datadict_to_rasters()
 
-        gdfs = self.run_raster_method("to_gdf")
+        gdfs = self.run_raster_method("to_gdf", column=column)
 
         if concat:
             return pd.concat(gdfs, ignore_index=ignore_index)
@@ -590,12 +554,6 @@ class GeoDataCube(CubeBase):
 
     def explode(self, ignore_index: bool = False):
         return explode(self, ignore_index=ignore_index)
-
-    """def explode(self, column=None, ignore_index: bool = False, **kwargs):
-        # If no column is specified then default to the active geometry column
-        if column is None:
-            return super().explode(column, ignore_index=ignore_index, **kwargs)
-        return explode(self, ignore_index=ignore_index)"""
 
     def clipmerge(
         self,
@@ -645,10 +603,7 @@ class GeoDataCube(CubeBase):
         copy: bool = True,
         **kwargs,
     ):
-        """Merge rasters with the same bounds to a 3 dimensional array.
-
-        The 'name' column will be updated to the bounds as a string.
-        """
+        """Merge rasters with the same bounds to a 3 dimensional array."""
 
         cube = self.copy() if copy else self
         kwargs = {
@@ -670,25 +625,28 @@ class GeoDataCube(CubeBase):
         aggfunc = get_numpy_func(aggfunc)
 
         cube = cube._delegate_array_func(aggfunc, axis=0)
-        cube.update_df()
+        cube._update_df()
         return cube
 
     def min(self):
+        print([x for x in self])
         return min(x.min() for x in self)
 
     def max(self):
         return max(x.max() for x in self)
 
     def raster_attribute(self, attribute: str) -> Series:
-        """Get a Raster attribute returned as values of a Series."""
+        """Get a Raster attribute returned as values in a pandas.Series."""
         return Series(
             [getattr(r, attribute) for r in self],
             index=self._df.index,
             name=attribute,
         )
 
-    def run_raster_method(self, method: str, *args, copy: bool = True, **kwargs):
-        """Run Raster methods."""
+    def run_raster_method(
+        self, method: str, *args, copy: bool = True, **kwargs
+    ) -> list[Raster]:
+        """Run a Raster method for each raster in the cube."""
         if not all(hasattr(r, method) for r in self):
             raise AttributeError(f"Raster has no method {method!r}.")
 
@@ -698,12 +656,11 @@ class GeoDataCube(CubeBase):
 
         cube = self.copy() if copy else self
 
-        cube.df["raster"] = [method_as_func(r) for r in cube]
-        return cube
+        return [method_as_func(r) for r in cube]
 
-    @property
-    def raster(self):
-        return self._raster
+    # @property
+    # def raster(self):
+    #   return self._raster
 
     @property
     def df(self):
@@ -713,7 +670,7 @@ class GeoDataCube(CubeBase):
     def df(self, new_df):
         self.validate_cube_df(new_df)
         self._df = new_df
-        self.update_df()
+        self._update_df()
         return self._df
 
     @property
@@ -920,7 +877,7 @@ class GeoDataCube(CubeBase):
                     equals = value1 == value2
                 except ValueError:
                     if isinstance(value1, np.ndarray):
-                        equals = np.all(np.array_equal(value1, value2)).all()
+                        equals = np.all(np.array_equal(value1, value2))
                     else:
                         equals = (value1).equals(value2).all()
                 print(equals)

@@ -21,24 +21,17 @@ from ..helpers import (
     in_jupyter,
 )
 from ..multiprocessing.base import LocalFunctionError
+from .base import get_index_mapper
 from .cubebase import (
     CubeBase,
     _add,
     _array_astype_func,
     _astype_raster,
-    _clip_func,
-    _cube_merge,
     _floordiv,
-    _from_gdf_func,
-    _load_func,
     _method_as_func,
     _mul,
     _pow,
-    _raster_from_path,
-    _set_crs_func,
     _sub,
-    _to_crs_func,
-    _to_gdf_func,
     _truediv,
     _write_func,
     intersection_base,
@@ -124,7 +117,7 @@ class CubePool(CubeBase):
                 elif out_type not in ["iterable", "other"]:
                     raise ValueError(out_type)
 
-                cube.update_df()
+                cube._update_df()
 
         if out_type in ["iterable", "other"]:
             return out
@@ -249,7 +242,7 @@ class CubePool(CubeBase):
         by_date: bool = True,
         dropna: bool = True,
     ) -> GeoDataFrame:
-        idx_mapper, idx_name = self.get_index_mapper(polygons)
+        idx_mapper, idx_name = get_index_mapper(polygons)
         polygons, aggfunc, func_names = prepare_zonal(polygons, aggfunc)
         self.append_func(
             make_geometry_iterrows,
@@ -350,6 +343,27 @@ class CubePool(CubeBase):
         self.append_raster_func("clip", mask=mask, res=res, **kwargs)
         return self
 
+    def clipmerge(
+        self,
+        mask,
+        by: str | list[str] | None = None,
+        res=None,
+        aggfunc="first",
+        copy: bool = True,
+        **kwargs,
+    ):
+        self.append_cube_func(
+            "merge",
+            by=by,
+            bounds=mask,
+            res=res,
+            aggfunc=aggfunc,
+            copy=copy,
+            **kwargs,
+        )
+
+        return self
+
     def intersection(self, df, res: int | None = None, **kwargs):
         self.append_func(
             make_iterrows,
@@ -359,7 +373,6 @@ class CubePool(CubeBase):
         )
         self.append_func(
             intersection_base,
-            res=res,
             **kwargs,
             in_type="iterable",
             out_type="other",

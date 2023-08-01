@@ -103,7 +103,7 @@ def test_zonal():
 
     gdf.index = [np.random.choice([*"abc"]) for _ in range(len(gdf))]
 
-    zonal_stats = r.zonal(gdf, aggfunc=[sum, np.mean, "median"], raster_calc_func=None)
+    zonal_stats = r.zonal(gdf, aggfunc=[sum, np.mean, "median"], array_func=None)
     assert gdf.index.equals(zonal_stats.index)
 
     if __name__ == "__main__":
@@ -112,14 +112,18 @@ def test_zonal():
 
 
 def test_resize():
-    r = sg.Raster.from_path(path_singleband).load()
+    r = sg.Raster.from_path(path_singleband, nodata=0).load()
+    assert r.min() == 0
 
     assert r.shape == (1, 201, 201), r.shape
     assert r.res == (10, 10), r.res
     r = sg.Raster.from_path(path_singleband).load(res=20)
+    assert tuple(np.array(r.res).astype(int)) == (20, 20), r.res
+
     assert r.shape == (1, 100, 100), r.shape
     r = sg.Raster.from_path(path_singleband).load(res=30)
     assert r.shape == (1, 67, 67), r.shape
+    assert r.res == (30, 30), r.res
 
     r = sg.Raster.from_path(path_singleband, band_index=1).load()
     assert r.shape == (201, 201), r.shape
@@ -142,14 +146,17 @@ def test_clip():
 
     assert r.shape == (1, 201, 201), r.shape
 
+    out_of_bounds = sg.to_gdf([0, 0, 1, 1], crs=r.crs)
+    clipped = r.copy().clip(out_of_bounds)
+
     circle = r.unary_union.centroid.buffer(100)
 
     clipped = r.copy().clip(circle)
     assert clipped.shape == (1, 20, 20), clipped.shape
 
-    clipped_xarray = r.copy().load().clip(circle)
-    assert np.array_equal(clipped_xarray.array, clipped.array)
-    assert clipped_xarray.equals(clipped)
+    clipped_memoryfile = r.copy().load().clip(circle)
+    assert np.array_equal(clipped_memoryfile.array, clipped.array)
+    assert clipped_memoryfile.equals(clipped)
 
     # masks outside should return nodata on area outside of mask
     southeast_corner = sg.to_gdf(r.bounds[:2], crs=r.crs)
@@ -220,7 +227,10 @@ def test_res():
         r = sg.Raster.from_path(path_singleband, band_index=1)
         mask_utm33["geometry"] = mask_utm33.sample_points(5).buffer(100)
         r = r.clip(mask_utm33)
-        assert r.res == (10, 10), r.res
+
+        # should be approximately 10
+        rounded_res = tuple(int(round(x, 0)) for x in r.res)
+        assert rounded_res == (10, 10), r.res
 
 
 def test_to_crs():
@@ -320,10 +330,12 @@ def not_test_write():
 if __name__ == "__main__":
     # save_two_band_image()
 
+    test_clip()
+    test_resize()
+    test_res()
     not_test_write()
 
     test_xarray()
-    test_resize()
     test_convertion()
 
     test_transform()
@@ -331,12 +343,8 @@ if __name__ == "__main__":
     test_indexes_and_shape()
 
     test_to_crs()
-    test_clip()
     test_elevation()
     test_zonal()
     test_sample()
-    test_res()
-
-    not_test_raster()
 
     print("ferdig")

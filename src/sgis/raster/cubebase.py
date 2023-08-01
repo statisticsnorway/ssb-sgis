@@ -17,10 +17,10 @@ from .merge import cube_merge
 from .raster import Raster
 
 
-def intersection_base(row: pd.Series, cube, res: int, **kwargs):
+def intersection_base(row: pd.Series, cube, **kwargs):
     cube = cube.copy()
     geom = row.pop("geometry")
-    cube = cube.clip(geom, res=res, **kwargs)
+    cube = cube.clip(geom, **kwargs)
     for key, value in row.items():
         cube.df[key] = value
     return cube
@@ -74,11 +74,6 @@ class CubeBase(RasterBase):
             raster._filename = name
 
         return self
-
-    def get_index_mapper(self, df):
-        idx_mapper = dict(enumerate(df.index))
-        idx_name = df.index.name
-        return idx_mapper, idx_name
 
     def zonal_func(self, poly_iter, array_func, aggfunc, func_names):
         i, polygon = poly_iter

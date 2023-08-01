@@ -63,7 +63,7 @@ def merge_arrays_by_bounds(cube, by, aggfunc):
 
     cube.df = unique.reset_index()
 
-    cube.update_df()
+    cube._update_df()
 
     return cube
 
@@ -155,7 +155,7 @@ def cube_merge(
     unique[remaining_cols] = cube._df.groupby(by)[remaining_cols].agg(aggfunc)
 
     cube._df = unique.reset_index().drop(columns=temp_cols, errors="ignore")
-    cube.update_df()
+    cube._update_df()
 
     return cube
 
@@ -192,7 +192,6 @@ def _grouped_merge(
             array = merged.to_numpy()
 
         else:
-            # paths = exploded.loc[exploded["band_index"] == idx, "path"]
             datasets = [r._load_warp_file() for r in rasters]
 
             array, _ = merge.merge(

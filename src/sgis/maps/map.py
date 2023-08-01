@@ -15,7 +15,7 @@ from mapclassify import classify
 from shapely import Geometry
 
 from ..geopandas_tools.general import drop_inactive_geometry_columns, rename_geometry_if
-from ..helpers import get_name
+from ..helpers import get_object_name
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -257,7 +257,7 @@ class Map:
             if hasattr(gdf, "name") and isinstance(gdf.name, str):
                 name = gdf.name
             else:
-                name = get_name(gdf)
+                name = get_object_name(gdf)
                 name = name or str(i)
             self.labels.append(name)
 

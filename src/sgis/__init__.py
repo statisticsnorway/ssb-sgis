@@ -50,7 +50,7 @@ from .geopandas_tools.polygon_operations import (
     get_polygon_clusters,
 )
 from .geopandas_tools.to_geodataframe import to_gdf
-from .helpers import get_name
+from .helpers import get_object_name
 from .io.read_parquet import read_parquet_url
 from .io.reader import reader
 from .maps.examine import Examine

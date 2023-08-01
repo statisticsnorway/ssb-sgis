@@ -1,14 +1,17 @@
+from pandas import DataFrame
+
+
 def explode(cube, ignore_index: bool = False):
-    cube.update_df()
+    cube._update_df()
 
     cube.df = explode_cube_df(cube.df, ignore_index=ignore_index)
 
-    cube.update_df()
+    cube._update_df()
 
     return cube
 
 
-def explode_cube_df(cube_df, ignore_index: bool = False):
+def explode_cube_df(cube_df: DataFrame, ignore_index: bool = False) -> DataFrame:
     df = cube_df.explode(column="band_index", ignore_index=ignore_index)
 
     # Raster object is mutable, so dupicates after explode must be copied

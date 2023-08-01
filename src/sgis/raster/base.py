@@ -33,6 +33,12 @@ class RasterHasChangedError(ValueError):
         )
 
 
+def get_index_mapper(df):
+    idx_mapper = dict(enumerate(df.index))
+    idx_name = df.index.name
+    return idx_mapper, idx_name
+
+
 class RasterBase:
     BASE_RASTER_PROPERTIES = ["_path", "_band_index", "_crs"]
     NEED_ONE_ATTR = ["transform", "bounds"]
@@ -92,7 +98,7 @@ class RasterBase:
             return crs_str
 
     @property
-    def properties(self):
+    def properties(self) -> list[str]:
         out = []
         for attr in dir(self):
             try:
@@ -142,14 +148,7 @@ class RasterBase:
 
     @staticmethod
     def get_shape_from_bounds(obj, res: int):
-        if isinstance(res, numbers.Number):
-            resx, resy = res, res
-        elif not hasattr(res, "__iter__"):
-            raise TypeError
-        elif len(res) == 2:
-            resx, resy = res
-        else:
-            raise TypeError
+        resx, resy = (res, res) if isinstance(res, numbers.Number) else res
 
         minx, miny, maxx, maxy = to_bbox(obj)
         diffx = maxx - minx
@@ -163,18 +162,9 @@ class RasterBase:
         if len(array.shape) == 2:
             return [array]
         elif len(array.shape) == 3:
-            return [arr for arr in array]
+            return list(array)
         else:
             raise ValueError
-
-    @classmethod
-    def run_func_as_memfile(cls, func, array, profile, **kwargs):
-        with rasterio.MemoryFile() as memfile:
-            with memfile.open(**profile) as dataset:
-                for i, arr in enumerate(cls._to_2d_array_list(array)):
-                    dataset.write(arr, i + 1)
-            with memfile.open() as dataset:
-                return func(dataset, **kwargs)
 
     @classmethod
     def run_func_as_memfile(cls, func, arrays, profiles, **kwargs):

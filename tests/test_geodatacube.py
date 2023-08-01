@@ -69,6 +69,10 @@ def test_shape():
     assert (cube.res == (10, 10)).all(), cube.res
     assert (cube.shape == (20, 20)).all(), cube.shape
 
+    assert min(cube.run_raster_method("min")) == -999, min(
+        cube.run_raster_method("min")
+    )
+
     cube = cube.clip(c, res=20)
     assert (cube.res == (20, 20)).all(), cube.res
     assert (cube.shape == (10, 10)).all(), cube.shape
@@ -171,18 +175,18 @@ def test_from_root():
     cube = sg.GeoDataCube.from_paths(files)
 
     cube = sg.GeoDataCube.from_root(testdata, endswith=".tif").explode()
-    assert len(cube) == 20, cube
+    assert len(cube) == 22, cube
     display(cube)
 
     cube = sg.GeoDataCube.from_root(testdata, regex=r"\.tif$").explode()
-    assert len(cube) == 20, cube
+    assert len(cube) == 22, cube
     display(cube)
 
 
 def test_to_gdf():
     query = "name.str.contains('two_bands')"
     cube = (
-        sg.GeoDataCube.from_root(testdata, endswith=".tif", crs=25833, nodata=0)
+        sg.GeoDataCube.from_root(testdata, endswith=".tif", crs=25833)
         .explode()
         .query(query)
         .load()
@@ -234,11 +238,11 @@ def test_to_crs():
     wpd_rio = cube_25832.load().to_crs(25833).to_gdf()
 
     assert tuple(merged_rio.total_bounds) == tuple(wpd_rio.total_bounds)
-    assert (
-        merged_rio.clip(buffered)
-        .geom_almost_equals(wpd_rio.clip(buffered), decimal=0)
-        .all()
+    equal_geoms = merged_rio.clip(buffered).geom_almost_equals(
+        wpd_rio.clip(buffered), decimal=0
     )
+
+    assert equal_geoms.all(), equal_geoms.value_counts()
 
     merged_xarr_32 = cube.load().to_crs(25832).merge().to_crs(25833).to_gdf()
     assert (
@@ -561,7 +565,6 @@ if __name__ == "__main__":
         test_to_gdf()
         test_query()
         test_intersection()
-        test_to_crs()
         test_explode()
         test_merge_from_array()
         test_elevation()
@@ -578,6 +581,7 @@ if __name__ == "__main__":
         test_from_root()
         test_merge()
         test_sample()
+        test_to_crs()
         # test_retile()
 
     test_cube()
