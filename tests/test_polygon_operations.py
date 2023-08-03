@@ -17,33 +17,52 @@ import sgis as sg
 
 
 def test_random_get_duplicate_areas():
-    circles = sg.random_points(15).set_crs(25833).buffer(0.1)
-    the_overlap = sg.get_duplicate_areas(circles)
+    # many iterations to try to break the assertion
+    for i in range(100):
+        circles = sg.random_points(15).set_crs(25833).buffer(0.1)
+        the_overlap = sg.get_duplicate_areas(circles)
 
-    the_overlap["idx"] = [str(x) for x in range(len(the_overlap))]
+        the_overlap["idx"] = [str(x) for x in range(len(the_overlap))]
 
-    overlapping_now = sg.get_duplicate_areas(the_overlap)
+        the_overlap["sliv"] = the_overlap.area / the_overlap.length
 
-    assert not len(overlapping_now)
+        overlapping_now = sg.get_duplicate_areas(the_overlap)
+
+        # just testing that this works with no rows
+        if i == 0:
+            sg.get_duplicate_areas(the_overlap, keep=False)
+            sg.get_duplicate_areas(
+                the_overlap, sliver_filter=lambda x: x.area / x.length > 1.000000e-12
+            )
+
+        assert not len(overlapping_now), overlapping_now
 
 
 def test_get_duplicate_areas():
     circles = sg.to_gdf([(0, 0), (0, 1), (1, 1), (1, 0)]).pipe(sg.buff, 1)
 
-    dups = sg.get_duplicate_areas(circles, keep="first")
-    print(dups)
-    sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="x")
-    assert len(dups) == 8, len(dups)
-
-    dups = sg.get_duplicate_areas(circles, keep="last")
-    assert len(dups) == 8, len(dups)
+    dups = (
+        sg.get_duplicate_areas(circles, keep="first")
+        .pipe(sg.buff, -0.01)
+        .pipe(sg.clean_geoms)
+    )
     print(dups)
     sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
+    assert len(dups) == 5, len(dups)
+
+    dups = (
+        sg.get_duplicate_areas(circles, keep="last")
+        .pipe(sg.buff, -0.01)
+        .pipe(sg.clean_geoms)
+    )
+    print(dups)
+    sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
+    assert len(dups) == 5, len(dups)
 
     dups = sg.get_duplicate_areas(circles, keep=False)
-    assert len(dups) == 12, len(dups)
     print(dups)
     sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
+    assert len(dups) == 12, len(dups)
 
 
 def _test_get_duplicate_areas():
@@ -103,9 +122,7 @@ def test_close_holes():
         assert sum(all_closed.area) > sum(ring_with_hole.area)
 
         # this should return the entire hole
-        closed_island_ignored = sg.close_all_holes(
-            ring_with_hole, without_islands=False
-        )
+        closed_island_ignored = sg.close_all_holes(ring_with_hole, ignore_islands=True)
         assert sum(closed_island_ignored.area) > sum(all_closed.area)
 
         hole_not_closed = sg.close_small_holes(ring_with_hole, max_area=1)
@@ -129,15 +146,15 @@ def test_close_holes():
         )
 
         # this should return the entire hole
-        without_islands = False
+        ignore_islands = True
         all_closed3 = sg.close_small_holes(
-            ring_with_hole, max_area=32_000, without_islands=without_islands
+            ring_with_hole, max_area=32_000, ignore_islands=ignore_islands
         )
 
         assert round(np.sum(all_closed3.area), 3) > round(np.sum(all_closed.area), 3)
 
         hole_not_closed3 = sg.close_small_holes(
-            ring_with_hole, max_area=30_000, without_islands=without_islands
+            ring_with_hole, max_area=30_000, ignore_islands=ignore_islands
         )
         assert np.sum(hole_not_closed3.area) == np.sum(ring_with_hole.area)
 
@@ -304,7 +321,7 @@ def test_eliminate():
 if __name__ == "__main__":
     test_get_duplicate_areas()
     test_random_get_duplicate_areas()
-    sss
+
     test_close_holes()
     test_get_polygon_clusters()
     test_eliminate()

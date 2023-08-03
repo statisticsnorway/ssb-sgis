@@ -5,18 +5,27 @@ from typing import Any, Callable
 import dapla as dp
 import pandas as pd
 from geopandas import GeoDataFrame
+from joblib import Parallel, delayed
 from pandas import DataFrame
 
 from ..io.dapla import exists, read_geopandas
-from .base import MultiProcessingBase
+from .base import ParallelBase
 
 
-class MultiProcessingMapper(MultiProcessingBase):
+class ParallelMapper(ParallelBase):
     """Run single function in parallel based on iterable."""
 
-    def __init__(self, context: str = "spawn", processes=None):
-        self.context = context
+    def __init__(
+        self,
+        processes: int,
+        backend="multiprocessing",
+        context: str = "spawn",
+        **kwargs,
+    ):
         self.processes = processes
+        self.backend = backend.lower()
+        self.context = context.lower()
+        self.kwargs = kwargs
 
     def map(self, func: Callable, iterable: list, **kwargs) -> list[Any]:
         """Run functions in parallel with items of an iterable as first arguemnt.
@@ -34,8 +43,16 @@ class MultiProcessingMapper(MultiProcessingBase):
         self.validate_execution(func)
         func_with_kwargs = functools.partial(func, **kwargs)
 
-        with multiprocessing.get_context(self.context).Pool(self.processes) as pool:
-            return pool.map(func_with_kwargs, iterable)
+        if self.backend == "multiprocessing":
+            with multiprocessing.get_context(self.context).Pool(
+                self.processes, **self.kwargs
+            ) as pool:
+                return pool.map(func_with_kwargs, iterable)
+        else:
+            with Parallel(
+                n_jobs=self.processes, backend=self.backend, **self.kwargs
+            ) as parallel:
+                return parallel(delayed(func)(item, **kwargs) for item in iterable)
 
     def read_pandas(
         self,

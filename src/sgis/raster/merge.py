@@ -10,6 +10,9 @@ from ..geopandas_tools.general import get_common_crs, to_shapely
 from .explode import explode_cube_df
 
 
+# 101 på 30 minutter
+
+
 def merge_by_bounds(
     cube,
     by=None,
@@ -136,12 +139,10 @@ def cube_merge(
 
     unique = cube._df[by + ["raster"]].drop_duplicates(by).set_index(by)
 
-    if len(unique) == len(cube._df):
+    if len(unique) == len(cube._df) and bounds is None:
         # no merging is needed
         cube._df = cube.df.drop(columns=temp_cols, errors="ignore")
-        if bounds is not None:
-            return cube.clip(bounds, res=res)
-        elif cube.arrays.isna().all():
+        if cube.arrays.isna().all():
             return cube.load(res=res)
         elif res is None:
             return cube

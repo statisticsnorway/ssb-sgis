@@ -1,6 +1,7 @@
 """Functions for polygon geometries."""
 import functools
 import warnings
+from typing import Callable
 
 import networkx as nx
 import numpy as np
@@ -19,6 +20,7 @@ from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union
 
 from .general import _push_geom_col, clean_geoms, to_lines
+from .geometry_types import get_geom_type, to_single_geom_type
 from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
 
@@ -282,6 +284,7 @@ def eliminate_by_longest(
 def eliminate_by_largest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    *,
     remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
@@ -324,6 +327,7 @@ def eliminate_by_largest(
 def eliminate_by_smallest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    *,
     remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list = "first",
@@ -391,7 +395,7 @@ def _eliminate_by_area(
 def close_all_holes(
     gdf: GeoDataFrame | GeoSeries,
     *,
-    without_islands: bool = True,
+    ignore_islands: bool = False,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
     """Closes all holes in polygons.
@@ -403,6 +407,10 @@ def close_all_holes(
         gdf: GeoDataFrame or GeoSeries of polygons.
         copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
             Defaults to True.
+        ignore_islands: If False (default), polygons inside the holes (islands)
+            will be erased from the output geometries. If True, the entire
+            holes will be closed and the islands kept, meaning there might be
+            duplicate surfaces in the resulting geometries.
 
     Returns:
         A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
@@ -439,7 +447,7 @@ def close_all_holes(
     if copy:
         gdf = gdf.copy()
 
-    if without_islands:
+    if ignore_islands:
         all_geoms = gdf.unary_union
         if isinstance(gdf, GeoDataFrame):
             gdf["geometry"] = gdf.geometry.map(
@@ -460,7 +468,7 @@ def close_small_holes(
     gdf: GeoDataFrame | GeoSeries,
     max_area: int | float,
     *,
-    without_islands: bool = True,
+    ignore_islands: bool = False,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
     """Closes holes in polygons if the area is less than the given maximum.
@@ -472,6 +480,10 @@ def close_small_holes(
     Args:
         gdf: GeoDataFrame or GeoSeries of polygons.
         max_area: The maximum area in the unit of the GeoDataFrame's crs.
+        ignore_islands: If False (default), polygons inside the holes (islands)
+            will be erased from the "hole" geometries before the area is calculated.
+            If True, the entire polygon interiors will be considered, meaning there
+            might be duplicate surfaces in the resulting geometries.
         copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
             Defaults to True.
 
@@ -523,7 +535,7 @@ def close_small_holes(
     if copy:
         gdf = gdf.copy()
 
-    if without_islands:
+    if ignore_islands:
         all_geoms = gdf.unary_union
 
         if isinstance(gdf, GeoDataFrame):
@@ -614,18 +626,36 @@ def _close_all_holes_no_islands(poly, all_geoms):
     return unary_union(holes_closed)
 
 
+def sliver_filter(geom, tolerance: float = 1.000000e-12):
+    return geom.area / geom.length > tolerance
+
+
+def drop_duplicate_areas(
+    gdf: GeoDataFrame | GeoSeries,
+    keep="first",
+    sliver_filter: Callable | None = sliver_filter,
+) -> GeoDataFrame:
+    pass
+
+
 def get_duplicate_areas(
     gdf: GeoDataFrame | GeoSeries,
-    ignore_index: bool = False,
     keep="first",
+    sliver_filter: Callable | None = sliver_filter,
 ) -> GeoDataFrame:
     """Find the areas that overlap.
 
-    Does an intersection with itself and keeps only the duplicated geometries.
+    Does an intersection with itself and keeps only the duplicated geometries,
+    and, unless keep is False,
 
     Args:
         gdf: GeoDataFrame of polygons.
-        ignore_index: Applies to when dissolve is False.
+        keep: Either "first", "last" or False. If "first", the geometries of the
+            topmost rows of the input GeoDataFrame will be put on top of
+            the bottommore rows' geometries. If "last", the rows will be reversed
+            before this rowwise difference operation. If False, all geometries
+            will be kept, which might be exponentially as many as the number of
+            geometries with overlap in the input GeoDataFrame.
 
     Returns:
         A GeoDataFrame of the overlapping polygons.
@@ -646,18 +676,25 @@ def get_duplicate_areas(
     0  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
     2  POLYGON ((1.00000 0.00000, 0.96859 0.00049, 0....
     """
+    if keep not in ["first", "last", False]:
+        raise ValueError("keep must be either 'first', 'last' or False")
+
+    if get_geom_type(gdf) != "polygon":
+        raise ValueError("gdf should have all polygons.")
+
     idx_name = gdf.index.name
     duplicated_geoms = _get_all_overlapping_areas(gdf)
 
-    if ignore_index:
-        duplicated_geoms = duplicated_geoms.reset_index(drop=True).drop(
-            columns="orig_idx"
-        )
+    if sliver_filter is not None:
+        duplicated_geoms = duplicated_geoms.loc[sliver_filter]
 
-    if not keep:
+    if keep is False:
         duplicated_geoms.index = duplicated_geoms["orig_idx"].values
         duplicated_geoms.index.name = idx_name
         return duplicated_geoms.drop(columns="orig_idx")
+
+    if not len(duplicated_geoms):
+        return GeoDataFrame({"geometry": []}, crs=gdf.crs)
 
     return _get_no_dup_areas(duplicated_geoms, keep=keep)
 
@@ -682,13 +719,10 @@ def _get_all_overlapping_areas(
     right = gdf[[gdf._geometry_column_name]].assign(idx_right=gdf.index)
 
     intersected = clean_overlay(left, right, how="intersection", geom_type="polygon")
+    intersected = to_single_geom_type(intersected, geom_type="polygon")
 
     # these are identical as the input geometries
     not_from_same_poly = intersected.loc[lambda x: x["idx_left"] != x["idx_right"]]
-
-    """points = not_from_same_poly.representative_point().to_frame(names="geometry")
-
-    not_from_same_poly.sjoin(points)"""
 
     points_joined = (
         not_from_same_poly.representative_point().to_frame().sjoin(not_from_same_poly)
@@ -696,9 +730,11 @@ def _get_all_overlapping_areas(
 
     duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
 
-    return intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
-        columns=["idx_left", "idx_right"]
-    )
+    duplicated_areas = intersected.loc[
+        intersected.index.isin(duplicated_points.index)
+    ].drop(columns=["idx_left", "idx_right"])
+
+    return duplicated_areas
 
 
 def _get_no_dup_areas(gdf, keep):
@@ -706,6 +742,10 @@ def _get_no_dup_areas(gdf, keep):
         geometries = list(gdf.geometry)
     elif keep == "last":
         geometries = list(reversed(list(gdf.geometry)))
+    elif keep == "sort":
+        all_cols = list(gdf.columns.difference({"geometry"}))
+        gdf = gdf.sort_values(all_cols)
+        geometries = list(gdf.geometry)
 
     union = geometries[0]
     geoms = {union}

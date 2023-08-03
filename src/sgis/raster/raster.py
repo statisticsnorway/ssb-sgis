@@ -32,7 +32,7 @@ from ..geopandas_tools.bounds import to_bbox
 from ..geopandas_tools.general import is_bbox_like, is_wkt
 from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import get_non_numpy_func_name, get_numpy_func, is_property
-from ..io.reader import reader
+from ..io.opener import opener
 from .base import (
     RasterBase,
     RasterHasChangedError,
@@ -520,7 +520,7 @@ class Raster(RasterBase):
 
         profile = self.profile | kwargs
 
-        with reader(path) as file:
+        with opener(path) as file:
             with rasterio.open(file, "w", **profile) as dst:
                 self._write(dst, window)
 
@@ -715,7 +715,7 @@ class Raster(RasterBase):
         if hasattr(self, "_warped_crs"):
             raise ValueError(mess + "reprojected.")
 
-        with reader(self.path) as file:
+        with opener(self.path) as file:
             with rasterio.open(file) as src:
                 self._add_meta_from_src(src)
 
@@ -1026,7 +1026,7 @@ class Raster(RasterBase):
         Returns:
             file handle of warped VRT
         """
-        with reader(self.path) as file:
+        with opener(self.path) as file:
             src = rasterio.open(file)
 
         # Only warp if necessary
@@ -1053,7 +1053,7 @@ class Raster(RasterBase):
             else:
                 self = self.as_minimum_dtype()
 
-        with reader(self.path) as file:
+        with opener(self.path) as file:
             with rasterio.open(file) as src:
                 _read(self, src)
 
@@ -1092,7 +1092,7 @@ class Raster(RasterBase):
                 _read(self, src, **kwargs)
             return
 
-        with reader(self.path) as file:
+        with opener(self.path) as file:
             with rasterio.open(file, **self.profile) as src:
                 _read(self, src, **kwargs)
 

@@ -68,9 +68,10 @@ def to_shapely(obj) -> Geometry:
         return obj.unary_union
     if is_bbox_like(obj):
         return box(*obj)
-    if len(obj) == 2 and all():
+    try:
         return Point(*obj)
-    raise TypeError(obj)
+    except TypeError as e:
+        raise TypeError(obj) from e
 
 
 def address_to_gdf(address: str, crs=4326) -> GeoDataFrame:
@@ -85,14 +86,13 @@ def address_to_coords(address: str, crs=4326) -> tuple[float, float]:
     g = geocoder.osm(address).json
     coords = g["lng"], g["lat"]
     point = to_gdf(coords, crs=4326).to_crs(crs)
-    return point.geometry.iloc[0].x, point.geometry.iloc[0].y
+    x, y = point.geometry.iloc[0].x, point.geometry.iloc[0].y
+    return x, y
 
 
 def is_wkt(text: str) -> bool:
     gemetry_types = ["point", "polygon", "line", "geometrycollection"]
-    if any(x in text.lower() for x in gemetry_types):
-        return True
-    return False
+    return any(x in text.lower() for x in gemetry_types)
 
 
 def coordinate_array(
@@ -445,5 +445,9 @@ def clean_clip(
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
     except Exception:
         gdf = clean_geoms(gdf)
-        mask = clean_geoms(mask)
+        try:
+            mask = clean_geoms(mask)
+        except TypeError:
+            mask = clean_geoms(to_gdf(mask, crs=gdf.crs))
+
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)

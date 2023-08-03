@@ -10,12 +10,12 @@ from ._is_dapla import is_dapla
 
 
 @contextmanager
-def reader(path, mode="rb"):
+def opener(path, mode="rb"):
     """Yields a gcs buffer if in Dapla, otherwise yields the path.
 
     Example
     -------
-    >>> with reader(path) as file:
+    >>> with opener(path) as file:
     >>>     with rasterio.open(file) as src:
     >>>         array = src.read()
     """

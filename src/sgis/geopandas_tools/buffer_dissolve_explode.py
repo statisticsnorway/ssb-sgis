@@ -24,7 +24,7 @@ def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
     if "ignore_index" in kwargs:
         return kwargs, kwargs.pop("ignore_index")
 
-    if not kwargs.get("by", None):
+    if kwargs.get("by", None) is not None:
         return kwargs, True
 
     if kwargs.get("as_index", True):

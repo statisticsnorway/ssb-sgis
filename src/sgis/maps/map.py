@@ -1,7 +1,6 @@
-"""Interactive map of one or more GeoDataFrames with layers that can be toggles on/off.
+"""Interactive or static map of one or more GeoDataFrames.
 
-This module holds the Explore class, which is the basis for the explore, samplemap and
-clipmap functions from the 'maps' module.
+This module holds the Map class, which is the basis for the Explore class.
 """
 import warnings
 

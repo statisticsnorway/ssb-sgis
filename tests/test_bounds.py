@@ -34,6 +34,9 @@ test_dice()"""
 def test_bounds():
     points = sg.random_points(1000, loc=10000).set_crs(25833)
 
+    single_cell = sg.make_grid(points, gridsize=1_000_00, clip_to_bounds=True)
+    assert len(single_cell) == 1, len(single_cell)
+
     grid = sg.make_grid(points, gridsize=1000)
     assert all(points.intersects(grid.unary_union))
 
@@ -91,3 +94,5 @@ def test_bounds():
 
 if __name__ == "__main__":
     test_bounds()
+
+# %%

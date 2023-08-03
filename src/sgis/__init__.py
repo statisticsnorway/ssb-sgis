@@ -6,6 +6,7 @@ from .geopandas_tools.bounds import (
     make_grid_from_bbox,
     make_ssb_grid,
     points_in_bounds,
+    to_bbox,
 )
 from .geopandas_tools.buffer_dissolve_explode import (
     buff,
@@ -51,8 +52,8 @@ from .geopandas_tools.polygon_operations import (
 )
 from .geopandas_tools.to_geodataframe import to_gdf
 from .helpers import get_object_name
+from .io.opener import opener
 from .io.read_parquet import read_parquet_url
-from .io.reader import reader
 from .maps.examine import Examine
 from .maps.explore import Explore
 from .maps.httpserver import run_html_server
@@ -92,11 +93,8 @@ from .raster.sentinel import Sentinel2
 
 try:
     from .io.dapla import check_files, exists, read_geopandas, write_geopandas
-    from .io.write_municipality_data import (
-        write_municipality_data,
-        write_neighbor_municipality_data,
-    )
-    from .multiprocessing.multiprocessingmapper import MultiProcessingMapper
-    from .multiprocessing.multiprocessingpool import MultiProcessingPool
+    from .io.write_municipality_data import write_municipality_data
+    from .parallel.parallelmapper import ParallelMapper
+    from .parallel.parallelpool import ParallelPool
 except ImportError:
     pass

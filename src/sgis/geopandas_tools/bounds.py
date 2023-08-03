@@ -50,6 +50,7 @@ def gridloop(
         raise ValueError("'mask' has no rows.")
 
     grid = make_grid(mask, gridsize=gridsize)
+    grid = grid.loc[lambda x: x.index.isin(x.sjoin(mask).index)]
 
     n = len(grid)
 
@@ -116,7 +117,11 @@ def make_grid_from_bbox(
 
 
 def make_grid(
-    obj: GeoDataFrame | GeoSeries | Geometry | tuple, gridsize: int | float, crs=None
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple,
+    gridsize: int | float,
+    *,
+    crs=None,
+    clip_to_bounds: bool = False,
 ) -> GeoDataFrame:
     """Create a polygon grid around geometries.
 
@@ -128,6 +133,8 @@ def make_grid(
             (an iterable with four values (minx, miny, maxx, maxy)).
         gridsize: Length of the grid cell walls.
         crs: Coordinate reference system if 'obj' is not GeoDataFrame or GeoSeries.
+        clip_to_bounds: Whether to clip the grid to the total bounds of the geometries.
+            Defaults to False.
 
     Returns:
         GeoDataFrame with grid polygons.
@@ -145,7 +152,12 @@ def make_grid(
     minx = int(minx) if minx > 0 else int(minx - 1)
     miny = int(miny) if miny > 0 else int(miny - 1)
 
-    return make_grid_from_bbox(minx, miny, maxx, maxy, gridsize=gridsize, crs=crs)
+    grid = make_grid_from_bbox(minx, miny, maxx, maxy, gridsize=gridsize, crs=crs)
+
+    if clip_to_bounds:
+        grid = grid.clip(to_bbox(obj))
+
+    return grid
 
 
 def make_ssb_grid(

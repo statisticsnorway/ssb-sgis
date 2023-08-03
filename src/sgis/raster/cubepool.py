@@ -4,6 +4,7 @@ from typing import Any, Callable, Iterable
 
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
+from joblib import Parallel, delayed
 from pandas import DataFrame, Series
 from pandas.api.types import is_list_like
 from rasterio import merge
@@ -20,7 +21,8 @@ from ..helpers import (
     get_numpy_func,
     in_jupyter,
 )
-from ..multiprocessing.base import LocalFunctionError
+
+# from ..multiprocessing.base import LocalFunctionError
 from .base import get_index_mapper
 from .cubebase import (
     CubeBase,
@@ -98,6 +100,54 @@ class CubePool(CubeBase):
                         out = pool.map(partial_func, iterable=out)
                     except TypeError:
                         out = pool.map(func, iterable=out)
+                elif in_type == "other":
+                    try:
+                        out = func(out, cube=cube)
+                    except TypeError:
+                        out = func(out)
+                    except UnboundLocalError:
+                        out = func()
+                else:
+                    raise ValueError(out_type)
+
+                if out_type == "cube":
+                    cube = out
+                elif out_type == "array":
+                    cube.arrays = out
+                elif out_type == "raster":
+                    cube.df["raster"] = out
+                elif out_type not in ["iterable", "other"]:
+                    raise ValueError(out_type)
+
+                cube._update_df()
+
+        if out_type in ["iterable", "other"]:
+            return out
+
+        return cube
+
+    def execute(self):
+        if not self.funcs:
+            raise ValueError("Execution chain is of length 0.")
+
+        cube = self.cube
+
+        with Parallel(n_jobs=self.processes) as parallel:
+            for func, in_type, out_type in self:
+                if in_type == "cube":
+                    out = func(cube)
+                elif in_type == "array":
+                    out = parallel(delayed(func)(arr) for arr in cube.arrays)
+                elif in_type == "raster":
+                    out = parallel(
+                        delayed(func)(raster) for raster in cube.df["raster"]
+                    )
+                elif in_type == "iterable":
+                    try:
+                        partial_func = functools.partial(func, cube=cube)
+                        out = parallel(delayed(partial_func)(item) for item in out)
+                    except TypeError:
+                        out = parallel(delayed(func)(item) for item in out)
                 elif in_type == "other":
                     try:
                         out = func(out, cube=cube)
@@ -324,8 +374,8 @@ class CubePool(CubeBase):
         have to be defined in and imported from another file.
         """
 
-        if func.__module__ == "__main__" and in_jupyter():
-            raise LocalFunctionError(func)
+        # if func.__module__ == "__main__" and in_jupyter():
+        #   raise LocalFunctionError(func)
 
         self.append_array_func(func, **kwargs)
         return self
@@ -338,9 +388,9 @@ class CubePool(CubeBase):
         self.append_raster_func("load", res=res, **kwargs)
         return self
 
-    def clip(self, mask, res: int | None = None, **kwargs):
+    def clip(self, mask, **kwargs):
         self.append_cube_func("clip_base", mask=mask)
-        self.append_raster_func("clip", mask=mask, res=res, **kwargs)
+        self.append_raster_func("clip", mask=mask, **kwargs)
         return self
 
     def clipmerge(
@@ -364,7 +414,7 @@ class CubePool(CubeBase):
 
         return self
 
-    def intersection(self, df, res: int | None = None, **kwargs):
+    def intersection(self, df, **kwargs):
         self.append_func(
             make_iterrows,
             df=df,
@@ -466,8 +516,8 @@ class CubePool(CubeBase):
 
         aggfunc = get_numpy_func(aggfunc)
 
-        if aggfunc.__module__ == "__main__" and in_jupyter():
-            raise LocalFunctionError(aggfunc)
+        # if aggfunc.__module__ == "__main__" and in_jupyter():
+        #   raise LocalFunctionError(aggfunc)
 
         self.append_array_func(aggfunc, axis=0)
         return self

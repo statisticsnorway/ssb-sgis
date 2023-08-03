@@ -17,9 +17,14 @@ class LocalFunctionError(ValueError):
         )
 
 
-class MultiProcessingBase:
+class ParallelBase:
     def validate_execution(self, func):
-        if func.__module__ == "__main__" and self.context == "spawn" and in_jupyter():
+        if (
+            func.__module__ == "__main__"
+            and self.context == "spawn"
+            and self.backend == "multiprocessing"
+            and in_jupyter()
+        ):
             raise LocalFunctionError(func)
 
     def chunksort_df(df: DataFrame | GeoDataFrame, n: int, column: str):

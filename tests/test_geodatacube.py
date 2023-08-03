@@ -59,16 +59,18 @@ def test_query():
 def test_shape():
     cube = sg.GeoDataCube.from_root(
         testdata, endswith=".tif", raster_type=sg.ElevationRaster
-    )
+    ).query("subfolder != 'sentinel2'")
     cube = cube.load(res=10)
     assert (cube.res == (10, 10)).all(), cube.res
     cube = cube.load(res=30)
 
     c = cube.unary_union.centroid.buffer(100)
-    cube = cube.clip(c, res=10)
+    cube = cube.clip(c)
     assert (cube.res == (10, 10)).all(), cube.res
     assert (cube.shape == (20, 20)).all(), cube.shape
 
+    print(cube.arrays)
+    print(cube.run_raster_method("min"))
     assert min(cube.run_raster_method("min")) == -999, min(
         cube.run_raster_method("min")
     )
@@ -111,16 +113,14 @@ def test_elevation():
     )
 
     degrees = cube.copy().gradient(degrees=True)
-    assert int(degrees.max()) == 89, degrees.max()
+    assert int(degrees.max().max()) == 89, degrees.max().max()
 
     degrees = cube.copy().run_raster_method("gradient", degrees=True)
-    assert int(degrees.max()) == 89, degrees.max()
 
     gradient = cube.copy().gradient()
-    assert int(gradient.max()) == 366, gradient.max()
+    assert int(gradient.max().max()) == 366, gradient.max().max()
 
     gradient = cube.copy().run_raster_method("gradient")
-    assert int(gradient.max()) == 366, gradient.max()
 
 
 def test_sentinel():

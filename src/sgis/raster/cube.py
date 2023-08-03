@@ -629,11 +629,18 @@ class GeoDataCube(CubeBase):
         return cube
 
     def min(self):
-        print([x for x in self])
-        return min(x.min() for x in self)
+        return Series(
+            self.run_raster_method("min"),
+            index=self._df.index,
+            name="min",
+        )
 
     def max(self):
-        return max(x.max() for x in self)
+        return Series(
+            self.run_raster_method("max"),
+            index=self._df.index,
+            name="max",
+        )
 
     def raster_attribute(self, attribute: str) -> Series:
         """Get a Raster attribute returned as values in a pandas.Series."""

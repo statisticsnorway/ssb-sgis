@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from pyproj import CRS
-from shapely import STRtree, difference, intersection, union_all
+from shapely import STRtree, difference, intersection, unary_union
 
 from .general import _push_geom_col, clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
@@ -101,7 +101,7 @@ def clean_overlay(
         "union",
         "identity",
         "symmetric_difference",
-        "difference",  # aka erase
+        "difference",
         "update",
     ]
     # Error messages
@@ -244,13 +244,17 @@ def _identity(pairs, df1, df2, left, crs):
 
 def _symmetric_difference(pairs, df1, df2, left, right, crs):
     merged = []
+
     difference_left = _difference(pairs, df1, left, crs=crs)
     merged.append(difference_left)
+
     if len(left):
         clip_right = _shapely_diffclip_right(pairs, df1, df2)
         merged.append(clip_right)
+
     diff_right = _add_from_right(df1, df2, right)
     merged.append(diff_right)
+
     if crs:
         merged = [gdf.to_crs(crs) for gdf in merged]
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
@@ -319,7 +323,7 @@ def _shapely_diffclip_left(pairs, df1):
     clip_left = gpd.GeoDataFrame(
         pairs.groupby(level=0).agg(
             {
-                "geom_right": lambda g: union_all(g) if len(g) > 1 else g,
+                "geom_right": lambda g: unary_union(g) if len(g) > 1 else g,
                 **{
                     c: "first"
                     for c in df1.columns
@@ -345,7 +349,7 @@ def _shapely_diffclip_right(pairs, df1, df2):
             .groupby(by="index_right")
             .agg(
                 {
-                    "geom_left": lambda g: union_all(g) if len(g) > 1 else g,
+                    "geom_left": lambda g: unary_union(g) if len(g) > 1 else g,
                     "geometry": "first",
                 }
             ),
@@ -360,8 +364,46 @@ def _shapely_diffclip_right(pairs, df1, df2):
             }
         )
     )
+
+    from shapely.geometry import Point
+
+    p = (
+        GeoDataFrame({"geometry": [Point(14.046431, 67.0047572)]}, crs=4326)
+        .to_crs(25833)
+        .buffer(100)
+        .to_frame()
+    )
+    x = clip_right.sjoin(p).pipe(clean_geoms)
+    if len(x):
+        try:
+            display((x).explore())
+        except Exception:
+            pass
+    x = (
+        GeoDataFrame(
+            clip_right.drop(columns="geometry"), geometry="geom_left", crs=25833
+        )
+        .sjoin(p)
+        .pipe(clean_geoms)
+    )
+    if len(x):
+        try:
+            display((x).explore())
+        except Exception:
+            pass
+
+    """# added a unary_union to make it work properly
+    clip_right["geometry"] = difference(
+        clip_right.geometry.values, unary_union(df2.geometry.values)
+    )
+    return clip_right.drop(columns=["geom_left"])"""
+
     clip_right["geometry"] = difference(
         clip_right.geometry.values, clip_right.geom_left.values
     )
+    """try:
+        display(clip_right.explore())
+    except Exception:
+        pass"""
     clip_right = clip_right.drop(columns=["geom_left"])
     return clip_right

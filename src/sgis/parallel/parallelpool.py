@@ -6,17 +6,15 @@ from typing import Any, Callable, Iterable, Sized
 
 import numpy as np
 from geopandas import GeoDataFrame
+from joblib import Parallel, delayed
 
 from ..helpers import dict_zip, dict_zip_union
 from ..io.dapla import read_geopandas
-from ..io.write_municipality_data import (
-    write_municipality_data,
-    write_neighbor_municipality_data,
-)
-from .base import MultiProcessingBase
+from ..io.write_municipality_data import write_municipality_data
+from .base import ParallelBase
 
 
-class MultiProcessingPool(MultiProcessingBase):
+class ParallelPool(ParallelBase):
     """Class for streamlining multiprocessing in Dapla.
 
     Functions can be added one by one as a single process to the pool with the
@@ -36,10 +34,19 @@ class MultiProcessingPool(MultiProcessingBase):
     Args:
         context: Start method for the processes. Defaults to 'spawn',
             which avoids freezing.
+
+        **kwargs: Keyword arguments to be passed to either
+            multiprocessing.Pool or joblib.Parallel, depending
+            on the chosen backend.
     """
 
-    def __init__(self, context: str = "spawn"):
-        self.context = context
+    def __init__(
+        self, processes: int, backend="multiprocessing", context="spawn", **kwargs
+    ):
+        self.processes = int(processes)
+        self.backend = backend.lower()
+        self.context = context.lower()
+        self.kwargs = kwargs
         self.funcs: list[functools.partial] = []
         self.results: list[Any] = []
         self._source: list[str] = []
@@ -73,10 +80,18 @@ class MultiProcessingPool(MultiProcessingBase):
 
             warnings.warn(mes)
 
-        with multiprocessing.get_context(self.context).Pool(n) as pool:
-            results = [pool.apply_async(func) for func in self.funcs]
+        if self.backend == "multiprocessing":
+            with multiprocessing.get_context(self.context).Pool(
+                self.processes, **self.kwargs
+            ) as pool:
+                results = [pool.apply_async(func) for func in self.funcs]
 
-            self.results = [result.get() for result in results]
+                self.results = [result.get() for result in results]
+        else:
+            with Parallel(
+                n_jobs=self.processes, backend=self.backend, **self.kwargs
+            ) as parallel:
+                self.results = parallel(delayed(func)() for func in self.funcs)
 
         return self.results
 
@@ -110,7 +125,7 @@ class MultiProcessingPool(MultiProcessingBase):
         >>> def x2(num):
         ...     return num * 2
         >>> if __name__ == "__main__":
-        ...     p = MultiProcessingPool()
+        ...     p = ParallelPool()
         ...     p.append(x2, num=1)
         ...     p.append(x2, num=2)
         ...     p.append(x2, num=3)
@@ -133,6 +148,7 @@ class MultiProcessingPool(MultiProcessingBase):
         func: Callable,
         iterable: Iterable,
         n: int,
+        sort: str | None = None,
         chunk_kwarg_name: str | None = None,
         **kwargs,
     ):
@@ -155,7 +171,7 @@ class MultiProcessingPool(MultiProcessingBase):
         ...     return num * 2
         >>> l = [1, 2, 3]
         >>> if __name__ == "__main__":
-        ...     p = MultiProcessingPool()
+        ...     p = ParallelPool()
         ...     p.chunkwise(x2, l, n=3)
         ...     print(p.execute())
         [2, 4, 6]
@@ -170,6 +186,9 @@ class MultiProcessingPool(MultiProcessingBase):
             iterable = list(iterable)
 
         n = n if n <= len(iterable) else len(iterable)
+
+        if sort:
+            iterable = self.chunksort_df(iterable, n=n, column=sort)
 
         try:
             splitted = list(np.array_split(iterable, n))
@@ -202,8 +221,9 @@ class MultiProcessingPool(MultiProcessingBase):
     def write_municipality_data(
         self,
         in_data: dict[str, str | GeoDataFrame],
-        out_data: str | Path | dict[str, str],
-        year: int,
+        out_data: str | dict[str, str],
+        with_neighbors: bool = False,
+        municipalities: GeoDataFrame | None = None,
         funcdict: dict[str, Callable] | None = None,
         file_type: str = "parquet",
         muni_number_col: str = "KOMMUNENR",
@@ -233,20 +253,12 @@ class MultiProcessingPool(MultiProcessingBase):
                 If True, an empty parquet file will be written.
 
         """
-        KARTDATA_ANALYSE = "ssb-prod-kart-data-delt/kartdata_analyse/klargjorte-data"
-
-        muni = read_geopandas(
-            f"{KARTDATA_ANALYSE}/{year}/ABAS_kommune_flate_p{year}_v1.parquet"
-        )
-
-        if muni_number_col != "KOMMUNENR":
-            muni = muni.rename(columns={"KOMMUNENR": muni_number_col}, errors="raise")
-
         shared_kwds = {
-            "municipalities": muni,
+            "municipalities": municipalities,
             "muni_number_col": muni_number_col,
             "file_type": file_type,
             "write_empty": write_empty,
+            "with_neighbors": with_neighbors,
         }
 
         if isinstance(out_data, (str, Path)):
@@ -268,78 +280,6 @@ class MultiProcessingPool(MultiProcessingBase):
             partial_func = functools.partial(write_municipality_data, **kwds)
             self.funcs.append(partial_func)
             self._source.append("write_municipality_data")
-
-        return self
-
-    def write_neighbor_municipality_data(
-        self,
-        in_data: dict[str, str | GeoDataFrame],
-        out_data: str | Path | dict[str, str],
-        year: int,
-        funcdict: dict[str, Callable] | None = None,
-        file_type: str = "parquet",
-        muni_number_col: str = "KOMMUNENR",
-        strict: bool = False,
-        write_empty: bool = False,
-    ):
-        """Split datasets into municipalities+neighbors and write as separate files.
-
-        The files will be named as the municipality number.
-
-        Args:
-            in_data: Dictionary with dataset names as keys and file paths or
-                (Geo)DataFrames as values.
-            out_data: Either a single folder path or a dictionary with same keys as
-                'in_data' and folder paths as values. If a single folder is given,
-                the 'in_data' keys will be used as subfolders.
-            year: Year of the municipality numbers.
-            funcdict: Dictionary with the keys of 'in_data' and functions as values.
-                The functions should take a GeoDataFrame as input and return a
-                GeoDataFrame.
-            file_type: Defaults to parquet.
-            muni_number_col: Column name that holds the municipality number. Defaults
-                to KOMMUNENR.
-            strict: If False (default), the dictionaries 'out_data' and 'funcdict' does
-                not have to have the same length as 'in_data'.
-            write_empty: If False (default), municipalities with no data will be skipped.
-                If True, an empty parquet file will be written.
-        """
-        KARTDATA_ANALYSE = "ssb-prod-kart-data-delt/kartdata_analyse/klargjorte-data"
-
-        muni = read_geopandas(
-            f"{KARTDATA_ANALYSE}/{year}/ABAS_kommune_flate_p{year}_v1.parquet"
-        )
-
-        if muni_number_col != "KOMMUNENR":
-            muni = muni.rename(columns={"KOMMUNENR": muni_number_col}, errors="raise")
-
-        shared_kwds = {
-            "municipalities": muni,
-            "muni_number_col": muni_number_col,
-            "file_type": file_type,
-            "write_empty": write_empty,
-        }
-
-        if isinstance(out_data, (str, Path)):
-            out_data = {name: Path(out_data) / name for name in in_data.keys()}
-
-        if funcdict is None:
-            funcdict = {}
-
-        zip_func = dict_zip if strict else dict_zip_union
-
-        for _, data, folder, postfunc in zip_func(in_data, out_data, funcdict):
-            if data is None:
-                continue
-
-            kwds = shared_kwds | {
-                "data": data,
-                "func": postfunc,
-                "out_folder": folder,
-            }
-            partial_func = functools.partial(write_neighbor_municipality_data, **kwds)
-            self.funcs.append(partial_func)
-            self._source.append("write_neighbor_municipality_data")
 
         return self
 
