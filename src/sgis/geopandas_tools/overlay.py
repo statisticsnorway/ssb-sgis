@@ -68,6 +68,7 @@ def clean_overlay(
     how: str = "intersection",
     keep_geom_type: bool = True,
     geom_type: str | tuple[str, str] | None = None,
+    grid_size: float | None = None,
 ) -> GeoDataFrame:
     """Fixes and explodes geometries before doing a shapely overlay, then cleans up.
 
@@ -132,7 +133,7 @@ def clean_overlay(
     df2 = make_all_singlepart(df2, ignore_index=True)
 
     overlayed = (
-        _shapely_overlay(df1, df2, how=how, crs=crs)
+        _shapely_overlay(df1, df2, how=how, crs=crs, grid_size=grid_size)
         .pipe(clean_geoms)
         .pipe(_push_geom_col)
     )
@@ -167,7 +168,11 @@ def _get_geom_type_left_right(
 
 
 def _shapely_overlay(
-    df1: GeoDataFrame, df2: GeoDataFrame, how: str, crs: int | str | None | CRS
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
+    how: str,
+    crs: int | str | None | CRS,
+    grid_size: float,
 ) -> GeoDataFrame:
     tree = STRtree(df2.geometry.values)
     left, right = tree.query(df1.geometry.values, predicate="intersects")
@@ -175,41 +180,47 @@ def _shapely_overlay(
     pairs = _get_intersects_pairs(df1, df2, left, right)
 
     if how == "intersection":
-        overlayed = _intersection(pairs, crs=crs)
+        overlayed = _intersection(pairs, crs=crs, grid_size=grid_size)
 
     elif how == "difference":
         # don't add suffix on difference
-        return _difference(pairs, df1, left, crs=crs)
+        return _difference(pairs, df1, left, crs=crs, grid_size=grid_size)
 
     elif how == "symmetric_difference":
-        overlayed = _symmetric_difference(pairs, df1, df2, left, right, crs=crs)
+        overlayed = _symmetric_difference(
+            pairs, df1, df2, left, right, crs=crs, grid_size=grid_size
+        )
 
     elif how == "identity":
-        overlayed = _identity(pairs, df1, df2, left, crs=crs)
+        overlayed = _identity(pairs, df1, left, crs=crs, grid_size=grid_size)
 
     elif how == "union":
-        overlayed = _union(pairs, df1, df2, left, right, crs=crs)
+        overlayed = _union(pairs, df1, df2, left, right, crs=crs, grid_size=grid_size)
 
     elif how == "update":
         # don't add suffix on update
-        return _update(pairs, df1, df2, left=left, crs=crs)
+        return _update(pairs, df1, df2, left=left, crs=crs, grid_size=grid_size)
 
     overlayed = _add_suffix_left(overlayed, df1, df2)
     return overlayed
 
 
-def _update(pairs, df1, df2, left, crs) -> GeoDataFrame:
-    overlayed = _difference(pairs, df1, left, crs=crs, concat=False)
+def _update(pairs, df1, df2, left, crs, grid_size) -> GeoDataFrame:
+    overlayed = _difference(
+        pairs, df1, left, crs=crs, concat=False, grid_size=grid_size
+    )
 
     return pd.concat(overlayed + [df2], ignore_index=True).loc[
         :, lambda x: ~x.columns.str.contains("index|level_")
     ]
 
 
-def _intersection(pairs, crs) -> GeoDataFrame:
+def _intersection(pairs, crs, grid_size) -> GeoDataFrame:
     intersections = pairs.copy()
     intersections["geometry"] = intersection(
-        intersections.geometry.values, intersections.geom_right.values
+        intersections.geometry.values,
+        intersections.geom_right.values,
+        grid_size=grid_size,
     )
     intersections = intersections.drop(["index_right", "geom_right"], axis=1)
 
@@ -218,38 +229,40 @@ def _intersection(pairs, crs) -> GeoDataFrame:
     return intersections
 
 
-def _union(pairs, df1, df2, left, right, crs):
+def _union(pairs, df1, df2, left, right, crs, grid_size):
     merged = []
     if len(left):
-        intersections = _intersection(pairs, crs=crs)
+        intersections = _intersection(pairs, crs=crs, grid_size=grid_size)
         merged.append(intersections)
-    symmdiff = _symmetric_difference(pairs, df1, df2, left, right, crs=crs)
+    symmdiff = _symmetric_difference(
+        pairs, df1, df2, left, right, crs=crs, grid_size=grid_size
+    )
     merged.append(symmdiff)
     if crs:
         merged = [gdf.to_crs(crs) for gdf in merged]
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
-def _identity(pairs, df1, df2, left, crs):
+def _identity(pairs, df1, left, crs, grid_size):
     merged = []
     if len(left):
-        intersections = _intersection(pairs, crs=crs)
+        intersections = _intersection(pairs, crs=crs, grid_size=grid_size)
         merged.append(intersections)
-    diff = _difference(pairs, df1, left, crs=crs)
+    diff = _difference(pairs, df1, left, crs=crs, grid_size=grid_size)
     merged.append(diff)
     if crs:
         merged = [gdf.to_crs(crs) for gdf in merged]
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
-def _symmetric_difference(pairs, df1, df2, left, right, crs):
+def _symmetric_difference(pairs, df1, df2, left, right, crs, grid_size):
     merged = []
 
-    difference_left = _difference(pairs, df1, left, crs=crs)
+    difference_left = _difference(pairs, df1, left, crs=crs, grid_size=grid_size)
     merged.append(difference_left)
 
     if len(left):
-        clip_right = _shapely_diffclip_right(pairs, df1, df2)
+        clip_right = _shapely_diffclip_right(pairs, df1, df2, grid_size=grid_size)
         merged.append(clip_right)
 
     diff_right = _add_from_right(df1, df2, right)
@@ -260,10 +273,10 @@ def _symmetric_difference(pairs, df1, df2, left, right, crs):
     return pd.concat(merged, ignore_index=True).pipe(_push_geom_col)
 
 
-def _difference(pairs, df1, left, crs, concat=True):
+def _difference(pairs, df1, left, crs, concat=True, grid_size=None):
     merged = []
     if len(left):
-        clip_left = _shapely_diffclip_left(pairs, df1)
+        clip_left = _shapely_diffclip_left(pairs, df1, grid_size=grid_size)
         merged.append(clip_left)
     diff_left = _add_from_left(df1, left)
     merged.append(diff_left)
@@ -317,7 +330,7 @@ def _add_from_right(
     )
 
 
-def _shapely_diffclip_left(pairs, df1):
+def _shapely_diffclip_left(pairs, df1, grid_size):
     """Aggregate areas in right by unique values of left, then use those to clip
     areas out of left"""
     clip_left = gpd.GeoDataFrame(
@@ -335,14 +348,13 @@ def _shapely_diffclip_left(pairs, df1):
         crs=df1.crs,
     )
     clip_left["geometry"] = difference(
-        clip_left.geometry.values, clip_left.geom_right.values
+        clip_left.geometry.values, clip_left.geom_right.values, grid_size=grid_size
     )
-    clip_left = clip_left.drop(columns=["geom_right"])
 
-    return clip_left
+    return clip_left.drop(columns=["geom_right"])
 
 
-def _shapely_diffclip_right(pairs, df1, df2):
+def _shapely_diffclip_right(pairs, df1, df2, grid_size):
     clip_right = (
         gpd.GeoDataFrame(
             pairs.rename(columns={"geometry": "geom_left", "geom_right": "geometry"})
@@ -365,45 +377,7 @@ def _shapely_diffclip_right(pairs, df1, df2):
         )
     )
 
-    from shapely.geometry import Point
-
-    p = (
-        GeoDataFrame({"geometry": [Point(14.046431, 67.0047572)]}, crs=4326)
-        .to_crs(25833)
-        .buffer(100)
-        .to_frame()
-    )
-    x = clip_right.sjoin(p).pipe(clean_geoms)
-    if len(x):
-        try:
-            display((x).explore())
-        except Exception:
-            pass
-    x = (
-        GeoDataFrame(
-            clip_right.drop(columns="geometry"), geometry="geom_left", crs=25833
-        )
-        .sjoin(p)
-        .pipe(clean_geoms)
-    )
-    if len(x):
-        try:
-            display((x).explore())
-        except Exception:
-            pass
-
-    """# added a unary_union to make it work properly
     clip_right["geometry"] = difference(
-        clip_right.geometry.values, unary_union(df2.geometry.values)
+        clip_right.geometry.values, clip_right.geom_left.values, grid_size=grid_size
     )
-    return clip_right.drop(columns=["geom_left"])"""
-
-    clip_right["geometry"] = difference(
-        clip_right.geometry.values, clip_right.geom_left.values
-    )
-    """try:
-        display(clip_right.explore())
-    except Exception:
-        pass"""
-    clip_right = clip_right.drop(columns=["geom_left"])
-    return clip_right
+    return clip_right.drop(columns=["geom_left"])
