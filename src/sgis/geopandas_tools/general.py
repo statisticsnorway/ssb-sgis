@@ -276,22 +276,34 @@ def clean_geoms(
     return gdf
 
 
-def sort_by_area(gdf: GeoDataFrame, ascending: bool = False, **kwargs) -> GeoDataFrame:
-    """Sorts GeoDataFrame with largest area first."""
+def sort_large_to_small(gdf: GeoDataFrame) -> GeoDataFrame:
     return (
         gdf.assign(area_=gdf.area)
-        .sort_values("area_", ascending=ascending, **kwargs)
+        .sort_values("area_", ascending=False)
         .drop(columns="area_")
     )
 
 
-def sort_by_length(
-    gdf: GeoDataFrame, ascending: bool = False, **kwargs
-) -> GeoDataFrame:
-    """Sorts GeoDataFrame with largest length first."""
+def sort_small_to_large(gdf: GeoDataFrame) -> GeoDataFrame:
+    return (
+        gdf.assign(area_=gdf.area)
+        .sort_values("area_", ascending=True)
+        .drop(columns="area_")
+    )
+
+
+def sort_long_to_short(gdf: GeoDataFrame) -> GeoDataFrame:
     return (
         gdf.assign(length_=gdf.length)
-        .sort_values("length_", ascending=ascending, **kwargs)
+        .sort_values("length_", ascending=False)
+        .drop(columns="length_")
+    )
+
+
+def sort_short_to_long(gdf: GeoDataFrame) -> GeoDataFrame:
+    return (
+        gdf.assign(length_=gdf.length)
+        .sort_values("length_", ascending=True)
         .drop(columns="length_")
     )
 
