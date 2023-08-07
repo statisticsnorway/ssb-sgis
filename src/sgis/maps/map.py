@@ -13,7 +13,11 @@ from jenkspy import jenks_breaks
 from mapclassify import classify
 from shapely import Geometry
 
-from ..geopandas_tools.general import drop_inactive_geometry_columns, rename_geometry_if
+from ..geopandas_tools.general import (
+    clean_geoms,
+    drop_inactive_geometry_columns,
+    rename_geometry_if,
+)
 from ..helpers import get_object_name
 
 
@@ -91,7 +95,14 @@ class Map:
         if not self.labels:
             self._get_labels(gdfs)
 
-        self._gdfs: list[GeoDataFrame] = [gdf.reset_index(drop=True) for gdf in gdfs]
+        self._gdfs = []
+        for i, gdf in enumerate(gdfs):
+            gdf = clean_geoms(gdf).reset_index(drop=True)
+            if len(gdf):
+                self._gdfs.append(gdf)
+            else:
+                self.labels.pop(i)
+
         self.kwargs = kwargs
 
         if not self.labels:
