@@ -18,7 +18,7 @@ from shapely import STRtree, difference, intersection, make_valid, unary_union
 from shapely.errors import GEOSException
 from shapely.geometry import MultiPolygon, Polygon
 
-from .general import clean_geoms, sort_by_area, sort_by_length
+from .general import clean_geoms, sort_large_to_small, sort_long_to_short
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
@@ -29,7 +29,7 @@ def update_geometries(gdf: GeoDataFrame, sort_by: str | None = None) -> GeoDataF
     if sort_by and sort_by not in ["area", "length"]:
         raise ValueError("sort_by must be None, 'area' or 'length'.")
     elif sort_by:
-        gdf = sort_by_area(gdf) if sort_by == "area" else sort_by_length(gdf)
+        gdf = sort_large_to_small(gdf) if sort_by == "area" else sort_long_to_short(gdf)
 
     union = Polygon()
     out_rows = []
