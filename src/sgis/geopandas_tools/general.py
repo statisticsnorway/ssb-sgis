@@ -1,5 +1,6 @@
 import numbers
 import warnings
+from typing import Any, Iterable
 
 import geocoder
 import numpy as np
@@ -18,7 +19,7 @@ from shapely import (
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from .geometry_types import make_all_singlepart, to_single_geom_type
+from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .to_geodataframe import to_gdf
 
 
@@ -36,17 +37,38 @@ def get_lonlat(lon, lat, crs=25833):
     return transformer.transform(lon, lat)
 
 
-def get_common_crs(obj: GeoDataFrame | GeoSeries) -> pyproj.CRS | None:
+def get_common_crs(iterable: Iterable[Any], strict: bool = False) -> pyproj.CRS | None:
+    """Returns the common not-None crs or raises a ValueError if more than one.
+
+    Args:
+        iterable: Iterable of objects with the attribute "crs" or a list
+            of CRS-like (pyproj.CRS-accepted) objects.
+        strict: If False (default), falsy CRS-es will be ignored and None
+            will be returned if all CRS-es are falsy. If strict is True,
+
+    Returns:
+        pyproj.CRS object or None (if all crs are None).
+
+    Raises:
+        ValueError if there are more than one crs. If strict is True,
+        None is included.
+    """
     try:
-        crs = list({r.crs for r in obj if r.crs})
+        crs = list({x.crs for x in iterable})
     except AttributeError:
-        crs = list(set(obj))
+        crs = list(set(iterable))
 
     if not crs:
         return None
-    if len(crs) > 1:
-        raise ValueError("'crs' mismatch.", crs)
-    return pyproj.CRS(crs[0])
+
+    truthy_crs = list({x for x in crs if x})
+
+    if strict and len(truthy_crs) != len(crs):
+        raise ValueError("Mix of falsy and truthy CRS-es found.")
+
+    if len(truthy_crs) > 1:
+        raise ValueError("'crs' mismatch.", truthy_crs)
+    return pyproj.CRS(truthy_crs[0])
 
 
 def is_bbox_like(obj) -> bool:
@@ -179,9 +201,10 @@ def rename_geometry_if(gdf: GeoDataFrame) -> GeoDataFrame:
 
 
 def clean_geoms(
-    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
+    gdf: GeoDataFrame | GeoSeries,
+    ignore_index: bool = False,
 ) -> GeoDataFrame | GeoSeries:
-    """Fixes geometries and removes invalid, empty, NaN and None geometries.
+    """Fixes geometries, then removes empty, NaN and None geometries.
 
     Args:
         gdf: GeoDataFrame or GeoSeries to be cleaned.
@@ -230,15 +253,20 @@ def clean_geoms(
 
     if isinstance(gdf, GeoDataFrame):
         geom_col = gdf._geometry_column_name
-        gdf[geom_col] = gdf.make_valid()
-        gdf = gdf.loc[
-            (gdf[geom_col].is_valid)
-            & (~gdf[geom_col].is_empty)
-            & (gdf[geom_col].notna())
-        ]
+
+        # only repair if necessary
+        if not gdf[geom_col].is_valid.all():
+            gdf[geom_col] = gdf.make_valid()
+
+        gdf = gdf.loc[(~gdf[geom_col].is_empty) & (gdf[geom_col].notna())]
+
     elif isinstance(gdf, GeoSeries):
-        gdf = gdf.make_valid()
-        gdf = gdf.loc[(gdf.is_valid) & (~gdf.is_empty) & (gdf.notna())]
+        # only repair if necessary
+        if not gdf.is_valid.all():
+            gdf = gdf.make_valid()
+
+        gdf = gdf.loc[(~gdf.is_empty) & (gdf.notna())]
+
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
@@ -360,10 +388,13 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     >>> sg.qtm(lines, "l")
     """
 
-    if any(any(gdf.geom_type.isin(["Point", "MultiPoint"])) for gdf in gdfs):
+    if any(gdf.geom_type.isin(["Point", "MultiPoint"]).any() for gdf in gdfs):
         raise ValueError("Cannot convert points to lines.")
 
     def _shapely_geometry_to_lines(geom):
+        """Get all lines from the exterior and interiors of a Polygon."""
+
+        # if lines (points are not allowed in this function)
         if geom.area == 0:
             return geom
 
@@ -381,7 +412,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
                 LineString(get_interior_ring(part, n)) for n in range(n_interior_rings)
             ]
 
-            lines = lines + interior_rings
+            lines += interior_rings
 
         return unary_union(lines)
 
