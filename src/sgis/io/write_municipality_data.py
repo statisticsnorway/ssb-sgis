@@ -38,98 +38,6 @@ def write_municipality_data(
     )
 
 
-'''def write_municipality_data(
-    in_data: dict[str, str | GeoDataFrame],
-    out_data: str | dict[str, str],
-    *,
-    municipalities: GeoDataFrame | None = None,
-    n_jobs: int,
-    with_neighbors: bool = False,
-    funcdict: dict[str, Callable] | None = None,
-    file_type: str = "parquet",
-    muni_number_col: str = "KOMMUNENR",
-    strict: bool = False,
-    write_empty: bool = False,
-):
-    """Split one or more datasets into municipalities and write as separate files.
-
-    Optionally with neighbor municipalities included.
-
-    The files will be named as the municipality number.
-
-    Args:
-        in_data: Dictionary with dataset names as keys and file paths or
-            (Geo)DataFrames as values.
-        out_data: Either a single folder path or a dictionary with same keys as
-            'in_data' and folder paths as values. If a single folder is given,
-            the 'in_data' keys will be used as subfolders.
-        municipalities: GeoDataFrame of municipality polygons.
-        n_jobs: Number of parallel workers.
-        with_neighbors: If True (not default), each municipality file will include
-            data from all municipalities they share a border with.
-        funcdict: Dictionary with the keys of 'in_data' and functions as values.
-            The functions should take a GeoDataFrame as input and return a
-            GeoDataFrame.
-        file_type: Defaults to parquet.
-        muni_number_col: Column name that holds the municipality number. Defaults
-            to KOMMUNENR.
-        strict: If False (default), the dictionaries 'out_data' and 'funcdict' does
-            not have to have the same length as 'in_data'.
-        write_empty: If False (default), municipalities with no data will be skipped.
-            If True, an empty parquet file will be written.
-
-    """
-
-    shared_kwds = {
-        "municipalities": municipalities,
-        "muni_number_col": muni_number_col,
-        "file_type": file_type,
-        "write_empty": write_empty,
-    }
-
-    if isinstance(in_data, (str, Path)):
-        in_data = {Path(in_data).stem: in_data}
-
-    if not isinstance(in_data, dict):
-        raise TypeError(
-            "'in_data' should be a dict of names: paths or a single file path."
-        )
-
-    if isinstance(out_data, (str, Path)):
-        out_data = {name: Path(out_data) / name for name in in_data}
-
-    if funcdict is None:
-        funcdict = {}
-
-    zip_func = dict_zip if strict else dict_zip_union
-
-    write_func = (
-        _write_neighbor_municipality_data
-        if with_neighbors
-        else _write_municipality_data
-    )
-
-    funcs = []
-    for _, data, folder, postfunc in zip_func(in_data, out_data, funcdict):
-        if data is None:
-            continue
-        all_kwds = shared_kwds | {
-            "data": data,
-            "func": postfunc,
-            "out_folder": folder,
-        }
-        partial_func = functools.partial(write_func, **all_kwds)
-        funcs.append(partial_func)
-
-    n_jobs = min(len(funcs), n_jobs)
-
-    if n_jobs > 1:
-        Parallel(n_jobs=n_jobs)(delayed(func)() for func in funcs)
-    else:
-        [func() for func in funcs]
-'''
-
-
 def _validate_data(data: str | list[str]) -> str:
     if isinstance(data, (str, Path)):
         return data
@@ -146,7 +54,7 @@ def _get_out_path(out_folder, muni, file_type):
 def _write_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
-    municipalities: GeoDataFrame,
+    municipalities: GeoDataFrame | None = None,
     muni_number_col: str = "KOMMUNENR",
     file_type: str = "parquet",
     func: Callable | None = None,
@@ -187,7 +95,7 @@ def _write_municipality_data(
 def _write_neighbor_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
-    municipalities: GeoDataFrame,
+    municipalities: GeoDataFrame | None = None,
     muni_number_col: str = "KOMMUNENR",
     file_type: str = "parquet",
     func: Callable | None = None,
@@ -228,6 +136,20 @@ def _write_neighbor_municipality_data(
 def _fix_missing_muni_numbers(gdf, municipalities, muni_number_col):
     if muni_number_col in gdf and gdf[muni_number_col].notna().all():
         return gdf
+
+    if municipalities is None:
+        if muni_number_col not in gdf:
+            raise ValueError(
+                f"Cannot find column {muni_number_col}. "
+                "Specify another column or a municipality GeoDataFrame to clip "
+                "the geometries by."
+            )
+        assert gdf[muni_number_col].isna().any()
+        raise ValueError(
+            f"Column {muni_number_col} has missing values. Make sure gdf has "
+            "correct municipality number info or specify a municipality "
+            "GeoDataFrame to clip the geometries by."
+        )
 
     def _clean_overlay(df1, df2):
         return df1.pipe(clean_geoms).overlay(df2, how="intersection").pipe(clean_geoms)
