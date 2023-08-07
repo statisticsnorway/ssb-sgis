@@ -276,6 +276,26 @@ def clean_geoms(
     return gdf
 
 
+def sort_by_area(gdf: GeoDataFrame, ascending: bool = False, **kwargs) -> GeoDataFrame:
+    """Sorts GeoDataFrame with largest area first."""
+    return (
+        gdf.assign(area_=gdf.area)
+        .sort_values("area_", ascending=ascending, **kwargs)
+        .drop(columns="area_")
+    )
+
+
+def sort_by_length(
+    gdf: GeoDataFrame, ascending: bool = False, **kwargs
+) -> GeoDataFrame:
+    """Sorts GeoDataFrame with largest length first."""
+    return (
+        gdf.assign(length_=gdf.length)
+        .sort_values("length_", ascending=ascending, **kwargs)
+        .drop(columns="length_")
+    )
+
+
 def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     """Creates a GeoDataFrame with n random points.
 
