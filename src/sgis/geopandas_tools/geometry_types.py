@@ -6,8 +6,8 @@ from geopandas import GeoDataFrame, GeoSeries
 def make_all_singlepart(
     gdf: GeoDataFrame, index_parts: bool = False, ignore_index: bool = False
 ) -> GeoDataFrame:
-    gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
-
+    if ignore_index or index_parts:
+        gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
     while not gdf.geom_type.isin(
         ["Polygon", "Point", "LineString", "LinearRing"]
     ).all():
@@ -80,29 +80,29 @@ def to_single_geom_type(
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
     # explode collections to single-typed geometries
-    collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
-    if len(collections):
-        collections = make_all_singlepart(collections, ignore_index=ignore_index)
+    collections = gdf.geom_type == "GeometryCollection"
+    if collections.any():
+        collections = make_all_singlepart(gdf[collections], ignore_index=ignore_index)
 
         gdf = pd.concat([gdf, collections], ignore_index=ignore_index)
 
     if "poly" in geom_type:
-        gdf = gdf.loc[gdf.geom_type.isin(["Polygon", "MultiPolygon"])]
+        is_polygon = gdf.geom_type.isin(["Polygon", "MultiPolygon"])
+        if not is_polygon.all():
+            gdf = gdf.loc[is_polygon]
     elif "line" in geom_type:
-        gdf = gdf.loc[
-            gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])
-        ]
+        is_line = gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])
+        if not is_line.all():
+            gdf = gdf.loc[is_line]
     elif "point" in geom_type:
-        gdf = gdf.loc[gdf.geom_type.isin(["Point", "MultiPoint"])]
+        is_point = gdf.geom_type.isin(["Point", "MultiPoint"])
+        if not is_point.all():
+            gdf = gdf.loc[is_point]
     else:
         raise ValueError(
             f"Invalid geom_type {geom_type!r}. Should be 'polygon', 'line' or 'point'"
         )
-
-    if ignore_index:
-        gdf = gdf.reset_index(drop=True)
-
-    return gdf
+    return gdf.reset_index(drop=True) if ignore_index else gdf
 
 
 def get_geom_type(gdf: GeoDataFrame | GeoSeries) -> str:
