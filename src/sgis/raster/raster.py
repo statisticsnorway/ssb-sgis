@@ -14,7 +14,12 @@ import pandas as pd
 import pyproj
 import rasterio
 import shapely
-import xarray as xr
+
+
+try:
+    import xarray as xr
+except ImportError:
+    pass
 from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_list_like
