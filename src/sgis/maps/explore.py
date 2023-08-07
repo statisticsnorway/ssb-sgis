@@ -517,6 +517,14 @@ class Explore(Map):
             force_separate_button=True,
         ).add_to(m)
 
+        plugins.MousePosition(
+            position="bottomleft",
+            separator=", ",
+            empty_string="NaN",
+            lng_first=True,
+            num_digits=5,
+        ).add_to(m)
+
         if self.geocoder:
             plugins.Geocoder(position="topright").add_to(m)
 
