@@ -11,7 +11,7 @@ class LocalFunctionError(ValueError):
     def __str__(self):
         return (
             f"{self.func}. "
-            "In Jupyter, functions to be multiprocessed must \n"
+            "In Jupyter, functions to be parallelized must \n"
             "be defined in and imported from another file when context='spawn'. \n"
             "Note that setting context='fork' might cause freezing processes.\n"
         )
