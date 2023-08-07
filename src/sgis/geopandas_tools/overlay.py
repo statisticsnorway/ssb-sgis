@@ -15,9 +15,42 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 from pyproj import CRS
 from shapely import STRtree, difference, intersection, make_valid, unary_union
+from shapely.errors import GEOSException
+from shapely.geometry import MultiPolygon, Polygon
 
-from .general import clean_geoms
+from .general import clean_geoms, sort_by_area, sort_by_length
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
+
+
+def update_geometries(gdf: GeoDataFrame, sort_by: str | None = None) -> GeoDataFrame:
+    if len(gdf) <= 1:
+        return gdf
+
+    if sort_by and sort_by not in ["area", "length"]:
+        raise ValueError("sort_by must be None, 'area' or 'length'.")
+    elif sort_by:
+        gdf = sort_by_area(gdf) if sort_by == "area" else sort_by_length(gdf)
+
+    union = Polygon()
+    out_rows = []
+    indices = []
+
+    for i, row in gdf.iterrows():
+        try:
+            new = row.geometry.difference(union)
+        except GEOSException:
+            try:
+                new = row.geometry.difference(union, grid_size=0.01)
+            except GEOSException:
+                new = row.geometry.difference(union, grid_size=0.1)
+
+        if not new or not isinstance(new, (Polygon, MultiPolygon)):
+            continue
+        union = unary_union([new, union])
+        row.geometry = new
+        out_rows.append(row)
+        indices.append(i)
+    return GeoDataFrame(out_rows, geometry="geometry", index=indices, crs=gdf.crs)
 
 
 def clean_overlay(
