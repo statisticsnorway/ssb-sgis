@@ -189,4 +189,12 @@ class Examine:
         return kwargs
 
     def __repr__(self) -> str:
-        return f"{self.__class__}(indices={len(self.indices)}, current={self.i}, n_gdfs={len(self.gdfs)})"
+        return f"{self.__class__.__name__}(indices={len(self.indices)}, current={self.i}, n_gdfs={len(self.gdfs)})"
+
+    def __add__(self, scalar):
+        self.i += scalar
+        return self
+
+    def __sub__(self, scalar):
+        self.i -= scalar
+        return self
