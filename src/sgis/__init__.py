@@ -2,6 +2,7 @@
 from .geopandas_tools.bounds import (
     bounds_to_points,
     bounds_to_polygon,
+    gridloop,
     make_grid,
     make_grid_from_bbox,
     make_ssb_grid,
@@ -23,8 +24,13 @@ from .geopandas_tools.general import (
     clean_geoms,
     coordinate_array,
     drop_inactive_geometry_columns,
+    get_common_crs,
     random_points,
     rename_geometry_if,
+    sort_large_to_small,
+    sort_long_to_short,
+    sort_short_to_long,
+    sort_small_to_large,
     to_lines,
 )
 from .geopandas_tools.geometry_types import (
@@ -39,7 +45,7 @@ from .geopandas_tools.neighbors import (
     get_neighbor_indices,
     k_nearest_neighbors,
 )
-from .geopandas_tools.overlay import clean_overlay, overlay_update
+from .geopandas_tools.overlay import clean_overlay, update_geometries
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import (
     close_all_holes,
