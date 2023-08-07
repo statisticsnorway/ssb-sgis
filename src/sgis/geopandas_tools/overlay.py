@@ -12,54 +12,12 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
+from pandas import DataFrame
 from pyproj import CRS
-from shapely import STRtree, difference, intersection, unary_union
+from shapely import STRtree, difference, intersection, make_valid, unary_union
 
-from .general import _push_geom_col, clean_geoms
+from .general import clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-
-
-def overlay_update(
-    df1: GeoDataFrame,
-    df2: GeoDataFrame,
-    keep_geom_type: bool = True,
-    geom_type: str | tuple[str, str] | None = None,
-    **kwargs,
-) -> GeoDataFrame:
-    """Updates df1 by putting df2 on top.
-
-    First runs a difference overlay of df1 and df2 to erase the parts of df1 that is in
-    df2. Then concatinates the overlayed geometries with df2.
-
-    Args:
-        df1: GeoDataFrame
-        df2: GeoDataFrame
-        keep_geom_type: If True (default), return only geometries of the same
-            geometry type as df1 has, if False, return all resulting geometries.
-        geom_type: optionally specify what geometry type to keep before the overlay,
-            if there may be mixed geometry types. Either a string with one geom_type
-            or a tuple/list with geom_type for df1 and df2 respectfully.
-        **kwargs: Additional keyword arguments passed to geopandas.overlay
-
-    Returns:
-        GeoDataFrame with overlayed geometries and columns from both GeoDataFrames.
-
-    """
-    geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
-
-    if keep_geom_type and not geom_type_left:
-        geom_type_left = get_geom_type(df1)
-
-    df1 = clean_geoms(df1)
-    if geom_type_left:
-        df1 = to_single_geom_type(df1, geom_type_left)
-    df2 = clean_geoms(df2)
-    if geom_type_right:
-        df2 = to_single_geom_type(df2, geom_type_right)
-
-    overlayed = df1.overlay(df2[["geometry"]], how="difference", **kwargs)
-    overlayed = overlayed.loc[:, ~overlayed.columns.str.contains("index|level_")]
-    return pd.concat([overlayed, df2], ignore_index=True)
 
 
 def clean_overlay(
@@ -67,7 +25,7 @@ def clean_overlay(
     df2: GeoDataFrame,
     how: str = "intersection",
     keep_geom_type: bool = True,
-    # geom_type: str | tuple[str, str] | None = None,
+    geom_type: str | None = None,
     grid_size: float | None = None,
 ) -> GeoDataFrame:
     """Fixes and explodes geometries before doing a shapely overlay, then cleans up.
@@ -85,8 +43,8 @@ def clean_overlay(
         keep_geom_type: If True (default), return only geometries of the same
             geometry type as df1 has, if False, return all resulting geometries.
         geom_type: optionally specify what geometry type to keep before the overlay,
-            if there may be mixed geometry types. Either a string with one geom_type
-            or a tuple/list with geom_type for df1 and df2 respectfully.
+            if there are mixed geometry types. Must be either "polygon", "line" or
+            "point".
 
     Returns:
         GeoDataFrame with overlayed and fixed geometries and columns from both
@@ -115,16 +73,21 @@ def clean_overlay(
 
     crs = df1.crs
 
-    # geom_type_left, geom_type_right = _get_geom_type_left_right(geom_type)
-
-    if keep_geom_type:  # and not geom_type_left:
+    if not geom_type:
         geom_type = get_geom_type(df1)
-
-    if geom_type == "mixed":
-        raise ValueError("mixed geometries are not allowed.")
+        if geom_type == "mixed":
+            raise ValueError("mixed geometries are not allowed.")
 
     df1 = clean_geoms(df1)
     df2 = clean_geoms(df2)
+
+    # df1.geometry = df1.geometry.buffer(0)
+    # df2.geometry = df2.geometry.buffer(0)
+
+    if geom_type:
+        df1 = to_single_geom_type(df1, geom_type)
+
+    df1 = to_single_geom_type(df1, geom_type)
 
     if keep_geom_type:
         df2 = to_single_geom_type(df2, geom_type)
@@ -136,44 +99,12 @@ def clean_overlay(
         clean_geoms
     )
 
+    # overlayed.geometry = overlayed.geometry.buffer(0)
+
     if geom_type:
         overlayed = to_single_geom_type(overlayed, geom_type)
 
     return overlayed.reset_index(drop=True)
-
-
-def _get_geom_type_left_right(
-    geom_type: str | tuple | list | None,
-) -> tuple[str | None, str | None]:
-    if isinstance(geom_type, str):
-        return geom_type, geom_type
-    elif geom_type is None:
-        return None, None
-
-    elif hasattr(geom_type, "__iter__"):
-        if len(geom_type) == 1:
-            return geom_type[0], geom_type[0]
-        elif len(geom_type) == 2:
-            return geom_type
-        else:
-            raise ValueError(
-                "'geom_type' should be one or two strings for the left and right gdf"
-            )
-    else:
-        raise ValueError(
-            "'geom_type' should be one or two strings for the left and right gdf"
-        )
-
-
-def _gdf_concat(gdfs: list[gpd.GeoDataFrame], crs):
-    return (
-        gpd.GeoDataFrame(
-            pd.concat(gdfs, ignore_index=True), geometry="geometry", crs=crs
-        )
-        .pipe(clean_geoms)
-        .pipe(_push_geom_col)
-        .loc[:, lambda x: ~x.columns.str.contains("index|level_")]
-    )
 
 
 def _shapely_overlay(
@@ -185,48 +116,54 @@ def _shapely_overlay(
 ) -> GeoDataFrame:
     tree = STRtree(df2.geometry.values)
     left, right = tree.query(df1.geometry.values, predicate="intersects")
+    # GeoDataFrame constructor is expensive, so doing it only once in the end
+    df1 = DataFrame(df1)
+    df2 = DataFrame(df2)
 
     pairs = _get_intersects_pairs(df1, df2, left, right)
 
     if how == "intersection":
-        # intersections = _intersection(pairs, grid_size=grid_size)
-        intersections = intersection(
-            pairs["geometry"].values,
-            pairs["geom_right"].values,
-            grid_size=grid_size,
-        )
-        overlayed = gpd.GeoDataFrame(
-            pairs.loc[:, lambda x: ~x.columns.str.contains("index|level_")],
-            geometry=intersections,
-            crs=crs,
-        ).pipe(clean_geoms)
+        overlayed = [_intersection(pairs, grid_size=grid_size)]
 
     elif how == "difference":
-        # don't add suffix on difference
-        diffs = _difference(pairs, df1, left, grid_size=grid_size)
-        return _gdf_concat(diffs, crs)
+        overlayed = _difference(pairs, df1, left, grid_size=grid_size)
 
     elif how == "symmetric_difference":
         overlayed = _symmetric_difference(
             pairs, df1, df2, left, right, grid_size=grid_size
         )
-        overlayed = _gdf_concat(overlayed, crs=crs)
 
     elif how == "identity":
         overlayed = _identity(pairs, df1, left, grid_size=grid_size)
-        overlayed = _gdf_concat(overlayed, crs=crs)
 
     elif how == "union":
         overlayed = _union(pairs, df1, df2, left, right, grid_size=grid_size)
-        overlayed = _gdf_concat(overlayed, crs=crs)
 
     elif how == "update":
-        # don't add suffix on update
         overlayed = _update(pairs, df1, df2, left=left, grid_size=grid_size)
-        return _gdf_concat(overlayed, crs)
 
-    overlayed = _add_suffix_left(overlayed, df1, df2)
-    return overlayed
+    assert isinstance(overlayed, list)
+
+    overlayed = pd.concat(overlayed, ignore_index=True).drop(
+        columns="index_right", errors="ignore"
+    )
+
+    # push geometry column to the end
+    overlayed = overlayed.reindex(
+        columns=[c for c in overlayed.columns if c != "geometry"] + ["geometry"]
+    )
+
+    if how not in ["difference", "update"]:
+        overlayed = _add_suffix_left(overlayed, df1, df2)
+
+    # make valid and keep only valid without constructing GeoDataFrame
+    overlayed["geometry"] = make_valid(overlayed["geometry"])
+    # None and empty are falsy
+    overlayed = overlayed.loc[lambda x: x["geometry"].map(bool)]
+
+    return gpd.GeoDataFrame(
+        overlayed, geometry="geometry", crs=crs
+    )  # .pipe(clean_geoms)
 
 
 def _update(pairs, df1, df2, left, grid_size) -> GeoDataFrame:
@@ -236,15 +173,17 @@ def _update(pairs, df1, df2, left, grid_size) -> GeoDataFrame:
 
 
 def _intersection(pairs, grid_size) -> GeoDataFrame:
+    if not len(pairs):
+        return pairs.drop(columns="geom_right")
+
     intersections = pairs.copy()
     intersections["geometry"] = intersection(
-        intersections["geometry"].values,
-        intersections["geom_right"].values,
+        intersections["geometry"].to_numpy(),
+        intersections["geom_right"].to_numpy(),
         grid_size=grid_size,
     )
-    intersections = intersections.drop(["index_right", "geom_right"], axis=1)
 
-    return intersections
+    return intersections.drop(columns="geom_right")
 
 
 def _union(pairs, df1, df2, left, right, grid_size):
@@ -295,16 +234,15 @@ def _difference(pairs, df1, left, grid_size=None) -> list:
 
 def _get_intersects_pairs(
     df1: GeoDataFrame, df2: GeoDataFrame, left: np.ndarray, right: np.ndarray
-) -> pd.DataFrame:
-    """GeoDataFrame constructor takes a lot of time, so using pd.DataFrame until the end."""
+) -> DataFrame:
     return pd.concat(
         [
-            pd.DataFrame(df1.take(left)),
-            (pd.DataFrame({"index_right": right}, index=df1.index.values.take(left))),
+            df1.take(left),
+            (DataFrame({"index_right": right}, index=df1.index.values.take(left))),
         ],
         axis=1,
     ).join(
-        pd.DataFrame(df2).rename(columns={"geometry": "geom_right"}),
+        df2.rename(columns={"geometry": "geom_right"}),
         on="index_right",
         rsuffix="_2",
     )
@@ -351,12 +289,12 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
         }
     )
     clip_left["geometry"] = difference(
-        clip_left["geometry"].values,
-        clip_left["geom_right"].values,
+        clip_left["geometry"].to_numpy(),
+        clip_left["geom_right"].to_numpy(),
         grid_size=grid_size,
     )
 
-    return clip_left.drop(columns=["geom_right"])
+    return clip_left.drop(columns="geom_right")
 
 
 def _shapely_diffclip_right(pairs, df1, df2, grid_size):
@@ -379,8 +317,9 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size):
     )
 
     clip_right["geometry"] = difference(
-        clip_right["geometry"].values,
-        clip_right["geom_left"].values,
+        clip_right["geometry"].to_numpy(),
+        clip_right["geom_left"].to_numpy(),
         grid_size=grid_size,
     )
-    return clip_right.drop(columns=["geom_left"])
+
+    return clip_right.drop(columns="geom_left")
