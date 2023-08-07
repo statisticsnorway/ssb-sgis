@@ -423,6 +423,7 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         weight_df: DataFrame | None = None,
         default_weight: int | float | None = None,
+        strict: bool = False,
         rowwise: bool = False,
         frequency_col: str = "frequency",
     ) -> GeoDataFrame:
@@ -445,6 +446,8 @@ class NetworkAnalysis:
                 index, destination index and weight. In that order) or only a weight
                 column and a MultiIndex where level 0 is origin index and level 1 is
                 destination index.
+            strict: If True, all OD pairs must be in weigth_df if specified. Defaults
+                to False.
             frequency_col: Name of column with the number of times each road was
                 visited. Defaults to 'frequency'.
 
@@ -585,7 +588,7 @@ class NetworkAnalysis:
                         "be in 'origins' and 'destinations'."
                     )
                 weights_mapped = weights_mapped.fillna(default_weight)
-            else:
+            elif strict:
                 self._make_sure_index_match(weight_df, od_pairs)
             weight_df = DataFrame(index=od_pairs)
             weight_df["weight"] = weights_mapped
@@ -1184,8 +1187,11 @@ class NetworkAnalysis:
             "the trip frequency for this origin-destination pair."
         )
 
-        if not isinstance(weight_df, DataFrame):
+        if not isinstance(weight_df, (DataFrame, pd.Series)):
             raise ValueError(error_message)
+
+        if isinstance(weight_df, pd.Series):
+            weight_df = weight_df.to_frame()
 
         weight_df = weight_df.copy()
 
@@ -1458,7 +1464,7 @@ class NetworkAnalysis:
 
     def _unsplit_network(self):
         """Remove the splitted lines and add the unsplitted ones."""
-        lines = self.network.gdf.loc[self.network.gdf.splitted != 1]
+        lines = self.network.gdf.loc[self.network.gdf["splitted"] != 1]
         self.network.gdf = pd.concat(
             [lines, self.network._not_splitted], ignore_index=True
         ).drop("temp_idx__", axis=1)
