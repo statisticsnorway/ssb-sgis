@@ -16,15 +16,17 @@ for the following:
 
 from geopandas import GeoDataFrame, GeoSeries
 
+from .general import _push_geom_col
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_polygon_clusters
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
     if "ignore_index" in kwargs:
-        return kwargs, kwargs.pop("ignore_index")
+        ignore_index = kwargs.pop("ignore_index")
+        return kwargs, ignore_index
 
-    if kwargs.get("by", None) is not None:
+    if kwargs.get("by", None) is None:
         return kwargs, True
 
     if kwargs.get("as_index", True):
@@ -194,6 +196,9 @@ def dissexp(
     }
 
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
+
+    print(dissolve_kwargs)
+    print(ignore_index)
 
     dissolved = gdf.dissolve(**dissolve_kwargs)
 
