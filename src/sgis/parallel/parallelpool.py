@@ -15,7 +15,7 @@ from .base import ParallelBase
 
 
 class ParallelPool(ParallelBase):
-    """Class for streamlining multiprocessing in Dapla.
+    """Parallelization in Dapla.
 
     Functions can be added one by one as a single process to the pool with the
     append_func method. Or a function can be split into multiple processes with
@@ -32,9 +32,12 @@ class ParallelPool(ParallelBase):
     empty results with no errors raised.
 
     Args:
-        context: Start method for the processes. Defaults to 'spawn',
-            which avoids freezing.
-
+        processes: Number of parallel processes
+        backend: Defaults to "multiprocessing". Can be set to any
+            backend supported by joblib's Parallel class
+            (except for "multiprocessing").
+        context: Start method for the processes. Defaults to 'spawn'
+            to avoid frozen processes.
         **kwargs: Keyword arguments to be passed to either
             multiprocessing.Pool or joblib.Parallel, depending
             on the chosen backend.
@@ -148,7 +151,6 @@ class ParallelPool(ParallelBase):
         func: Callable,
         iterable: Iterable,
         n: int,
-        sort: str | None = None,
         chunk_kwarg_name: str | None = None,
         **kwargs,
     ):
@@ -186,9 +188,6 @@ class ParallelPool(ParallelBase):
             iterable = list(iterable)
 
         n = n if n <= len(iterable) else len(iterable)
-
-        if sort:
-            iterable = self.chunksort_df(iterable, n=n, column=sort)
 
         try:
             splitted = list(np.array_split(iterable, n))
