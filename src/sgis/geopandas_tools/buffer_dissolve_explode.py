@@ -197,9 +197,6 @@ def dissexp(
 
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
-    print(dissolve_kwargs)
-    print(ignore_index)
-
     dissolved = gdf.dissolve(**dissolve_kwargs)
 
     dissolved[geom_col] = dissolved.make_valid()
