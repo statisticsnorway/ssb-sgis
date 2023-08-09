@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Sized
 
 import dapla as dp
+import joblib
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from joblib import Parallel, delayed
 from pandas import DataFrame
 
 from ..helpers import dict_zip, dict_zip_union
@@ -94,10 +94,12 @@ class Parallel(ParallelBase):
             ) as pool:
                 return pool.map(func_with_kwargs, iterable)
         else:
-            with Parallel(
+            with joblib.Parallel(
                 n_jobs=self.processes, backend=self.backend, **self.kwargs
             ) as parallel:
-                return parallel(delayed(func)(item, **kwargs) for item in iterable)
+                return parallel(
+                    joblib.delayed(func)(item, **kwargs) for item in iterable
+                )
 
     def read_pandas(
         self,
@@ -159,10 +161,10 @@ class Parallel(ParallelBase):
             return [func() for func in self.funcs]
 
         if self.backend != "multiprocessing":
-            with Parallel(
+            with joblib.Parallel(
                 n_jobs=self.processes, backend=self.backend, **self.kwargs
             ) as parallel:
-                return parallel(delayed(func)() for func in self.funcs)
+                return parallel(joblib.delayed(func)() for func in self.funcs)
 
         with multiprocessing.get_context(self.context).Pool(
             self.processes, **self.kwargs
@@ -197,7 +199,7 @@ class Parallel(ParallelBase):
         ...     return num * 2
         >>> l = [1, 2, 3]
         >>> if __name__ == "__main__":
-        ...     p = ParallelPool()
+        ...     p = Parallel()
         ...     p.chunkwise(x2, l, n=3)
         ...     print(p.execute())
         [2, 4, 6]
@@ -245,8 +247,8 @@ class Parallel(ParallelBase):
         self,
         in_data: dict[str, str | GeoDataFrame],
         out_data: str | dict[str, str],
+        municipalities: GeoDataFrame,
         with_neighbors: bool = False,
-        municipalities: GeoDataFrame | None = None,
         funcdict: dict[str, Callable] | None = None,
         file_type: str = "parquet",
         muni_number_col: str = "KOMMUNENR",

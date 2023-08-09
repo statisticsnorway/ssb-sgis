@@ -9,7 +9,6 @@ from geopandas import GeoDataFrame
 from joblib import Parallel, delayed
 
 from ..helpers import dict_zip, dict_zip_union
-from ..io.dapla import read_geopandas
 from ..io.write_municipality_data import write_municipality_data
 from .base import ParallelBase
 
@@ -47,8 +46,8 @@ class ParallelPool(ParallelBase):
         self, processes: int, backend="multiprocessing", context="spawn", **kwargs
     ):
         self.processes = int(processes)
-        self.backend = backend.lower()
-        self.context = context.lower()
+        self.backend = backend
+        self.context = context
         self.kwargs = kwargs
         self.funcs: list[functools.partial] = []
         self.results: list[Any] = []

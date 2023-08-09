@@ -88,6 +88,8 @@ def not_test_get_route_frequency(nwa, p):
 
         if truefalse:
             no_identical_ods = no_identical_ods.reset_index()
+        else:
+            no_identical_ods = no_identical_ods["weight"]
 
         frequencies = nwa.get_route_frequencies(p, p, weight_df=no_identical_ods)
         assert frequencies["frequency"].max() == 440, frequencies["frequency"].max()

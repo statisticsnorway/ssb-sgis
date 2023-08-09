@@ -25,6 +25,7 @@ from .geopandas_tools.general import (
     coordinate_array,
     drop_inactive_geometry_columns,
     get_common_crs,
+    get_grouped_centroids,
     random_points,
     rename_geometry_if,
     sort_large_first,
@@ -43,7 +44,7 @@ from .geopandas_tools.neighbors import (
     get_neighbor_indices,
     k_nearest_neighbors,
 )
-from .geopandas_tools.overlay import clean_overlay, update_geometries
+from .geopandas_tools.overlay import clean_overlay, get_intersections, update_geometries
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import (
     close_all_holes,
@@ -51,7 +52,6 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
-    get_intersections,
     get_polygon_clusters,
 )
 from .geopandas_tools.to_geodataframe import to_gdf

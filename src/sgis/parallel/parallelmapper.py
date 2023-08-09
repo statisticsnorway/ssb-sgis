@@ -22,9 +22,9 @@ class ParallelMapper(ParallelBase):
         context: str = "spawn",
         **kwargs,
     ):
-        self.processes = processes
-        self.backend = backend.lower()
-        self.context = context.lower()
+        self.processes = int(processes)
+        self.backend = backend
+        self.context = context
         self.kwargs = kwargs
 
     def map(self, func: Callable, iterable: list, **kwargs) -> list[Any]:

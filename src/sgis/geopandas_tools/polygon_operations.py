@@ -12,23 +12,8 @@ from shapely import (
 )
 from shapely.ops import unary_union
 
-from .general import _push_geom_col, clean_geoms, to_lines
+from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
 from .neighbors import get_neighbor_indices
-from .overlay import clean_overlay
-
-
-def get_centroid_ids(gdf: GeoDataFrame, groupby: str) -> pd.Series:
-    centerpoints = gdf.assign(geometry=lambda x: x.centroid)
-
-    grouped_centerpoints = centerpoints.dissolve(by=groupby).assign(
-        geometry=lambda x: x.centroid
-    )
-    xs = grouped_centerpoints.geometry.x
-    ys = grouped_centerpoints.geometry.y
-
-    grouped_centerpoints["wkt"] = [f"{int(x)}_{int(y)}" for x, y in zip(xs, ys)]
-
-    return gdf[groupby].map(grouped_centerpoints["wkt"])
 
 
 def get_polygon_clusters(
@@ -170,7 +155,7 @@ def get_polygon_clusters(
     concated[cluster_col] = component_mapper
 
     if wkt_col:
-        concated[cluster_col] = get_centroid_ids(concated, groupby=cluster_col)
+        concated[cluster_col] = get_grouped_centroids(concated, groupby=cluster_col)
 
     concated = _push_geom_col(concated)
 
@@ -680,104 +665,3 @@ def _close_all_holes_no_islands(poly, all_geoms):
             holes_closed.append(no_islands)
 
     return unary_union(holes_closed)
-
-
-def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
-    """Find geometries that intersect in a GeoDataFrame.
-
-    Does an intersection with itself and keeps only the geometries that appear
-    more than once. This means each intersection gives at least two rows. The
-    duplicates should then be handled appropriately. See example
-    below.
-
-    Args:
-        gdf: GeoDataFrame of polygons.
-
-    Returns:
-        A GeoDataFrame of the overlapping polygons.
-
-    Examples
-    --------
-    Create two fully overlapping polygons.
-
-    >>> import sgis as sg
-    >>> circles = sg.to_gdf([(0, 0), (0, 0)])
-    >>> circles["geometry"] = circles["geometry"].buffer([1, 2])
-    >>> circles["idx"] = [1, 3]
-    >>> circles.area
-    0     3.141076
-    1    12.564304
-    dtype: float64
-
-    Get the duplicates.
-
-    >>> duplicates = sg.get_intersections(circles)
-    >>> duplicates
-       idx                                           geometry
-    0    1  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
-    1    3  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
-    >>> duplicates.area
-    0    3.141076
-    1    3.141076
-    dtype: float64
-
-    We get two rows for each intersection pair.
-
-    The function sgis.update_geometries can be used to put geometries
-    on top of the other rowwise.
-
-    >>> updated = sg.update_geometries(duplicates)
-    >>> updated
-        idx                                           geometry
-    0    1  POLYGON ((0.99518 -0.09802, 0.98079 -0.19509, ...
-
-    Reversing the rows means the bottom polygon is put on top.
-
-    >>> updated = sg.update_geometries(duplicates.iloc[::-1]))
-    >>> updated
-        idx                                           geometry
-    1    3  POLYGON ((0.99518 -0.09802, 0.98079 -0.19509, ...
-
-    It might be appropriate to sort the dataframe by columns.
-    Or put large polygons first and NaN values last.
-
-    >>> updated = (
-    ...     sg.sort_large_first(duplicates)
-    ...     .pipe(sg.sort_nans_last)
-    ...     .pipe(sg.update_geometries)
-    ... )
-    >>> updated
-       idx                                           geometry
-    0    1  POLYGON ((0.99518 -0.09802, 0.98079 -0.19509, ...
-    """
-
-    idx_name = gdf.index.name
-    duplicated_geoms = _get_intersecting_geometries(gdf).pipe(clean_geoms)
-
-    duplicated_geoms.index = duplicated_geoms["orig_idx"].values
-    duplicated_geoms.index.name = idx_name
-    return duplicated_geoms.drop(columns="orig_idx")
-
-
-def _get_intersecting_geometries(gdf: GeoDataFrame) -> GeoDataFrame:
-    gdf = gdf.assign(orig_idx=gdf.index).reset_index(drop=True)
-
-    right = gdf[[gdf._geometry_column_name]]
-    right["idx_right"] = right.index
-    left = gdf
-    left["idx_left"] = left.index
-
-    intersected = clean_overlay(left, right, how="intersection")
-
-    # these are identical as the input geometries
-    not_from_same_poly = intersected.loc[lambda x: x["idx_left"] != x["idx_right"]]
-
-    points_joined = (
-        not_from_same_poly.representative_point().to_frame().sjoin(not_from_same_poly)
-    )
-
-    duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
-
-    return intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
-        columns=["idx_left", "idx_right"]
-    )

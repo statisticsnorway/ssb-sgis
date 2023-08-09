@@ -18,6 +18,18 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+def test_get_common_crs():
+    gdf = sg.to_gdf([0, 0], crs=25833)
+    gdf2 = sg.to_gdf([0, 0], crs=None)
+
+    with pytest.raises(ValueError):
+        sg.get_common_crs([gdf, gdf2], strict=True)
+
+    assert sg.get_common_crs([gdf, gdf2]) == 25833
+    assert sg.get_common_crs([gdf, gdf]) == 25833
+    assert sg.get_common_crs([gdf, gdf], strict=True) == 25833
+
+
 def test_drop_inactive():
     gdf = sg.to_gdf([0, 0])
     gdf["geom2"] = sg.to_gdf([0, 0]).geometry
@@ -98,14 +110,14 @@ def test_clean():
     )
 
     assert len(problematic_geometries) == 3
-    gdf = sg.clean_geoms(problematic_geometries)
+    gdf = sg.clean_geoms(problematic_geometries.copy())
     print(gdf)
     assert list(gdf.index) == [0], list(gdf.index)
     gdf = sg.to_single_geom_type(gdf, "polygon")
     assert list(gdf.index) == [0], list(gdf.index)
     assert len(gdf) == 1
     assert sg.get_geom_type(gdf) == "polygon"
-    ser = sg.clean_geoms(problematic_geometries.geometry)
+    ser = sg.clean_geoms(problematic_geometries.geometry.copy())
     ser = sg.to_single_geom_type(ser, "polygon")
     assert len(ser) == 1
     assert list(gdf.index) == [0], list(gdf.index)
@@ -115,15 +127,70 @@ def test_clean():
     problematic_geometries = pd.concat(
         [problematic_geometries, valid_geometry], ignore_index=True
     )
-    gdf = sg.clean_geoms(problematic_geometries)
+    gdf = sg.clean_geoms(problematic_geometries.copy())
     assert list(gdf.index) == [0, 3], list(gdf.index)
-    gdf = sg.clean_geoms(problematic_geometries, ignore_index=True)
+    gdf = sg.clean_geoms(problematic_geometries.copy(), ignore_index=True)
     assert list(gdf.index) == [0, 1], list(gdf.index)
     assert len(gdf) == 2
     gdf = sg.to_single_geom_type(gdf, "polygon")
     assert sg.get_geom_type(gdf) == "polygon"
     assert len(gdf) == 1
     assert list(gdf.index) == [0], list(gdf.index)
+
+    print(problematic_geometries)
+    from shapely import is_valid, make_valid
+
+    print(make_valid(problematic_geometries.geometry))
+    problematic_geometries["geometry"] = make_valid(problematic_geometries.geometry)
+    print(problematic_geometries.loc[lambda x: x["geometry"].map(bool)])
+    print(problematic_geometries.loc[lambda x: x["geometry"].map(is_valid)])
+    print(problematic_geometries.loc[lambda x: is_valid(x["geometry"])])
+
+
+def test_sort():
+    points = sg.random_points(5)
+    points["idx"] = np.arange(1, 6)
+    buffered = sg.buff(points, [1, 2, 3, 4, 5])
+    sorted_ = sg.sort_large_first(buffered).iloc[::-1]["idx"]
+    assert list(sorted_.index) == [0, 1, 2, 3, 4]
+    assert list(sorted_) == [1, 2, 3, 4, 5]
+    sorted_ = sg.sort_long_first(buffered).iloc[::-1]["idx"]
+    assert list(sorted_.index) == [0, 1, 2, 3, 4]
+    assert list(sorted_) == [1, 2, 3, 4, 5]
+
+    sorted_ = sg.sort_large_first(buffered)["idx"]
+    assert list(sorted_.index) == [4, 3, 2, 1, 0]
+    assert list(sorted_) == [5, 4, 3, 2, 1]
+    sorted_ = sg.sort_long_first(buffered)["idx"]
+    assert list(sorted_.index) == [4, 3, 2, 1, 0]
+    assert list(sorted_) == [5, 4, 3, 2, 1]
+
+    df = sg.random_points(5)
+    df.index = [0, 0, 1, 2, 3]
+    df.geometry = df.buffer([1, 2, 3, 4, 5])
+    df["col"] = [None, 1, 2, None, 1]
+    df["col2"] = [None, 1, 2, 3, None]
+    df["area"] = df.area
+
+    df.index = [0, 0, 1, 2, 3]
+    sorted1 = sg.sort_nans_last(sg.sort_large_first(df))
+    df.index = [0, 1, 2, 3, 4]
+    sorted2 = sg.sort_nans_last(sg.sort_large_first(df))
+    assert sorted1.reset_index(drop=True).equals(sorted2.reset_index(drop=True))
+
+    s = df.sort_values("col2")
+    assert s["col2"].dropna().is_monotonic_increasing, s["col2"]
+
+    s = sg.sort_large_first(df)
+    area_is_decreasing = s["area"].is_monotonic_decreasing
+    assert area_is_decreasing, s["area"]
+
+    s = sg.sort_nans_last(sg.sort_large_first(df))
+    s["n_nan"] = s.isna().sum(axis=1).sort_values()
+    grouped_area_is_decreasing = s.groupby("n_nan")[
+        "area"
+    ].is_monotonic_decreasing.all()
+    assert grouped_area_is_decreasing
 
 
 def main():
@@ -146,3 +213,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    test_sort()
+    test_clean()
+    test_get_common_crs()

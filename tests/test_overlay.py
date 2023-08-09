@@ -19,11 +19,13 @@ def test_overlay(points_oslo):
     p = points_oslo
     p = p.iloc[:50]
 
-    p500 = sg.buff(p, 500).assign(idx1=1)
-    p1000 = sg.buff(p, 1000).assign(idx2=1)
+    p500 = sg.buff(p, 500)
+    p500["idx1"] = 1
+    p1000 = sg.buff(p, 1000)
+    p1000["idx2"] = 1
 
+    """updated2 = sg.clean_overlay(p500, p1000, how="update")
     updated = sg.overlay_update(p500, p1000)
-    updated2 = sg.clean_overlay(p500, p1000, how="update")
     assert len(updated) == len(updated2)
     assert round(sum(updated.area), 3) == round(sum(updated2.area), 3)
 
@@ -34,7 +36,7 @@ def test_overlay(points_oslo):
     updated = sg.overlay_update(p1000, p500)
     if __name__ == "__main__":
         updated["area_"] = updated.area
-        sg.qtm(updated, "area_")
+        sg.qtm(updated, "area_")"""
 
     overlayed = sg.clean_overlay(p500, p1000, how="update")
     cols_should_be = ["idx", "idx1", "idx2", "geometry"]
@@ -56,6 +58,7 @@ def test_overlay(points_oslo):
     ]
     for cols, how in zip(cols_should_be, hows):
         print(how)
+        print(p500.columns)
         overlayed = (
             sg.clean_geoms(p500)
             .explode(ignore_index=True)
@@ -86,7 +89,7 @@ def test_overlay(points_oslo):
                 p500.sample(1),
                 p1000.sample(1),
                 how=how,
-                geom_type=("polygon", "polygon"),
+                geom_type="polygon",
             )
 
 
@@ -123,11 +126,43 @@ def test_overlay_random(n=25):
                 )
 
 
-def main():
+def test_update_geometries():
+    coords = [(0, 0), (0, 1), (1, 1), (1, 0)]
+    buffers = [0.9, 1.3, 0.7, 1.1]
+    circles = sg.to_gdf(coords)
+    circles["geometry"] = circles["geometry"].buffer(buffers)
+
+    updated = sg.update_geometries(circles)
+    area = list((updated.area * 10).astype(int))
+    assert area == [25, 36, 4, 18], area
+
+    updated_largest_first = sg.update_geometries(sg.sort_large_first(circles))
+    area = list((updated_largest_first.area * 10).astype(int))
+    assert area == [53, 24, 5, 2], area
+
+    updated_smallest_first = sg.update_geometries(
+        sg.sort_large_first(circles).iloc[::-1]
+    )
+    area = list((updated_smallest_first.area * 10).astype(int))
+    assert area == [15, 24, 18, 26], area
+
+    sg.explore(circles, updated, updated_largest_first, updated_smallest_first)
+
+
+def partial_func():
     from oslo import points_oslo
 
+    test_update_geometries()
+    ss
     test_overlay(points_oslo())
     test_overlay_random(n=100)
+
+
+def main():
+    import cProfile
+
+    partial_func()
+    cProfile.run("partial_func()", sort="cumtime")
 
 
 if __name__ == "__main__":

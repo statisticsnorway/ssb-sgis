@@ -276,6 +276,25 @@ def clean_geoms(
     return gdf
 
 
+def get_grouped_centroids(
+    gdf: GeoDataFrame, groupby: str, as_string: bool = True
+) -> pd.Series:
+    centerpoints = gdf.assign(geometry=lambda x: x.centroid)
+
+    grouped_centerpoints = centerpoints.dissolve(by=groupby).assign(
+        geometry=lambda x: x.centroid
+    )
+    xs = grouped_centerpoints.geometry.x
+    ys = grouped_centerpoints.geometry.y
+
+    if as_string:
+        grouped_centerpoints["wkt"] = [f"{int(x)}_{int(y)}" for x, y in zip(xs, ys)]
+    else:
+        grouped_centerpoints["wkt"] = [Point(x, y) for x, y in zip(xs, ys)]
+
+    return gdf[groupby].map(grouped_centerpoints["wkt"])
+
+
 def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
     """Sort GeoDataFrame by area in decending order.
 

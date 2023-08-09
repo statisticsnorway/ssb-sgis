@@ -14,8 +14,8 @@ from .dapla import read_geopandas, write_geopandas
 def write_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
+    municipalities: GeoDataFrame,
     with_neighbors: bool = False,
-    municipalities: GeoDataFrame | None = None,
     muni_number_col: str = "KOMMUNENR",
     file_type: str = "parquet",
     func: Callable | None = None,
@@ -54,7 +54,7 @@ def _get_out_path(out_folder, muni, file_type):
 def _write_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
-    municipalities: GeoDataFrame | None = None,
+    municipalities: GeoDataFrame,
     muni_number_col: str = "KOMMUNENR",
     file_type: str = "parquet",
     func: Callable | None = None,
@@ -95,7 +95,7 @@ def _write_municipality_data(
 def _write_neighbor_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
-    municipalities: GeoDataFrame | None = None,
+    municipalities: GeoDataFrame,
     muni_number_col: str = "KOMMUNENR",
     file_type: str = "parquet",
     func: Callable | None = None,
