@@ -198,3 +198,16 @@ def sort_nans_last(df, ignore_index: bool = False):
     df = df.sort_values("n_nan").drop(columns="n_nan")
 
     return df.reset_index(drop=True) if ignore_index else df
+
+
+class LocalFunctionError(ValueError):
+    def __init__(self, func: str):
+        self.func = func.__name__
+
+    def __str__(self):
+        return (
+            f"{self.func}. "
+            "In Jupyter, functions to be parallelized must \n"
+            "be defined in and imported from another file when context='spawn'. \n"
+            "Note that setting context='fork' might cause freezing processes.\n"
+        )

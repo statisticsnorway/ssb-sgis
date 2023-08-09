@@ -17,6 +17,11 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp,
     dissexp_by_cluster,
 )
+from .geopandas_tools.duplicates import (
+    drop_duplicate_geometries,
+    get_intersections,
+    update_geometries,
+)
 from .geopandas_tools.general import (
     address_to_coords,
     address_to_gdf,
@@ -44,7 +49,7 @@ from .geopandas_tools.neighbors import (
     get_neighbor_indices,
     k_nearest_neighbors,
 )
-from .geopandas_tools.overlay import clean_overlay, get_intersections, update_geometries
+from .geopandas_tools.overlay import clean_overlay
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import (
     close_all_holes,
@@ -89,6 +94,7 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
+from .parallel.parallel import Parallel
 from .raster.elevationraster import ElevationRaster
 from .raster.raster import Raster
 from .raster.sentinel import Sentinel2
@@ -97,8 +103,5 @@ from .raster.sentinel import Sentinel2
 try:
     from .io.dapla import check_files, exists, read_geopandas, write_geopandas
     from .io.write_municipality_data import write_municipality_data
-    from .parallel.parallel import Parallel
-    from .parallel.parallelmapper import ParallelMapper
-    from .parallel.parallelpool import ParallelPool
 except ImportError:
     pass

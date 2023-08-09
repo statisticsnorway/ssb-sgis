@@ -14,6 +14,7 @@ the same type as the input.
    polygon_operations
    point_operations
    neighbors
+   duplicates
    bounds
    buffer_dissolve_explode
    geometry_types

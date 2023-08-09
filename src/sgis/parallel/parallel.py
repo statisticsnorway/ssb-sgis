@@ -1,23 +1,31 @@
 import functools
 import multiprocessing
-import warnings
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sized
 
-import dapla as dp
+
+try:
+    import dapla as dp
+except ImportError:
+    pass
+
 import joblib
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 
-from ..helpers import dict_zip, dict_zip_union
-from ..io.dapla import exists, read_geopandas
-from ..io.write_municipality_data import write_municipality_data
-from .base import ParallelBase
+from ..helpers import LocalFunctionError, dict_zip, dict_zip_union, in_jupyter
 
 
-class Parallel(ParallelBase):
+try:
+    from ..io.dapla import exists, read_geopandas
+    from ..io.write_municipality_data import write_municipality_data
+except ImportError:
+    pass
+
+
+class Parallel:
     """Run functions in parallell.
 
     The main methods are 'map' and 'chunkwise'. map runs a single function for
@@ -78,8 +86,26 @@ class Parallel(ParallelBase):
 
         Examples
         --------
+        Multiply each list element by 2.
 
-        iterable = [1, 2, 3, 4]
+        >>> iterable = [1, 2, 3]
+        >>> def x2(x):
+        ...     return x * 2
+        >>> p = sg.Parallel(4, backend="loky")
+        >>> results = p.map(x2, iterable)
+        >>> results
+        [2, 4, 6]
+
+        If in Jupyter and using the multiprocessing backend,
+        the function should be defined in another function
+        and the code guarded by if __name__ == "__main__".
+
+        >>> from .file import x2
+        >>> if __name__ == "__main__":
+        ...     p = sg.Parallel(4, backend="loky")
+        ...     results = p.map(x2, iterable)
+        ...     print(results)
+        [2, 4, 6]
 
         """
         self.validate_execution(func)
@@ -180,7 +206,7 @@ class Parallel(ParallelBase):
         chunk_kwarg_name: str | None = None,
         **kwargs,
     ):
-        """Splits an interable in n chunks and appends n processes to the pool.
+        """Splits an interable in n chunks and runs the function on each chunk.
 
         Args:
             func: Function to be run chunkwise.
@@ -199,7 +225,7 @@ class Parallel(ParallelBase):
         ...     return num * 2
         >>> l = [1, 2, 3]
         >>> if __name__ == "__main__":
-        ...     p = Parallel()
+        ...     p = Parallel(2)
         ...     p.chunkwise(x2, l, n=3)
         ...     print(p.execute())
         [2, 4, 6]
@@ -307,3 +333,12 @@ class Parallel(ParallelBase):
             self._source.append("write_municipality_data")
 
         return self._execute()
+
+    def validate_execution(self, func):
+        if (
+            func.__module__ == "__main__"
+            and self.context == "spawn"
+            and self.backend == "multiprocessing"
+            and in_jupyter()
+        ):
+            raise LocalFunctionError(func)

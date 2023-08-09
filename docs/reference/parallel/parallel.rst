@@ -1,7 +1,7 @@
-MultiProcessingPool
+Parallel
 ===================
 
-.. automodule:: sgis.multiprocessing.multiprocessingpool
+.. automodule:: sgis.parallel.parallel
     :members:
     :exclude-members:
     :show-inheritance:

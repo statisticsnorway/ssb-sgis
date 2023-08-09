@@ -126,34 +126,9 @@ def test_overlay_random(n=25):
                 )
 
 
-def test_update_geometries():
-    coords = [(0, 0), (0, 1), (1, 1), (1, 0)]
-    buffers = [0.9, 1.3, 0.7, 1.1]
-    circles = sg.to_gdf(coords)
-    circles["geometry"] = circles["geometry"].buffer(buffers)
-
-    updated = sg.update_geometries(circles)
-    area = list((updated.area * 10).astype(int))
-    assert area == [25, 36, 4, 18], area
-
-    updated_largest_first = sg.update_geometries(sg.sort_large_first(circles))
-    area = list((updated_largest_first.area * 10).astype(int))
-    assert area == [53, 24, 5, 2], area
-
-    updated_smallest_first = sg.update_geometries(
-        sg.sort_large_first(circles).iloc[::-1]
-    )
-    area = list((updated_smallest_first.area * 10).astype(int))
-    assert area == [15, 24, 18, 26], area
-
-    sg.explore(circles, updated, updated_largest_first, updated_smallest_first)
-
-
 def partial_func():
     from oslo import points_oslo
 
-    test_update_geometries()
-    ss
     test_overlay(points_oslo())
     test_overlay_random(n=100)
 

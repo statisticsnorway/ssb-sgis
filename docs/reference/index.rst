@@ -12,4 +12,4 @@ The bullet list below contains all public functions and classes in sgis.
    raster/index
    maps/index
    io/index
-   multiprocessing/index
+   parallel/index
