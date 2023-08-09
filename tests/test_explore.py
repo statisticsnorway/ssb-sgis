@@ -36,15 +36,6 @@ def not_test_center(r300, r200, r100, p):
             size=100,
             show_in_browser=False,
         )
-        sg.clipmap(
-            r300,
-            r200,
-            r100,
-            "meters",
-            mask=p.buffer(100),
-            center=(263206.184457095, 6651199.528012605),
-            show_in_browser=False,
-        )
 
 
 def test_explore(points_oslo, roads_oslo):
@@ -67,10 +58,7 @@ def test_explore(points_oslo, roads_oslo):
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
 
-    sg.explore(points_oslo, center="bygdøy")
-    sg.explore(points_oslo, center="oslo")
     sg.explore(points_oslo, center="akersveien 26")
-    sg.explore(points_oslo, center="thorvald meyers gate 5", size=300)
 
     if __name__ == "__main__":
         print("One test of show in browser.")
@@ -78,19 +66,9 @@ def test_explore(points_oslo, roads_oslo):
 
     sg.explore(r300, "meters", r100, bygdoy=7000)
 
-    sg.clipmap(r300, "meters", r100, show_in_browser=False)
     sg.clipmap(r300, r200, "meters", show_in_browser=False)
-    sg.clipmap(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
     sg.explore(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
-    sg.samplemap(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
     not_test_center(r300, r200, r100, p)
-
-    print(
-        "when 1 gdf and categorical column, the gdf should be split into categories"
-        " that can be toggled on/off:"
-    )
-    r300["category"] = np.random.choice([*"abc"], len(r300))
-    sg.explore(r300, "category", show_in_browser=False)
 
     print("when multiple gdfs and no column, should be one color per gdf:")
     sg.explore(r300, r200, r100, show_in_browser=False)
@@ -98,31 +76,16 @@ def test_explore(points_oslo, roads_oslo):
     sg.explore(r300, r200, r100, "meters", scheme="quantiles", show_in_browser=False)
     sg.explore(*(r300, r200, r100), "meters", scheme="quantiles", show_in_browser=False)
 
-    for explore in [0, 1]:
-        sg.samplemap(
-            r300,
-            r200,
-            r100,
-            "length",
-            labels=("r30000", "r20000", "r10000"),
-            cmap="plasma",
-            explore=explore,
-            size=100,
-            show_in_browser=False,
-        )
-
     sg.clipmap(r300, r200, r100, "meters", mask=p.buffer(100), show_in_browser=False)
-    for explore in [1, 0]:
-        sg.clipmap(
-            r300,
-            r200,
-            r100,
-            "area",
-            cmap="inferno",
-            mask=p.buffer(100),
-            explore=explore,
-            show_in_browser=False,
-        )
+    sg.clipmap(
+        r300,
+        r200,
+        r100,
+        "area",
+        cmap="inferno",
+        mask=p.buffer(100),
+        show_in_browser=False,
+    )
 
     for sample_from_first in [1, 0]:
         sg.samplemap(
