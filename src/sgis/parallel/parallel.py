@@ -114,14 +114,20 @@ class Parallel:
         if self.processes == 1:
             return list(map(func_with_kwargs, iterable))
 
+        # don't use unnecessary processes
+        if self.processes > len(iterable):
+            processes = len(iterable)
+        else:
+            processes = self.processes
+
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
-                self.processes, **self.kwargs
+                processes, **self.kwargs
             ) as pool:
                 return pool.map(func_with_kwargs, iterable)
         else:
             with joblib.Parallel(
-                n_jobs=self.processes, backend=self.backend, **self.kwargs
+                n_jobs=processes, backend=self.backend, **self.kwargs
             ) as parallel:
                 return parallel(
                     joblib.delayed(func)(item, **kwargs) for item in iterable
@@ -186,14 +192,20 @@ class Parallel:
         if self.processes == 1:
             return [func() for func in self.funcs]
 
+        # don't use unnecessary processes
+        if self.processes > len(self.funcs):
+            processes = len(self.funcs)
+        else:
+            processes = self.processes
+
         if self.backend != "multiprocessing":
             with joblib.Parallel(
-                n_jobs=self.processes, backend=self.backend, **self.kwargs
+                n_jobs=processes, backend=self.backend, **self.kwargs
             ) as parallel:
                 return parallel(joblib.delayed(func)() for func in self.funcs)
 
         with multiprocessing.get_context(self.context).Pool(
-            self.processes, **self.kwargs
+            processes, **self.kwargs
         ) as pool:
             results = [pool.apply_async(func) for func in self.funcs]
             return [result.get() for result in results]
