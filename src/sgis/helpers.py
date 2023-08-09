@@ -129,6 +129,8 @@ def return_two_vals(
 
 def unit_is_meters(gdf: GeoDataFrame) -> bool:
     """Returns True if the crs unit is 'metre''."""
+    if not gdf.crs:
+        return False
     unit = gdf.crs.axis_info[0].unit_name
     if unit != "metre":
         return False
@@ -141,7 +143,10 @@ def unit_is_metres(gdf: GeoDataFrame) -> bool:
 
 
 def unit_is_degrees(gdf: GeoDataFrame) -> bool:
-    """Returns True if the crs unit is 'metre''."""
+    """Returns True if the crs unit is 'degree''."""
+    if not gdf.crs:
+        return False
+
     unit = gdf.crs.axis_info[0].unit_name
     if "degree" in unit:
         return True
@@ -182,8 +187,14 @@ def make_namedict(gdfs: tuple[GeoDataFrame]) -> dict[int, str]:
         if hasattr(gdf, "name"):
             namedict[i] = gdf.name
         else:
-            name = get_object_name(gdf)
-            if not name:
-                name = str(i)
+            name = get_object_name(gdf) or str(i)
             namedict[i] = name
     return namedict
+
+
+def sort_nans_last(df, ignore_index: bool = False):
+    df["n_nan"] = df.isna().sum(axis=1).sort_values().values
+
+    df = df.sort_values("n_nan").drop(columns="n_nan")
+
+    return df.reset_index(drop=True) if ignore_index else df
