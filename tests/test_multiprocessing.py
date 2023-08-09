@@ -18,15 +18,12 @@ def not_test_pool():
     def func(x, **kwargs):
         return x * 2
 
-    p = sg.MultiProcessingPool()
-    p.append_func(func, x=1, y=2)
-    assert len(p) == 1
+    p = sg.Parallel(3, backend="loky")
 
     iterable = [1, 2, 3, 4, 5, 6]
 
-    p.chunkwise(func, iterable, n=3)
+    res = p.chunkwise(func, iterable, n=3)
 
-    res = p.execute_singleprocess()
     print(res)
     assert len(res) == len(p)
 
@@ -43,7 +40,7 @@ def func(x, **kwargs):
 def not_test_map():
     iterable = [1, 2, 3, 4, 5, 6]
 
-    res = sg.MultiProcessingMapper().map(func, iterable)
+    res = sg.Parallel(3, backend="loky").map(func, iterable)
     print(res)
 
 

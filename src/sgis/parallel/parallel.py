@@ -133,6 +133,30 @@ class Parallel:
                     joblib.delayed(func)(item, **kwargs) for item in iterable
                 )
 
+    def _execute(self) -> list[Any]:
+        [self.validate_execution(func) for func in self.funcs]
+
+        if self.processes == 1:
+            return [func() for func in self.funcs]
+
+        # don't use unnecessary processes
+        if self.processes > len(self.funcs):
+            processes = len(self.funcs)
+        else:
+            processes = self.processes
+
+        if self.backend != "multiprocessing":
+            with joblib.Parallel(
+                n_jobs=processes, backend=self.backend, **self.kwargs
+            ) as parallel:
+                return parallel(joblib.delayed(func)() for func in self.funcs)
+
+        with multiprocessing.get_context(self.context).Pool(
+            processes, **self.kwargs
+        ) as pool:
+            results = [pool.apply_async(func) for func in self.funcs]
+            return [result.get() for result in results]
+
     def read_pandas(
         self,
         files: list[str],
@@ -185,30 +209,6 @@ class Parallel:
         res = self.map(func=read_geopandas, iterable=files, **kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
-
-    def _execute(self) -> list[Any]:
-        [self.validate_execution(func) for func in self.funcs]
-
-        if self.processes == 1:
-            return [func() for func in self.funcs]
-
-        # don't use unnecessary processes
-        if self.processes > len(self.funcs):
-            processes = len(self.funcs)
-        else:
-            processes = self.processes
-
-        if self.backend != "multiprocessing":
-            with joblib.Parallel(
-                n_jobs=processes, backend=self.backend, **self.kwargs
-            ) as parallel:
-                return parallel(joblib.delayed(func)() for func in self.funcs)
-
-        with multiprocessing.get_context(self.context).Pool(
-            processes, **self.kwargs
-        ) as pool:
-            results = [pool.apply_async(func) for func in self.funcs]
-            return [result.get() for result in results]
 
     def chunkwise(
         self,
