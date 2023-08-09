@@ -58,14 +58,7 @@ def test_explore(points_oslo, roads_oslo):
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
 
-    sg.explore(points_oslo, center="akersveien 26")
-
-    if __name__ == "__main__":
-        print("One test of show in browser.")
-        sg.clipmap(r300, "meters", r100, show_in_browser=True)
-
     sg.explore(r300, "meters", r100, bygdoy=7000)
-
     sg.clipmap(r300, r200, "meters", show_in_browser=False)
     sg.explore(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
     not_test_center(r300, r200, r100, p)
@@ -141,10 +134,34 @@ def test_explore(points_oslo, roads_oslo):
     sg.explore(r300, r200, r100, "col", show_in_browser=False)
 
 
+def not_test_explore(points_oslo, roads_oslo):
+    roads = roads_oslo.copy()
+    points = points_oslo.copy()
+
+    p = points.iloc[[0]]
+    roads = roads[["geometry"]]
+    roads["km"] = roads.length / 1000
+    roads["cat"] = np.random.choice([*"abc"], len(roads))
+    points["km"] = points.length / 1000
+    roads = roads.sjoin(p.buffer(500).to_frame()).drop("index_right", axis=1)
+    points = points.sjoin(p.buffer(500).to_frame())
+    points["geometry"] = points.buffer(8)
+    donut = p.assign(geometry=lambda x: x.buffer(150).difference(x.buffer(50)))
+    lines = roads.clip(donut)
+    roads["geometry"] = roads.buffer(3)
+
+    r300 = roads.clip(p.buffer(300))
+    r200 = roads.clip(p.buffer(200))
+    r100 = roads.clip(p.buffer(100))
+
+    sg.explore(points_oslo, center="akersveien 26")
+
+
 def main():
     from oslo import points_oslo, roads_oslo
 
     test_explore(points_oslo(), roads_oslo())
+    not_test_explore(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":
