@@ -1,10 +1,5 @@
 """Functions for polygon geometries."""
-import functools
-import warnings
-from typing import Callable
-
 import networkx as nx
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
@@ -15,14 +10,11 @@ from shapely import (
     get_parts,
     polygons,
 )
-from shapely.errors import GEOSException
-from shapely.geometry import MultiPolygon, Polygon
 from shapely.ops import unary_union
 
 from .general import _push_geom_col, clean_geoms, to_lines
-from .geometry_types import get_geom_type, to_single_geom_type
 from .neighbors import get_neighbor_indices
-from .overlay import clean_overlay, update_geometries
+from .overlay import clean_overlay
 
 
 def get_centroid_ids(gdf: GeoDataFrame, groupby: str) -> pd.Series:
@@ -690,85 +682,84 @@ def _close_all_holes_no_islands(poly, all_geoms):
     return unary_union(holes_closed)
 
 
-def sliver_filter(geom, tolerance: float = 1e-12):
-    return geom.area / geom.length > tolerance
+def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
+    """Find geometries that intersect in a GeoDataFrame.
 
-
-def get_duplicate_areas(
-    gdf: GeoDataFrame | GeoSeries,
-    keep: str | bool,
-) -> GeoDataFrame:
-    """Find the areas that overlap.
-
-    Does an intersection with itself and keeps only the duplicated geometries,
-    and, unless keep is False,
+    Does an intersection with itself and keeps only the geometries that appear
+    more than once. This means each intersection gives at least two rows. The
+    duplicates should then be handled appropriately. See example
+    below.
 
     Args:
         gdf: GeoDataFrame of polygons.
-        keep: Either "largest", "first", "last" or False. If False, all overlapping
-            surfaces will be kept. If "largest", the geometries are updated with the
-            largest on top. If "first" or "last", the top or bottom rows are put on
-            top.
 
     Returns:
         A GeoDataFrame of the overlapping polygons.
 
     Examples
     --------
+    Create two fully overlapping polygons.
+
     >>> import sgis as sg
-    >>> circles = sg.to_gdf([(0, 0), (1, 1)]).pipe(sg.buff, 1)
-    >>> dissolved = sg.get_duplicate_areas(circles)
-    >>> dissolved
-                                                geometry
-    0  POLYGON ((0.06279 0.99803, 0.09411 0.99556, 0....
+    >>> circles = sg.to_gdf([(0, 0), (0, 0)])
+    >>> circles["geometry"] = circles["geometry"].buffer([1, 2])
+    >>> circles["idx"] = [1, 3]
+    >>> circles.area
+    0     3.141076
+    1    12.564304
+    dtype: float64
 
-    Without dissolving.
+    Get the duplicates.
 
-    >>> not_dissolved = sg.get_duplicate_areas(circles, dissolve=False)
-                                                geometry
-    0  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
-    2  POLYGON ((1.00000 0.00000, 0.96859 0.00049, 0....
+    >>> duplicates = sg.get_intersections(circles)
+    >>> duplicates
+       idx                                           geometry
+    0    1  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
+    1    3  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
+    >>> duplicates.area
+    0    3.141076
+    1    3.141076
+    dtype: float64
+
+    We get two rows for each intersection pair.
+
+    The function sgis.update_geometries can be used to put geometries
+    on top of the other rowwise.
+
+    >>> updated = sg.update_geometries(duplicates)
+    >>> updated
+        idx                                           geometry
+    0    1  POLYGON ((0.99518 -0.09802, 0.98079 -0.19509, ...
+
+    Reversing the rows means the bottom polygon is put on top.
+
+    >>> updated = sg.update_geometries(duplicates.iloc[::-1]))
+    >>> updated
+        idx                                           geometry
+    1    3  POLYGON ((0.99518 -0.09802, 0.98079 -0.19509, ...
+
+    It might be appropriate to sort the dataframe by columns.
+    Or put large polygons first and NaN values last.
+
+    >>> updated = (
+    ...     sg.sort_large_first(duplicates)
+    ...     .pipe(sg.sort_nans_last)
+    ...     .pipe(sg.update_geometries)
+    ... )
+    >>> updated
+       idx                                           geometry
+    0    1  POLYGON ((0.99518 -0.09802, 0.98079 -0.19509, ...
     """
-    if keep not in ["first", "last", "largest", False]:
-        raise ValueError("keep must be either 'first', 'last' 'largest', or False")
-
-    if get_geom_type(gdf) != "polygon":
-        raise ValueError("gdf should have all polygons.")
 
     idx_name = gdf.index.name
-    duplicated_geoms = _get_all_overlapping_areas(gdf)
+    duplicated_geoms = _get_intersecting_geometries(gdf).pipe(clean_geoms)
 
-    if keep is False:
-        duplicated_geoms.index = duplicated_geoms["orig_idx"].values
-        duplicated_geoms.index.name = idx_name
-        return duplicated_geoms.drop(columns="orig_idx")
-
-    if keep == "last":
-        duplicated_geoms = duplicated_geoms.iloc[::-1]
-        sort_by = None
-    elif keep == "first":
-        sort_by = None
-    else:
-        sort_by = "area"
-
-    return update_geometries(duplicated_geoms, sort_by=sort_by)
+    duplicated_geoms.index = duplicated_geoms["orig_idx"].values
+    duplicated_geoms.index.name = idx_name
+    return duplicated_geoms.drop(columns="orig_idx")
 
 
-def _get_all_overlapping_areas(
-    gdf: GeoDataFrame | GeoSeries,
-) -> GeoDataFrame | GeoSeries:
-    any_polys = gdf.geom_type.isin(["Polygon", "MultiPolygon"]).any()
-    if not any_polys:
-        raise ValueError("'gdf' has no polygons.")
-
-    all_polys = gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all()
-    if not all_polys:
-        warnings.warn("'gdf' has mixed geometries. Non-polygons will be removed.")
-        gdf = to_single_geom_type(gdf, geom_type="polygon")
-
-    if isinstance(gdf, GeoSeries):
-        gdf = gdf.to_frame(name="geometry")
-
+def _get_intersecting_geometries(gdf: GeoDataFrame) -> GeoDataFrame:
     gdf = gdf.assign(orig_idx=gdf.index).reset_index(drop=True)
 
     right = gdf[[gdf._geometry_column_name]]

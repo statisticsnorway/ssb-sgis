@@ -7,6 +7,7 @@ version of the solution from GH 2792.
 'clean_overlay' also includes the overlay type "update", which can be specified in the
 "how" parameter, in addition to the five native geopandas how-s.
 """
+from typing import Callable
 
 import geopandas as gpd
 import numpy as np
@@ -14,43 +15,97 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 from pyproj import CRS
-from shapely import STRtree, difference, intersection, make_valid, unary_union
+from shapely import STRtree, difference, intersection, make_valid, unary_union, union
 from shapely.errors import GEOSException
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import Polygon
 
-from .general import clean_geoms, sort_large_to_small, sort_long_to_short
+from .general import clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
-def update_geometries(gdf: GeoDataFrame, sort_by: str | None = None) -> GeoDataFrame:
+def update_geometries(gdf: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
+    """Puts geometries on top of each other rowwise.
+
+    Since this operation is done rowwise, it's important to
+    first sort the GeoDataFrame approriately. See example below.
+
+    Example
+    ------
+    Create two circles and get the overlap.
+
+    >>> import sgis as sg
+    >>> circles = sg.to_gdf([(0, 0), (1, 1)]).pipe(sg.buff, 1)
+    >>> duplicates = sg.get_intersections(circles)
+    >>> duplicates
+       idx                                           geometry
+    0    1  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
+    1    2  POLYGON ((1.00000 0.00000, 0.96859 0.00049, 0....
+
+    The polygons are identical except for the order of the coordinates.
+
+    >>> poly1, poly2 = duplicates.geometry
+    >>> poly1.equals(poly2)
+    True
+
+    'update_geometries' gives different results based on the order
+    of the GeoDataFrame.
+
+    >>> sg.update_geometries(duplicates)
+        idx                                           geometry
+    0    1  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
+
+    >>> dups_rev = duplicates.iloc[::-1]
+    >>> sg.update_geometries(dups_rev)
+        idx                                           geometry
+    1    2  POLYGON ((1.00000 0.00000, 0.96859 0.00049, 0....
+
+    It might be appropriate to put the largest polygons on top
+    and sort all NaNs to the bottom.
+
+    >>> updated = (
+    ...     sg.sort_large_first(duplicates)
+    ...     .pipe(sg.sort_nans_last)
+    ...     .pipe(sg.update_geometries)
+    >>> updated
+        idx                                           geometry
+    0    1  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
+
+    """
     if len(gdf) <= 1:
         return gdf
 
-    if sort_by and sort_by not in ["area", "length"]:
-        raise ValueError("sort_by must be None, 'area' or 'length'.")
-    elif sort_by:
-        gdf = sort_large_to_small(gdf) if sort_by == "area" else sort_long_to_short(gdf)
+    df = pd.DataFrame(gdf, copy=copy)
 
-    union = Polygon()
-    out_rows = []
-    indices = []
+    unioned = Polygon()
+    out_rows, indices, geometries = [], [], []
 
-    for i, row in gdf.iterrows():
+    for i, row in df.iterrows():
+        geom = row.pop("geometry")
+        new = try_shapely_func_pair(geom, unioned, func=difference)
+
+        if not new:
+            continue
+
+        unioned = try_shapely_func_pair(new, unioned, func=union)
+
+        out_rows.append(row)
+        geometries.append(new)
+        indices.append(i)
+    return GeoDataFrame(out_rows, geometry=geometries, index=indices, crs=gdf.crs)
+
+
+def try_shapely_func_pair(geom1, geom2, func: Callable):
+    try:
+        return func(geom1, geom2)
+    except GEOSException:
         try:
-            new = row.geometry.difference(union)
+            geom1 = make_valid(geom1)
+            return func(geom1, geom2)
         except GEOSException:
             try:
-                new = row.geometry.difference(union, grid_size=0.01)
-            except GEOSException:
-                new = row.geometry.difference(union, grid_size=0.1)
-
-        if not new or not isinstance(new, (Polygon, MultiPolygon)):
-            continue
-        union = unary_union([new, union])
-        row.geometry = new
-        out_rows.append(row)
-        indices.append(i)
-    return GeoDataFrame(out_rows, geometry="geometry", index=indices, crs=gdf.crs)
+                return func(geom1, geom2, grid_size=0.01)
+            except GEOSException as e:
+                raise ValueError(geom1, geom2) from e
 
 
 def clean_overlay(
@@ -147,6 +202,12 @@ def _shapely_overlay(
     crs: int | str | None | CRS,
     grid_size: float,
 ) -> GeoDataFrame:
+    if df1._geometry_column_name != "geometry":
+        df1 = df1.rename_geometry("geometry")
+
+    if df2._geometry_column_name != "geometry":
+        df2 = df2.rename_geometry("geometry")
+
     tree = STRtree(df2.geometry.values)
     left, right = tree.query(df1.geometry.values, predicate="intersects")
     # GeoDataFrame constructor is expensive, so doing it only once in the end
@@ -189,14 +250,11 @@ def _shapely_overlay(
     if how not in ["difference", "update"]:
         overlayed = _add_suffix_left(overlayed, df1, df2)
 
-    # make valid and keep only valid without constructing GeoDataFrame
     overlayed["geometry"] = make_valid(overlayed["geometry"])
     # None and empty are falsy
     overlayed = overlayed.loc[lambda x: x["geometry"].map(bool)]
 
-    return gpd.GeoDataFrame(
-        overlayed, geometry="geometry", crs=crs
-    )  # .pipe(clean_geoms)
+    return gpd.GeoDataFrame(overlayed, geometry="geometry", crs=crs)
 
 
 def _update(pairs, df1, df2, left, grid_size) -> GeoDataFrame:
@@ -275,7 +333,7 @@ def _get_intersects_pairs(
         ],
         axis=1,
     ).join(
-        df2.rename(columns={"geometry": "geom_right"}),
+        df2.rename(columns={"geometry": "geom_right"}, errors="raise"),
         on="index_right",
         rsuffix="_2",
     )
