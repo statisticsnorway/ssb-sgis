@@ -258,14 +258,14 @@ def clean_geoms(
         if not gdf[geom_col].is_valid.all():
             gdf[geom_col] = gdf.make_valid()
 
-        gdf = gdf.loc[(~gdf[geom_col].is_empty) & (gdf[geom_col].notna())]
+        gdf = gdf.loc[gdf.geometry.map(bool)]
 
     elif isinstance(gdf, GeoSeries):
         # only repair if necessary
         if not gdf.is_valid.all():
             gdf = gdf.make_valid()
 
-        gdf = gdf.loc[(~gdf.is_empty) & (gdf.notna())]
+        gdf = gdf.loc[gdf.map(bool)]
 
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
@@ -276,7 +276,40 @@ def clean_geoms(
     return gdf
 
 
-def sort_large_to_small(gdf: GeoDataFrame) -> GeoDataFrame:
+def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
+    """Sort GeoDataFrame by area in decending order.
+
+    Examples
+    --------
+    >>> df = sg.random_points(5)
+    >>> df.geometry = df.buffer([1, 2, 3, 4, 5])
+    >>> df["col"] = [None, 1, 2, None, 1]
+    >>> df["col2"] = [None, 1, 2, 3, None]
+    >>> df
+                                                geometry  col  col2
+    4  POLYGON ((5.84943 0.07906, 5.82536 -0.41102, 5...  1.0   NaN
+    3  POLYGON ((4.85939 0.45451, 4.84013 0.06244, 4....  NaN   3.0
+    2  POLYGON ((3.72440 0.41879, 3.70995 0.12474, 3....  2.0   2.0
+    1  POLYGON ((2.17958 0.55742, 2.16995 0.36138, 2....  1.0   1.0
+    0  POLYGON ((1.13307 0.27890, 1.12826 0.18089, 1....  NaN   NaN
+
+    >>> sg.sort_large_first(df)
+                                                geometry  col  col2
+    4  POLYGON ((5.84943 0.07906, 5.82536 -0.41102, 5...  1.0   NaN
+    3  POLYGON ((4.85939 0.45451, 4.84013 0.06244, 4....  NaN   3.0
+    2  POLYGON ((3.72440 0.41879, 3.70995 0.12474, 3....  2.0   2.0
+    1  POLYGON ((2.17958 0.55742, 2.16995 0.36138, 2....  1.0   1.0
+    0  POLYGON ((1.13307 0.27890, 1.12826 0.18089, 1....  NaN   NaN
+
+    >>> df["area"] = df.area
+    >>> sg.sort_nans_last(sg.sort_large_first(df))
+                                                geometry  col  col2       area
+    2  POLYGON ((3.55915 0.36805, 3.54470 0.07400, 3....  2.0   2.0  28.228936
+    1  POLYGON ((2.57935 0.93984, 2.56972 0.74380, 2....  1.0   1.0  12.546194
+    4  POLYGON ((5.47550 0.34890, 5.45142 -0.14119, 5...  1.0   NaN  78.413712
+    3  POLYGON ((4.44422 0.16472, 4.42496 -0.22735, 4...  NaN   3.0  50.184776
+    0  POLYGON ((1.19329 0.90989, 1.18847 0.81187, 1....  NaN   NaN   3.136548
+    """
     return (
         gdf.assign(area_=gdf.area)
         .sort_values("area_", ascending=False)
@@ -284,26 +317,10 @@ def sort_large_to_small(gdf: GeoDataFrame) -> GeoDataFrame:
     )
 
 
-def sort_small_to_large(gdf: GeoDataFrame) -> GeoDataFrame:
-    return (
-        gdf.assign(area_=gdf.area)
-        .sort_values("area_", ascending=True)
-        .drop(columns="area_")
-    )
-
-
-def sort_long_to_short(gdf: GeoDataFrame) -> GeoDataFrame:
+def sort_long_first(gdf: GeoDataFrame) -> GeoDataFrame:
     return (
         gdf.assign(length_=gdf.length)
         .sort_values("length_", ascending=False)
-        .drop(columns="length_")
-    )
-
-
-def sort_short_to_long(gdf: GeoDataFrame) -> GeoDataFrame:
-    return (
-        gdf.assign(length_=gdf.length)
-        .sort_values("length_", ascending=True)
         .drop(columns="length_")
     )
 
