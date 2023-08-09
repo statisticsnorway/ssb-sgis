@@ -27,10 +27,8 @@ from .geopandas_tools.general import (
     get_common_crs,
     random_points,
     rename_geometry_if,
-    sort_large_to_small,
-    sort_long_to_short,
-    sort_short_to_long,
-    sort_small_to_large,
+    sort_large_first,
+    sort_long_first,
     to_lines,
 )
 from .geopandas_tools.geometry_types import (
@@ -53,11 +51,11 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
-    get_duplicate_areas,
+    get_intersections,
     get_polygon_clusters,
 )
 from .geopandas_tools.to_geodataframe import to_gdf
-from .helpers import get_object_name
+from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url
 from .maps.examine import Examine
@@ -91,7 +89,6 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
-from .raster.cube import GeoDataCube, concat_cubes
 from .raster.elevationraster import ElevationRaster
 from .raster.raster import Raster
 from .raster.sentinel import Sentinel2
@@ -100,6 +97,7 @@ from .raster.sentinel import Sentinel2
 try:
     from .io.dapla import check_files, exists, read_geopandas, write_geopandas
     from .io.write_municipality_data import write_municipality_data
+    from .parallel.parallel import Parallel
     from .parallel.parallelmapper import ParallelMapper
     from .parallel.parallelpool import ParallelPool
 except ImportError:
