@@ -20,7 +20,14 @@ def test_all_geom_types():
     assert not sg.is_single_geom_type(gdf)
     assert len(gdf) == 8, len(gdf)
 
-    print(gdf)
+    singlepart = sg.make_all_singlepart(gdf)
+    assert len(singlepart) == 20, len(singlepart)
+
+    singlepart = sg.make_all_singlepart(gdf, ignore_index=True)
+    assert len(singlepart) == 20, len(singlepart)
+
+    singlepart = sg.make_all_singlepart(gdf, ignore_index=True, index_parts=True)
+    assert len(singlepart) == 20, len(singlepart)
 
     points = sg.to_single_geom_type(gdf, "point")
     assert sg.get_geom_type(points) == "point"
