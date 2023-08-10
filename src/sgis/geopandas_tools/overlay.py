@@ -75,13 +75,10 @@ def clean_overlay(
     if not geom_type:
         geom_type = get_geom_type(df1)
         if geom_type == "mixed":
-            raise ValueError("mixed geometries are not allowed.")
+            raise ValueError("mixed geometries are not allowed.", df1.geometry)
 
     df1 = clean_geoms(df1)
     df2 = clean_geoms(df2)
-
-    if geom_type:
-        df1 = to_single_geom_type(df1, geom_type)
 
     df1 = to_single_geom_type(df1, geom_type)
 
@@ -95,9 +92,7 @@ def clean_overlay(
         clean_geoms
     )
 
-    # overlayed.geometry = overlayed.geometry.buffer(0)
-
-    if geom_type:
+    if keep_geom_type:
         overlayed = to_single_geom_type(overlayed, geom_type)
 
     return overlayed.reset_index(drop=True)

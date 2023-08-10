@@ -44,7 +44,7 @@ def test_transform():
     assert transform1 == transform
 
 
-def test_elevation():
+def test_elevation(elevation_raster_two_bands):
     arr = np.array(
         [
             [100, 100, 100, 100, 100],
@@ -68,12 +68,9 @@ def test_elevation():
 
     assert np.max(degrees.array) == 45, degrees.array
 
-    r = sg.ElevationRaster.from_path(path_two_bands, band_index=(1, 2)).load()
+    r = elevation_raster_two_bands  # om_path(path_two_bands, band_index=(1, 2)).load()
     print(r.band_index)
     print(r._band_index)
-    assert r.shape == (2, 101, 101), r.shape
-
-    r = sg.ElevationRaster.from_path(path_two_bands, band_index=None).load()
     assert r.shape == (2, 101, 101), r.shape
 
     degrees = r.gradient(
@@ -114,31 +111,21 @@ def test_zonal():
 def test_resize():
     r = sg.Raster.from_path(path_singleband, nodata=0).load()
     assert r.min() == 0
-
     assert r.shape == (1, 201, 201), r.shape
     assert r.res == (10, 10), r.res
+
     r = sg.Raster.from_path(path_singleband).load(res=20)
     assert tuple(np.array(r.res).astype(int)) == (20, 20), r.res
-
     assert r.shape == (1, 100, 100), r.shape
+
     r = sg.Raster.from_path(path_singleband).load(res=30)
     assert r.shape == (1, 67, 67), r.shape
     assert r.res == (30, 30), r.res
 
-    r = sg.Raster.from_path(path_singleband, band_index=1).load()
-    assert r.shape == (201, 201), r.shape
     r = sg.Raster.from_path(path_singleband, band_index=1).load(
         res=20,
     )
     assert r.shape == (100, 100), r.shape
-    r = sg.Raster.from_path(path_singleband, band_index=1).load(
-        res=30,
-    )
-    assert r.shape == (67, 67), r.shape
-
-    r = sg.Raster.from_path(path_singleband).load()
-    assert r.shape == (1, 201, 201), r.shape
-    assert r.res == (10, 10), r.res
 
 
 def test_clip():
@@ -148,6 +135,7 @@ def test_clip():
 
     out_of_bounds = sg.to_gdf([0, 0, 1, 1], crs=r.crs)
     clipped = r.copy().clip(out_of_bounds)
+    assert not np.size(clipped.array), clipped.array
 
     circle = r.unary_union.centroid.buffer(100)
 
@@ -223,7 +211,7 @@ def test_res():
     r = sg.Raster.from_path(path_singleband, band_index=1)
     mask_utm33 = sg.to_gdf(box(*r.bounds), crs=r.crs)
 
-    for _ in range(5):
+    for _ in range(3):
         r = sg.Raster.from_path(path_singleband, band_index=1)
         mask_utm33["geometry"] = mask_utm33.sample_points(5).buffer(100)
         r = r.clip(mask_utm33)

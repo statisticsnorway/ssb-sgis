@@ -20,6 +20,8 @@ def test_all_geom_types():
     assert not sg.is_single_geom_type(gdf)
     assert len(gdf) == 8, len(gdf)
 
+    print(gdf)
+
     points = sg.to_single_geom_type(gdf, "point")
     assert sg.get_geom_type(points) == "point"
     assert sg.is_single_geom_type(points)
@@ -85,4 +87,5 @@ def test_geom_types():
 
 
 if __name__ == "__main__":
+    test_all_geom_types()
     test_geom_types()
