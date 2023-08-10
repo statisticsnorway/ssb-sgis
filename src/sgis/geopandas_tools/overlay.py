@@ -80,9 +80,6 @@ def clean_overlay(
     df1 = clean_geoms(df1)
     df2 = clean_geoms(df2)
 
-    # df1.geometry = df1.geometry.buffer(0)
-    # df2.geometry = df2.geometry.buffer(0)
-
     if geom_type:
         df1 = to_single_geom_type(df1, geom_type)
 
