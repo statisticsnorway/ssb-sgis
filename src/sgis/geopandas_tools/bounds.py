@@ -374,7 +374,7 @@ def to_bbox(obj) -> tuple[float, float, float, float]:
 
 
 def get_total_bounds(
-    geometries: Iterable[GeoDataFrame | GeoSeries | Geometry],
+    *geometries: GeoDataFrame | GeoSeries | Geometry,
 ) -> tuple[float, float, float, float]:
     xs, ys = [], []
     for obj in geometries:
