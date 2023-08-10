@@ -268,14 +268,16 @@ class Explore(Map):
             display(self.map)
 
     def _split_categories(self):
-        new_gdfs, new_labels = [], []
+        new_gdfs, new_labels, new_shows = [], [], []
         for cat in self._unique_values:
             gdf = self.gdf.loc[self.gdf[self.column] == cat]
             new_gdfs.append(gdf)
             new_labels.append(cat)
+            new_shows.append(self.show[0])
         self._gdfs = new_gdfs
         self._gdf = pd.concat(new_gdfs, ignore_index=True)
         self.labels = new_labels
+        self.show = new_shows
 
     def _to_single_geom_type(self, gdf) -> GeoDataFrame:
         gdf = clean_geoms(gdf)
