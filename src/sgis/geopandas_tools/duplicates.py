@@ -110,10 +110,12 @@ def _try_shapely_func_pair(geom1, geom2, func: Callable):
             geom1 = make_valid(geom1)
             return func(geom1, geom2)
         except GEOSException:
-            try:
-                return func(geom1, geom2, grid_size=0.01)
-            except GEOSException as e:
-                raise ValueError(geom1, geom2) from e
+            for num in [1e-6, 1e-5, 1e-4, 1e-3]:
+                try:
+                    return func(geom1, geom2, grid_size=num)
+                except GEOSException as e:
+                    pass
+            raise ValueError(geom1, geom2) from e
 
 
 def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
@@ -217,14 +219,37 @@ def _get_intersecting_geometries(gdf: GeoDataFrame) -> GeoDataFrame:
 
     intersected = clean_overlay(left, right, how="intersection")
 
-    # these are identical as the input geometries
     not_from_same_poly = intersected.loc[lambda x: x["idx_left"] != x["idx_right"]]
+
+    return not_from_same_poly.drop(columns=["idx_left", "idx_right"])
 
     points_joined = (
         not_from_same_poly.representative_point().to_frame().sjoin(not_from_same_poly)
     )
 
-    duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
+    points_joined["_count"] = points_joined.groupby(level=0).transform("size")
+    display(not_from_same_poly.explore())
+    display(points_joined[points_joined._count == 2].explore())
+    display(points_joined[points_joined._count > 2].explore())
+
+    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
+    # display(not_from_same_poly, points_joined, duplicated_points)
+
+    print(
+        len(points_joined),
+        len(intersected),
+        len(duplicated_points),
+        len(
+            intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
+                columns=["idx_left", "idx_right"]
+            )
+        ),
+        len(
+            intersected.loc[
+                intersected.index.isin(duplicated_points.index.unique())
+            ].drop(columns=["idx_left", "idx_right"])
+        ),
+    )
 
     return intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
         columns=["idx_left", "idx_right"]
@@ -245,6 +270,30 @@ def drop_duplicate_geometries(gdf: GeoDataFrame, **kwargs) -> GeoDataFrame:
         _get_duplicate_geometry_groups(gdf, group_col="dup_idx_")
         .drop_duplicates("dup_idx_", **kwargs)
         .drop(columns="dup_idx_")
+    )
+
+
+def _get_duplicate_geometry_groups(
+    gdf: GeoDataFrame, group_col: str | Iterable[str] = "duplicate_index"
+):
+    gdf = gdf.assign(_idx=lambda x: range(len(x)))
+
+    geom_col = gdf._geometry_column_name
+    joined = gdf.sjoin(gdf[[geom_col, "_idx"]], predicate="within").loc[
+        lambda x: x["_idx_left"] != x["_idx_right"]
+    ]
+
+    joined["indices"] = (
+        joined[["_idx_left", "_idx_right"]].apply(sorted, axis=1).apply(tuple)
+    )
+
+    duplicates = joined.loc[joined["indices"].duplicated(keep=False)]
+
+    mapper = {value: i for i, value in enumerate(duplicates["indices"].unique())}
+    duplicates[group_col] = duplicates["indices"].map(mapper)
+
+    return duplicates.drop(
+        columns=["index_right", "indices", "_idx_left", "_idx_right"]
     )
 
 

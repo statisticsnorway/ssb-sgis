@@ -33,13 +33,25 @@ def test_random_get_intersections():
 
 
 def test_drop_duplicate_geometries():
-    circles = sg.to_gdf([(0, 0), (0, 1), (1, 1), (1, 0)]).pipe(sg.buff, 1)
-
+    circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
     dups = sg.get_intersections(circles)
-    assert len(dups) == 12, len(dups)
-
+    assert len(dups) == 6
+    # 3 unique intersections
     no_dups = sg.drop_duplicate_geometries(dups)
-    assert len(no_dups) == 6, len(no_dups)
+    assert len(no_dups) == 3
+
+    # 3 pairs == 6 rows
+    dups2 = sg.get_intersections(no_dups)
+    assert len(dups2) == 6, len(dups2)
+    no_dups2 = sg.drop_duplicate_geometries(dups2)
+    assert len(no_dups2) == 1, len(no_dups2)
+
+    dups3 = sg.drop_duplicate_geometries(no_dups2)
+    sg.explore(no_dups2, dups3)
+    assert len(dups3) == 1, len(dups3)
+
+    no_dups3 = sg.get_intersections(dups3)
+    assert len(no_dups3) == 0, len(no_dups3)
 
 
 def test_get_intersections():
@@ -137,5 +149,5 @@ def test_update_geometries():
 if __name__ == "__main__":
     test_drop_duplicate_geometries()
     test_get_intersections()
-    test_random_get_intersections()
     test_update_geometries()
+    test_random_get_intersections()
