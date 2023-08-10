@@ -7,6 +7,7 @@ import os
 import warnings
 from numbers import Number
 from statistics import mean
+from typing import Iterable
 
 import branca as bc
 import folium
@@ -103,19 +104,28 @@ class Explore(Map):
         measure_control: bool = True,
         geocoder: bool = True,
         save=None,
+        show: bool | Iterable[bool] = True,
         **kwargs,
     ):
+        self.popup = popup
+        self.max_zoom = max_zoom
+        self.smooth_factor = smooth_factor
+        self.prefer_canvas = prefer_canvas
+        self.measure_control = measure_control
+        self.geocoder = geocoder
+        self.save = save
+
         self.browser = browser
         if not self.browser and "show_in_browser" in kwargs:
             self.browser = kwargs.pop("show_in_browser")
         if not self.browser and "in_browser" in kwargs:
             self.browser = kwargs.pop("in_browser")
 
-        super().__init__(*gdfs, column=column, **kwargs)
+        super().__init__(*gdfs, column=column, show=show, **kwargs)
 
         # stringify or remove columns not renerable by leaflet (list etc.)
-        new_gdfs = []
-        for gdf in self.gdfs:
+        new_gdfs, show_new = [], []
+        for gdf, show in zip(self.gdfs, self.show, strict=True):
             for col in gdf.columns:
                 if not len(gdf.loc[gdf[col].notna()]):
                     continue
@@ -127,15 +137,9 @@ class Explore(Map):
                     except Exception:
                         gdf = gdf.drop(col, axis=1)
             new_gdfs.append(gdf)
+            show_new.append(show)
         self._gdfs = new_gdfs
-
-        self.popup = popup
-        self.max_zoom = max_zoom
-        self.smooth_factor = smooth_factor
-        self.prefer_canvas = prefer_canvas
-        self.measure_control = measure_control
-        self.geocoder = geocoder
-        self.save = save
+        self.show = show_new
 
         if self._is_categorical:
             if len(self.gdfs) == 1:
@@ -318,7 +322,7 @@ class Explore(Map):
             **self.kwargs,
         )
 
-        for gdf, label in zip(self._gdfs, self.labels, strict=True):
+        for gdf, label, show in zip(self._gdfs, self.labels, self.show, strict=True):
             if not len(gdf):
                 continue
 
@@ -329,6 +333,7 @@ class Explore(Map):
 
             gjs = self._make_geojson(
                 gdf,
+                show=show,
                 color=gdf["color"],
                 tooltip=self._tooltip_cols(gdf),
                 popup=self.popup,
@@ -379,7 +384,7 @@ class Explore(Map):
             index=self.bins,
         )
 
-        for gdf, label in zip(self._gdfs, self.labels, strict=True):
+        for gdf, label, show in zip(self._gdfs, self.labels, self.show, strict=True):
             if not len(gdf):
                 continue
             f = folium.FeatureGroup(name=label)
@@ -396,6 +401,7 @@ class Explore(Map):
 
             gjs = self._make_geojson(
                 gdf,
+                show=show,
                 color=colorarray,
                 tooltip=self._tooltip_cols(gdf),
                 popup=self.popup,
@@ -537,6 +543,7 @@ class Explore(Map):
     def _make_geojson(
         self,
         df,
+        show: bool,
         color=None,
         tooltip=True,
         popup=False,
@@ -665,6 +672,7 @@ class Explore(Map):
             style_function=style_function,
             highlight_function=highlight_function,
             smooth_factor=self.smooth_factor,
+            show=show,
             **kwargs,
         )
 
