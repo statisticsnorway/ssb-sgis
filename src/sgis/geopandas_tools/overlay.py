@@ -99,10 +99,13 @@ def clean_overlay(
 
 
 def _join_and_get_no_rows(df1, df2):
-    """Simply"""
+    if len(df1):
+        df1 = df1.iloc[[0]]
+    if len(df2):
+        df2 = df2.iloc[[0]]
     geom_col = df1._geometry_column_name
-    out = df1.iloc[[0]].join(
-        df2.iloc[[0]].drop(columns=df2._geometry_column_name),
+    out = df1.join(
+        df2.drop(columns=df2._geometry_column_name),
         lsuffix="_1",
         rsuffix="_2",
     )
@@ -148,9 +151,12 @@ def _shapely_overlay(
     crs: int | str | None | CRS,
     grid_size: float,
 ) -> GeoDataFrame:
+    if not len(df1) or not len(df2):
+        return no_intersections_return(df1, df2, how)
+
     box1 = box(*df1.total_bounds)
     box2 = box(*df2.total_bounds)
-    if not box1.intersects(box2):
+    if not len(df1) or not len(df1) or not box1.intersects(box2):
         return no_intersections_return(df1, df2, how)
 
     if df1._geometry_column_name != "geometry":
