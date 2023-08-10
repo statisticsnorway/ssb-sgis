@@ -1,5 +1,5 @@
 import numbers
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import geopandas as gpd
 import numpy as np
@@ -9,7 +9,7 @@ from pandas.api.types import is_dict_like
 from shapely import Geometry, box, extract_unique_points
 from shapely.geometry import Polygon
 
-from .general import clean_clip
+from .general import clean_clip, is_bbox_like
 from .to_geodataframe import to_gdf
 
 
@@ -50,6 +50,7 @@ def gridloop(
         raise ValueError("'mask' has no rows.")
 
     grid = make_grid(mask, gridsize=gridsize)
+    grid = grid.loc[lambda x: x.index.isin(x.sjoin(mask).index)]
 
     n = len(grid)
 
@@ -116,7 +117,11 @@ def make_grid_from_bbox(
 
 
 def make_grid(
-    obj: GeoDataFrame | GeoSeries | Geometry | tuple, gridsize: int | float, crs=None
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple,
+    gridsize: int | float,
+    *,
+    crs=None,
+    clip_to_bounds: bool = False,
 ) -> GeoDataFrame:
     """Create a polygon grid around geometries.
 
@@ -128,43 +133,31 @@ def make_grid(
             (an iterable with four values (minx, miny, maxx, maxy)).
         gridsize: Length of the grid cell walls.
         crs: Coordinate reference system if 'obj' is not GeoDataFrame or GeoSeries.
+        clip_to_bounds: Whether to clip the grid to the total bounds of the geometries.
+            Defaults to False.
 
     Returns:
         GeoDataFrame with grid polygons.
 
     """
-    if not isinstance(obj, (GeoDataFrame, GeoSeries)):
-        if not crs:
-            raise ValueError(
-                "'crs' must be specified when 'obj' is not GeoDataFrame/GeoSeries."
-            )
-        if is_bbox_like(obj):
-            minx, miny, maxx, maxy = obj
-        elif isinstance(obj, Geometry):
-            minx, miny, maxx, maxy = obj.bounds
-        elif is_dict_like(obj) and all(
-            x in obj for x in ["minx", "miny", "maxx", "maxy"]
-        ):
-            try:
-                minx = np.min(obj["minx"])
-                miny = np.min(obj["miny"])
-                maxx = np.max(obj["maxx"])
-                maxy = np.max(obj["maxy"])
-            except TypeError:
-                minx = np.min(obj.minx)
-                miny = np.min(obj.miny)
-                maxx = np.max(obj.maxx)
-                maxy = np.max(obj.maxy)
-        else:
-            raise TypeError
-    else:
-        minx, miny, maxx, maxy = obj.total_bounds
+    if isinstance(obj, (GeoDataFrame, GeoSeries)):
         crs = obj.crs or crs
+    elif not crs:
+        raise ValueError(
+            "'crs' cannot be None when 'obj' is not GeoDataFrame/GeoSeries."
+        )
+
+    minx, miny, maxx, maxy = to_bbox(obj)
 
     minx = int(minx) if minx > 0 else int(minx - 1)
     miny = int(miny) if miny > 0 else int(miny - 1)
 
-    return make_grid_from_bbox(minx, miny, maxx, maxy, gridsize=gridsize, crs=crs)
+    grid = make_grid_from_bbox(minx, miny, maxx, maxy, gridsize=gridsize, crs=crs)
+
+    if clip_to_bounds:
+        grid = grid.clip(to_bbox(obj))
+
+    return grid
 
 
 def make_ssb_grid(
@@ -336,14 +329,60 @@ def bounds_to_points(gdf: GeoDataFrame) -> GeoDataFrame:
     return gdf
 
 
-def is_bbox_like(obj) -> bool:
+def to_bbox(obj) -> tuple[float, float, float, float]:
+    """Try to return 4-length tuple of bounds."""
     if (
         hasattr(obj, "__iter__")
         and len(obj) == 4
         and all(isinstance(x, numbers.Number) for x in obj)
     ):
-        return True
-    return False
+        return tuple(obj)
+    if isinstance(obj, (GeoDataFrame, GeoSeries)):
+        return tuple(obj.total_bounds)
+    if isinstance(obj, Geometry):
+        return tuple(obj.bounds)
+    if is_dict_like(obj) and all(x in obj for x in ["minx", "miny", "maxx", "maxy"]):
+        try:
+            minx = np.min(obj["minx"])
+            miny = np.min(obj["miny"])
+            maxx = np.max(obj["maxx"])
+            maxy = np.max(obj["maxy"])
+        except TypeError:
+            minx = np.min(obj.minx)
+            miny = np.min(obj.miny)
+            maxx = np.max(obj.maxx)
+            maxy = np.max(obj.maxy)
+        return minx, miny, maxx, maxy
+    if is_dict_like(obj) and all(x in obj for x in ["xmin", "ymin", "xmax", "ymax"]):
+        try:
+            xmin = np.min(obj["xmin"])
+            ymin = np.min(obj["ymin"])
+            xmax = np.max(obj["xmax"])
+            ymax = np.max(obj["ymax"])
+        except TypeError:
+            xmin = np.min(obj.xmin)
+            ymin = np.min(obj.ymin)
+            xmax = np.max(obj.xmax)
+            ymax = np.max(obj.ymax)
+        return xmin, ymin, xmax, ymax
+    if is_dict_like(obj) and hasattr(obj, "geometry"):
+        try:
+            return tuple(GeoSeries(obj["geometry"]).total_bounds)
+        except Exception:
+            return tuple(GeoSeries(obj.geometry).total_bounds)
+    raise TypeError(type(obj), obj)
+
+
+def get_total_bounds(
+    geometries: Iterable[GeoDataFrame | GeoSeries | Geometry],
+) -> tuple[float, float, float, float]:
+    xs, ys = [], []
+    for obj in geometries:
+        minx, miny, maxx, maxy = to_bbox(obj)
+        xs += [minx, maxx]
+        ys += [miny, maxy]
+
+    return min(xs), min(ys), max(xs), max(ys)
 
 
 def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int):

@@ -3,12 +3,13 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import xarray as xr
 from IPython.display import display
 from shapely import box
 
 
 src = str(Path(__file__).parent.parent) + "/src"
-testdata = str(Path(__file__).parent.parent) + "/tests/testdata"
+testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 
 sys.path.insert(0, src)
 
@@ -17,22 +18,13 @@ import sgis as sg
 
 path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
-sg.Raster.dapla = False
 
 
-def test_raster():
-    test_elevation()
-    test_zonal()
-
-    test_convertion()
-
-    test_transform()
-
-    test_indexes_and_shape()
-
-    test_res()
-
-    test_to_crs()
+def test_sample():
+    r = sg.Raster.from_path(path_two_bands)
+    sample = r.sample(10)
+    sample2 = r.sample(10)
+    sg.explore(r.load().to_gdf(), sample.to_gdf(), sample2.to_gdf())
 
 
 def test_transform():
@@ -52,7 +44,7 @@ def test_transform():
     assert transform1 == transform
 
 
-def test_elevation():
+def test_elevation(elevation_raster_two_bands):
     arr = np.array(
         [
             [100, 100, 100, 100, 100],
@@ -71,55 +63,125 @@ def test_elevation():
     print(gradient.array)
     assert np.max(gradient.array) == 1, gradient.array
 
-    degrees = r.degrees(copy=True)
+    degrees = r.gradient(degrees=True, copy=True)
     print(degrees.array)
 
     assert np.max(degrees.array) == 45, degrees.array
 
-    r = sg.ElevationRaster.from_path(path_two_bands).load()
+    r = elevation_raster_two_bands  # om_path(path_two_bands, band_index=(1, 2)).load()
+    print(r.band_index)
+    print(r._band_index)
+    assert r.shape == (2, 101, 101), r.shape
 
-    assert r.shape == (2, 201, 201)
+    degrees = r.gradient(
+        degrees=True,
+    )
+
+    assert int(np.nanmax(degrees.array)) == 75, int(np.nanmax(degrees.array))
+    print(degrees.shape)
+    print(degrees.array.shape)
+    assert len(degrees.shape) == 3
+    gdf = degrees.to_gdf()
+    if __name__ == "__main__":
+        sg.explore(gdf[gdf["band_index"] == 1], "value")
+        sg.explore(gdf[gdf["band_index"] == 2], "value")
 
     max_ = int(np.nanmax(r.array))
     gradient = r.gradient(copy=True)
-
+    gradient.plot()
     assert max_ == int(np.nanmax(r.array))
-    assert int(np.nanmax(gradient.array)) == 17, int(np.nanmax(gradient.array))
+    assert int(np.nanmax(gradient.array)) == 6, int(np.nanmax(gradient.array))
     print(np.nanmax(gradient.array))
-    degrees = r.degrees()
-    assert int(np.nanmax(degrees.array)) == 86, int(np.nanmax(degrees.array))
-    print(np.nanmax(degrees.array))
-    assert len(degrees.shape) == 3
-    print(degrees.shape)
-    print(degrees.array.shape)
-    display(degrees.to_gdf())
-    gdf = degrees.to_gdf()
-    if __name__ == "__main__":
-        sg.explore(gdf[gdf["band"] == 1], "value")
-        sg.explore(gdf[gdf["band"] == 2], "value")
 
 
 def test_zonal():
-    r = sg.Raster.from_path(path_singleband, indexes=1).load()
+    r = sg.Raster.from_path(path_singleband, band_index=1).load()
     gdf = sg.make_grid(r.bounds, 100, crs=r.crs)
 
     gdf.index = [np.random.choice([*"abc"]) for _ in range(len(gdf))]
 
-    zonal_stats = r.zonal(gdf, aggfunc=[sum, np.mean, "median"], raster_calc_func=None)
+    zonal_stats = r.zonal(gdf, aggfunc=[sum, np.mean, "median"], array_func=None)
     assert gdf.index.equals(zonal_stats.index)
 
     if __name__ == "__main__":
         display(zonal_stats)
         display(gdf)
-        sg.explore(r.to_gdf(), "value")
-        sg.explore(zonal_stats, "mean")
+
+
+def test_resize():
+    r = sg.Raster.from_path(path_singleband, nodata=0).load()
+    assert r.min() == 0
+    assert r.shape == (1, 201, 201), r.shape
+    assert r.res == (10, 10), r.res
+
+    r = sg.Raster.from_path(path_singleband).load(res=20)
+    assert tuple(np.array(r.res).astype(int)) == (20, 20), r.res
+    assert r.shape == (1, 100, 100), r.shape
+
+    r = sg.Raster.from_path(path_singleband).load(res=30)
+    assert r.shape == (1, 67, 67), r.shape
+    assert r.res == (30, 30), r.res
+
+    r = sg.Raster.from_path(path_singleband, band_index=1).load(
+        res=20,
+    )
+    assert r.shape == (100, 100), r.shape
+
+
+def test_clip():
+    r = sg.Raster.from_path(path_singleband, nodata=0)
+
+    assert r.shape == (1, 201, 201), r.shape
+
+    out_of_bounds = sg.to_gdf([0, 0, 1, 1], crs=r.crs)
+    clipped = r.copy().clip(out_of_bounds)
+    assert not np.size(clipped.array), clipped.array
+
+    circle = r.unary_union.centroid.buffer(100)
+
+    clipped = r.copy().clip(circle)
+    assert clipped.shape == (1, 20, 20), clipped.shape
+
+    clipped_memoryfile = r.copy().load().clip(circle)
+    assert np.array_equal(clipped_memoryfile.array, clipped.array)
+    assert clipped_memoryfile.equals(clipped)
+
+    # masks outside should return nodata on area outside of mask
+    southeast_corner = sg.to_gdf(r.bounds[:2], crs=r.crs)
+    square_in_corner = sg.to_gdf(southeast_corner.buffer(400).total_bounds, crs=r.crs)
+
+    clipped = r.copy().load().clip(square_in_corner)
+    if __name__ == "__main__":
+        sg.explore(clipped.to_gdf(), r.load().to_gdf())
+    assert clipped.array.min() == 0, clipped.array.min()
+    assert int(clipped.array.mean()) == 37, clipped.array.mean()
+    assert int(clipped.array.max()) == 190, clipped.array.max()
+
+    intersected = clipped.to_gdf().overlay(square_in_corner)
+
+    same_area = (
+        int(clipped.area.sum())
+        == int(square_in_corner.area.sum())
+        == int(intersected.area.sum())
+    )
+    assert same_area
+
+    clipped2 = (
+        r.copy().to_crs(25832).clip(square_in_corner.to_crs(25832)).to_crs(25832)
+    ).to_crs(25833)
+    if __name__ == "__main__":
+        sg.explore(clipped.to_gdf(), clipped2.to_gdf())
 
 
 def test_convertion():
-    r = sg.Raster.from_path(path_singleband, indexes=1).load()
+    r = sg.Raster.from_path(path_singleband, band_index=1).load()
+    assert isinstance(r, sg.Raster)
+
+    r2 = sg.ElevationRaster(r)
+    assert isinstance(r2, sg.ElevationRaster)
 
     arr = r.array
-    r_from_array = sg.Raster.from_array(arr, meta=r.meta)
+    r_from_array = sg.Raster.from_array(arr, **r.profile)
 
     gdf = r.to_gdf(column="val")
 
@@ -134,30 +196,33 @@ def test_convertion():
 
     # putting three 2-dimensional array on top of each other
     r3 = sg.Raster.from_array(
-        np.array([r.array, r_from_array.array, r_from_gdf.array]), meta=r.meta
+        np.array([r.array, r_from_array.array, r_from_gdf.array]), **r.profile
     )
     assert r3.count == 3, r3.count
     assert r3.shape == (3, 201, 201), r3.shape
     assert r3.bounds == r.bounds
 
     r3_as_gdf = r3.to_gdf()
-    assert r3_as_gdf["band"].isin([1, 2, 3]).all()
-    assert all(x in list(r3_as_gdf["band"]) for x in [1, 2, 3])
+    assert r3_as_gdf["band_index"].isin([1, 2, 3]).all()
+    assert all(x in list(r3_as_gdf["band_index"]) for x in [1, 2, 3])
 
 
 def test_res():
-    r = sg.Raster.from_path(path_singleband, indexes=1)
+    r = sg.Raster.from_path(path_singleband, band_index=1)
     mask_utm33 = sg.to_gdf(box(*r.bounds), crs=r.crs)
 
-    for _ in range(5):
-        r = sg.Raster.from_path(path_singleband, indexes=1)
+    for _ in range(3):
+        r = sg.Raster.from_path(path_singleband, band_index=1)
         mask_utm33["geometry"] = mask_utm33.sample_points(5).buffer(100)
-        r = r.clip(mask_utm33, crop=True)
-        assert r.res == (10, 10)
+        r = r.clip(mask_utm33)
+
+        # should be approximately 10
+        rounded_res = tuple(int(round(x, 0)) for x in r.res)
+        assert rounded_res == (10, 10), r.res
 
 
 def test_to_crs():
-    r = sg.Raster.from_path(path_singleband, indexes=1)
+    r = sg.Raster.from_path(path_singleband, band_index=1)
     mask_utm33 = sg.to_gdf(box(*r.bounds), crs=r.crs).centroid.buffer(50)
     r = r.clip(mask=mask_utm33)
     r = r.to_crs(25832)
@@ -168,17 +233,17 @@ def test_to_crs():
     r = r.to_crs(25833)
     assert r.to_gdf().intersects(mask_utm33.unary_union).any()
 
-    original = sg.Raster.from_path(path_singleband, indexes=1)
+    original = sg.Raster.from_path(path_singleband, band_index=1).load()
     assert original.to_gdf().intersects(r.unary_union).any()
 
 
 def test_indexes_and_shape():
     # specifying single index is only thing that returns 2dim ndarray
-    r = sg.Raster.from_path(path_singleband, indexes=1)
+    r = sg.Raster.from_path(path_singleband, band_index=1)
     assert len(r.shape) == 2, r.shape
     assert r.shape == (201, 201), r.shape
 
-    r = sg.Raster.from_path(path_singleband, indexes=(1,))
+    r = sg.Raster.from_path(path_singleband, band_index=(1,))
     assert len(r.shape) == 3, r.shape
     assert r.shape[0] == 1, r.shape
 
@@ -194,14 +259,27 @@ def test_indexes_and_shape():
     assert r2.shape[0] == 2, r2.shape
 
 
-def not_test_raster():
-    testpath = testdata + "/test.tif"
-    r = sg.Raster.from_path(path_singleband, indexes=1).load()
-    r.write(testpath)
+def test_xarray():
+    r = sg.Raster.from_path(path_two_bands)
+    xarr = r.load().to_xarray()
+    print(xarr)
+
+    r = sg.Raster.from_path(path_singleband, band_index=1)
+    xarr = r.load().to_xarray()
+    assert isinstance(xarr, xr.DataArray)
+
+    print(r.bounds)
+    print(xarr)
+    print(xarr.to_dataset())
+
+    print(xarr * 2)
 
 
 def save_two_band_image():
-    r = sg.Raster.from_path(path_singleband, indexes=1).load()
+    r = sg.Raster.from_path(path_singleband, band_index=1)
+
+    mask = sg.to_gdf(r.unary_union, crs=r.crs).buffer(-500)
+    r = r.clip(mask)
     r.array[r.array < 0] = 0
 
     r2 = r * -1
@@ -219,11 +297,42 @@ def save_two_band_image():
     r2.plot()
 
 
+def not_test_write():
+    r = sg.Raster.from_path(path_singleband, band_index=1)
+
+    mask = sg.to_gdf(r.unary_union, crs=r.crs).buffer(-500)
+    r = r.clip(mask)
+    r.array[r.array < 0] = 0
+
+    r2 = r * -1
+    r2.array = np.array([r.array, r2.array])
+    assert len(r2.shape) == 3, r2.shape
+    assert r2.shape[0] == 2, r2.shape
+    r2.write(f"{testdata}/test.tif")
+
+    r3 = sg.Raster.from_path(f"{testdata}/test.tif").load()
+    assert r3.shape == r2.shape
+    assert int(np.mean(r3.array)) == int(np.mean(r2.array))
+
+
 if __name__ == "__main__":
     # save_two_band_image()
 
-    test_raster()
+    test_clip()
+    test_resize()
+    test_res()
+    not_test_write()
 
-    not_test_raster()
+    test_xarray()
+    test_convertion()
+
+    test_transform()
+
+    test_indexes_and_shape()
+
+    test_to_crs()
+    test_elevation()
+    test_zonal()
+    test_sample()
 
     print("ferdig")

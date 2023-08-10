@@ -1,12 +1,16 @@
+import numbers
 import warnings
+from typing import Any, Iterable
 
 import geocoder
 import numpy as np
 import pandas as pd
+import pyproj
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
 from shapely import (
     Geometry,
+    box,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
@@ -15,8 +19,81 @@ from shapely import (
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from .geometry_types import make_all_singlepart, to_single_geom_type
+from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .to_geodataframe import to_gdf
+
+
+def get_utm33(lon, lat, crs=25833):
+    transformer = pyproj.Transformer.from_crs(
+        "EPSG:4326", f"EPSG:{crs}", always_xy=True
+    )
+    return transformer.transform(lon, lat)
+
+
+def get_lonlat(lon, lat, crs=25833):
+    transformer = pyproj.Transformer.from_crs(
+        f"EPSG:{crs}", "EPSG:4326", always_xy=True
+    )
+    return transformer.transform(lon, lat)
+
+
+def get_common_crs(iterable: Iterable[Any], strict: bool = False) -> pyproj.CRS | None:
+    """Returns the common not-None crs or raises a ValueError if more than one.
+
+    Args:
+        iterable: Iterable of objects with the attribute "crs" or a list
+            of CRS-like (pyproj.CRS-accepted) objects.
+        strict: If False (default), falsy CRS-es will be ignored and None
+            will be returned if all CRS-es are falsy. If strict is True,
+
+    Returns:
+        pyproj.CRS object or None (if all crs are None).
+
+    Raises:
+        ValueError if there are more than one crs. If strict is True,
+        None is included.
+    """
+    try:
+        crs = list({x.crs for x in iterable})
+    except AttributeError:
+        crs = list(set(iterable))
+
+    if not crs:
+        return None
+
+    truthy_crs = list({x for x in crs if x})
+
+    if strict and len(truthy_crs) != len(crs):
+        raise ValueError("Mix of falsy and truthy CRS-es found.")
+
+    if len(truthy_crs) > 1:
+        raise ValueError("'crs' mismatch.", truthy_crs)
+    return pyproj.CRS(truthy_crs[0])
+
+
+def is_bbox_like(obj) -> bool:
+    if (
+        hasattr(obj, "__iter__")
+        and len(obj) == 4
+        and all(isinstance(x, numbers.Number) for x in obj)
+    ):
+        return True
+    return False
+
+
+def to_shapely(obj) -> Geometry:
+    if isinstance(obj, Geometry):
+        return obj
+    if not hasattr(obj, "__iter__"):
+        raise TypeError(type(obj))
+    if hasattr(obj, "unary_union"):
+        return obj.unary_union
+    if is_bbox_like(obj):
+        return box(*obj)
+    try:
+        return Point(*obj)
+    except TypeError as e:
+        raise TypeError(obj) from e
 
 
 def address_to_gdf(address: str, crs=4326) -> GeoDataFrame:
@@ -31,14 +108,13 @@ def address_to_coords(address: str, crs=4326) -> tuple[float, float]:
     g = geocoder.osm(address).json
     coords = g["lng"], g["lat"]
     point = to_gdf(coords, crs=4326).to_crs(crs)
-    return point.geometry.iloc[0].x, point.geometry.iloc[0].y
+    x, y = point.geometry.iloc[0].x, point.geometry.iloc[0].y
+    return x, y
 
 
 def is_wkt(text: str) -> bool:
     gemetry_types = ["point", "polygon", "line", "geometrycollection"]
-    if any(x in text.lower() for x in gemetry_types):
-        return True
-    return False
+    return any(x in text.lower() for x in gemetry_types)
 
 
 def coordinate_array(
@@ -125,9 +201,10 @@ def rename_geometry_if(gdf: GeoDataFrame) -> GeoDataFrame:
 
 
 def clean_geoms(
-    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
+    gdf: GeoDataFrame | GeoSeries,
+    ignore_index: bool = False,
 ) -> GeoDataFrame | GeoSeries:
-    """Fixes geometries and removes invalid, empty, NaN and None geometries.
+    """Fixes geometries, then removes empty, NaN and None geometries.
 
     Args:
         gdf: GeoDataFrame or GeoSeries to be cleaned.
@@ -176,15 +253,20 @@ def clean_geoms(
 
     if isinstance(gdf, GeoDataFrame):
         geom_col = gdf._geometry_column_name
-        gdf[geom_col] = gdf.make_valid()
-        gdf = gdf.loc[
-            (gdf[geom_col].is_valid)
-            & (~gdf[geom_col].is_empty)
-            & (gdf[geom_col].notna())
-        ]
+
+        # only repair if necessary
+        if not gdf[geom_col].is_valid.all():
+            gdf[geom_col] = gdf.make_valid()
+
+        gdf = gdf.loc[gdf.geometry.map(bool)]
+
     elif isinstance(gdf, GeoSeries):
-        gdf = gdf.make_valid()
-        gdf = gdf.loc[(gdf.is_valid) & (~gdf.is_empty) & (gdf.notna())]
+        # only repair if necessary
+        if not gdf.is_valid.all():
+            gdf = gdf.make_valid()
+
+        gdf = gdf.loc[gdf.map(bool)]
+
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
@@ -192,6 +274,74 @@ def clean_geoms(
         gdf = gdf.reset_index(drop=True)
 
     return gdf
+
+
+def get_grouped_centroids(
+    gdf: GeoDataFrame, groupby: str, as_string: bool = True
+) -> pd.Series:
+    centerpoints = gdf.assign(geometry=lambda x: x.centroid)
+
+    grouped_centerpoints = centerpoints.dissolve(by=groupby).assign(
+        geometry=lambda x: x.centroid
+    )
+    xs = grouped_centerpoints.geometry.x
+    ys = grouped_centerpoints.geometry.y
+
+    if as_string:
+        grouped_centerpoints["wkt"] = [f"{int(x)}_{int(y)}" for x, y in zip(xs, ys)]
+    else:
+        grouped_centerpoints["wkt"] = [Point(x, y) for x, y in zip(xs, ys)]
+
+    return gdf[groupby].map(grouped_centerpoints["wkt"])
+
+
+def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
+    """Sort GeoDataFrame by area in decending order.
+
+    Examples
+    --------
+    >>> df = sg.random_points(5)
+    >>> df.geometry = df.buffer([1, 2, 3, 4, 5])
+    >>> df["col"] = [None, 1, 2, None, 1]
+    >>> df["col2"] = [None, 1, 2, 3, None]
+    >>> df
+                                                geometry  col  col2
+    4  POLYGON ((5.84943 0.07906, 5.82536 -0.41102, 5...  1.0   NaN
+    3  POLYGON ((4.85939 0.45451, 4.84013 0.06244, 4....  NaN   3.0
+    2  POLYGON ((3.72440 0.41879, 3.70995 0.12474, 3....  2.0   2.0
+    1  POLYGON ((2.17958 0.55742, 2.16995 0.36138, 2....  1.0   1.0
+    0  POLYGON ((1.13307 0.27890, 1.12826 0.18089, 1....  NaN   NaN
+
+    >>> sg.sort_large_first(df)
+                                                geometry  col  col2
+    4  POLYGON ((5.84943 0.07906, 5.82536 -0.41102, 5...  1.0   NaN
+    3  POLYGON ((4.85939 0.45451, 4.84013 0.06244, 4....  NaN   3.0
+    2  POLYGON ((3.72440 0.41879, 3.70995 0.12474, 3....  2.0   2.0
+    1  POLYGON ((2.17958 0.55742, 2.16995 0.36138, 2....  1.0   1.0
+    0  POLYGON ((1.13307 0.27890, 1.12826 0.18089, 1....  NaN   NaN
+
+    >>> df["area"] = df.area
+    >>> sg.sort_nans_last(sg.sort_large_first(df))
+                                                geometry  col  col2       area
+    2  POLYGON ((3.55915 0.36805, 3.54470 0.07400, 3....  2.0   2.0  28.228936
+    1  POLYGON ((2.57935 0.93984, 2.56972 0.74380, 2....  1.0   1.0  12.546194
+    4  POLYGON ((5.47550 0.34890, 5.45142 -0.14119, 5...  1.0   NaN  78.413712
+    3  POLYGON ((4.44422 0.16472, 4.42496 -0.22735, 4...  NaN   3.0  50.184776
+    0  POLYGON ((1.19329 0.90989, 1.18847 0.81187, 1....  NaN   NaN   3.136548
+    """
+    return (
+        gdf.assign(area_=gdf.area)
+        .sort_values("area_", ascending=False)
+        .drop(columns="area_")
+    )
+
+
+def sort_long_first(gdf: GeoDataFrame) -> GeoDataFrame:
+    return (
+        gdf.assign(length_=gdf.length)
+        .sort_values("length_", ascending=False)
+        .drop(columns="length_")
+    )
 
 
 def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
@@ -306,10 +456,13 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     >>> sg.qtm(lines, "l")
     """
 
-    if any(any(gdf.geom_type.isin(["Point", "MultiPoint"])) for gdf in gdfs):
+    if any(gdf.geom_type.isin(["Point", "MultiPoint"]).any() for gdf in gdfs):
         raise ValueError("Cannot convert points to lines.")
 
     def _shapely_geometry_to_lines(geom):
+        """Get all lines from the exterior and interiors of a Polygon."""
+
+        # if lines (points are not allowed in this function)
         if geom.area == 0:
             return geom
 
@@ -327,7 +480,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
                 LineString(get_interior_ring(part, n)) for n in range(n_interior_rings)
             ]
 
-            lines = lines + interior_rings
+            lines += interior_rings
 
         return unary_union(lines)
 
@@ -391,5 +544,9 @@ def clean_clip(
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
     except Exception:
         gdf = clean_geoms(gdf)
-        mask = clean_geoms(mask)
+        try:
+            mask = clean_geoms(mask)
+        except TypeError:
+            mask = clean_geoms(to_gdf(mask, crs=gdf.crs))
+
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)

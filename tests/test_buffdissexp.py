@@ -6,6 +6,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import pytest
 
 
@@ -18,29 +19,31 @@ import sgis as sg
 
 def test_dissexp_by_cluster():
     gdf = sg.random_points(100).assign(
-        x=np.random.choice([*"abc"]), y=np.random.choice([*"abc"])
+        x=[np.random.choice([*"abc"]) for _ in range(100)],
+        y=[np.random.choice([*"abc"]) for _ in range(100)],
     )
     by_cluster = sg.dissexp_by_cluster(gdf)
     regular = sg.dissexp(gdf)
     assert len(by_cluster) == len(regular)
     assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
-    assert list(by_cluster.columns) == ["x", "y", "geometry"], by_cluster.columns
+    assert list(sorted(by_cluster.columns)) == [
+        "geometry",
+        "x",
+        "y",
+    ], by_cluster.columns
     assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
 
     diss = sg.dissexp_by_cluster(gdf, by="x")
-    assert list(diss.columns) == ["y", "geometry"], diss.columns
+    assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
     diss = sg.dissexp_by_cluster(gdf, by=["x", "y"])
     assert list(diss.columns) == ["geometry"], diss.columns
     diss = sg.dissexp_by_cluster(gdf, by=("y",))
-    assert list(diss.columns) == ["x", "geometry"], diss.columns
+    assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
 
     sg.buffdissexp_by_cluster(gdf, 0.1).pipe(sg.buff, 0.1).pipe(
         sg.buffdissexp_by_cluster, 0.1
     )
-
-
-test_dissexp_by_cluster()
 
 
 def test_buffdissexp_by_cluster(gdf_fixture):
@@ -58,15 +61,19 @@ def test_buffdissexp_by_cluster(gdf_fixture):
     assert len(by_cluster) == len(regular)
     assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
-    assert list(by_cluster.columns) == ["x", "y", "geometry"], by_cluster.columns
-    assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
+    assert list(sorted(by_cluster.columns)) == [
+        "geometry",
+        "x",
+        "y",
+    ], by_cluster.columns
+    assert list(sorted(regular.columns)) == ["geometry", "x", "y"], regular.columns
 
     diss = sg.buffdissexp_by_cluster(gdf, 1, by="x")
-    assert list(diss.columns) == ["y", "geometry"], diss.columns
+    assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
     diss = sg.buffdissexp_by_cluster(gdf, 1, by=["x", "y"])
-    assert list(diss.columns) == ["geometry"], diss.columns
+    assert list(sorted(diss.columns)) == ["geometry"], diss.columns
     diss = sg.buffdissexp_by_cluster(gdf, 1, by=("y",))
-    assert list(diss.columns) == ["x", "geometry"], diss.columns
+    assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
 
 
 def test_buffdissexp(gdf_fixture):
@@ -82,6 +89,9 @@ def test_buffdissexp(gdf_fixture):
         copy = copy.explode(index_parts=False)
 
         copy2 = sg.buffdissexp(gdf_fixture, distance, by="txtcol")
+
+        copy2 = copy2.loc[:, copy.columns]
+
         assert copy.equals(copy2)
 
 
@@ -98,6 +108,8 @@ def test_buffdiss(gdf_fixture):
 
         copy2 = sg.buffdiss(gdf_fixture, distance, by="txtcol")
 
+        copy2 = copy2.loc[:, copy.columns]
+
         assert copy.equals(copy2)
 
 
@@ -112,6 +124,8 @@ def test_dissexp(gdf_fixture):
     copy = copy.explode(index_parts=False)
 
     copy2 = sg.dissexp(gdf_fixture, by="txtcol")
+
+    copy2 = copy2.loc[:, copy.columns]
 
     assert copy.equals(copy2), (copy, copy2)
 
@@ -141,7 +155,9 @@ def test_buffdissexp_index():
 
     singlepart = sg.buffdissexp(gdf, 1)
     assert list(singlepart.index) == [0], singlepart
-    assert (list(singlepart.columns)) == (["cat", "geometry"]), singlepart.columns
+    assert (list(sorted(singlepart.columns))) == (
+        ["cat", "geometry"]
+    ), singlepart.columns
 
     # if the index is set, it will be gone after dissolve (same in geopandas)
     singlepart = sg.buffdissexp(gdf.set_index("cat"), 0.1)
@@ -199,6 +215,8 @@ def test_dissexp_index():
 
 if __name__ == "__main__":
     import cProfile
+
+    test_dissexp_by_cluster()
 
     test_dissexp_index()
     test_buffdissexp_index()

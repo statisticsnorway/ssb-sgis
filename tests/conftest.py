@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from geopandas import GeoDataFrame, GeoSeries, read_parquet
 
-from sgis import to_gdf
+from sgis import ElevationRaster, Raster, to_gdf
 
 
 @pytest.fixture(scope="module")
@@ -15,12 +15,31 @@ def gdf_fixture() -> GeoDataFrame:
 
 @pytest.fixture(scope="module")
 def points_oslo() -> GeoDataFrame:
-    return read_parquet(Path(__file__).parent / "testdata" / "points_oslo.parquet")
+    return read_parquet(Path(__file__).parent / "testdata/points_oslo.parquet")
 
 
 @pytest.fixture(scope="module")
 def roads_oslo() -> GeoDataFrame:
-    return read_parquet(Path(__file__).parent / "testdata" / "roads_oslo_2022.parquet")
+    return read_parquet(Path(__file__).parent / "testdata/roads_oslo_2022.parquet")
+
+
+@pytest.fixture(scope="module")
+def raster_singleband() -> GeoDataFrame:
+    return Raster.from_path(Path(__file__).parent / "testdata/raster/dtm_10.tif").load()
+
+
+@pytest.fixture(scope="module")
+def raster_two_bands() -> GeoDataFrame:
+    return Raster.from_path(
+        Path(__file__).parent / "testdata/raster/dtm_10_two_bands.tif"
+    ).load()
+
+
+@pytest.fixture(scope="module")
+def elevation_raster_two_bands() -> GeoDataFrame:
+    return ElevationRaster.from_path(
+        Path(__file__).parent / "testdata/raster/dtm_10_two_bands.tif", indexes=None
+    ).load()
 
 
 def testgdf(cols: str | None = None) -> GeoDataFrame:

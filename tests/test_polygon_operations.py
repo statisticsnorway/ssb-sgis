@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,39 +13,6 @@ src = str(Path(__file__).parent.parent) + "/src"
 sys.path.insert(0, src)
 
 import sgis as sg
-
-
-def test_get_overlapping_polygons():
-    with_overlap = sg.to_gdf([(0, 0), (4, 4), (1, 1)]).pipe(sg.buff, 1)
-    with_overlap["col"] = 1
-    if __name__ == "__main__":
-        sg.explore(with_overlap)
-
-    the_overlap = sg.get_overlapping_polygons(with_overlap)
-    print(the_overlap)
-    if __name__ == "__main__":
-        sg.explore(the_overlap)
-    assert list(the_overlap.index) == [0, 2]
-    assert list(the_overlap.columns) == ["col", "geometry"]
-    assert round(the_overlap.area.sum(), 5) == 1.14108, round(the_overlap.area.sum(), 5)
-
-    overlapping_polygons = sg.get_overlapping_polygon_indices(with_overlap)
-    print(overlapping_polygons)
-    assert isinstance(overlapping_polygons, pd.Index)
-    assert list(overlapping_polygons) == [0, 2], overlapping_polygons
-    without_the_overlapping = with_overlap.loc[
-        ~with_overlap.index.isin(overlapping_polygons)
-    ]
-    assert list(without_the_overlapping.index) == [1], without_the_overlapping
-
-    overlapping_polygons = sg.get_overlapping_polygon_product(with_overlap)
-    print(overlapping_polygons)
-    should_be = pd.Series([0, 2], index=[2, 0])
-    assert overlapping_polygons.equals(should_be), overlapping_polygons
-    without_the_overlapping = with_overlap.loc[
-        ~with_overlap.index.isin(overlapping_polygons)
-    ]
-    assert list(without_the_overlapping.index) == [1], without_the_overlapping
 
 
 def test_close_holes():
@@ -71,13 +37,11 @@ def test_close_holes():
         assert sum(all_closed.area) > sum(ring_with_hole.area)
 
         # this should return the entire hole
-        closed_island_ignored = sg.close_all_holes(
-            ring_with_hole, without_islands=False
-        )
+        closed_island_ignored = sg.close_all_holes(ring_with_hole, ignore_islands=True)
         assert sum(closed_island_ignored.area) > sum(all_closed.area)
 
         hole_not_closed = sg.close_small_holes(ring_with_hole, max_area=1)
-        assert sum(all_closed.area) > sum(ring_with_hole.area)
+        assert sum(all_closed.area) > sum(hole_not_closed.area)
 
         all_closed2 = sg.close_small_holes(ring_with_hole, max_area=30_000)
 
@@ -97,15 +61,15 @@ def test_close_holes():
         )
 
         # this should return the entire hole
-        without_islands = False
+        ignore_islands = True
         all_closed3 = sg.close_small_holes(
-            ring_with_hole, max_area=32_000, without_islands=without_islands
+            ring_with_hole, max_area=32_000, ignore_islands=ignore_islands
         )
 
         assert round(np.sum(all_closed3.area), 3) > round(np.sum(all_closed.area), 3)
 
         hole_not_closed3 = sg.close_small_holes(
-            ring_with_hole, max_area=30_000, without_islands=without_islands
+            ring_with_hole, max_area=30_000, ignore_islands=ignore_islands
         )
         assert np.sum(hole_not_closed3.area) == np.sum(ring_with_hole.area)
 
@@ -187,7 +151,7 @@ def test_get_polygon_clusters():
 
     sg.get_polygon_clusters(gdf.dissolve(), allow_multipart=True)
 
-    c = sg.get_polygon_clusters(gdf, wkt_col=True)
+    c = sg.get_polygon_clusters(gdf, as_string=True)
     assert c["cluster"].isin(["0_0", "9_9", "20_20"]).all()
 
 
@@ -254,6 +218,10 @@ def test_eliminate():
         assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
         assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
 
+        missing_value = polys.assign(what=pd.NA)
+        eliminated = sg.eliminate_by_smallest(missing_value, sliver)
+        assert eliminated["what"].isna().all()
+
     eliminated = sg.eliminate_by_longest(polys1, isolated)
     assert list(eliminated.what) == ["small", "large", "isolated"], list(
         eliminated.what
@@ -270,7 +238,7 @@ def test_eliminate():
 
 
 if __name__ == "__main__":
+    test_eliminate()
+
     test_close_holes()
     test_get_polygon_clusters()
-    test_eliminate()
-    test_get_overlapping_polygons()

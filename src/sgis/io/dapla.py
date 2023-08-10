@@ -2,33 +2,15 @@
 """
 import os
 from pathlib import Path
+from typing import Iterable
 
 import dapla as dp
 import geopandas as gpd
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas.io.arrow import _geopandas_to_arrow
+from joblib import Parallel, delayed
 from pyarrow import parquet
-
-
-def exists(path: str) -> bool:
-    """Returns True if the path exists, and False if it doesn't.
-
-    Works in Dapla and outside of Dapla.
-
-    Args:
-        path (str): The path to the file or directory.
-
-    Returns:
-        True if the path exists, False if not.
-    """
-    try:
-        dp.details(path)
-        return True
-    except FileNotFoundError:
-        return False
-    except ModuleNotFoundError:
-        return os.path.exists(path)
 
 
 def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame:
@@ -73,6 +55,34 @@ def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame:
                     return df
                 else:
                     raise e
+
+
+def read_geopandas_parallel(
+    paths: Iterable[str | Path],
+    n_jobs: int,
+    strict: bool = True,
+    concat: bool = True,
+    ignore_index: bool = True,
+    **kwargs,
+) -> GeoDataFrame:
+    if strict:
+        n_exists = sum(exists(path) for path in paths)
+        if n_exists != len(paths):
+            raise ValueError(
+                f"Only {n_exists} of {len(paths)} exists. "
+                "Set strict=False to ignore the non-existing."
+            )
+    else:
+        paths = [path for path in paths if exists(path)]
+
+    if n_jobs == 1:
+        gdfs = [read_geopandas(path, **kwargs) for path in paths]
+    else:
+        gdfs = Parallel(n_jobs=n_jobs)(
+            delayed(read_geopandas)(path, **kwargs) for path in paths
+        )
+
+    return pd.concat(gdfs, ignore_index=ignore_index) if concat else gdfs
 
 
 def write_geopandas(
@@ -134,8 +144,30 @@ def write_geopandas(
         df.to_file(file, driver=driver)
 
 
+def exists(path: str | Path) -> bool:
+    """Returns True if the path exists, and False if it doesn't.
+
+    Works in Dapla and outside of Dapla.
+
+    Args:
+        path (str): The path to the file or directory.
+
+    Returns:
+        True if the path exists, False if not.
+    """
+    try:
+        dp.details(str(path))
+        return True
+    except FileNotFoundError:
+        return False
+    except ModuleNotFoundError:
+        return os.path.exists(path)
+
+
 def check_files(
-    folder: str, contains: str | None = None, within_minutes: int | None = None
+    folder: str,
+    contains: str | None = None,
+    within_minutes: int | None = None,
 ) -> pd.DataFrame:
     """Returns DataFrame of files in the folder and subfolders with times and sizes.
 
@@ -147,7 +179,7 @@ def check_files(
     """
     fs = dp.FileClient.get_gcs_file_system()
 
-    # recursive doesn't work
+    # (recursive doesn't work)
     info = fs.ls(folder, detail=True, recursive=True)
 
     if not info:
@@ -160,33 +192,19 @@ def check_files(
     ]
     folderinfo = [x["name"] for x in info if x["storageClass"] == "DIRECTORY"]
 
-    while folderinfo:
-        new_folderinfo = []
-        for m in folderinfo:
-            more_info = fs.ls(m, detail=True, recursive=True)
-            if not more_info:
-                continue
-
-            more_fileinfo = [
-                (x["name"], x["size"], x["updated"])
-                for x in more_info
-                if x["storageClass"] != "DIRECTORY"
-            ]
-            fileinfo.extend(more_fileinfo)
-
-            more_folderinfo = [
-                x["name"]
-                for x in more_info
-                if x["storageClass"] == "DIRECTORY" and x["name"] not in folderinfo
-            ]
-            new_folderinfo.extend(more_folderinfo)
-
-        folderinfo = new_folderinfo
+    fileinfo += get_files_in_subfolders(folderinfo)
 
     df = pd.DataFrame(fileinfo, columns=["path", "kb", "updated"])
 
     if contains:
-        df = df.loc[df["path"].str.contains(contains)]
+        try:
+            df = df.loc[df["path"].str.contains(contains)]
+        except TypeError:
+            for item in contains:
+                df = df.loc[df["path"].str.contains(item)]
+
+    if not len(df):
+        return df
 
     df = df.set_index("updated").sort_index()
 
@@ -211,3 +229,37 @@ def check_files(
 
     the_time = pd.Timestamp.now() - pd.Timedelta(minutes=within_minutes)
     return df.loc[lambda x: x.index > the_time, ["kb", "mb", "name", "child", "path"]]
+
+
+def get_files_in_subfolders(folderinfo: list[dict]) -> list[dict]:
+    fs = dp.FileClient.get_gcs_file_system()
+
+    if isinstance(folderinfo, (str, Path)):
+        folderinfo = [folderinfo]
+
+    fileinfo = []
+
+    while folderinfo:
+        new_folderinfo = []
+        for m in folderinfo:
+            more_info = fs.ls(m, detail=True, recursive=True)
+            if not more_info:
+                continue
+
+            more_fileinfo = [
+                (x["name"], x["size"], x["updated"])
+                for x in more_info
+                if x["storageClass"] != "DIRECTORY"
+            ]
+            fileinfo.extend(more_fileinfo)
+
+            more_folderinfo = [
+                x["name"]
+                for x in more_info
+                if x["storageClass"] == "DIRECTORY" and x["name"] not in folderinfo
+            ]
+            new_folderinfo.extend(more_folderinfo)
+
+        folderinfo = new_folderinfo
+
+    return fileinfo

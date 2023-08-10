@@ -129,6 +129,9 @@ def to_gdf(
     if isinstance(obj, GeoDataFrame):
         raise TypeError("'to_gdf' doesn't accept GeoDataFrames as input type.")
 
+    if obj is None:
+        raise TypeError("Cannot convert NoneType to GeoDataFrame.")
+
     if isinstance(obj, GeoSeries):
         geom_col = geometry or "geometry"
         return _geoseries_to_gdf(obj, geom_col, crs, **kwargs)

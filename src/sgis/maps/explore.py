@@ -3,6 +3,7 @@
 This module holds the Explore class, which is the basis for the explore, samplemap and
 clipmap functions from the 'maps' module.
 """
+import os
 import warnings
 from numbers import Number
 from statistics import mean
@@ -112,7 +113,7 @@ class Explore(Map):
 
         super().__init__(*gdfs, column=column, **kwargs)
 
-        # remove columns not renerable by leaflet (list columns etc.)
+        # stringify or remove columns not renerable by leaflet (list etc.)
         new_gdfs = []
         for gdf in self.gdfs:
             for col in gdf.columns:
@@ -121,7 +122,10 @@ class Explore(Map):
                 if not isinstance(
                     gdf.loc[gdf[col].notna(), col].iloc[0], (Number, str, Geometry)
                 ):
-                    gdf = gdf.drop(col, axis=1)
+                    try:
+                        gdf[col] = gdf[col].astype(str)
+                    except Exception:
+                        gdf = gdf.drop(col, axis=1)
             new_gdfs.append(gdf)
         self._gdfs = new_gdfs
 
@@ -252,11 +256,8 @@ class Explore(Map):
             self._create_continous_map()
 
         if self.save:
-            import os
-
             with open(os.getcwd() + "/" + self.save.strip(".html") + ".html", "w") as f:
                 f.write(self.map._repr_html_())
-            return
         elif self.browser:
             run_html_server(self.map._repr_html_())
         else:
@@ -387,7 +388,11 @@ class Explore(Map):
             gdf = self._prepare_gdf_for_map(gdf)
 
             classified = self._classify_from_bins(gdf, bins=self.bins)
-            colorarray = unique_colors[classified]
+            try:
+                colorarray = unique_colors[classified]
+            except IndexError:
+                classified[classified > 0] = classified[classified > 0] - 1
+                colorarray = unique_colors[classified]
 
             gjs = self._make_geojson(
                 gdf,
@@ -510,6 +515,14 @@ class Explore(Map):
             title="Expand me",
             title_cancel="Exit me",
             force_separate_button=True,
+        ).add_to(m)
+
+        plugins.MousePosition(
+            position="bottomleft",
+            separator=", ",
+            empty_string="NaN",
+            lng_first=True,
+            num_digits=5,
         ).add_to(m)
 
         if self.geocoder:

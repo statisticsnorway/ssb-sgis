@@ -3,8 +3,8 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from helpers import create_all_geometry_types
 from shapely.geometry import LineString
-from test_geopandas_utils import create_all_geometry_types
 
 
 src = str(Path(__file__).parent.parent) + "/src"
@@ -19,6 +19,15 @@ def test_all_geom_types():
     assert sg.get_geom_type(gdf) == "mixed"
     assert not sg.is_single_geom_type(gdf)
     assert len(gdf) == 8, len(gdf)
+
+    singlepart = sg.make_all_singlepart(gdf)
+    assert len(singlepart) == 20, len(singlepart)
+
+    singlepart = sg.make_all_singlepart(gdf, ignore_index=True)
+    assert len(singlepart) == 20, len(singlepart)
+
+    singlepart = sg.make_all_singlepart(gdf, ignore_index=True, index_parts=True)
+    assert len(singlepart) == 20, len(singlepart)
 
     points = sg.to_single_geom_type(gdf, "point")
     assert sg.get_geom_type(points) == "point"
@@ -85,4 +94,5 @@ def test_geom_types():
 
 
 if __name__ == "__main__":
+    test_all_geom_types()
     test_geom_types()

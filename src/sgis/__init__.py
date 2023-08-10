@@ -2,10 +2,12 @@
 from .geopandas_tools.bounds import (
     bounds_to_points,
     bounds_to_polygon,
+    gridloop,
     make_grid,
     make_grid_from_bbox,
     make_ssb_grid,
     points_in_bounds,
+    to_bbox,
 )
 from .geopandas_tools.buffer_dissolve_explode import (
     buff,
@@ -15,6 +17,11 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp,
     dissexp_by_cluster,
 )
+from .geopandas_tools.duplicates import (
+    drop_duplicate_geometries,
+    get_intersections,
+    update_geometries,
+)
 from .geopandas_tools.general import (
     address_to_coords,
     address_to_gdf,
@@ -22,8 +29,12 @@ from .geopandas_tools.general import (
     clean_geoms,
     coordinate_array,
     drop_inactive_geometry_columns,
+    get_common_crs,
+    get_grouped_centroids,
     random_points,
     rename_geometry_if,
+    sort_large_first,
+    sort_long_first,
     to_lines,
 )
 from .geopandas_tools.geometry_types import (
@@ -38,7 +49,7 @@ from .geopandas_tools.neighbors import (
     get_neighbor_indices,
     k_nearest_neighbors,
 )
-from .geopandas_tools.overlay import clean_overlay, overlay_update
+from .geopandas_tools.overlay import clean_overlay
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import (
     close_all_holes,
@@ -46,13 +57,11 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
-    get_overlapping_polygon_indices,
-    get_overlapping_polygon_product,
-    get_overlapping_polygons,
     get_polygon_clusters,
 )
 from .geopandas_tools.to_geodataframe import to_gdf
-from .helpers import get_name
+from .helpers import get_object_name, sort_nans_last
+from .io.opener import opener
 from .io.read_parquet import read_parquet_url
 from .maps.examine import Examine
 from .maps.explore import Explore
@@ -85,19 +94,14 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
-
-# from .raster.cube import GeoDataCube
+from .parallel.parallel import Parallel
 from .raster.elevationraster import ElevationRaster
 from .raster.raster import Raster
+from .raster.sentinel import Sentinel2
 
 
 try:
-    from .io.dapla import exists, read_geopandas, write_geopandas
-    from .io.write_municipality_data import (
-        write_municipality_data,
-        write_neighbor_municipality_data,
-    )
-    from .multiprocessing.multiprocessingmapper import MultiProcessingMapper
-    from .multiprocessing.multiprocessingpool import MultiProcessingPool
+    from .io.dapla import check_files, exists, read_geopandas, write_geopandas
+    from .io.write_municipality_data import write_municipality_data
 except ImportError:
     pass

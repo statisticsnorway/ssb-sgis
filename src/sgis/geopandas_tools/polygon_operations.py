@@ -1,6 +1,4 @@
 """Functions for polygon geometries."""
-import warnings
-
 import networkx as nx
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
@@ -14,30 +12,15 @@ from shapely import (
 )
 from shapely.ops import unary_union
 
-from .general import _push_geom_col, to_lines
+from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
 from .neighbors import get_neighbor_indices
-from .overlay import clean_overlay
-
-
-def get_centroid_ids(gdf: GeoDataFrame, groupby: str) -> pd.Series:
-    centerpoints = gdf.assign(geometry=lambda x: x.centroid)
-
-    grouped_centerpoints = centerpoints.dissolve(by=groupby).assign(
-        geometry=lambda x: x.centroid
-    )
-    xs = grouped_centerpoints.geometry.x
-    ys = grouped_centerpoints.geometry.y
-
-    grouped_centerpoints["wkt"] = [f"{int(x)}_{int(y)}" for x, y in zip(xs, ys)]
-
-    return gdf[groupby].map(grouped_centerpoints["wkt"])
 
 
 def get_polygon_clusters(
     *gdfs: GeoDataFrame | GeoSeries,
     cluster_col: str = "cluster",
     allow_multipart: bool = False,
-    wkt_col: bool = False,
+    as_string: bool = False,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Find which polygons overlap without dissolving.
 
@@ -56,7 +39,7 @@ def get_polygon_clusters(
         cluster_col: Name of the resulting cluster column.
         allow_multipart: Whether to allow mutipart geometries in the gdfs.
             Defaults to False to avoid confusing results.
-        wkt_col: Whether to return the cluster column values as a string with x and y
+        as_string: Whether to return the cluster column values as a string with x and y
             coordinates. Convinient to always get unique ids.
             Defaults to False because of speed.
 
@@ -129,10 +112,7 @@ def get_polygon_clusters(
     # take a copy only if there are gdfs with the same id
     # To not get any overwriting in the for loop
     if sum(df1 is df2 for df1 in gdfs for df2 in gdfs) > len(gdfs):
-        new_gdfs = ()
-        for gdf in gdfs:
-            new_gdfs = new_gdfs + (gdf.copy(),)
-        gdfs = new_gdfs
+        gdfs = [gdf.copy() for gdf in gdfs]
 
     for i, gdf in enumerate(gdfs):
         if isinstance(gdf, GeoSeries):
@@ -174,8 +154,8 @@ def get_polygon_clusters(
 
     concated[cluster_col] = component_mapper
 
-    if wkt_col:
-        concated[cluster_col] = get_centroid_ids(concated, groupby=cluster_col)
+    if as_string:
+        concated[cluster_col] = get_grouped_centroids(concated, groupby=cluster_col)
 
     concated = _push_geom_col(concated)
 
@@ -201,7 +181,7 @@ def eliminate_by_longest(
     *,
     remove_isolated: bool = False,
     ignore_index: bool = False,
-    aggfunc: str | dict | list = "first",
+    aggfunc: str | dict | list | None = None,
     **kwargs,
 ) -> GeoDataFrame:
     """Dissolves selected polygons with the longest bordering neighbor polygon.
@@ -209,6 +189,8 @@ def eliminate_by_longest(
     Eliminates selected geometries by dissolving them with the neighboring
     polygon with the longest shared border. The index and column values of the
     large polygons will be kept, unless else is specified.
+
+    Note that this might be a lot slower than eliminate_by_largest.
 
     Args:
         gdf: GeoDataFrame with polygon geometries.
@@ -219,71 +201,84 @@ def eliminate_by_longest(
         ignore_index: If False (default), the resulting GeoDataFrame will keep the
             index of the large polygons. If True, the resulting axis will be labeled
             0, 1, …, n - 1.
-        aggfunc: Aggregation function(s) to use when dissolving. Defaults to 'first',
-            meaning the column values of the large polygons are kept.
+        aggfunc: Aggregation function(s) to use when dissolving/eliminating.
+            Defaults to None, meaning the values of 'gdf' is used. Otherwise,
+            aggfunc will be passed to pandas groupby.agg. note: The geometries of
+            'gdf' are sorted first, but if 'gdf' has missing values, the resulting
+            polygons might get values from the polygons to be eliminated
+            (if aggfunc="first").
         kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
         The GeoDataFrame with the small polygons dissolved into the large polygons.
     """
+    crs = gdf.crs
 
-    # remove polygons in gdf that are present in to_eliminate
-    gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
+    common_geometries = gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))
+    if any(common_geometries):
+        gdf = gdf.loc[~common_geometries]
 
     if not ignore_index:
-        idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+        idx_mapper = dict(enumerate(gdf.index))
         idx_name = gdf.index.name
 
-    # resetting in case not unique index
     gdf = gdf.reset_index(drop=True)
 
-    gdf = gdf.assign(poly_idx=lambda x: x.index)
+    gdf["poly_idx"] = gdf.index
     to_eliminate = to_eliminate.assign(eliminate_idx=lambda x: range(len(x)))
 
-    # convert to lines to get the border lines
-    lines = to_lines(
-        gdf[["poly_idx", "geometry"]], to_eliminate[["eliminate_idx", "geometry"]]
-    )
-    lines = lines[lines["eliminate_idx"].notna()]
-    lines["length__"] = lines.length
+    # convert to lines to get the borders
+    lines_gdf = to_lines(gdf[["poly_idx", "geometry"]], copy=False)
+    lines_eliminate = to_lines(to_eliminate[["eliminate_idx", "geometry"]], copy=False)
 
-    longest_border = lines.sort_values("length__", ascending=False).drop_duplicates(
+    borders = lines_gdf.overlay(lines_eliminate).loc[
+        lambda x: x["eliminate_idx"].notna()
+    ]
+
+    borders["length__"] = borders.length
+
+    # as DataFrame because GeoDataFrame constructor is expensive
+    borders = pd.DataFrame(borders)
+    gdf = pd.DataFrame(gdf)
+
+    longest_border = borders.sort_values("length__", ascending=False).drop_duplicates(
         "eliminate_idx"
     )
 
     to_poly_idx = longest_border.set_index("eliminate_idx")["poly_idx"]
     to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(to_poly_idx)
 
-    gdf["dissolve_idx"] = gdf["poly_idx"]
+    gdf = gdf.rename(columns={"poly_idx": "dissolve_idx"}, errors="raise")
 
-    kwargs.pop("as_index", None)
-    eliminated = pd.concat([gdf, to_eliminate]).dissolve(
-        "dissolve_idx", aggfunc=aggfunc, **kwargs
-    )
+    eliminated = _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs)
 
     if ignore_index:
-        return eliminated.reset_index(drop=True)
+        eliminated = eliminated.reset_index(drop=True)
     else:
         eliminated.index = eliminated.index.map(idx_mapper)
         eliminated.index.name = idx_name
 
     if not remove_isolated:
         isolated = to_eliminate.loc[to_eliminate["dissolve_idx"].isna()]
-        eliminated = pd.concat([eliminated, isolated])
+        if len(isolated):
+            eliminated = pd.concat([eliminated, isolated])
 
-    return eliminated.drop(
+    eliminated = eliminated.drop(
         ["dissolve_idx", "length__", "eliminate_idx", "poly_idx"],
         axis=1,
         errors="ignore",
     )
 
+    return GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+
 
 def eliminate_by_largest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    *,
     remove_isolated: bool = False,
     ignore_index: bool = False,
-    aggfunc: str | dict | list = "first",
+    aggfunc: str | dict | list | None = None,
     **kwargs,
 ) -> GeoDataFrame:
     """Dissolves selected polygons with the largest neighbor polygon.
@@ -301,8 +296,12 @@ def eliminate_by_largest(
         ignore_index: If False (default), the resulting GeoDataFrame will keep the
             index of the large polygons. If True, the resulting axis will be labeled
             0, 1, …, n - 1.
-        aggfunc: Aggregation function(s) to use when dissolving. Defaults to 'first',
-            meaning the column values of the large polygons are kept.
+        aggfunc: Aggregation function(s) to use when dissolving/eliminating.
+            Defaults to None, meaning the values of 'gdf' is used. Otherwise,
+            aggfunc will be passed to pandas groupby.agg. note: The geometries of
+            'gdf' are sorted first, but if 'gdf' has missing values, the resulting
+            polygons might get values from the polygons to be eliminated
+            (if aggfunc="first").
         kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
@@ -323,9 +322,10 @@ def eliminate_by_largest(
 def eliminate_by_smallest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
+    *,
     remove_isolated: bool = False,
     ignore_index: bool = False,
-    aggfunc: str | dict | list = "first",
+    aggfunc: str | dict | list | None = None,
     **kwargs,
 ) -> GeoDataFrame:
     return _eliminate_by_area(
@@ -345,156 +345,98 @@ def _eliminate_by_area(
     remove_isolated: bool,
     sort_ascending: bool,
     ignore_index: bool = False,
-    aggfunc="first",
+    aggfunc: str | dict | list | None = None,
     **kwargs,
 ) -> GeoDataFrame:
-    # remove polygons in gdf that are present in to_eliminate
-    gdf = gdf.loc[~gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))]
+    common_geometries = gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))
+    if any(common_geometries):
+        gdf = gdf.loc[~common_geometries]
 
     if not ignore_index:
-        idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+        idx_mapper = dict(enumerate(gdf.index))
         idx_name = gdf.index.name
 
     gdf = gdf.reset_index(drop=True)
 
-    gdf["area__"] = gdf.area
+    crs = gdf.crs
+
+    gdf["_area"] = gdf.area
 
     joined = to_eliminate.sjoin(
-        gdf[["area__", "geometry"]], predicate="touches", how="left"
-    ).sort_values("area__", ascending=sort_ascending)
+        gdf[["_area", "geometry"]], predicate="touches", how="left"
+    )
 
-    largest = joined[~joined.index.duplicated()]
+    # as DataFrame because GeoDataFrame constructor is expensive
+    joined = (
+        pd.DataFrame(joined)
+        .rename(columns={"index_right": "dissolve_idx"}, errors="raise")
+        .sort_values("_area", ascending=sort_ascending)
+    )
+    gdf = pd.DataFrame(gdf)
 
-    gdf = gdf.assign(index_right=lambda x: x.index)
+    largest = joined[~joined.index.duplicated(keep="first")]
+
+    gdf["dissolve_idx"] = gdf.index
+
+    eliminated = _eliminate(gdf, largest, aggfunc, crs, **kwargs)
+
+    if ignore_index:
+        eliminated = eliminated.reset_index(drop=True)
+    else:
+        eliminated.index = eliminated.index.map(idx_mapper)
+        eliminated.index.name = idx_name
+
+    if not remove_isolated:
+        isolated = joined.loc[joined["dissolve_idx"].isna()]
+        if len(isolated):
+            eliminated = pd.concat([eliminated, isolated])
+
+    return GeoDataFrame(
+        eliminated.drop(columns="dissolve_idx"), geometry="geometry", crs=crs
+    ).pipe(clean_geoms)
+
+
+def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
+    if aggfunc is None:
+        concatted = pd.concat([gdf, to_eliminate[["dissolve_idx", "geometry"]]])
+        aggfunc = "first"
+    else:
+        concatted = pd.concat([gdf, to_eliminate])
+
+    only_one = concatted.loc[
+        lambda x: (x.groupby("dissolve_idx").transform("size") == 1)
+        & (x["dissolve_idx"].notna())
+    ]
+    more_than_one = concatted.loc[
+        lambda x: x.groupby("dissolve_idx").transform("size") > 1
+    ]
+
+    if not len(more_than_one):
+        return only_one
 
     kwargs.pop("as_index", None)
     eliminated = (
-        pd.concat([gdf, largest])
-        .dissolve("index_right", aggfunc=aggfunc, **kwargs)
-        .drop(["area__"], axis=1, errors="ignore")
+        # more_than_one.dissolve("dissolve_idx", aggfunc=aggfunc, **kwargs)
+        more_than_one.drop(columns="geometry")
+        .groupby("dissolve_idx", **kwargs)
+        .agg(aggfunc)
+        .drop(["_area"], axis=1, errors="ignore")
+    )
+    eliminated["geometry"] = more_than_one.groupby("dissolve_idx")["geometry"].agg(
+        lambda x: unary_union(x.values)
     )
 
-    if ignore_index:
-        return eliminated.reset_index(drop=True)
+    # setting crs to geometryarray to avoid warning
+    eliminated.geometry.values.crs = crs
+    only_one.geometry.values.crs = crs
 
-    eliminated.index = eliminated.index.map(idx_mapper)
-    eliminated.index.name = idx_name
-
-    if not remove_isolated:
-        isolated = joined.loc[joined["index_right"].isna()]
-        eliminated = pd.concat([eliminated, isolated])
-
-    return eliminated
-
-
-def get_overlapping_polygons(
-    gdf: GeoDataFrame | GeoSeries, ignore_index: bool = False
-) -> GeoDataFrame | GeoSeries:
-    """Find the areas that overlap.
-
-    Does an intersection with itself and keeps only the duplicated geometries. The
-    index of 'gdf' is preserved.
-
-    Args:
-        gdf: GeoDataFrame of polygons.
-        ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
-            Defaults to False.
-
-    Returns:
-        A GeoDataFrame of the overlapping polygons.
-    """
-    if not any(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
-        raise ValueError("'gdf' has no polygons.")
-
-    elif not all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
-        warnings.warn("'gdf' has mixed geometries. Non-polygons will be removed.")
-
-    if not ignore_index:
-        idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
-        idx_name = gdf.index.name
-
-    gdf = gdf.reset_index(drop=True).assign(overlap=gdf.index)
-
-    intersected = clean_overlay(
-        gdf, gdf[["geometry"]], how="intersection", geom_type="polygon"
-    )
-
-    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
-
-    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
-
-    duplicated_geoms = intersected.loc[intersected.index.isin(duplicated_points.index)]
-    duplicated_geoms.index = duplicated_geoms["overlap"].values
-
-    if ignore_index:
-        duplicated_geoms = duplicated_geoms.reset_index(drop=True)
-    else:
-        duplicated_geoms.index = duplicated_geoms.index.map(idx_mapper)
-        duplicated_geoms.index.name = idx_name
-
-    return duplicated_geoms.drop("overlap", axis=1)
-
-
-def get_overlapping_polygon_indices(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
-    if not gdf.index.is_unique:
-        raise ValueError(
-            "Index must be unique in order to correctly find "
-            "overlapping polygon indices."
-        )
-
-    idx_mapper = {i: idx for i, idx in enumerate(gdf.index)}
-    idx_name = gdf.index.name
-
-    gdf = gdf.reset_index(drop=True).assign(overlap=gdf.index)
-
-    intersected = clean_overlay(
-        gdf, gdf[["geometry"]], how="intersection", geom_type="polygon"
-    )
-
-    intersected = intersected.set_index("overlap")
-
-    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
-
-    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
-
-    duplicated_points.index = duplicated_points.index.map(idx_mapper)
-    duplicated_points.index.name = idx_name
-
-    return duplicated_points.index.unique()
-
-
-def get_overlapping_polygon_product(gdf: GeoDataFrame | GeoSeries) -> pd.Index:
-    if not gdf.index.is_unique:
-        raise ValueError("Index must be unique to find overlapping polygon indices.")
-
-    gdf = gdf.assign(overlap=gdf.index)
-
-    intersected = clean_overlay(gdf, gdf[["geometry"]], how="intersection")
-
-    intersected = intersected.set_index("overlap")
-
-    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
-
-    duplicated_points = points_joined.loc[points_joined.index.duplicated()]
-
-    unique = (
-        duplicated_points.reset_index()
-        .groupby(["overlap", "index_right"])
-        .size()
-        .reset_index()
-    )
-
-    unique = unique[unique.overlap != unique.index_right]
-    series = unique.set_index("index_right").overlap
-    series.index.name = None
-
-    return series
+    return pd.concat([eliminated, only_one]).sort_index()
 
 
 def close_all_holes(
     gdf: GeoDataFrame | GeoSeries,
     *,
-    without_islands: bool = True,
+    ignore_islands: bool = False,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
     """Closes all holes in polygons.
@@ -506,6 +448,10 @@ def close_all_holes(
         gdf: GeoDataFrame or GeoSeries of polygons.
         copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
             Defaults to True.
+        ignore_islands: If False (default), polygons inside the holes (islands)
+            will be erased from the output geometries. If True, the entire
+            holes will be closed and the islands kept, meaning there might be
+            duplicate surfaces in the resulting geometries.
 
     Returns:
         A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
@@ -542,7 +488,7 @@ def close_all_holes(
     if copy:
         gdf = gdf.copy()
 
-    if without_islands:
+    if not ignore_islands:
         all_geoms = gdf.unary_union
         if isinstance(gdf, GeoDataFrame):
             gdf["geometry"] = gdf.geometry.map(
@@ -563,7 +509,7 @@ def close_small_holes(
     gdf: GeoDataFrame | GeoSeries,
     max_area: int | float,
     *,
-    without_islands: bool = True,
+    ignore_islands: bool = False,
     copy: bool = True,
 ) -> GeoDataFrame | GeoSeries:
     """Closes holes in polygons if the area is less than the given maximum.
@@ -575,6 +521,10 @@ def close_small_holes(
     Args:
         gdf: GeoDataFrame or GeoSeries of polygons.
         max_area: The maximum area in the unit of the GeoDataFrame's crs.
+        ignore_islands: If False (default), polygons inside the holes (islands)
+            will be erased from the "hole" geometries before the area is calculated.
+            If True, the entire polygon interiors will be considered, meaning there
+            might be duplicate surfaces in the resulting geometries.
         copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
             Defaults to True.
 
@@ -626,7 +576,7 @@ def close_small_holes(
     if copy:
         gdf = gdf.copy()
 
-    if without_islands:
+    if not ignore_islands:
         all_geoms = gdf.unary_union
 
         if isinstance(gdf, GeoDataFrame):
@@ -663,8 +613,6 @@ def _close_small_holes(poly, max_area):
 
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
-
-            print(area(hole))
 
             if area(hole) < max_area:
                 holes_closed.append(hole)

@@ -16,16 +16,34 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+"""def test_dice():
+    points = sg.random_points(1000, loc=10000).set_crs(25833)
+    points["col"] = np.random.choice([*"abcd"], len(points))
+    points["col2"] = np.random.choice([1, 2, 3, 4], len(points))
+
+    grid = sg.make_grid(points, gridsize=1000)
+    assert all(points.intersects(grid.unary_union))
+    assert list(grid.columns) == ["col", "col2", "geometry"], list(grid.columns)
+    print(grid)
+    ss
+
+
+test_dice()"""
+
+
 def test_bounds():
     points = sg.random_points(1000, loc=10000).set_crs(25833)
+
+    single_cell = sg.make_grid(points, gridsize=1_000_00, clip_to_bounds=True)
+    assert len(single_cell) == 1, len(single_cell)
+
+    grid = sg.make_grid(points, gridsize=1000)
+    assert all(points.intersects(grid.unary_union))
 
     # should work with geoseries, tuple and polygon
     sg.make_grid(points.geometry, 1000),
     sg.make_grid(points.geometry.total_bounds, 1000, crs=points.crs)
     sg.make_grid(points.unary_union, 1000, crs=points.crs)
-
-    grid = sg.make_grid(points, gridsize=1000)
-    assert all(points.intersects(grid.unary_union))
 
     ssb_grid = sg.make_ssb_grid(points, gridsize=1000)
     assert all(points.intersects(ssb_grid.unary_union))
@@ -76,3 +94,5 @@ def test_bounds():
 
 if __name__ == "__main__":
     test_bounds()
+
+# %%

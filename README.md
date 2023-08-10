@@ -48,11 +48,9 @@ roads = sg.read_parquet_url(
 
 connected_roads = sg.get_connected_components(roads).query("connected == 1")
 
-directed_roads = sg.make_directed_network(
+directed_roads = sg.make_directed_network_norway(
     connected_roads,
-    direction_col="oneway",
-    direction_vals_bft=("B", "FT", "TF"),
-    minute_cols=("drivetime_fw", "drivetime_bw"),
+    dropnegative=True,
 )
 
 rules = sg.NetworkAnalysisRules(directed=True, weight="minutes")

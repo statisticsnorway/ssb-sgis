@@ -95,16 +95,17 @@ class Examine:
         self.size = size
         self.kwargs = kwargs
 
-    def next(self, *gdfs, i: int | None = None, **kwargs):
+    def add_gdfs(self, *gdfs):
+        self.gdfs = self.gdfs + gdfs
+        return self
+
+    def next(self, i: int | None = None, **kwargs):
         """Displays a map of geometries within the next row of the mask gdf.
 
         Args:
-            *gdfs: Optional GeoDataFrames to be added on top of the current.
-            i: Optionally set the integer index of which row to use as mask.
+            i: Index to display.
             **kwargs: Additional keyword arguments passed to sgis.clipmap.
         """
-        gdfs = () if not gdfs else gdfs
-        self.gdfs = self.gdfs + gdfs
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
@@ -125,7 +126,7 @@ class Examine:
         )
         self.i += 1
 
-    def prev(self, *gdfs, i: int | None = None, **kwargs):
+    def prev(self, i: int | None = None, **kwargs):
         """Displays a map of geometries within the previus row of the mask gdf.
 
         Args:
@@ -133,8 +134,6 @@ class Examine:
             i: Optionally set the integer index of which row to use as mask.
             **kwargs: Additional keyword arguments passed to sgis.clipmap.
         """
-        gdfs = () if not gdfs else gdfs
-        self.gdfs = self.gdfs + gdfs
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
@@ -152,10 +151,8 @@ class Examine:
             **self.kwargs,
         )
 
-    def current(self, *gdfs, i: int | None = None, **kwargs):
+    def current(self, i: int | None = None, **kwargs):
         """Repeat the last shown map."""
-        gdfs = () if not gdfs else gdfs
-        self.gdfs = self.gdfs + gdfs
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
@@ -171,11 +168,11 @@ class Examine:
             **self.kwargs,
         )
 
-    def get_current_mask(self) -> gpd.GeoDataFrame:
+    def get_mask(self) -> gpd.GeoDataFrame:
         """Returns a GeoDataFrame of the last shown mask geometry."""
         return self.mask_gdf.iloc[[self.i]]
 
-    def get_current_geoms(self) -> tuple[gpd.GeoDataFrame]:
+    def get_geoms(self) -> tuple[gpd.GeoDataFrame]:
         """Returns all GeoDataFrames in the area of the last shown mask geometry."""
         mask = self.mask_gdf.iloc[[self.i]]
         gdfs = ()
@@ -189,4 +186,12 @@ class Examine:
         return kwargs
 
     def __repr__(self) -> str:
-        return f"{self.__class__}(indices={len(self.indices)}, current={self.i}, n_gdfs={len(self.gdfs)})"
+        return f"{self.__class__.__name__}(indices={len(self.indices)}, current={self.i}, n_gdfs={len(self.gdfs)})"
+
+    def __add__(self, scalar):
+        self.i += scalar
+        return self
+
+    def __sub__(self, scalar):
+        self.i -= scalar
+        return self

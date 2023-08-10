@@ -39,13 +39,16 @@ def _get_route_frequencies(
 
             resultlist.append(line_ids)
 
+    if not resultlist:
+        return pd.DataFrame(columns=["frequency", "geometry"])
+
     summarised: pd.Series = (
         pd.concat(resultlist).groupby("src_tgt_wt")["multiplier"].sum()
     )
 
     roads["frequency"] = roads["src_tgt_wt"].map(summarised)
 
-    roads_visited = roads.loc[roads.frequency.notna()].drop("src_tgt_wt", axis=1)
+    roads_visited = roads.loc[roads["frequency"].notna()].drop("src_tgt_wt", axis=1)
 
     return roads_visited
 
