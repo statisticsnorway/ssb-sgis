@@ -32,6 +32,21 @@ def test_random_get_intersections():
         )
 
 
+def test_bug():
+    circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
+    gdf = sg.get_intersections(circles)
+    assert len(gdf) == 6
+    gdf.to_file(r"c:/users/ort/downloads/linux_windows.gpkg")
+    joined = gdf.sjoin(gdf, predicate="within")
+    print(joined)
+    print(len(joined))
+    assert len(joined) == 12
+    assert list(sorted(joined.index.unique())) == [0, 1, 2]
+    import geopandas as gpd
+
+    print(gpd.show_versions())
+
+
 def test_drop_duplicate_geometries():
     circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
     dups = sg.get_intersections(circles)
