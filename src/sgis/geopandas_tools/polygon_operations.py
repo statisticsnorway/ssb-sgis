@@ -255,16 +255,16 @@ def eliminate_by_longest(
 
     eliminated = _eliminate(gdf, actually_eliminate, aggfunc, crs, **kwargs)
 
-    if not remove_isolated:
-        isolated = to_eliminate.loc[to_eliminate["_dissolve_idx"].isna()]
-        if len(isolated):
-            eliminated = pd.concat([eliminated, isolated])
-
     if ignore_index:
         eliminated = eliminated.reset_index(drop=True)
     else:
         eliminated.index = eliminated.index.map(idx_mapper)
         eliminated.index.name = idx_name
+
+    if not remove_isolated:
+        isolated = to_eliminate.loc[to_eliminate["_dissolve_idx"].isna()]
+        if len(isolated):
+            eliminated = pd.concat([eliminated, isolated])
 
     eliminated = eliminated.drop(
         ["_dissolve_idx", "length__", "eliminate_idx", "poly_idx"],
@@ -373,25 +373,10 @@ def _eliminate_by_area(
     gdf["_area"] = gdf.area
     gdf["_dissolve_idx"] = gdf.index
 
-    """display("gdf")
-    display(gdf.geometry)
-
-    display(
-        GeoDataFrame(gdf, geometry="geometry", crs=25833).explore(
-            "_dissolve_idx", max_zoom=40
-        )
-    )"""
-
     joined = to_eliminate.sjoin(
         gdf[["_area", "_dissolve_idx", "geometry"]], predicate=predicate, how="left"
     )
 
-    """display("joined")
-    display(
-        GeoDataFrame(joined, geometry="geometry", crs=25833).explore(
-            "_dissolve_idx", max_zoom=40
-        )
-    )"""
     # as DataFrames because GeoDataFrame constructor is expensive
     joined = (
         pd.DataFrame(joined)
@@ -402,26 +387,19 @@ def _eliminate_by_area(
 
     gdf = pd.DataFrame(gdf)
 
-    """display("largest")
-    display(
-        GeoDataFrame(largest, geometry="geometry", crs=25833).explore(
-            "_dissolve_idx", max_zoom=40
-        )
-    )"""
     notna = joined.loc[lambda x: x["_dissolve_idx"].notna()]
-    # eliminated = _eliminate(gdf, largest, aggfunc, crs, **kwargs)
     eliminated = _eliminate(gdf, notna, aggfunc, crs, **kwargs)
-
-    if not remove_isolated:
-        isolated = joined.loc[joined["_dissolve_idx"].isna()]
-        if len(isolated):
-            eliminated = pd.concat([eliminated, isolated])
 
     if ignore_index:
         eliminated = eliminated.reset_index(drop=True)
     else:
         eliminated.index = eliminated.index.map(idx_mapper)
         eliminated.index.name = idx_name
+
+    if not remove_isolated:
+        isolated = joined.loc[joined["_dissolve_idx"].isna()]
+        if len(isolated):
+            eliminated = pd.concat([eliminated, isolated])
 
     return GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
 
@@ -466,21 +444,6 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
     eliminated["geometry"] = more_than_one.groupby("_dissolve_idx")["geometry"].agg(
         lambda x: unary_union(x.values)
     )
-
-    """display("all")
-    display(
-        GeoDataFrame(
-            pd.concat(
-                [
-                    not_to_dissolve.assign(hva="not_to_dissolve"),
-                    eliminated.assign(hva="eliminated"),
-                    only_one.assign(hva="only_one"),
-                ]
-            ),
-            geometry="geometry",
-            crs=25833,
-        ).explore("hva", max_zoom=40)
-    )"""
 
     # setting crs on geometryarray to avoid warning in concat
     not_to_dissolve.geometry.values.crs = crs

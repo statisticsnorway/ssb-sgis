@@ -223,12 +223,13 @@ def test_eliminate():
         assert eliminated["what"].isna().all()
 
     eliminated = sg.eliminate_by_longest(polys1, isolated)
+
+    if __name__ == "__main__":
+        sg.qtm(eliminated, "what", title="with isolated", alpha=0.8)
+    assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
     assert list(eliminated.what) == ["small", "large", "isolated"], list(
         eliminated.what
     )
-    assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
-    if __name__ == "__main__":
-        sg.qtm(eliminated, "what", title="with isolated", alpha=0.8)
 
     eliminated = sg.eliminate_by_largest(polys1, isolated)
     assert list(eliminated.what) == ["small", "large", "isolated"], list(

@@ -135,8 +135,13 @@ def no_intersections_return(df1, df2, how):
     if how == "update":
         return pd.concat([df1, df2], ignore_index=True)
 
+    assert how in ["union", "symmetric_difference"]
+
     # add suffixes and return both concatted
     df_template = _join_and_get_no_rows(df1, df2)
+    if not len(df1) and not len(df2):
+        return df_template
+
     df1_cols = df1.columns.difference({df1._geometry_column_name})
     df2_cols = df2.columns.difference({df2._geometry_column_name})
     df1.columns = [f"{col}_1" if col in df2_cols else col for col in df1]
