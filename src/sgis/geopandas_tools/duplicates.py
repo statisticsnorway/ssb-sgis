@@ -3,7 +3,7 @@ from typing import Callable, Iterable
 import networkx as nx
 import pandas as pd
 from geopandas import GeoDataFrame
-from shapely import difference, make_valid, union
+from shapely import STRtree, difference, intersection, make_valid, union
 from shapely.errors import GEOSException
 from shapely.geometry import Polygon
 
@@ -212,6 +212,23 @@ def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
 def _get_intersecting_geometries(gdf: GeoDataFrame) -> GeoDataFrame:
     gdf = gdf.assign(orig_idx=gdf.index).reset_index(drop=True)
 
+    """geometries = gdf.geometry.to_numpy()
+    tree = STRtree(geometries)
+    left, right = tree.query(geometries, predicate="intersects")
+
+    intersections = intersection(geometries[left], geometries[right])
+
+    non_unique = {
+        i: poly
+        for i, poly in zip(left, intersections)
+        if sum(poly.equals(x) for x in geometries) > 1
+    }
+
+    print(non_unique)
+    print(gdf)
+    gdf.geometry = gdf.index.map(non_unique)
+    ss"""
+
     right = gdf[[gdf._geometry_column_name]]
     right["idx_right"] = right.index
     left = gdf
@@ -308,6 +325,38 @@ def _get_duplicate_geometry_groups(
     joined = gdf.sjoin(gdf, predicate="within")
 
     edges = list(joined["index_right"].items())
+
+    graph = nx.Graph()
+    graph.add_edges_from(edges)
+
+    component_mapper = {
+        j: i
+        for i, component in enumerate(nx.connected_components(graph))
+        for j in component
+    }
+
+    gdf[group_col] = component_mapper
+
+    gdf = _push_geom_col(gdf)
+
+    gdf.index = gdf.index.map(idx_mapper)
+    gdf.index.name = idx_name
+
+    return gdf
+
+
+def _get_duplicate_geometry_groups(
+    gdf: GeoDataFrame, group_col: str | Iterable[str] = "duplicate_index"
+):
+    idx_mapper = dict(enumerate(gdf.index))
+    idx_name = gdf.index.name
+
+    gdf = gdf.reset_index(drop=True)
+
+    tree = STRtree(gdf.geometry.values)
+    left, right = tree.query(gdf.geometry.values, predicate="within")
+
+    edges = list(zip(left, right))
 
     graph = nx.Graph()
     graph.add_edges_from(edges)

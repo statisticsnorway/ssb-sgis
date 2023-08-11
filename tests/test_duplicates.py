@@ -33,18 +33,94 @@ def test_random_get_intersections():
 
 
 def test_bug():
+    import geopandas as gpd
+    import networkx as nx
+    from shapely import STRtree, area, buffer, intersection
+    from shapely.geometry import Point
+
+    # print(gpd.show_versions())
+
+    points = [Point(x, y) for x, y in [(0, 0), (1, 0), (2, 0)]]
+    circles = buffer(points, 1.2)
+
+    print(area(circles))
+
+    tree = STRtree(circles)
+    left, right = tree.query(circles, predicate="intersects")
+
+    intersections = intersection(circles[left], circles[right])
+    print(area(intersections))
+
+    tree = STRtree(intersections)
+    left, right = tree.query(intersections, predicate="within")
+    print(len(left))
+    print(len(right))
+    print(left)
+    print(right)
+
+    sg.to_gdf(intersections).explore()
+    sss
+    import geopandas as gpd
+
+    print(gpd.show_versions())
+
     circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
     gdf = sg.get_intersections(circles)
+    gdf = gdf.reset_index(drop=True)
     assert len(gdf) == 6
-    # gdf.to_file(r"c:/users/ort/downloads/linux_windows.gpkg")
+    gdf.to_file(r"c:/users/ort/downloads/linux_windows.gpkg")
     joined = gdf.sjoin(gdf, predicate="within")
     print(joined)
     print(len(joined))
     assert len(joined) == 12
-    assert list(sorted(joined.index.unique())) == [0, 1, 2]
-    import geopandas as gpd
+    assert list(sorted(joined.index.unique())) == [0, 1, 2, 3, 4, 5]
 
-    print(gpd.show_versions())
+    import networkx as nx
+    from shapely import STRtree
+
+    tree = STRtree(gdf.geometry.values)
+    left, right = tree.query(gdf.geometry.values, predicate="within")
+    print(left)
+    print(len(left))
+    print(right)
+    print(len(right))
+
+    edges = list(zip(left, right))
+    print(edges)
+
+    graph = nx.Graph()
+    graph.add_edges_from(edges)
+
+    component_mapper = {
+        j: i
+        for i, component in enumerate(nx.connected_components(graph))
+        for j in component
+    }
+
+    gdf["duplicate_group"] = component_mapper
+
+    gdf["duplicate_group"] = gdf["duplicate_group"].astype(str)
+
+    print(gdf)
+    sg.explore(gdf, "duplicate_group")
+
+
+def test_bug2():
+    import geopandas as gpd
+    from shapely import STRtree
+
+    circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
+    gdf = sg.get_intersections(circles)
+    gdf = gdf.reset_index(drop=True)
+    # gdf.to_file(r"c:/users/ort/downloads/linux_windows.gpkg")
+
+    # gdf = gpd.read_file(r"c:/users/ort/downloads/linux_windows.gpkg")
+    tree = STRtree(gdf.geometry.values)
+    left, right = tree.query(gdf.geometry.values, predicate="within")
+    print(left)
+    print(len(left))
+    print(right)
+    print(len(right))
 
 
 def test_drop_duplicate_geometries():
@@ -53,7 +129,7 @@ def test_drop_duplicate_geometries():
     assert len(dups) == 6
     # 3 unique intersections
     no_dups = sg.drop_duplicate_geometries(dups)
-    assert len(no_dups) == 3
+    assert len(no_dups) == 3, len(no_dups)
 
     # 3 pairs == 6 rows
     dups2 = sg.get_intersections(no_dups)
