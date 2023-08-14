@@ -3,7 +3,7 @@ from typing import Callable, Iterable
 import networkx as nx
 import pandas as pd
 from geopandas import GeoDataFrame
-from shapely import STRtree, difference, intersection, make_valid, union
+from shapely import STRtree, difference, intersection, make_valid, unary_union, union
 from shapely.errors import GEOSException
 from shapely.geometry import Polygon
 
@@ -13,7 +13,10 @@ from .overlay import clean_overlay
 
 
 def update_geometries(
-    gdf: GeoDataFrame, keep_geom_type: bool = True, copy: bool = True
+    gdf: GeoDataFrame,
+    keep_geom_type: bool = True,
+    copy: bool = True,
+    grid_size: int | None = None,
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
@@ -83,12 +86,20 @@ def update_geometries(
         if any(geom.equals(geom2) for geom2 in geometries):
             continue
 
-        new = _try_shapely_func_pair(geom, unioned, func=difference)
+        try:
+            new = difference(geom, unioned, grid_size=grid_size)
+        except GEOSException:
+            geom = make_valid(geom)
+            new = difference(geom, unioned, grid_size=grid_size)
 
         if not new:
             continue
 
-        unioned = _try_shapely_func_pair(new, unioned, func=union)
+        try:
+            unioned = unary_union([new, unioned], grid_size=grid_size)
+        except GEOSException:
+            new = make_valid(new)
+            unioned = unary_union([new, unioned], grid_size=grid_size)
 
         out_rows.append(row)
         geometries.append(new)
@@ -100,22 +111,6 @@ def update_geometries(
         out = to_single_geom_type(out, geom_type)
 
     return out
-
-
-def _try_shapely_func_pair(geom1, geom2, func: Callable):
-    try:
-        return func(geom1, geom2)
-    except GEOSException:
-        try:
-            geom1 = make_valid(geom1)
-            return func(geom1, geom2)
-        except GEOSException:
-            for num in [1e-6, 1e-5, 1e-4, 1e-3]:
-                try:
-                    return func(geom1, geom2, grid_size=num)
-                except GEOSException as e:
-                    pass
-            raise ValueError(geom1, geom2) from e
 
 
 def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
