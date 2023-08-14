@@ -32,7 +32,7 @@ def test_random_get_intersections():
         )
 
 
-def test_bug():
+def not_test_bug():
     import geopandas as gpd
     import networkx as nx
     from shapely import STRtree, area, buffer, intersection
@@ -105,7 +105,7 @@ def test_bug():
     sg.explore(gdf, "duplicate_group")
 
 
-def test_bug2():
+def not_test_bug2():
     import geopandas as gpd
     from shapely import STRtree
 

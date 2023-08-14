@@ -18,6 +18,7 @@ def gridloop(
     gridsize: int,
     gridbuffer: int,
     clip: bool = True,
+    keep_geom_type: bool = True,
     verbose: bool = False,
     **kwargs,
 ) -> list[Any]:
@@ -34,7 +35,9 @@ def gridloop(
         gridbuffer: Units to buffer each gridcell by. For edge cases.
         clip: If True (default) geometries are clipped by the grid cells.
             If False, all geometries that intersect will be selected in each iteration.
-        verbose: Whether to print progess. Defaults to False.
+        verbose: Whether to print progress. Defaults to False.
+        keep_geom_type: Whether to keep only the input geometry types after clipping.
+            Defaults to True.
         **kwargs: Keyword arguments passed to the function (func). Arguments that are
             of type GeoDataFrame or GeoSeries will be clipped by the mask in each
             iteration.
@@ -59,7 +62,7 @@ def gridloop(
         for key, value in kwargs.items():
             if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries)):
                 if clip:
-                    value = clean_clip(value, cell)
+                    value = clean_clip(value, cell, keep_geom_type=keep_geom_type)
                 else:
                     value = value.loc[value.intersects(cell)]
             elif isinstance(value, Geometry):
