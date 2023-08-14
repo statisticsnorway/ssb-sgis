@@ -112,6 +112,7 @@ def test_bug2():
     circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
     gdf = sg.get_intersections(circles)
     gdf = gdf.reset_index(drop=True)
+    assert len(gdf) == 6
     # gdf.to_file(r"c:/users/ort/downloads/linux_windows.gpkg")
 
     # gdf = gpd.read_file(r"c:/users/ort/downloads/linux_windows.gpkg")
