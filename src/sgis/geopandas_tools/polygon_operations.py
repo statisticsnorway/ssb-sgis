@@ -485,13 +485,12 @@ def close_all_holes(
     --------
     Let's create a circle with a hole in it.
 
-    >>> from sgis import close_all_holes, buff, to_gdf
-    >>> point = to_gdf([260000, 6650000], crs=25833)
+    >>> point = sg.to_gdf([260000, 6650000], crs=25833)
     >>> point
                             geometry
     0  POINT (260000.000 6650000.000)
-    >>> circle = buff(point, 1000)
-    >>> small_circle = buff(point, 500)
+    >>> circle = sg.buff(point, 1000)
+    >>> small_circle = sg.buff(point, 500)
     >>> circle_with_hole = circle.overlay(small_circle, how="difference")
     >>> circle_with_hole.area
     0    2.355807e+06
@@ -499,7 +498,7 @@ def close_all_holes(
 
     Close the hole.
 
-    >>> holes_closed = close_all_holes(circle_with_hole)
+    >>> holes_closed = sg.close_all_holes(circle_with_hole)
     >>> holes_closed.area
     0    3.141076e+06
     dtype: float64
@@ -566,13 +565,12 @@ def close_small_holes(
 
     Let's create a circle with a hole in it.
 
-    >>> from sgis import close_small_holes, buff, to_gdf
-    >>> point = to_gdf([260000, 6650000], crs=25833)
+    >>> point = sg.to_gdf([260000, 6650000], crs=25833)
     >>> point
                             geometry
     0  POINT (260000.000 6650000.000)
-    >>> circle = buff(point, 1000)
-    >>> small_circle = buff(point, 500)
+    >>> circle = sg.buff(point, 1000)
+    >>> small_circle = sg.buff(point, 500)
     >>> circle_with_hole = circle.overlay(small_circle, how="difference")
     >>> circle_with_hole.area
     0    2.355807e+06
@@ -580,14 +578,14 @@ def close_small_holes(
 
     Close holes smaller than 1 square kilometer (1 million square meters).
 
-    >>> holes_closed = close_small_holes(circle_with_hole, max_area=1_000_000)
+    >>> holes_closed = sg.close_small_holes(circle_with_hole, max_area=1_000_000)
     >>> holes_closed.area
     0    3.141076e+06
     dtype: float64
 
     The hole will not be closed if it is larger.
 
-    >>> holes_closed = close_small_holes(circle_with_hole, max_area=1_000)
+    >>> holes_closed = sg.close_small_holes(circle_with_hole, max_area=1_000)
     >>> holes_closed.area
     0    2.355807e+06
     dtype: float64
