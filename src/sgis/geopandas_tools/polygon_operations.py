@@ -512,21 +512,21 @@ def close_all_holes(
     if copy:
         gdf = gdf.copy()
 
-    if not ignore_islands:
-        all_geoms = gdf.unary_union
-        if isinstance(gdf, GeoDataFrame):
-            gdf["geometry"] = gdf.geometry.map(
-                lambda x: _close_all_holes_no_islands(x, all_geoms)
-            )
-            return gdf
-        else:
-            return gdf.map(lambda x: _close_all_holes_no_islands(x, all_geoms))
-    else:
+    if ignore_islands:
         if isinstance(gdf, GeoDataFrame):
             gdf["geometry"] = gdf.geometry.map(_close_all_holes)
             return gdf
         else:
             return gdf.map(_close_all_holes)
+
+    all_geoms = gdf.unary_union
+    if isinstance(gdf, GeoDataFrame):
+        gdf["geometry"] = gdf.geometry.map(
+            lambda x: _close_all_holes_no_islands(x, all_geoms)
+        )
+        return gdf
+    else:
+        return gdf.map(lambda x: _close_all_holes_no_islands(x, all_geoms))
 
 
 def close_small_holes(
