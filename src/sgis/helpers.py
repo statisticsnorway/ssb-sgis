@@ -193,11 +193,33 @@ def make_namedict(gdfs: tuple[GeoDataFrame]) -> dict[int, str]:
 
 
 def sort_nans_last(df, ignore_index=False):
-    df["n_nan"] = df.isna().sum(axis=1)
+    df["n_nan"] = df.isna().sum(axis=1).values
     df = df.sort_values("n_nan")
     df = df.drop(columns="n_nan")
 
     return df.reset_index(drop=True) if ignore_index else df
+
+
+def sort_nans_last(df, ignore_index: bool = False):
+    df["n_nan"] = df.isna().sum(axis=1).values
+
+    if not df.index.is_monotonic_increasing:
+        idx_mapper = dict(enumerate(df.index))
+        idx_name = df.index.name
+        in_order = False
+    else:
+        in_order = True
+
+    df = df.sort_values("n_nan").drop(columns="n_nan")
+
+    if ignore_index:
+        return df.reset_index(drop=True)
+
+    if not in_order:
+        df.index = df.index.map(idx_mapper)
+        df.index.name = idx_name
+
+    return df
 
 
 class LocalFunctionError(ValueError):

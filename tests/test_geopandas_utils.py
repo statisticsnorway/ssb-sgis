@@ -194,13 +194,7 @@ def test_sort():
     grouped_area_is_decreasing = s.groupby("n_nan")[
         "area"
     ].is_monotonic_decreasing.all()
-    assert grouped_area_is_decreasing
-
-    df = sg.random_points(5)
-    df.geometry = df.buffer([3, 1, 4, 2, 5])
-    df["col"] = [None, 1, 2, None, 1]
-    df["col2"] = [None, 1, 2, 3, None]
-    df["area"] = df.area
+    assert grouped_area_is_decreasing, s["area"].tolist()
 
 
 def main():
