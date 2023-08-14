@@ -542,8 +542,11 @@ def clean_clip(
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
+    if kwargs.get("keep_geom_type"):
+        geom_type = get_geom_type(gdf)
+
     try:
-        return gdf.clip(mask, **kwargs).pipe(clean_geoms)
+        gdf = gdf.clip(mask, **kwargs).pipe(clean_geoms)
     except Exception:
         gdf = clean_geoms(gdf)
         try:
@@ -552,3 +555,8 @@ def clean_clip(
             mask = clean_geoms(to_gdf(mask, crs=gdf.crs))
 
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
+
+    if kwargs.get("keep_geom_type"):
+        gdf = to_single_geom_type(gdf, geom_type)
+
+    return gdf
