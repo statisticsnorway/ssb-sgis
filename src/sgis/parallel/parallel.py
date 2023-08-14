@@ -426,5 +426,5 @@ class Parallel:
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(processes={self.processes}, "
-            f"backend=({self.backend}, context={self.context!r}))"
+            f"backend='{self.backend}', context='{self.context}')"
         )
