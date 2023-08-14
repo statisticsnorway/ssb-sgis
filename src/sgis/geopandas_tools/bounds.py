@@ -62,6 +62,8 @@ def gridloop(
                     value = clean_clip(value, cell)
                 else:
                     value = value.loc[value.intersects(cell)]
+            elif isinstance(value, Geometry):
+                value = value.intersection(cell).make_valid()
 
             cell_kwargs[key] = value
 
