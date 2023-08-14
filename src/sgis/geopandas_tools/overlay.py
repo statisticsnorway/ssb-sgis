@@ -99,28 +99,28 @@ def clean_overlay(
 
 
 def _join_and_get_no_rows(df1, df2):
-    if len(df1):
-        df1 = df1.iloc[[0]]
-    if len(df2):
-        df2 = df2.iloc[[0]]
     geom_col = df1._geometry_column_name
-    out = df1.join(
-        df2.drop(columns=df2._geometry_column_name),
-        lsuffix="_1",
-        rsuffix="_2",
-    )
+    df1_cols = df1.columns.difference({geom_col})
+    df2_cols = df2.columns.difference({df2._geometry_column_name})
+    cols_with_suffix = [f"{col}_1" if col in df2_cols else col for col in df1_cols] + [
+        f"{col}_2" if col in df1_cols else col for col in df2_cols
+    ]
+
     return GeoDataFrame(
-        pd.DataFrame(columns=[c for c in out.columns if c != geom_col] + [geom_col]),
+        pd.DataFrame(columns=cols_with_suffix + [geom_col]),
         geometry=geom_col,
         crs=df1.crs,
     )
 
 
-def no_intersections_return(df1, df2, how):
+def _no_intersections_return(df1, df2, how):
     """Return with no overlay if no intersecting bounding box"""
 
     if how == "intersection":
         return _join_and_get_no_rows(df1, df2)
+
+    if how == "difference":
+        return df1.reset_index(drop=True)
 
     if how == "identity":
         # add suffixes and return df1
@@ -128,9 +128,6 @@ def no_intersections_return(df1, df2, how):
         df2_cols = df2.columns.difference({df2._geometry_column_name})
         df1.columns = [f"{col}_1" if col in df2_cols else col for col in df1]
         return pd.concat([df_template, df1], ignore_index=True)
-
-    if how == "difference":
-        return df1.reset_index(drop=True)
 
     if how == "update":
         return pd.concat([df1, df2], ignore_index=True)
@@ -157,12 +154,12 @@ def _shapely_overlay(
     grid_size: float,
 ) -> GeoDataFrame:
     if not len(df1) or not len(df2):
-        return no_intersections_return(df1, df2, how)
+        return _no_intersections_return(df1, df2, how)
 
     box1 = box(*df1.total_bounds)
     box2 = box(*df2.total_bounds)
     if not len(df1) or not len(df1) or not box1.intersects(box2):
-        return no_intersections_return(df1, df2, how)
+        return _no_intersections_return(df1, df2, how)
 
     if df1._geometry_column_name != "geometry":
         df1 = df1.rename_geometry("geometry")
