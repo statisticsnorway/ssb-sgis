@@ -16,7 +16,7 @@ def gridloop(
     func: Callable,
     mask: GeoDataFrame | GeoSeries | Geometry,
     gridsize: int,
-    gridbuffer: int,
+    gridbuffer: int = 0,
     clip: bool = True,
     keep_geom_type: bool = True,
     verbose: bool = False,
@@ -33,6 +33,7 @@ def gridloop(
         mask: Geometry object to create a grid around.
         gridsize: Size of the grid cells in units of the crs (meters, degrees).
         gridbuffer: Units to buffer each gridcell by. For edge cases.
+            Defaults to 0.
         clip: If True (default) geometries are clipped by the grid cells.
             If False, all geometries that intersect will be selected in each iteration.
         verbose: Whether to print progress. Defaults to False.
@@ -52,7 +53,7 @@ def gridloop(
         raise ValueError("'mask' has no rows.")
 
     grid = make_grid(mask, gridsize=gridsize)
-    grid = grid.loc[lambda x: x.index.isin(x.sjoin(mask).index)]
+    grid = grid.loc[lambda df: df.index.isin(df.sjoin(mask).index)]
 
     n = len(grid)
 
