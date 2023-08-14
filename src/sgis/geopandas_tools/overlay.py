@@ -139,10 +139,7 @@ def _no_intersections_return(df1, df2, how):
     if not len(df1) and not len(df2):
         return df_template
 
-    df1_cols = df1.columns.difference({df1._geometry_column_name})
-    df2_cols = df2.columns.difference({df2._geometry_column_name})
-    df1.columns = [f"{col}_1" if col in df2_cols else col for col in df1]
-    df2.columns = [f"{col}_2" if col in df1_cols else col for col in df2]
+    df_template = _join_and_get_no_rows(df1, df2)
     return pd.concat([df_template, df1, df2], ignore_index=True)
 
 

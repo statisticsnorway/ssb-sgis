@@ -132,7 +132,7 @@ def partial_func():
     from oslo import points_oslo
 
     test_overlay(points_oslo())
-    test_overlay_random(n=25)
+    test_overlay_random(n=100)
 
 
 def main():
