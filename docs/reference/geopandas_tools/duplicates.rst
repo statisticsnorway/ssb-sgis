@@ -1,4 +1,4 @@
-Handle duplicate and overlapping geometries
+Duplicate and overlapping geometries
 ===========================================
 
 .. automodule:: sgis.geopandas_tools.duplicates

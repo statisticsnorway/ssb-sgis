@@ -187,10 +187,20 @@ def test_sort():
 
     s = sg.sort_nans_last(sg.sort_large_first(df))
     s["n_nan"] = s.isna().sum(axis=1).sort_values()
+
+    area_is_not_decreasing = s["area"].is_monotonic_decreasing is False
+    assert area_is_not_decreasing, s["area"]
+
     grouped_area_is_decreasing = s.groupby("n_nan")[
         "area"
     ].is_monotonic_decreasing.all()
     assert grouped_area_is_decreasing
+
+    df = sg.random_points(5)
+    df.geometry = df.buffer([3, 1, 4, 2, 5])
+    df["col"] = [None, 1, 2, None, 1]
+    df["col2"] = [None, 1, 2, 3, None]
+    df["area"] = df.area
 
 
 def main():

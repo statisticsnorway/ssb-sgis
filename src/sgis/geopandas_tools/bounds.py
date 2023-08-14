@@ -42,6 +42,7 @@ def gridloop(
         **kwargs: Keyword arguments passed to the function (func). Arguments that are
             of type GeoDataFrame or GeoSeries will be clipped by the mask in each
             iteration.
+
     Returns:
         List of results with the same length as number of grid cells.
 
