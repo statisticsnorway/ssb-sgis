@@ -55,7 +55,8 @@ def gridloop(
     grid = make_grid(mask, gridsize=gridsize)
     grid = grid.loc[lambda df: df.index.isin(df.sjoin(mask).index)]
 
-    n = len(grid)
+    if verbose:
+        n = len(grid)
 
     results = []
     for i, cell in enumerate(grid.geometry.buffer(gridbuffer)):
