@@ -1,4 +1,3 @@
-# flake8: noqa: F401
 from .geopandas_tools.bounds import (
     bounds_to_points,
     bounds_to_polygon,
@@ -17,8 +16,7 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp,
     dissexp_by_cluster,
 )
-from .geopandas_tools.duplicates import (
-    drop_duplicate_geometries,
+from .geopandas_tools.duplicates import (  # drop_duplicate_geometries,
     get_intersections,
     update_geometries,
 )

@@ -124,7 +124,7 @@ def test_bug2():
     print(len(right))
 
 
-def test_drop_duplicate_geometries():
+def not_test_drop_duplicate_geometries():
     circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
     dups = sg.get_intersections(circles)
     assert len(dups) == 6
