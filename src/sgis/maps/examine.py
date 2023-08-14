@@ -105,7 +105,7 @@ class Examine:
 
         if only_show_mask:
             self.kwargs["show"] = [True] + [False] * len(self._gdfs[1:])
-        else:
+        elif not kwargs.get("show"):
             self.kwargs["show"] = [True] * len(self._gdfs)
 
     def add_gdfs(self, *gdfs):

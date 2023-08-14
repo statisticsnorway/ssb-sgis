@@ -64,7 +64,7 @@ class Parallel:
         context: str = "spawn",
         **kwargs,
     ):
-        self.processes = processes
+        self.processes = int(processes)
         self.backend = backend
         self.context = context
         self.kwargs = kwargs
@@ -303,12 +303,12 @@ class Parallel:
         --------
         >>> def x2(num):
         ...     return num * 2
-        >>> l = [1, 2, 3]
+        >>> l = [1, 2, 3, 4]
         >>> if __name__ == "__main__":
-        ...     p = Parallel(2)
-        ...     p.chunkwise(x2, l, n=3)
-        ...     print(p.execute())
-        [2, 4, 6]
+        ...     p = sg.Parallel(2, backend="loky")
+        ...     results = p.chunkwise(x2, l, n=2)
+        ...     print(results)
+        [array([2, 4]), array([6, 8])]
 
         """
         self.validate_execution(func)
