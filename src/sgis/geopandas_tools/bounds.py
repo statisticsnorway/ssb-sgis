@@ -3,7 +3,6 @@ from typing import Any, Callable, Iterable
 
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_dict_like
 from shapely import Geometry, box, extract_unique_points
@@ -273,11 +272,12 @@ def add_grid_id(
     return midlrdf
 
 
-def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
+def bounds_to_polygon(gdf: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     """Creates a box around the geometry in each row of a GeoDataFrame.
 
     Args:
         gdf: The GeoDataFrame.
+        copy: Defaults to True.
 
     Returns:
         GeoDataFrame of box polygons with length and index of 'gdf'.
@@ -297,16 +297,18 @@ def bounds_to_polygon(gdf: GeoDataFrame) -> GeoDataFrame:
     1  POLYGON ((0.00000 0.00000, 0.00000 0.00000, 0....
 
     """
+    if copy:
+        gdf = gdf.copy()
+    gdf["geometry"] = [box(*arr) for arr in gdf.bounds.values]
+    return gdf
 
-    bbox_each_row = [box(*arr) for arr in gdf.bounds.values]
-    return to_gdf(bbox_each_row, index=gdf.index, crs=gdf.crs)
 
-
-def bounds_to_points(gdf: GeoDataFrame) -> GeoDataFrame:
+def bounds_to_points(gdf: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     """Creates a 4-noded multipoint around the geometry in each row of a GeoDataFrame.
 
     Args:
         gdf: The GeoDataFrame.
+        copy: Defaults to True.
 
     Returns:
         GeoDataFrame of multipoints with same length and index as 'gdf'.
@@ -324,23 +326,33 @@ def bounds_to_points(gdf: GeoDataFrame) -> GeoDataFrame:
     0  MULTIPOINT (1.00000 0.00000, 1.00000 1.00000, ...
     1                       MULTIPOINT (0.00000 0.00000)
     """
-    gdf = bounds_to_polygon(gdf)
+    gdf = bounds_to_polygon(gdf, copy=copy)
     gdf["geometry"] = extract_unique_points(gdf)
     return gdf
 
 
-def to_bbox(obj) -> tuple[float, float, float, float]:
-    """Try to return 4-length tuple of bounds."""
+def to_bbox(
+    obj: GeoDataFrame | GeoSeries | Geometry | Iterable | dict,
+) -> tuple[float, float, float, float]:
+    """Returns 4-length tuple of bounds if possible, else raises ValueError.
+
+    Args:
+        obj: Object to be converted to bounding box. Can be geopandas or shapely
+            objects, iterables of exactly four numbers or dictionary like/class
+            with a the keys/attributes "minx", "miny", "maxx", "maxy" or
+            "xmin", "ymin", "xmax", "ymax".
+    """
+    if isinstance(obj, (GeoDataFrame, GeoSeries)):
+        return tuple(obj.total_bounds)
+    if isinstance(obj, Geometry):
+        return tuple(obj.bounds)
     if (
         hasattr(obj, "__iter__")
         and len(obj) == 4
         and all(isinstance(x, numbers.Number) for x in obj)
     ):
         return tuple(obj)
-    if isinstance(obj, (GeoDataFrame, GeoSeries)):
-        return tuple(obj.total_bounds)
-    if isinstance(obj, Geometry):
-        return tuple(obj.bounds)
+
     if is_dict_like(obj) and all(x in obj for x in ["minx", "miny", "maxx", "maxy"]):
         try:
             minx = np.min(obj["minx"])
@@ -370,12 +382,17 @@ def to_bbox(obj) -> tuple[float, float, float, float]:
             return tuple(GeoSeries(obj["geometry"]).total_bounds)
         except Exception:
             return tuple(GeoSeries(obj.geometry).total_bounds)
-    raise TypeError(type(obj), obj)
+    try:
+        of_length = f" of length {len(obj)}"
+    except TypeError:
+        of_length = ""
+    raise TypeError(f"Cannot convert type {obj.__class__.__name__}{of_length} to bbox")
 
 
 def get_total_bounds(
     *geometries: GeoDataFrame | GeoSeries | Geometry,
 ) -> tuple[float, float, float, float]:
+    """Get a combined total bounds of multiple geometry objects."""
     xs, ys = [], []
     for obj in geometries:
         minx, miny, maxx, maxy = to_bbox(obj)
