@@ -261,17 +261,25 @@ def clean_geoms(
         if not gdf[geom_col].is_valid.all():
             gdf[geom_col] = gdf.make_valid()
 
-        notna_nonempty = gdf.geometry.map(bool)
-        if not notna_nonempty.all():
-            gdf = gdf.loc[notna_nonempty]
+        notna = gdf.geometry.notna()
+        if not notna.all():
+            gdf = gdf.loc[notna]
+
+        nonempty = gdf.geometry.map(bool)
+        if not nonempty.all():
+            gdf = gdf.loc[nonempty]
 
     elif isinstance(gdf, GeoSeries):
         if not gdf.is_valid.all():
             gdf = gdf.make_valid()
 
-        notna_nonempty = gdf.map(bool)
-        if not notna_nonempty.all():
-            gdf = gdf.loc[notna_nonempty]
+        notna = gdf.notna()
+        if not notna.all():
+            gdf = gdf.loc[notna]
+
+        nonempty = gdf.map(bool)
+        if not nonempty.all():
+            gdf = gdf.loc[nonempty]
 
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")

@@ -73,30 +73,27 @@ def gridloop(
     if verbose:
         n = len(grid)
 
+    def clip_if_isinstance(value, cell, keep_geom_type):
+        if not isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry)):
+            return value
+
+        if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries)):
+            if clip:
+                return clean_clip(value, cell, keep_geom_type=keep_geom_type)
+            return value.loc[value.intersects(cell)]
+
+        return value.intersection(cell).make_valid()
+
     results = []
     for i, cell in enumerate(grid.geometry.buffer(gridbuffer)):
         cell_kwargs = {}
         for key, value in kwargs.items():
-            if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries)):
-                if clip:
-                    value = clean_clip(value, cell, keep_geom_type=keep_geom_type)
-                else:
-                    value = value.loc[value.intersects(cell)]
-            elif isinstance(value, Geometry):
-                value = value.intersection(cell).make_valid()
-
+            value = clip_if_isinstance(value, cell, keep_geom_type)
             cell_kwargs[key] = value
 
         cell_args = ()
         for arg in args:
-            if isinstance(arg, (gpd.GeoDataFrame, gpd.GeoSeries)):
-                if clip:
-                    arg = clean_clip(arg, cell, keep_geom_type=keep_geom_type)
-                else:
-                    arg = arg.loc[arg.intersects(cell)]
-            elif isinstance(arg, Geometry):
-                arg = arg.intersection(cell).make_valid()
-
+            arg = clip_if_isinstance(arg, cell, keep_geom_type)
             cell_args = cell_args + (arg,)
 
         cell_res = func(*cell_args, **cell_kwargs)
