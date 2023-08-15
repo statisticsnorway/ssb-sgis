@@ -20,7 +20,8 @@ def gridloop(
     clip: bool = True,
     keep_geom_type: bool = True,
     verbose: bool = False,
-    **kwargs,
+    args: tuple | None = None,
+    kwargs: dict | None = None,
 ) -> list[Any]:
     """Runs a function in a loop cellwise based on a grid.
 
@@ -39,7 +40,8 @@ def gridloop(
         verbose: Whether to print progress. Defaults to False.
         keep_geom_type: Whether to keep only the input geometry types after clipping.
             Defaults to True.
-        **kwargs: Keyword arguments passed to the function (func). Arguments that are
+        args: Positional arguments to pass to the function.
+        kwargs: Keyword arguments to pass to the function. Arguments that are
             of type GeoDataFrame or GeoSeries will be clipped by the mask in each
             iteration.
 
@@ -53,8 +55,18 @@ def gridloop(
     if not len(mask):
         raise ValueError("'mask' has no rows.")
 
-    grid = make_grid(mask, gridsize=gridsize)
-    grid = grid.loc[lambda df: df.index.isin(df.sjoin(mask).index)]
+    if kwargs is None:
+        kwargs = {}
+    elif not isinstance(kwargs, dict):
+        raise TypeError("kwargs should be a dict")
+
+    if args is None:
+        args = ()
+    elif not isinstance(args, tuple):
+        raise TypeError("args should be a tuple")
+
+    intersects_mask = lambda df: df.index.isin(df.sjoin(mask).index)
+    grid = make_grid(mask, gridsize=gridsize).loc[intersects_mask]
 
     if verbose:
         n = len(grid)
@@ -73,7 +85,19 @@ def gridloop(
 
             cell_kwargs[key] = value
 
-        cell_res = func(**cell_kwargs)
+        cell_args = ()
+        for arg in args:
+            if isinstance(arg, (gpd.GeoDataFrame, gpd.GeoSeries)):
+                if clip:
+                    arg = clean_clip(arg, cell, keep_geom_type=keep_geom_type)
+                else:
+                    arg = arg.loc[arg.intersects(cell)]
+            elif isinstance(arg, Geometry):
+                arg = arg.intersection(cell).make_valid()
+
+            cell_args = cell_args + (arg,)
+
+        cell_res = func(*cell_args, **cell_kwargs)
 
         results.append(cell_res)
 

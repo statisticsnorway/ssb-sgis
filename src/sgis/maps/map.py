@@ -147,11 +147,15 @@ class Map:
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
         else:
+            print(self._nan_idx)
+            print(self._nan_idx.loc[~self._nan_idx])
+            print(self._gdf.loc[~self._nan_idx, self._column])
+            print(list(self._gdf.loc[~self._nan_idx, self._column]))
+            print(list(self._gdf.loc[~self._nan_idx, self._column].unique()))
             self._unique_values = sorted(
                 list(self._gdf.loc[~self._nan_idx, self._column].unique())
             )
-        if self._k > len(self._unique_values):
-            self._k = len(self._unique_values)
+        self._k = min(self._k, len(self._unique_values))
 
     def _get_unique_floats(self) -> np.array:
         """Get unique floats by multiplying, then converting to integer.
