@@ -82,9 +82,6 @@ def clean_overlay(
 
     df1 = to_single_geom_type(df1, geom_type)
 
-    if keep_geom_type:
-        df2 = to_single_geom_type(df2, geom_type)
-
     df1 = make_all_singlepart(df1, ignore_index=True)
     df2 = make_all_singlepart(df2, ignore_index=True)
 

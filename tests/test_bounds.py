@@ -31,6 +31,47 @@ import sgis as sg
 test_dice()"""
 
 
+def test_gridloop():
+    points = sg.random_points(100, loc=10000).set_crs(25833)
+    points["i"] = range(len(points))
+
+    grid = sg.make_grid(points, 2000)
+    grid["grid_idx"] = range(len(grid))
+    intersected = sg.clean_overlay(points, grid).sort_values("i").reset_index(drop=True)
+
+    intersected2 = (
+        pd.concat(
+            sg.gridloop(
+                sg.clean_overlay,
+                gridsize=200,
+                mask=points,
+                kwargs={"df1": points, "df2": grid},
+            ),
+            ignore_index=True,
+        )
+        .sort_values("i")
+        .reset_index(drop=True)
+    )
+
+    assert intersected.equals(intersected2)
+
+    intersected3 = (
+        pd.concat(
+            sg.gridloop(
+                sg.clean_overlay,
+                gridsize=200,
+                mask=points,
+                args=(points, grid),
+            ),
+            ignore_index=True,
+        )
+        .sort_values("i")
+        .reset_index(drop=True)
+    )
+
+    assert intersected.equals(intersected3)
+
+
 def test_bounds():
     points = sg.random_points(1000, loc=10000).set_crs(25833)
 
@@ -93,6 +134,7 @@ def test_bounds():
 
 
 if __name__ == "__main__":
+    test_gridloop()
     test_bounds()
 
 # %%
