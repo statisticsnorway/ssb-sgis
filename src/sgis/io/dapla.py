@@ -2,14 +2,12 @@
 """
 import os
 from pathlib import Path
-from typing import Iterable
 
 import dapla as dp
 import geopandas as gpd
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas.io.arrow import _geopandas_to_arrow
-from joblib import Parallel, delayed
 from pandas import DataFrame
 from pyarrow import parquet
 
