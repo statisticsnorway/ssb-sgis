@@ -83,7 +83,7 @@ class Parallel:
             func: Function to be run.
             iterable: An iterable where each item will be passed to func as
                 first positional argument.
-            kwargs: Keyword arguments passed to 'func'. Not to be unpacked with **.
+            kwargs: Keyword arguments passed to 'func'.
 
         Returns:
             A list of the return values of the function, one for each item in
@@ -160,7 +160,7 @@ class Parallel:
             func: Function to be run.
             iterable: An iterable of iterables, where each item will be
                 unpacked as positional argument to the function.
-            kwargs: Keyword arguments passed to 'func'. Not to be unpacked with **.
+            kwargs: Keyword arguments passed to 'func'.
 
         Returns:
             A list of the return values of the function, one for each item in
@@ -268,7 +268,7 @@ class Parallel:
         if not strict:
             files = [file for file in files if exists(file)]
 
-        res = self.map(func=dp.read_pandas, iterable=files, **kwargs)
+        res = self.map(dp.read_pandas, files, kwargs=kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 
@@ -294,7 +294,7 @@ class Parallel:
         """
         if not strict:
             files = [file for file in files if exists(file)]
-        res = self.map(func=read_geopandas, iterable=files, **kwargs)
+        res = self.map(read_geopandas, files, kwargs=kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 
