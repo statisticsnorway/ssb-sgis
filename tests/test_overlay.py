@@ -4,6 +4,8 @@ import warnings
 from pathlib import Path
 
 import numpy as np
+from helpers import cprofile_df
+from IPython.display import display
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -134,10 +136,10 @@ def partial_func():
 
 
 def main():
-    import cProfile
+    df = cprofile_df("partial_func()")
 
-    partial_func()
-    cProfile.run("partial_func()", sort="cumtime")
+    display(df.sort_values("cumtime", ascending=False).head(50))
+    display(df.sort_values("percall", ascending=False).head(50))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import functools
 import multiprocessing
+from itertools import starmap
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sized
 
@@ -63,7 +64,7 @@ class Parallel:
         context: str = "spawn",
         **kwargs,
     ):
-        self.processes = processes
+        self.processes = int(processes)
         self.backend = backend
         self.context = context
         self.kwargs = kwargs
@@ -71,7 +72,7 @@ class Parallel:
         self.results: list[Any] = []
         self._source: list[str] = []
 
-    def map(self, func: Callable, iterable: list, **kwargs) -> list[Any]:
+    def map(self, func: Callable, iterable: Iterable, **kwargs) -> list[Any]:
         """Run functions in parallel with items of an iterable as first arguemnt.
 
         Args:
@@ -96,9 +97,9 @@ class Parallel:
         >>> results
         [2, 4, 6]
 
-        If in Jupyter and using the multiprocessing backend,
-        the function should be defined in another function
-        and the code guarded by if __name__ == "__main__".
+        If in Jupyter the function should be defined in another module.
+        And if using the multiprocessing backend, the code should be
+        guarded by if __name__ == "__main__".
 
         >>> from .file import x2
         >>> if __name__ == "__main__":
@@ -131,6 +132,73 @@ class Parallel:
             ) as parallel:
                 return parallel(
                     joblib.delayed(func)(item, **kwargs) for item in iterable
+                )
+
+    def starmap(
+        self, func: Callable, iterable: Iterable[Iterable[Any]], **kwargs
+    ) -> list[Any]:
+        """Run functions in parallel where items of the iterable are unpacked.
+
+        This requires the items of the iterable to be iterables as well. See
+        https://docs.python.org/3/library/itertools.html#itertools.starmap
+
+        Args:
+            func: Function to be run.
+            iterable: An iterable of iterables, where each item will be
+                unpacked as positional argument to the function.
+            **kwargs: Keyword arguments passed to 'func'.
+
+        Returns:
+            A list of the return values of the function, one for each item in
+            'iterable'.
+
+        Examples
+        --------
+        Multiply each list element by 2.
+
+        >>> iterable = [(1, 2),(2, 3), (3, 4)]
+        >>> def add(x, y):
+        ...     return x + y
+        >>> p = sg.Parallel(3, backend="loky")
+        >>> results = p.starmap(add, iterable)
+        >>> results
+        [3, 5, 7]
+
+        If in Jupyter the function should be defined in another module.
+        And if using the multiprocessing backend, the code should be
+        guarded by if __name__ == "__main__".
+
+        >>> from .file import x2
+        >>> if __name__ == "__main__":
+        ...     p = sg.Parallel(4, backend="loky")
+        ...     results = p.starmap(add, iterable)
+        ...     print(results)
+        [3, 5, 7]
+
+        """
+        self.validate_execution(func)
+        func_with_kwargs = functools.partial(func, **kwargs)
+
+        if self.processes == 1:
+            return list(starmap(func_with_kwargs, iterable))
+
+        # don't use unnecessary processes
+        if self.processes > len(iterable):
+            processes = len(iterable)
+        else:
+            processes = self.processes
+
+        if self.backend == "multiprocessing":
+            with multiprocessing.get_context(self.context).Pool(
+                processes, **self.kwargs
+            ) as pool:
+                return pool.starmap(func_with_kwargs, iterable)
+        else:
+            with joblib.Parallel(
+                n_jobs=processes, backend=self.backend, **self.kwargs
+            ) as parallel:
+                return parallel(
+                    joblib.delayed(func)(*item, **kwargs) for item in iterable
                 )
 
     def _execute(self) -> list[Any]:
@@ -235,12 +303,12 @@ class Parallel:
         --------
         >>> def x2(num):
         ...     return num * 2
-        >>> l = [1, 2, 3]
+        >>> l = [1, 2, 3, 4]
         >>> if __name__ == "__main__":
-        ...     p = Parallel(2)
-        ...     p.chunkwise(x2, l, n=3)
-        ...     print(p.execute())
-        [2, 4, 6]
+        ...     p = sg.Parallel(2, backend="loky")
+        ...     results = p.chunkwise(x2, l, n=2)
+        ...     print(results)
+        [array([2, 4]), array([6, 8])]
 
         """
         self.validate_execution(func)
@@ -354,3 +422,9 @@ class Parallel:
             and in_jupyter()
         ):
             raise LocalFunctionError(func)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(processes={self.processes}, "
+            f"backend='{self.backend}', context='{self.context}')"
+        )

@@ -95,13 +95,30 @@ class Map:
         if not self.labels:
             self._get_labels(gdfs)
 
+        show = kwargs.pop("show", None)
+        if not show:
+            show = [True for _ in range(len(gdfs))]
+        if isinstance(show, (int, bool)):
+            show_temp = [bool(show) for _ in range(len(gdfs))]
+        elif not hasattr(show, "__iter__") or len(show) != len(gdfs):
+            raise ValueError(
+                "'show' must be boolean or an iterable of boleans same length as gdfs"
+            )
+        else:
+            show_temp = show
+
         self._gdfs = []
-        for i, gdf in enumerate(gdfs):
+        new_labels = []
+        self.show = []
+        for label, gdf, show in zip(self.labels, gdfs, show_temp, strict=True):
             gdf = clean_geoms(gdf).reset_index(drop=True)
-            if len(gdf):
-                self._gdfs.append(gdf)
-            else:
-                self.labels.pop(i)
+            if not len(gdf):
+                continue
+
+            self._gdfs.append(gdf)
+            new_labels.append(label)
+            self.show.append(show)
+        self.labels = new_labels
 
         self.kwargs = kwargs
 

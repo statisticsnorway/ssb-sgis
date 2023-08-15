@@ -13,7 +13,7 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 from pyproj import CRS
-from shapely import STRtree, difference, intersection, make_valid, unary_union
+from shapely import STRtree, box, difference, intersection, make_valid, unary_union
 
 from .general import clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
@@ -98,6 +98,51 @@ def clean_overlay(
     return overlayed.reset_index(drop=True)
 
 
+def _join_and_get_no_rows(df1, df2):
+    geom_col = df1._geometry_column_name
+    df1_cols = df1.columns.difference({geom_col})
+    df2_cols = df2.columns.difference({df2._geometry_column_name})
+    cols_with_suffix = [f"{col}_1" if col in df2_cols else col for col in df1_cols] + [
+        f"{col}_2" if col in df1_cols else col for col in df2_cols
+    ]
+
+    return GeoDataFrame(
+        pd.DataFrame(columns=cols_with_suffix + [geom_col]),
+        geometry=geom_col,
+        crs=df1.crs,
+    )
+
+
+def _no_intersections_return(df1, df2, how):
+    """Return with no overlay if no intersecting bounding box"""
+
+    if how == "intersection":
+        return _join_and_get_no_rows(df1, df2)
+
+    if how == "difference":
+        return df1.reset_index(drop=True)
+
+    if how == "identity":
+        # add suffixes and return df1
+        df_template = _join_and_get_no_rows(df1, df2)
+        df2_cols = df2.columns.difference({df2._geometry_column_name})
+        df1.columns = [f"{col}_1" if col in df2_cols else col for col in df1]
+        return pd.concat([df_template, df1], ignore_index=True)
+
+    if how == "update":
+        return pd.concat([df1, df2], ignore_index=True)
+
+    assert how in ["union", "symmetric_difference"]
+
+    # add suffixes and return both concatted
+    df_template = _join_and_get_no_rows(df1, df2)
+    if not len(df1) and not len(df2):
+        return df_template
+
+    df_template = _join_and_get_no_rows(df1, df2)
+    return pd.concat([df_template, df1, df2], ignore_index=True)
+
+
 def _shapely_overlay(
     df1: GeoDataFrame,
     df2: GeoDataFrame,
@@ -105,6 +150,14 @@ def _shapely_overlay(
     crs: int | str | None | CRS,
     grid_size: float,
 ) -> GeoDataFrame:
+    if not len(df1) or not len(df2):
+        return _no_intersections_return(df1, df2, how)
+
+    box1 = box(*df1.total_bounds)
+    box2 = box(*df2.total_bounds)
+    if not len(df1) or not len(df1) or not box1.intersects(box2):
+        return _no_intersections_return(df1, df2, how)
+
     if df1._geometry_column_name != "geometry":
         df1 = df1.rename_geometry("geometry")
 

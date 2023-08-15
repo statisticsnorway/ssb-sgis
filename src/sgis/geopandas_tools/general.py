@@ -258,14 +258,17 @@ def clean_geoms(
         if not gdf[geom_col].is_valid.all():
             gdf[geom_col] = gdf.make_valid()
 
-        gdf = gdf.loc[gdf.geometry.map(bool)]
+        notna_nonempty = gdf.geometry.map(bool)
+        if not notna_nonempty.all():
+            gdf = gdf.loc[notna_nonempty]
 
     elif isinstance(gdf, GeoSeries):
-        # only repair if necessary
         if not gdf.is_valid.all():
             gdf = gdf.make_valid()
 
-        gdf = gdf.loc[gdf.map(bool)]
+        notna_nonempty = gdf.map(bool)
+        if not notna_nonempty.all():
+            gdf = gdf.loc[notna_nonempty]
 
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
@@ -300,34 +303,36 @@ def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
 
     Examples
     --------
+    Create GeoDataFrame with NaN values.
+
     >>> df = sg.random_points(5)
-    >>> df.geometry = df.buffer([1, 2, 3, 4, 5])
+    >>> df.geometry = df.buffer([4, 1, 2, 3, 5])
     >>> df["col"] = [None, 1, 2, None, 1]
     >>> df["col2"] = [None, 1, 2, 3, None]
+    >>> df["area"] = df.area
     >>> df
-                                                geometry  col  col2
-    4  POLYGON ((5.84943 0.07906, 5.82536 -0.41102, 5...  1.0   NaN
-    3  POLYGON ((4.85939 0.45451, 4.84013 0.06244, 4....  NaN   3.0
-    2  POLYGON ((3.72440 0.41879, 3.70995 0.12474, 3....  2.0   2.0
-    1  POLYGON ((2.17958 0.55742, 2.16995 0.36138, 2....  1.0   1.0
-    0  POLYGON ((1.13307 0.27890, 1.12826 0.18089, 1....  NaN   NaN
+                                                geometry  col  col2       area
+    0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
+    1  POLYGON ((1.40111 0.71798, 1.39630 0.61996, 1....  1.0   1.0   3.136548
+    2  POLYGON ((2.33302 0.49287, 2.32339 0.29683, 2....  2.0   2.0  12.546194
+    3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
+    4  POLYGON ((5.63590 0.16005, 5.61182 -0.33004, 5...  1.0   NaN  78.413712
 
     >>> sg.sort_large_first(df)
-                                                geometry  col  col2
-    4  POLYGON ((5.84943 0.07906, 5.82536 -0.41102, 5...  1.0   NaN
-    3  POLYGON ((4.85939 0.45451, 4.84013 0.06244, 4....  NaN   3.0
-    2  POLYGON ((3.72440 0.41879, 3.70995 0.12474, 3....  2.0   2.0
-    1  POLYGON ((2.17958 0.55742, 2.16995 0.36138, 2....  1.0   1.0
-    0  POLYGON ((1.13307 0.27890, 1.12826 0.18089, 1....  NaN   NaN
+                                                geometry  col  col2       area
+    4  POLYGON ((5.63590 0.16005, 5.61182 -0.33004, 5...  1.0   NaN  78.413712
+    0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
+    3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
+    2  POLYGON ((2.33302 0.49287, 2.32339 0.29683, 2....  2.0   2.0  12.546194
+    1  POLYGON ((1.40111 0.71798, 1.39630 0.61996, 1....  1.0   1.0   3.136548
 
-    >>> df["area"] = df.area
     >>> sg.sort_nans_last(sg.sort_large_first(df))
                                                 geometry  col  col2       area
-    2  POLYGON ((3.55915 0.36805, 3.54470 0.07400, 3....  2.0   2.0  28.228936
-    1  POLYGON ((2.57935 0.93984, 2.56972 0.74380, 2....  1.0   1.0  12.546194
-    4  POLYGON ((5.47550 0.34890, 5.45142 -0.14119, 5...  1.0   NaN  78.413712
-    3  POLYGON ((4.44422 0.16472, 4.42496 -0.22735, 4...  NaN   3.0  50.184776
-    0  POLYGON ((1.19329 0.90989, 1.18847 0.81187, 1....  NaN   NaN   3.136548
+    2  POLYGON ((2.33302 0.49287, 2.32339 0.29683, 2....  2.0   2.0  12.546194
+    1  POLYGON ((1.40111 0.71798, 1.39630 0.61996, 1....  1.0   1.0   3.136548
+    4  POLYGON ((5.63590 0.16005, 5.61182 -0.33004, 5...  1.0   NaN  78.413712
+    3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
+    0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
     """
     return (
         gdf.assign(area_=gdf.area)
@@ -520,16 +525,16 @@ def clean_clip(
     mask: GeoDataFrame | GeoSeries | Geometry,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries:
-    """Clips geometries to the mask extent and cleans the geometries.
+    """Clips and clean geometries.
 
-    Geopandas.clip does a fast and durty clipping, with no guarantee for valid outputs.
-    Here, the clipped geometries are made valid, and then empty, NaN and invalid
+    Geopandas.clip does a "fast and dirty clipping, with no guarantee for valid
+    outputs". Here, the clipped geometries are made valid, and empty and NaN
     geometries are removed.
 
     Args:
         gdf: GeoDataFrame or GeoSeries to be clipped
         mask: the geometry to clip gdf
-        **kwargs: Additional keyword arguments passed to GeoDataFrame.clip
+        **kwargs: Keyword arguments passed to geopandas.GeoDataFrame.clip
 
     Returns:
         The cleanly clipped GeoDataFrame.
@@ -540,8 +545,11 @@ def clean_clip(
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
+    if kwargs.get("keep_geom_type"):
+        geom_type = get_geom_type(gdf)
+
     try:
-        return gdf.clip(mask, **kwargs).pipe(clean_geoms)
+        gdf = gdf.clip(mask, **kwargs).pipe(clean_geoms)
     except Exception:
         gdf = clean_geoms(gdf)
         try:
@@ -550,3 +558,8 @@ def clean_clip(
             mask = clean_geoms(to_gdf(mask, crs=gdf.crs))
 
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
+
+    if kwargs.get("keep_geom_type"):
+        gdf = to_single_geom_type(gdf, geom_type)
+
+    return gdf

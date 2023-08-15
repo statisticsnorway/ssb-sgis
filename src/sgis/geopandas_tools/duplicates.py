@@ -3,7 +3,7 @@ from typing import Callable, Iterable
 import networkx as nx
 import pandas as pd
 from geopandas import GeoDataFrame
-from shapely import difference, make_valid, union
+from shapely import STRtree, difference, intersection, make_valid, unary_union, union
 from shapely.errors import GEOSException
 from shapely.geometry import Polygon
 
@@ -13,7 +13,10 @@ from .overlay import clean_overlay
 
 
 def update_geometries(
-    gdf: GeoDataFrame, keep_geom_type: bool = True, copy: bool = True
+    gdf: GeoDataFrame,
+    keep_geom_type: bool = True,
+    copy: bool = True,
+    grid_size: int | None = None,
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
@@ -83,12 +86,20 @@ def update_geometries(
         if any(geom.equals(geom2) for geom2 in geometries):
             continue
 
-        new = _try_shapely_func_pair(geom, unioned, func=difference)
+        try:
+            new = difference(geom, unioned, grid_size=grid_size)
+        except GEOSException:
+            geom = make_valid(geom)
+            new = difference(geom, unioned, grid_size=grid_size)
 
         if not new:
             continue
 
-        unioned = _try_shapely_func_pair(new, unioned, func=union)
+        try:
+            unioned = unary_union([new, unioned], grid_size=grid_size)
+        except GEOSException:
+            new = make_valid(new)
+            unioned = unary_union([new, unioned], grid_size=grid_size)
 
         out_rows.append(row)
         geometries.append(new)
@@ -100,20 +111,6 @@ def update_geometries(
         out = to_single_geom_type(out, geom_type)
 
     return out
-
-
-def _try_shapely_func_pair(geom1, geom2, func: Callable):
-    try:
-        return func(geom1, geom2)
-    except GEOSException:
-        try:
-            geom1 = make_valid(geom1)
-            return func(geom1, geom2)
-        except GEOSException:
-            try:
-                return func(geom1, geom2, grid_size=0.01)
-            except GEOSException as e:
-                raise ValueError(geom1, geom2) from e
 
 
 def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
@@ -217,18 +214,9 @@ def _get_intersecting_geometries(gdf: GeoDataFrame) -> GeoDataFrame:
 
     intersected = clean_overlay(left, right, how="intersection")
 
-    # these are identical as the input geometries
     not_from_same_poly = intersected.loc[lambda x: x["idx_left"] != x["idx_right"]]
 
-    points_joined = (
-        not_from_same_poly.representative_point().to_frame().sjoin(not_from_same_poly)
-    )
-
-    duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
-
-    return intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
-        columns=["idx_left", "idx_right"]
-    )
+    return not_from_same_poly.drop(columns=["idx_left", "idx_right"])
 
 
 def drop_duplicate_geometries(gdf: GeoDataFrame, **kwargs) -> GeoDataFrame:
@@ -256,9 +244,10 @@ def _get_duplicate_geometry_groups(
 
     gdf = gdf.reset_index(drop=True)
 
-    joined = gdf.sjoin(gdf, predicate="within")
+    tree = STRtree(gdf.geometry.values)
+    left, right = tree.query(gdf.geometry.values, predicate="within")
 
-    edges = list(joined["index_right"].items())
+    edges = list(zip(left, right))
 
     graph = nx.Graph()
     graph.add_edges_from(edges)

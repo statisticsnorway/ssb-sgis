@@ -71,6 +71,10 @@ autodoc_typehints = "description"
 autodoc_mock_imports = ["dapla"]
 
 
+pygments_style = "sphinx"
+pygments_dark_style = "monokai"
+
+
 # Show typehints as content of the function or method
 autodoc_typehints = "description"
 

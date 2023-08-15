@@ -2,18 +2,17 @@
 """
 import os
 from pathlib import Path
-from typing import Iterable
 
 import dapla as dp
 import geopandas as gpd
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas.io.arrow import _geopandas_to_arrow
-from joblib import Parallel, delayed
+from pandas import DataFrame
 from pyarrow import parquet
 
 
-def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame:
+def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame | DataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
 
     Note:
@@ -25,7 +24,7 @@ def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame:
             or read_file, depending on the file type.
 
      Returns:
-         A GeoDataFrame.
+         A GeoDataFrame if it has rows. If zero rows, a pandas DataFrame is returned.
     """
     fs = dp.FileClient.get_gcs_file_system()
 
@@ -55,34 +54,6 @@ def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame:
                     return df
                 else:
                     raise e
-
-
-def read_geopandas_parallel(
-    paths: Iterable[str | Path],
-    n_jobs: int,
-    strict: bool = True,
-    concat: bool = True,
-    ignore_index: bool = True,
-    **kwargs,
-) -> GeoDataFrame:
-    if strict:
-        n_exists = sum(exists(path) for path in paths)
-        if n_exists != len(paths):
-            raise ValueError(
-                f"Only {n_exists} of {len(paths)} exists. "
-                "Set strict=False to ignore the non-existing."
-            )
-    else:
-        paths = [path for path in paths if exists(path)]
-
-    if n_jobs == 1:
-        gdfs = [read_geopandas(path, **kwargs) for path in paths]
-    else:
-        gdfs = Parallel(n_jobs=n_jobs)(
-            delayed(read_geopandas)(path, **kwargs) for path in paths
-        )
-
-    return pd.concat(gdfs, ignore_index=ignore_index) if concat else gdfs
 
 
 def write_geopandas(
@@ -179,7 +150,7 @@ def check_files(
     """
     fs = dp.FileClient.get_gcs_file_system()
 
-    # (recursive doesn't work)
+    # (recursive doesn't work, so doing recursive search below)
     info = fs.ls(folder, detail=True, recursive=True)
 
     if not info:

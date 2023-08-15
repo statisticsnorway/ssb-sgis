@@ -13,6 +13,7 @@ from shapely import (
 from shapely.ops import unary_union
 
 from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
+from .geometry_types import make_all_singlepart
 from .neighbors import get_neighbor_indices
 
 
@@ -246,11 +247,13 @@ def eliminate_by_longest(
     )
 
     to_poly_idx = longest_border.set_index("eliminate_idx")["poly_idx"]
-    to_eliminate["dissolve_idx"] = to_eliminate["eliminate_idx"].map(to_poly_idx)
+    to_eliminate["_dissolve_idx"] = to_eliminate["eliminate_idx"].map(to_poly_idx)
 
-    gdf = gdf.rename(columns={"poly_idx": "dissolve_idx"}, errors="raise")
+    gdf = gdf.rename(columns={"poly_idx": "_dissolve_idx"}, errors="raise")
 
-    eliminated = _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs)
+    actually_eliminate = to_eliminate.loc[lambda x: x["_dissolve_idx"].notna()]
+
+    eliminated = _eliminate(gdf, actually_eliminate, aggfunc, crs, **kwargs)
 
     if ignore_index:
         eliminated = eliminated.reset_index(drop=True)
@@ -259,12 +262,12 @@ def eliminate_by_longest(
         eliminated.index.name = idx_name
 
     if not remove_isolated:
-        isolated = to_eliminate.loc[to_eliminate["dissolve_idx"].isna()]
+        isolated = to_eliminate.loc[to_eliminate["_dissolve_idx"].isna()]
         if len(isolated):
             eliminated = pd.concat([eliminated, isolated])
 
     eliminated = eliminated.drop(
-        ["dissolve_idx", "length__", "eliminate_idx", "poly_idx"],
+        ["_dissolve_idx", "length__", "eliminate_idx", "poly_idx"],
         axis=1,
         errors="ignore",
     )
@@ -279,6 +282,7 @@ def eliminate_by_largest(
     remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
+    predicate: str = "intersects",
     **kwargs,
 ) -> GeoDataFrame:
     """Dissolves selected polygons with the largest neighbor polygon.
@@ -302,6 +306,7 @@ def eliminate_by_largest(
             'gdf' are sorted first, but if 'gdf' has missing values, the resulting
             polygons might get values from the polygons to be eliminated
             (if aggfunc="first").
+        predicate: Binary predicate passed to sjoin. Defaults to "intersects".
         kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
@@ -315,6 +320,7 @@ def eliminate_by_largest(
         ignore_index=ignore_index,
         sort_ascending=False,
         aggfunc=aggfunc,
+        predicate=predicate,
         **kwargs,
     )
 
@@ -326,6 +332,7 @@ def eliminate_by_smallest(
     remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
+    predicate: str = "intersects",
     **kwargs,
 ) -> GeoDataFrame:
     return _eliminate_by_area(
@@ -335,6 +342,7 @@ def eliminate_by_smallest(
         ignore_index=ignore_index,
         sort_ascending=True,
         aggfunc=aggfunc,
+        predicate=predicate,
         **kwargs,
     )
 
@@ -346,8 +354,11 @@ def _eliminate_by_area(
     sort_ascending: bool,
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
+    predicate="intersects",
     **kwargs,
 ) -> GeoDataFrame:
+    crs = gdf.crs
+
     common_geometries = gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))
     if any(common_geometries):
         gdf = gdf.loc[~common_geometries]
@@ -356,29 +367,28 @@ def _eliminate_by_area(
         idx_mapper = dict(enumerate(gdf.index))
         idx_name = gdf.index.name
 
-    gdf = gdf.reset_index(drop=True)
-
-    crs = gdf.crs
+    gdf = make_all_singlepart(gdf).reset_index(drop=True)
+    to_eliminate = make_all_singlepart(to_eliminate).reset_index(drop=True)
 
     gdf["_area"] = gdf.area
+    gdf["_dissolve_idx"] = gdf.index
 
     joined = to_eliminate.sjoin(
-        gdf[["_area", "geometry"]], predicate="touches", how="left"
+        gdf[["_area", "_dissolve_idx", "geometry"]], predicate=predicate, how="left"
     )
 
-    # as DataFrame because GeoDataFrame constructor is expensive
+    # as DataFrames because GeoDataFrame constructor is expensive
     joined = (
         pd.DataFrame(joined)
-        .rename(columns={"index_right": "dissolve_idx"}, errors="raise")
+        .drop(columns="index_right")
         .sort_values("_area", ascending=sort_ascending)
+        .loc[lambda x: ~x.index.duplicated(keep="first")]
     )
+
     gdf = pd.DataFrame(gdf)
 
-    largest = joined[~joined.index.duplicated(keep="first")]
-
-    gdf["dissolve_idx"] = gdf.index
-
-    eliminated = _eliminate(gdf, largest, aggfunc, crs, **kwargs)
+    notna = joined.loc[lambda x: x["_dissolve_idx"].notna()]
+    eliminated = _eliminate(gdf, notna, aggfunc, crs, **kwargs)
 
     if ignore_index:
         eliminated = eliminated.reset_index(drop=True)
@@ -387,28 +397,37 @@ def _eliminate_by_area(
         eliminated.index.name = idx_name
 
     if not remove_isolated:
-        isolated = joined.loc[joined["dissolve_idx"].isna()]
+        isolated = joined.loc[joined["_dissolve_idx"].isna()]
         if len(isolated):
             eliminated = pd.concat([eliminated, isolated])
 
-    return GeoDataFrame(
-        eliminated.drop(columns="dissolve_idx"), geometry="geometry", crs=crs
-    ).pipe(clean_geoms)
+    return GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
 
 
 def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
+    if not len(to_eliminate):
+        return gdf
+
+    in_to_eliminate = gdf["_dissolve_idx"].isin(to_eliminate["_dissolve_idx"])
+    to_dissolve = gdf.loc[in_to_eliminate]
+    not_to_dissolve = gdf.loc[~in_to_eliminate].set_index("_dissolve_idx")
+
     if aggfunc is None:
-        concatted = pd.concat([gdf, to_eliminate[["dissolve_idx", "geometry"]]])
+        concatted = pd.concat(
+            [to_dissolve, to_eliminate[["_dissolve_idx", "geometry"]]]
+        )
         aggfunc = "first"
     else:
-        concatted = pd.concat([gdf, to_eliminate])
+        concatted = pd.concat([to_dissolve, to_eliminate])
 
     only_one = concatted.loc[
-        lambda x: (x.groupby("dissolve_idx").transform("size") == 1)
-        & (x["dissolve_idx"].notna())
-    ]
+        lambda x: (x.groupby("_dissolve_idx").transform("size") == 1)
+        & (x["_dissolve_idx"].notna())
+    ].set_index("_dissolve_idx")
+    assert len(only_one) == 0
+
     more_than_one = concatted.loc[
-        lambda x: x.groupby("dissolve_idx").transform("size") > 1
+        lambda x: x.groupby("_dissolve_idx").transform("size") > 1
     ]
 
     if not len(more_than_one):
@@ -416,21 +435,26 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
 
     kwargs.pop("as_index", None)
     eliminated = (
-        # more_than_one.dissolve("dissolve_idx", aggfunc=aggfunc, **kwargs)
+        # more_than_one.dissolve("_dissolve_idx", aggfunc=aggfunc, **kwargs)
         more_than_one.drop(columns="geometry")
-        .groupby("dissolve_idx", **kwargs)
+        .groupby("_dissolve_idx", **kwargs)
         .agg(aggfunc)
         .drop(["_area"], axis=1, errors="ignore")
     )
-    eliminated["geometry"] = more_than_one.groupby("dissolve_idx")["geometry"].agg(
+    eliminated["geometry"] = more_than_one.groupby("_dissolve_idx")["geometry"].agg(
         lambda x: unary_union(x.values)
     )
 
-    # setting crs to geometryarray to avoid warning
+    # setting crs on geometryarray to avoid warning in concat
+    not_to_dissolve.geometry.values.crs = crs
     eliminated.geometry.values.crs = crs
     only_one.geometry.values.crs = crs
 
-    return pd.concat([eliminated, only_one]).sort_index()
+    to_concat = [not_to_dissolve, eliminated, only_one]
+
+    assert all(df.index.name == "_dissolve_idx" for df in to_concat)
+
+    return pd.concat(to_concat).sort_index()
 
 
 def close_all_holes(
@@ -461,13 +485,12 @@ def close_all_holes(
     --------
     Let's create a circle with a hole in it.
 
-    >>> from sgis import close_all_holes, buff, to_gdf
-    >>> point = to_gdf([260000, 6650000], crs=25833)
+    >>> point = sg.to_gdf([260000, 6650000], crs=25833)
     >>> point
                             geometry
     0  POINT (260000.000 6650000.000)
-    >>> circle = buff(point, 1000)
-    >>> small_circle = buff(point, 500)
+    >>> circle = sg.buff(point, 1000)
+    >>> small_circle = sg.buff(point, 500)
     >>> circle_with_hole = circle.overlay(small_circle, how="difference")
     >>> circle_with_hole.area
     0    2.355807e+06
@@ -475,7 +498,7 @@ def close_all_holes(
 
     Close the hole.
 
-    >>> holes_closed = close_all_holes(circle_with_hole)
+    >>> holes_closed = sg.close_all_holes(circle_with_hole)
     >>> holes_closed.area
     0    3.141076e+06
     dtype: float64
@@ -488,21 +511,21 @@ def close_all_holes(
     if copy:
         gdf = gdf.copy()
 
-    if not ignore_islands:
-        all_geoms = gdf.unary_union
-        if isinstance(gdf, GeoDataFrame):
-            gdf["geometry"] = gdf.geometry.map(
-                lambda x: _close_all_holes_no_islands(x, all_geoms)
-            )
-            return gdf
-        else:
-            return gdf.map(lambda x: _close_all_holes_no_islands(x, all_geoms))
-    else:
+    if ignore_islands:
         if isinstance(gdf, GeoDataFrame):
             gdf["geometry"] = gdf.geometry.map(_close_all_holes)
             return gdf
         else:
             return gdf.map(_close_all_holes)
+
+    all_geoms = gdf.unary_union
+    if isinstance(gdf, GeoDataFrame):
+        gdf["geometry"] = gdf.geometry.map(
+            lambda x: _close_all_holes_no_islands(x, all_geoms)
+        )
+        return gdf
+    else:
+        return gdf.map(lambda x: _close_all_holes_no_islands(x, all_geoms))
 
 
 def close_small_holes(
@@ -542,13 +565,12 @@ def close_small_holes(
 
     Let's create a circle with a hole in it.
 
-    >>> from sgis import close_small_holes, buff, to_gdf
-    >>> point = to_gdf([260000, 6650000], crs=25833)
+    >>> point = sg.to_gdf([260000, 6650000], crs=25833)
     >>> point
                             geometry
     0  POINT (260000.000 6650000.000)
-    >>> circle = buff(point, 1000)
-    >>> small_circle = buff(point, 500)
+    >>> circle = sg.buff(point, 1000)
+    >>> small_circle = sg.buff(point, 500)
     >>> circle_with_hole = circle.overlay(small_circle, how="difference")
     >>> circle_with_hole.area
     0    2.355807e+06
@@ -556,14 +578,14 @@ def close_small_holes(
 
     Close holes smaller than 1 square kilometer (1 million square meters).
 
-    >>> holes_closed = close_small_holes(circle_with_hole, max_area=1_000_000)
+    >>> holes_closed = sg.close_small_holes(circle_with_hole, max_area=1_000_000)
     >>> holes_closed.area
     0    3.141076e+06
     dtype: float64
 
     The hole will not be closed if it is larger.
 
-    >>> holes_closed = close_small_holes(circle_with_hole, max_area=1_000)
+    >>> holes_closed = sg.close_small_holes(circle_with_hole, max_area=1_000)
     >>> holes_closed.area
     0    2.355807e+06
     dtype: float64

@@ -129,6 +129,15 @@ def test_dissexp(gdf_fixture):
 
     assert copy.equals(copy2), (copy, copy2)
 
+    gdf = sg.random_points(10).pipe(sg.buff, 1)
+    gdf.index = [0, 0, 1, 1, 1, 2, 2, 1, 2, 3]
+    gdf["col"] = gdf.index
+    dissexped = sg.dissexp(gdf, by="col")
+    assert len(dissexped) == 4
+
+    dissexped = sg.dissexp(gdf, level=0)
+    assert len(dissexped) == 4
+
 
 def test_buffdissexp_index():
     gdf = sg.to_gdf([(0, 0), (1, 1), (2, 2)]).assign(cat=[*"aab"])
