@@ -49,6 +49,20 @@ _CATEGORICAL_CMAP = {
 DEFAULT_SCHEME = "quantiles"
 
 
+def proper_fillna(val, fill_val):
+    """fillna doesn't always work. So doing it manually."""
+    try:
+        if "NAType" in val.__class__.__name__:
+            return fill_val
+    except Exception:
+        if fill_val is None:
+            return fill_val
+        if fill_val != fill_val:
+            return fill_val
+
+    return val
+
+
 class Map:
     """Base class that prepares one or more GeoDataFrames for mapping.
 
@@ -147,9 +161,14 @@ class Map:
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
         else:
-            self._unique_values = sorted(
-                list(self._gdf.loc[~self._nan_idx, self._column].unique())
-            )
+            unique = list(self._gdf.loc[~self._nan_idx, self._column].unique())
+            try:
+                self._unique_values = sorted(unique)
+            except TypeError:
+                self._unique_values = [
+                    x for x in unique if proper_fillna(x, None) is not None
+                ]
+
         self._k = min(self._k, len(self._unique_values))
 
     def _get_unique_floats(self) -> np.array:
@@ -511,17 +530,9 @@ class Map:
             # need numpy.nan instead of pd.NA
             gdf[self._column] = gdf[self._column].fillna(np.nan)
 
-            # also, fillna doesn't always work. So doing it manually
-            def proper_fillna(val):
-                try:
-                    if "NAType" in val.__class__.__name__:
-                        return np.nan
-                except Exception:
-                    return val
-
-                return val
-
-            gdf[self._column] = gdf[self._column].apply(proper_fillna)
+            gdf[self._column] = gdf[self._column].apply(
+                lambda x: proper_fillna(x, np.nan)
+            )
 
             classified = np.searchsorted(bins, gdf[self._column])
 
