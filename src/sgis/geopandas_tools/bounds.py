@@ -40,8 +40,10 @@ def gridloop(
         verbose: Whether to print progress. Defaults to False.
         keep_geom_type: Whether to keep only the input geometry types after clipping.
             Defaults to True.
-        args: Positional arguments to pass to the function.
-        kwargs: Keyword arguments to pass to the function. Arguments that are
+        args: Positional arguments to pass to the function. Arguments
+            of type GeoDataFrame or GeoSeries will be clipped by the mask in each
+            iteration.
+        kwargs: Keyword arguments to pass to the function. Arguments
             of type GeoDataFrame or GeoSeries will be clipped by the mask in each
             iteration.
 
