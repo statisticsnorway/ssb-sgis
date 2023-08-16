@@ -21,7 +21,7 @@ def test_random_get_intersections():
         circles = sg.random_points(15).set_crs(25833).buffer(0.1).to_frame()
         the_overlap = sg.get_intersections(circles)
 
-        updated = sg.update_geometries(the_overlap, grid_size=1e-6)
+        updated = sg.update_geometries(the_overlap, grid_size=1e-4)
 
         overlapping_now = sg.get_intersections(updated).loc[
             lambda x: x.area / x.length > 1e-8
@@ -111,6 +111,7 @@ def not_test_bug2():
 
     circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
     gdf = sg.get_intersections(circles)
+    print([x.wkt for x in gdf.geometry])
     gdf = gdf.reset_index(drop=True)
     assert len(gdf) == 6
     # gdf.to_file(r"c:/users/ort/downloads/linux_windows.gpkg")
@@ -239,6 +240,7 @@ def test_update_geometries():
 
 
 if __name__ == "__main__":
+    not_test_bug2()
     test_get_intersections()
     test_update_geometries()
     test_random_get_intersections()
