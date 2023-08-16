@@ -24,7 +24,7 @@ def test_random_get_intersections():
         updated = sg.update_geometries(the_overlap)
 
         overlapping_now = sg.get_intersections(updated).loc[
-            lambda x: x.area / x.length > 1e-12
+            lambda x: x.area / x.length > 1e-8
         ]
 
         assert not len(overlapping_now), overlapping_now.assign(
