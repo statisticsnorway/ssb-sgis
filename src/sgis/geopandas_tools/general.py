@@ -217,10 +217,10 @@ def clean_geoms(
 
     Examples
     --------
-    >>> from sgis import clean_geoms, to_gdf
+    >>> import sgis as sg
     >>> import pandas as pd
     >>> from shapely import wkt
-    >>> gdf = to_gdf([
+    >>> gdf = sg.to_gdf([
     ...         "POINT (0 0)",
     ...         "LINESTRING (1 1, 2 2)",
     ...         "POLYGON ((3 3, 4 4, 3 4, 3 3))"
@@ -231,10 +231,10 @@ def clean_geoms(
     1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
     2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
 
-    Removing None and empty geometries.
+    Add None and empty geometries.
 
     >>> missing = pd.DataFrame({"geometry": [None]})
-    >>> empty = to_gdf(wkt.loads("POINT (0 0)").buffer(0))
+    >>> empty = sg.to_gdf(wkt.loads("POINT (0 0)").buffer(0))
     >>> gdf = pd.concat([gdf, missing, empty])
     >>> gdf
                                                 geometry
@@ -243,7 +243,10 @@ def clean_geoms(
     2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
     0                                               None
     0                                      POLYGON EMPTY
-    >>> clean_geoms(gdf)
+
+    Clean.
+
+    >>> sg.clean_geoms(gdf)
                                                 geometry
     0                            POINT (0.00000 0.00000)
     1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
@@ -258,17 +261,25 @@ def clean_geoms(
         if not gdf[geom_col].is_valid.all():
             gdf[geom_col] = gdf.make_valid()
 
-        notna_nonempty = gdf.geometry.map(bool)
-        if not notna_nonempty.all():
-            gdf = gdf.loc[notna_nonempty]
+        notna = gdf.geometry.notna()
+        if not notna.all():
+            gdf = gdf.loc[notna]
+
+        nonempty = gdf.geometry.map(bool)
+        if not nonempty.all():
+            gdf = gdf.loc[nonempty]
 
     elif isinstance(gdf, GeoSeries):
         if not gdf.is_valid.all():
             gdf = gdf.make_valid()
 
-        notna_nonempty = gdf.map(bool)
-        if not notna_nonempty.all():
-            gdf = gdf.loc[notna_nonempty]
+        notna = gdf.notna()
+        if not notna.all():
+            gdf = gdf.loc[notna]
+
+        nonempty = gdf.map(bool)
+        if not nonempty.all():
+            gdf = gdf.loc[nonempty]
 
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
@@ -305,6 +316,7 @@ def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
     --------
     Create GeoDataFrame with NaN values.
 
+    >>> import sgis as sg
     >>> df = sg.random_points(5)
     >>> df.geometry = df.buffer([4, 1, 2, 3, 5])
     >>> df["col"] = [None, 1, 2, None, 1]
@@ -361,8 +373,8 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
 
     Examples
     --------
-    >>> from sgis import random_points
-    >>> points = random_points(10_000)
+    >>> import sgis as sg
+    >>> points = sg.random_points(10_000)
     >>> points
                          geometry
     0     POINT (0.62044 0.22805)
@@ -380,7 +392,7 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
 
     Values with a mean of 100.
 
-    >>> points = random_points(10_000, loc=100)
+    >>> points = sg.random_points(10_000, loc=100)
     >>> points
                          geometry
     0      POINT (50.442 199.729)

@@ -1,6 +1,6 @@
 import functools
+import itertools
 import multiprocessing
-from itertools import starmap
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sized
 
@@ -29,9 +29,8 @@ except ImportError:
 class Parallel:
     """Run functions in parallell.
 
-    The main methods are 'map' and 'chunkwise'. map runs a single function for
-    each item of an iterable, while chunkwise splits an iterable in roughly equal
-    length parts and runs a function on each chunk.
+    The main method is 'map', which runs a single function for
+    each item of an iterable.
 
     The class also provides functions for reading and writing files in parallell
     in dapla.
@@ -72,14 +71,19 @@ class Parallel:
         self.results: list[Any] = []
         self._source: list[str] = []
 
-    def map(self, func: Callable, iterable: Iterable, **kwargs) -> list[Any]:
+    def map(
+        self,
+        func: Callable,
+        iterable: Iterable,
+        kwargs: dict | None = None,
+    ) -> list[Any]:
         """Run functions in parallel with items of an iterable as first arguemnt.
 
         Args:
             func: Function to be run.
             iterable: An iterable where each item will be passed to func as
                 first positional argument.
-            **kwargs: Keyword arguments passed to 'func'.
+            kwargs: Keyword arguments passed to 'func'.
 
         Returns:
             A list of the return values of the function, one for each item in
@@ -97,6 +101,15 @@ class Parallel:
         >>> results
         [2, 4, 6]
 
+        With kwargs.
+
+        >>> iterable = [1, 2, 3]
+        >>> def x2(x, plus, minus):
+        ...     return x * 2 + plus - minus
+        >>> p = sg.Parallel(4, backend="loky")
+        >>> results = p.map(x2, iterable, kwargs=dict(plus=2, minus=1))
+        >>> results
+
         If in Jupyter the function should be defined in another module.
         And if using the multiprocessing backend, the code should be
         guarded by if __name__ == "__main__".
@@ -107,35 +120,36 @@ class Parallel:
         ...     results = p.map(x2, iterable)
         ...     print(results)
         [2, 4, 6]
-
         """
+
         self.validate_execution(func)
+
+        kwargs = self.validate_kwargs(kwargs)
+
         func_with_kwargs = functools.partial(func, **kwargs)
 
         if self.processes == 1:
             return list(map(func_with_kwargs, iterable))
 
         # don't use unnecessary processes
-        if self.processes > len(iterable):
-            processes = len(iterable)
-        else:
-            processes = self.processes
+        processes = min(self.processes, len(iterable))
 
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
                 processes, **self.kwargs
             ) as pool:
                 return pool.map(func_with_kwargs, iterable)
-        else:
-            with joblib.Parallel(
-                n_jobs=processes, backend=self.backend, **self.kwargs
-            ) as parallel:
-                return parallel(
-                    joblib.delayed(func)(item, **kwargs) for item in iterable
-                )
+
+        with joblib.Parallel(
+            n_jobs=processes, backend=self.backend, **self.kwargs
+        ) as parallel:
+            return parallel(joblib.delayed(func)(item, **kwargs) for item in iterable)
 
     def starmap(
-        self, func: Callable, iterable: Iterable[Iterable[Any]], **kwargs
+        self,
+        func: Callable,
+        iterable: Iterable[Iterable[Any]],
+        kwargs: dict | None = None,
     ) -> list[Any]:
         """Run functions in parallel where items of the iterable are unpacked.
 
@@ -146,7 +160,7 @@ class Parallel:
             func: Function to be run.
             iterable: An iterable of iterables, where each item will be
                 unpacked as positional argument to the function.
-            **kwargs: Keyword arguments passed to 'func'.
+            kwargs: Keyword arguments passed to 'func'.
 
         Returns:
             A list of the return values of the function, one for each item in
@@ -156,7 +170,7 @@ class Parallel:
         --------
         Multiply each list element by 2.
 
-        >>> iterable = [(1, 2),(2, 3), (3, 4)]
+        >>> iterable = [(1, 2), (2, 3), (3, 4)]
         >>> def add(x, y):
         ...     return x + y
         >>> p = sg.Parallel(3, backend="loky")
@@ -177,29 +191,35 @@ class Parallel:
 
         """
         self.validate_execution(func)
+
+        kwargs = self.validate_kwargs(kwargs)
+
         func_with_kwargs = functools.partial(func, **kwargs)
 
         if self.processes == 1:
-            return list(starmap(func_with_kwargs, iterable))
+            return list(itertools.starmap(func_with_kwargs, iterable))
 
         # don't use unnecessary processes
-        if self.processes > len(iterable):
-            processes = len(iterable)
-        else:
-            processes = self.processes
+        processes = min(self.processes, len(iterable))
 
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
                 processes, **self.kwargs
             ) as pool:
                 return pool.starmap(func_with_kwargs, iterable)
-        else:
-            with joblib.Parallel(
-                n_jobs=processes, backend=self.backend, **self.kwargs
-            ) as parallel:
-                return parallel(
-                    joblib.delayed(func)(*item, **kwargs) for item in iterable
-                )
+
+        with joblib.Parallel(
+            n_jobs=processes, backend=self.backend, **self.kwargs
+        ) as parallel:
+            return parallel(joblib.delayed(func)(*item, **kwargs) for item in iterable)
+
+    @staticmethod
+    def validate_kwargs(kwargs):
+        if kwargs is None:
+            kwargs = {}
+        elif not isinstance(kwargs, dict):
+            raise TypeError("kwargs must be a dict")
+        return kwargs
 
     def _execute(self) -> list[Any]:
         [self.validate_execution(func) for func in self.funcs]
@@ -248,7 +268,7 @@ class Parallel:
         if not strict:
             files = [file for file in files if exists(file)]
 
-        res = self.map(func=dp.read_pandas, iterable=files, **kwargs)
+        res = self.map(dp.read_pandas, files, kwargs=kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 
@@ -274,80 +294,9 @@ class Parallel:
         """
         if not strict:
             files = [file for file in files if exists(file)]
-        res = self.map(func=read_geopandas, iterable=files, **kwargs)
+        res = self.map(read_geopandas, files, kwargs=kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
-
-    def chunkwise(
-        self,
-        func: Callable,
-        iterable: Iterable,
-        n: int,
-        chunk_kwarg_name: str | None = None,
-        **kwargs,
-    ):
-        """Splits an interable in n chunks and runs the function on each chunk.
-
-        Args:
-            func: Function to be run chunkwise.
-            iterable: Iterable to be divided into n roughly equal length chunks.
-                The chunk will be used as first argument in the function call,
-                unless chunk_kwarg_name is specified.
-            n: Number of chunks to divide the iterable in.
-            chunk_kwarg_name: Optional keyword argument that the chunks should be
-                assigned to. Defaults to None, meaning the chunk will be used as
-                the first positional argument of the function.
-            **kwargs: Additional keyword arguments passed to the function.
-
-        Examples
-        --------
-        >>> def x2(num):
-        ...     return num * 2
-        >>> l = [1, 2, 3, 4]
-        >>> if __name__ == "__main__":
-        ...     p = sg.Parallel(2, backend="loky")
-        ...     results = p.chunkwise(x2, l, n=2)
-        ...     print(results)
-        [array([2, 4]), array([6, 8])]
-
-        """
-        self.validate_execution(func)
-
-        if isinstance(iterable, (str, bytes)) or not hasattr(iterable, "__iter__"):
-            raise TypeError
-
-        if not isinstance(iterable, Sized):
-            iterable = list(iterable)
-
-        n = n if n <= len(iterable) else len(iterable)
-
-        try:
-            splitted = list(np.array_split(iterable, n))
-        except Exception:
-
-            def split(a, n):
-                k, m = divmod(len(a), n)
-                return [
-                    a[i * k + min(i, m) : (i + 1) * k + min(i + 1, m)] for i in range(n)
-                ]
-
-            splitted = split(iterable, n)
-
-        if not hasattr(self, "chunks"):
-            self.chunks = []
-
-        for chunk in splitted:
-            if chunk_kwarg_name:
-                partial_func = functools.partial(
-                    func, **{chunk_kwarg_name: chunk}, **kwargs
-                )
-            else:
-                partial_func = functools.partial(func, chunk, **kwargs)
-            self.funcs.append(partial_func)
-            self.chunks.append(chunk)
-            self._source.append("chunkwise")
-
-        return self._execute()
 
     def write_municipality_data(
         self,

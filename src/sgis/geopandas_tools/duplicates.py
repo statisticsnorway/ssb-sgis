@@ -15,13 +15,23 @@ from .overlay import clean_overlay
 def update_geometries(
     gdf: GeoDataFrame,
     keep_geom_type: bool = True,
-    copy: bool = True,
     grid_size: int | None = None,
+    copy: bool = True,
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
     Since this operation is done rowwise, it's important to
     first sort the GeoDataFrame approriately. See example below.
+
+    Args:
+        gdf: The GeoDataFrame to be updated.
+        keep_geom_type: If True, return only geometries of original type in case
+            of intersection resulting in multiple geometry types or
+            GeometryCollections. If False, return all resulting geometries
+            (potentially mixed types).
+        grid_size: Precision grid size to round the geometries. Will use the highest
+            precision of the inputs by default.
+        copy: Defaults to True.
 
     Example
     ------
@@ -68,8 +78,6 @@ def update_geometries(
     if len(gdf) <= 1:
         return gdf
 
-    gdf = drop_duplicate_geometries(gdf)
-
     df = pd.DataFrame(gdf, copy=copy)
 
     unioned = Polygon()
@@ -89,8 +97,15 @@ def update_geometries(
         try:
             new = difference(geom, unioned, grid_size=grid_size)
         except GEOSException:
-            geom = make_valid(geom)
-            new = difference(geom, unioned, grid_size=grid_size)
+            try:
+                geom = make_valid(geom)
+                new = difference(geom, unioned, grid_size=grid_size)
+            except GEOSException:
+                print("\n\nunioned")
+                print(unioned)
+                unioned = to_single_geom_type(unioned, geom_type=geom_type)
+                print(unioned)
+                new = difference(geom, unioned, grid_size=grid_size)
 
         if not new:
             continue
@@ -100,6 +115,8 @@ def update_geometries(
         except GEOSException:
             new = make_valid(new)
             unioned = unary_union([new, unioned], grid_size=grid_size)
+
+        unioned = make_valid(unioned)
 
         out_rows.append(row)
         geometries.append(new)
@@ -120,10 +137,9 @@ def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
     more than once.
 
     Note that the returned GeoDataFrame in most cases contain two rows per
-    intersection pair (can be removed with drop_duplicate_geometries). It
-    might also contain more than two overlapping polygons if there were multiple
-    overlapping. These can be removed with update_geometries. See example
-    below.
+    intersection pair. It might also contain more than two overlapping polygons
+    if there were multiple overlapping. These can be removed with
+    update_geometries. See example below.
 
     Args:
         gdf: GeoDataFrame of polygons.
@@ -158,20 +174,7 @@ def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
 
     We get two rows for each intersection pair.
 
-    We can drop the pure duplicates like this:
-
-    >>> no_duplicates = sg.drop_duplicate_geometries(duplicates)
-    >>> no_duplicates["area"] = no_duplicates.area
-    >>> no_duplicates
-           area                                           geometry
-    0  2.194730  POLYGON ((1.19941 -0.03769, 1.19763 -0.07535, ...
-    0  0.359846  POLYGON ((1.19941 -0.03769, 1.19763 -0.07535, ...
-    1  2.194730  POLYGON ((2.19941 -0.03769, 2.19763 -0.07535, ...
-
-    But this still leaves us with the middle geometry on top of the
-    other two.
-
-    To get no overlapping geometries, we can instead put geometries
+    To get no overlapping geometries without , we can put geometries
     on top of each other rowwise.
 
     >>> updated = sg.update_geometries(duplicates)
@@ -219,7 +222,7 @@ def _get_intersecting_geometries(gdf: GeoDataFrame) -> GeoDataFrame:
     return not_from_same_poly.drop(columns=["idx_left", "idx_right"])
 
 
-def drop_duplicate_geometries(gdf: GeoDataFrame, **kwargs) -> GeoDataFrame:
+def _drop_duplicate_geometries(gdf: GeoDataFrame, **kwargs) -> GeoDataFrame:
     """Drop geometries that are considered equal.
 
     Args:
