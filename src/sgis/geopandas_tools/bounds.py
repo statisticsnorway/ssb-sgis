@@ -41,11 +41,11 @@ def gridloop(
         keep_geom_type: Whether to keep only the input geometry types after clipping.
             Defaults to True.
         args: Positional arguments to pass to the function. Arguments
-            of type GeoDataFrame or GeoSeries will be clipped by the mask in each
-            iteration.
+            of type GeoDataFrame or GeoSeries will be clipped by the grid cells in
+            a loop.
         kwargs: Keyword arguments to pass to the function. Arguments
-            of type GeoDataFrame or GeoSeries will be clipped by the mask in each
-            iteration.
+            of type GeoDataFrame or GeoSeries will be clipped by the grid cells in
+            a loop.
 
     Returns:
         List of results with the same length as number of grid cells.
