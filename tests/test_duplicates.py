@@ -21,7 +21,7 @@ def test_random_get_intersections():
         circles = sg.random_points(15).set_crs(25833).buffer(0.1).to_frame()
         the_overlap = sg.get_intersections(circles)
 
-        updated = sg.update_geometries(the_overlap)
+        updated = sg.update_geometries(the_overlap, grid_size=1e-6)
 
         overlapping_now = sg.get_intersections(updated).loc[
             lambda x: x.area / x.length > 1e-8

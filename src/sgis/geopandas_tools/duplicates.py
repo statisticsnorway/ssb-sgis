@@ -15,8 +15,8 @@ from .overlay import clean_overlay
 def update_geometries(
     gdf: GeoDataFrame,
     keep_geom_type: bool = True,
-    copy: bool = True,
     grid_size: int | None = None,
+    copy: bool = True,
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
@@ -155,7 +155,7 @@ def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
 
     We get two rows for each intersection pair.
 
-    To get no overlapping geometries, we can put geometries
+    To get no overlapping geometries without , we can put geometries
     on top of each other rowwise.
 
     >>> updated = sg.update_geometries(duplicates)
