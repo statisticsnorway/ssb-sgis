@@ -23,6 +23,16 @@ def update_geometries(
     Since this operation is done rowwise, it's important to
     first sort the GeoDataFrame approriately. See example below.
 
+    Args:
+        gdf: The GeoDataFrame to be updated.
+        keep_geom_type: If True, return only geometries of original type in case
+            of intersection resulting in multiple geometry types or
+            GeometryCollections. If False, return all resulting geometries
+            (potentially mixed types).
+        grid_size: Precision grid size to round the geometries. Will use the highest
+            precision of the inputs by default.
+        copy: Defaults to True.
+
     Example
     ------
     Create two circles and get the overlap.
@@ -87,8 +97,15 @@ def update_geometries(
         try:
             new = difference(geom, unioned, grid_size=grid_size)
         except GEOSException:
-            geom = make_valid(geom)
-            new = difference(geom, unioned, grid_size=grid_size)
+            try:
+                geom = make_valid(geom)
+                new = difference(geom, unioned, grid_size=grid_size)
+            except GEOSException:
+                print("\n\nunioned")
+                print(unioned)
+                unioned = to_single_geom_type(unioned, geom_type=geom_type)
+                print(unioned)
+                new = difference(geom, unioned, grid_size=grid_size)
 
         if not new:
             continue
@@ -98,6 +115,8 @@ def update_geometries(
         except GEOSException:
             new = make_valid(new)
             unioned = unary_union([new, unioned], grid_size=grid_size)
+
+        unioned = make_valid(unioned)
 
         out_rows.append(row)
         geometries.append(new)
