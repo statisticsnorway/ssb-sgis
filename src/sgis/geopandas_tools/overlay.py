@@ -44,6 +44,8 @@ def clean_overlay(
         geom_type: optionally specify what geometry type to keep before the overlay,
             if there are mixed geometry types. Must be either "polygon", "line" or
             "point".
+        grid_size: Precision grid size to round the geometries. Will use the highest
+            precision of the inputs by default.
 
     Returns:
         GeoDataFrame with overlayed and fixed geometries and columns from both
