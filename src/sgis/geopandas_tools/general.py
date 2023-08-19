@@ -8,6 +8,7 @@ import pandas as pd
 import pyproj
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
+from geopandas.tools.sjoin import _geom_predicate_query
 from shapely import (
     Geometry,
     box,
@@ -82,6 +83,29 @@ def sloc(
     0  POINT (0.00000 0.00000)
 
     """
+    other = _sloc_checks(gdf, other)
+
+    idx = _geom_predicate_query(gdf, other, predicate=predicate)
+
+    return gdf.iloc[idx["_key_left"].values]
+
+
+def sloc_split(
+    gdf: GeoDataFrame,
+    other: GeoDataFrame | GeoSeries | Geometry,
+    predicate: str = "intersects",
+) -> tuple[GeoDataFrame, GeoDataFrame]:
+    other = _sloc_checks(gdf, other)
+
+    idx = _geom_predicate_query(gdf, other, predicate=predicate)
+
+    return (
+        gdf.iloc[idx["_key_left"].values],
+        gdf.iloc[pd.Index(range(len(gdf))).difference(idx["_key_left"])],
+    )
+
+
+def _sloc_checks(gdf, other):
     if not isinstance(gdf, GeoDataFrame):
         raise TypeError("gdf should be GeoDataFrame")
 
@@ -101,18 +125,7 @@ def sloc(
         except ValueError:
             pass
 
-    geom_col1 = gdf._geometry_column_name
-    geom_col2 = other._geometry_column_name
-
-    if gdf.index.is_unique:
-        idx = gdf[[geom_col1]].sjoin(other[[geom_col2]], predicate=predicate).index
-        return gdf.loc[gdf.index.isin(idx)]
-
-    gdf = gdf.assign(_idx=lambda x: range(len(x)))
-    idx = gdf[["_idx", geom_col1]].sjoin(other[[geom_col2]], predicate=predicate)[
-        "_idx"
-    ]
-    return gdf.loc[gdf["_idx"].isin(idx)].drop(columns="_idx")
+    return other
 
 
 def get_utm33(lon, lat, crs=25833):
