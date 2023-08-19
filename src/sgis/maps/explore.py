@@ -68,7 +68,7 @@ _MAP_KWARGS = [
 
 
 class MeasureControlFix(plugins.MeasureControl):
-    """To fix a bug in the lenght measurement control.
+    """Monkey-patch to fix a bug in the lenght measurement control.
 
     Kudos to abewartech (https://github.com/ljagis/leaflet-measure/issues/171).
     """
