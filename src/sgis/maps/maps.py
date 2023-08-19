@@ -79,9 +79,9 @@ def explore(
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
         center: Either an address string to be geocoded or a geometry like object
-            (coordinate pair (x, y), GeoDataFrame, bbox, etc.).
-            The geometries will be clipped by a buffered circle around this point.
-            If 'size' is not given, 1000 will be used as the buffer distance.
+            (coordinate pair (x, y), GeoDataFrame, bbox, etc.). If the geometry is a
+            point (or line), it will be buffered by 1000 (can be changed with the)
+            size parameter. If a polygon is given, it will not be buffered.
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings with the same
             length as the number of gdfs.
@@ -139,11 +139,13 @@ def explore(
         size = size or 1000
         if isinstance(center, str) and not is_wkt(center):
             mask = address_to_gdf(center, crs=gdfs[0].crs).buffer(size)
-        elif not isinstance(center, GeoDataFrame):
+        elif isinstance(center, GeoDataFrame):
+            mask = center
+        else:
             mask = to_gdf(center, crs=gdfs[0].crs)
 
-        if get_geom_type(center) in ["point", "line"]:
-            mask = center.buffer(size)
+        if get_geom_type(mask) in ["point", "line"]:
+            mask = mask.buffer(size)
 
         return clipmap(
             *gdfs,
