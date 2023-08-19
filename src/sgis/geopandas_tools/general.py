@@ -23,6 +23,98 @@ from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_t
 from .to_geodataframe import to_gdf
 
 
+def sloc(
+    gdf: GeoDataFrame,
+    other: GeoDataFrame | GeoSeries | Geometry,
+    predicate: str = "intersects",
+) -> GeoDataFrame:
+    """Filter a GeoDataFrame by spatial location.
+
+    Like sjoin without getting duplicate rows or new columns.
+    Works with unique and non-unique index.
+
+    Like 'select by location' in ArcGIS/QGIS, except that the
+    selection is permanent.
+
+    Args:
+        gdf: The GeoDataFrame
+        other: The geometry object to .
+        predicate: Spatial predicate to use. Defaults to 'intersects'.
+
+    Returns:
+        A copy of 'gdf' with only the rows matching the
+        spatial predicate with 'other'.
+
+    Examples
+    --------
+
+    >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
+    >>> df1
+                      geometry
+    0  POINT (0.00000 0.00000)
+    1  POINT (0.00000 1.00000)
+    >>> df2 = sg.to_gdf([(0, 0), (1, 2)])
+    >>> df2
+                      geometry
+    0  POINT (0.00000 0.00000)
+    1  POINT (1.00000 2.00000)
+
+    Keep rows in df1 intersecting any geometry in df2.
+
+    >>> sg.sloc(df1, df2)
+                      geometry
+    0  POINT (0.00000 0.00000)
+
+    Equivelent to using the intersects attribute, which
+    is often slower since df2 must be dissolved:
+
+    >>> df1.loc[df1.intersects(df2.unary_union)]
+                      geometry
+    0  POINT (0.00000 0.00000)
+
+    Also equivelent to sjoin-ing and selecting based on integer index
+    (in case of non-unique index).
+
+    >>> df1["idx"] = range(len(df1))
+    >>> joined = df1.sjoin(df2)
+    >>> df1.loc[df1["idx"].isin(joined["idx"])].drop(columns="idx")
+                          geometry
+    0  POINT (0.00000 0.00000)
+
+    """
+    if not isinstance(gdf, GeoDataFrame):
+        raise TypeError("gdf should be GeoDataFrame")
+
+    if isinstance(other, GeoSeries):
+        other = other.to_frame()
+
+    elif not isinstance(other, GeoDataFrame):
+        try:
+            other = to_gdf(other)
+        except TypeError as e:
+            raise TypeError(
+                f"Unexpected type of 'other' {other.__class__.__name__}"
+            ) from e
+
+        try:
+            other = other.set_crs(gdf.crs)
+        except ValueError:
+            pass
+
+    geom_col1 = gdf._geometry_column_name
+    geom_col2 = other._geometry_column_name
+
+    if gdf.index.is_unique:
+        idx = gdf[[geom_col1]].sjoin(other[[geom_col2]], predicate=predicate).index
+        return gdf.loc[gdf.index.isin(idx)]
+
+    gdf = gdf.assign(_idx=lambda x: range(len(x)))
+    idx = gdf[["_idx", geom_col1]].sjoin(other[[geom_col2]], predicate=predicate)[
+        "_idx"
+    ]
+    return gdf.loc[gdf["_idx"].isin(idx)].drop(columns="_idx")
+
+
 def get_utm33(lon, lat, crs=25833):
     transformer = pyproj.Transformer.from_crs(
         "EPSG:4326", f"EPSG:{crs}", always_xy=True
