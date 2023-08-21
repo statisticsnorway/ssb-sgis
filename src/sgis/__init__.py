@@ -64,6 +64,7 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_smallest,
     get_polygon_clusters,
 )
+from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
 from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url
