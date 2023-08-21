@@ -8,8 +8,8 @@ from pandas.api.types import is_dict_like
 from shapely import Geometry, box, extract_unique_points
 from shapely.geometry import Polygon
 
+from .conversion import to_gdf
 from .general import clean_clip, is_bbox_like
-from .to_geodataframe import to_gdf
 
 
 def gridloop(

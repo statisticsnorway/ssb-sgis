@@ -2,7 +2,6 @@ import numbers
 import warnings
 from typing import Any, Iterable
 
-import geocoder
 import numpy as np
 import pandas as pd
 import pyproj
@@ -11,7 +10,6 @@ from geopandas.array import GeometryDtype
 from geopandas.tools.sjoin import _geom_predicate_query
 from shapely import (
     Geometry,
-    box,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
@@ -20,26 +18,27 @@ from shapely import (
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
+from .conversion import to_gdf
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-from .to_geodataframe import to_gdf
 
 
-def sloc(
+def sfilter(
     gdf: GeoDataFrame,
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
 ) -> GeoDataFrame:
-    """Filter a GeoDataFrame by spatial location.
+    """Filter a GeoDataFrame by spatial predicate.
 
-    Like sjoin without getting duplicate rows or new columns.
+    Does an sjoin and returns the rows of 'gdf' that were returned
+    without getting duplicates or columns from 'other'.
     Works with unique and non-unique index.
 
     Like 'select by location' in ArcGIS/QGIS, except that the
     selection is permanent.
 
     Args:
-        gdf: The GeoDataFrame
-        other: The geometry object to .
+        gdf: The GeoDataFrame.
+        other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
 
     Returns:
@@ -62,18 +61,11 @@ def sloc(
 
     Keep rows in df1 intersecting any geometry in df2.
 
-    >>> sg.sloc(df1, df2)
+    >>> sg.sfilter(df1, df2)
                       geometry
     0  POINT (0.00000 0.00000)
 
-    Equivelent to using the intersects attribute, which
-    is often slower since df2 must be dissolved:
-
-    >>> df1.loc[df1.intersects(df2.unary_union)]
-                      geometry
-    0  POINT (0.00000 0.00000)
-
-    Also equivelent to sjoin-ing and selecting based on integer index
+    Equivelent to sjoin-ing and selecting based on integer index
     (in case of non-unique index).
 
     >>> df1["idx"] = range(len(df1))
@@ -82,33 +74,166 @@ def sloc(
                           geometry
     0  POINT (0.00000 0.00000)
 
+    Also equivelent to using the intersects method, which
+    is often a lot slower since df2 must be dissolved:
+
+    >>> df1.loc[df1.intersects(df2.unary_union)]
+                      geometry
+    0  POINT (0.00000 0.00000)
+
     """
-    other = _sloc_checks(gdf, other)
+    if not isinstance(gdf, GeoDataFrame):
+        raise TypeError("gdf should be GeoDataFrame")
 
-    idx = _geom_predicate_query(gdf, other, predicate=predicate)
+    other = _sfilter_checks(other, crs=gdf.crs)
 
-    return gdf.iloc[idx["_key_left"].values]
+    indices = _get_sfilter_indices(gdf, other, predicate)
+
+    return gdf.iloc[indices]
 
 
-def sloc_split(
+def sfilter_split(
     gdf: GeoDataFrame,
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
-    other = _sloc_checks(gdf, other)
+    """Split a GeoDataFrame by spatial predicate.
 
-    idx = _geom_predicate_query(gdf, other, predicate=predicate)
+    Like sfilter, but returns both the rows that do and do not match
+    the spatial predicate as separate GeoDataFrames.
 
-    return (
-        gdf.iloc[idx["_key_left"].values],
-        gdf.iloc[pd.Index(range(len(gdf))).difference(idx["_key_left"])],
-    )
+    Args:
+        gdf: The GeoDataFrame.
+        other: The geometry object to filter 'gdf' by.
+        predicate: Spatial predicate to use. Defaults to 'intersects'.
 
+    Returns:
+        A tuple of GeoDataFrames, one with the rows that match the spatial predicate
+        and one with the rows that do not.
 
-def _sloc_checks(gdf, other):
+    Examples
+    --------
+
+    >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
+    >>> df1
+                      geometry
+    0  POINT (0.00000 0.00000)
+    1  POINT (0.00000 1.00000)
+    >>> df2 = sg.to_gdf([(0, 0), (1, 2)])
+    >>> df2
+                      geometry
+    0  POINT (0.00000 0.00000)
+    1  POINT (1.00000 2.00000)
+
+    Split df1 into the rows that do and do not intersect df2.
+
+    >>> intersecting, not_intersecting = sg.sfilter_split(df1, df2)
+    >>> intersecting
+                      geometry
+    0  POINT (0.00000 0.00000)
+    >>> not_intersecting
+                      geometry
+    1  POINT (0.00000 1.00000)
+
+    Equivelent to sjoin-ing and selecting based on index (which requires the
+    index to be unique).
+
+    >>> df1 = df1.reset_index(drop=True)
+    >>> joined = df1.sjoin(df2)
+    >>> intersecting = df1.loc[df1.index.isin(joined.index)]
+    >>> not_intersecting = df1.loc[~df1.index.isin(joined.index)]
+
+    Also equivelent to using the intersects method, which
+    is often slower since df2 must be dissolved:
+
+    >>> filt = df1.intersects(df2.unary_union)
+    >>> intersecting = df1.loc[filt]
+    >>> not_intersecting = df1.loc[~filt]
+
+    """
     if not isinstance(gdf, GeoDataFrame):
         raise TypeError("gdf should be GeoDataFrame")
 
+    other = _sfilter_checks(other, crs=gdf.crs)
+
+    indices = _get_sfilter_indices(gdf, other, predicate)
+
+    return (
+        gdf.iloc[indices],
+        gdf.iloc[pd.Index(range(len(gdf))).difference(indices)],
+    )
+
+
+def sfilter_inverse(
+    gdf: GeoDataFrame,
+    other: GeoDataFrame | GeoSeries | Geometry,
+    predicate: str = "intersects",
+) -> tuple[GeoDataFrame, GeoDataFrame]:
+    """Filter a GeoDataFrame by spatial predicate.
+
+    Like sfilter, but returns both the rows that do and do not match
+    the spatial predicate as separate GeoDataFrames.
+
+    Args:
+        gdf: The GeoDataFrame.
+        other: The geometry object to filter 'gdf' by.
+        predicate: Spatial predicate to use. Defaults to 'intersects'.
+
+    Returns:
+        A tuple of GeoDataFrames, one with the rows that match the spatial predicate
+        and one with the rows that do not.
+
+    Examples
+    --------
+
+    >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
+    >>> df1
+                      geometry
+    0  POINT (0.00000 0.00000)
+    1  POINT (0.00000 1.00000)
+    >>> df2 = sg.to_gdf([(0, 0), (1, 2)])
+    >>> df2
+                      geometry
+    0  POINT (0.00000 0.00000)
+    1  POINT (1.00000 2.00000)
+
+    Split df1 into the rows that do and do not intersect df2.
+
+    >>> intersecting, not_intersecting = sg.sfilter_split(df1, df2)
+    >>> intersecting
+                      geometry
+    0  POINT (0.00000 0.00000)
+    >>> not_intersecting
+                      geometry
+    1  POINT (0.00000 1.00000)
+
+    Equivelent to sjoin-ing and selecting based on index (which requires the
+    index to be unique).
+
+    >>> df1 = df1.reset_index(drop=True)
+    >>> joined = df1.sjoin(df2)
+    >>> intersecting = df1.loc[df1.index.isin(joined.index)]
+    >>> not_intersecting = df1.loc[~df1.index.isin(joined.index)]
+
+    Also equivelent to using the intersects method, which
+    is often slower since df2 must be dissolved:
+
+    >>> filt = df1.intersects(df2.unary_union)
+    >>> intersecting = df1.loc[filt]
+    >>> not_intersecting = df1.loc[~filt]
+
+    """
+    if not isinstance(gdf, GeoDataFrame):
+        raise TypeError("gdf should be GeoDataFrame")
+
+    other = _sfilter_checks(other, crs=gdf.crs)
+
+    indices = _get_sfilter_indices(gdf, other, predicate)
+
+    return gdf.iloc[pd.Index(range(len(gdf))).difference(indices)]
+
+
+def _sfilter_checks(other, crs):
     if isinstance(other, GeoSeries):
         other = other.to_frame()
 
@@ -121,25 +246,41 @@ def _sloc_checks(gdf, other):
             ) from e
 
         try:
-            other = other.set_crs(gdf.crs)
+            other = other.set_crs(crs)
         except ValueError:
             pass
 
     return other
 
 
-def get_utm33(lon, lat, crs=25833):
-    transformer = pyproj.Transformer.from_crs(
-        "EPSG:4326", f"EPSG:{crs}", always_xy=True
-    )
-    return transformer.transform(lon, lat)
+def _get_sfilter_indices(gdf, other, predicate) -> np.ndarray:
+    # Combining within and intersects can be a lot faster than intersects
+    if (
+        predicate == "intersects"
+        and len(gdf) > 500
+        and other.area.mean() > gdf.area.mean() * 2
+    ):
+        return _get_indices_from_within_intersects(gdf, other)
+
+    idx_df = _geom_predicate_query(gdf, other, predicate=predicate)
+    return idx_df["_key_left"].unique()
 
 
-def get_lonlat(lon, lat, crs=25833):
-    transformer = pyproj.Transformer.from_crs(
-        f"EPSG:{crs}", "EPSG:4326", always_xy=True
+def _get_indices_from_within_intersects(gdf, other) -> np.ndarray:
+    indices = _geom_predicate_query(gdf, other, predicate="within")[
+        "_key_left"
+    ].unique()
+
+    not_within_idx = pd.Index(range(len(gdf))).difference(indices)
+    not_within = gdf.iloc[not_within_idx]
+
+    new_indices = (
+        _geom_predicate_query(not_within, other, predicate="intersects")["_key_left"]
+        # the indices must be mapped from python index (enumerate) to the full df's index
+        .map(dict(enumerate(not_within_idx))).unique()
     )
-    return transformer.transform(lon, lat)
+
+    return np.union1d(indices, new_indices)
 
 
 def get_common_crs(iterable: Iterable[Any], strict: bool = False) -> pyproj.CRS | None:
@@ -186,81 +327,9 @@ def is_bbox_like(obj) -> bool:
     return False
 
 
-def to_shapely(obj) -> Geometry:
-    if isinstance(obj, Geometry):
-        return obj
-    if not hasattr(obj, "__iter__"):
-        raise TypeError(type(obj))
-    if hasattr(obj, "unary_union"):
-        return obj.unary_union
-    if is_bbox_like(obj):
-        return box(*obj)
-    try:
-        return Point(*obj)
-    except TypeError as e:
-        raise TypeError(obj) from e
-
-
-def address_to_gdf(address: str, crs=4326) -> GeoDataFrame:
-    """Takes an address and returns a point GeoDataFrame."""
-    g = geocoder.osm(address).json
-    coords = g["lng"], g["lat"]
-    return to_gdf(coords, crs=4326).to_crs(crs)
-
-
-def address_to_coords(address: str, crs=4326) -> tuple[float, float]:
-    """Takes an address and returns a tuple of xy coordinates."""
-    g = geocoder.osm(address).json
-    coords = g["lng"], g["lat"]
-    point = to_gdf(coords, crs=4326).to_crs(crs)
-    x, y = point.geometry.iloc[0].x, point.geometry.iloc[0].y
-    return x, y
-
-
 def is_wkt(text: str) -> bool:
     gemetry_types = ["point", "polygon", "line", "geometrycollection"]
     return any(x in text.lower() for x in gemetry_types)
-
-
-def coordinate_array(
-    gdf: GeoDataFrame | GeoSeries,
-) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
-    """Creates a 2d ndarray of coordinates from point geometries.
-
-    Args:
-        gdf: GeoDataFrame or GeoSeries of point geometries.
-
-    Returns:
-        np.ndarray of np.ndarrays of coordinates.
-
-    Examples
-    --------
-    >>> from sgis import coordinate_array, random_points
-    >>> points = random_points(5)
-    >>> points
-                    geometry
-    0  POINT (0.59376 0.92577)
-    1  POINT (0.34075 0.91650)
-    2  POINT (0.74841 0.10627)
-    3  POINT (0.00966 0.87868)
-    4  POINT (0.38046 0.87879)
-    >>> coordinate_array(points)
-    array([[0.59376221, 0.92577159],
-        [0.34074678, 0.91650446],
-        [0.74840912, 0.10626954],
-        [0.00965935, 0.87867915],
-        [0.38045827, 0.87878816]])
-    >>> coordinate_array(points.geometry)
-    array([[0.59376221, 0.92577159],
-        [0.34074678, 0.91650446],
-        [0.74840912, 0.10626954],
-        [0.00965935, 0.87867915],
-        [0.38045827, 0.87878816]])
-    """
-    if isinstance(gdf, GeoDataFrame):
-        return np.array([(geom.x, geom.y) for geom in gdf.geometry])
-    else:
-        return np.array([(geom.x, geom.y) for geom in gdf])
 
 
 def _push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:

@@ -7,7 +7,7 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 from shapely import shortest_line
 
-from ..geopandas_tools.general import coordinate_array
+from ..geopandas_tools.conversion import coordinate_array
 from ..geopandas_tools.neighbors import k_nearest_neighbors
 from .nodes import make_edge_wkt_cols, make_node_ids
 

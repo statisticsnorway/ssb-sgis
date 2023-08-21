@@ -10,18 +10,13 @@ The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 from numbers import Number
 from typing import Any
 
-import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
-from ..geopandas_tools.general import (
-    address_to_coords,
-    address_to_gdf,
-    clean_clip,
-    is_wkt,
-)
+from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.general import clean_clip, is_wkt
+from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
-from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import make_namedict
 from .explore import Explore
 from .map import Map
