@@ -227,6 +227,9 @@ def _sfilter_checks(other, crs):
                 f"Unexpected type of 'other' {other.__class__.__name__}"
             ) from e
 
+        if crs is None:
+            return other
+
         try:
             other = other.set_crs(crs)
         except ValueError as e:

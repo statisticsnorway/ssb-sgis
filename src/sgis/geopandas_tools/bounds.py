@@ -359,7 +359,9 @@ def add_grid_id(
     return midlrdf
 
 
-def bounds_to_polygon(gdf: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
+def bounds_to_polygon(
+    gdf: GeoDataFrame | GeoSeries, copy: bool = True
+) -> GeoDataFrame | GeoSeries:
     """Creates a box around the geometry in each row of a GeoDataFrame.
 
     Args:
@@ -384,13 +386,17 @@ def bounds_to_polygon(gdf: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     1  POLYGON ((0.00000 0.00000, 0.00000 0.00000, 0....
 
     """
+    if isinstance(gdf, GeoSeries):
+        return GeoSeries([box(*arr) for arr in gdf.bounds.values], index=gdf.index)
     if copy:
         gdf = gdf.copy()
-    gdf["geometry"] = [box(*arr) for arr in gdf.bounds.values]
+    gdf.geometry = [box(*arr) for arr in gdf.bounds.values]
     return gdf
 
 
-def bounds_to_points(gdf: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
+def bounds_to_points(
+    gdf: GeoDataFrame | GeoSeries, copy: bool = True
+) -> GeoDataFrame | GeoSeries:
     """Creates a 4-noded multipoint around the geometry in each row of a GeoDataFrame.
 
     Args:
@@ -413,8 +419,10 @@ def bounds_to_points(gdf: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     0  MULTIPOINT (1.00000 0.00000, 1.00000 1.00000, ...
     1                       MULTIPOINT (0.00000 0.00000)
     """
-    gdf = bounds_to_polygon(gdf, copy=copy)
-    gdf["geometry"] = extract_unique_points(gdf)
+    as_bounds = bounds_to_polygon(gdf, copy=copy)
+    if isinstance(gdf, GeoSeries):
+        return GeoSeries(extract_unique_points(as_bounds), index=gdf.index)
+    gdf.geometry = extract_unique_points(gdf)
     return gdf
 
 
