@@ -125,7 +125,7 @@ def test_bounds():
         assert len(gdf) == len(boxes)
         assert list(gdf.index) == list(boxes.index)
         assert not any(gdf.geometry.isna())
-        if __name__ == "__main__" and isinstance(gdf, gpd.GeoDataFrame):
+        if __name__ == "__main__" and isinstance(boxes, gpd.GeoDataFrame):
             sg.qtm(gdf, boxes, alpha=0.5)
 
     points = sg.bounds_to_points(gdf)

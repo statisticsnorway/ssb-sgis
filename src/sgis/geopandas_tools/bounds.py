@@ -422,7 +422,7 @@ def bounds_to_points(
     as_bounds = bounds_to_polygon(gdf, copy=copy)
     if isinstance(gdf, GeoSeries):
         return GeoSeries(extract_unique_points(as_bounds), index=gdf.index)
-    gdf.geometry = extract_unique_points(gdf)
+    gdf.geometry = extract_unique_points(as_bounds.geometry)
     return gdf
 
 
