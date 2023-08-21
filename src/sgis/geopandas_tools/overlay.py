@@ -149,7 +149,7 @@ def _shapely_overlay(
     crs: int | str | None | CRS,
     grid_size: float,
 ) -> GeoDataFrame:
-    if not len(df1) or not len(df2):
+    if not grid_size and not len(df1) or not len(df2):
         return _no_intersections_return(df1, df2, how)
 
     box1 = box(*df1.total_bounds)
