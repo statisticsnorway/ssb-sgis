@@ -35,8 +35,6 @@ from .geopandas_tools.general import (
     get_grouped_centroids,
     random_points,
     rename_geometry_if,
-    sfilter,
-    sfilter_split,
     sort_large_first,
     sort_long_first,
     to_lines,
