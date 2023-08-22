@@ -12,7 +12,7 @@ from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame, Series
 from sklearn.neighbors import NearestNeighbors
 
-from .general import coordinate_array
+from .conversion import coordinate_array
 from .geometry_types import get_geom_type
 
 

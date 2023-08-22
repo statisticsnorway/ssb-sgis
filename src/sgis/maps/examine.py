@@ -1,4 +1,5 @@
 import geopandas as gpd
+import numpy as np
 
 from ..geopandas_tools.bounds import get_total_bounds
 from ..helpers import unit_is_degrees
@@ -9,7 +10,8 @@ class Examine:
     """Explore geometries one row at a time.
 
     It takes one or more GeoDataFrames and shows an interactive map
-    of one area at the time with the 'next', 'prev' and 'current' methods.
+    of one area at the time with the 'next' method or random areas with
+    the 'sample' method.
 
     After creating the examiner object, the 'next' method will create a map
     showing all geometries within a given radius (the size parameter) of the
@@ -37,29 +39,33 @@ class Examine:
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
     >>> e = sg.Examine(points, roads)
     >>> e
+    Examine(indices=1000, current=0, n_gdfs=2)
 
     Then the line below can be repeated for all rows if 'points'. This has to be
     in a separate notebook cell to the previous.
 
     >>> e.next()
+    i == 1 (of 1000)
+    <folium.folium.Map object at 0x000002AC73ACC090>
 
     Previous geometry:
 
-    >>> e.prev()
+    >>> e.next(-1)
+    i == 0 (of 1000)
+    <folium.folium.Map object at 0x0000020F3D68BE50>
 
-    Repeating the current area with another layer and new column:
+    Repeating -1 will display the last row of 'points'.
 
-    >>> some_points = points.sample(100)
-    >>> e.current(some_points, column="idx")
+    >>> e.next(-1)
+    i == -1 (of 1000)
+    <folium.folium.Map object at 0x0000020F3E46FB50>
 
-    The row number can also be specified manually.
-    Can be done in 'next', 'prev' and 'current'.
+    Show index 100 and color the map by 'idx':
 
-    >>> e.next(i=101)
+    >>> e.next(100, column="idx")
+    i == 100 (of 1000)
+    <folium.folium.Map object at 0x0000020F3DD73F50>
 
-    This will create an examiner where 'points' is not shown, only used as mask.
-
-    >>>  e = sg.Examine(roads, mask_gdf=points, column="oneway")
     """
 
     def __init__(
@@ -119,19 +125,22 @@ class Examine:
         Args:
             i: Index to display.
             **kwargs: Additional keyword arguments passed to sgis.clipmap.
+
         """
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        if i:
+        if i and i < 0:
+            self.i += i - 1
+        elif i:
             self.i = i
 
         if self.i >= len(self.mask_gdf):
             print("All rows are shown.")
             return
 
-        print(f"{self.i} of {len(self.mask_gdf)}")
+        print(f"i == {self.i} (of {len(self.mask_gdf)})")
         clipmap(
             *self._gdfs,
             self.column,
@@ -140,28 +149,23 @@ class Examine:
         )
         self.i += 1
 
-    def prev(self, i: int | None = None, **kwargs):
-        """Displays a map of geometries within the previus row of the mask gdf.
+    def sample(self, **kwargs):
+        """Takes a sample index of the mask and displays a map of this area.
 
         Args:
-            *gdfs: Optional GeoDataFrames to be added on top of the current.
-            i: Optionally set the integer index of which row to use as mask.
             **kwargs: Additional keyword arguments passed to sgis.clipmap.
         """
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        self.i -= 2
+        i = np.random.randint(0, len(self.mask_gdf))
 
-        if i:
-            self.i = i
-
-        print(f"{self.i + 1} of {len(self.mask_gdf)}")
+        print(f"Showing index {i}")
         clipmap(
             *self._gdfs,
             self.column,
-            mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
+            mask=self.mask_gdf.iloc[[i]].buffer(self.size),
             **self.kwargs,
         )
 
@@ -171,7 +175,9 @@ class Examine:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        if i:
+        if i and i < 0:
+            self.i -= i
+        elif i:
             self.i = i
 
         print(f"{self.i + 1} of {len(self.mask_gdf)}")

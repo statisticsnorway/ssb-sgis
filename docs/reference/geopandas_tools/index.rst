@@ -11,6 +11,8 @@ the same type as the input.
    :maxdepth: 3
 
    general
+   sfilter
+   overlay
    polygon_operations
    point_operations
    neighbors
@@ -18,4 +20,5 @@ the same type as the input.
    bounds
    buffer_dissolve_explode
    geometry_types
-   overlay
+   conversion
+   geocoding

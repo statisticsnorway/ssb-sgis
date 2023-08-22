@@ -10,25 +10,20 @@ The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 from numbers import Number
 from typing import Any
 
-import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
-from ..geopandas_tools.general import (
-    address_to_coords,
-    address_to_gdf,
-    clean_clip,
-    is_wkt,
-)
+from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.general import clean_clip, is_wkt
+from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
-from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import make_namedict
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
 
 
-def _get_mask(kwargs: dict, crs) -> tuple[GeoDataFrame | None, dict]:
+def _get_location_mask(kwargs: dict, crs) -> tuple[GeoDataFrame | None, dict]:
     masks = {
         "bygdoy": (10.6976899, 59.9081695),
         "kongsvinger": (12.0035242, 60.1875279),
@@ -79,9 +74,9 @@ def explore(
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
         center: Either an address string to be geocoded or a geometry like object
-            (coordinate pair (x, y), GeoDataFrame, bbox, etc.).
-            The geometries will be clipped by a buffered circle around this point.
-            If 'size' is not given, 1000 will be used as the buffer distance.
+            (coordinate pair (x, y), GeoDataFrame, bbox, etc.). If the geometry is a
+            point (or line), it will be buffered by 1000 (can be changed with the)
+            size parameter. If a polygon is given, it will not be buffered.
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings with the same
             length as the number of gdfs.
@@ -118,9 +113,11 @@ def explore(
     >>> points["meters"] = points.length
     >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
     """
-    mask, kwargs = _get_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
+    loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
 
     kwargs.pop("size", None)
+
+    mask = kwargs.pop("mask", loc_mask)
 
     if mask is not None:
         return clipmap(
@@ -137,10 +134,13 @@ def explore(
         size = size or 1000
         if isinstance(center, str) and not is_wkt(center):
             mask = address_to_gdf(center, crs=gdfs[0].crs).buffer(size)
-        elif not isinstance(center, GeoDataFrame):
-            mask = to_gdf(center, crs=gdfs[0].crs).buffer(size)
-        elif get_geom_type(center) in ["point", "line"]:
-            mask = center.buffer(size)
+        elif isinstance(center, GeoDataFrame):
+            mask = center
+        else:
+            mask = to_gdf(center, crs=gdfs[0].crs)
+
+        if get_geom_type(mask) in ["point", "line"]:
+            mask = mask.buffer(size)
 
         return clipmap(
             *gdfs,
@@ -236,7 +236,7 @@ def samplemap(
     if isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
-    mask, kwargs = _get_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
+    mask, kwargs = _get_location_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
     kwargs.pop("size")
 
     if mask is not None:
@@ -294,7 +294,7 @@ def samplemap(
 
 def _prepare_clipmap(*gdfs, mask, labels, **kwargs):
     if mask is None:
-        mask, kwargs = _get_mask(kwargs, crs=gdfs[0].crs)
+        mask, kwargs = _get_location_mask(kwargs, crs=gdfs[0].crs)
         if mask is None and len(gdfs) > 1:
             *gdfs, mask = gdfs
         elif mask is None:

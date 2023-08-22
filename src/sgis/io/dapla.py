@@ -75,8 +75,8 @@ def write_geopandas(
     if not isinstance(gcs_path, str):
         try:
             gcs_path = str(gcs_path)
-        except TypeError:
-            raise TypeError(f"Unexpected type {type(gcs_path)}.")
+        except TypeError as e:
+            raise TypeError(f"Unexpected type {type(gcs_path)}.") from e
 
     if not overwrite and exists(gcs_path):
         raise ValueError("File already exists.")

@@ -16,16 +16,20 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp,
     dissexp_by_cluster,
 )
+from .geopandas_tools.conversion import (
+    coordinate_array,
+    get_lonlat,
+    get_utm33,
+    to_gdf,
+    to_shapely,
+)
 from .geopandas_tools.duplicates import (  # drop_duplicate_geometries,
     get_intersections,
     update_geometries,
 )
 from .geopandas_tools.general import (
-    address_to_coords,
-    address_to_gdf,
     clean_clip,
     clean_geoms,
-    coordinate_array,
     drop_inactive_geometry_columns,
     get_common_crs,
     get_grouped_centroids,
@@ -35,6 +39,7 @@ from .geopandas_tools.general import (
     sort_long_first,
     to_lines,
 )
+from .geopandas_tools.geocoding import address_to_coords, address_to_gdf
 from .geopandas_tools.geometry_types import (
     get_geom_type,
     is_single_geom_type,
@@ -57,7 +62,7 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_smallest,
     get_polygon_clusters,
 )
-from .geopandas_tools.to_geodataframe import to_gdf
+from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
 from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url

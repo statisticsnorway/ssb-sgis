@@ -81,7 +81,7 @@ def to_single_geom_type(
                                             geometry
     2  LINESTRING (1.00000 1.00000, 2.00000 2.00000)
     """
-    if not any(g in geom_type for g in ["polygon", "line", "point"]):
+    if all(g not in geom_type for g in ["polygon", "line", "point"]):
         raise ValueError(
             f"Invalid geom_type {geom_type!r}. Should be 'polygon', 'line' or 'point'"
         )
@@ -91,7 +91,6 @@ def to_single_geom_type(
 
     if isinstance(gdf, (np.ndarray, GeometryArray)):
         arr = np.vectorize(_shapely_to_single_geom_type)(gdf, geom_type)
-        # arr = gdf.__class__([(_shapely_to_single_geom_type)(x, geom_type) for x in gdf])
         return arr[~shapely.is_empty(arr)]
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
@@ -112,7 +111,7 @@ def to_single_geom_type(
         is_line = gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])
         if not is_line.all():
             gdf = gdf.loc[is_line]
-    elif "point" in geom_type:
+    else:
         is_point = gdf.geom_type.isin(["Point", "MultiPoint"])
         if not is_point.all():
             gdf = gdf.loc[is_point]

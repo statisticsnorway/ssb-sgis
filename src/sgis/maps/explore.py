@@ -21,9 +21,9 @@ from jinja2 import Template
 from shapely import Geometry
 from shapely.geometry import LineString
 
+from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import clean_geoms, make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
-from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import unit_is_degrees
 from .httpserver import run_html_server
 from .map import Map
@@ -68,7 +68,7 @@ _MAP_KWARGS = [
 
 
 class MeasureControlFix(plugins.MeasureControl):
-    """To fix a bug in the lenght measurement control.
+    """Monkey-patch to fix a bug in the lenght measurement control.
 
     Kudos to abewartech (https://github.com/ljagis/leaflet-measure/issues/171).
     """
