@@ -25,8 +25,6 @@ from ..io._is_dapla import is_dapla
 from .raster import Raster
 
 
-sssossss
-
 try:
     from ..io.dapla import check_files, read_geopandas, write_geopandas
 except ImportError:

@@ -5,9 +5,6 @@ import numpy as np
 from .raster import Raster
 
 
-sssossss
-
-
 def ndvi_formula(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
     return np.where((red + nir) == 0, 0, (nir - red) / (nir + red))
 

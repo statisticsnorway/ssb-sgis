@@ -11,7 +11,6 @@ from .explode import explode_cube_df
 
 
 # 101 på 30 minutter
-sssossss
 
 
 def merge_by_bounds(

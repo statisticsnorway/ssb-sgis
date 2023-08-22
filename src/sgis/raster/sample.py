@@ -4,9 +4,6 @@ from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
 
-sssossss
-
-
 class RandomCubeSample:
     def __init__(self, cube, n=1, buffer=1000, mask=None, **kwargs):
         self.cubes = []

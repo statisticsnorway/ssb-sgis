@@ -1,9 +1,6 @@
 import functools
 
 
-sssossss
-
-
 class CubeChain:
     def __init__(self):
         self.funcs = []

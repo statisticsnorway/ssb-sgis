@@ -1,7 +1,5 @@
 """Method-to-function to use as mapping function."""
 
-sssossss
-
 
 def _cube_merge(cubebounds, **kwargs):
     assert isinstance(cubebounds, dict)

@@ -1,9 +1,6 @@
 from pandas import DataFrame
 
 
-sssossss
-
-
 def explode(cube, ignore_index: bool = False):
     cube._update_df()
 

@@ -17,9 +17,6 @@ from .merge import cube_merge
 from .raster import Raster
 
 
-sssossss
-
-
 def intersection_base(row: pd.Series, cube, **kwargs):
     cube = cube.copy()
     geom = row.pop("geometry")
