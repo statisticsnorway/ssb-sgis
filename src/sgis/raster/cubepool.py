@@ -12,8 +12,8 @@ from rasterio.enums import MergeAlg
 from shapely import Geometry
 
 from ..geopandas_tools.bounds import make_grid, to_bbox
-from ..geopandas_tools.general import get_common_crs, to_shapely
-from ..geopandas_tools.to_geodataframe import to_gdf
+from ..geopandas_tools.conversion import to_gdf, to_shapely
+from ..geopandas_tools.general import get_common_crs
 from ..helpers import (
     get_all_files,
     get_func_name,

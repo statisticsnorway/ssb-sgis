@@ -9,7 +9,8 @@ import pandas as pd
 import pyproj
 from geopandas import GeoDataFrame
 
-from ..geopandas_tools.general import get_common_crs, to_shapely
+from ..geopandas_tools.conversion import to_shapely
+from ..geopandas_tools.general import get_common_crs
 from ..helpers import get_all_files, get_func_name, get_non_numpy_func_name, in_jupyter
 from .base import RasterBase
 from .indices import get_raster_pairs, index_calc_pair

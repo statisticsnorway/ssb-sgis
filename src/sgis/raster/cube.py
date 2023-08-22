@@ -19,7 +19,8 @@ from rasterio.enums import MergeAlg
 from shapely import Geometry
 
 from ..geopandas_tools.bounds import make_grid
-from ..geopandas_tools.general import get_common_crs, to_shapely
+from ..geopandas_tools.conversion import to_shapely
+from ..geopandas_tools.general import get_common_crs
 from ..helpers import dict_zip_intersection, get_all_files, get_numpy_func
 from ..io._is_dapla import is_dapla
 from .raster import Raster

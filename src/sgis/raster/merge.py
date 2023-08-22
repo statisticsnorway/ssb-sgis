@@ -6,7 +6,8 @@ from rasterio import merge
 from rioxarray.merge import merge_arrays
 
 from ..geopandas_tools.bounds import get_total_bounds, to_bbox
-from ..geopandas_tools.general import get_common_crs, to_shapely
+from ..geopandas_tools.conversion import to_shapely
+from ..geopandas_tools.general import get_common_crs
 from .explode import explode_cube_df
 
 
@@ -182,7 +183,7 @@ def _grouped_merge(
         rasters = exploded.loc[exploded["band_index"] == idx, "raster"]
         if all(r.array is not None for r in rasters):
             # skip if geometries only touch to avoid Invalid dataset dimensions : 0 x n
-            total_bounds = get_total_bounds(r.bounds for r in rasters)
+            total_bounds = get_total_bounds(*[r.bounds for r in rasters])
             if shapely.box(*bounds).touches(shapely.box(*total_bounds)):
                 continue
 

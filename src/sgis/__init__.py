@@ -98,6 +98,7 @@ from .networkanalysis.nodes import (
     make_node_ids,
 )
 from .parallel.parallel import Parallel
+from .raster.cube import GeoDataCube
 from .raster.elevationraster import ElevationRaster
 from .raster.raster import Raster
 from .raster.sentinel import Sentinel2
