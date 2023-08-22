@@ -35,8 +35,8 @@ from shapely import Geometry, box
 from shapely.geometry import Point, Polygon, shape
 
 from ..geopandas_tools.bounds import to_bbox
+from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import is_bbox_like, is_wkt
-from ..geopandas_tools.to_geodataframe import to_gdf
 from ..helpers import get_non_numpy_func_name, get_numpy_func, is_property
 from ..io.opener import opener
 from .base import (

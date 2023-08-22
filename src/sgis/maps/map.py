@@ -49,6 +49,20 @@ _CATEGORICAL_CMAP = {
 DEFAULT_SCHEME = "quantiles"
 
 
+def proper_fillna(val, fill_val):
+    """fillna doesn't always work. So doing it manually."""
+    try:
+        if "NAType" in val.__class__.__name__:
+            return fill_val
+    except Exception:
+        if fill_val is None:
+            return fill_val
+        if fill_val != fill_val:
+            return fill_val
+
+    return val
+
+
 class Map:
     """Base class that prepares one or more GeoDataFrames for mapping.
 
@@ -95,13 +109,30 @@ class Map:
         if not self.labels:
             self._get_labels(gdfs)
 
+        show = kwargs.pop("show", None)
+        if not show:
+            show = [True for _ in range(len(gdfs))]
+        if isinstance(show, (int, bool)):
+            show_temp = [bool(show) for _ in range(len(gdfs))]
+        elif not hasattr(show, "__iter__") or len(show) != len(gdfs):
+            raise ValueError(
+                "'show' must be boolean or an iterable of boleans same length as gdfs"
+            )
+        else:
+            show_temp = show
+
         self._gdfs = []
-        for i, gdf in enumerate(gdfs):
+        new_labels = []
+        self.show = []
+        for label, gdf, show in zip(self.labels, gdfs, show_temp, strict=True):
             gdf = clean_geoms(gdf).reset_index(drop=True)
-            if len(gdf):
-                self._gdfs.append(gdf)
-            else:
-                self.labels.pop(i)
+            if not len(gdf):
+                continue
+
+            self._gdfs.append(gdf)
+            new_labels.append(label)
+            self.show.append(show)
+        self.labels = new_labels
 
         self.kwargs = kwargs
 
@@ -130,11 +161,15 @@ class Map:
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
         else:
-            self._unique_values = sorted(
-                list(self._gdf.loc[~self._nan_idx, self._column].unique())
-            )
-        if self._k > len(self._unique_values):
-            self._k = len(self._unique_values)
+            unique = list(self._gdf.loc[~self._nan_idx, self._column].unique())
+            try:
+                self._unique_values = sorted(unique)
+            except TypeError:
+                self._unique_values = [
+                    x for x in unique if proper_fillna(x, None) is not None
+                ]
+
+        self._k = min(self._k, len(self._unique_values))
 
     def _get_unique_floats(self) -> np.array:
         """Get unique floats by multiplying, then converting to integer.
@@ -495,17 +530,9 @@ class Map:
             # need numpy.nan instead of pd.NA
             gdf[self._column] = gdf[self._column].fillna(np.nan)
 
-            # also, fillna doesn't always work. So doing it manually
-            def proper_fillna(val):
-                try:
-                    if "NAType" in val.__class__.__name__:
-                        return np.nan
-                except Exception:
-                    return val
-
-                return val
-
-            gdf[self._column] = gdf[self._column].apply(proper_fillna)
+            gdf[self._column] = gdf[self._column].apply(
+                lambda x: proper_fillna(x, np.nan)
+            )
 
             classified = np.searchsorted(bins, gdf[self._column])
 

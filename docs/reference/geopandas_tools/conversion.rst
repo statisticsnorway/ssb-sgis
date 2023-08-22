@@ -1,7 +1,7 @@
-Make grids from bounds
+Conversion
 ============================
 
-.. automodule:: sgis.geopandas_tools.bounds
+.. automodule:: sgis.geopandas_tools.conversion
     :members:
     :exclude-members:
     :show-inheritance:

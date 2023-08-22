@@ -9,10 +9,10 @@ from shapely import force_2d
 from shapely.geometry import LineString, Point
 
 from ..geopandas_tools.buffer_dissolve_explode import buff
+from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from ..geopandas_tools.point_operations import snap_all, snap_within_distance
-from ..geopandas_tools.to_geodataframe import to_gdf
 from .nodes import make_edge_coords_cols
 
 

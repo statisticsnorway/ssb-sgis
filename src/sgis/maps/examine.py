@@ -1,14 +1,17 @@
 import geopandas as gpd
+import numpy as np
 
+from ..geopandas_tools.bounds import get_total_bounds
 from ..helpers import unit_is_degrees
-from .maps import clipmap
+from .maps import clipmap, explore, samplemap
 
 
 class Examine:
     """Explore geometries one row at a time.
 
     It takes one or more GeoDataFrames and shows an interactive map
-    of one area at the time with the 'next', 'prev' and 'current' methods.
+    of one area at the time with the 'next' method or random areas with
+    the 'sample' method.
 
     After creating the examiner object, the 'next' method will create a map
     showing all geometries within a given radius (the size parameter) of the
@@ -36,29 +39,33 @@ class Examine:
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
     >>> e = sg.Examine(points, roads)
     >>> e
+    Examine(indices=1000, current=0, n_gdfs=2)
 
     Then the line below can be repeated for all rows if 'points'. This has to be
     in a separate notebook cell to the previous.
 
     >>> e.next()
+    i == 1 (of 1000)
+    <folium.folium.Map object at 0x000002AC73ACC090>
 
     Previous geometry:
 
-    >>> e.prev()
+    >>> e.next(-1)
+    i == 0 (of 1000)
+    <folium.folium.Map object at 0x0000020F3D68BE50>
 
-    Repeating the current area with another layer and new column:
+    Repeating -1 will display the last row of 'points'.
 
-    >>> some_points = points.sample(100)
-    >>> e.current(some_points, column="idx")
+    >>> e.next(-1)
+    i == -1 (of 1000)
+    <folium.folium.Map object at 0x0000020F3E46FB50>
 
-    The row number can also be specified manually.
-    Can be done in 'next', 'prev' and 'current'.
+    Show index 100 and color the map by 'idx':
 
-    >>> e.next(i=101)
+    >>> e.next(100, column="idx")
+    i == 100 (of 1000)
+    <folium.folium.Map object at 0x0000020F3DD73F50>
 
-    This will create an examiner where 'points' is not shown, only used as mask.
-
-    >>>  e = sg.Examine(roads, mask_gdf=points, column="oneway")
     """
 
     def __init__(
@@ -68,12 +75,13 @@ class Examine:
         mask_gdf: gpd.GeoDataFrame | None = None,
         sort_values: str | None = None,
         size: int | float = 1000,
+        only_show_mask: bool = False,
         **kwargs,
     ):
         if not all(isinstance(gdf, gpd.GeoDataFrame) for gdf in gdfs):
             raise ValueError("gdfs must be of type GeoDataFrame.")
 
-        self.gdfs = gdfs
+        self._gdfs = gdfs
         if mask_gdf is None:
             self.mask_gdf = gdfs[0]
         else:
@@ -87,6 +95,12 @@ class Examine:
             )
 
         if sort_values is not None:
+            if (
+                sort_values == "area"
+                or not isinstance(sort_values, str)
+                and "area" in sort_values
+            ):
+                self.mask_gdf["area"] = self.mask_gdf.area
             self.mask_gdf = self.mask_gdf.sort_values(sort_values)
 
         self.indices = list(range(len(gdfs[0])))
@@ -95,93 +109,138 @@ class Examine:
         self.size = size
         self.kwargs = kwargs
 
-    def next(self, *gdfs, i: int | None = None, **kwargs):
+        if only_show_mask:
+            self.kwargs["show"] = [True] + [False] * len(self._gdfs[1:])
+        elif not kwargs.get("show"):
+            self.kwargs["show"] = [True] * len(self._gdfs)
+
+    def add_gdfs(self, *gdfs):
+        self._gdfs = self._gdfs + gdfs
+        self.kwargs["show"] += [True for _ in range(len(gdfs))]
+        return self
+
+    def next(self, i: int | None = None, **kwargs):
         """Displays a map of geometries within the next row of the mask gdf.
 
         Args:
-            *gdfs: Optional GeoDataFrames to be added on top of the current.
-            i: Optionally set the integer index of which row to use as mask.
+            i: Index to display.
             **kwargs: Additional keyword arguments passed to sgis.clipmap.
+
         """
-        gdfs = () if not gdfs else gdfs
-        self.gdfs = self.gdfs + gdfs
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        if i:
+        if i and i < 0:
+            self.i += i - 1
+        elif i:
             self.i = i
 
         if self.i >= len(self.mask_gdf):
             print("All rows are shown.")
             return
 
-        print(f"{self.i + 1} of {len(self.mask_gdf)}")
+        print(f"i == {self.i} (of {len(self.mask_gdf)})")
         clipmap(
-            *self.gdfs,
+            *self._gdfs,
             self.column,
             mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
             **self.kwargs,
         )
         self.i += 1
 
-    def prev(self, *gdfs, i: int | None = None, **kwargs):
-        """Displays a map of geometries within the previus row of the mask gdf.
+    def sample(self, **kwargs):
+        """Takes a sample index of the mask and displays a map of this area.
 
         Args:
-            *gdfs: Optional GeoDataFrames to be added on top of the current.
-            i: Optionally set the integer index of which row to use as mask.
             **kwargs: Additional keyword arguments passed to sgis.clipmap.
         """
-        gdfs = () if not gdfs else gdfs
-        self.gdfs = self.gdfs + gdfs
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        self.i -= 2
+        i = np.random.randint(0, len(self.mask_gdf))
 
-        if i:
-            self.i = i
-
-        print(f"{self.i + 1} of {len(self.mask_gdf)}")
+        print(f"Showing index {i}")
         clipmap(
-            *self.gdfs,
+            *self._gdfs,
             self.column,
-            mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
+            mask=self.mask_gdf.iloc[[i]].buffer(self.size),
             **self.kwargs,
         )
 
-    def current(self, *gdfs, i: int | None = None, **kwargs):
+    def current(self, i: int | None = None, **kwargs):
         """Repeat the last shown map."""
-        gdfs = () if not gdfs else gdfs
-        self.gdfs = self.gdfs + gdfs
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        if i:
+        if i and i < 0:
+            self.i -= i
+        elif i:
             self.i = i
 
         print(f"{self.i + 1} of {len(self.mask_gdf)}")
         clipmap(
-            *self.gdfs,
+            *self._gdfs,
             self.column,
             mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
             **self.kwargs,
         )
 
-    def get_current_mask(self) -> gpd.GeoDataFrame:
+    def explore(self, **kwargs):
+        """Show all rows like the function explore."""
+        if kwargs:
+            kwargs = self._fix_kwargs(kwargs)
+            self.kwargs = self.kwargs | kwargs
+
+        explore(
+            *self._gdfs,
+            self.column,
+            **self.kwargs,
+        )
+
+    def clipmap(self, **kwargs):
+        """Show all rows like the function clipmap."""
+        if kwargs:
+            kwargs = self._fix_kwargs(kwargs)
+            self.kwargs = self.kwargs | kwargs
+
+        clipmap(
+            *self._gdfs,
+            self.column,
+            **self.kwargs,
+        )
+
+    def samplemap(self, **kwargs):
+        """Show all rows like the function samplemap."""
+        if kwargs:
+            kwargs = self._fix_kwargs(kwargs)
+            self.kwargs = self.kwargs | kwargs
+
+        samplemap(
+            *self._gdfs,
+            self.column,
+            **self.kwargs,
+        )
+
+    @property
+    def mask(self) -> gpd.GeoDataFrame:
         """Returns a GeoDataFrame of the last shown mask geometry."""
         return self.mask_gdf.iloc[[self.i]]
 
-    def get_current_geoms(self) -> tuple[gpd.GeoDataFrame]:
+    @property
+    def gdfs(self) -> tuple[gpd.GeoDataFrame]:
         """Returns all GeoDataFrames in the area of the last shown mask geometry."""
         mask = self.mask_gdf.iloc[[self.i]]
         gdfs = ()
-        for gdf in self.gdfs:
+        for gdf in self._gdfs:
             gdfs = gdfs + (gdf.clip(mask.buffer(self.size)),)
         return gdfs
+
+    @property
+    def bounds(self):
+        return get_total_bounds(*self.gdfs)
 
     def _fix_kwargs(self, kwargs) -> dict:
         self.size = kwargs.pop("size", self.size)
@@ -189,4 +248,12 @@ class Examine:
         return kwargs
 
     def __repr__(self) -> str:
-        return f"{self.__class__}(indices={len(self.indices)}, current={self.i}, n_gdfs={len(self.gdfs)})"
+        return f"{self.__class__.__name__}(indices={len(self.indices)}, current={self.i}, n_gdfs={len(self._gdfs)})"
+
+    def __add__(self, scalar):
+        self.i += scalar
+        return self
+
+    def __sub__(self, scalar):
+        self.i -= scalar
+        return self

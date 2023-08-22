@@ -31,6 +31,47 @@ import sgis as sg
 test_dice()"""
 
 
+def test_gridloop():
+    points = sg.random_points(100, loc=10000).set_crs(25833)
+    points["i"] = range(len(points))
+
+    grid = sg.make_grid(points, 2000)
+    grid["grid_idx"] = range(len(grid))
+    intersected = sg.clean_overlay(points, grid).sort_values("i").reset_index(drop=True)
+
+    intersected2 = (
+        pd.concat(
+            sg.gridloop(
+                sg.clean_overlay,
+                gridsize=200,
+                mask=points,
+                kwargs={"df1": points, "df2": grid},
+            ),
+            ignore_index=True,
+        )
+        .sort_values("i")
+        .reset_index(drop=True)
+    )
+
+    assert intersected.equals(intersected2)
+
+    intersected3 = (
+        pd.concat(
+            sg.gridloop(
+                sg.clean_overlay,
+                gridsize=200,
+                mask=points,
+                args=(points, grid),
+            ),
+            ignore_index=True,
+        )
+        .sort_values("i")
+        .reset_index(drop=True)
+    )
+
+    assert intersected.equals(intersected3)
+
+
 def test_bounds():
     points = sg.random_points(1000, loc=10000).set_crs(25833)
 
@@ -76,12 +117,16 @@ def test_bounds():
 
     gdf = sg.to_gdf([(0, 0), (1, 1), (2, 2)]).pipe(sg.buff, 0.1)
     gdf.index = [1, 3, 5]
-    boxes = sg.bounds_to_polygon(gdf)
-    assert len(gdf) == len(boxes)
-    assert list(gdf.index) == list(boxes.index)
-    assert not any(gdf.geometry.isna())
-    if __name__ == "__main__":
-        sg.qtm(gdf, boxes, alpha=0.5)
+    for boxes in [
+        sg.bounds_to_polygon(gdf),
+        sg.bounds_to_polygon(gdf.geometry),
+        sg.bounds_to_polygon(gdf.buffer(0.01).to_frame()),
+    ]:
+        assert len(gdf) == len(boxes)
+        assert list(gdf.index) == list(boxes.index)
+        assert not any(gdf.geometry.isna())
+        if __name__ == "__main__" and isinstance(boxes, gpd.GeoDataFrame):
+            sg.qtm(gdf, boxes, alpha=0.5)
 
     points = sg.bounds_to_points(gdf)
     if __name__ == "__main__":
@@ -94,5 +139,6 @@ def test_bounds():
 
 if __name__ == "__main__":
     test_bounds()
+    test_gridloop()
 
 # %%

@@ -1,11 +1,16 @@
 """Check and set geometry type."""
+import numpy as np
 import pandas as pd
+import shapely
 from geopandas import GeoDataFrame, GeoSeries
+from geopandas.array import GeometryArray
+from shapely import Geometry
 
 
 def make_all_singlepart(
     gdf: GeoDataFrame, index_parts: bool = False, ignore_index: bool = False
 ) -> GeoDataFrame:
+    # only explode if nessecary
     if ignore_index or index_parts:
         gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
     while not gdf.geom_type.isin(
@@ -76,6 +81,18 @@ def to_single_geom_type(
                                             geometry
     2  LINESTRING (1.00000 1.00000, 2.00000 2.00000)
     """
+    if all(g not in geom_type for g in ["polygon", "line", "point"]):
+        raise ValueError(
+            f"Invalid geom_type {geom_type!r}. Should be 'polygon', 'line' or 'point'"
+        )
+
+    if isinstance(gdf, Geometry):
+        return _shapely_to_single_geom_type(gdf, geom_type)
+
+    if isinstance(gdf, (np.ndarray, GeometryArray)):
+        arr = np.vectorize(_shapely_to_single_geom_type)(gdf, geom_type)
+        return arr[~shapely.is_empty(arr)]
+
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
@@ -94,15 +111,19 @@ def to_single_geom_type(
         is_line = gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])
         if not is_line.all():
             gdf = gdf.loc[is_line]
-    elif "point" in geom_type:
+    else:
         is_point = gdf.geom_type.isin(["Point", "MultiPoint"])
         if not is_point.all():
             gdf = gdf.loc[is_point]
-    else:
-        raise ValueError(
-            f"Invalid geom_type {geom_type!r}. Should be 'polygon', 'line' or 'point'"
-        )
+
     return gdf.reset_index(drop=True) if ignore_index else gdf
+
+
+def _shapely_to_single_geom_type(geom, geom_type):
+    parts = shapely.get_parts(geom)
+    return shapely.unary_union(
+        [part for part in parts if geom_type.lower() in part.geom_type.lower()]
+    )
 
 
 def get_geom_type(gdf: GeoDataFrame | GeoSeries) -> str:

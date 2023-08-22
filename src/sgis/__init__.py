@@ -1,4 +1,3 @@
-# flake8: noqa: F401
 from .geopandas_tools.bounds import (
     bounds_to_points,
     bounds_to_polygon,
@@ -17,22 +16,30 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp,
     dissexp_by_cluster,
 )
+from .geopandas_tools.conversion import (
+    coordinate_array,
+    get_lonlat,
+    get_utm33,
+    to_gdf,
+    to_shapely,
+)
+from .geopandas_tools.duplicates import (  # drop_duplicate_geometries,
+    get_intersections,
+    update_geometries,
+)
 from .geopandas_tools.general import (
-    address_to_coords,
-    address_to_gdf,
     clean_clip,
     clean_geoms,
-    coordinate_array,
     drop_inactive_geometry_columns,
     get_common_crs,
+    get_grouped_centroids,
     random_points,
     rename_geometry_if,
-    sort_large_to_small,
-    sort_long_to_short,
-    sort_short_to_long,
-    sort_small_to_large,
+    sort_large_first,
+    sort_long_first,
     to_lines,
 )
+from .geopandas_tools.geocoding import address_to_coords, address_to_gdf
 from .geopandas_tools.geometry_types import (
     get_geom_type,
     is_single_geom_type,
@@ -45,7 +52,7 @@ from .geopandas_tools.neighbors import (
     get_neighbor_indices,
     k_nearest_neighbors,
 )
-from .geopandas_tools.overlay import clean_overlay, update_geometries
+from .geopandas_tools.overlay import clean_overlay
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import (
     close_all_holes,
@@ -53,11 +60,10 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
-    get_duplicate_areas,
     get_polygon_clusters,
 )
-from .geopandas_tools.to_geodataframe import to_gdf
-from .helpers import get_object_name
+from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
+from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url
 from .maps.examine import Examine
@@ -91,7 +97,7 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
-from .raster.cube import GeoDataCube, concat_cubes
+from .parallel.parallel import Parallel
 from .raster.elevationraster import ElevationRaster
 from .raster.raster import Raster
 from .raster.sentinel import Sentinel2
@@ -100,7 +106,5 @@ from .raster.sentinel import Sentinel2
 try:
     from .io.dapla import check_files, exists, read_geopandas, write_geopandas
     from .io.write_municipality_data import write_municipality_data
-    from .parallel.parallelmapper import ParallelMapper
-    from .parallel.parallelpool import ParallelPool
 except ImportError:
     pass

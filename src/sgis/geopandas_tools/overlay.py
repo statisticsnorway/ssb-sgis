@@ -7,50 +7,16 @@ version of the solution from GH 2792.
 'clean_overlay' also includes the overlay type "update", which can be specified in the
 "how" parameter, in addition to the five native geopandas how-s.
 """
-
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 from pyproj import CRS
-from shapely import STRtree, difference, intersection, make_valid, unary_union
-from shapely.errors import GEOSException
-from shapely.geometry import MultiPolygon, Polygon
+from shapely import STRtree, box, difference, intersection, make_valid, unary_union
 
-from .general import clean_geoms, sort_large_to_small, sort_long_to_short
+from .general import clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-
-
-def update_geometries(gdf: GeoDataFrame, sort_by: str | None = None) -> GeoDataFrame:
-    if len(gdf) <= 1:
-        return gdf
-
-    if sort_by and sort_by not in ["area", "length"]:
-        raise ValueError("sort_by must be None, 'area' or 'length'.")
-    elif sort_by:
-        gdf = sort_large_to_small(gdf) if sort_by == "area" else sort_long_to_short(gdf)
-
-    union = Polygon()
-    out_rows = []
-    indices = []
-
-    for i, row in gdf.iterrows():
-        try:
-            new = row.geometry.difference(union)
-        except GEOSException:
-            try:
-                new = row.geometry.difference(union, grid_size=0.01)
-            except GEOSException:
-                new = row.geometry.difference(union, grid_size=0.1)
-
-        if not new or not isinstance(new, (Polygon, MultiPolygon)):
-            continue
-        union = unary_union([new, union])
-        row.geometry = new
-        out_rows.append(row)
-        indices.append(i)
-    return GeoDataFrame(out_rows, geometry="geometry", index=indices, crs=gdf.crs)
 
 
 def clean_overlay(
@@ -78,6 +44,8 @@ def clean_overlay(
         geom_type: optionally specify what geometry type to keep before the overlay,
             if there are mixed geometry types. Must be either "polygon", "line" or
             "point".
+        grid_size: Precision grid size to round the geometries. Will use the highest
+            precision of the inputs by default.
 
     Returns:
         GeoDataFrame with overlayed and fixed geometries and columns from both
@@ -109,21 +77,12 @@ def clean_overlay(
     if not geom_type:
         geom_type = get_geom_type(df1)
         if geom_type == "mixed":
-            raise ValueError("mixed geometries are not allowed.")
+            raise ValueError("mixed geometries are not allowed.", df1.geometry)
 
     df1 = clean_geoms(df1)
     df2 = clean_geoms(df2)
 
-    # df1.geometry = df1.geometry.buffer(0)
-    # df2.geometry = df2.geometry.buffer(0)
-
-    if geom_type:
-        df1 = to_single_geom_type(df1, geom_type)
-
     df1 = to_single_geom_type(df1, geom_type)
-
-    if keep_geom_type:
-        df2 = to_single_geom_type(df2, geom_type)
 
     df1 = make_all_singlepart(df1, ignore_index=True)
     df2 = make_all_singlepart(df2, ignore_index=True)
@@ -132,12 +91,55 @@ def clean_overlay(
         clean_geoms
     )
 
-    # overlayed.geometry = overlayed.geometry.buffer(0)
-
-    if geom_type:
+    if keep_geom_type:
         overlayed = to_single_geom_type(overlayed, geom_type)
 
     return overlayed.reset_index(drop=True)
+
+
+def _join_and_get_no_rows(df1, df2):
+    geom_col = df1._geometry_column_name
+    df1_cols = df1.columns.difference({geom_col})
+    df2_cols = df2.columns.difference({df2._geometry_column_name})
+    cols_with_suffix = [f"{col}_1" if col in df2_cols else col for col in df1_cols] + [
+        f"{col}_2" if col in df1_cols else col for col in df2_cols
+    ]
+
+    return GeoDataFrame(
+        pd.DataFrame(columns=cols_with_suffix + [geom_col]),
+        geometry=geom_col,
+        crs=df1.crs,
+    )
+
+
+def _no_intersections_return(df1, df2, how):
+    """Return with no overlay if no intersecting bounding box"""
+
+    if how == "intersection":
+        return _join_and_get_no_rows(df1, df2)
+
+    if how == "difference":
+        return df1.reset_index(drop=True)
+
+    if how == "identity":
+        # add suffixes and return df1
+        df_template = _join_and_get_no_rows(df1, df2)
+        df2_cols = df2.columns.difference({df2._geometry_column_name})
+        df1.columns = [f"{col}_1" if col in df2_cols else col for col in df1]
+        return pd.concat([df_template, df1], ignore_index=True)
+
+    if how == "update":
+        return pd.concat([df1, df2], ignore_index=True)
+
+    assert how in ["union", "symmetric_difference"]
+
+    # add suffixes and return both concatted
+    df_template = _join_and_get_no_rows(df1, df2)
+    if not len(df1) and not len(df2):
+        return df_template
+
+    df_template = _join_and_get_no_rows(df1, df2)
+    return pd.concat([df_template, df1, df2], ignore_index=True)
 
 
 def _shapely_overlay(
@@ -147,6 +149,20 @@ def _shapely_overlay(
     crs: int | str | None | CRS,
     grid_size: float,
 ) -> GeoDataFrame:
+    if not grid_size and not len(df1) or not len(df2):
+        return _no_intersections_return(df1, df2, how)
+
+    box1 = box(*df1.total_bounds)
+    box2 = box(*df2.total_bounds)
+    if not len(df1) or not len(df1) or not box1.intersects(box2):
+        return _no_intersections_return(df1, df2, how)
+
+    if df1._geometry_column_name != "geometry":
+        df1 = df1.rename_geometry("geometry")
+
+    if df2._geometry_column_name != "geometry":
+        df2 = df2.rename_geometry("geometry")
+
     tree = STRtree(df2.geometry.values)
     left, right = tree.query(df1.geometry.values, predicate="intersects")
     # GeoDataFrame constructor is expensive, so doing it only once in the end
@@ -189,14 +205,11 @@ def _shapely_overlay(
     if how not in ["difference", "update"]:
         overlayed = _add_suffix_left(overlayed, df1, df2)
 
-    # make valid and keep only valid without constructing GeoDataFrame
     overlayed["geometry"] = make_valid(overlayed["geometry"])
     # None and empty are falsy
     overlayed = overlayed.loc[lambda x: x["geometry"].map(bool)]
 
-    return gpd.GeoDataFrame(
-        overlayed, geometry="geometry", crs=crs
-    )  # .pipe(clean_geoms)
+    return gpd.GeoDataFrame(overlayed, geometry="geometry", crs=crs)
 
 
 def _update(pairs, df1, df2, left, grid_size) -> GeoDataFrame:
@@ -275,7 +288,7 @@ def _get_intersects_pairs(
         ],
         axis=1,
     ).join(
-        df2.rename(columns={"geometry": "geom_right"}),
+        df2.rename(columns={"geometry": "geom_right"}, errors="raise"),
         on="index_right",
         rsuffix="_2",
     )

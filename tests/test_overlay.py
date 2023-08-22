@@ -4,6 +4,8 @@ import warnings
 from pathlib import Path
 
 import numpy as np
+from helpers import cprofile_df
+from IPython.display import display
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -19,11 +21,13 @@ def test_overlay(points_oslo):
     p = points_oslo
     p = p.iloc[:50]
 
-    p500 = sg.buff(p, 500).assign(idx1=1)
-    p1000 = sg.buff(p, 1000).assign(idx2=1)
+    p500 = sg.buff(p, 500)
+    p500["idx1"] = 1
+    p1000 = sg.buff(p, 1000)
+    p1000["idx2"] = 1
 
+    """updated2 = sg.clean_overlay(p500, p1000, how="update")
     updated = sg.overlay_update(p500, p1000)
-    updated2 = sg.clean_overlay(p500, p1000, how="update")
     assert len(updated) == len(updated2)
     assert round(sum(updated.area), 3) == round(sum(updated2.area), 3)
 
@@ -34,7 +38,7 @@ def test_overlay(points_oslo):
     updated = sg.overlay_update(p1000, p500)
     if __name__ == "__main__":
         updated["area_"] = updated.area
-        sg.qtm(updated, "area_")
+        sg.qtm(updated, "area_")"""
 
     overlayed = sg.clean_overlay(p500, p1000, how="update")
     cols_should_be = ["idx", "idx1", "idx2", "geometry"]
@@ -56,6 +60,7 @@ def test_overlay(points_oslo):
     ]
     for cols, how in zip(cols_should_be, hows):
         print(how)
+        print(p500.columns)
         overlayed = (
             sg.clean_geoms(p500)
             .explode(ignore_index=True)
@@ -86,7 +91,7 @@ def test_overlay(points_oslo):
                 p500.sample(1),
                 p1000.sample(1),
                 how=how,
-                geom_type=("polygon", "polygon"),
+                geom_type="polygon",
             )
 
 
@@ -123,11 +128,18 @@ def test_overlay_random(n=25):
                 )
 
 
-def main():
+def partial_func():
     from oslo import points_oslo
 
     test_overlay(points_oslo())
     test_overlay_random(n=100)
+
+
+def main():
+    df = cprofile_df("partial_func()")
+
+    display(df.sort_values("cumtime", ascending=False).head(50))
+    display(df.sort_values("percall", ascending=False).head(50))
 
 
 if __name__ == "__main__":

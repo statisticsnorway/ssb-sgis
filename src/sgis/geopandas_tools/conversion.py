@@ -4,12 +4,85 @@ from collections.abc import Iterator, Sized
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyproj
 import shapely
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_array_like, is_dict_like, is_list_like
 from shapely import Geometry, box, wkb, wkt
 from shapely.geometry import Point
 from shapely.ops import unary_union
+
+
+def to_shapely(obj) -> Geometry:
+    if isinstance(obj, Geometry):
+        return obj
+    if not hasattr(obj, "__iter__"):
+        raise TypeError(type(obj))
+    if hasattr(obj, "unary_union"):
+        return obj.unary_union
+    if is_bbox_like(obj):
+        return box(*obj)
+    try:
+        return Point(*obj)
+    except TypeError as e:
+        raise TypeError(obj) from e
+
+
+def get_utm33(lon: float, lat: float, crs=25833):
+    """Get utm 33 N coordinates from lonlat (4326)."""
+    transformer = pyproj.Transformer.from_crs(
+        "EPSG:4326", f"EPSG:{crs}", always_xy=True
+    )
+    return transformer.transform(lon, lat)
+
+
+def get_lonlat(lon: float, lat: float, crs=25833):
+    """Get degree coordinates  33 N coordinates from lonlat (4326)."""
+    transformer = pyproj.Transformer.from_crs(
+        f"EPSG:{crs}", "EPSG:4326", always_xy=True
+    )
+    return transformer.transform(lon, lat)
+
+
+def coordinate_array(
+    gdf: GeoDataFrame | GeoSeries,
+) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
+    """Creates a 2d ndarray of coordinates from point geometries.
+
+    Args:
+        gdf: GeoDataFrame or GeoSeries of point geometries.
+
+    Returns:
+        np.ndarray of np.ndarrays of coordinates.
+
+    Examples
+    --------
+    >>> from sgis import coordinate_array, random_points
+    >>> points = random_points(5)
+    >>> points
+                    geometry
+    0  POINT (0.59376 0.92577)
+    1  POINT (0.34075 0.91650)
+    2  POINT (0.74841 0.10627)
+    3  POINT (0.00966 0.87868)
+    4  POINT (0.38046 0.87879)
+    >>> coordinate_array(points)
+    array([[0.59376221, 0.92577159],
+        [0.34074678, 0.91650446],
+        [0.74840912, 0.10626954],
+        [0.00965935, 0.87867915],
+        [0.38045827, 0.87878816]])
+    >>> coordinate_array(points.geometry)
+    array([[0.59376221, 0.92577159],
+        [0.34074678, 0.91650446],
+        [0.74840912, 0.10626954],
+        [0.00965935, 0.87867915],
+        [0.38045827, 0.87878816]])
+    """
+    if isinstance(gdf, GeoDataFrame):
+        return np.array([(geom.x, geom.y) for geom in gdf.geometry])
+    else:
+        return np.array([(geom.x, geom.y) for geom in gdf])
 
 
 def to_gdf(
@@ -151,7 +224,7 @@ def to_gdf(
     crs = crs or get_crs_from_dict(obj)
 
     if not is_dict_like(obj):
-        if is_boundingbox(obj):
+        if is_bbox_like(obj):
             obj = GeoSeries(shapely.box(*obj), index=index)
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
         if is_nested_geojson(obj):
@@ -233,7 +306,7 @@ def make_shapely_geoms(obj):
     return (_make_one_shapely_geom(g) for g in obj)
 
 
-def is_boundingbox(obj) -> bool:
+"""def is_boundingbox(obj) -> bool:
     if not hasattr(obj, "__iter__"):
         return False
 
@@ -244,6 +317,16 @@ def is_boundingbox(obj) -> bool:
     if len(obj) == 4 and all(isinstance(x, numbers.Number) for x in obj):
         return True
 
+    return False"""
+
+
+def is_bbox_like(obj) -> bool:
+    if (
+        hasattr(obj, "__iter__")
+        and len(obj) == 4
+        and all(isinstance(x, numbers.Number) for x in obj)
+    ):
+        return True
     return False
 
 

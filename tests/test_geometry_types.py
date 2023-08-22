@@ -3,8 +3,9 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import shapely
 from helpers import create_all_geometry_types
-from shapely.geometry import LineString
+from shapely.geometry import LineString, MultiPoint, Point
 
 
 src = str(Path(__file__).parent.parent) + "/src"
@@ -19,6 +20,15 @@ def test_all_geom_types():
     assert sg.get_geom_type(gdf) == "mixed"
     assert not sg.is_single_geom_type(gdf)
     assert len(gdf) == 8, len(gdf)
+
+    singlepart = sg.make_all_singlepart(gdf)
+    assert len(singlepart) == 20, len(singlepart)
+
+    singlepart = sg.make_all_singlepart(gdf, ignore_index=True)
+    assert len(singlepart) == 20, len(singlepart)
+
+    singlepart = sg.make_all_singlepart(gdf, ignore_index=True, index_parts=True)
+    assert len(singlepart) == 20, len(singlepart)
 
     points = sg.to_single_geom_type(gdf, "point")
     assert sg.get_geom_type(points) == "point"
@@ -43,6 +53,36 @@ def test_all_geom_types():
 
     index = sorted(set(list(points.index) + list(lines.index) + list(polygons.index)))
     assert index == sorted(gdf.index), print(index, sorted(gdf.index))
+
+    assert (res := sg.to_single_geom_type(gdf.geometry.values, "point")).tolist() == [
+        Point([0, 0]),
+        MultiPoint([(10, 10), (11, 11)]),
+        MultiPoint([(0, 0), (10, 10), (11, 11)]),
+    ], res
+    assert (res := sg.to_single_geom_type(gdf.unary_union, "point")) == MultiPoint(
+        ([0, 0], (10, 10), (11, 11))
+    ), res
+
+    assert (
+        res := [x.wkt for x in sg.to_single_geom_type(gdf.geometry.values, "line")]
+    ) == [
+        "LINESTRING (60 60, 60 61, 61 61, 61 60, 60 60)",
+        "LINESTRING (20 20, 21 21)",
+        "MULTILINESTRING ((30 30, 31 31), (32 32, 33 33))",
+        "MULTILINESTRING ((60 60, 60 61, 61 61, 61 60, 60 60), (20 20, 21 21), (30 30, 31 31), (32 32, 33 33))",
+    ], res
+    assert (
+        res := sg.to_single_geom_type(gdf.unary_union, "line")
+    ) == shapely.wkt.loads(
+        "MULTILINESTRING ((60 60, 60 61), (60 61, 61 61), (61 61, 61 60), (61 60, 60 60), (20 20, 21 21), (30 30, 31 31), (32 32, 33 33))"
+    ), res
+
+    assert all(
+        "POLYGON" in x.wkt
+        for x in sg.to_single_geom_type(gdf.geometry.values, "polygon")
+    )
+
+    assert "POLYGON" in sg.to_single_geom_type(gdf.unary_union, "polygon").wkt
 
 
 def test_geom_types():
@@ -85,4 +125,5 @@ def test_geom_types():
 
 
 if __name__ == "__main__":
+    test_all_geom_types()
     test_geom_types()

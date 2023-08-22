@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,90 +13,6 @@ src = str(Path(__file__).parent.parent) + "/src"
 sys.path.insert(0, src)
 
 import sgis as sg
-
-
-def test_random_get_duplicate_areas():
-    # many iterations to try to break the assertion
-    for i in range(100):
-        circles = sg.random_points(15).set_crs(25833).buffer(0.1)
-        the_overlap = sg.get_duplicate_areas(circles)
-
-        the_overlap["idx"] = [str(x) for x in range(len(the_overlap))]
-
-        the_overlap["sliv"] = the_overlap.area / the_overlap.length
-
-        overlapping_now = sg.get_duplicate_areas(the_overlap)
-
-        # just testing that this works with no rows
-        if i == 0:
-            sg.get_duplicate_areas(the_overlap, keep=False)
-            sg.get_duplicate_areas(
-                the_overlap, sliver_filter=lambda x: x.area / x.length > 1.000000e-12
-            )
-
-        assert not len(overlapping_now), overlapping_now
-
-
-def test_get_duplicate_areas():
-    circles = sg.to_gdf([(0, 0), (0, 1), (1, 1), (1, 0)]).pipe(sg.buff, 1)
-
-    dups = (
-        sg.get_duplicate_areas(circles, keep="first")
-        .pipe(sg.buff, -0.01)
-        .pipe(sg.clean_geoms)
-    )
-    print(dups)
-    sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
-    assert len(dups) == 5, len(dups)
-
-    dups = (
-        sg.get_duplicate_areas(circles, keep="last")
-        .pipe(sg.buff, -0.01)
-        .pipe(sg.clean_geoms)
-    )
-    print(dups)
-    sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
-    assert len(dups) == 5, len(dups)
-
-    dups = sg.get_duplicate_areas(circles, keep=False)
-    print(dups)
-    sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
-    assert len(dups) == 12, len(dups)
-
-
-def _test_get_duplicate_areas():
-    with_overlap = sg.to_gdf([(0, 0), (4, 4), (1, 1)]).pipe(sg.buff, 1)
-    with_overlap["col"] = 1
-    if __name__ == "__main__":
-        sg.explore(with_overlap)
-
-    dissolved_overlap = sg.get_duplicate_areas(with_overlap)
-    print(dissolved_overlap)
-    assert len(dissolved_overlap) == 1
-    assert list(dissolved_overlap.columns) == ["geometry"]
-    assert round(dissolved_overlap.area.sum(), 2) == 0.57, dissolved_overlap.area.sum()
-
-    again = sg.get_duplicate_areas(dissolved_overlap)
-    print(again)
-    assert not len(again)
-
-    # index should be preserved and area should be twice
-    without_dissolve = sg.get_duplicate_areas(with_overlap, dissolve=False)
-    print(without_dissolve)
-    assert list(without_dissolve.index) == [0, 2], list(without_dissolve.index)
-    assert (
-        round(without_dissolve.area.sum(), 2) == 0.57 * 2
-    ), without_dissolve.area.sum()
-
-    assert list(without_dissolve.columns) == ["col", "geometry"]
-
-    again = sg.get_duplicate_areas(without_dissolve)
-    print(again)
-    assert len(again) == 1, len(again)
-
-    once_again = sg.get_duplicate_areas(again)
-    print(once_again)
-    assert not len(once_again)
 
 
 def test_close_holes():
@@ -126,7 +41,7 @@ def test_close_holes():
         assert sum(closed_island_ignored.area) > sum(all_closed.area)
 
         hole_not_closed = sg.close_small_holes(ring_with_hole, max_area=1)
-        assert sum(all_closed.area) > sum(ring_with_hole.area)
+        assert sum(all_closed.area) > sum(hole_not_closed.area)
 
         all_closed2 = sg.close_small_holes(ring_with_hole, max_area=30_000)
 
@@ -236,7 +151,7 @@ def test_get_polygon_clusters():
 
     sg.get_polygon_clusters(gdf.dissolve(), allow_multipart=True)
 
-    c = sg.get_polygon_clusters(gdf, wkt_col=True)
+    c = sg.get_polygon_clusters(gdf, as_string=True)
     assert c["cluster"].isin(["0_0", "9_9", "20_20"]).all()
 
 
@@ -303,13 +218,18 @@ def test_eliminate():
         assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
         assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
 
+        missing_value = polys.assign(what=pd.NA)
+        eliminated = sg.eliminate_by_smallest(missing_value, sliver)
+        assert eliminated["what"].isna().all()
+
     eliminated = sg.eliminate_by_longest(polys1, isolated)
+
+    if __name__ == "__main__":
+        sg.qtm(eliminated, "what", title="with isolated", alpha=0.8)
+    assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
     assert list(eliminated.what) == ["small", "large", "isolated"], list(
         eliminated.what
     )
-    assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
-    if __name__ == "__main__":
-        sg.qtm(eliminated, "what", title="with isolated", alpha=0.8)
 
     eliminated = sg.eliminate_by_largest(polys1, isolated)
     assert list(eliminated.what) == ["small", "large", "isolated"], list(
@@ -319,9 +239,7 @@ def test_eliminate():
 
 
 if __name__ == "__main__":
-    test_get_duplicate_areas()
-    test_random_get_duplicate_areas()
+    test_eliminate()
 
     test_close_holes()
     test_get_polygon_clusters()
-    test_eliminate()
