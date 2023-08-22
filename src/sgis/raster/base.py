@@ -11,6 +11,9 @@ from ..geopandas_tools.bounds import to_bbox
 from ..helpers import is_property
 
 
+sssossss
+
+
 @contextmanager
 def memfile_from_array(array, **profile):
     with rasterio.MemoryFile() as memfile:
