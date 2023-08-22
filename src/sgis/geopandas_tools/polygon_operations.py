@@ -215,10 +215,6 @@ def eliminate_by_longest(
     """
     crs = gdf.crs
 
-    common_geometries = gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))
-    if any(common_geometries):
-        gdf = gdf.loc[~common_geometries]
-
     if not ignore_index:
         idx_mapper = dict(enumerate(gdf.index))
         idx_name = gdf.index.name
@@ -358,10 +354,6 @@ def _eliminate_by_area(
     **kwargs,
 ) -> GeoDataFrame:
     crs = gdf.crs
-
-    common_geometries = gdf.geometry.astype(str).isin(to_eliminate.geometry.astype(str))
-    if any(common_geometries):
-        gdf = gdf.loc[~common_geometries]
 
     if not ignore_index:
         idx_mapper = dict(enumerate(gdf.index))
