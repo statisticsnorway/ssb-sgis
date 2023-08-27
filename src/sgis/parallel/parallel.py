@@ -134,6 +134,9 @@ class Parallel:
         # don't use unnecessary processes
         processes = min(self.processes, len(iterable))
 
+        if not processes:
+            return []
+
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
                 processes, **self.kwargs
@@ -202,6 +205,9 @@ class Parallel:
         # don't use unnecessary processes
         processes = min(self.processes, len(iterable))
 
+        if not processes:
+            return []
+
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
                 processes, **self.kwargs
@@ -232,6 +238,9 @@ class Parallel:
             processes = len(self.funcs)
         else:
             processes = self.processes
+
+        if not processes:
+            return []
 
         if self.backend != "multiprocessing":
             with joblib.Parallel(
