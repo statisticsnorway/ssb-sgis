@@ -198,8 +198,6 @@ class Explore(Map):
             self._update_column()
             kwargs.pop("column", None)
 
-        self.previous_sample_count = 0
-
         if sample_from_first:
             sample = self._gdfs[0].sample(1)
         else:
