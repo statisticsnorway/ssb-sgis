@@ -109,9 +109,7 @@ class Map:
         if not self.labels:
             self._get_labels(gdfs)
 
-        show = kwargs.pop("show", None)
-        if not show:
-            show = [True for _ in range(len(gdfs))]
+        show = kwargs.pop("show", True)
         if isinstance(show, (int, bool)):
             show_temp = [bool(show) for _ in range(len(gdfs))]
         elif not hasattr(show, "__iter__") or len(show) != len(gdfs):
@@ -134,7 +132,14 @@ class Map:
             self.show.append(show)
         self.labels = new_labels
 
-        self.kwargs = kwargs
+        self.kwargs = {}
+        for key, value in kwargs.items():
+            if isinstance(value, GeoDataFrame):
+                self._gdfs.append(value)
+                self.labels.append(key)
+                self.show.append(self.show[-1])
+            else:
+                self.kwargs[key] = value
 
         if not self.labels:
             self._set_labels()
