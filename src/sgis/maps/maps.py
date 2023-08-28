@@ -23,7 +23,12 @@ from .map import Map
 from .thematicmap import ThematicMap
 
 
-def _get_location_mask(kwargs: dict, crs) -> tuple[GeoDataFrame | None, dict]:
+def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
+    try:
+        crs = gdfs[0].crs
+    except IndexError:
+        crs = [x for x in kwargs.values() if isinstance(x, GeoDataFrame)][0].crs
+
     masks = {
         "bygdoy": (10.6976899, 59.9081695),
         "kongsvinger": (12.0035242, 60.1875279),
@@ -113,7 +118,8 @@ def explore(
     >>> points["meters"] = points.length
     >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
     """
-    loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
+
+    loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
 
     kwargs.pop("size", None)
 
@@ -240,7 +246,7 @@ def samplemap(
     if isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
-    mask, kwargs = _get_location_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
+    mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
     kwargs.pop("size")
 
     if mask is not None:
@@ -300,7 +306,7 @@ def samplemap(
 
 def _prepare_clipmap(*gdfs, mask, labels, **kwargs):
     if mask is None:
-        mask, kwargs = _get_location_mask(kwargs, crs=gdfs[0].crs)
+        mask, kwargs = _get_location_mask(kwargs, gdfs)
         if mask is None and len(gdfs) > 1:
             *gdfs, mask = gdfs
         elif mask is None:

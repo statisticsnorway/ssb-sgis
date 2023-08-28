@@ -95,11 +95,6 @@ class Map:
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
             raise ValueError("gdfs must be GeoDataFrames.")
 
-        if not any(len(gdf) for gdf in gdfs):
-            warnings.warn("None of the GeoDataFrames have rows.")
-            self._gdfs = None
-            return
-
         if "namedict" in kwargs:
             for i, gdf in enumerate(gdfs):
                 gdf.name = kwargs["namedict"][i]
@@ -134,14 +129,24 @@ class Map:
             self.show.append(show)
         self.labels = new_labels
 
+        if self.show:
+            last_show = self.show[-1]
+        else:
+            last_show = True
+
         self.kwargs = {}
         for key, value in kwargs.items():
             if isinstance(value, GeoDataFrame):
                 self._gdfs.append(value)
                 self.labels.append(key)
-                self.show.append(self.show[-1])
+                self.show.append(last_show)
             else:
                 self.kwargs[key] = value
+
+        if not any(len(gdf) for gdf in self._gdfs):
+            warnings.warn("None of the GeoDataFrames have rows.")
+            self._gdfs = None
+            return
 
         if not self.labels:
             self._set_labels()

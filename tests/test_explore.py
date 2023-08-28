@@ -1,4 +1,5 @@
 # %%
+import warnings
 from pathlib import Path
 
 import geopandas as gpd
@@ -71,6 +72,14 @@ def test_explore(points_oslo, roads_oslo):
         show_in_browser=False,
         show=False,
     )
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error")
+        sg.explore(
+            **{"r200": r200, "r100": r100},
+            show_in_browser=False,
+        )
+    sss
 
     print("when multiple gdfs and no column, should be one color per gdf:")
     sg.explore(r300, r200, r100, show_in_browser=False)
