@@ -76,18 +76,31 @@ def clean_overlay(
 
     crs = df1.crs
 
+    original_geom_type = geom_type
+
     if not geom_type:
         geom_type = get_geom_type(df1)
         if geom_type == "mixed":
-            raise ValueError("mixed geometries are not allowed.", df1.geometry)
+            raise ValueError(
+                "mixed geometries are not allowed when geom_type isn't specified.",
+                df1.geometry,
+            )
+        if get_geom_type(df2) == "mixed":
+            raise ValueError(
+                "mixed geometries are not allowed when geom_type isn't specified.",
+                df2.geometry,
+            )
 
     df1 = clean_geoms(df1)
     df2 = clean_geoms(df2)
 
-    df1 = to_single_geom_type(df1, geom_type)
-
     df1 = make_all_singlepart(df1, ignore_index=True)
     df2 = make_all_singlepart(df2, ignore_index=True)
+
+    df1 = to_single_geom_type(df1, geom_type)
+
+    if original_geom_type:
+        df2 = to_single_geom_type(df2, geom_type)
 
     overlayed = _shapely_overlay(
         df1,
