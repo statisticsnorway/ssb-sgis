@@ -120,6 +120,9 @@ class Map:
         new_labels = []
         self.show = []
         for label, gdf, show in zip(self.labels, gdfs, show_temp, strict=True):
+            if not len(gdf):
+                continue
+
             gdf = clean_geoms(gdf).reset_index(drop=True)
             if not len(gdf):
                 continue

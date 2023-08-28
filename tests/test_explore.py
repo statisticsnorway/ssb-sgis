@@ -79,7 +79,6 @@ def test_explore(points_oslo, roads_oslo):
             **{"r200": r200, "r100": r100},
             show_in_browser=False,
         )
-    sss
 
     print("when multiple gdfs and no column, should be one color per gdf:")
     sg.explore(r300, r200, r100, show_in_browser=False)
