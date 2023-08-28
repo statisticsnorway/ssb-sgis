@@ -161,6 +161,10 @@ def explore(
         smooth_factor=smooth_factor,
         **kwargs,
     )
+
+    if m.gdfs is None:
+        return
+
     m.explore()
 
 
@@ -258,6 +262,8 @@ def samplemap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
+        if m.gdfs is None:
+            return
         m.samplemap(size, sample_from_first=sample_from_first)
 
     else:
@@ -393,6 +399,9 @@ def clipmap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
+        if m.gdfs is None:
+            return
+
         m.explore(center=center, size=size)
     else:
         m = Map(

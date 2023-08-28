@@ -97,6 +97,7 @@ class Map:
 
         if not any(len(gdf) for gdf in gdfs):
             warnings.warn("None of the GeoDataFrames have rows.")
+            self._gdfs = None
             return
 
         if "namedict" in kwargs:

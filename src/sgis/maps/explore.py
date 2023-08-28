@@ -123,6 +123,9 @@ class Explore(Map):
 
         super().__init__(*gdfs, column=column, show=show, **kwargs)
 
+        if self.gdfs is None:
+            return
+
         # stringify or remove columns not renerable by leaflet (list etc.)
         new_gdfs, show_new = [], []
         for gdf, show in zip(self.gdfs, self.show, strict=True):
