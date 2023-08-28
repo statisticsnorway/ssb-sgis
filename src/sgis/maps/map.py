@@ -96,7 +96,8 @@ class Map:
             raise ValueError("gdfs must be GeoDataFrames.")
 
         if not any(len(gdf) for gdf in gdfs):
-            raise ValueError("None of the GeoDataFrames have rows.")
+            warnings.warn("None of the GeoDataFrames have rows.")
+            return
 
         if "namedict" in kwargs:
             for i, gdf in enumerate(gdfs):
