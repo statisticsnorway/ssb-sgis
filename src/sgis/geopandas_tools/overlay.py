@@ -378,20 +378,13 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
             },
         }
     )
-    try:
-        clip_left["geometry"] = difference(
-            clip_left["geometry"].to_numpy(),
-            clip_left["geom_right"].to_numpy(),
-            grid_size=grid_size,
-        )
-    except GEOSException:
-        geoms_left = make_valid(clip_left["geometry"].to_numpy())
-        geoms_right = make_valid(clip_left["geom_right"].to_numpy())
-        clip_left["geometry"] = intersection(
-            geoms_left,
-            geoms_right,
-            grid_size=grid_size,
-        )
+
+    clip_left["geometry"] = _try_difference(
+        clip_left["geometry"].to_numpy(),
+        clip_left["geom_right"].to_numpy(),
+        grid_size=grid_size,
+    )
+
     return clip_left.drop(columns="geom_right")
 
 
@@ -414,19 +407,38 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
         )
     )
 
+    clip_right["geometry"] = _try_difference(
+        clip_right["geometry"].to_numpy(),
+        clip_right["geom_left"].to_numpy(),
+        grid_size=grid_size,
+    )
+
+    return clip_right.drop(columns="geom_left")
+
+
+def _try_difference(left, right, grid_size):
+    """Try difference overlay, then make_valid and retry, then dissolve right and retry."""
     try:
-        clip_right["geometry"] = difference(
-            clip_right["geometry"].to_numpy(),
-            clip_right["geom_left"].to_numpy(),
+        return difference(
+            left,
+            right,
             grid_size=grid_size,
         )
     except GEOSException:
-        geoms_left = make_valid(clip_right["geometry"].to_numpy())
-        geoms_right = make_valid(clip_right["geom_left"].to_numpy())
-        clip_right["geometry"] = intersection(
+        # try:
+        geoms_left = make_valid(left)
+        geoms_right = make_valid(right)
+
+        return intersection(
             geoms_left,
             geoms_right,
             grid_size=grid_size,
         )
+        """except GEOSException:
+            geoms_right = make_valid(unary_union(right))
 
-    return clip_right.drop(columns="geom_left")
+            return intersection(
+                geoms_left,
+                geoms_right,
+                grid_size=grid_size,
+            )"""
