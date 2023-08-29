@@ -239,30 +239,5 @@ def _sfilter_checks(other, crs):
 
 
 def _get_sfilter_indices(gdf, other, predicate) -> np.ndarray:
-    # Combining within and intersects can be a lot faster than intersects
-    if (
-        predicate == "intersects"
-        and len(gdf) > 500
-        and other.area.mean() > gdf.area.mean() * 2
-    ):
-        return _get_indices_from_within_intersects(gdf, other)
-
     idx_df = _geom_predicate_query(gdf, other, predicate=predicate)
     return idx_df["_key_left"].unique()
-
-
-def _get_indices_from_within_intersects(gdf, other) -> np.ndarray:
-    indices = _geom_predicate_query(gdf, other, predicate="within")[
-        "_key_left"
-    ].unique()
-
-    not_within_idx = pd.Index(range(len(gdf))).difference(indices)
-    not_within = gdf.iloc[not_within_idx]
-
-    new_indices = (
-        _geom_predicate_query(not_within, other, predicate="intersects")["_key_left"]
-        # the indices must be mapped from python index (enumerate) to the full df's index
-        .map(dict(enumerate(not_within_idx))).unique()
-    )
-
-    return np.union1d(indices, new_indices)
