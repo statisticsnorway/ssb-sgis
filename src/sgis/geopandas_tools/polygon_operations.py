@@ -8,9 +8,11 @@ from shapely import (
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
+    make_valid,
     polygons,
+    unary_union,
 )
-from shapely.ops import unary_union
+from shapely.errors import GEOSException
 
 from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
 from .geometry_types import make_all_singlepart
@@ -434,7 +436,7 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
         .drop(["_area"], axis=1, errors="ignore")
     )
     eliminated["geometry"] = more_than_one.groupby("_dissolve_idx")["geometry"].agg(
-        lambda x: unary_union(x.values)
+        lambda x: make_valid(unary_union(x.values))
     )
 
     # setting crs on geometryarray to avoid warning in concat
@@ -510,7 +512,7 @@ def close_all_holes(
         else:
             return gdf.map(_close_all_holes)
 
-    all_geoms = gdf.unary_union
+    all_geoms = make_valid(gdf.unary_union)
     if isinstance(gdf, GeoDataFrame):
         gdf["geometry"] = gdf.geometry.map(
             lambda x: _close_all_holes_no_islands(x, all_geoms)
@@ -591,7 +593,7 @@ def close_small_holes(
         gdf = gdf.copy()
 
     if not ignore_islands:
-        all_geoms = gdf.unary_union
+        all_geoms = make_valid(gdf.unary_union)
 
         if isinstance(gdf, GeoDataFrame):
             gdf["geometry"] = gdf.geometry.map(
@@ -631,7 +633,7 @@ def _close_small_holes(poly, max_area):
             if area(hole) < max_area:
                 holes_closed.append(hole)
 
-    return unary_union(holes_closed)
+    return make_valid(unary_union(holes_closed))
 
 
 def _close_small_holes_no_islands(poly, max_area, all_geoms):
@@ -649,15 +651,19 @@ def _close_small_holes_no_islands(poly, max_area, all_geoms):
 
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
-            no_islands = unary_union(hole.difference(all_geoms))
+            try:
+                no_islands = unary_union(hole.difference(all_geoms))
+            except GEOSException:
+                no_islands = make_valid(unary_union(hole.difference(all_geoms)))
+
             if area(no_islands) < max_area:
                 holes_closed.append(no_islands)
 
-    return unary_union(holes_closed)
+    return make_valid(unary_union(holes_closed))
 
 
 def _close_all_holes(poly):
-    return unary_union(polygons(get_exterior_ring(get_parts(poly))))
+    return make_valid(unary_union(polygons(get_exterior_ring(get_parts(poly)))))
 
 
 def _close_all_holes_no_islands(poly, all_geoms):
@@ -675,7 +681,11 @@ def _close_all_holes_no_islands(poly, all_geoms):
 
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
-            no_islands = unary_union(hole.difference(all_geoms))
+            try:
+                no_islands = unary_union(hole.difference(all_geoms))
+            except GEOSException:
+                no_islands = make_valid(unary_union(hole.difference(all_geoms)))
+
             holes_closed.append(no_islands)
 
-    return unary_union(holes_closed)
+    return make_valid(unary_union(holes_closed))
