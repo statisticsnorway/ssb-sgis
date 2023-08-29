@@ -14,6 +14,7 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 from pyproj import CRS
 from shapely import STRtree, box, difference, intersection, make_valid, unary_union
+from shapely.errors import GEOSException
 
 from .general import clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
@@ -248,11 +249,20 @@ def _intersection(pairs, grid_size) -> GeoDataFrame:
         return pairs.drop(columns="geom_right")
 
     intersections = pairs.copy()
-    intersections["geometry"] = intersection(
-        intersections["geometry"].to_numpy(),
-        intersections["geom_right"].to_numpy(),
-        grid_size=grid_size,
-    )
+    try:
+        intersections["geometry"] = intersection(
+            intersections["geometry"].to_numpy(),
+            intersections["geom_right"].to_numpy(),
+            grid_size=grid_size,
+        )
+    except GEOSException:
+        geoms_left = make_valid(intersections["geometry"].to_numpy())
+        geoms_right = make_valid(intersections["geom_right"].to_numpy())
+        intersections["geometry"] = intersection(
+            geoms_left,
+            geoms_right,
+            grid_size=grid_size,
+        )
 
     return intersections.drop(columns="geom_right")
 
@@ -300,7 +310,7 @@ def _symmetric_difference(pairs, df1, df2, left, right, grid_size, rsuffix) -> l
 def _difference(pairs, df1, left, grid_size=None) -> list:
     merged = []
     if len(left):
-        clip_left = _shapely_diffclip_left(pairs, df1, grid_size=grid_size)
+        clip_left = _shapely_diffclip_left(pairs=pairs, df1=df1, grid_size=grid_size)
         merged.append(clip_left)
     diff_left = _add_from_left(df1, left)
     merged.append(diff_left)
@@ -357,6 +367,7 @@ def _add_from_right(
 def _shapely_diffclip_left(pairs, df1, grid_size):
     """Aggregate areas in right by unique values of left, then use those to clip
     areas out of left"""
+
     clip_left = pairs.groupby(level=0).agg(
         {
             "geom_right": lambda g: unary_union(g) if len(g) > 1 else g,
@@ -367,12 +378,20 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
             },
         }
     )
-    clip_left["geometry"] = difference(
-        clip_left["geometry"].to_numpy(),
-        clip_left["geom_right"].to_numpy(),
-        grid_size=grid_size,
-    )
-
+    try:
+        clip_left["geometry"] = difference(
+            clip_left["geometry"].to_numpy(),
+            clip_left["geom_right"].to_numpy(),
+            grid_size=grid_size,
+        )
+    except GEOSException:
+        geoms_left = make_valid(clip_left["geometry"].to_numpy())
+        geoms_right = make_valid(clip_left["geom_right"].to_numpy())
+        clip_left["geometry"] = intersection(
+            geoms_left,
+            geoms_right,
+            grid_size=grid_size,
+        )
     return clip_left.drop(columns="geom_right")
 
 
@@ -395,10 +414,19 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
         )
     )
 
-    clip_right["geometry"] = difference(
-        clip_right["geometry"].to_numpy(),
-        clip_right["geom_left"].to_numpy(),
-        grid_size=grid_size,
-    )
+    try:
+        clip_right["geometry"] = difference(
+            clip_right["geometry"].to_numpy(),
+            clip_right["geom_left"].to_numpy(),
+            grid_size=grid_size,
+        )
+    except GEOSException:
+        geoms_left = make_valid(clip_right["geometry"].to_numpy())
+        geoms_right = make_valid(clip_right["geom_left"].to_numpy())
+        clip_right["geometry"] = intersection(
+            geoms_left,
+            geoms_right,
+            grid_size=grid_size,
+        )
 
     return clip_right.drop(columns="geom_left")
