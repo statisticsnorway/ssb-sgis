@@ -7,6 +7,7 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 
+import warnings
 from numbers import Number
 from typing import Any
 
@@ -257,6 +258,8 @@ def samplemap(
             labels=labels,
             **kwargs,
         )
+        if not gdfs:
+            return
 
     if explore:
         m = Explore(
@@ -330,7 +333,8 @@ def _prepare_clipmap(*gdfs, mask, labels, **kwargs):
             clipped = clipped + (clipped_,)
 
     if not any(len(gdf) for gdf in clipped):
-        raise ValueError("None of the GeoDataFrames are within the mask extent.")
+        warnings.warn("None of the GeoDataFrames are within the mask extent.")
+        return None, None
 
     return clipped, kwargs
 
@@ -391,6 +395,8 @@ def clipmap(
         labels=labels,
         **kwargs,
     )
+    if not clipped:
+        return
 
     center = kwargs.pop("center", None)
     size = kwargs.pop("size", None)

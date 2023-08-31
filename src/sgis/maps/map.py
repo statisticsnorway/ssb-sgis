@@ -452,6 +452,9 @@ class Map:
         much faster than the one from Mapclassifier.
         """
 
+        if not len(gdf.loc[~self._nan_idx, column]):
+            return np.array([0])
+
         n_classes = (
             self._k if len(self._unique_values) > self._k else len(self._unique_values)
         )
