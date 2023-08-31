@@ -98,10 +98,17 @@ def clean_overlay(
     df1 = make_all_singlepart(df1, ignore_index=True)
     df2 = make_all_singlepart(df2, ignore_index=True)
 
-    df1 = to_single_geom_type(df1, geom_type)
+    df1 = to_single_geom_type(df1, geom_type).reset_index(drop=True)
 
     if original_geom_type:
         df2 = to_single_geom_type(df2, geom_type)
+
+    df2 = df2.reset_index(drop=True)
+
+    assert df1.is_valid.all()
+    assert df2.is_valid.all()
+    assert df1.geometry.map(bool).all()
+    assert df2.geometry.map(bool).all()
 
     overlayed = _shapely_overlay(
         df1,
@@ -194,6 +201,8 @@ def _shapely_overlay(
     df2 = DataFrame(df2)
 
     pairs = _get_intersects_pairs(df1, df2, left, right, rsuffix)
+    assert pairs.geometry.map(bool).all()
+    assert pairs.geom_right.map(bool).all()
 
     if how == "intersection":
         overlayed = [_intersection(pairs, grid_size=grid_size)]
@@ -312,7 +321,7 @@ def _difference(pairs, df1, left, grid_size=None) -> list:
     if len(left):
         clip_left = _shapely_diffclip_left(pairs=pairs, df1=df1, grid_size=grid_size)
         merged.append(clip_left)
-    diff_left = _add_from_left(df1, left)
+    diff_left = _add_indices_from_left(df1, left)
     merged.append(diff_left)
     return merged
 
@@ -338,7 +347,7 @@ def _get_intersects_pairs(
 
 
 def _add_suffix_left(overlayed, df1, df2, lsuffix):
-    """Separating this from _add_from_left, since this suffix is not needed in difference."""
+    """Separating this from _add_indices_from_left, since this suffix is not needed in difference."""
     return overlayed.rename(
         columns={
             c: f"{c}{lsuffix}"
@@ -349,7 +358,7 @@ def _add_suffix_left(overlayed, df1, df2, lsuffix):
     )
 
 
-def _add_from_left(df1, left):
+def _add_indices_from_left(df1, left):
     return df1.take(np.setdiff1d(np.arange(len(df1)), left))
 
 
@@ -370,7 +379,7 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
 
     clip_left = pairs.groupby(level=0).agg(
         {
-            "geom_right": lambda g: unary_union(g) if len(g) > 1 else g,
+            "geom_right": agg_geoms,
             **{
                 c: "first"
                 for c in df1.columns
@@ -378,6 +387,9 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
             },
         }
     )
+
+    assert clip_left["geometry"].map(bool).all()
+    assert clip_left["geom_right"].map(bool).all()
 
     clip_left["geometry"] = _try_difference(
         clip_left["geometry"].to_numpy(),
@@ -394,7 +406,7 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
         .groupby(by="index_right")
         .agg(
             {
-                "geom_left": lambda g: unary_union(g) if len(g) > 1 else g,
+                "geom_left": agg_geoms,
                 "geometry": "first",
             }
         )
@@ -407,6 +419,9 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
         )
     )
 
+    assert clip_right["geometry"].map(bool).all()
+    assert clip_right["geom_left"].map(bool).all()
+
     clip_right["geometry"] = _try_difference(
         clip_right["geometry"].to_numpy(),
         clip_right["geom_left"].to_numpy(),
@@ -417,7 +432,12 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
 
 
 def _try_difference(left, right, grid_size):
-    """Try difference overlay, then make_valid and retry, then dissolve right and retry."""
+    """Try difference overlay, then make_valid and retry."""
+    """return difference(
+        left,
+        right,
+        grid_size=grid_size,
+    )"""
     try:
         return difference(
             left,
@@ -425,20 +445,16 @@ def _try_difference(left, right, grid_size):
             grid_size=grid_size,
         )
     except GEOSException:
-        # try:
-        geoms_left = make_valid(left)
-        geoms_right = make_valid(right)
-
         return intersection(
-            geoms_left,
-            geoms_right,
+            make_valid(left),
+            make_valid(right),
             grid_size=grid_size,
         )
-        """except GEOSException:
-            geoms_right = make_valid(unary_union(right))
 
-            return intersection(
-                geoms_left,
-                geoms_right,
-                grid_size=grid_size,
-            )"""
+
+def agg_geoms(g):
+    return make_valid(unary_union(g)) if len(g) > 1 else make_valid(g)
+
+
+def agg_geoms(g):
+    return unary_union(g) if len(g) > 1 else g
