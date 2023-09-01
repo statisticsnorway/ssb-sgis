@@ -101,10 +101,7 @@ def update_geometries(
                 geom = make_valid(geom)
                 new = difference(geom, unioned, grid_size=grid_size)
             except GEOSException:
-                print("\n\nunioned")
-                print(unioned)
                 unioned = to_single_geom_type(unioned, geom_type=geom_type)
-                print(unioned)
                 new = difference(geom, unioned, grid_size=grid_size)
 
         if not new:
