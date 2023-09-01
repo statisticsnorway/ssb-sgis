@@ -433,11 +433,6 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
 
 def _try_difference(left, right, grid_size):
     """Try difference overlay, then make_valid and retry."""
-    """return difference(
-        left,
-        right,
-        grid_size=grid_size,
-    )"""
     try:
         return difference(
             left,

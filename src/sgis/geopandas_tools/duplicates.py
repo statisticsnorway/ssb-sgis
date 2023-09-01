@@ -127,7 +127,7 @@ def update_geometries(
     return out
 
 
-def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
+def get_intersections(gdf: GeoDataFrame, geom_type: str | None = None) -> GeoDataFrame:
     """Find geometries that intersect in a GeoDataFrame.
 
     Does an intersection with itself and keeps only the geometries that appear
@@ -197,14 +197,16 @@ def get_intersections(gdf: GeoDataFrame) -> GeoDataFrame:
     """
 
     idx_name = gdf.index.name
-    duplicated_geoms = _get_intersecting_geometries(gdf).pipe(clean_geoms)
+    duplicated_geoms = _get_intersecting_geometries(gdf, geom_type=geom_type).pipe(
+        clean_geoms
+    )
 
     duplicated_geoms.index = duplicated_geoms["orig_idx"].values
     duplicated_geoms.index.name = idx_name
     return duplicated_geoms.drop(columns="orig_idx")
 
 
-def _get_intersecting_geometries(gdf: GeoDataFrame) -> GeoDataFrame:
+def _get_intersecting_geometries(gdf: GeoDataFrame, geom_type) -> GeoDataFrame:
     gdf = gdf.assign(orig_idx=gdf.index).reset_index(drop=True)
 
     right = gdf[[gdf._geometry_column_name]]
@@ -212,7 +214,7 @@ def _get_intersecting_geometries(gdf: GeoDataFrame) -> GeoDataFrame:
     left = gdf
     left["idx_left"] = left.index
 
-    intersected = clean_overlay(left, right, how="intersection")
+    intersected = clean_overlay(left, right, how="intersection", geom_type=geom_type)
 
     not_from_same_poly = intersected.loc[lambda x: x["idx_left"] != x["idx_right"]]
 
