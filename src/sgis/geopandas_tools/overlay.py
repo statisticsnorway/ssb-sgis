@@ -445,7 +445,7 @@ def _try_difference(left, right, grid_size):
             grid_size=grid_size,
         )
     except GEOSException:
-        return intersection(
+        return difference(
             make_valid(left),
             make_valid(right),
             grid_size=grid_size,
