@@ -23,6 +23,7 @@ def get_polygon_clusters(
     *gdfs: GeoDataFrame | GeoSeries,
     cluster_col: str = "cluster",
     allow_multipart: bool = False,
+    predicate: str | None = "intersects",
     as_string: bool = False,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Find which polygons overlap without dissolving.
@@ -133,7 +134,7 @@ def get_polygon_clusters(
 
         orig_indices = orig_indices + (gdf.index,)
 
-        gdf["i__"] = i
+        gdf = gdf.assign(i__=i)
 
         concated.append(gdf)
 
@@ -142,7 +143,7 @@ def get_polygon_clusters(
     if not len(concated):
         return concated.drop("i__", axis=1).assign(**{cluster_col: []})
 
-    neighbors = get_neighbor_indices(concated, concated)
+    neighbors = get_neighbor_indices(concated, concated, predicate=predicate)
 
     edges = [(source, target) for source, target in neighbors.items()]
 
