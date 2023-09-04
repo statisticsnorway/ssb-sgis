@@ -231,7 +231,7 @@ def eliminate_by_longest(
     lines_gdf = to_lines(gdf[["poly_idx", "geometry"]], copy=False)
     lines_eliminate = to_lines(to_eliminate[["eliminate_idx", "geometry"]], copy=False)
 
-    borders = lines_gdf.overlay(lines_eliminate).loc[
+    borders = lines_gdf.overlay(lines_eliminate, keep_geom_type=True).loc[
         lambda x: x["eliminate_idx"].notna()
     ]
 
