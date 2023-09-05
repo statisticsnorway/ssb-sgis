@@ -118,21 +118,15 @@ def write_geopandas(
 def exists(path: str | Path) -> bool:
     """Returns True if the path exists, and False if it doesn't.
 
-    Works in Dapla and outside of Dapla.
-
     Args:
         path (str): The path to the file or directory.
 
     Returns:
         True if the path exists, False if not.
     """
-    try:
-        dp.details(str(path))
-        return True
-    except FileNotFoundError:
-        return False
-    except ModuleNotFoundError:
-        return os.path.exists(path)
+
+    fs = dp.FileClient.get_gcs_file_system()
+    return fs.exists(path)
 
 
 def check_files(
