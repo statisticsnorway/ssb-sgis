@@ -224,29 +224,43 @@ def dissexp_by_cluster(gdf: GeoDataFrame, **dissolve_kwargs) -> GeoDataFrame:
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
+    is_geoseries = isinstance(gdf, GeoSeries)
+
     by = dissolve_kwargs.pop("by", [])
     if isinstance(by, str):
-        by = ["cluster_", by]
-    elif by is None:
-        by = ["cluster_"]
+        by = [by]
+    elif by:
+        by = list(by)
+
+    def get_group_clusters(group: GeoDataFrame):
+        """Adds cluster column. Applied to each group because much faster."""
+        return make_all_singlepart(group).pipe(
+            get_polygon_clusters,
+            cluster_col="_cluster",
+            as_string=True,
+        )
+
+    if by:
+        dissolved = (
+            gdf.groupby(by, group_keys=True, dropna=False, as_index=False)
+            .apply(get_group_clusters)
+            .pipe(dissexp, by=["_cluster"] + by, **dissolve_kwargs)
+        )
     else:
-        by = ["cluster_"] + list(by)
+        dissolved = get_group_clusters(gdf).pipe(
+            dissexp, by=["_cluster"] + by, **dissolve_kwargs
+        )
 
-    dissolved = (
-        gdf.explode(ignore_index=True)
-        .explode(ignore_index=True)
-        .pipe(get_polygon_clusters, cluster_col="cluster_")
-        .pipe(dissexp, by=by, **dissolve_kwargs)
-    )
+    if not by:
+        dissolved = dissolved.reset_index(drop=True)
 
-    if by == ["cluster_"]:
-        return dissolved.reset_index(drop=True)
-
-    if dissolve_kwargs.get("as_index", True):
+    elif dissolve_kwargs.get("as_index", True):
         dissolved.index = dissolved.index.droplevel(0)
-        return dissolved
 
-    return dissolved.drop("cluster_", axis=1)
+    if is_geoseries:
+        return dissolved.geometry
+
+    return dissolved.drop("_cluster", axis=1, errors="ignore")
 
 
 def buffdissexp_by_cluster(

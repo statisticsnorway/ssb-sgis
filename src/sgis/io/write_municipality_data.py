@@ -65,6 +65,9 @@ def _write_municipality_data(
     if isinstance(data, (str, Path)):
         gdf = read_geopandas(str(data))
 
+    if func is not None:
+        gdf = func(gdf)
+
     gdf = _fix_missing_muni_numbers(gdf, municipalities, muni_number_col)
 
     for muni in municipalities[muni_number_col]:
@@ -78,9 +81,6 @@ def _write_municipality_data(
                 gdf_muni["geometry"] = None
                 write_pandas(gdf_muni, out)
             continue
-
-        if func is not None:
-            gdf_muni = func(gdf_muni)
 
         if not len(gdf_muni):
             if write_empty:
@@ -106,6 +106,9 @@ def _write_neighbor_municipality_data(
     if isinstance(data, (str, Path)):
         gdf = read_geopandas(str(data))
 
+    if func is not None:
+        gdf = func(gdf)
+
     gdf = _fix_missing_muni_numbers(gdf, municipalities, muni_number_col)
 
     if municipalities.index.name != muni_number_col:
@@ -126,9 +129,6 @@ def _write_neighbor_municipality_data(
                 gdf_neighbor["geometry"] = gdf_neighbor["geometry"].astype(str)
                 write_pandas(gdf_neighbor, out)
             continue
-
-        if func is not None:
-            gdf_neighbor = func(gdf_neighbor)
 
         write_geopandas(gdf_neighbor, out)
 

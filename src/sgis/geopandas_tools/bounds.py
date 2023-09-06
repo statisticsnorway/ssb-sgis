@@ -232,6 +232,8 @@ def make_grid(
         raise ValueError(
             "'crs' cannot be None when 'obj' is not GeoDataFrame/GeoSeries."
         )
+    if hasattr(obj, "__len__") and not len(obj):
+        return GeoDataFrame({"geometry": []}, crs=crs)
 
     minx, miny, maxx, maxy = to_bbox(obj)
 

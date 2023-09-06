@@ -11,8 +11,9 @@ def make_all_singlepart(
     gdf: GeoDataFrame, index_parts: bool = False, ignore_index: bool = False
 ) -> GeoDataFrame:
     # only explode if nessecary
-    if ignore_index or index_parts:
+    if index_parts or ignore_index and not gdf.index.equals(pd.Index(range(len(gdf)))):
         gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
+
     while not gdf.geom_type.isin(
         ["Polygon", "Point", "LineString", "LinearRing"]
     ).all():

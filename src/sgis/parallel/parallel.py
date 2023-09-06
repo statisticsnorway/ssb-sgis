@@ -69,7 +69,6 @@ class Parallel:
         self.kwargs = kwargs
         self.funcs: list[functools.partial] = []
         self.results: list[Any] = []
-        self._source: list[str] = []
 
     def map(
         self,
@@ -133,6 +132,9 @@ class Parallel:
 
         # don't use unnecessary processes
         processes = min(self.processes, len(iterable))
+
+        if not processes:
+            return []
 
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
@@ -202,6 +204,9 @@ class Parallel:
         # don't use unnecessary processes
         processes = min(self.processes, len(iterable))
 
+        if not processes:
+            return []
+
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
                 processes, **self.kwargs
@@ -232,6 +237,9 @@ class Parallel:
             processes = len(self.funcs)
         else:
             processes = self.processes
+
+        if not processes:
+            return []
 
         if self.backend != "multiprocessing":
             with joblib.Parallel(
@@ -325,18 +333,17 @@ class Parallel:
                 The functions should take a GeoDataFrame as input and return a
                 GeoDataFrame.
             file_type: Defaults to parquet.
-            muni_number_col: Column name that holds the municipality number. Defaults
-                to KOMMUNENR.
+            muni_number_col: String column name with municipality
+                number/identifier. Defaults to KOMMUNENR.
             strict: If False (default), the dictionaries 'out_data' and 'funcdict' does
                 not have to have the same length as 'in_data'.
             write_empty: If False (default), municipalities with no data will be skipped.
                 If True, an empty parquet file will be written.
-
         """
         shared_kwds = {
             "municipalities": municipalities,
-            "muni_number_col": muni_number_col,
             "file_type": file_type,
+            "muni_number_col": muni_number_col,
             "write_empty": write_empty,
             "with_neighbors": with_neighbors,
         }
@@ -352,6 +359,7 @@ class Parallel:
         for _, data, folder, postfunc in zip_func(in_data, out_data, funcdict):
             if data is None:
                 continue
+
             kwds = shared_kwds | {
                 "data": data,
                 "func": postfunc,
@@ -359,7 +367,6 @@ class Parallel:
             }
             partial_func = functools.partial(write_municipality_data, **kwds)
             self.funcs.append(partial_func)
-            self._source.append("write_municipality_data")
 
         return self._execute()
 

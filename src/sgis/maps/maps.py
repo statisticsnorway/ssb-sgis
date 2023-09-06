@@ -7,6 +7,7 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 
+import warnings
 from numbers import Number
 from typing import Any
 
@@ -23,7 +24,12 @@ from .map import Map
 from .thematicmap import ThematicMap
 
 
-def _get_location_mask(kwargs: dict, crs) -> tuple[GeoDataFrame | None, dict]:
+def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
+    try:
+        crs = gdfs[0].crs
+    except IndexError:
+        crs = [x for x in kwargs.values() if isinstance(x, GeoDataFrame)][0].crs
+
     masks = {
         "bygdoy": (10.6976899, 59.9081695),
         "kongsvinger": (12.0035242, 60.1875279),
@@ -113,7 +119,8 @@ def explore(
     >>> points["meters"] = points.length
     >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
     """
-    loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
+
+    loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
 
     kwargs.pop("size", None)
 
@@ -161,6 +168,10 @@ def explore(
         smooth_factor=smooth_factor,
         **kwargs,
     )
+
+    if m.gdfs is None:
+        return
+
     m.explore()
 
 
@@ -236,7 +247,7 @@ def samplemap(
     if isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
-    mask, kwargs = _get_location_mask(kwargs | {"size": size}, crs=gdfs[0].crs)
+    mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
     kwargs.pop("size")
 
     if mask is not None:
@@ -247,6 +258,8 @@ def samplemap(
             labels=labels,
             **kwargs,
         )
+        if not gdfs:
+            return
 
     if explore:
         m = Explore(
@@ -258,6 +271,8 @@ def samplemap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
+        if m.gdfs is None:
+            return
         m.samplemap(size, sample_from_first=sample_from_first)
 
     else:
@@ -294,7 +309,7 @@ def samplemap(
 
 def _prepare_clipmap(*gdfs, mask, labels, **kwargs):
     if mask is None:
-        mask, kwargs = _get_location_mask(kwargs, crs=gdfs[0].crs)
+        mask, kwargs = _get_location_mask(kwargs, gdfs)
         if mask is None and len(gdfs) > 1:
             *gdfs, mask = gdfs
         elif mask is None:
@@ -318,7 +333,8 @@ def _prepare_clipmap(*gdfs, mask, labels, **kwargs):
             clipped = clipped + (clipped_,)
 
     if not any(len(gdf) for gdf in clipped):
-        raise ValueError("None of the GeoDataFrames are within the mask extent.")
+        warnings.warn("None of the GeoDataFrames are within the mask extent.")
+        return None, None
 
     return clipped, kwargs
 
@@ -379,6 +395,8 @@ def clipmap(
         labels=labels,
         **kwargs,
     )
+    if not clipped:
+        return
 
     center = kwargs.pop("center", None)
     size = kwargs.pop("size", None)
@@ -393,6 +411,9 @@ def clipmap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
+        if m.gdfs is None:
+            return
+
         m.explore(center=center, size=size)
     else:
         m = Map(

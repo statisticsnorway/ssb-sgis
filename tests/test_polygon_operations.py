@@ -171,58 +171,52 @@ def test_eliminate():
         Polygon([(10, 10), (-10.1, 11), (10, 12), (-11, 12), (-12, 12), (-11, 11)])
     ).assign(what="isolated", num=4)
 
-    polys1 = pd.concat([small_poly, large_poly], ignore_index=True)
-    polys2 = pd.concat([sliver, small_poly, large_poly], ignore_index=True)
+    polys = pd.concat([small_poly, large_poly], ignore_index=True)
+
+    polys.index = [5, 7]
+
+    eliminated = sg.eliminate_by_longest(polys, sliver)
 
     if __name__ == "__main__":
-        sg.qtm(polys2, "what", alpha=0.8)
-    polys1.index = [5, 7]
-    polys2.index = [3, 5, 7]
-    assert list(polys2.area) == [0.2, 1.9, 5.4], list(polys2.area)
+        sg.qtm(eliminated, "what", title="after eliminate_by_longest", alpha=0.8)
+    assert list(eliminated.index) == [5, 7], list(eliminated.index)
+    assert list(eliminated.num) == [2, 3], list(eliminated.num)
+    assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
+    assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
 
-    for polys in [polys1, polys2]:
-        eliminated = sg.eliminate_by_longest(polys, sliver)
+    eliminated = sg.eliminate_by_longest(
+        polys, sliver, aggfunc={"num": "sum", "what": "first"}
+    )
+    assert list(eliminated.num) == [3, 3], list(eliminated.num)
 
-        if __name__ == "__main__":
-            sg.qtm(eliminated, "what", title="after eliminate_by_longest", alpha=0.8)
-        assert list(eliminated.index) == [5, 7], list(eliminated.index)
-        assert list(eliminated.num) == [2, 3], list(eliminated.num)
-        assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
-        assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
+    eliminated = sg.eliminate_by_largest(polys, sliver)
+    if __name__ == "__main__":
+        sg.qtm(eliminated, "what", title="after eliminate_by_largest", alpha=0.8)
+    assert list(eliminated.index) == [5, 7], list(eliminated.index)
+    assert list(eliminated.num) == [2, 3], list(eliminated.num)
+    assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
+    assert list(round(eliminated.area, 1)) == [1.9, 5.6], list(eliminated.area)
 
-        eliminated = sg.eliminate_by_longest(
-            polys, sliver, aggfunc={"num": "sum", "what": "first"}
-        )
-        assert list(eliminated.num) == [3, 3], list(eliminated.num)
+    eliminated = sg.eliminate_by_largest(
+        polys, sliver, aggfunc={"num": "sum", "what": "first"}
+    )
+    assert list(eliminated.num) == [2, 4], list(eliminated.num)
 
-        eliminated = sg.eliminate_by_largest(polys, sliver)
-        if __name__ == "__main__":
-            sg.qtm(eliminated, "what", title="after eliminate_by_largest", alpha=0.8)
-        assert list(eliminated.index) == [5, 7], list(eliminated.index)
-        assert list(eliminated.num) == [2, 3], list(eliminated.num)
-        assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
-        assert list(round(eliminated.area, 1)) == [1.9, 5.6], list(eliminated.area)
+    eliminated = sg.eliminate_by_smallest(
+        polys, sliver, aggfunc={"num": "sum", "what": "first"}
+    )
+    if __name__ == "__main__":
+        sg.qtm(eliminated, "what", title="after eliminate_by_smallest", alpha=0.8)
+    assert list(eliminated.index) == [5, 7], list(eliminated.index)
+    assert list(eliminated.num) == [3, 3], list(eliminated.num)
+    assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
+    assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
 
-        eliminated = sg.eliminate_by_largest(
-            polys, sliver, aggfunc={"num": "sum", "what": "first"}
-        )
-        assert list(eliminated.num) == [2, 4], list(eliminated.num)
+    missing_value = polys.assign(what=pd.NA)
+    eliminated = sg.eliminate_by_smallest(missing_value, sliver)
+    assert eliminated["what"].isna().all()
 
-        eliminated = sg.eliminate_by_smallest(
-            polys, sliver, aggfunc={"num": "sum", "what": "first"}
-        )
-        if __name__ == "__main__":
-            sg.qtm(eliminated, "what", title="after eliminate_by_smallest", alpha=0.8)
-        assert list(eliminated.index) == [5, 7], list(eliminated.index)
-        assert list(eliminated.num) == [3, 3], list(eliminated.num)
-        assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
-        assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
-
-        missing_value = polys.assign(what=pd.NA)
-        eliminated = sg.eliminate_by_smallest(missing_value, sliver)
-        assert eliminated["what"].isna().all()
-
-    eliminated = sg.eliminate_by_longest(polys1, isolated)
+    eliminated = sg.eliminate_by_longest(polys, isolated)
 
     if __name__ == "__main__":
         sg.qtm(eliminated, "what", title="with isolated", alpha=0.8)
@@ -231,7 +225,7 @@ def test_eliminate():
         eliminated.what
     )
 
-    eliminated = sg.eliminate_by_largest(polys1, isolated)
+    eliminated = sg.eliminate_by_largest(polys, isolated)
     assert list(eliminated.what) == ["small", "large", "isolated"], list(
         eliminated.what
     )

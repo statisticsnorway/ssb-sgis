@@ -95,9 +95,6 @@ class Map:
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
             raise ValueError("gdfs must be GeoDataFrames.")
 
-        if not any(len(gdf) for gdf in gdfs):
-            raise ValueError("None of the GeoDataFrames have rows.")
-
         if "namedict" in kwargs:
             for i, gdf in enumerate(gdfs):
                 gdf.name = kwargs["namedict"][i]
@@ -109,9 +106,7 @@ class Map:
         if not self.labels:
             self._get_labels(gdfs)
 
-        show = kwargs.pop("show", None)
-        if not show:
-            show = [True for _ in range(len(gdfs))]
+        show = kwargs.pop("show", True)
         if isinstance(show, (int, bool)):
             show_temp = [bool(show) for _ in range(len(gdfs))]
         elif not hasattr(show, "__iter__") or len(show) != len(gdfs):
@@ -125,6 +120,9 @@ class Map:
         new_labels = []
         self.show = []
         for label, gdf, show in zip(self.labels, gdfs, show_temp, strict=True):
+            if not len(gdf):
+                continue
+
             gdf = clean_geoms(gdf).reset_index(drop=True)
             if not len(gdf):
                 continue
@@ -134,7 +132,24 @@ class Map:
             self.show.append(show)
         self.labels = new_labels
 
-        self.kwargs = kwargs
+        if self.show:
+            last_show = self.show[-1]
+        else:
+            last_show = True
+
+        self.kwargs = {}
+        for key, value in kwargs.items():
+            if isinstance(value, GeoDataFrame):
+                self._gdfs.append(value)
+                self.labels.append(key)
+                self.show.append(last_show)
+            else:
+                self.kwargs[key] = value
+
+        if not any(len(gdf) for gdf in self._gdfs):
+            warnings.warn("None of the GeoDataFrames have rows.")
+            self._gdfs = None
+            return
 
         if not self.labels:
             self._set_labels()
@@ -436,6 +451,9 @@ class Map:
         If 'scheme' is not specified, the jenks_breaks function is used, which is
         much faster than the one from Mapclassifier.
         """
+
+        if not len(gdf.loc[~self._nan_idx, column]):
+            return np.array([0])
 
         n_classes = (
             self._k if len(self._unique_values) > self._k else len(self._unique_values)
