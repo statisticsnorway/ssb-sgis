@@ -71,6 +71,23 @@ def test_gridloop():
 
     assert intersected.equals(intersected3)
 
+    intersected4 = (
+        pd.concat(
+            sg.gridloop(
+                sg.clean_overlay,
+                gridsize=200,
+                gridbuffer=100,
+                mask=points,
+                args=(points, grid),
+            ),
+            ignore_index=True,
+        )
+        .sort_values("i")
+        .reset_index(drop=True)
+    )
+
+    assert intersected.equals(intersected4)
+
 
 def test_bounds():
     points = sg.random_points(1000, loc=10000).set_crs(25833)
@@ -138,7 +155,7 @@ def test_bounds():
 
 
 if __name__ == "__main__":
-    test_bounds()
     test_gridloop()
+    test_bounds()
 
 # %%
