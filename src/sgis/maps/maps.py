@@ -244,7 +244,7 @@ def samplemap(
 
     """
 
-    if isinstance(gdfs[-1], (float, int)):
+    if gdfs and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
     mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
