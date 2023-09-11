@@ -110,9 +110,6 @@ def gridloop(
     if not isinstance(mask, GeoDataFrame):
         mask = to_gdf(mask)
 
-    if not len(mask):
-        raise ValueError("'mask' has no rows.")
-
     if kwargs is None:
         kwargs = {}
     elif not isinstance(kwargs, dict):
@@ -124,7 +121,7 @@ def gridloop(
         raise TypeError("args should be a tuple")
 
     intersects_mask = lambda df: df.index.isin(df.sjoin(mask).index)
-    grid = make_grid(mask, gridsize=gridsize).loc[intersects_mask]
+    grid: GeoSeries = make_grid(mask, gridsize=gridsize).loc[intersects_mask].geometry
 
     if verbose:
         n = len(grid)
@@ -140,19 +137,32 @@ def gridloop(
 
         return value.intersection(cell).make_valid()
 
+    buffered = grid.buffer(gridbuffer)
+
     results = []
-    for i, cell in enumerate(grid.geometry.buffer(gridbuffer)):
+    for i, (cell, buffered) in enumerate(zip(grid, buffered)):
         cell_kwargs = {}
         for key, value in kwargs.items():
-            value = clip_if_isinstance(value, cell, keep_geom_type)
+            value = clip_if_isinstance(value, buffered, keep_geom_type)
             cell_kwargs[key] = value
 
         cell_args = ()
         for arg in args:
-            arg = clip_if_isinstance(arg, cell, keep_geom_type)
+            arg = clip_if_isinstance(arg, buffered, keep_geom_type)
             cell_args = cell_args + (arg,)
 
         cell_res = func(*cell_args, **cell_kwargs)
+
+        # clip back to original
+        if gridbuffer and clip:
+            if isinstance(cell_res, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry)):
+                cell_res = clip_if_isinstance(cell_res, cell, keep_geom_type)
+            else:
+                try:
+                    for res in cell_res:
+                        res = clip_if_isinstance(res, cell, keep_geom_type)
+                except TypeError:
+                    pass
 
         results.append(cell_res)
 
