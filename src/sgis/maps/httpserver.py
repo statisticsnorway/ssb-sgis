@@ -30,6 +30,8 @@ def run_html_server(contents: str | None = None, port: int = 3000):
         A handler of request for the server, hosting static content.
         """
 
+        allow_reuse_address = True
+
         def do_GET(self):
             """Handle GET requests."""
             self.send_response(200)
@@ -40,8 +42,6 @@ def run_html_server(contents: str | None = None, port: int = 3000):
                 raise KeyboardInterrupt
             else:
                 self.wfile.write(bytes(contents, encoding="utf-8"))
-
-    HTTPServerRequestHandler.allow_reuse_address = True
 
     with HTTPServer(("127.0.0.1", port), HTTPServerRequestHandler) as httpd:
         display(display_content)
