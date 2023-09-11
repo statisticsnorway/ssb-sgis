@@ -451,6 +451,8 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 def clean_clip(
     gdf: GeoDataFrame | GeoSeries,
     mask: GeoDataFrame | GeoSeries | Geometry,
+    keep_geom_type: bool = True,
+    geom_type: str | None = None,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries:
     """Clips and clean geometries.
@@ -473,7 +475,7 @@ def clean_clip(
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
-    if kwargs.get("keep_geom_type"):
+    if geom_type is None and keep_geom_type:
         geom_type = get_geom_type(gdf)
         if geom_type == "mixed":
             raise ValueError(
@@ -491,7 +493,7 @@ def clean_clip(
 
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
 
-    if kwargs.get("keep_geom_type"):
+    if geom_type is not None or keep_geom_type:
         gdf = to_single_geom_type(gdf, geom_type)
 
     return gdf
