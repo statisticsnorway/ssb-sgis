@@ -15,7 +15,7 @@ from shapely import (
 from shapely.errors import GEOSException
 
 from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
-from .geometry_types import make_all_singlepart
+from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .neighbors import get_neighbor_indices
 
 
@@ -217,6 +217,7 @@ def eliminate_by_longest(
         The GeoDataFrame with the small polygons dissolved into the large polygons.
     """
     crs = gdf.crs
+    geom_type = get_geom_type(gdf)
 
     if not ignore_index:
         idx_mapper = dict(enumerate(gdf.index))
@@ -271,7 +272,10 @@ def eliminate_by_longest(
         errors="ignore",
     )
 
-    return GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+    out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+    if geom_type != "mixed":
+        return to_single_geom_type(out, geom_type)
+    return out
 
 
 def eliminate_by_largest(
@@ -357,6 +361,7 @@ def _eliminate_by_area(
     **kwargs,
 ) -> GeoDataFrame:
     crs = gdf.crs
+    geom_type = get_geom_type(gdf)
 
     if not ignore_index:
         idx_mapper = dict(enumerate(gdf.index))
@@ -396,7 +401,11 @@ def _eliminate_by_area(
         if len(isolated):
             eliminated = pd.concat([eliminated, isolated])
 
-    return GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+    out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+
+    if geom_type != "mixed":
+        return to_single_geom_type(out, geom_type)
+    return out
 
 
 def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
