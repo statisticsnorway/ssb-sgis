@@ -140,7 +140,7 @@ def check_files(
         folder: Google cloud storage folder.
         contains: Optional substring that must be in the file path.
         within_minutes: Optionally include only files that were updated in the
-            last x minutes.
+            last n minutes.
     """
     fs = dp.FileClient.get_gcs_file_system()
 
