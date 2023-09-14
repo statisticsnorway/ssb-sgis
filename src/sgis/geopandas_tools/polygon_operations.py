@@ -236,13 +236,13 @@ def eliminate_by_longest(
         lambda x: x["eliminate_idx"].notna()
     ]
 
-    borders["length__"] = borders.length
+    borders["_length"] = borders.length
 
     # as DataFrame because GeoDataFrame constructor is expensive
     borders = pd.DataFrame(borders)
     gdf = pd.DataFrame(gdf)
 
-    longest_border = borders.sort_values("length__", ascending=False).drop_duplicates(
+    longest_border = borders.sort_values("_length", ascending=False).drop_duplicates(
         "eliminate_idx"
     )
 
@@ -267,7 +267,7 @@ def eliminate_by_longest(
             eliminated = pd.concat([eliminated, isolated])
 
     eliminated = eliminated.drop(
-        ["_dissolve_idx", "length__", "eliminate_idx", "poly_idx"],
+        ["_dissolve_idx", "_length", "eliminate_idx", "poly_idx"],
         axis=1,
         errors="ignore",
     )
@@ -401,8 +401,13 @@ def _eliminate_by_area(
         if len(isolated):
             eliminated = pd.concat([eliminated, isolated])
 
-    out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+    eliminated = eliminated.drop(
+        ["_dissolve_idx", "_area", "eliminate_idx", "poly_idx"],
+        axis=1,
+        errors="ignore",
+    )
 
+    out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
     if geom_type != "mixed":
         return to_single_geom_type(out, geom_type)
     return out
