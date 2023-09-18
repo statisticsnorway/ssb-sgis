@@ -137,7 +137,7 @@ def gridloop(
 
         return value.intersection(cell).make_valid()
 
-    buffered = grid.buffer(gridbuffer)
+    buffered = grid.buffer(gridbuffer, resolution=1, join_style=2)
 
     results = []
     for i, (cell, buffered) in enumerate(zip(grid, buffered)):
