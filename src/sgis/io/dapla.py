@@ -100,8 +100,10 @@ def write_geopandas(
             parquet.write_table(table, buffer, compression="snappy", **kwargs)
         return
 
+    layer = kwargs.pop("layer", None)
     if ".gpkg" in gcs_path:
         driver = "GPKG"
+        layer = Path(gcs_path).stem
     elif ".geojson" in gcs_path:
         driver = "GeoJSON"
     elif ".gml" in gcs_path:
@@ -112,7 +114,7 @@ def write_geopandas(
         driver = None
 
     with fs.open(gcs_path, "wb") as file:
-        df.to_file(file, driver=driver)
+        df.to_file(file, driver=driver, layer=layer)
 
 
 def exists(path: str | Path) -> bool:
