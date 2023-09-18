@@ -21,7 +21,10 @@ def test_close_holes():
     buff1 = sg.buffdissexp(p, 100)
 
     no_holes_closed = sg.close_all_holes(buff1)
-    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3)
+    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3), (
+        no_holes_closed,
+        buff1,
+    )
     no_holes_closed = sg.close_small_holes(buff1, max_area=1_000_000)
     assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3)
 
@@ -31,10 +34,19 @@ def test_close_holes():
     buff0 = sg.buffdissexp(p, 30)
     ring_with_hole_and_island = pd.concat([ring_with_hole, buff0])
 
+    p2 = sg.to_gdf([150, 0]).buffer(10).to_frame()
+    two_holes = sg.clean_overlay(ring_with_hole_and_island, p2, how="difference")
+
+    assert len(sg.get_rings(ring_with_hole)) == 1
+    assert len(sg.get_rings(two_holes)) == 2
+
     # run this for different geometry input types
     def _close_the_holes(ring_with_hole):
         all_closed = sg.close_all_holes(ring_with_hole)
+
         assert sum(all_closed.area) > sum(ring_with_hole.area)
+        all_closed2 = sg.close_all_holes(two_holes)
+        assert sum(all_closed.area) == sum(all_closed.area)
 
         # this should return the entire hole
         closed_island_ignored = sg.close_all_holes(ring_with_hole, ignore_islands=True)
@@ -65,13 +77,17 @@ def test_close_holes():
         all_closed3 = sg.close_small_holes(
             ring_with_hole, max_area=32_000, ignore_islands=ignore_islands
         )
+        print(type(all_closed3))
 
         assert round(np.sum(all_closed3.area), 3) > round(np.sum(all_closed.area), 3)
 
         hole_not_closed3 = sg.close_small_holes(
             ring_with_hole, max_area=30_000, ignore_islands=ignore_islands
         )
-        assert np.sum(hole_not_closed3.area) == np.sum(ring_with_hole.area)
+        assert np.sum(hole_not_closed3.area) == np.sum(ring_with_hole.area), (
+            hole_not_closed3,
+            ring_with_hole,
+        )
 
     _close_the_holes(ring_with_hole_and_island)
     _close_the_holes(ring_with_hole_and_island.geometry)
