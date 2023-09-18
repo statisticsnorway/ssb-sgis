@@ -479,7 +479,7 @@ def clean_clip(
         geom_type = get_geom_type(gdf)
         if geom_type == "mixed":
             raise ValueError(
-                "Mixed geometry types is not allowed when keep_geom-type is True."
+                "Mixed geometry types is not allowed when keep_geom_type is True."
             )
 
     try:
