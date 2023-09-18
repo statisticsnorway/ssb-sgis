@@ -743,7 +743,7 @@ def _close_all_holes_no_islands(poly, all_geoms):
     return make_valid(unary_union(holes_closed))
 
 
-def get_rings(gdf, as_polygons=True):
+def get_holes(gdf, as_polygons=True):
     to_poly = polygons if as_polygons else lambda x: x
     if not len(gdf):
         return GeoSeries()

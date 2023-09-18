@@ -60,6 +60,7 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
+    get_holes,
     get_polygon_clusters,
 )
 from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
