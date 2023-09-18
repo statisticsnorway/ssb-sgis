@@ -352,6 +352,7 @@ class Parallel:
 
     @staticmethod
     def _validate_kwargs(kwargs) -> dict:
+        """Make sure kwargs is a dict (not ** unpacked or None)"""
         if kwargs is None:
             kwargs = {}
         elif not isinstance(kwargs, dict):
