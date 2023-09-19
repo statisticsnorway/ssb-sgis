@@ -555,6 +555,9 @@ def close_all_holes(
             f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
         )
 
+    if not len(gdf):
+        return gdf
+
     if copy:
         gdf = gdf.copy()
 
@@ -647,6 +650,9 @@ def close_small_holes(
             f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
         )
 
+    if not len(gdf):
+        return gdf
+
     if copy:
         gdf = gdf.copy()
 
@@ -668,8 +674,12 @@ def close_small_holes(
         )
         exteriors = get_exterior_ring(geoms)
 
-        # using max since arrays must be equal length
         max_rings = max(get_num_interior_rings(geoms))
+
+        if not max_rings:
+            return gdf
+
+        # looping through max for all geoms since arrays must be equal length
         interiors = np.array(
             [[get_interior_ring(geom, i) for i in range(max_rings)] for geom in geoms]
         )
@@ -681,10 +691,8 @@ def close_small_holes(
         if isinstance(gdf, GeoDataFrame):
             gdf.geometry = results
             return gdf
-        elif isinstance(gdf, GeoSeries):
-            return GeoSeries(results, crs=gdf.crs)
         else:
-            return results
+            return GeoSeries(results, crs=gdf.crs)
 
 
 def _close_small_holes_no_islands(poly, max_area, all_geoms):

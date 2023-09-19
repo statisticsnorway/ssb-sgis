@@ -37,6 +37,7 @@ def test_close_holes():
     p2 = sg.to_gdf([150, 0]).buffer(10).to_frame()
     two_holes = sg.clean_overlay(ring_with_hole_and_island, p2, how="difference")
 
+    assert len(sg.get_holes(buff1)) == 0
     assert len(sg.get_holes(ring_with_hole)) == 1
     assert len(sg.get_holes(two_holes)) == 2
 
