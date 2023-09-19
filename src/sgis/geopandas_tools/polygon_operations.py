@@ -389,25 +389,6 @@ def _eliminate_by_area(
             gdf[["_area", "_dissolve_idx", "geometry"]], predicate=predicate, how="left"
         )
 
-    """display(joined)
-    from ..maps.maps import explore
-    explore(joined)
-    explore(
-        (
-        (joined)
-        .drop(columns="index_right")
-        .sort_values("_area", ascending=sort_ascending)
-    )
-    )
-    explore(
-        (
-        (joined)
-        .drop(columns="index_right")
-        .sort_values("_area", ascending=sort_ascending)
-        .loc[lambda x: ~x.index.duplicated(keep="first")]
-    )
-    )"""
-
     # as DataFrames because GeoDataFrame constructor is expensive
     joined = (
         pd.DataFrame(joined)
@@ -418,12 +399,8 @@ def _eliminate_by_area(
 
     gdf = pd.DataFrame(gdf)
 
-    notna = joined.loc[lambda x: x["_dissolve_idx"].notna()]  # .drop_duplicates(
-    #    "_dissolve_idx"
-    # )
-    """from ..maps.maps import explore
+    notna = joined.loc[lambda x: x["_dissolve_idx"].notna()]
 
-    explore(notna, gdf, joined)"""
     eliminated = _eliminate(gdf, notna, aggfunc, crs, **kwargs)
 
     if ignore_index:
@@ -744,12 +721,12 @@ def _close_all_holes_no_islands(poly, all_geoms):
 
 
 def get_holes(gdf, as_polygons=True):
-    to_poly = polygons if as_polygons else lambda x: x
+    astype = polygons if as_polygons else lambda x: x
     if not len(gdf):
         return GeoSeries()
     geoms = gdf.geometry.to_numpy() if isinstance(gdf, GeoDataFrame) else gdf.to_numpy()
     rings = [
-        GeoSeries(to_poly(get_interior_ring(geoms, i)), crs=gdf.crs)
+        GeoSeries(astype(get_interior_ring(geoms, i)), crs=gdf.crs)
         for i in range(max(get_num_interior_rings(geoms)))
     ]
     return (pd.concat(rings).pipe(clean_geoms).sort_index()) if rings else GeoSeries()
