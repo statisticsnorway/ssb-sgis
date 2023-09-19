@@ -30,30 +30,30 @@ class Parallel:
     """Run functions in parallell.
 
     The main method is 'map', which runs a single function for
-    each item of an iterable.
+    each item of an iterable. If the items of the iterable also are iterables,
+    starmap can be used.
 
     The class also provides functions for reading and writing files in parallell
     in dapla.
 
-    Nothing gets printed during execution if running in a notebook. Tip:
-    set processes=1 to run without parallelization when debugging.
+    Note that nothing gets printed during execution if running in a notebook.
+    Tip for debugging: set processes=1 to run without parallelization.
 
     Note that when using the default backend 'multiprocessing', all code except for
     imports and functions should be guarded by 'if __name__ == "__main__"' to not cause
-    an internal loop. This is not the case if setting backend to 'loky'. See joblib's
+    an eternal loop. This is not the case if setting backend to 'loky'. See joblib's
     documentation: https://joblib.readthedocs.io/en/latest/parallel.html#parallel-reference-documentation
 
     Args:
         processes: Number of parallel processes. Set to 1 to run without
             parallelization.
-        backend: Defaults to "multiprocessing". Can be set to any
-            backend supported by joblib's Parallel class
-            (except for "multiprocessing").
+        backend: Defaults to "multiprocessing". Other options are 'loky' and 'threading',
+            offered through joblib's Parallel class.
         context: Start method for the processes. Defaults to 'spawn'
             to avoid frozen processes.
         **kwargs: Keyword arguments to be passed to either
             multiprocessing.Pool or joblib.Parallel, depending
-            on the chosen backend.
+            on the backend.
     """
 
     def __init__(
@@ -82,7 +82,8 @@ class Parallel:
             func: Function to be run.
             iterable: An iterable where each item will be passed to func as
                 first positional argument.
-            kwargs: Keyword arguments passed to 'func'.
+            kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
+                not unpacked into separate keyword arguments.
 
         Returns:
             A list of the return values of the function, one for each item in
@@ -123,7 +124,7 @@ class Parallel:
 
         self.validate_execution(func)
 
-        kwargs = self.validate_kwargs(kwargs)
+        kwargs = self._validate_kwargs(kwargs)
 
         func_with_kwargs = functools.partial(func, **kwargs)
 
@@ -162,7 +163,8 @@ class Parallel:
             func: Function to be run.
             iterable: An iterable of iterables, where each item will be
                 unpacked as positional argument to the function.
-            kwargs: Keyword arguments passed to 'func'.
+            kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
+                not unpacked into separate keyword arguments.
 
         Returns:
             A list of the return values of the function, one for each item in
@@ -194,7 +196,7 @@ class Parallel:
         """
         self.validate_execution(func)
 
-        kwargs = self.validate_kwargs(kwargs)
+        kwargs = self._validate_kwargs(kwargs)
 
         func_with_kwargs = functools.partial(func, **kwargs)
 
@@ -217,41 +219,6 @@ class Parallel:
             n_jobs=processes, backend=self.backend, **self.kwargs
         ) as parallel:
             return parallel(joblib.delayed(func)(*item, **kwargs) for item in iterable)
-
-    @staticmethod
-    def validate_kwargs(kwargs):
-        if kwargs is None:
-            kwargs = {}
-        elif not isinstance(kwargs, dict):
-            raise TypeError("kwargs must be a dict")
-        return kwargs
-
-    def _execute(self) -> list[Any]:
-        [self.validate_execution(func) for func in self.funcs]
-
-        if self.processes == 1:
-            return [func() for func in self.funcs]
-
-        # don't use unnecessary processes
-        if self.processes > len(self.funcs):
-            processes = len(self.funcs)
-        else:
-            processes = self.processes
-
-        if not processes:
-            return []
-
-        if self.backend != "multiprocessing":
-            with joblib.Parallel(
-                n_jobs=processes, backend=self.backend, **self.kwargs
-            ) as parallel:
-                return parallel(joblib.delayed(func)() for func in self.funcs)
-
-        with multiprocessing.get_context(self.context).Pool(
-            processes, **self.kwargs
-        ) as pool:
-            results = [pool.apply_async(func) for func in self.funcs]
-            return [result.get() for result in results]
 
     def read_pandas(
         self,
@@ -371,6 +338,10 @@ class Parallel:
         return self._execute()
 
     def validate_execution(self, func):
+        """Multiprocessing doesn't work with local variables in interactive interpreter.
+
+        Raising Exception to avoid confusion.
+        """
         if (
             func.__module__ == "__main__"
             and self.context == "spawn"
@@ -378,6 +349,42 @@ class Parallel:
             and in_jupyter()
         ):
             raise LocalFunctionError(func)
+
+    @staticmethod
+    def _validate_kwargs(kwargs) -> dict:
+        """Make sure kwargs is a dict (not ** unpacked or None)"""
+        if kwargs is None:
+            kwargs = {}
+        elif not isinstance(kwargs, dict):
+            raise TypeError("kwargs must be a dict")
+        return kwargs
+
+    def _execute(self) -> list[Any]:
+        [self.validate_execution(func) for func in self.funcs]
+
+        if self.processes == 1:
+            return [func() for func in self.funcs]
+
+        # don't use unnecessary processes
+        if self.processes > len(self.funcs):
+            processes = len(self.funcs)
+        else:
+            processes = self.processes
+
+        if not processes:
+            return []
+
+        if self.backend != "multiprocessing":
+            with joblib.Parallel(
+                n_jobs=processes, backend=self.backend, **self.kwargs
+            ) as parallel:
+                return parallel(joblib.delayed(func)() for func in self.funcs)
+
+        with multiprocessing.get_context(self.context).Pool(
+            processes, **self.kwargs
+        ) as pool:
+            results = [pool.apply_async(func) for func in self.funcs]
+            return [result.get() for result in results]
 
     def __repr__(self):
         return (

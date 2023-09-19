@@ -176,7 +176,7 @@ class Map:
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
         else:
-            unique = list(self._gdf.loc[~self._nan_idx, self._column].unique())
+            unique = list(self._gdf[self._column].unique())
             try:
                 self._unique_values = sorted(unique)
             except TypeError:

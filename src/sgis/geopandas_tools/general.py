@@ -38,13 +38,18 @@ def get_common_crs(iterable: Iterable[Any], strict: bool = False) -> pyproj.CRS 
         ValueError if there are more than one crs. If strict is True,
         None is included.
     """
-    try:
-        crs = list({x.crs for x in iterable})
-    except AttributeError:
-        crs = list(set(iterable))
+    crs = set()
+    for obj in iterable:
+        try:
+            crs.add(obj.crs)
+        except AttributeError:
+            pass
 
     if not crs:
-        return None
+        try:
+            crs = list(set(iterable))
+        except TypeError:
+            return None
 
     truthy_crs = list({x for x in crs if x})
 
@@ -168,19 +173,17 @@ def clean_geoms(
     warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
 
     if isinstance(gdf, GeoDataFrame):
-        geom_col = gdf._geometry_column_name
-
         # only repair if necessary
-        if not gdf[geom_col].is_valid.all():
-            gdf[geom_col] = gdf.make_valid()
+        if not gdf.geometry.is_valid.all():
+            gdf.geometry = gdf.make_valid()
 
         notna = gdf.geometry.notna()
         if not notna.all():
             gdf = gdf.loc[notna]
 
-        nonempty = gdf.geometry.map(bool)
-        if not nonempty.all():
-            gdf = gdf.loc[nonempty]
+        is_empty = gdf.geometry.is_empty
+        if is_empty.any():
+            gdf = gdf.loc[~is_empty]
 
     elif isinstance(gdf, GeoSeries):
         if not gdf.is_valid.all():
@@ -190,9 +193,9 @@ def clean_geoms(
         if not notna.all():
             gdf = gdf.loc[notna]
 
-        nonempty = gdf.map(bool)
-        if not nonempty.all():
-            gdf = gdf.loc[nonempty]
+        is_empty = gdf.is_empty
+        if is_empty.any():
+            gdf = gdf.loc[~is_empty]
 
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
@@ -448,6 +451,8 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 def clean_clip(
     gdf: GeoDataFrame | GeoSeries,
     mask: GeoDataFrame | GeoSeries | Geometry,
+    keep_geom_type: bool = True,
+    geom_type: str | None = None,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries:
     """Clips and clean geometries.
@@ -470,8 +475,12 @@ def clean_clip(
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
-    if kwargs.get("keep_geom_type"):
+    if geom_type is None and keep_geom_type:
         geom_type = get_geom_type(gdf)
+        if geom_type == "mixed":
+            raise ValueError(
+                "Mixed geometry types is not allowed when keep_geom_type is True."
+            )
 
     try:
         gdf = gdf.clip(mask, **kwargs).pipe(clean_geoms)
@@ -484,7 +493,7 @@ def clean_clip(
 
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
 
-    if kwargs.get("keep_geom_type"):
+    if geom_type is not None or keep_geom_type:
         gdf = to_single_geom_type(gdf, geom_type)
 
     return gdf

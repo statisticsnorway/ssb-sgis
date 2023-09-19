@@ -244,7 +244,7 @@ def samplemap(
 
     """
 
-    if isinstance(gdfs[-1], (float, int)):
+    if gdfs and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
     mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
@@ -302,7 +302,7 @@ def samplemap(
         center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
         print(f"center={center}, size={size}")
 
-        m._gdf = clean_clip(m._gdf, random_point.buffer(size))
+        m._gdf = m._gdf.clip(random_point.buffer(size))
 
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
@@ -324,12 +324,12 @@ def _prepare_clipmap(*gdfs, mask, labels, **kwargs):
 
     if mask is not None:
         for gdf in gdfs:
-            clipped_ = clean_clip(gdf, mask)
+            clipped_ = gdf.clip(mask)
             clipped = clipped + (clipped_,)
 
     else:
         for gdf in gdfs[:-1]:
-            clipped_ = clean_clip(gdf, gdfs[-1])
+            clipped_ = gdf.clip(gdfs[-1])
             clipped = clipped + (clipped_,)
 
     if not any(len(gdf) for gdf in clipped):

@@ -20,6 +20,10 @@ try:
     import xarray as xr
 except ImportError:
     pass
+try:
+    from rioxarray.rioxarray import _generate_spatial_coords
+except ImportError:
+    pass
 from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_list_like
@@ -29,7 +33,6 @@ from rasterio.io import DatasetReader
 from rasterio.mask import mask as rast_mask
 from rasterio.vrt import WarpedVRT
 from rasterio.warp import reproject
-from rioxarray.rioxarray import _generate_spatial_coords
 from shapely import Geometry, box
 from shapely.geometry import Point, Polygon, shape
 

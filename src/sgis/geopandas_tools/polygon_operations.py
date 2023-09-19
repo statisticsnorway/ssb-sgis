@@ -1,5 +1,6 @@
 """Functions for polygon geometries."""
 import networkx as nx
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
@@ -13,9 +14,10 @@ from shapely import (
     unary_union,
 )
 from shapely.errors import GEOSException
+from shapely.geometry import Polygon
 
 from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
-from .geometry_types import make_all_singlepart
+from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .neighbors import get_neighbor_indices
 
 
@@ -217,6 +219,7 @@ def eliminate_by_longest(
         The GeoDataFrame with the small polygons dissolved into the large polygons.
     """
     crs = gdf.crs
+    geom_type = get_geom_type(gdf)
 
     if not ignore_index:
         idx_mapper = dict(enumerate(gdf.index))
@@ -235,13 +238,13 @@ def eliminate_by_longest(
         lambda x: x["eliminate_idx"].notna()
     ]
 
-    borders["length__"] = borders.length
+    borders["_length"] = borders.length
 
     # as DataFrame because GeoDataFrame constructor is expensive
     borders = pd.DataFrame(borders)
     gdf = pd.DataFrame(gdf)
 
-    longest_border = borders.sort_values("length__", ascending=False).drop_duplicates(
+    longest_border = borders.sort_values("_length", ascending=False).drop_duplicates(
         "eliminate_idx"
     )
 
@@ -266,18 +269,22 @@ def eliminate_by_longest(
             eliminated = pd.concat([eliminated, isolated])
 
     eliminated = eliminated.drop(
-        ["_dissolve_idx", "length__", "eliminate_idx", "poly_idx"],
+        ["_dissolve_idx", "_length", "eliminate_idx", "poly_idx"],
         axis=1,
         errors="ignore",
     )
 
-    return GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+    out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+    if geom_type != "mixed":
+        return to_single_geom_type(out, geom_type)
+    return out
 
 
 def eliminate_by_largest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
     *,
+    max_distance: int | float | None = None,
     remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
@@ -316,6 +323,7 @@ def eliminate_by_largest(
         gdf,
         to_eliminate=to_eliminate,
         remove_isolated=remove_isolated,
+        max_distance=max_distance,
         ignore_index=ignore_index,
         sort_ascending=False,
         aggfunc=aggfunc,
@@ -328,6 +336,7 @@ def eliminate_by_smallest(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
     *,
+    max_distance: int | float | None = None,
     remove_isolated: bool = False,
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
@@ -338,6 +347,7 @@ def eliminate_by_smallest(
         gdf,
         to_eliminate=to_eliminate,
         remove_isolated=remove_isolated,
+        max_distance=max_distance,
         ignore_index=ignore_index,
         sort_ascending=True,
         aggfunc=aggfunc,
@@ -350,6 +360,7 @@ def _eliminate_by_area(
     gdf: GeoDataFrame,
     to_eliminate: GeoDataFrame,
     remove_isolated: bool,
+    max_distance: int | float | None,
     sort_ascending: bool,
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
@@ -357,6 +368,7 @@ def _eliminate_by_area(
     **kwargs,
 ) -> GeoDataFrame:
     crs = gdf.crs
+    geom_type = get_geom_type(gdf)
 
     if not ignore_index:
         idx_mapper = dict(enumerate(gdf.index))
@@ -368,9 +380,14 @@ def _eliminate_by_area(
     gdf["_area"] = gdf.area
     gdf["_dissolve_idx"] = gdf.index
 
-    joined = to_eliminate.sjoin(
-        gdf[["_area", "_dissolve_idx", "geometry"]], predicate=predicate, how="left"
-    )
+    if max_distance:
+        to_join = gdf[["_area", "_dissolve_idx", "geometry"]]
+        to_join.geometry = to_join.buffer(max_distance)
+        joined = to_eliminate.sjoin(to_join, predicate=predicate, how="left")
+    else:
+        joined = to_eliminate.sjoin(
+            gdf[["_area", "_dissolve_idx", "geometry"]], predicate=predicate, how="left"
+        )
 
     # as DataFrames because GeoDataFrame constructor is expensive
     joined = (
@@ -383,6 +400,7 @@ def _eliminate_by_area(
     gdf = pd.DataFrame(gdf)
 
     notna = joined.loc[lambda x: x["_dissolve_idx"].notna()]
+
     eliminated = _eliminate(gdf, notna, aggfunc, crs, **kwargs)
 
     if ignore_index:
@@ -396,7 +414,17 @@ def _eliminate_by_area(
         if len(isolated):
             eliminated = pd.concat([eliminated, isolated])
 
-    return GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+    eliminated = eliminated.drop(
+        ["_dissolve_idx", "_area", "eliminate_idx", "poly_idx"],
+        axis=1,
+        errors="ignore",
+    )
+
+    out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+
+    if geom_type != "mixed":
+        return to_single_geom_type(out, geom_type)
+    return out
 
 
 def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
@@ -471,6 +499,7 @@ def close_all_holes(
             will be erased from the output geometries. If True, the entire
             holes will be closed and the islands kept, meaning there might be
             duplicate surfaces in the resulting geometries.
+            Note that ignoring islands is a lot faster.
 
     Returns:
         A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
@@ -503,19 +532,26 @@ def close_all_holes(
             f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
         )
 
+    if not len(gdf):
+        return gdf
+
     if copy:
         gdf = gdf.copy()
 
     if ignore_islands:
+        geoms = gdf.geometry if isinstance(gdf, GeoDataFrame) else gdf
+        holes_closed = make_valid(polygons(get_exterior_ring(geoms)))
         if isinstance(gdf, GeoDataFrame):
-            gdf["geometry"] = gdf.geometry.map(_close_all_holes)
+            gdf.geometry = holes_closed
             return gdf
+        elif isinstance(gdf, GeoSeries):
+            return GeoSeries(holes_closed, crs=gdf.crs)
         else:
-            return gdf.map(_close_all_holes)
+            return holes_closed
 
     all_geoms = make_valid(gdf.unary_union)
     if isinstance(gdf, GeoDataFrame):
-        gdf["geometry"] = gdf.geometry.map(
+        gdf.geometry = gdf.geometry.map(
             lambda x: _close_all_holes_no_islands(x, all_geoms)
         )
         return gdf
@@ -543,6 +579,7 @@ def close_small_holes(
             will be erased from the "hole" geometries before the area is calculated.
             If True, the entire polygon interiors will be considered, meaning there
             might be duplicate surfaces in the resulting geometries.
+            Note that ignoring islands is a lot faster.
         copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
             Defaults to True.
 
@@ -590,6 +627,9 @@ def close_small_holes(
             f"'gdf' should be of type GeoDataFrame or GeoSeries. Got {type(gdf)}"
         )
 
+    if not len(gdf):
+        return gdf
+
     if copy:
         gdf = gdf.copy()
 
@@ -597,7 +637,7 @@ def close_small_holes(
         all_geoms = make_valid(gdf.unary_union)
 
         if isinstance(gdf, GeoDataFrame):
-            gdf["geometry"] = gdf.geometry.map(
+            gdf.geometry = gdf.geometry.map(
                 lambda x: _close_small_holes_no_islands(x, max_area, all_geoms)
             )
             return gdf
@@ -606,35 +646,30 @@ def close_small_holes(
                 lambda x: _close_small_holes_no_islands(x, max_area, all_geoms)
             )
     else:
+        geoms = (
+            gdf.geometry.to_numpy() if isinstance(gdf, GeoDataFrame) else gdf.to_numpy()
+        )
+        exteriors = get_exterior_ring(geoms)
+
+        max_rings = max(get_num_interior_rings(geoms))
+
+        if not max_rings:
+            return gdf
+
+        # looping through max for all geoms since arrays must be equal length
+        interiors = np.array(
+            [[get_interior_ring(geom, i) for i in range(max_rings)] for geom in geoms]
+        )
+        areas = area(polygons(interiors))
+        interiors[(areas < max_area) | np.isnan(areas)] = None
+
+        results = polygons(exteriors, interiors)
+
         if isinstance(gdf, GeoDataFrame):
-            gdf["geometry"] = gdf.geometry.map(
-                lambda x: _close_small_holes(x, max_area)
-            )
+            gdf.geometry = results
             return gdf
         else:
-            return gdf.map(lambda x: _close_small_holes(x, max_area))
-
-
-def _close_small_holes(poly, max_area):
-    """Closes cmall holes within one shapely geometry of polygons."""
-
-    # start with a list containing the polygon,
-    # then append all holes smaller than 'max_km2' to the list.
-    holes_closed = [poly]
-    singlepart = get_parts(poly)
-    for part in singlepart:
-        n_interior_rings = get_num_interior_rings(part)
-
-        if not (n_interior_rings):
-            continue
-
-        for n in range(n_interior_rings):
-            hole = polygons(get_interior_ring(part, n))
-
-            if area(hole) < max_area:
-                holes_closed.append(hole)
-
-    return make_valid(unary_union(holes_closed))
+            return GeoSeries(results, crs=gdf.crs)
 
 
 def _close_small_holes_no_islands(poly, max_area, all_geoms):
@@ -663,10 +698,6 @@ def _close_small_holes_no_islands(poly, max_area, all_geoms):
     return make_valid(unary_union(holes_closed))
 
 
-def _close_all_holes(poly):
-    return make_valid(unary_union(polygons(get_exterior_ring(get_parts(poly)))))
-
-
 def _close_all_holes_no_islands(poly, all_geoms):
     """Closes all holes within one shapely geometry of polygons."""
 
@@ -676,9 +707,6 @@ def _close_all_holes_no_islands(poly, all_geoms):
     singlepart = get_parts(poly)
     for part in singlepart:
         n_interior_rings = get_num_interior_rings(part)
-
-        if not (n_interior_rings):
-            continue
 
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
@@ -690,3 +718,15 @@ def _close_all_holes_no_islands(poly, all_geoms):
             holes_closed.append(no_islands)
 
     return make_valid(unary_union(holes_closed))
+
+
+def get_holes(gdf, as_polygons=True):
+    astype = polygons if as_polygons else lambda x: x
+    if not len(gdf):
+        return GeoSeries()
+    geoms = gdf.geometry.to_numpy() if isinstance(gdf, GeoDataFrame) else gdf.to_numpy()
+    rings = [
+        GeoSeries(astype(get_interior_ring(geoms, i)), crs=gdf.crs)
+        for i in range(max(get_num_interior_rings(geoms)))
+    ]
+    return (pd.concat(rings).pipe(clean_geoms).sort_index()) if rings else GeoSeries()

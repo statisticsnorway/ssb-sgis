@@ -226,6 +226,7 @@ class Explore(Map):
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
         self._gdf = pd.concat(gdfs, ignore_index=True)
+
         self._get_unique_values()
         self._explore(**kwargs)
 
@@ -333,7 +334,6 @@ class Explore(Map):
 
             gdf = self._to_single_geom_type(gdf)
             gdf = self._prepare_gdf_for_map(gdf)
-
             gjs = self._make_geojson(
                 gdf,
                 show=show,

@@ -22,6 +22,19 @@ def x2(x):
     return x * 2
 
 
+def test_attributes():
+    p = sg.Parallel(2, backend="loky")
+    assert p.processes == 2
+    assert p.backend == "loky"
+    assert p.context == "spawn"
+    assert p.kwargs == {}
+    assert p.funcs == []
+    assert p.results == []
+
+    res = sg.Parallel(2, backend="loky").map(x2, [])
+    assert res == []
+
+
 def x2_with_arg_kwarg(x, plus, minus):
     return x * 2 + plus - minus
 
