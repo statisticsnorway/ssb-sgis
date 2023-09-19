@@ -522,6 +522,7 @@ def close_all_holes(
             will be erased from the output geometries. If True, the entire
             holes will be closed and the islands kept, meaning there might be
             duplicate surfaces in the resulting geometries.
+            Note that ignoring islands is a lot faster.
 
     Returns:
         A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
@@ -598,6 +599,7 @@ def close_small_holes(
             will be erased from the "hole" geometries before the area is calculated.
             If True, the entire polygon interiors will be considered, meaning there
             might be duplicate surfaces in the resulting geometries.
+            Note that ignoring islands is a lot faster.
         copy: if True (default), the input GeoDataFrame or GeoSeries is copied.
             Defaults to True.
 
@@ -674,16 +676,6 @@ def close_small_holes(
         areas = area(polygons(interiors))
         interiors[(areas < max_area) | np.isnan(areas)] = None
 
-        """interiors = [
-            [get_interior_ring(geom, i) for i in range(max_rings)] for geom in geoms
-        ]
-        interiors = [
-            [ring if area(Polygon(ring)) > max_area else None for ring in rings]
-            if rings
-            else None
-            for rings in interiors
-        ]"""
-
         results = polygons(exteriors, interiors)
 
         if isinstance(gdf, GeoDataFrame):
@@ -753,26 +745,3 @@ def get_holes(gdf, as_polygons=True):
         for i in range(max(get_num_interior_rings(geoms)))
     ]
     return (pd.concat(rings).pipe(clean_geoms).sort_index()) if rings else GeoSeries()
-
-
-def _close_all_holes_no_islands2(poly, all_geoms):
-    """Closes all holes within one shapely geometry of polygons."""
-    holes_closed = []
-    singlepart = get_parts(poly)
-    for part in singlepart:
-        holes = []
-        n_interior_rings = get_num_interior_rings(part)
-
-        for n in range(n_interior_rings):
-            hole = polygons(get_interior_ring(part, n))
-            try:
-                no_islands = unary_union(hole.difference(all_geoms))
-            except GEOSException:
-                no_islands = make_valid(unary_union(hole.difference(all_geoms)))
-
-            holes.append(no_islands)
-
-        no_holes = Polygon(get_exterior_ring(poly), holes=holes)
-        holes_closed.append(no_holes)
-
-    return make_valid(unary_union(holes_closed))
