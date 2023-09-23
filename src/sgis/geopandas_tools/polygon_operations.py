@@ -447,6 +447,7 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
         lambda x: (x.groupby("_dissolve_idx").transform("size") == 1)
         & (x["_dissolve_idx"].notna())
     ].set_index("_dissolve_idx")
+
     assert len(only_one) == 0
 
     more_than_one = concatted.loc[
@@ -464,6 +465,7 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
         .agg(aggfunc)
         .drop(["_area"], axis=1, errors="ignore")
     )
+
     eliminated["geometry"] = more_than_one.groupby("_dissolve_idx")["geometry"].agg(
         lambda x: make_valid(unary_union(x.values))
     )
@@ -537,6 +539,8 @@ def close_all_holes(
 
     if copy:
         gdf = gdf.copy()
+
+    gdf = make_all_singlepart(gdf)
 
     if ignore_islands:
         geoms = gdf.geometry if isinstance(gdf, GeoDataFrame) else gdf
@@ -633,6 +637,8 @@ def close_small_holes(
     if copy:
         gdf = gdf.copy()
 
+    gdf = make_all_singlepart(gdf)
+
     if not ignore_islands:
         all_geoms = make_valid(gdf.unary_union)
 
@@ -650,6 +656,7 @@ def close_small_holes(
             gdf.geometry.to_numpy() if isinstance(gdf, GeoDataFrame) else gdf.to_numpy()
         )
         exteriors = get_exterior_ring(geoms)
+        assert len(exteriors) == len(geoms)
 
         max_rings = max(get_num_interior_rings(geoms))
 
@@ -660,6 +667,8 @@ def close_small_holes(
         interiors = np.array(
             [[get_interior_ring(geom, i) for i in range(max_rings)] for geom in geoms]
         )
+        assert interiors.shape == (len(geoms), max_rings), interiors.shape
+
         areas = area(polygons(interiors))
         interiors[(areas < max_area) | np.isnan(areas)] = None
 
