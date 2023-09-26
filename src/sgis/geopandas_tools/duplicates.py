@@ -218,7 +218,16 @@ def _get_intersecting_geometries(gdf: GeoDataFrame, geom_type) -> GeoDataFrame:
 
     not_from_same_poly = intersected.loc[lambda x: x["idx_left"] != x["idx_right"]]
 
-    return not_from_same_poly.drop(columns=["idx_left", "idx_right"])
+    # make sure it's correct by sjoining a point inside the polygons
+    points_joined = (
+        not_from_same_poly.representative_point().to_frame().sjoin(not_from_same_poly)
+    )
+
+    duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
+
+    return intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
+        columns=["idx_left", "idx_right"]
+    )
 
 
 def _drop_duplicate_geometries(gdf: GeoDataFrame, **kwargs) -> GeoDataFrame:
