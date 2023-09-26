@@ -131,6 +131,8 @@ class Parallel:
         if self.processes == 1:
             return list(map(func_with_kwargs, iterable))
 
+        iterable = list(iterable)
+
         # don't use unnecessary processes
         processes = min(self.processes, len(iterable))
 
@@ -202,6 +204,8 @@ class Parallel:
 
         if self.processes == 1:
             return list(itertools.starmap(func_with_kwargs, iterable))
+
+        iterable = list(iterable)
 
         # don't use unnecessary processes
         processes = min(self.processes, len(iterable))
