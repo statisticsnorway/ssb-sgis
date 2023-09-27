@@ -71,7 +71,7 @@ from .maps.examine import Examine
 from .maps.explore import Explore
 from .maps.httpserver import run_html_server
 from .maps.legend import Legend
-from .maps.maps import clipmap, explore, qtm, samplemap
+from .maps.maps import clipmap, explore, explore_locals, qtm, samplemap
 from .maps.thematicmap import ThematicMap
 from .networkanalysis.closing_network_holes import (
     close_network_holes,

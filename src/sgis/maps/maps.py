@@ -7,6 +7,7 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 
+import inspect
 import warnings
 from numbers import Number
 from typing import Any
@@ -423,6 +424,36 @@ def clipmap(
             **kwargs,
         )
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
+
+
+def explore_locals(*gdfs, **kwargs):
+    """Viser kart (explore) over alle lokale GeoDataFrames.
+
+    Lokalt betyr enten inni funksjonen/metoden du er i, eller i notebooken
+    du jobber i.
+
+    Args:
+        *gdfs: Ekstra GeoDataFrames du vil legge til
+        **kwargs: keyword arguments som sendes til sg.explore.
+    """
+    frame = inspect.currentframe().f_back
+
+    while True:
+        local_gdfs = {
+            name: value
+            for name, value in frame.f_locals.items()
+            if isinstance(value, GeoDataFrame)
+        }
+
+        if local_gdfs:
+            break
+
+        frame = frame.f_back
+
+        if not frame:
+            break
+
+    explore(*gdfs, **local_gdfs, **kwargs)
 
 
 def qtm(
