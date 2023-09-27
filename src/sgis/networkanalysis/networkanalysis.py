@@ -1447,6 +1447,7 @@ class NetworkAnalysis:
             gdf=self.network.gdf,
             points=points,
             max_distance=self.rules.search_tolerance,
+            splitted_col="splitted",
         )
 
         # save the unsplit lines for later
