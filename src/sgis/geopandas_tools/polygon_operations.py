@@ -729,13 +729,22 @@ def _close_all_holes_no_islands(poly, all_geoms):
     return make_valid(unary_union(holes_closed))
 
 
-def get_holes(gdf, as_polygons=True):
+def get_holes(gdf: GeoDataFrame, as_polygons=True) -> GeoDataFrame:
+    # simply return the linearring if not as_polygons
     astype = polygons if as_polygons else lambda x: x
     if not len(gdf):
-        return GeoSeries()
-    geoms = gdf.geometry.to_numpy() if isinstance(gdf, GeoDataFrame) else gdf.to_numpy()
+        return GeoDataFrame({"geometry": []}, crs=gdf.crs)
+    geoms = (
+        make_all_singlepart(gdf.geometry).to_numpy()
+        if isinstance(gdf, GeoDataFrame)
+        else make_all_singlepart(gdf).to_numpy()
+    )
     rings = [
         GeoSeries(astype(get_interior_ring(geoms, i)), crs=gdf.crs)
         for i in range(max(get_num_interior_rings(geoms)))
     ]
-    return (pd.concat(rings).pipe(clean_geoms).sort_index()) if rings else GeoSeries()
+    return (
+        GeoDataFrame({"geometry": (pd.concat(rings).pipe(clean_geoms).sort_index())})
+        if rings
+        else GeoDataFrame({"geometry": []}, crs=gdf.crs)
+    )
