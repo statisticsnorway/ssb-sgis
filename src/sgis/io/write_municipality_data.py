@@ -64,6 +64,10 @@ def _write_municipality_data(
 
     if isinstance(data, (str, Path)):
         gdf = read_geopandas(str(data))
+    elif isinstance(data, GeoDataFrame):
+        gdf = data
+    else:
+        raise TypeError(type(data))
 
     if func is not None:
         gdf = func(gdf)
