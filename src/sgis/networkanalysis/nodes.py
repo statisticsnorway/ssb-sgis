@@ -178,7 +178,7 @@ def _prepare_make_edge_cols(
 
     endpoints = lines[geom_col].boundary.explode(ignore_index=True)
 
-    if len(endpoints) / len(lines) != 2:
+    if len(lines) and len(endpoints) / len(lines) != 2:
         raise ValueError(
             "The lines should have only two endpoints each. "
             "Try splitting multilinestrings with explode."
@@ -194,7 +194,7 @@ def _prepare_make_edge_cols_simple(
 
     endpoints = lines[lines._geometry_column_name].boundary.explode(ignore_index=True)
 
-    if len(endpoints) / len(lines) != 2:
+    if len(lines) and len(endpoints) / len(lines) != 2:
         raise ValueError(
             "The lines should have only two endpoints each. "
             "Try splitting multilinestrings with explode."
