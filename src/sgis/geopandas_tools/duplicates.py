@@ -214,14 +214,13 @@ def _get_intersecting_geometries(gdf: GeoDataFrame, geom_type) -> GeoDataFrame:
     left = gdf
     left["idx_left"] = left.index
 
-    intersected = clean_overlay(left, right, how="intersection", geom_type=geom_type)
-
-    not_from_same_poly = intersected.loc[lambda x: x["idx_left"] != x["idx_right"]]
+    not_identical = lambda x: x["idx_left"] != x["idx_right"]
+    intersected = clean_overlay(
+        left, right, how="intersection", geom_type=geom_type
+    ).loc[not_identical]
 
     # make sure it's correct by sjoining a point inside the polygons
-    points_joined = (
-        not_from_same_poly.representative_point().to_frame().sjoin(not_from_same_poly)
-    )
+    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
 
     duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
 
