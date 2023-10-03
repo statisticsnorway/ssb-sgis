@@ -149,6 +149,8 @@ class Map:
         if not any(len(gdf) for gdf in self._gdfs):
             warnings.warn("None of the GeoDataFrames have rows.")
             self._gdfs = None
+            self._is_categorical = True
+            self._unique_values = []
             return
 
         if not self.labels:

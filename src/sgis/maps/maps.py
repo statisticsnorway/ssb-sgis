@@ -173,6 +173,9 @@ def explore(
     if m.gdfs is None:
         return
 
+    if not kwargs.pop("explore", True):
+        return qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
+
     m.explore()
 
 
@@ -426,7 +429,7 @@ def clipmap(
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
-def explore_locals(*gdfs, **kwargs):
+def explore_locals(*gdfs, to_gdf: bool = True, **kwargs):
     """Viser kart (explore) over alle lokale GeoDataFrames.
 
     Lokalt betyr enten inni funksjonen/metoden du er i, eller i notebooken
@@ -439,11 +442,17 @@ def explore_locals(*gdfs, **kwargs):
     frame = inspect.currentframe().f_back
 
     while True:
-        local_gdfs = {
-            name: value
-            for name, value in frame.f_locals.items()
-            if isinstance(value, GeoDataFrame)
-        }
+        local_gdfs = {}
+        for name, value in frame.f_locals.items():
+            if isinstance(value, GeoDataFrame):
+                local_gdfs[name] = value
+                continue
+            if not to_gdf:
+                continue
+            try:
+                local_gdfs[name] = to_gdf(value)
+            except Exception:
+                pass
 
         if local_gdfs:
             break
@@ -452,6 +461,10 @@ def explore_locals(*gdfs, **kwargs):
 
         if not frame:
             break
+
+    mask = kwargs.pop("mask", None)
+    if mask is not None:
+        local_gdfs = {name: gdf.clip(mask) for name, gdf in local_gdfs.items()}
 
     explore(*gdfs, **local_gdfs, **kwargs)
 
@@ -492,8 +505,23 @@ def qtm(
     See also:
         ThematicMap: Class with more options for customising the plot.
     """
+    gdfs, column = Explore._separate_args(gdfs, column)
+
+    new_kwargs = {}
+    for key, value in kwargs.items():
+        if isinstance(value, GeoDataFrame):
+            value.name = key
+            gdfs += (value,)
+        else:
+            new_kwargs[key] = value
+
+            # self.labels.append(key)
+            # self.show.append(last_show)
 
     m = ThematicMap(*gdfs, column=column, size=size, black=black)
+
+    if m._gdfs is None:
+        return
 
     m.title = title
 
@@ -508,4 +536,4 @@ def qtm(
     if not legend:
         m.legend = None
 
-    m.plot(**kwargs)
+    m.plot(**new_kwargs)
