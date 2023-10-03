@@ -385,6 +385,9 @@ def k_nearest_neighbors(
     k: int | None = None,
     strict: bool = False,
 ) -> tuple[np.ndarray[float], np.ndarray[int]]:
+    if not len(to_array) or not len(from_array):
+        return np.array([]), np.array([])
+
     if not k:
         k = len(to_array)
 
