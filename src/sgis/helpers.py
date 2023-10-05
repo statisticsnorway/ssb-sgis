@@ -3,7 +3,7 @@ import glob
 import inspect
 import os
 import warnings
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 from geopandas import GeoDataFrame

@@ -7,7 +7,7 @@ import os
 import warnings
 from numbers import Number
 from statistics import mean
-from typing import Iterable
+from collections.abc import Iterable
 
 import branca as bc
 import folium
