@@ -288,6 +288,7 @@ class Parallel:
         muni_number_col: str = "KOMMUNENR",
         strict: bool = False,
         write_empty: bool = False,
+        clip: bool = True,
     ):
         """Split multiple datasets into municipalities and write as separate files.
 
@@ -317,6 +318,7 @@ class Parallel:
             "muni_number_col": muni_number_col,
             "write_empty": write_empty,
             "with_neighbors": with_neighbors,
+            "clip": clip,
         }
 
         if isinstance(out_data, (str, Path)):
