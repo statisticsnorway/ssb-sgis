@@ -46,6 +46,7 @@ def get_lonlat(lon: float, lat: float, crs=25833):
 
 def coordinate_array(
     gdf: GeoDataFrame | GeoSeries,
+    strict=False,
 ) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
     """Creates a 2d ndarray of coordinates from point geometries.
 
@@ -80,9 +81,12 @@ def coordinate_array(
         [0.38045827, 0.87878816]])
     """
     if isinstance(gdf, GeoDataFrame):
-        return np.array([(geom.x, geom.y) for geom in gdf.geometry])
-    else:
+        gdf = gdf.geometry
+    if strict:
         return np.array([(geom.x, geom.y) for geom in gdf])
+    return np.array(
+        [(geom.x, geom.y) if hasattr(geom, "x") else (None, None) for geom in gdf]
+    )
 
 
 def to_gdf(
@@ -220,6 +224,9 @@ def to_gdf(
     if isinstance(obj, Iterator) and not isinstance(obj, Sized):
         obj = GeoSeries((_make_one_shapely_geom(g) for g in obj), index=index)
         return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
+
+    if hasattr(obj, "__len__") and not len(obj):
+        return GeoDataFrame({"geometry": []}, crs=crs)
 
     crs = crs or get_crs_from_dict(obj)
 
