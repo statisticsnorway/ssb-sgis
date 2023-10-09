@@ -1,13 +1,67 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from geopandas.tools.sjoin import _geom_predicate_query
 from shapely import Geometry
 
 from .conversion import to_gdf
 
 
-gdf_type_error_message = "'gdf' should be of type GeoDataFrame."
+gdf_type_error_message = "'gdf' should be of type GeoDataFrame or GeoSeries."
+
+
+def _get_sfilter_indices(
+    left: GeoDataFrame | GeoSeries,
+    right: GeoDataFrame | GeoSeries | Geometry,
+    predicate: str,
+) -> np.ndarray:
+    """Compute geometric comparisons and get matching indices.
+
+    Taken from:
+    geopandas.tools.sjoin._geom_predicate_query
+
+    Parameters
+    ----------
+    left : GeoDataFrame
+    right : GeoDataFrame
+    predicate : string
+        Binary predicate to query.
+
+    Returns
+    -------
+    DataFrame
+        DataFrame with matching indices in
+        columns named `_key_left` and `_key_right`.
+    """
+    original_predicate = predicate
+
+    with warnings.catch_warnings():
+        # We don't need to show our own warning here
+        # TODO remove this once the deprecation has been enforced
+        warnings.filterwarnings(
+            "ignore", "Generated spatial index is empty", FutureWarning
+        )
+
+        if predicate == "within":
+            # within is implemented as the inverse of contains
+            # contains is a faster predicate
+            # see discussion at https://github.com/geopandas/geopandas/pull/1421
+            predicate = "contains"
+            sindex = left.sindex
+            input_geoms = right.geometry if isinstance(right, GeoDataFrame) else right
+        else:
+            # all other predicates are symmetric
+            # keep them the same
+            sindex = right.sindex
+            input_geoms = left.geometry if isinstance(left, GeoDataFrame) else left
+
+    l_idx, r_idx = sindex.query(input_geoms, predicate=predicate, sort=False)
+
+    if original_predicate == "within":
+        return np.unique(r_idx)
+
+    return np.unique(l_idx)
 
 
 def sfilter(
@@ -70,7 +124,7 @@ def sfilter(
     0  POINT (0.00000 0.00000)
 
     """
-    if not isinstance(gdf, GeoDataFrame):
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(gdf_type_error_message)
 
     other = _sfilter_checks(other, crs=gdf.crs)
@@ -139,7 +193,7 @@ def sfilter_split(
     >>> not_intersecting = df1.loc[~filt]
 
     """
-    if not isinstance(gdf, GeoDataFrame):
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(gdf_type_error_message)
 
     other = _sfilter_checks(other, crs=gdf.crs)
@@ -204,7 +258,7 @@ def sfilter_inverse(
     >>> not_intersecting = df1.loc[~df1.intersects(df2.unary_union)]
 
     """
-    if not isinstance(gdf, GeoDataFrame):
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(gdf_type_error_message)
 
     other = _sfilter_checks(other, crs=gdf.crs)
@@ -217,9 +271,9 @@ def sfilter_inverse(
 def _sfilter_checks(other, crs):
     """Allow 'other' to be any geometry object."""
     if isinstance(other, GeoSeries):
-        other = other.to_frame()
+        return other
 
-    elif not isinstance(other, GeoDataFrame):
+    if not isinstance(other, GeoDataFrame):
         try:
             other = to_gdf(other)
         except TypeError as e:
@@ -236,8 +290,3 @@ def _sfilter_checks(other, crs):
             raise ValueError("crs mismatch", crs, other.crs) from e
 
     return other
-
-
-def _get_sfilter_indices(gdf, other, predicate) -> np.ndarray:
-    idx_df = _geom_predicate_query(gdf, other, predicate=predicate)
-    return idx_df["_key_left"].unique()
