@@ -8,8 +8,8 @@ from shapely import Geometry
 
 
 def make_all_singlepart(
-    gdf: GeoDataFrame, index_parts: bool = False, ignore_index: bool = False
-) -> GeoDataFrame:
+    gdf: GeoDataFrame | GeoSeries, index_parts: bool = False, ignore_index: bool = False
+) -> GeoDataFrame | GeoSeries:
     # only explode if nessecary
     if index_parts or ignore_index and not gdf.index.equals(pd.Index(range(len(gdf)))):
         gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
@@ -149,14 +149,25 @@ def get_geom_type(gdf: GeoDataFrame | GeoSeries) -> str:
     >>> get_geom_type(gdf)
     'point'
     """
+    polys = ["Polygon", "MultiPolygon", None]
+    lines = ["LineString", "MultiLineString", "LinearRing", None]
+    points = ["Point", "MultiPoint", None]
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+        if isinstance(gdf, Geometry):
+            if gdf.geom_type in polys:
+                return "polygon"
+            if gdf.geom_type in lines:
+                return "line"
+            if gdf.geom_type in points:
+                return "point"
+            return "mixed"
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
-    if all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
+    if (gdf.geom_type.isin(polys)).all():
         return "polygon"
-    if all(gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])):
+    if (gdf.geom_type.isin(lines)).all():
         return "line"
-    if all(gdf.geom_type.isin(["Point", "MultiPoint"])):
+    if (gdf.geom_type.isin(points)).all():
         return "point"
     return "mixed"
 
