@@ -151,17 +151,17 @@ def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
 
 
 def _prepare_make_edge_cols(
-    lines: GeoDataFrame,
+    lines: GeoDataFrame, strict: bool = False
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     lines = lines.loc[lines.geom_type != "LinearRing"]
 
-    if not all(lines.geom_type == "LineString"):
+    if not (lines.geom_type == "LineString").all():
         multilinestring_error_message = (
             "MultiLineStrings have more than two endpoints. "
             "Try shapely.line_merge and/or explode() to get LineStrings. "
             "Or use the Network class methods, where the lines are prepared correctly."
         )
-        if any(lines.geom_type == "MultiLinestring"):
+        if (lines.geom_type == "MultiLinestring").any():
             raise ValueError(multilinestring_error_message)
         else:
             raise ValueError(
@@ -181,7 +181,8 @@ def _prepare_make_edge_cols(
     if len(lines) and len(endpoints) / len(lines) != 2:
         raise ValueError(
             "The lines should have only two endpoints each. "
-            "Try splitting multilinestrings with explode."
+            "Try splitting multilinestrings with explode.",
+            lines[geom_col],
         )
 
     return lines, endpoints
