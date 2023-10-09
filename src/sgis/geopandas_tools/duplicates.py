@@ -2,13 +2,13 @@ from typing import Callable, Iterable
 
 import networkx as nx
 import pandas as pd
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
 from shapely import STRtree, difference, intersection, make_valid, unary_union, union
 from shapely.errors import GEOSException
 from shapely.geometry import Polygon
 
 from .general import _push_geom_col, clean_geoms
-from .geometry_types import get_geom_type, to_single_geom_type
+from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .overlay import clean_overlay
 
 
@@ -195,8 +195,12 @@ def get_intersections(gdf: GeoDataFrame, geom_type: str | None = None) -> GeoDat
     1  2.19473  POLYGON ((2.19763 -0.07535, 2.19467 -0.11293, ...
 
     """
+    if isinstance(gdf, GeoSeries):
+        gdf = GeoDataFrame({"geometry": gdf}, crs=gdf.crs)
 
     idx_name = gdf.index.name
+    gdf = gdf.assign(orig_idx=gdf.index).reset_index(drop=True)
+
     duplicated_geoms = _get_intersecting_geometries(gdf, geom_type=geom_type).pipe(
         clean_geoms
     )
@@ -207,17 +211,32 @@ def get_intersections(gdf: GeoDataFrame, geom_type: str | None = None) -> GeoDat
 
 
 def _get_intersecting_geometries(gdf: GeoDataFrame, geom_type) -> GeoDataFrame:
-    gdf = gdf.assign(orig_idx=gdf.index).reset_index(drop=True)
-
     right = gdf[[gdf._geometry_column_name]]
     right["idx_right"] = right.index
-    left = gdf
+
+    left = (
+        gdf
+        if not any("index_" in str(col) for col in gdf)
+        else gdf.loc[:, lambda x: x.columns.difference({"index_right", "index_left"})]
+    )
     left["idx_left"] = left.index
 
     not_identical = lambda x: x["idx_left"] != x["idx_right"]
-    intersected = clean_overlay(
-        left, right, how="intersection", geom_type=geom_type
-    ).loc[not_identical]
+
+    if geom_type is None and get_geom_type(gdf) == "mixed":
+        gdf = make_all_singlepart(gdf)
+        intersected = []
+        for geom_type in ["polygon", "line", "point"]:
+            if not len(to_single_geom_type(gdf, geom_type)):
+                continue
+            intersected += [
+                clean_overlay(left, right, how="intersection", geom_type=geom_type)
+            ]
+        intersected = pd.concat(intersected, ignore_index=True).loc[not_identical]
+    else:
+        intersected = clean_overlay(
+            left, right, how="intersection", geom_type=geom_type
+        ).loc[not_identical]
 
     # make sure it's correct by sjoining a point inside the polygons
     points_joined = intersected.representative_point().to_frame().sjoin(intersected)
