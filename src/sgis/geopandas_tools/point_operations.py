@@ -3,7 +3,8 @@
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from shapely.ops import nearest_points, snap, unary_union
+from shapely import distance, snap, unary_union
+from shapely.ops import nearest_points
 
 from ..geopandas_tools.general import to_lines
 from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
@@ -75,22 +76,21 @@ def snap_within_distance(
     1  POINT (2.00000 2.00000)      1.414214
     """
 
-    if isinstance(points, GeoSeries):
-        points = GeoDataFrame(points)
-        _was_geoseries = True
-    else:
-        _was_geoseries = False
-
-    if isinstance(to, GeoSeries):
-        to = GeoDataFrame(to)
-
     to = _polygons_to_lines(to)
+
+    if not distance_col and not isinstance(points, GeoDataFrame):
+        return _shapely_snap(
+            points=points,
+            to=to,
+            max_distance=max_distance,
+        )
+    elif not isinstance(points, GeoDataFrame):
+        points = points.to_frame()
 
     copied = points.copy()
 
-    geom_col = points._geometry_column_name
-    copied[geom_col] = _series_snap(
-        points=copied[geom_col],
+    copied.geometry = _shapely_snap(
+        points=copied.geometry.values,
         to=to,
         max_distance=max_distance,
     )
@@ -100,8 +100,6 @@ def snap_within_distance(
         copied[distance_col] = np.where(
             copied[distance_col] == 0, pd.NA, copied[distance_col]
         )
-    elif _was_geoseries:
-        return copied[geom_col]
 
     return copied
 
@@ -159,23 +157,19 @@ def snap_all(
     0  POINT (2.00000 2.00000)       2.828427
     1  POINT (2.00000 2.00000)       1.414214
     """
-
-    if isinstance(points, GeoSeries):
-        points = GeoDataFrame(points)
-        _was_geoseries = True
-    else:
-        _was_geoseries = False
-
-    if isinstance(to, GeoSeries):
-        to = GeoDataFrame(to)
-
     to = _polygons_to_lines(to)
+
+    if not isinstance(points, GeoDataFrame):
+        return _shapely_snap(
+            points=points,
+            to=to,
+            max_distance=None,
+        )
 
     copied = points.copy()
 
-    geom_col = points._geometry_column_name
-    copied[geom_col] = _series_snap(
-        points=copied[geom_col],
+    copied.geometry = _shapely_snap(
+        points=copied.geometry.values,
         to=to,
         max_distance=None,
     )
@@ -185,9 +179,6 @@ def snap_all(
         copied[distance_col] = np.where(
             copied[distance_col] == 0, pd.NA, copied[distance_col]
         )
-    elif _was_geoseries:
-        return copied[geom_col]
-
     return copied
 
 
@@ -202,22 +193,30 @@ def _polygons_to_lines(gdf):
     return gdf
 
 
-def _series_snap(
-    points: GeoSeries,
+def _shapely_snap(
+    points: np.ndarray | GeoSeries,
     to: GeoSeries | GeoDataFrame,
     max_distance: int | float | None = None,
 ) -> GeoSeries:
-    def snapfunc(point, to):
-        nearest = nearest_points(point, to)[1]
-        if not max_distance:
-            return nearest
-        return snap(point, nearest, tolerance=max_distance)
-
-    if isinstance(to, GeoDataFrame):
+    try:
         unioned = to.unary_union
-    elif isinstance(to, GeoSeries):
-        unioned = to.to_frame().unary_union
-    else:
+    except AttributeError:
         unioned = unary_union(to)
 
-    return points.apply(lambda point: snapfunc(point, unioned))
+    nearest = nearest_points(points, unioned)[1]
+
+    if not max_distance:
+        return nearest
+
+    distances = distance(points, nearest)
+
+    snapped = np.where(
+        distances <= max_distance,
+        nearest,
+        points,
+    )
+
+    if isinstance(points, GeoSeries):
+        return GeoSeries(points, crs=points.crs, index=points.index, name=points.name)
+
+    return points.__class__(snapped)
