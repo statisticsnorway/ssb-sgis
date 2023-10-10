@@ -422,9 +422,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         if copy:
             gdf = gdf.copy()
 
-        gdf[gdf._geometry_column_name] = gdf[gdf._geometry_column_name].map(
-            _shapely_geometry_to_lines
-        )
+        gdf.geometry = gdf.geometry.map(_shapely_geometry_to_lines)
 
         gdf = to_single_geom_type(gdf, "line")
 
