@@ -10,10 +10,18 @@ version of the solution from GH 2792.
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame
 from pyproj import CRS
-from shapely import STRtree, box, difference, intersection, make_valid, unary_union
+from shapely import (
+    STRtree,
+    box,
+    difference,
+    intersection,
+    is_valid,
+    make_valid,
+    unary_union,
+)
 from shapely.errors import GEOSException
 
 from .general import clean_geoms
@@ -98,26 +106,43 @@ def clean_overlay(
     df1 = make_all_singlepart(df1, ignore_index=True)
     df2 = make_all_singlepart(df2, ignore_index=True)
 
-    df1 = to_single_geom_type(df1, geom_type).reset_index(drop=True)
+    df1 = to_single_geom_type(df1, geom_type)
 
     if original_geom_type:
         df2 = to_single_geom_type(df2, geom_type)
 
-    df2 = df2.reset_index(drop=True)
-
     assert df1.is_valid.all()
     assert df2.is_valid.all()
-    assert df1.geometry.map(bool).all()
-    assert df2.geometry.map(bool).all()
+    assert df1.geometry.notna().all()
+    assert df2.geometry.notna().all()
 
-    overlayed = _shapely_overlay(
-        df1,
-        df2,
-        how=how,
+    box1 = box(*df1.total_bounds)
+    box2 = box(*df2.total_bounds)
+
+    if not len(df1) or not len(df1) or not box1.intersects(box2):
+        return _no_intersections_return(df1, df2, how, lsuffix, rsuffix)
+
+    if df1._geometry_column_name != "geometry":
+        df1 = df1.rename_geometry("geometry")
+
+    if df2._geometry_column_name != "geometry":
+        df2 = df2.rename_geometry("geometry")
+
+    # to pandas because GeoDataFrame constructor is expensive
+    df1 = DataFrame(df1).reset_index(drop=True)
+    df2 = DataFrame(df2).reset_index(drop=True)
+
+    overlayed = gpd.GeoDataFrame(
+        _shapely_pd_overlay(
+            df1,
+            df2,
+            how=how,
+            grid_size=grid_size,
+            lsuffix=lsuffix,
+            rsuffix=rsuffix,
+        ),
+        geometry="geometry",
         crs=crs,
-        grid_size=grid_size,
-        lsuffix=lsuffix,
-        rsuffix=rsuffix,
     ).pipe(clean_geoms)
 
     if keep_geom_type:
@@ -171,38 +196,23 @@ def _no_intersections_return(df1, df2, how, lsuffix, rsuffix):
     return pd.concat([df_template, df1, df2], ignore_index=True)
 
 
-def _shapely_overlay(
-    df1: GeoDataFrame,
-    df2: GeoDataFrame,
+def _shapely_pd_overlay(
+    df1: DataFrame,
+    df2: DataFrame,
     how: str,
-    crs: int | str | None | CRS,
     grid_size: float,
     lsuffix,
     rsuffix,
-) -> GeoDataFrame:
+) -> DataFrame:
     if not grid_size and not len(df1) or not len(df2):
         return _no_intersections_return(df1, df2, how, lsuffix, rsuffix)
 
-    box1 = box(*df1.total_bounds)
-    box2 = box(*df2.total_bounds)
-    if not len(df1) or not len(df1) or not box1.intersects(box2):
-        return _no_intersections_return(df1, df2, how, lsuffix, rsuffix)
-
-    if df1._geometry_column_name != "geometry":
-        df1 = df1.rename_geometry("geometry")
-
-    if df2._geometry_column_name != "geometry":
-        df2 = df2.rename_geometry("geometry")
-
     tree = STRtree(df2.geometry.values)
     left, right = tree.query(df1.geometry.values, predicate="intersects")
-    # GeoDataFrame constructor is expensive, so doing it only once in the end
-    df1 = DataFrame(df1)
-    df2 = DataFrame(df2)
 
     pairs = _get_intersects_pairs(df1, df2, left, right, rsuffix)
-    assert pairs.geometry.map(bool).all()
-    assert pairs.geom_right.map(bool).all()
+    assert pairs.geometry.notna().all()
+    assert pairs.geom_right.notna().all()
 
     if how == "intersection":
         overlayed = [_intersection(pairs, grid_size=grid_size)]
@@ -242,9 +252,9 @@ def _shapely_overlay(
 
     overlayed["geometry"] = make_valid(overlayed["geometry"])
     # None and empty are falsy
-    overlayed = overlayed.loc[lambda x: x["geometry"].map(bool)]
+    overlayed = overlayed.loc[lambda x: x["geometry"].notna()]
 
-    return gpd.GeoDataFrame(overlayed, geometry="geometry", crs=crs)
+    return overlayed
 
 
 def _update(pairs, df1, df2, left, grid_size) -> GeoDataFrame:
@@ -257,21 +267,30 @@ def _intersection(pairs, grid_size) -> GeoDataFrame:
     if not len(pairs):
         return pairs.drop(columns="geom_right")
 
+    # assert all(is_valid(pairs["geometry"].to_numpy())), "\nnot all valid\n"
+    # assert all(is_valid(pairs["geom_right"].to_numpy())), "\nnot all valid\n"
+
     intersections = pairs.copy()
+    """
+    geoms_left = make_valid(intersections["geometry"].to_numpy())
+    geoms_right = make_valid(intersections["geom_right"].to_numpy())
+    intersections["geometry"] = intersection(
+        geoms_left,
+        geoms_right,
+        grid_size=grid_size,
+    )
     try:
         intersections["geometry"] = intersection(
             intersections["geometry"].to_numpy(),
             intersections["geom_right"].to_numpy(),
             grid_size=grid_size,
         )
-    except GEOSException:
-        geoms_left = make_valid(intersections["geometry"].to_numpy())
-        geoms_right = make_valid(intersections["geom_right"].to_numpy())
-        intersections["geometry"] = intersection(
-            geoms_left,
-            geoms_right,
-            grid_size=grid_size,
-        )
+    except GEOSException:"""
+    intersections["geometry"] = intersection(
+        intersections["geometry"].to_numpy(),
+        intersections["geom_right"].to_numpy(),
+        grid_size=grid_size,
+    )
 
     return intersections.drop(columns="geom_right")
 
@@ -388,8 +407,8 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
         }
     )
 
-    assert clip_left["geometry"].map(bool).all()
-    assert clip_left["geom_right"].map(bool).all()
+    assert clip_left["geometry"].notna().all()
+    assert clip_left["geom_right"].notna().all()
 
     clip_left["geometry"] = _try_difference(
         clip_left["geometry"].to_numpy(),
@@ -419,8 +438,8 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
         )
     )
 
-    assert clip_right["geometry"].map(bool).all()
-    assert clip_right["geom_left"].map(bool).all()
+    assert clip_right["geometry"].notna().all()
+    assert clip_right["geom_left"].notna().all()
 
     clip_right["geometry"] = _try_difference(
         clip_right["geometry"].to_numpy(),
@@ -430,9 +449,22 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
 
     return clip_right.drop(columns="geom_left")
 
+    return get_actuall_difference(
+        clip_right.drop(columns="geom_left"), clip_right["geom_left"].to_numpy()
+    )
+
+    return clip_right.drop(columns="geom_left")
+
 
 def _try_difference(left, right, grid_size):
     """Try difference overlay, then make_valid and retry."""
+    # assert all(is_valid(left)), "\nnot all valid\n"
+    # assert all(is_valid(right)), "\nnot all valid\n"
+    """return difference(
+        make_valid(left),
+        make_valid(right),
+        grid_size=grid_size,
+    )"""
     try:
         return difference(
             left,
@@ -453,3 +485,112 @@ def agg_geoms(g):
 
 def agg_geoms(g):
     return unary_union(g) if len(g) > 1 else g
+
+
+def _sjoin_representative_point(
+    overlayed: GeoDataFrame, df2: GeoDataFrame
+) -> GeoDataFrame:
+    return GeoDataFrame(
+        {"geometry": proper_point_on_surface(overlayed.geometry)}, crs=overlayed.crs
+    ).sjoin(df2, predicate="within")
+
+
+def proper_point_on_surface(geoms: GeoSeries, strict: bool = False) -> GeoSeries:
+    if not len(geoms):
+        return geoms
+    if not geoms.index.is_unique:
+        raise ValueError("Index must be unique.")
+    points = geoms.representative_point()
+    is_within = points.within(geoms)
+    if is_within.all():
+        return points
+    within = points.loc[is_within]
+    not_within = points.loc[~is_within]
+
+    within_now = (
+        not_within.buffer(-1e-6)
+        .loc[lambda x: ~x.is_empty]
+        .representative_point()
+        .loc[lambda x: x.within(geoms.loc[geoms.index.isin(x.index)])]
+    )
+
+    still_not_within = points.loc[
+        lambda x: ~x.index.isin(within.index.union(within_now.index))
+    ]
+
+    if strict and len(still_not_within):
+        raise ValueError(
+            f"Cannot compute point within polygons: {', '.join([x.wkt for x in still_not_within.geometry])}"
+        )
+
+    return pd.concat(
+        [
+            within,
+            within_now,
+        ]
+    )
+
+
+def get_actuall_intersection(
+    overlayed: GeoDataFrame, df1: GeoDataFrame, df2: GeoDataFrame, join: bool
+) -> GeoDataFrame:
+    if not overlayed.index.is_unique:
+        overlayed = overlayed.reset_index(drop=True)
+    intersects_df1 = _sjoin_representative_point(overlayed, df1)
+    intersects_df2 = _sjoin_representative_point(overlayed, df2)
+    if join:
+        return overlayed[lambda x: x.index.isin(intersects_df1.index)].join(
+            intersects_df2.drop(columns=["geometry", "index_right"])
+        )
+    return overlayed[
+        lambda x: (x.index.isin(intersects_df1.index))
+        & (x.index.isin(intersects_df2.index))
+    ]
+
+
+def get_actuall_difference(overlayed: GeoDataFrame, df2: GeoDataFrame) -> GeoDataFrame:
+    if not overlayed.index.is_unique:
+        overlayed = overlayed.reset_index(drop=True)
+    intersects_df2 = _sjoin_representative_point(overlayed, df2)
+    return overlayed[lambda x: ~x.index.isin(intersects_df2.index)]
+
+
+def get_actuall_difference(overlayed: DataFrame, df2: np.ndarray) -> np.ndarray:
+    assert overlayed.index.is_unique
+    intersects_df2 = _sjoin_representative_point(overlayed, df2)
+    return overlayed[lambda x: ~x.index.isin(intersects_df2.index)]
+
+
+from shapely import Geometry
+
+
+def erase(
+    df1: GeoDataFrame | GeoSeries, df2: GeoDataFrame | GeoSeries | Geometry
+) -> GeoDataFrame | GeoSeries:
+    if not grid_size and not len(df1) or not len(df2):
+        return df1
+
+    try:
+        tree = STRtree(df2.geometry.values)
+    except AttributeError:
+        try:
+            tree = STRtree(df2.values)
+        except AttributeError:
+            tree = STRtree(df2)
+
+    try:
+        left, right = tree.query(df1.geometry.values, predicate="intersects")
+    except AttributeError:
+        try:
+            left, right = tree.query(df1.values, predicate="intersects")
+        except AttributeError:
+            left, right = tree.query(df1, predicate="intersects")
+
+    pairs = _get_intersects_pairs(df1, df2, left, right, rsuffix)
+
+    overlayed = _difference(pairs, df1, left, grid_size=grid_size)
+
+    if keep_geom_type:
+        overlayed = to_single_geom_type(overlayed, geom_type)
+
+    return overlayed.reset_index(drop=True)
