@@ -134,11 +134,19 @@ class Explore(Map):
                     continue
                 if not isinstance(
                     gdf.loc[gdf[col].notna(), col].iloc[0], (Number, str, Geometry)
+                ) or (
+                    col != gdf._geometry_column_name
+                    and isinstance(gdf.loc[gdf[col].notna(), col].iloc[0], (Geometry))
                 ):
                     try:
                         gdf[col] = gdf[col].astype(str)
                     except Exception:
                         gdf = gdf.drop(col, axis=1)
+
+            try:
+                gdf.index = gdf.index.astype(str)
+            except Exception:
+                pass
             new_gdfs.append(gdf)
             show_new.append(show)
         self._gdfs = new_gdfs
