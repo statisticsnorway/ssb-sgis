@@ -347,7 +347,7 @@ def get_k_nearest_neighbors(
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 
     if get_geom_type(gdf) != "point" or get_geom_type(neighbors) != "point":
-        raise ValueError("Geometries must be points.")
+        raise ValueError("Geometries must be points")
 
     # using the range index
     idx_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf.index, strict=True)}
