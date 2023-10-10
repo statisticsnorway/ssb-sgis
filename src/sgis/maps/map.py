@@ -93,7 +93,12 @@ class Map:
         self.scheme = scheme
 
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
-            raise ValueError("gdfs must be GeoDataFrames.")
+            gdfs = [
+                to_gdf(gdf) if not isinstance(gdf, GeoDataFrame) else gdf
+                for gdf in gdfs
+            ]
+            if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
+                raise ValueError("gdfs must be GeoDataFrames.")
 
         if "namedict" in kwargs:
             for i, gdf in enumerate(gdfs):
@@ -141,6 +146,10 @@ class Map:
         for key, value in kwargs.items():
             if isinstance(value, GeoDataFrame):
                 self._gdfs.append(value)
+                self.labels.append(key)
+                self.show.append(last_show)
+            elif isinstance(value, GeoSeries):
+                self._gdfs.append(GeoDataFrame({"geometry": value}))
                 self.labels.append(key)
                 self.show.append(last_show)
             else:
