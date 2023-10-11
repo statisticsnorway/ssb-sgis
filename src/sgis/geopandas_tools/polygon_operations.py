@@ -1,24 +1,48 @@
 """Functions for polygon geometries."""
+from typing import Callable
+
 import networkx as nx
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
+from geopandas.array import GeometryArray
+from numpy.typing import NDArray
 from shapely import (
     area,
+    box,
+    buffer,
+    difference,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
+    is_empty,
     make_valid,
     polygons,
     unary_union,
 )
 from shapely.errors import GEOSException
-from shapely.geometry import Polygon
+from shapely.geometry import (
+    LinearRing,
+    LineString,
+    MultiLineString,
+    MultiPoint,
+    Point,
+    Polygon,
+)
 
-from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
+from .general import (
+    _push_geom_col,
+    clean_geoms,
+    get_common_crs,
+    get_grouped_centroids,
+    to_gdf,
+    to_lines,
+)
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .neighbors import get_neighbor_indices
+from .overlay import clean_overlay
+from .sfilter import sfilter, sfilter_inverse
 
 
 def get_polygon_clusters(
@@ -443,43 +467,300 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
     else:
         concatted = pd.concat([to_dissolve, to_eliminate])
 
-    only_one = concatted.loc[
+    one_hit = concatted.loc[
         lambda x: (x.groupby("_dissolve_idx").transform("size") == 1)
         & (x["_dissolve_idx"].notna())
     ].set_index("_dissolve_idx")
 
-    assert len(only_one) == 0
+    assert len(one_hit) == 0
 
-    more_than_one = concatted.loc[
+    many_hits = concatted.loc[
         lambda x: x.groupby("_dissolve_idx").transform("size") > 1
     ]
 
-    if not len(more_than_one):
-        return only_one
+    if not len(many_hits):
+        return one_hit
 
     kwargs.pop("as_index", None)
     eliminated = (
-        # more_than_one.dissolve("_dissolve_idx", aggfunc=aggfunc, **kwargs)
-        more_than_one.drop(columns="geometry")
+        many_hits.drop(columns="geometry")
         .groupby("_dissolve_idx", **kwargs)
         .agg(aggfunc)
         .drop(["_area"], axis=1, errors="ignore")
     )
 
-    eliminated["geometry"] = more_than_one.groupby("_dissolve_idx")["geometry"].agg(
+    eliminated["geometry"] = many_hits.groupby("_dissolve_idx")["geometry"].agg(
         lambda x: make_valid(unary_union(x.values))
     )
 
     # setting crs on geometryarray to avoid warning in concat
     not_to_dissolve.geometry.values.crs = crs
     eliminated.geometry.values.crs = crs
-    only_one.geometry.values.crs = crs
+    one_hit.geometry.values.crs = crs
 
-    to_concat = [not_to_dissolve, eliminated, only_one]
+    to_concat = [not_to_dissolve, eliminated, one_hit]
 
     assert all(df.index.name == "_dissolve_idx" for df in to_concat)
 
     return pd.concat(to_concat).sort_index()
+
+
+class PolygonsAsRings:
+    def __init__(self, polys: GeoDataFrame | GeoSeries | GeometryArray, crs=None):
+        if not isinstance(polys, (pd.DataFrame, pd.Series, GeometryArray)):
+            raise TypeError(type(polys))
+
+        self.polyclass = polys.__class__
+
+        if not isinstance(polys, pd.DataFrame):
+            polys = to_gdf(polys, crs)
+
+        self.gdf = polys.reset_index(drop=True)
+
+        if crs is not None:
+            self.crs = crs
+        elif hasattr(polys, "crs"):
+            self.crs = polys.crs
+        else:
+            self.crs = None
+
+        if not len(self.gdf):
+            self.rings = pd.Series()
+            return
+
+        # TODO: change to get_rings with return_index=True??
+
+        exterior = pd.Series(
+            get_exterior_ring(self.gdf.geometry.values),
+            index=self.exterior_index,
+        )
+
+        self.max_rings: int = np.max(get_num_interior_rings(self.gdf.geometry.values))
+
+        if not self.max_rings:
+            self.rings = exterior
+            return
+
+        # series same length as number of potential inner rings
+        interiors = pd.Series(
+            (
+                [
+                    [get_interior_ring(geom, i) for i in range(self.max_rings)]
+                    for geom in self.gdf.geometry
+                ]
+            ),
+        ).explode()
+
+        interiors.index = self.interiors_index
+
+        interiors = interiors.dropna()
+
+        self.rings = pd.concat([exterior, interiors])
+
+    def get_rings(self, agg: bool = False):
+        gdf = self.gdf.copy()
+        rings = self.rings.copy()
+        if agg:
+            gdf.geometry = rings.groupby(level=1).agg(unary_union)
+        else:
+            rings.index = rings.index.get_level_values(1)
+            rings.name = "geometry"
+            gdf = gdf.drop(columns="geometry").join(rings)
+
+        if issubclass(self.polyclass, pd.DataFrame):
+            return GeoDataFrame(gdf, crs=self.crs)
+        if issubclass(self.polyclass, pd.Series):
+            return GeoSeries(gdf.geometry)
+        return self.polyclass(gdf.geometry.values)
+
+    def apply_numpy_func_to_interiors(
+        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
+    ):
+        kwargs = kwargs or {}
+        args = args or ()
+        arr: NDArray[LinearRing] = self.rings.loc[self.is_interior].values
+        index: pd.Index = self.rings.loc[self.is_interior].index
+        results = pd.Series(
+            np.array(func(arr, *args, **kwargs)),
+            index=index,
+        )
+        self.rings.loc[self.is_interior] = results
+        return self
+
+    def apply_geoseries_func(
+        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
+    ):
+        kwargs = kwargs or {}
+        args = args or ()
+
+        ser: pd.Series = self.rings.loc[self.is_interior]
+        index: pd.Index = self.rings.loc[self.is_interior].index
+
+        results = pd.Series(
+            func(
+                GeoSeries(ser, crs=self.crs, index=self.rings.index),
+                *args,
+                **kwargs,
+            ),
+            index=index,
+        )
+        self.rings.loc[self.is_interior] = results
+
+        return self
+
+    def apply_numpy_func(
+        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
+    ):
+        kwargs = kwargs or {}
+        args = args or ()
+
+        self.rings.loc[:] = np.array(func(self.rings.values, *args, **kwargs))
+        return self
+
+    def apply_geoseries_func(
+        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
+    ):
+        kwargs = kwargs or {}
+        args = args or ()
+
+        self.rings.loc[:] = np.array(
+            func(
+                GeoSeries(self.rings, crs=self.crs, index=self.rings.index),
+                *args,
+                **kwargs,
+            )
+        )
+
+        return self
+
+    def apply_gdf_func(
+        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
+    ):
+        kwargs = kwargs or {}
+        args = args or ()
+
+        gdf = GeoDataFrame(
+            {"geometry": self.rings.values},
+            crs=self.crs,
+            index=self.rings.index.get_level_values(1),
+        ).join(self.gdf.drop(columns="geometry"))
+
+        assert len(gdf) == len(self.rings)
+
+        gdf.index = self.rings.index
+
+        self.rings.loc[:] = func(
+            gdf,
+            *args,
+            **kwargs,
+        ).geometry.values
+
+        return self
+
+    @property
+    def is_interior(self):
+        return self.rings.index.get_level_values(0) == 1
+
+    @property
+    def is_exterior(self):
+        return self.rings.index.get_level_values(0) == 0
+
+    @property
+    def interiors_index(self):
+        """A three-leveled MultiIndex.
+
+        Used to separate interior and exterior and sort the interior in
+        the 'to_numpy' method.
+
+        level 0: all 1s, indicating "is interior".
+        level 1: gdf index repeated *self.max_rings* times.
+        level 2: interior number index. 0 * len(gdf), 1 * len(gdf), 2 * len(gdf)...
+        """
+        if not self.max_rings:
+            return pd.MultiIndex()
+        len_gdf = len(self.gdf)
+        n_potential_interiors = len_gdf * self.max_rings
+        gdf_index = sorted(list(self.gdf.index) * self.max_rings)
+        interior_number_index = np.tile(np.arange(self.max_rings), len_gdf)
+        one_for_interior = np.repeat(1, n_potential_interiors)
+
+        return pd.MultiIndex.from_arrays(
+            [one_for_interior, gdf_index, interior_number_index]
+        )
+
+    @property
+    def exterior_index(self):
+        """A three-leveled MultiIndex.
+
+        Used to separate interior and exterior in the 'to_numpy' method.
+        Only leve 1 is used for the exterior.
+
+        level 0: all 0s, indicating "not interior".
+        level 1: gdf index.
+        level 2: All 0s.
+        """
+        zero_for_not_interior = np.repeat(0, len(self.gdf))
+        return pd.MultiIndex.from_arrays(
+            [zero_for_not_interior, self.gdf.index, zero_for_not_interior]
+        )
+
+    def to_gdf(self) -> GeoDataFrame:
+        """Return the GeoDataFrame with polygons."""
+        self.gdf.geometry = self.to_numpy()
+        return self.gdf
+
+    def to_numpy(self) -> NDArray[Polygon]:
+        """Return a numpy array of polygons."""
+        exterior = self.rings.loc[self.is_exterior].sort_index().values
+        assert exterior.shape == (len(self.gdf),)
+
+        nonempty_interiors = self.rings.loc[self.is_interior]
+
+        if not len(nonempty_interiors):
+            return make_valid(polygons(exterior))
+
+        empty_interiors = pd.Series(
+            [None for _ in range(len(self.gdf) * self.max_rings)],
+            index=self.interiors_index,
+        ).loc[lambda x: ~x.index.isin(nonempty_interiors.index)]
+
+        interiors = (
+            pd.concat([nonempty_interiors, empty_interiors])
+            .sort_index()
+            # make each ring level a column with same length and order as gdf
+            .unstack(level=2)
+            .sort_index()
+            .values
+        )
+        assert interiors.shape == (len(self.gdf), self.max_rings), interiors.shape
+
+        return make_valid(polygons(exterior, interiors))
+
+
+def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
+    holes = get_holes(gdf)
+    inside_holes = sfilter(gdf, holes, predicate="within").unary_union
+
+    def to_none_if_thin(geoms):
+        buffered_in = buffer(
+            difference(polygons(geoms), inside_holes), -(tolerance / 2)
+        )
+        return np.where(is_empty(buffered_in), None, geoms)
+
+    if not (gdf.geom_type == "Polygon").all():
+        raise ValueError(gdf.geom_type.value_counts())
+
+    return PolygonsAsRings(gdf).apply_numpy_func_to_interiors(to_none_if_thin).to_gdf()
+
+
+def return_correct_geometry_object(in_obj, out_obj):
+    if isinstance(in_obj, GeoDataFrame):
+        in_obj.geometry = out_obj
+        return in_obj
+    elif isinstance(in_obj, GeoSeries):
+        return GeoSeries(out_obj, crs=in_obj.crs)
+    else:
+        return out_obj
 
 
 def close_all_holes(
@@ -561,6 +842,33 @@ def close_all_holes(
         return gdf
     else:
         return gdf.map(lambda x: _close_all_holes_no_islands(x, all_geoms))
+
+
+def _close_thin_holes(
+    gdf: GeoDataFrame | GeoSeries,
+    tolerance: int | float,
+    *,
+    ignore_islands: bool = False,
+    copy: bool = True,
+) -> GeoDataFrame | GeoSeries:
+    holes = get_holes(gdf)
+
+    if not len(holes):
+        return gdf
+
+    if not ignore_islands:
+        inside_holes = sfilter(gdf, holes, predicate="within")
+
+        def is_thin(x):
+            return x.buffer(-tolerance).is_empty
+
+        in_between = clean_overlay(
+            holes, inside_holes, how="difference", grid_size=None
+        ).loc[is_thin]
+
+        holes = pd.concat([holes, in_between])
+
+    thin_holes = holes.loc[is_thin]
 
 
 def close_small_holes(
@@ -729,20 +1037,67 @@ def _close_all_holes_no_islands(poly, all_geoms):
     return make_valid(unary_union(holes_closed))
 
 
-def get_holes(gdf: GeoDataFrame, as_polygons=True) -> GeoDataFrame:
-    # simply return the linearring if not as_polygons
-    astype = polygons if as_polygons else lambda x: x
+def get_gaps(gdf: GeoDataFrame, include_interiors: bool = False) -> GeoDataFrame:
+    """Get the gaps between polygons.
+
+    Args:
+        gdf: GeoDataFrame of polygons.
+        include_interiors: If False (default), the holes inside individual polygons
+            will not be included as gaps.
+
+    Returns:
+        GeoDataFrame of polygons with only a geometry column.
+    """
     if not len(gdf):
         return GeoDataFrame({"geometry": []}, crs=gdf.crs)
+
+    if not include_interiors:
+        gdf = close_all_holes(gdf)
+
+    bbox = GeoDataFrame(
+        {"geometry": [box(*tuple(gdf.total_bounds)).buffer(1)]}, crs=gdf.crs
+    )
+
+    gaps = make_all_singlepart(
+        clean_overlay(bbox, gdf, how="difference", geom_type="polygon")
+    )
+
+    # remove the outer "gap", i.e. the surrounding area
+    return sfilter_inverse(gaps, get_exterior_ring(bbox.geometry.values)).reset_index(
+        drop=True
+    )
+
+
+def get_holes(gdf: GeoDataFrame, as_polygons=True) -> GeoDataFrame:
+    """Get the holes inside polygons.
+
+    Args:
+        gdf: GeoDataFrame of polygons.
+        as_polygons: If True (default), the holes will be returned as polygons.
+            If False, they will be returned as LinearRings.
+
+    Returns:
+        GeoDataFrame of polygons or linearrings with only a geometry column.
+    """
+    if not len(gdf):
+        return GeoDataFrame({"geometry": []}, crs=gdf.crs)
+
+    def as_linearring(x):
+        return x
+
+    astype = polygons if as_polygons else as_linearring
+
     geoms = (
         make_all_singlepart(gdf.geometry).to_numpy()
         if isinstance(gdf, GeoDataFrame)
         else make_all_singlepart(gdf).to_numpy()
     )
+
     rings = [
         GeoSeries(astype(get_interior_ring(geoms, i)), crs=gdf.crs)
         for i in range(max(get_num_interior_rings(geoms)))
     ]
+
     return (
         GeoDataFrame({"geometry": (pd.concat(rings).pipe(clean_geoms).sort_index())})
         if rings

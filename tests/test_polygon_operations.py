@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
@@ -13,6 +14,41 @@ src = str(Path(__file__).parent.parent) + "/src"
 sys.path.insert(0, src)
 
 import sgis as sg
+
+
+def test_polygonsasrings():
+    p = sg.to_gdf([0, 0])
+
+    buff1 = sg.buffdissexp(p, 100)
+
+    no_holes_closed = sg.close_all_holes(buff1)
+    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3), (
+        no_holes_closed,
+        buff1,
+    )
+    no_holes_closed = sg.close_small_holes(buff1, max_area=1_000_000)
+    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3)
+
+    buff2 = sg.buffdissexp(p, 200)
+    ring_with_hole = sg.clean_overlay(buff2, buff1, how="difference")
+
+    buff0 = sg.buffdissexp(p, 30)
+    ring_with_hole_and_island = pd.concat([ring_with_hole, buff0])
+
+    p2 = sg.to_gdf([150, 0]).buffer(10).to_frame()
+    two_holes = sg.clean_overlay(ring_with_hole_and_island, p2, how="difference")
+
+    rings = sg.PolygonsAsRings(two_holes).get_rings()
+    assert int(rings.length.sum()) == 2136, rings.length.sum()
+    assert isinstance(rings, gpd.GeoDataFrame), type(rings)
+
+    rings = sg.PolygonsAsRings(two_holes.geometry).get_rings()
+    assert int(rings.length.sum()) == 2136, rings.length.sum()
+    assert isinstance(rings, gpd.GeoSeries), type(rings)
+
+    rings = sg.PolygonsAsRings(two_holes.geometry.values).get_rings()
+    assert int(rings.length.sum()) == 2136, rings.length.sum()
+    assert isinstance(rings, gpd.array.GeometryArray), type(rings)
 
 
 def test_close_holes():
@@ -250,6 +286,7 @@ def test_eliminate():
 
 
 if __name__ == "__main__":
+    test_polygonsasrings()
     test_eliminate()
 
     test_close_holes()

@@ -8,6 +8,7 @@ from shapely.ops import nearest_points
 
 from ..geopandas_tools.general import to_lines
 from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
+from ..geopandas_tools.polygon_operations import PolygonsAsRings
 
 
 def snap_within_distance(
@@ -76,7 +77,7 @@ def snap_within_distance(
     1  POINT (2.00000 2.00000)      1.414214
     """
 
-    to = _polygons_to_lines(to)
+    to = _polygons_to_rings(to)
 
     if not distance_col and not isinstance(points, GeoDataFrame):
         return _shapely_snap(
@@ -157,7 +158,7 @@ def snap_all(
     0  POINT (2.00000 2.00000)       2.828427
     1  POINT (2.00000 2.00000)       1.414214
     """
-    to = _polygons_to_lines(to)
+    to = _polygons_to_rings(to)
 
     if not isinstance(points, GeoDataFrame):
         return _shapely_snap(
@@ -182,15 +183,15 @@ def snap_all(
     return copied
 
 
-def _polygons_to_lines(gdf):
+def _polygons_to_rings(gdf):
     if get_geom_type(gdf) == "polygon":
-        return to_lines(gdf)
-    if get_geom_type(gdf) == "mixed":
-        gdf_points = to_single_geom_type(gdf, "point")
-        gdf_lines = to_single_geom_type(gdf, "line")
-        gdf_polys = to_lines(to_single_geom_type(gdf, "polygon"))
-        return pd.concat([gdf_points, gdf_lines, gdf_polys])
-    return gdf
+        return PolygonsAsRings(gdf).get_rings()
+    if get_geom_type(gdf) != "mixed":
+        return gdf
+    gdf_points = to_single_geom_type(gdf, "point")
+    gdf_lines = to_single_geom_type(gdf, "line")
+    gdf_polys = PolygonsAsRings(to_single_geom_type(gdf, "polygon")).get_rings()
+    return pd.concat([gdf_points, gdf_lines, gdf_polys])
 
 
 def _shapely_snap(
