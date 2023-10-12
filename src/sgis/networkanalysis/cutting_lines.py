@@ -3,16 +3,29 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame, Series
-from shapely import force_2d, get_coordinates, linestrings
+from shapely import (
+    buffer,
+    extract_unique_points,
+    force_2d,
+    get_coordinates,
+    get_parts,
+    linestrings,
+    touches,
+    unary_union,
+)
 from shapely.geometry import LineString, Point
 
 from ..geopandas_tools.buffer_dissolve_explode import buff
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
-from ..geopandas_tools.point_operations import snap_all, snap_within_distance
+from ..geopandas_tools.point_operations import (
+    _shapely_snap,
+    snap_all,
+    snap_within_distance,
+)
 from ..geopandas_tools.sfilter import sfilter_split
 from .nodes import make_edge_coords_cols
 
@@ -20,7 +33,7 @@ from .nodes import make_edge_coords_cols
 def split_lines_by_nearest_point(
     gdf: GeoDataFrame,
     points: GeoDataFrame,
-    max_distance: int | None = None,
+    max_distance: int | float | None = None,
     splitted_col: str | None = None,
 ) -> DataFrame:
     """Split lines that are closest to s point.
@@ -70,16 +83,23 @@ def split_lines_by_nearest_point(
     Not all lines were split. That is because some points were closest to an endpoint
     of a line.
     """
-    BUFFDIST = 0.000001
+    PRECISION = 0.000001
 
-    if not points.crs.equals(gdf.crs):
+    if not len(gdf):
+        return gdf
+
+    if (points.crs is not None and gdf.crs is not None) and not points.crs.equals(
+        gdf.crs
+    ):
         raise ValueError("crs mismatch:", points.crs, "and", gdf.crs)
 
     if get_geom_type(gdf) != "line":
-        raise ValueError("'gdf' should only have line geometries.")
+        raise ValueError("'gdf' should only have line geometries.", gdf.geom_type)
 
     if get_geom_type(points) != "point":
         raise ValueError("'points' should only have point geometries.")
+
+    gdf = gdf.copy()
 
     # move the points to the nearest exact point of the line
     if max_distance:
@@ -87,8 +107,8 @@ def split_lines_by_nearest_point(
     else:
         snapped = snap_all(points, gdf)
 
-    # find the lines that were snapped to (or are very close)
-    snapped_buff = buff(snapped, BUFFDIST)
+    # find the lines that were snapped to (or are very close because of float rounding)
+    snapped_buff = buff(snapped, PRECISION, resolution=16)
     relevant_lines, the_other_lines = sfilter_split(gdf, snapped_buff)
 
     if max_distance and not len(relevant_lines):
@@ -102,13 +122,23 @@ def split_lines_by_nearest_point(
     snapped.geometry = force_2d(snapped.geometry)
 
     # split the lines with buffer + difference, since shaply.split usually doesn't work
+    # relevant_lines["_idx"] = range(len(relevant_lines))
     splitted = relevant_lines.overlay(snapped_buff, how="difference").explode(
         ignore_index=True
     )
 
-    # the endpoints of the new lines are now sligtly off. To get the exact snapped
-    # point coordinates, using get_k_nearest_neighbors. This will map the sligtly
-    # off line endpoints with the point the line was split by.
+    # linearrings (maybe coded as linestrings) that were not split,
+    # does not have edges and must be added in the end
+    boundaries = splitted.geometry.boundary
+    circles = splitted[boundaries.is_empty]
+    splitted = splitted[~boundaries.is_empty]
+
+    if not len(splitted):
+        return pd.concat([the_other_lines, circles], ignore_index=True)
+
+    # the endpoints of the new lines are now sligtly off. Using get_k_nearest_neighbors
+    # to get the exact snapped point coordinates, . This will map the sligtly
+    # wrong line endpoints with the point the line was split by.
 
     snapped["point_coords"] = [(geom.x, geom.y) for geom in snapped.geometry]
 
@@ -121,10 +151,11 @@ def split_lines_by_nearest_point(
     def get_nearest(splitted, snapped) -> pd.DataFrame:
         """find the nearest snapped point for each source and target of the lines"""
         return get_k_nearest_neighbors(splitted, snapped, k=1).loc[
-            lambda x: x["distance"] <= BUFFDIST * 2
+            lambda x: x["distance"] <= PRECISION * 2
         ]
 
-    snapped = snapped.set_index("point_coords")
+    # snapped = snapped.set_index("point_coords")
+    snapped.index = snapped.geometry
     dists_source = get_nearest(splitted_source, snapped)
     dists_target = get_nearest(splitted_target, snapped)
 
@@ -135,49 +166,131 @@ def split_lines_by_nearest_point(
     # now, we can replace the source/target coordinate with the coordinates of
     # the snapped points.
 
-    """
-    # pointmapper_source: np.ndarray = dists_source["neighbor_index"].to_numpy()
-    # pointmapper_target: np.ndarray = dists_target["neighbor_index"].to_numpy()
-
-    coords = get_coordinates(splitted.loc[dists_source.index, "geometry"])
-    print(pointmapper_source.to_numpy().shape)
-    print(coords.shape)
-    print(coords[:, 0].shape)
-    coords[:, 0] = pointmapper_source
-    splitted.loc[dists_source.index, "geometry"] = linestrings(coords)
-
-    coords = get_coordinates(splitted.loc[dists_target.index, "geometry"])
-    coords[:, 1] = pointmapper_target
-    splitted.loc[dists_target.index, "geometry"] = linestrings(coords)"""
-
-    splitted = change_line_endpoint(splitted, dists_source, pointmapper_source, i=0)
+    splitted = change_line_endpoint(
+        splitted, dists_source, pointmapper_source, change_what="first"
+    )  # i=0)
 
     # same for the lines where the target was split, but change the last coordinate
-    splitted = change_line_endpoint(splitted, dists_target, pointmapper_target, i=-1)
+    splitted = change_line_endpoint(
+        splitted, dists_target, pointmapper_target, change_what="last"
+    )  # , i=-1)
 
     if splitted_col:
         splitted[splitted_col] = 1
 
-    lines = pd.concat([the_other_lines, splitted], ignore_index=True).drop(
+    return pd.concat([the_other_lines, splitted, circles], ignore_index=True).drop(
         ["source_coords", "target_coords"], axis=1
     )
 
-    return lines
-
 
 def change_line_endpoint(
-    gdf: GeoDataFrame, dists: pd.DataFrame, pointmapper: pd.Series, i: int
+    gdf: GeoDataFrame,
+    dists: pd.DataFrame,
+    pointmapper: pd.Series,
+    change_what: str,  # i: int
 ) -> GeoDataFrame:
     """
     Loop for each line where the source is the endpoint that was split
     change the first point of the line to the point it was split by
     """
+    assert gdf.index.is_unique
+
+    if change_what == "first":
+        to_be_changed = lambda x: ~x.index.duplicated(keep="first")
+    elif change_what == "last":
+        to_be_changed = lambda x: ~x.index.duplicated(keep="last")
+    else:
+        raise ValueError("change_what should be 'first' or 'last'")
+
+    is_relevant = gdf.index.isin(dists.index)
+    relevant_lines = gdf.loc[is_relevant]
+
+    relevant_lines.geometry = extract_unique_points(relevant_lines.geometry)
+    relevant_lines = relevant_lines.explode(index_parts=False)
+
+    relevant_lines.loc[to_be_changed, "geometry"] = (
+        relevant_lines.loc[to_be_changed].index.map(pointmapper).values
+    )
+
+    relevant_lines_mapped = relevant_lines.groupby(level=0)["geometry"].agg(LineString)
+
+    gdf.loc[is_relevant, "geometry"] = relevant_lines_mapped
+
+    return gdf
+
     for idx in dists.index:
         line = gdf.loc[idx, "geometry"]
         coordslist = list(line.coords)
         coordslist[i] = pointmapper[idx]
         gdf.loc[idx, "geometry"] = LineString(coordslist)
     return gdf
+
+
+def split_lines2(
+    gdf: GeoDataFrame, points: GeoDataFrame, max_distance: int | float
+) -> GeoDataFrame:
+    if not (gdf.geom_type == "LineString").all():
+        raise ValueError()
+
+    geom_col = gdf._geometry_column_name
+
+    snapped = snap_within_distance(points, lines, max_distance=max_distance)
+
+    line_segments = get_line_segments(gdf)
+
+    multipoints = gdf.assign(**{geom_col == extract_unique_points(gdf[geom_col])})
+    multipoints["_split_idx"] = range(len(multipoints))
+    points = multipoints.explode(index_parts=False)
+
+    snap_points_df = (
+        GeoDataFrame(
+            {"geometry": extract_unique_points(get_parts(line_merge(snap_to)))}
+        ).explode(index_parts=False)
+        # .pipe(remove_points_on_straight_lines)
+    )
+
+
+def add_nearest_points_as_line_vertices(
+    lines: np.ndarray,
+    points: np.ndarray,
+    max_distance: int | float | None = None,
+) -> np.ndarray:
+    PRECISION = 0.000001
+
+    lines["_line_index"] = range(len(lines))
+
+    snapped = snap_within_distance(points, lines, max_distance=max_distance)
+    snapped.index = snapped.geometry
+
+    line_segments = (
+        get_line_segments(lines)
+        .reset_index(drop=True)
+        .sjoin(snapped.pipe(buff, PRECISION))
+    )
+
+    line_segments["endpoints"] = line_segments.geometry.boundary
+
+    agged = line_segments.groupby(level=0).apply(sorted_unary_union)
+    line_segments = line_segments.drop_duplicates("_line_index")
+    line_segments.geometry = agged
+
+    # line_segments = sfilter_inverse(line_segments, geoms)
+
+    merged = line_segments.groupby("_line_index", as_index=False)["geometry"].agg(
+        unary_union
+    )
+
+    merged = merged.join(lines.drop(columns="geometry"))
+
+    merged.geometry = line_merge(merged.geometry)
+
+    is_not_merged = merged.geom_type == "MultiLineString"
+
+    merged.loc[is_not_merged, "geometry"] = merged.loc[is_not_merged, "geometry"].apply(
+        line_merge_by_force
+    )
+
+    return merged
 
 
 def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoDataFrame:
