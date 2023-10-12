@@ -22,8 +22,9 @@ def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDa
         gdf: Road GeoDataFrame.
         dropnegative: Whether to keep rows with negative minute values in both directions.
             These are mostly circles with no impact on the analyses, but there might be
-            exceptions. Keeping negative values will cause an error when building the
-            network graph. Recode these rows to a non-negative values to keep them.
+            exceptions. Keeping negative values will result in an error when building the
+            network graph. Recode these rows to a non-negative values if you want
+            to keep them.
 
     Examples
     --------
