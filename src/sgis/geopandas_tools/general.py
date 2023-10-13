@@ -1,6 +1,7 @@
 import numbers
 import warnings
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable, Hashable
 
 import numpy as np
 import pandas as pd
@@ -22,7 +23,7 @@ from .conversion import to_gdf
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
-def get_common_crs(iterable: Iterable[Any], strict: bool = False) -> pyproj.CRS | None:
+def get_common_crs(iterable: Iterable[Hashable], strict: bool = False) -> pyproj.CRS | None:
     """Returns the common not-None crs or raises a ValueError if more than one.
 
     Args:

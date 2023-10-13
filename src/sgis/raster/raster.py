@@ -5,7 +5,7 @@ import warnings
 from copy import copy, deepcopy
 from json import loads
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
