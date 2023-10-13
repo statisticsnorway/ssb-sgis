@@ -1,5 +1,6 @@
 import numbers
-from typing import Any, Callable, Iterable
+from typing import Any
+from collections.abc import Callable, Collection, Mapping
 
 import geopandas as gpd
 import numpy as np
@@ -439,7 +440,7 @@ def bounds_to_points(
 
 
 def to_bbox(
-    obj: GeoDataFrame | GeoSeries | Geometry | Iterable | dict,
+    obj: GeoDataFrame | GeoSeries | Geometry | Collection | Mapping,
 ) -> tuple[float, float, float, float]:
     """Returns 4-length tuple of bounds if possible, else raises ValueError.
 

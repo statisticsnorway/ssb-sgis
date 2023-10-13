@@ -1,4 +1,4 @@
-from typing import Callable, Iterable
+from collections.abc import Iterable
 
 import networkx as nx
 import pandas as pd

@@ -2,8 +2,8 @@ import functools
 import itertools
 import multiprocessing
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sized
-
+from typing import Any
+from collections.abc import Collection, Callable, Iterable
 
 try:
     import dapla as dp
@@ -73,7 +73,7 @@ class Parallel:
     def map(
         self,
         func: Callable,
-        iterable: Iterable,
+        iterable: Collection,
         kwargs: dict | None = None,
     ) -> list[Any]:
         """Run functions in parallel with items of an iterable as first arguemnt.
@@ -153,7 +153,7 @@ class Parallel:
     def starmap(
         self,
         func: Callable,
-        iterable: Iterable[Iterable[Any]],
+        iterable: Collection[Iterable[Any]],
         kwargs: dict | None = None,
     ) -> list[Any]:
         """Run functions in parallel where items of the iterable are unpacked.
