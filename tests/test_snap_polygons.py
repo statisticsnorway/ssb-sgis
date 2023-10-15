@@ -18,26 +18,15 @@ sys.path.insert(0, src)
 
 
 import sgis as sg
+from sgis.geopandas_tools.polygons_to_lines import get_cheap_centerlines
+from sgis.geopandas_tools.snap_polygons import _concat_gaps_double_and_slivers
 
 
-PRECISION = 1e-4
+def test_remove_points_on_straight_lines():
+    line = sg.to_gdf([(0, 0), (0, 1), (0, 2), (1, 2), (2, 2), (3, 3), (4, 4), (5, 5)])
+    line.index = [1] * len(line)
 
-from geopandas import GeoDataFrame
-from numpy.typing import NDArray
-from shapely import *
-from shapely.geometry import *
-from shapely.ops import *
-
-from sgis import *
-from sgis.geopandas_tools.snap_polygons import *
-
-
-df = gpd.read_parquet(r"C:\Users\ort\git\ssb-sgis\tests\testdata\gap_lines.parquet")
-"""
-
-to_lines_prec(df)
-
-sss"""
+    t = remove_points_on_straight_lines(t, gap_lines)
 
 
 def test_coverage_clean():
@@ -50,6 +39,7 @@ def test_coverage_clean():
     df_problem_area = sg.sfilter(df, dissappears.buffer(0.1))
 
     assert len(df_problem_area) == 3
+
     assert (area := int(df_problem_area.area.sum())) == AREA_SHOULD_BE, area
 
     cleaned = sg.coverage_clean(df, 0.1)
@@ -89,6 +79,7 @@ def test_snap():
     mask = sg.to_gdf("POINT (905139.722 7878785.909)", crs=25833).buffer(330)
 
     df = gpd.read_parquet(Path(__file__).parent / "testdata" / "polygon_snap.parquet")
+    gaps = gpd.read_parquet(Path(__file__).parent / "testdata" / "gap_lines.parquet")
 
     holes = sg.to_gdf(
         [
@@ -102,21 +93,30 @@ def test_snap():
     df = sg.clean_overlay(df, holes, how="difference")
 
     sg.qtm(df.clip(mask))
+
     sg.qtm(df=df.clip(mask).pipe(sg.buff, -0.5))
 
-    snapped = sg.snap_polygons(df, 5)
-    gaps = sg.get_gaps(snapped)
-    double = sg.get_intersections(snapped)
+    tolerance = 5
+
+    gaps, _ = _concat_gaps_double_and_slivers(df, tolerance)
+    snap_to = get_cheap_centerlines(gaps)
+
+    snapped = sg.snap_polygons(df, tolerance).pipe(sg.snap_polygons, tolerance)
 
     sg.qtm(
         snapped=snapped.clip(mask).pipe(sg.buff, -0.5),
     )
+
+    gaps = sg.get_gaps(snapped)
+    double = sg.get_intersections(snapped)
+
     sg.qtm(
         snapped=snapped.clip(mask),
         double=double.clip(mask),
         gaps=gaps.clip(mask),
         alpha=0.5,
     )
+    sg.explore(snap_to, snapped, double, gaps)
 
     snapped.explode().explode().to_parquet(
         Path(__file__).parent / "testdata" / "polygon_snap_result1.parquet"
@@ -135,7 +135,7 @@ def test_snap():
 
     print("\n\nnå snapped2\n")
 
-    snapped2 = sg.snap_polygons(snapped, tolerance=5).assign(
+    snapped2 = sg.snap_polygons(snapped, tolerance=tolerance).assign(
         idx=lambda x: [str(i) for i in range(len(x))]
     )
 
@@ -153,7 +153,7 @@ def test_snap():
         # column="idx",
     )
 
-    snapped3 = sg.snap_polygons(df, snap_to=snapped2, tolerance=5).assign(
+    snapped3 = sg.snap_polygons(df, snap_to=snapped2, tolerance=tolerance).assign(
         idx=lambda x: [str(i) for i in range(len(x))]
     )
 
