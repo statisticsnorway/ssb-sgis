@@ -66,7 +66,8 @@ from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_t
 from .neighbors import get_all_distances, k_nearest_neighbors
 from .overlay import clean_overlay
 from .polygon_operations import close_small_holes, close_thin_holes, get_gaps, get_holes
-from .polygons_to_lines import PolygonsAsRings, get_cheap_centerlines
+from .polygons_as_rings import PolygonsAsRings
+from .polygons_to_lines import get_cheap_centerlines
 from .sfilter import sfilter, sfilter_inverse, sfilter_split
 
 

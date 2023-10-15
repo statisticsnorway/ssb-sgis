@@ -55,15 +55,20 @@ from .geopandas_tools.neighbors import (
 from .geopandas_tools.overlay import clean_overlay
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import (
+    PolygonsAsRings,
     close_all_holes,
     close_small_holes,
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
+    get_gaps,
     get_holes,
     get_polygon_clusters,
 )
+from .geopandas_tools.polygons_as_rings import PolygonsAsRings
+from .geopandas_tools.polygons_to_lines import get_cheap_centerlines
 from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
+from .geopandas_tools.snap_polygons import coverage_clean, snap_polygons
 from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url
