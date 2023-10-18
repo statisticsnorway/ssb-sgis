@@ -507,14 +507,20 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
 
 
 def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
+    gdf = make_all_singlepart(gdf)
     holes = get_holes(gdf)
     inside_holes = sfilter(gdf, holes, predicate="within").unary_union
 
     def to_none_if_thin(geoms):
-        buffered_in = buffer(
-            difference(polygons(geoms), inside_holes), -(tolerance / 2)
-        )
-        return np.where(is_empty(buffered_in), None, geoms)
+        try:
+            buffered_in = buffer(
+                difference(polygons(geoms), inside_holes), -(tolerance / 2)
+            )
+            return np.where(is_empty(buffered_in), None, geoms)
+        except ValueError as e:
+            if not len(geoms):
+                return geoms
+            raise e
 
     if not (gdf.geom_type == "Polygon").all():
         raise ValueError(gdf.geom_type.value_counts())
