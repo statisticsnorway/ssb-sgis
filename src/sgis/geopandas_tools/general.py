@@ -1,7 +1,7 @@
 import numbers
 import warnings
+from collections.abc import Hashable, Iterable
 from typing import Any
-from collections.abc import Iterable, Hashable
 
 import numpy as np
 import pandas as pd
@@ -23,7 +23,9 @@ from .conversion import to_gdf
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
-def get_common_crs(iterable: Iterable[Hashable], strict: bool = False) -> pyproj.CRS | None:
+def get_common_crs(
+    iterable: Iterable[Hashable], strict: bool = False
+) -> pyproj.CRS | None:
     """Returns the common not-None crs or raises a ValueError if more than one.
 
     Args:
@@ -226,7 +228,7 @@ def get_grouped_centroids(
     return gdf[groupby].map(grouped_centerpoints["wkt"])
 
 
-def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
+def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     """Sort GeoDataFrame by area in decending order.
 
     Examples
@@ -263,19 +265,17 @@ def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
     3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
     0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
     """
-    return (
-        gdf.assign(area_=gdf.area)
-        .sort_values("area_", ascending=False)
-        .drop(columns="area_")
-    )
+    area_mapper = dict(enumerate(gdf.area.values))
+    sorted_areas = dict(reversed(sorted(area_mapper.items(), key=lambda item: item[1])))
+    return gdf.iloc[list(sorted_areas)]
 
 
-def sort_long_first(gdf: GeoDataFrame) -> GeoDataFrame:
-    return (
-        gdf.assign(length_=gdf.length)
-        .sort_values("length_", ascending=False)
-        .drop(columns="length_")
+def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
+    length_mapper = dict(enumerate(gdf.length.values))
+    sorted_lengths = dict(
+        reversed(sorted(length_mapper.items(), key=lambda item: item[1]))
     )
+    return gdf.iloc[list(sorted_lengths)]
 
 
 def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
