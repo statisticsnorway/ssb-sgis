@@ -265,6 +265,9 @@ class PolygonsAsRings:
 
     def to_numpy(self) -> NDArray[Polygon]:
         """Return a numpy array of polygons."""
+        if not len(self.rings):
+            return np.array([])
+
         exterior = self.rings.loc[self.is_exterior].sort_index().values
         assert exterior.shape == (len(self.gdf),)
 
