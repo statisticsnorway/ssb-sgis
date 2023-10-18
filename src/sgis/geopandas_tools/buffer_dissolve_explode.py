@@ -232,6 +232,9 @@ def dissexp_by_cluster(gdf: GeoDataFrame, **dissolve_kwargs) -> GeoDataFrame:
     elif by:
         by = list(by)
 
+    if not len(gdf):
+        return dissexp(gdf, by=by, **dissolve_kwargs)
+
     def get_group_clusters(group: GeoDataFrame):
         """Adds cluster column. Applied to each group because much faster."""
         return make_all_singlepart(group).pipe(
