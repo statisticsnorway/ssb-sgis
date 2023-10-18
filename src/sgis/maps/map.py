@@ -13,6 +13,7 @@ from jenkspy import jenks_breaks
 from mapclassify import classify
 from shapely import Geometry
 
+from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import (
     clean_geoms,
     drop_inactive_geometry_columns,
