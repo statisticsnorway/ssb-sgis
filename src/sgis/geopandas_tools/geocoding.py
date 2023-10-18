@@ -1,4 +1,7 @@
-import geocoder
+try:
+    import geocoder
+except ImportError:
+    pass
 from geopandas import GeoDataFrame
 
 from .conversion import to_gdf
