@@ -239,7 +239,7 @@ def _shapely_pd_overlay(
     assert isinstance(overlayed, list)
 
     overlayed = pd.concat(overlayed, ignore_index=True).drop(
-        columns="index_right", errors="ignore"
+        columns="_overlay_index_right", errors="ignore"
     )
 
     # push geometry column to the end
@@ -355,12 +355,16 @@ def _get_intersects_pairs(
     return pd.concat(
         [
             df1.take(left),
-            (DataFrame({"index_right": right}, index=df1.index.values.take(left))),
+            (
+                DataFrame(
+                    {"_overlay_index_right": right}, index=df1.index.values.take(left)
+                )
+            ),
         ],
         axis=1,
     ).join(
         df2.rename(columns={"geometry": "geom_right"}, errors="raise"),
-        on="index_right",
+        on="_overlay_index_right",
         rsuffix=rsuffix,
     )
 
@@ -402,7 +406,7 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
             **{
                 c: "first"
                 for c in df1.columns
-                if c not in ["index_right", "geom_right"]
+                if c not in ["_overlay_index_right", "geom_right"]
             },
         }
     )
@@ -422,7 +426,7 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
 def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
     clip_right = (
         pairs.rename(columns={"geometry": "geom_left", "geom_right": "geometry"})
-        .groupby(by="index_right")
+        .groupby(by="_overlay_index_right")
         .agg(
             {
                 "geom_left": agg_geoms,
