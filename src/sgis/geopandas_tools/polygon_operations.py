@@ -1,12 +1,9 @@
 """Functions for polygon geometries."""
-from typing import Callable
 
 import networkx as nx
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryArray
-from numpy.typing import NDArray
 from shapely import (
     area,
     box,
@@ -22,23 +19,8 @@ from shapely import (
     unary_union,
 )
 from shapely.errors import GEOSException
-from shapely.geometry import (
-    LinearRing,
-    LineString,
-    MultiLineString,
-    MultiPoint,
-    Point,
-    Polygon,
-)
 
-from .general import (
-    _push_geom_col,
-    clean_geoms,
-    get_common_crs,
-    get_grouped_centroids,
-    to_gdf,
-    to_lines,
-)
+from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
