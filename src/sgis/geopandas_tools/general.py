@@ -8,18 +8,17 @@ import pandas as pd
 import pyproj
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryDtype
-from geopandas.tools.sjoin import _geom_predicate_query
 from shapely import (
     Geometry,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
+    make_valid,
 )
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from .conversion import to_gdf
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
@@ -488,7 +487,7 @@ def clean_clip(
         try:
             mask = clean_geoms(mask)
         except TypeError:
-            mask = clean_geoms(to_gdf(mask, crs=gdf.crs))
+            mask = make_valid(mask)
 
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
 
