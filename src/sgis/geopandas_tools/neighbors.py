@@ -343,6 +343,9 @@ def get_k_nearest_neighbors(
 
     [100 rows x 3 columns]
     """
+    if not len(gdf) or not len(neighbors):
+        return DataFrame(columns=["neighbor_index", "distance"])
+
     if gdf.crs != neighbors.crs:
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 
@@ -388,15 +391,15 @@ def k_nearest_neighbors(
     if not len(to_array) or not len(from_array):
         return np.array([]), np.array([])
 
-    if not k:
+    if k is None:
         k = len(to_array)
 
     if not strict:
         k = k if len(to_array) >= k else len(to_array)
 
     nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(to_array)
-    dists, indices = nbr.kneighbors(from_array)
-    return dists, indices
+    distances, indices = nbr.kneighbors(from_array)
+    return distances, indices
 
 
 def _get_edges(
