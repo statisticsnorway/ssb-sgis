@@ -214,7 +214,9 @@ def to_gdf(
         return _geoseries_to_gdf(obj, geom_col, crs, **kwargs)
 
     if is_array_like(geometry) and len(geometry) == len(obj):
-        geometry = GeoSeries(_make_one_shapely_geom(g) for g in geometry)
+        geometry = GeoSeries(
+            _make_one_shapely_geom(g) for g in geometry if g is not None
+        )
         return GeoDataFrame(obj, geometry=geometry, crs=crs, **kwargs)
 
     geom_col: str = find_geometry_column(obj, geometry)
@@ -222,7 +224,9 @@ def to_gdf(
 
     # get done with iterators that get consumed by 'all'
     if isinstance(obj, Iterator) and not isinstance(obj, Sized):
-        obj = GeoSeries((_make_one_shapely_geom(g) for g in obj), index=index)
+        obj = GeoSeries(
+            (_make_one_shapely_geom(g) for g in obj if g is not None), index=index
+        )
         return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
 
     if hasattr(obj, "__len__") and not len(obj):
@@ -236,7 +240,10 @@ def to_gdf(
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
         if is_nested_geojson(obj):
             # crs = crs or get_crs_from_dict(obj)
-            obj = pd.concat((GeoSeries(_from_json(g)) for g in obj), ignore_index=True)
+            obj = pd.concat(
+                (GeoSeries(_from_json(g)) for g in obj if g is not None),
+                ignore_index=True,
+            )
             if index is not None:
                 obj.index = index
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
@@ -256,7 +263,10 @@ def to_gdf(
 
     if geom_col in obj.keys():
         if isinstance(obj, pd.DataFrame):
-            obj[geom_col] = GeoSeries(make_shapely_geoms(obj[geom_col]), index=index)
+            notna = obj[geom_col].notna()
+            obj.loc[notna, geom_col] = GeoSeries(
+                make_shapely_geoms(obj.loc[notna, geom_col]), index=index
+            )
             return GeoDataFrame(obj, geometry=geom_col, crs=crs, **kwargs)
         if isinstance(obj[geom_col], Geometry):
             return GeoDataFrame(
@@ -301,7 +311,10 @@ def to_gdf(
         obj = GeoSeries(_from_json(obj), index=index)
         return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
 
-    geoseries = _series_like_to_geoseries(obj, index=index)
+    try:
+        geoseries = _series_like_to_geoseries(obj, index=index)
+    except ValueError:
+        geoseries = _series_like_to_geoseries(obj.dropna(), index=obj.dropna().index)
     return GeoDataFrame(geometry=geoseries, crs=crs, **kwargs)
 
 
