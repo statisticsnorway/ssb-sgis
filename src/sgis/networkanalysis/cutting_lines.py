@@ -83,7 +83,7 @@ def split_lines_by_nearest_point(
     Not all lines were split. That is because some points were closest to an endpoint
     of a line.
     """
-    PRECISION = 0.000001
+    PRECISION = 1e-6
 
     if not len(gdf):
         return gdf
@@ -128,7 +128,7 @@ def split_lines_by_nearest_point(
     )
 
     # linearrings (maybe coded as linestrings) that were not split,
-    # does not have edges and must be added in the end
+    # do not have edges and must be added in the end
     boundaries = splitted.geometry.boundary
     circles = splitted[boundaries.is_empty]
     splitted = splitted[~boundaries.is_empty]
