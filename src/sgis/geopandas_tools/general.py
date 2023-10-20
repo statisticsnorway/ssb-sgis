@@ -59,7 +59,18 @@ def get_common_crs(
         raise ValueError("Mix of falsy and truthy CRS-es found.")
 
     if len(truthy_crs) > 1:
+        # sometimes the bbox is slightly different, resulting in different
+        # hash values for same crs. Therefore, trying to
+        actually_different = set()
+        for x in truthy_crs:
+            if x.to_string() in {j.to_string() for j in actually_different}:
+                continue
+            actually_different.add(x)
+
+        if len(actually_different) == 1:
+            return list(actually_different)[0]
         raise ValueError("'crs' mismatch.", truthy_crs)
+
     return pyproj.CRS(truthy_crs[0])
 
 
