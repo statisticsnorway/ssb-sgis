@@ -1133,12 +1133,14 @@ class NetworkAnalysis:
         )
 
         if not all(results.geometry.isna()):
-            results = results.drop_duplicates(["src_tgt_wt", "origin"])
-
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
                     :, ["geometry"]
                 ]
+            else:
+                results = results.dissolve(
+                    by=["src_tgt_wt", "origin", self.rules.weight]
+                )
 
             results = results.reset_index()
 

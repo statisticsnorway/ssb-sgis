@@ -2,8 +2,12 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
-from shapely import force_2d, reverse
+from shapely import force_2d, reverse, unary_union
+from shapely.geometry import MultiLineString, MultiPoint, Point
+from shapely.ops import nearest_points
+from shapely.wkt import loads
 
+from ..geopandas_tools.sfilter import sfilter
 from .cutting_lines import cut_lines_once
 from .nodes import make_edge_wkt_cols
 
@@ -37,6 +41,9 @@ def _service_area(
     all_distances: list[list[str]] = graph.distances(
         weights="weight", source=origins["temp_idx"], mode="out"
     )
+
+    if not directed:
+        nodes_union: MultiPoint = unary_union(loads(nodes["wkt"].dropna().values))
 
     # loop through every origin and every break
     service_areas: list[GeoDataFrame] = []
@@ -92,13 +99,26 @@ def _service_area(
             # select the cutted lines shorter than the cut distance that intersects
             # with the nodes
             within = split_lines.loc[
-                lambda df: (df.length <= df.remaining_distance * 1.01)
-                & (df.source_wkt.isin(nodes.wkt) | df.target_wkt.isin(nodes.wkt))
+                lambda df: (df.length <= df["remaining_distance"] * 1.01)
+                & (df["source_wkt"].isin(nodes.wkt) | df["target_wkt"].isin(nodes.wkt))
             ]
+
+            # keep only lines intersecting the edges completely within or the snapped origin
+            if not directed:
+                if len(edges_within):
+                    within = sfilter(within, edges_within.buffer(0.01))
+                else:
+                    snapped_origin: Point = nearest_points(
+                        nodes_union,
+                        origins.loc[origins["temp_idx"] == idx, "geometry"].unary_union,
+                    )[0]
+
+                    within = sfilter(within, snapped_origin.buffer(0.01))
 
             edges_within = pd.concat([edges_within, within], ignore_index=True)
             edges_within["origin"] = idx
             edges_within[weight] = break_
+
             service_areas.append(edges_within)
 
     return pd.concat(
@@ -126,4 +146,5 @@ def _split_lines(partly_within, directed):
         partly_within = pd.concat([partly_within, rev])
 
     lines_cut = cut_lines_once(partly_within, "remaining_distance")
+
     return lines_cut
