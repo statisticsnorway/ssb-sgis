@@ -17,6 +17,7 @@ from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import (
     clean_geoms,
     drop_inactive_geometry_columns,
+    get_common_crs,
     rename_geometry_if,
 )
 from ..helpers import get_object_name
@@ -143,17 +144,19 @@ class Map:
         else:
             last_show = True
 
+        # pop all geometry-like items from kwargs into self._gdfs
         self.kwargs = {}
         for key, value in kwargs.items():
             if isinstance(value, GeoDataFrame):
                 self._gdfs.append(value)
                 self.labels.append(key)
                 self.show.append(last_show)
-            elif isinstance(value, GeoSeries):
-                self._gdfs.append(GeoDataFrame({"geometry": value}))
+                continue
+            try:
+                self._gdfs.append(to_gdf(value))
                 self.labels.append(key)
                 self.show.append(last_show)
-            else:
+            except Exception:
                 self.kwargs[key] = value
 
         if not any(len(gdf) for gdf in self._gdfs):
@@ -179,7 +182,13 @@ class Map:
             self._column = "label"
             self._gdfs = gdfs
 
-        self._gdf = pd.concat(self._gdfs, ignore_index=True)
+        try:
+            self._gdf = pd.concat(self._gdfs, ignore_index=True)
+        except ValueError:
+            crs = get_common_crs(self._gdfs)
+            for gdf in self._gdfs:
+                gdf.crs = crs
+            self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
         self._nan_idx = self._gdf[self._column].isna()
         self._get_unique_values()
