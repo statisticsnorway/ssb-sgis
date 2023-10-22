@@ -5,9 +5,9 @@ clipmap functions from the 'maps' module.
 """
 import os
 import warnings
+from collections.abc import Iterable
 from numbers import Number
 from statistics import mean
-from collections.abc import Iterable
 
 import branca as bc
 import folium
@@ -126,7 +126,7 @@ class Explore(Map):
         if self.gdfs is None:
             return
 
-        # stringify or remove columns not renerable by leaflet (list etc.)
+        # stringify or remove columns not renerable by leaflet (list, geometry etc.)
         new_gdfs, show_new = [], []
         for gdf, show in zip(self.gdfs, self.show, strict=True):
             for col in gdf.columns:
@@ -675,8 +675,10 @@ class Explore(Map):
             tooltip = None
             popup = None
 
+        gdf_as_json = gdf.__geo_interface__
+
         return folium.GeoJson(
-            gdf.__geo_interface__,
+            gdf_as_json,
             tooltip=tooltip,
             popup=popup,
             marker=marker,
@@ -690,7 +692,6 @@ class Explore(Map):
 
 def _tooltip_popup(type, fields, gdf, **kwds):
     """get tooltip or popup"""
-    import folium
 
     # specify fields to show in the tooltip
     if fields is False or fields is None or fields == 0:
