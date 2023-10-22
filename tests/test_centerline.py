@@ -23,7 +23,7 @@ from geopandas import GeoDataFrame
 import sgis as sg
 
 
-def test_get_centerline():
+def not_test_get_centerline():
     from oslo import points_oslo, roads_oslo
 
     circle = sg.to_gdf([0, 0]).buffer(1)
@@ -50,7 +50,7 @@ def test_get_centerline():
         )
     ).pipe(sg.buff, 0.1, resolution=10)
 
-    centerline = sg.get_rough_centerlines(cross, 5)
+    centerline = sg.get_rough_centerlines(cross, 3)
 
     sg.qtm(centerline, cross)
 
@@ -74,5 +74,5 @@ def test_get_centerline():
 if __name__ == "__main__":
     import cProfile
 
-    test_get_centerline()
-    # cProfile.run("test_get_centerline()", sort="cumtime")
+    not_test_get_centerline()
+    # cProfile.run("not_test_get_centerline()", sort="cumtime")

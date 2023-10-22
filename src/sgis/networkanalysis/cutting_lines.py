@@ -187,7 +187,7 @@ def change_line_endpoint(
     gdf: GeoDataFrame,
     dists: pd.DataFrame,
     pointmapper: pd.Series,
-    change_what: str,  # i: int
+    change_what: str | int,
 ) -> GeoDataFrame:
     """
     Loop for each line where the source is the endpoint that was split
@@ -195,12 +195,14 @@ def change_line_endpoint(
     """
     assert gdf.index.is_unique
 
-    if change_what == "first":
+    if change_what == "first" or change_what == 0:
         to_be_changed = lambda x: ~x.index.duplicated(keep="first")
-    elif change_what == "last":
+    elif change_what == "last" or change_what == -1:
         to_be_changed = lambda x: ~x.index.duplicated(keep="last")
     else:
-        raise ValueError("change_what should be 'first' or 'last'")
+        raise ValueError(
+            f"change_what should be 'first' or 'last' or 0 or -1. Got {change_what}"
+        )
 
     is_relevant = gdf.index.isin(dists.index)
     relevant_lines = gdf.loc[is_relevant]

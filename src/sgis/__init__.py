@@ -68,7 +68,6 @@ from .geopandas_tools.polygon_operations import (
 from .geopandas_tools.polygons_as_rings import PolygonsAsRings
 from .geopandas_tools.polygons_to_lines import get_rough_centerlines
 from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
-from .geopandas_tools.snap_polygons import coverage_clean, snap_polygons
 from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url
