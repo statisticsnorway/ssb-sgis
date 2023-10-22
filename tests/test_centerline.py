@@ -23,7 +23,7 @@ from geopandas import GeoDataFrame
 import sgis as sg
 
 
-def not_test_get_centerline():
+def test_get_centerline():
     from oslo import points_oslo, roads_oslo
 
     circle = sg.to_gdf([0, 0]).buffer(1)
@@ -55,7 +55,9 @@ def not_test_get_centerline():
     sg.qtm(centerline, cross)
 
     assert (geom_type := sg.get_geom_type(centerline)) == "line", geom_type
-    assert centerline.unary_union.intersects(Point(0, 0).buffer(0.1))
+    assert centerline.unary_union.intersects(
+        Point(0, 0).buffer(0.1)
+    ), centerline.unary_union
 
     roads = roads_oslo()
     p = points_oslo()
@@ -74,5 +76,5 @@ def not_test_get_centerline():
 if __name__ == "__main__":
     import cProfile
 
-    not_test_get_centerline()
-    # cProfile.run("not_test_get_centerline()", sort="cumtime")
+    test_get_centerline()
+    # cProfile.run("test_get_centerline()", sort="cumtime")
