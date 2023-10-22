@@ -6,14 +6,17 @@ from typing import Callable, Iterable
 import geopandas as gpd
 import igraph
 import networkx as nx
+import numba
 import numpy as np
 import pandas as pd
+import shapely
 from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryArray
 from IPython.display import display
 from numpy import ndarray
 from numpy.typing import NDArray
 from pandas import Index
+from pandas.core.groupby import SeriesGroupBy
 from shapely import (
     Geometry,
     box,
@@ -56,7 +59,8 @@ from shapely.ops import nearest_points
 from ..maps.maps import explore, explore_locals, qtm
 from ..networkanalysis.closing_network_holes import close_network_holes, get_angle
 from ..networkanalysis.cutting_lines import split_lines_by_nearest_point
-from .buffer_dissolve_explode import buff, dissexp_by_cluster
+from .bounds import get_total_bounds
+from .buffer_dissolve_explode import buff, buffdissexp_by_cluster, dissexp_by_cluster
 from .conversion import coordinate_array, to_gdf
 from .duplicates import get_intersections
 from .general import clean_geoms
@@ -67,7 +71,7 @@ from .neighbors import get_all_distances, k_nearest_neighbors
 from .overlay import clean_overlay
 from .polygon_operations import close_small_holes, close_thin_holes, get_gaps, get_holes
 from .polygons_as_rings import PolygonsAsRings
-from .polygons_to_lines import get_cheap_centerlines
+from .polygons_to_lines import get_rough_centerlines, traveling_salesman_problem
 from .sfilter import sfilter, sfilter_inverse, sfilter_split
 
 
@@ -85,6 +89,7 @@ mask = to_gdf(
 mask = to_gdf("POINT (905139.722 7878785.909)", crs=25833).buffer(111)
 # mask = to_gdf("POINT (905043 7878849)", crs=25833).buffer(65)
 mask = to_gdf("POINT (905097 7878848)", crs=25833).buffer(35)
+mask = to_gdf("POINT (905070 7878815)", crs=25833).buffer(35)
 # mask = to_gdf("POINT (905098.5 7878848.9)", crs=25833).buffer(3)
 
 # mask = to_gdf("POINT (905276.7 7878549)", crs=25833).buffer(17)
@@ -95,6 +100,7 @@ mask = to_gdf("POINT (905097 7878848)", crs=25833).buffer(35)
 # mask = to_gdf([5.95201, 62.41451], 4326).to_crs(25833).buffer(100)
 
 # mask = to_gdf([905100.59664904, 7878744.08293462], 25833).buffer(30)
+mask = to_gdf([5.38801, 59.00896], 4326).to_crs(25833).buffer(50)
 
 
 PRECISION = 1e-4
@@ -107,8 +113,8 @@ PRECISION = 1e-4
 def coverage_clean(
     gdf: GeoDataFrame,
     tolerance: int | float,
-    duplicate_action: str = "error",
-    max_segment_length: int | None = None,
+    duplicate_action: str = "fix",
+    max_segment_length: int = 5,
 ) -> GeoDataFrame:
     """
 
@@ -121,9 +127,13 @@ def coverage_clean(
     - Index is reset.
 
     """
-    snap_checks(gdf, tolerance)
+    NotImplemented
+
+    _snap_checks(gdf, tolerance)
 
     crs = gdf.crs
+
+    gdf_orig = gdf.copy()
 
     gdf = close_thin_holes(gdf, tolerance)
 
@@ -139,42 +149,63 @@ def coverage_clean(
 
     all_are_thin = double["_double_idx"].isin(thin_gaps_and_double["_double_idx"]).all()
 
-    if not all_are_thin and duplicate_action == "error":
-        large = double.loc[
-            ~double["_double_idx"].isin(thin_gaps_and_double["_double_idx"])
-        ]
-        large["area"] = large.area
-        raise ValueError("Large double surfaces.", large[["area", "geometry"]])
-    elif not all_are_thin and duplicate_action == "fix":
-        large = double.loc[
-            ~double["_double_idx"].isin(thin_gaps_and_double["_double_idx"])
-        ].pipe(dissexp_by_cluster)
-        gdf = clean_overlay(gdf, large, how="update")
+    if not all_are_thin and duplicate_action == "fix":
+        gdf = _fix_double(gdf, double, thin_gaps_and_double)
+    elif not all_are_thin and duplicate_action == "error":
+        raise ValueError("Large double surfaces.")
 
-    gaps = pd.concat([thin_gaps_and_double, slivers]).pipe(dissexp_by_cluster)
+    gaps = (
+        pd.concat([thin_gaps_and_double, slivers])
+        .pipe(buffdissexp_by_cluster, tolerance, resolution=20)
+        .pipe(buffdissexp_by_cluster, -tolerance, resolution=20)
+    )
 
-    centerlines = get_cheap_centerlines(gaps, max_segment_length=max_segment_length)
+    i = 0
+    while len(gaps):
+        centerlines: GeoSeries = get_rough_centerlines(
+            gaps, max_segment_length
+        ).geometry.explode(ignore_index=True)
 
-    if not len(centerlines):
-        return gdf
+        """explore(
+            centerlines=to_gdf(centerlines, 25833),
+            gaps=to_gdf(gaps.geometry, 25833),
+            gdf_orig=gdf_orig,
+        )"""
 
-    intersect_gaps, dont_intersect = sfilter_split(gdf, centerlines.buffer(tolerance))
+        gdf = _snap_last_part(gdf, centerlines, tolerance, max_segment_length, crs)
 
-    centerlines.geometry = segmentize(centerlines.geometry, 10)
+        gaps = get_gaps(gdf)
+        double = get_intersections(gdf)
 
-    intersect_gaps = _snap_polygons_to_lines(intersect_gaps, centerlines, tolerance)
+        gaps = (
+            pd.concat([gaps, double])
+            .loc[lambda x: x.buffer(-tolerance / 2).is_empty]
+            .pipe(buffdissexp_by_cluster, 0.1, resolution=20)
+            .pipe(buffdissexp_by_cluster, -0.1, resolution=20)
+            .pipe(clean_geoms)
+        )
+        i += 1
 
-    return _return_snapped_gdf([intersect_gaps, dont_intersect], crs=crs)
+        print("\ngaps", gaps.length.sum(), gaps.area.sum(), "\n\n")
+
+        if i > 1:
+            explore(gdf=gdf.clip(gaps.buffer(100)), gaps=gaps)
+            sss
+
+        if i == 5:
+            raise ValueError("Still thin gaps or double surfaces.")
+
+    return gdf
 
 
 def snap_polygons(
     gdf: GeoDataFrame,
     snap_to: GeoDataFrame,
     tolerance: float,
-    sort_large_first: bool = True,
-    max_segment_length: int | None = None,
+    max_segment_length: int | None = 5,  # None,
 ) -> GeoDataFrame:
-    snap_checks(gdf, tolerance)
+    NotImplemented
+    _snap_checks(gdf, tolerance)
 
     crs = gdf.crs
 
@@ -185,48 +216,67 @@ def snap_polygons(
     else:
         snap_to = snap_to[["geometry"]]
 
-    gap_lines = clean_overlay(
+    gap_lines: GeoSeries = clean_overlay(
         snap_to,
         gdf.buffer(tolerance).to_frame(),
         how="intersection",
         keep_geom_type=False,
-    ).loc[lambda x: x.geom_type.isin(line_types)]
+    ).geometry
 
-    if not len(gap_lines):
+    return _snap_last_part(gdf, gap_lines, tolerance, max_segment_length, crs)
+
+
+def _snap_last_part(gdf, snap_to, tolerance, max_segment_length, crs):
+    if not len(snap_to):
         return gdf
 
-    intersect_gaps, dont_intersect = sfilter_split(gdf, gap_lines.buffer(tolerance))
+    intersect_gaps, dont_intersect = sfilter_split(gdf, snap_to.buffer(tolerance))
 
-    # intersect_gaps.geometry = segmentize(intersect_gaps.geometry, 1)
-    gap_lines.geometry = segmentize(gap_lines.geometry, 10)
+    if max_segment_length is not None:
+        # TODO dropp dette
+        has_length = snap_to.length > 0
+        snap_to.loc[has_length] = segmentize(
+            line_merge(snap_to.loc[has_length]), max_segment_length
+        )
 
-    intersect_gaps = _snap_polygons_to_lines(intersect_gaps, gap_lines, tolerance)
+        """intersect_gaps.geometry = segmentize(
+            line_merge(intersect_gaps.geometry), max_segment_length
+        )"""
+
+    intersect_gaps = _snap_polygons_to_lines(
+        intersect_gaps, snap_to.unary_union, tolerance
+    )
 
     return _return_snapped_gdf([intersect_gaps, dont_intersect], crs=crs)
 
 
-def _snap_polygons_to_lines(gdf, lines, tolerance):
-    snap_to: MultiLineString = lines.unary_union
+def _fix_double(gdf, double, thin_double):
+    large = double.loc[~double["_double_idx"].isin(thin_double["_double_idx"])].pipe(
+        dissexp_by_cluster
+    )
+    return clean_overlay(gdf, large, how="update")
 
-    qtm(
-        gap_lines=(lines),
-        snap_to=to_gdf(snap_to, 25833),
+
+def _snap_polygons_to_lines(gdf, lines, tolerance):
+    explore(
+        lines=to_gdf(lines, 25833),
         gdf=buff(gdf.clip(lines.buffer(10)), -1),
     )
-    # explore(gap_lines=(lines), snap_to=to_gdf(snap_to, 25833), gdf=gdf)
+    # explore(gap_lines=(lines), lines=to_gdf(lines, 25833), gdf=gdf)
 
-    if snap_to.is_empty:
+    if lines.is_empty:
         return lines
 
     geoms_negbuff = buffer(gdf.geometry.values, -PRECISION * 100)
+    # geoms_negbuff = buffer(gdf.geometry.values, -tolerance / 2)
 
     gdf.geometry = (
         PolygonsAsRings(gdf.geometry)
         .apply_numpy_func(
             _snap_linearring,
             args=(
-                snap_to,
-                unary_union(lines.geometry.values),
+                lines,
+                # unary_union(lines.geometry.values),
                 geoms_negbuff,
                 tolerance * 1.0001,
             ),
@@ -238,149 +288,7 @@ def _snap_polygons_to_lines(gdf, lines, tolerance):
     return make_all_singlepart(gdf, ignore_index=True).loc[lambda x: x.area > 0]
 
 
-def get_angle_between_indexed_points(point_df: GeoDataFrame):
-    """ "Get angle difference between the two lines"""
-
-    point_df["next"] = point_df.groupby(level=0)["geometry"].shift(-1)
-
-    notna = point_df["next"].notna()
-
-    this = coordinate_array(point_df.loc[notna, "geometry"].values)
-    next_ = coordinate_array(point_df.loc[notna, "next"].values)
-
-    point_df.loc[notna, "angle"] = get_angle(this, next_)
-    point_df["prev_angle"] = point_df.groupby(level=0)["angle"].shift(1)
-
-    point_df["angle_diff"] = np.abs(
-        np.abs(point_df["angle"]) - np.abs(point_df["prev_angle"])
-    )
-
-    return point_df
-
-
-def _get_angle_between_indexed_points(point_df: GeoSeries):
-    """ "Get angle difference between the two lines"""
-
-    next_ = point_df.groupby(level=0).shift(-1)
-
-    notna = next_.notna()
-
-    this = coordinate_array(point_df.loc[notna].values)
-    next_ = coordinate_array(next_.loc[notna].values)
-
-    angle = get_angle(this, next_)
-    point_df["prev_angle"] = point_df.groupby(level=0)["angle"].shift(1)
-
-    point_df["angle_diff"] = np.abs(
-        np.abs(point_df["angle"]) - np.abs(point_df["prev_angle"])
-    )
-
-    return point_df
-
-
-def get_two_closest_bounds_points(geoms: GeoSeries) -> GeoSeries:
-    envelopes = geoms.envelope
-    envelopes.loc[:] = get_rings(envelopes)
-    corner_points = extract_unique_points(envelopes).explode(index_parts=False)
-
-    envelopes = envelopes.loc[corner_points.index]
-
-    nearest_ring_point = nearest_points(corner_points, geoms.loc[corner_points.index])[
-        1
-    ]
-    distance_to_corner = distance(nearest_ring_point, corner_points)
-
-    is_two_closest: NDArray[np.bool] = (
-        distance_to_corner.groupby(level=0)
-        .apply(lambda x: x <= x.nsmallest(2).iloc[-1])
-        .values
-    )
-
-    return nearest_ring_point.iloc[is_two_closest]
-
-
-def rings_to_straight_lines(rings: GeoSeries) -> GeoSeries:
-    assert (
-        rings.geom_type.isin(["LineString", "LinearRing"])
-    ).all(), rings.geom_type.value_counts()
-
-    two_closest = get_two_closest_bounds_points(rings)
-
-    rings.loc[:] = two_closest.groupby(level=0).agg(LineString)
-
-    return rings
-
-
-def split_rings_at_boundary(thin):
-    to_gdf(thin, 25833).to_parquet(
-        r"C:\Users\ort\git\ssb-sgis\tests\testdata\thin.parquet"
-    )
-    assert (
-        thin.geom_type.isin(["LineString", "LinearRing"])
-    ).all(), thin.geom_type.value_counts()
-
-    envelopes = thin.envelope
-    envelopes.loc[:] = get_rings(envelopes)
-    corner_points = extract_unique_points(envelopes).explode(index_parts=False)
-
-    envelopes = envelopes.loc[corner_points.index]
-
-    nearest_ring_point = nearest_points(corner_points, thin.loc[corner_points.index])[1]
-    distance_to_corner = distance(nearest_ring_point, corner_points)
-
-    is_two_closest: NDArray[np.bool] = (
-        distance_to_corner.groupby(level=0)
-        .apply(lambda x: x <= x.nsmallest(2).iloc[-1])
-        .values
-    )
-
-    two_nearest_ring_points = (
-        nearest_ring_point.iloc[is_two_closest].groupby(level=0).agg(unary_union)
-    )
-
-    """qtm(
-        thin=to_gdf(thin, 25833).clip(mask),
-        nearest_ring_point=to_gdf(nearest_ring_point, 25833).clip(mask),
-        envelopes=to_gdf(envelopes, 25833).clip(mask),
-    )
-
-    qtm(
-        thin=to_gdf(thin, 25833).clip(mask),
-        nearest_ring_point=to_gdf(nearest_ring_point, 25833).clip(mask),
-    )
-    qtm(
-        thin=to_gdf(thin, 25833).clip(mask),
-        two_nearest_ring_points=to_gdf(two_nearest_ring_points, 25833).clip(mask),
-    )
-    qtm(
-        thin=to_gdf(thin, 25833).clip(mask),
-        two_nearest_ring_points=to_gdf(two_nearest_ring_points, 25833).clip(mask),
-        thin_diff=thin.difference(two_nearest_ring_points.buffer(0.1))
-        .clip(mask)
-        .to_frame(),
-    )"""
-
-    return thin.difference(two_nearest_ring_points.buffer(PRECISION))
-
-
-def to_none_if_thin(rings: GeoSeries, inside_holes, tolerance):
-    # buffered_in = rings.difference(inside_holes).buffer(-tolerance / 2)
-    # return np.where(buffered_in.is_empty, None, rings)
-    buffered_in = buffer(
-        difference(polygons(rings), inside_holes),
-        -(tolerance / 2),
-    )
-    return np.where(is_empty(buffered_in), None, rings)
-
-    cond = (~np.isnan(rings)) & (~is_empty(rings))
-    rings[cond] = buffer(
-        difference(polygons(rings[cond]), inside_holes),
-        -(tolerance / 2),
-    )
-    return np.where(is_empty(rings), None, rings)
-
-
-def snap_checks(gdf, tolerance):
+def _snap_checks(gdf, tolerance):
     if not len(gdf) or not tolerance:
         return gdf
     if not gdf.index.is_unique:
@@ -392,24 +300,6 @@ def snap_checks(gdf, tolerance):
             f"'tolerance' must be larger than {PRECISION} to avoid "
             "problems with floating point precision."
         )
-
-
-def sjoin_gap_lines(gap_lines, gdf):
-    # gap_lines_joined = pd.DataFrame(
-    gap_lines_joined = (
-        buff(gap_lines, PRECISION).sjoin(gdf[["geometry"]], how="left")
-    ).sort_values("index_right")
-
-    gap_lines_joined.geometry = gap_lines.geometry
-
-    intersect_gaps = gdf.loc[lambda x: x.index.isin(gap_lines_joined["index_right"])]
-    dont_intersect = gdf.loc[lambda x: ~x.index.isin(gap_lines_joined["index_right"])]
-
-    gap_lines_joined = gap_lines_joined.drop_duplicates(
-        "_gap_idx"
-    )  # .loc[lambda x: ~x.index.duplicated()]
-
-    return gap_lines_joined, intersect_gaps, dont_intersect
 
 
 def _return_snapped_gdf(dfs, crs):
@@ -442,8 +332,6 @@ def split_out_slivers(
 
 
 def identify_outskirts(gaps, gdf):
-    # TODO: dissexp on the gaps?
-
     assert get_geom_type(gaps) == "line"
 
     # converting to rings and removing the parts intersecting thick polygons
@@ -458,45 +346,13 @@ def identify_outskirts(gaps, gdf):
     return gaps
 
 
-def segmentize_triangles(geoms: GeoSeries):
-    if not len(geoms):
-        return geoms
-
-    def is_triangle(x):
-        n_points = extract_unique_points(x).apply(lambda p: len(get_parts(p)))
-        return n_points == 3
-
-    triangles = geoms.loc[is_triangle]
-
-    if not len(triangles):
-        return geoms
-
-    def get_max_segment_length(geoms):
-        return np.max(distance(geoms[:-1], geoms[:1]))
-
-    max_segment_length = (
-        extract_unique_points(triangles)
-        .explode(index_parts=False)
-        .groupby(level=0)
-        .agg(get_max_segment_length)
-    )
-    triangles = GeoSeries(
-        segmentize(
-            triangles.to_numpy(),
-            max_segment_length=max_segment_length.to_numpy() / 2,
-        ),
-        index=triangles.index,
-        crs=geoms.crs,
-    )
-
-    return pd.concat([triangles, geoms[lambda x: ~is_triangle(x)]])
-
-
 def join_lines_with_snap_to(
     lines: GeoDataFrame,
     snap_to: MultiLineString,
     tolerance: int | float,
 ) -> GeoDataFrame:
+    # intersection(lines, snap_to.buffer(tolerance)
+
     points: NDArray[Point] = get_parts(extract_unique_points(snap_to))
     points_df = GeoDataFrame({"geometry": points}, index=points)
     joined = buff(lines, tolerance).sjoin(points_df, how="left")
@@ -508,6 +364,13 @@ def join_lines_with_snap_to(
         joined.loc[notna, "index_right"].values, joined.loc[notna, "geometry"].values
     )[1]
 
+    explore(
+        ring_points=to_gdf(ring_points, 25833),
+        joined=joined.set_crs(25833),
+        points_df=points_df.set_crs(25833),
+        snap_to=to_gdf(snap_to, 25833),
+    )
+
     joined.loc[notna, "ring_point"] = ring_points
 
     return joined
@@ -517,7 +380,9 @@ def make_lines_between_points(
     arr1: NDArray[Point], arr2: NDArray[Point]
 ) -> NDArray[LineString]:
     if arr1.shape != arr2.shape:
-        raise ValueError("Arrays must have equal shape.")
+        raise ValueError(
+            f"Arrays must have equal shape. Got {arr1.shape} and {arr2.shape}"
+        )
     coords: pd.DataFrame = pd.concat(
         [
             pd.DataFrame(get_coordinates(arr1), columns=["x", "y"]),
@@ -525,88 +390,28 @@ def make_lines_between_points(
         ]
     ).sort_index()
 
-    try:
-        return linestrings(coords.values, indices=coords.index)
-    except Exception as e:
-        print(arr1)
-        print(arr2)
-        print(coords[coords.notna()])
-        print(coords[coords.isna()])
-        raise e.__class__(e, coords)
-
-
-def map_to_nearest(
-    points: NDArray[Point],
-    snap_to: MultiLineString,
-    geoms: GeoSeries,
-    tolerance: int | float,
-) -> NDArray[Point]:
-    nearest_vertice = nearest_points(points, extract_unique_points(snap_to))[1]
-    distance_to_nearest_vertice = distance(points, nearest_vertice)
-
-    as_lines = make_lines_between_points(points, nearest_vertice)
-    intersect_geoms: list[NDArray[np.bool]] = [
-        intersects(as_lines, geom) for geom in geoms
-    ]
-    intersect_geoms: NDArray[np.bool] = np.any(np.array(intersect_geoms), axis=0)
-
-    nearest = nearest_points(points, snap_to)[1]
-    distance_to_nearest = distance(points, nearest)
-
-    as_lines = make_lines_between_points(points, nearest)
-    intersect_geoms2: list[NDArray[np.bool]] = [
-        intersects(as_lines, geom) for geom in geoms
-    ]
-    intersect_geoms2: NDArray[np.bool] = np.any(np.array(intersect_geoms2), axis=0)
-
-    snap_to_vertice: NDArray[np.bool] = (
-        (distance_to_nearest_vertice <= tolerance)  # * 2.0001)
-        & (distance_to_nearest_vertice > 0)
-        & (~intersect_geoms)
-    )
-
-    snap_to_point: NDArray[np.bool] = (
-        (distance_to_nearest_vertice > tolerance)  # * 2.0001)
-        & (distance_to_nearest <= tolerance)  # * 2.0001)
-        & (distance_to_nearest > 0)
-        & (~intersect_geoms2)
-    )
-
-    conditions: list[NDArray[np.bool]] = [
-        snap_to_vertice,
-        snap_to_point,
-    ]
-
-    # explore_locals(explore=False, mask=mask)
-
-    choices: list[NDArray[Point]] = [nearest_vertice, nearest]
-
-    return np.select(conditions, choices, default=points)
+    return linestrings(coords.values, indices=coords.index)
 
 
 def snap_to_nearest(
     points: NDArray[Point],
-    snap_to: NDArray[Point],
+    snap_to: MultiLineString | MultiPoint,
     geoms: GeoSeries,
     tolerance: int | float,
-) -> NDArray[Point]:
+) -> NDArray[Point | None]:
     nearest = nearest_points(points, unary_union(snap_to))[1]
     distance_to_nearest = distance(points, nearest)
 
     as_lines = make_lines_between_points(points, nearest)
-    intersect_geoms: list[NDArray[np.bool]] = [
+    intersect_geoms: list[NDArray[bool]] = [
         intersects(as_lines, geom) for geom in geoms
     ]
-    intersect_geoms: NDArray[np.bool] = np.any(np.array(intersect_geoms), axis=0)
+    intersect_geoms: NDArray[bool] = np.any(np.array(intersect_geoms), axis=0)
 
     return np.where(
-        (
-            (distance_to_nearest <= tolerance)
-            # & (distance_to_nearest > 0)
-            & (~intersect_geoms)
-        ),
+        (distance_to_nearest <= tolerance),  # & (~intersect_geoms)),
         nearest,
-        points,  # None,  # ,
+        None,  # points,  # None,  # ,
     )
 
 
@@ -614,23 +419,24 @@ def sorted_unary_union(df: pd.DataFrame) -> MultiPoint:
     assert len(df["endpoints"].unique()) <= 1, df["endpoints"].unique()
     assert len(df["geometry"].unique()) <= 1, df["geometry"].unique()
 
-    endpoints: NDArray[np.float] = get_coordinates(df["endpoints"].iloc[0])
-    between: NDArray[np.float] = get_coordinates(df["ring_point"].dropna().values)
+    endpoints: NDArray[float] = get_coordinates(df["endpoints"].iloc[0])
+    between: NDArray[float] = get_coordinates(df["ring_point"].dropna().values)
 
-    coords: NDArray[np.float] = np.concatenate([endpoints, between])
-    sorted_coords: NDArray[np.float] = coords[np.argsort(coords[:, -1])]
+    coords: NDArray[float] = np.concatenate([endpoints, between])
+    sorted_coords: NDArray[float] = coords[np.argsort(coords[:, -1])]
 
     # droping points outside the line (returned from sjoin because of buffer)
-    is_between_endpoints: NDArray[np.bool] = (
+    is_between_endpoints: NDArray[bool] = (
         sorted_coords[:, 0] >= np.min(endpoints[:, 0])
     ) & (sorted_coords[:, 0] <= np.max(endpoints[:, 0]))
 
-    sorted_coords: NDArray[np.float] = sorted_coords[is_between_endpoints]
+    sorted_coords: NDArray[float] = sorted_coords[is_between_endpoints]
 
     return LineString(sorted_coords)
 
 
 def get_line_segments(lines) -> GeoDataFrame:
+    assert lines.index.is_unique
     if isinstance(lines, GeoDataFrame):
         multipoints = lines.assign(
             **{
@@ -639,16 +445,18 @@ def get_line_segments(lines) -> GeoDataFrame:
                 )
             }
         )
-        return multipoints_to_line_segments(multipoints)
+        return multipoints_to_line_segments(multipoints.geometry)
 
-    multipoints = extract_unique_points(lines)
+    multipoints = GeoSeries(extract_unique_points(lines.values), index=lines.index)
 
     return multipoints_to_line_segments(multipoints)
 
 
-def multipoints_to_line_segments(multipoints: GeoSeries) -> GeoDataFrame:
+def multipoints_to_line_segments(
+    multipoints: GeoSeries, to_next: bool = True
+) -> GeoDataFrame:
     if not len(multipoints):
-        return multipoints
+        return GeoDataFrame({"geometry": multipoints})
 
     try:
         crs = multipoints.crs
@@ -661,9 +469,16 @@ def multipoints_to_line_segments(multipoints: GeoSeries) -> GeoDataFrame:
         points, indices = get_parts(multipoints, return_index=True)
         point_df = pd.DataFrame({"geometry": GeometryArray(points)}, index=indices)
 
-    point_df["next"] = point_df.groupby(level=0)["geometry"].shift(-1)
+    if to_next:
+        shift = -1
+        filt = lambda x: ~x.index.duplicated(keep="first")
+    else:
+        shift = 1
+        filt = lambda x: ~x.index.duplicated(keep="last")
 
-    first_points = point_df.loc[lambda x: ~x.index.duplicated(), "geometry"]
+    point_df["next"] = point_df.groupby(level=0)["geometry"].shift(shift)
+
+    first_points = point_df.loc[filt, "geometry"]
     is_last_point = point_df["next"].isna()
 
     point_df.loc[is_last_point, "next"] = first_points
@@ -678,7 +493,6 @@ def multipoints_to_line_segments(multipoints: GeoSeries) -> GeoDataFrame:
 def _snap_linearring(
     rings: NDArray[LinearRing],
     snap_to: MultiLineString,
-    all_gaps: Geometry,
     geoms: GeoSeries,
     tolerance: int | float,
 ) -> pd.Series:
@@ -686,78 +500,854 @@ def _snap_linearring(
 
     multipoints: NDArray[MultiPoint] = extract_unique_points(rings)
 
+    if not len(multipoints):
+        return pd.Series()
+
+    line_segments: GeoDataFrame = multipoints_to_line_segments(multipoints)
+    line_segments["_ring_index"] = line_segments.index
+
+    snap_points = GeoDataFrame(
+        {"geometry": extract_unique_points(get_parts(line_merge(snap_to)))}
+    ).explode(ignore_index=True)
+
+    ring_points = GeoDataFrame({"geometry": multipoints}).explode(index_parts=False)
+    ring_points["line_to_next"] = multipoints_to_line_segments(
+        multipoints, to_next=True
+    ).geometry.values
+    ring_points["line_to_prev"] = multipoints_to_line_segments(
+        multipoints, to_next=False
+    ).geometry.values
+
+    ring_points["next"] = ring_points.groupby(level=0)["geometry"].shift(-1)
+    ring_points["prev"] = ring_points.groupby(level=0)["geometry"].shift(1)
+
+    ring_points["_ring_point_index"] = range(len(ring_points))
+    ring_points["_ring_index"] = ring_points.index
+    ring_points = ring_points.reset_index(drop=True)
+
+    snap_df = GeoDataFrame({"geometry": get_parts(line_merge(snap_to))})
+    ring_df = GeoDataFrame({"geometry": rings, "_ring_index": range(len(rings))})
+
+    joined = ring_points.sjoin(buff(snap_df, tolerance, resolution=10))
+    # joined.index = joined["index_right"]
+
+    intersected = clean_overlay(
+        snap_df, buff(ring_df, tolerance, resolution=10)
+    ).explode(ignore_index=True)
+    intersected["_intersect_index"] = intersected.index
+
+    erased = clean_overlay(
+        ring_df, buff(snap_df, tolerance, resolution=10), how="difference"
+    )
+
+    erased = (
+        erased.groupby("_ring_index", as_index=False)
+        .geometry.agg(lambda x: unary_union(line_merge(unary_union(x))))
+        .explode(ignore_index=True)
+    )
+
+    points = extract_unique_points(erased.geometry).explode(index_parts=False)
+    erased["first"] = points.groupby(level=0).nth(0)
+    erased["second"] = points.groupby(level=0).nth(1)
+    erased["last"] = points.groupby(level=0).nth(-1)
+    erased["second_last"] = points.groupby(level=0).nth(-2)
+
+    def extend_lines(arr1, arr2, distance):
+        if len(arr1) != len(arr2):
+            raise ValueError
+        if not len(arr1):
+            return GeometryArray([LineString()])
+
+        arr1, arr2 = arr2, arr1  # TODO fix
+
+        coords1 = coordinate_array(arr1)
+        coords2 = coordinate_array(arr2)
+
+        dx = coords2[:, 0] - coords1[:, 0]
+        dy = coords2[:, 1] - coords1[:, 1]
+        len_xy = np.sqrt((dx**2.0) + (dy**2.0))
+        x = coords1[:, 0] + (coords1[:, 0] - coords2[:, 0]) / len_xy * distance
+        y = coords1[:, 1] + (coords1[:, 1] - coords2[:, 1]) / len_xy * distance
+
+        new_points = shapely.points(x, y)
+
+        print("arr1.shape")
+        print(arr1)
+        print(arr2)
+        print(new_points)
+        print(x)
+        print(y)
+        print(len_xy)
+        print(dx)
+        print(dy)
+        print("ffff")
+
+        return make_lines_between_points(arr2, new_points)
+
+    def extend_lines_to(lines, extend_to):
+        assert lines.index.is_unique
+        assert (lines.geom_type == "LineString").all()
+        geom_col = lines._geometry_column_name
+        extension_length = shapely.box(*get_total_bounds(lines, extend_to)).length
+        extend_to_union = extend_to.unary_union
+
+        lines = lines.copy()
+        points = extract_unique_points(lines.geometry).explode(index_parts=False)
+
+        for i, j, out_col in zip(
+            (0, 1), (-1, -2), ("extension_line0", "extension_line1")
+        ):
+            lines["first"] = points.groupby(level=0).nth(i)
+            lines["second"] = points.groupby(level=0).nth(j)
+
+            filt = (~lines["first"].intersects(extend_to_union)) & (
+                ~lines["second"].intersects(extend_to_union)
+            )
+            if i == -1:
+                filt &= points.groupby(level=0).nth(i).size() > 2
+
+            lines.loc[filt, "long_extended_line"] = extend_lines(
+                lines.loc[filt, "second"],
+                lines.loc[filt, "first"],
+                extension_length,
+            )
+
+            lines.loc[filt, "intersections"] = intersection(
+                lines.loc[filt, "long_extended_line"].values, extend_to_union
+            )
+
+            filt &= ~shapely.is_empty(lines["intersections"])
+
+            lines.loc[filt, "extend_to_point"] = nearest_points(
+                lines.loc[filt, "intersections"],
+                lines.loc[filt, geom_col],
+            )[0]
+
+            lines.loc[filt, out_col] = make_lines_between_points(
+                lines.loc[filt, "first"].values,
+                lines.loc[filt, "extend_to_point"].values,
+            )
+
+            lines = lines.drop(
+                columns=[
+                    "first",
+                    "second",
+                    "extend_to_point",
+                    "long_extended_line",
+                    "intersections",
+                ]
+            )
+
+        lines.loc[filt, geom_col] = (
+            lines.loc[filt]
+            .groupby(level=0)
+            .agg(
+                lambda x: unary_union(
+                    [x["extension_line0"], x["extension_line1"], x.geometry]
+                )
+            )
+        )
+
+        return lines.drop(
+            columns=[
+                "first",
+                "second",
+                "extension_line0",
+                "extension_line1",
+                "extend_to_point",
+                "long_extended_line",
+                "intersections",
+            ]
+        )
+
+    display(erased)
+
+    extended = extend_lines_to(erased, intersected)
+    extended["_idx"] = range(len(extended))
+    self_intersections = get_intersections(extended)
+    too_long = erased.loc[erased["_idx"].isin(self_intersections["_idx"])]
+    extended = extended.loc[~extended["_idx"].isin(self_intersections["_idx"])]
+    extended = pd.concat([extended, extend_lines_to(too_long, self_intersections)])
+
+    explore(
+        rings=to_gdf(rings, 25833),
+        ring_points=to_gdf(ring_points.geometry, 25833),
+        first=to_gdf(erased["first"], 25833),
+        second=to_gdf(erased.second, 25833),
+        second_last=to_gdf(erased.second_last, 25833),
+        last=to_gdf(erased["last"], 25833),
+        g=to_gdf(erased.geometry, 25833),
+        intersected=to_gdf(intersected.geometry, 25833),
+        long_extended_line=to_gdf(erased.long_extended_line, 25833),
+        extended_last_line=to_gdf(erased.extended_last_line, 25833),
+    )
+
+    erased["long_extended_line"] = extend_lines(
+        erased["second"], erased["first"], tolerance
+    )
+    erased["extended_last_line"] = extend_lines(
+        erased["second_last"], erased["last"], tolerance
+    )
+    display(erased)
+
+    explore(
+        rings=to_gdf(rings, 25833),
+        ring_points=to_gdf(ring_points.geometry, 25833),
+        first=to_gdf(erased["first"], 25833),
+        second=to_gdf(erased.second, 25833),
+        second_last=to_gdf(erased.second_last, 25833),
+        last=to_gdf(erased["last"], 25833),
+        g=to_gdf(erased.geometry, 25833),
+        intersected=to_gdf(intersected.geometry, 25833),
+        long_extended_line=to_gdf(erased.long_extended_line, 25833),
+        extended_last_line=to_gdf(erased.extended_last_line, 25833),
+    )
+
+    sss
+
+    endpoints = erased.geometry.boundary
+
+    complete_circles = erased.loc[endpoints.geometry.is_empty]
+    erased = erased.loc[~endpoints.geometry.is_empty]
+
+    endpoints = endpoints.explode(index_parts=False)
+
+    erased["startpoint"] = endpoints.groupby(level=0).first()
+    erased["endpoint"] = endpoints.groupby(level=0).last()
+
+    """for i in erased.index:
+        explore(
+            startpoint=to_gdf(erased.iloc[[i]].startpoint, 25833),
+            endpoint=to_gdf(erased.iloc[[i]].endpoint, 25833),
+            line=to_gdf(erased.iloc[[i]].geometry, 25833),
+        )"""
+
+    explore(
+        ring_points=to_gdf(ring_points.geometry, 25833),
+        startpoint=to_gdf(erased.startpoint, 25833),
+        endpoint=to_gdf(erased.endpoint, 25833),
+        g=to_gdf(erased.geometry, 25833),
+        intersected=to_gdf(intersected.geometry, 25833),
+    )
+
+    ring_points_by_erased = ring_points.unary_union.intersection(
+        erased.geometry.buffer(PRECISION).unary_union
+    )
+    """
+    erased["nearest_to_start"] = erased.groupby(level=0)["startpoint"].agg(
+        lambda x: nearest_points(x["startpoint"], all_ring_points.intersection(x.buffer(PRECISION)))[
+            1
+        ]
+    )
+    erased["nearest_to_end"] = erased.groupby(level=0)["endpoint"].agg(
+        lambda x: nearest_points(x, all_ring_points.intersection(x.buffer(PRECISION)))[
+            1
+        ]
+    )"""
+
+    next_lines = sfilter(line_segments, erased.buffer(PRECISION))
+
+    snapped = (
+        pd.concat([next_lines, intersected, erased])
+        .groupby("_ring_index")
+        .geometry.agg(lambda x: unary_union(line_merge(unary_union(x))))
+    )
+
+    missing = sfilter_inverse(ring_points, snapped.buffer(PRECISION))
+
+    explore(
+        missing,
+        next_lines.reset_index(),
+        intersected=to_gdf(intersected.geometry, 25833).reset_index(),
+        snapped=to_gdf(snapped, 25833).reset_index(),
+        erased=to_gdf(erased.geometry, 25833).reset_index(),
+    )
+    sss
+
+    erased["nearest_to_start"] = snap(
+        erased["startpoint"], ring_points_by_erased, tolerance=PRECISION
+    )
+    erased["nearest_to_end"] = snap(
+        erased["endpoint"], ring_points_by_erased, tolerance=PRECISION
+    )
+
+    erased["nearest_to_start"] = np.where(
+        erased["nearest_to_start"] == erased["startpoint"],
+        pd.NA,
+        erased["nearest_to_start"],
+    )
+    erased["nearest_to_end"] = np.where(
+        erased["nearest_to_end"] == erased["endpoint"], pd.NA, erased["nearest_to_end"]
+    )
+
+    no_points_at_line = erased["nearest_to_start"].isna()
+    display(erased)
+    display(no_points_at_line)
+
+    all_ring_points = ring_points.unary_union
+    erased.loc[no_points_at_line, "nearest_to_start"] = nearest_points(
+        erased.loc[no_points_at_line, "startpoint"], all_ring_points
+    )[1]
+    erased.loc[no_points_at_line, "nearest_to_end"] = nearest_points(
+        erased.loc[no_points_at_line, "endpoint"], all_ring_points
+    )[1]
+
+    nextlinemapper = {
+        p: line for p, line in zip(ring_points.geometry, ring_points["line_to_next"])
+    }
+
+    prevlinemapper = {
+        p: line for p, line in zip(ring_points.geometry, ring_points["line_to_prev"])
+    }
+
+    erased["next"] = GeoSeries(erased["nearest_to_end"]).map(nextlinemapper)
+    erased["prev"] = GeoSeries(erased["nearest_to_start"]).map(prevlinemapper)
+    erased["next2"] = GeoSeries(erased["nearest_to_start"]).map(nextlinemapper)
+    erased["prev2"] = GeoSeries(erased["nearest_to_end"]).map(prevlinemapper)
+
+    display(erased)
+
+    explore(
+        s_e_point=to_gdf(
+            pd.concat([erased.startpoint, erased.endpoint]), 25833
+        ).reset_index(),
+        next_=to_gdf(erased.next, 25833).reset_index(),
+        prev=to_gdf(erased.prev, 25833).reset_index(),
+        prev2=to_gdf(erased.prev2, 25833).reset_index(),
+        next2=to_gdf(erased.next2, 25833).reset_index(),
+        nearest_to_end=to_gdf(erased.nearest_to_end, 25833).reset_index(),
+        nearest_to_start=to_gdf(erased.nearest_to_start, 25833).reset_index(),
+        intersected=to_gdf(intersected.geometry, 25833).reset_index(),
+        erased=to_gdf(erased.geometry, 25833).reset_index(),
+    )
+
+    sss
+
+    nextmapper = {
+        p: next_p
+        for p, next_p in zip(
+            ring_points.geometry, ring_points.groupby("_ring_index").shift(-1).geometry
+        )
+    }
+    prevmapper = {
+        p: prev_p
+        for p, prev_p in zip(
+            ring_points.geometry, ring_points.groupby("_ring_index").shift(1).geometry
+        )
+    }
+
+    erased["next"] = GeoSeries(erased["nearest_to_end"].dropna()).map(nextmapper)
+    erased["prev"] = GeoSeries(erased["nearest_to_start"].dropna()).map(prevmapper)
+
+    display(erased)
+
+    erased.loc[erased["next"].notna(), "line_to_next"] = make_lines_between_points(
+        erased.loc[erased["next"].notna(), "endpoint"],
+        erased.loc[erased["next"].notna(), "next"],
+    )
+    erased.loc[erased["prev"].notna(), "line_to_prev"] = make_lines_between_points(
+        erased.loc[erased["prev"].notna(), "startpoint"],
+        erased.loc[erased["prev"].notna(), "prev"],
+    )
+    display(erased)
+
+    assert erased.index.is_unique
+
+    explore(
+        line_to_next=to_gdf(erased.line_to_next, 25833),
+        line_to_prev=to_gdf(erased.line_to_prev, 25833),
+        startpoint=to_gdf(erased.startpoint, 25833),
+        endpoint=to_gdf(erased.endpoint, 25833),
+        next_=to_gdf(erased.next, 25833),
+        prev=to_gdf(erased.prev, 25833),
+        nearest_to_end=to_gdf(erased.nearest_to_end, 25833),
+        nearest_to_start=to_gdf(erased.nearest_to_start, 25833),
+        g=to_gdf(erased.geometry, 25833),
+        intersected=to_gdf(intersected.geometry, 25833),
+    )
+
+    not_snapped = (
+        pd.concat([erased["line_to_prev"], erased["line_to_next"], erased.geometry])
+        .dropna()
+        .groupby(level=0)
+        .agg(lambda x: unary_union(line_merge(unary_union(x))))
+        .dropna()
+    )
+
+    """not_snapped = sfilter_inverse(
+        ring_points.loc[lambda x: ~x.index.isin(joined.index)],
+        snap_to.buffer(tolerance),
+    )
+
+    not_snapped = clean_overlay(
+        ring_df,
+        GeoDataFrame({"geometry": [snap_to.buffer(tolerance)]}),
+        how="difference",
+    )"""
+
+    explore(to_gdf(not_snapped, 25833), intersected)
+
+    snapped = pd.concat([])
+
+    display(snapped)
+    sss
+
+    next_ = not_snapped.copy()
+    next_.index = next_.index + 1
+    next_ = next_.loc[lambda x: ~x.index.duplicated()]
+    next_.geometry = ring_points.geometry
+
+    prev = not_snapped.copy()
+    prev.index = prev.index - 1
+    prev = prev.loc[lambda x: ~x.index.duplicated()]
+    prev.geometry = ring_points.geometry
+
+    explore(next_, prev, not_snapped, joined)
+
+    concatted = pd.concat([not_snapped, next_, prev])
+    # distances = get_all_distances(concatted.geometry.reset_index(drop=True), concatted.geometry.reset_index(drop=True))
+
+    def points_to_line(df):
+        sorted_points = traveling_salesman_problem(df)
+        try:
+            return LineString(sorted_points)
+        except Exception:
+            return sorted_points
+
+    as_lines = concatted.groupby(level=0)["geometry"].agg(points_to_line)
+
+    explore(next_, prev, joined, not_snapped, as_lines, concatted)
+
+    sss
+
+    joined["endpoints"] = joined["index_right"].map(ring_points.geometry.boundary)
+
+    intersected_line_mapper = dict(
+        zip(intersected["_intersect_index"], intersected.geometry)
+    )
+
+    intersected.geometry = intersected.geometry.boundary
+    intersected = intersected.explode(ignore_index=True)
+
+    snapped = pd.concat(
+        [
+            intersected,
+            ring_points.loc[
+                lambda x: ~x["_ring_point_index"].isin(joined["_ring_point_index"])
+            ],
+        ]
+    )
+
+    snapped = (
+        snapped.groupby("_ring_index", as_index=False)["geometry"].apply(
+            traveling_salesman_problem
+        )
+        # .explode()
+        # .groupby("_ring_index")
+        .agg(LineString)
+    )
+
+    explore(
+        snapped=snapped.set_crs(25833).assign(idx=lambda x: x._ring_index.astype(str)),
+        column="idx",
+    )
+
+    explore(
+        joined.set_crs(25833),
+        ring_points.loc[
+            lambda x: ~x["_ring_point_index"].isin(joined["_ring_point_index"])
+        ].set_crs(25833),
+        snapped=snapped.set_crs(25833).assign(idx=lambda x: x.index.astype(str)),
+    )
+
+    # joined = joined.groupby(level=0).apply(sorted_unary_union)
+
+    explore(
+        snapped=to_gdf(snapped, 25833).assign(idx=lambda x: x.index.astype(str)),
+        column="idx",
+    )
+    sss
+
+    print("\n\nsnapped")
+    print(snapped)
+
+    def sort_points(df):
+        return traveling_salesman_problem(df, return_to_start=False)
+
+    snapped = snapped.groupby(level=0)["geometry"].agg(sort_points).explode()
+    print(snapped)
+
+    to_int_index = {
+        ring_idx: i for i, ring_idx in enumerate(sorted(set(snapped.index)))
+    }
+    int_indices = snapped.index.map(to_int_index)
+    as_lines = pd.Series(
+        linearrings(
+            get_coordinates(snapped.values),
+            indices=int_indices.values,
+        ),
+        index=snapped.index.unique(),
+    )
+
+    print(snapped)
+    print(as_lines)
+
+    explore(
+        snap_to=to_gdf(snap_to, 25833),
+        rings=to_gdf(rings, 25833),
+        snapped=to_gdf(extract_unique_points(snapped), 25833),
+    )
+
+    for idx in reversed(snapped.index.unique()):
+        explore(
+            # rings=to_gdf(rings, 25833),
+            # snap_to=to_gdf(snap_to, 25833),
+            snapped=to_gdf(
+                extract_unique_points(snapped.loc[snapped.index == idx]), 25833
+            )
+            .reset_index(drop=True)
+            .reset_index(),
+            # column="index",
+            # k=20,
+            as_lines=to_gdf(as_lines.loc[idx], 25833),
+        )
+
+    explore(
+        as_lines=to_gdf(as_lines, 25833),
+        snap_to=to_gdf(snap_to, 25833),
+        snapped=to_gdf(snapped, 25833),
+        rings=to_gdf(rings, 25833),
+    )
+
+    no_values = pd.Series(
+        {i: None for i in range(len(rings)) if i not in as_lines.index}
+    )
+
+    return pd.concat([as_lines, no_values]).sort_index()
+
+    snap_points = GeoDataFrame(
+        {"geometry": extract_unique_points(get_parts(snap_to))}
+    ).explode(ignore_index=True)
+
+    ring_points = GeoDataFrame({"geometry": extract_unique_points(rings)}).explode(
+        index_parts=False
+    )
+
+    snap_df = GeoDataFrame({"geometry": get_parts(line_merge(snap_to))})
+    ring_df = GeoDataFrame({"geometry": rings, "_ring_index": range(len(rings))})
+
+    # ring_points.index = pd.MultiIndex.from_arrays([ring_points.index, range(len(ring_points))])
+    ring_points["_range_idx"] = range(len(ring_points))
+
+    intersected = clean_overlay(
+        snap_df, buff(ring_df, tolerance, resolution=10)
+    ).explode(ignore_index=True)
+
+    erased = clean_overlay(
+        ring_df, buff(snap_df, tolerance, resolution=10), how="difference"
+    ).explode(ignore_index=True)
+
+    def connect_lines(gdf):
+        return close_network_holes(gdf, max_distance=tolerance * 2, max_angle=180)
+
+    snapped = (
+        pd.concat([erased, intersected])
+        .groupby("_ring_index", as_index=False)
+        .apply(connect_lines)
+    )
+    print(snapped)
+
+    for idx in ring_df._ring_index.unique():
+        explore(
+            ring_df=ring_df.loc[ring_df._ring_index == idx].set_crs(25833),
+            intersected=intersected.loc[intersected._ring_index == idx].set_crs(25833),
+            erased=erased.loc[erased._ring_index == idx].set_crs(25833),
+            snapped=snapped.loc[snapped._ring_index == idx].set_crs(25833),
+            # within_tolerance=within_tolerance.loc[within_tolerance._ring_index==idx].set_crs(25833),
+            # not_within=not_within.loc[not_within._ring_index==idx].set_crs(25833),
+        )
+    sss
+    points = extract_unique_points(erased.geometry)
+    erased["startpoint"] = erased.groupby(level=0).first()
+    erased["endpoint"] = erased.groupby(level=0).last()
+    erased = erased.explode(index_parts=False)
+    within_tolerance, not_within = sfilter_split(
+        ring_points, snap_to.buffer(tolerance, resolution=10)
+    )
+    explore(
+        ring_points=ring_points.set_crs(25833),
+        within_tolerance=within_tolerance.set_crs(25833),
+        not_within=not_within.set_crs(25833),
+        intersected=intersected.set_crs(25833),
+        erased=erased.set_crs(25833),
+        snap_to=to_gdf(snap_to, 25833),
+        rings=to_gdf(rings, 25833),
+    )
+
+    def groups_from_consecutive_values(
+        series: pd.Series | SeriesGroupBy, column: str
+    ) -> NDArray[int]:
+        """return (
+            (series.apply(lambda x: (x.diff().fillna(1) != 1).cumsum()) + 1)
+            .cummax()
+            .values
+        )"""
+
+        values = series.apply(  # df.groupby(level=0)[column]
+            lambda x: (x.diff().fillna(1) != 1).cumsum() + x.index
+        )
+        print(series.apply(lambda x: (x.diff())))  # df.groupby(level=0)[column]
+
+        print(values)
+
+        out = [0]
+        max_value = 0
+        # prev = 0
+        for value, prev in zip(values[1:], values):
+            print(value, prev, max_value, out[-1])
+            if value == prev:
+                out.append(max_value)
+                continue
+
+            # max_value = max(value, max_value)
+            if value < max_value:
+                max_value += 1
+                out.append(max_value)
+                continue
+
+                value = max_value + 1
+                max_value = value
+                out.append(value)
+                continue
+            # if value > max_value:
+            max_value = value
+            out.append(value)
+
+        print(out)
+        return out
+
+        print(values.value_counts())
+        print((values >= values.cummax()).value_counts())
+
+        print(values)
+        values = np.where(values >= values.cummax(), values, values + 1)
+        print(values)
+
+        sss
+        return values <= np.roll(values, 1).cumsum()
+        print(values)
+        print(values.cumsum())
+
+        return ((values != values.shift()).cumsum() - 1).values
+
+    # column indicating where the chain/line is broken
+    not_within["_line_idx"] = groups_from_consecutive_values(
+        not_within.groupby(level=0)["_range_idx"], "_range_idx"
+    )
+
+    not_within["_line_idx_not_increasing"] = (
+        not_within.groupby(level=0)["_range_idx"]
+        .apply(lambda x: (x.diff().fillna(1) != 1).cumsum() + x.index)
+        .values
+    )
+
+    print(not_within)
+
+    explore(not_within=not_within.set_crs(25833), column="_line_idx")
+
+    not_within.groupby("_line_idx")["geometry"].agg(lambda x: print(x) or x)
+    not_within = not_within.groupby("_line_idx")["geometry"].agg(LineString)
+
+    explore(
+        within_tolerance=within_tolerance.set_crs(25833),
+        not_within=to_gdf(not_within, 25833),
+        intersected=intersected.set_crs(25833),
+    )
+    sss
+    joined = snap_points.sjoin(buff(ring_points, tolerance, resolution=10))
+    joined.index = joined["index_right"]
+
+    snapped = pd.concat(
+        [
+            joined,
+            ring_points.loc[
+                lambda x: ~x["_ring_point_index"].isin(joined["_ring_point_index"])
+            ],
+        ]
+    )
+
+    def sort_points(df):
+        return traveling_salesman_problem(df, return_to_start=False)
+
+    snapped = snapped.groupby(level=0)["geometry"].agg(sort_points).explode()
+    snapped = snapped[~snapped.isin(extract_unique_points(intersected.geometry))]
+    print(snapped)
+
+    explore(
+        snap_df=snap_df.set_crs(25833),
+        ring_df=ring_df.set_crs(25833),
+        intersected=intersected.set_crs(25833),
+        snapped=to_gdf(snapped, 25833),
+    )
+
+    ring_points["_ring_point_index"] = range(len(ring_points))
+    ring_df["_ring_index"] = range(len(ring_df))
+    intersected["_intersect_index"] = range(len(intersected))
+
+    ring_lines = sfilter_inverse(ring_points, snap_to.buffer(tolerance))
+
+    def sjoin_with_snap_to(gdf):
+        return (
+            gdf.sjoin_nearest(
+                intersected.loc[intersected["_ring_index"] == gdf.index[0]]
+            )
+            .loc[lambda x: ~x.index.duplicated()]
+            .sort_index()
+            .pipe(lambda x: print(x) or x)
+        )
+
+    ring_lines = (
+        ring_lines.groupby(level=0)
+        .apply(sjoin_with_snap_to)
+        .groupby("_intersect_index", as_index=False)["geometry"]
+        .agg(LineString)
+    )
+
+    """snapped_lines = (
+        snap_points.sjoin(buff(intersected, tolerance, resolution=10))
+        .groupby("_intersect_index")["geometry"]
+        .agg(LineString)
+    )"""
+
+    print(intersected)
+    print(ring_lines)
+
+    explore(
+        snap_to=to_gdf(snap_to, 25833),
+        rings=to_gdf(rings, 25833),
+        ring_lines=ring_lines,
+        intersected=intersected,
+    )
+
+    snapped = (
+        pd.concat(
+            [
+                intersected,
+                ring_lines,
+            ]
+        )
+        .groupby("_ring_index")["geometry"]
+        .agg(line_merge_by_force)
+    )
+
+    print("\n\nsnapped")
+    print(snapped)
+
+    to_int_index = {
+        ring_idx: i for i, ring_idx in enumerate(sorted(set(snapped.index)))
+    }
+    int_indices = snapped.index.map(to_int_index)
+    as_lines = pd.Series(
+        linearrings(
+            get_coordinates(snapped.values),
+            indices=int_indices.values,
+        ),
+        index=snapped.index.unique(),
+    )
+
+    print(snapped)
+    print(as_lines)
+
+    no_values = pd.Series(
+        {i: None for i in range(len(rings)) if i not in as_lines.index}
+    )
+
+    # return pd.concat([as_lines, no_values]).sort_index()
+
+    snap_df = GeoDataFrame({"geometry": get_parts(line_merge(snap_to))})
+    ring_df = GeoDataFrame({"geometry": rings, "_ring_index": range(len(rings))})
+    intersected = clean_overlay(snap_df, buff(ring_df, tolerance, resolution=10))
+    erased = clean_overlay(
+        ring_df,
+        buff(snap_df, tolerance, resolution=10, cap_style="square"),
+        how="difference",
+    )
+    explore(
+        snap_df=snap_df.set_crs(25833),
+        ring_df=ring_df.set_crs(25833),
+        intersected=intersected.set_crs(25833),
+        erased=erased.set_crs(25833),
+    )
+    snapped = (
+        pd.concat(
+            [
+                intersected,
+                erased,
+            ]
+        )
+        .pipe(
+            lambda x: explore(
+                x.set_crs(25833).assign(_ring_index=x._ring_index.astype(str)),
+                "_ring_index",
+            )
+            or x
+        )
+        .groupby("_ring_index")["geometry"]
+        # .agg(lambda x: unary_union(line_merge(unary_union(x))))
+        .agg(line_merge_by_force)
+    )
+
+    print(snapped)
+    sss
+
+    points = extract_unique_points(intersected.geometry)
+    intersected["startpoint"] = points.groupby(level=0).first()
+    intersected["endpoint"] = points.groupby(level=0).last()
+    intersected = intersected.explode(index_parts=False)
+
+    points = extract_unique_points(erased.geometry)
+    erased["startpoint"] = points.groupby(level=0).first()
+    erased["endpoint"] = points.groupby(level=0).last()
+    erased = erased.explode(index_parts=False)
+
+    def sort_points(df):
+        return traveling_salesman_problem(df, return_to_start=False)
+
+    intersected = intersected.groupby(level=0)["geometry"].agg(sort_points).explode()
+    print(snapped)
+
+    ss
+
+    multipoints: NDArray[MultiPoint] = extract_unique_points(rings)
+
+    if not len(multipoints):
+        return pd.Series()
+
     line_segments: GeoDataFrame = multipoints_to_line_segments(multipoints)
 
+    # to integer index
     line_segments.index.name = "_ring_index"
     line_segments = line_segments.reset_index()
 
     snap_df: GeoDataFrame = join_lines_with_snap_to(
         lines=line_segments,
-        snap_to=all_gaps,
+        snap_to=snap_to,
         tolerance=tolerance,
     )
 
-    display("snap_df joined with points")
-    display(snap_df)
-
-    # TODO as coord tuples?
     snap_df["endpoints"] = snap_df.geometry.boundary
-
-    print("len snap_df")
-    print(len(snap_df))
 
     agged = snap_df.groupby(level=0).apply(sorted_unary_union)
     snap_df = snap_df.loc[lambda x: ~x.index.duplicated()]
     snap_df.geometry = agged
 
-    print("len snap_df 2")
-    print(len(snap_df))
-
-    qtm(
-        snap_df=to_gdf(snap_df.geometry, 25833).clip(mask.buffer(0.5)),
-        geoms=to_gdf(geoms, 25833).clip(mask.buffer(0.5)),
-        snap_to=to_gdf(snap_to, 25833).clip(mask.buffer(0.5)),
-        title="snap_df",
-    )
-
-    to_gdf(extract_unique_points(snap_to)).to_parquet(
-        r"C:\Users\ort\git\ssb-sgis\tests\testdata\snap_to_points.parquet"
-    )
-    to_gdf(snap_df.geometry).to_parquet(
-        r"C:\Users\ort\git\ssb-sgis\tests\testdata\snap_df.parquet"
-    )
-    to_gdf(geoms).to_parquet(r"C:\Users\ort\git\ssb-sgis\tests\testdata\geoms.parquet")
-    to_gdf(snap_df.loc[snap_df.ring_point.notna(), "ring_point"]).to_parquet(
-        r"C:\Users\ort\git\ssb-sgis\tests\testdata\ring_points.parquet"
-    )
-
-    # snap_df = sfilter_inverse(snap_df, geoms)
-
-    print("len snap_df 3")
-    print(len(snap_df))
-
-    qtm(
-        snap_df=to_gdf(snap_df.geometry, 25833).clip(mask.buffer(0.5)),
-        geoms=to_gdf(geoms, 25833).clip(mask.buffer(0.5)),
-        snap_to=to_gdf(snap_to, 25833).clip(mask.buffer(0.5)),
-        title="snap_df2 etter sfilter_inverse",
-    )
-
-    # snap_df = snap_df.dissolve(by="_ring_index", as_index=False)
     snap_df = snap_df.groupby("_ring_index", as_index=False)["geometry"].agg(
         unary_union
     )
     snap_df.geometry = line_merge(snap_df.geometry)
 
-    display("disssss")
-    display(snap_df.geometry)
-
     is_not_merged = snap_df.geom_type == "MultiLineString"
 
-    qtm(circ=snap_df.clip(to_gdf((905270.000, 7878560.000), crs=25833).buffer(30)))
-
-    print("is not merged")
-    print(snap_df.loc[is_not_merged, "geometry"])
     snap_df.loc[is_not_merged, "geometry"] = snap_df.loc[
         is_not_merged, "geometry"
     ].apply(line_merge_by_force)
@@ -765,76 +1355,48 @@ def _snap_linearring(
     assert (
         snap_df.geom_type.isin(["LineString", "LinearRing"])
     ).all(), snap_df.geom_type
-    """assert (snap_df.is_ring).all(), (
-        explore(to_gdf(snap_df[~snap_df.is_ring].geometry, 25833)),
-        snap_df.is_ring,
-    )"""
 
     snap_df.geometry = extract_unique_points(snap_df.geometry.values)
     snap_df = snap_df.explode(ignore_index=True)
 
-    to_gdf(snap_df.geometry).to_parquet(
-        r"C:\Users\ort\git\ssb-sgis\tests\testdata\snap_df3.parquet"
-    )
-
-    try:
-        qtm(
-            snap_df=to_gdf(
-                linearrings(
-                    get_coordinates(snap_df.geometry.values),
-                    indices=snap_df.ring_index.values,
-                ),
-                25833,
-            ).clip(mask.buffer(0.5)),
-            geoms=to_gdf(geoms, 25833).clip(mask.buffer(0.5)),
-            title="snap_df3",
-        )
-    except Exception:
-        pass
-
-    qtm(
-        # gaps=to_gdf(gaps).clip(mask),
-        rings=to_gdf(rings).clip(mask),
-        snap_to=to_gdf(snap_to).clip(mask),
-        # ring_points=to_gdf(ring_points["ring_point"]).clip(mask),
-        # ring_point=to_gdf(snap_df["ring_point"]).clip(mask),
-        snap_df=to_gdf(snap_df["geometry"]).clip(mask),
-        title="hernaaa",
-    )
-
-    display("\nnærmer oss")
-    display(snap_df)
-
     if 0:
+        snap_df.loc[:, "snapped"] = snap_to_nearest(
+            snap_df["geometry"].values, extract_unique_points(snap_to), geoms, tolerance
+        )
+
+        more_snap_points = nearest_points(snap_df["geometry"].values, snap_to)[1]
+        distances = distance(snap_df["geometry"].values, more_snap_points)
+        more_snap_points = more_snap_points[distances < tolerance]
+
+        not_snapped = snap_df["snapped"].isna()
+        if not_snapped.any():
+            snap_df.loc[not_snapped, "snapped"] = snap_to_nearest(
+                snap_df.loc[not_snapped, "geometry"],
+                unary_union(more_snap_points),
+                geoms,
+                tolerance,
+            )
+
+        snap_df["geometry"] = np.where(
+            snap_df["snapped"].notna(), snap_df["snapped"], snap_df["geometry"]
+        )
+    else:
         snap_df.index = pd.MultiIndex.from_arrays(
             [snap_df["_ring_index"].values, range(len(snap_df))]
         )
 
-        snap_points_df = (
-            GeoDataFrame(
-                {"geometry": extract_unique_points(get_parts(line_merge(snap_to)))}
-            ).explode(index_parts=False)
-            # .pipe(remove_points_on_straight_lines)
-        )
+        snap_points_df = GeoDataFrame(
+            {"geometry": extract_unique_points(get_parts(line_merge(snap_to)))}
+        ).explode(index_parts=False)
 
         snap_points_df.index = snap_points_df.geometry
 
-        """snap_points_df
-
-        snap_points_df = (
-            GeoDataFrame({"geometry": snap_points_arr}, index=snap_points_arr)
-            .pipe(remove_points_on_straight_lines_from_ring)
-            .pipe(buff, tolerance, resolution=10)
-        )"""
-
         joined = snap_df.sjoin(
             buff(snap_points_df, tolerance, resolution=10, copy=True)
-        )  # temp true
+        )
         joined["distance"] = distance(
             joined.geometry.values, joined["index_right"].values
         )
-
-        qtm(joined=joined.clip(mask))
 
         """# remove conections to points that cross the geometries
         joined.geometry = make_lines_between_points(
@@ -858,6 +1420,15 @@ def _snap_linearring(
         )
         snapped = pd.concat([unique, missing["geometry"].dropna()])
 
+        snapped.index = snapped.index.droplevel(0)
+        snap_df.index = snap_df.index.droplevel(0)
+
+        snap_df["geometry"] = np.where(
+            snap_df.index.isin(snapped.index),
+            snap_df.index.map(snapped),
+            snap_df["geometry"],
+        )
+
         explore(
             snap_points_df,
             snap_df=to_gdf(snap_df.geometry, 25833),
@@ -868,58 +1439,14 @@ def _snap_linearring(
             snap_to=to_gdf(snap_to, 25833),
         )
 
-        unique_qgis = (
-            joined.sort_index()
-            # .sort_values("angle_diff", ascending=False)
-            .drop_duplicates(["wkt", "_ring_index"]).sort_values("distance")
-            # .loc[lambda x: ~x.index.duplicated()]
-            .drop(columns="geometry")
-        )
-        for col in unique_qgis.columns.difference({"index_right"}):
-            unique_qgis[col] = unique_qgis[col].astype(str)
-        GeoDataFrame(unique_qgis, geometry="index_right", crs=25833).to_parquet(
-            r"C:\Users\ort\git\ssb-sgis\tests\testdata\unique.parquet"
-        )
-        if 0:
-            for col in joined.columns.difference({"geometry"}):
-                joined[col] = joined[col].astype(str)
-
-            (joined.set_crs(25833)).to_parquet(
-                r"C:\Users\ort\git\ssb-sgis\tests\testdata\joined.parquet"
-            )
-
-            snap_points_df["wkt"] = [x.wkt for x in snap_points_df.index]
-            snap_points_df.geometry = list(snap_points_df.index)
-            snap_points_df = snap_points_df.reset_index()
-
-            for col in snap_points_df.columns.difference({"geometry"}):
-                snap_points_df[col] = snap_points_df[col].astype(str)
-
-            (make_all_singlepart(snap_points_df.set_crs(25833))).to_parquet(
-                r"C:\Users\ort\git\ssb-sgis\tests\testdata\snap_points_df.parquet"
-            )
-        snapped.index = snapped.index.droplevel(0)
-        snap_df.index = snap_df.index.droplevel(0)
-
-        snap_df["geometry"] = np.where(
-            snap_df.index.isin(snapped.index),
-            snap_df.index.map(snapped),
-            snap_df["geometry"],
-        )
-
-    snap_df.loc[:, "geometry"] = snap_to_nearest(
-        snap_df["geometry"].values, extract_unique_points(snap_to), geoms, tolerance
+    explore(
+        snap_df=to_gdf(snap_df.geometry, 25833),
+        snap_to=to_gdf(snap_to, 25833),
+        line_segments=to_gdf(line_segments.geometry, 25833),
+        geoms=to_gdf(geoms, 25833),
     )
 
     assert snap_df["geometry"].notna().all(), snap_df[snap_df["geometry"].isna()]
-
-    qtm(
-        rings=to_gdf(rings, 25833).clip(mask),
-        # ring_points=to_gdf(snap_df["ring_point"], 25833).clip(mask),
-        snap_to=to_gdf(snap_to, 25833).clip(mask),
-        snap_df=to_gdf(snap_df["geometry"], 25833).clip(mask),
-        title="denne",
-    )
 
     # remove lines with only two points. They cannot be converted to polygons.
     is_ring = snap_df.groupby("_ring_index").transform("size") > 2
@@ -927,10 +1454,31 @@ def _snap_linearring(
     not_rings = snap_df.loc[~is_ring].loc[lambda x: ~x.index.duplicated()]
     snap_df = snap_df.loc[is_ring]
 
+    if 1:
+
+        def sort_points(df):
+            return traveling_salesman_problem(df, return_to_start=False)
+
+        snap_df = (
+            snap_df.groupby("_ring_index", as_index=False)["geometry"]
+            .agg(sort_points)
+            .explode("geometry")
+        )
+        print(snap_df)
+
+        """for idx in snap_df["_ring_index"].unique():
+            explore(snap_df=snap_df.loc[snap_df._ring_index==idx].set_crs(25833).reset_index(), column="index")
+        sss"""
+    else:
+        snap_df["wkt"] = snap_df.geometry.to_wkt()
+        snap_df = snap_df.drop_duplicates(["wkt", "_ring_index"])
+
     to_int_index = {
         ring_idx: i for i, ring_idx in enumerate(sorted(set(snap_df["_ring_index"])))
     }
     int_indices = snap_df["_ring_index"].map(to_int_index)
+    for i in snap_df["_ring_index"].unique():
+        print(snap_df.loc[snap_df._ring_index == i, "geometry"])
     as_lines = pd.Series(
         linearrings(
             get_coordinates(snap_df["geometry"].values),
@@ -943,92 +1491,447 @@ def _snap_linearring(
         index=not_rings["_ring_index"].values,
     )
 
-    print("\nas_lines")
-    display(as_lines)
+    print(snap_df)
+    print(as_lines)
 
-    to_gdf(as_lines).to_parquet(
-        r"C:\Users\ort\git\ssb-sgis\tests\testdata\as_lines.parquet"
+    for idx in snap_df["_ring_index"].unique():
+        explore(
+            rings=to_gdf(rings, 25833),
+            snap_to=to_gdf(snap_to, 25833),
+            snap_df=to_gdf(snap_df.loc[snap_df._ring_index == idx].geometry, 25833),
+            as_lines=to_gdf(as_lines.loc[idx], 25833),
+        )
+
+    explore(
+        as_lines=to_gdf(as_lines, 25833),
+        snap_to=to_gdf(snap_to, 25833),
+        snap_df=to_gdf(snap_df.geometry, 25833),
+        rings=to_gdf(rings, 25833),
+        more_snap_points=to_gdf(more_snap_points, 25833),
+        snapped=to_gdf(snap_df.loc[:, "snapped"].dropna(), 25833),
     )
 
-    if len(not_rings):
-        qtm(
-            not_rings=to_gdf(not_rings).clip(mask).buffer(3),
-            snap_to=to_gdf(snap_to, 25833).clip(mask),
-            snap_df=to_gdf(snap_df["geometry"], 25833).clip(mask),
-            title="not_rings",
-        )
-
     as_lines = pd.concat([as_lines, not_rings]).sort_index()
-
-    """
-    for line in as_lines:
-        qtm(
-            line=to_gdf(line).clip(mask).buffer(1).to_frame(),
-            snap_to=to_gdf(snap_to, 25833).clip(mask),
-            snap_df=to_gdf(snap_df["geometry"], 25833).clip(mask),
-            title="line",
-        )
-    """
-    try:
-        qtm(
-            snap_to=to_gdf(snap_to, 25833).clip(mask),
-            snap_df=to_gdf(snap_df["geometry"], 25833).clip(mask),
-            as_lines=to_gdf(as_lines, 25833).clip(mask),
-            title="helt nederst",
-        )
-        qtm(
-            geoms=to_gdf(geoms, 25833).clip(mask.buffer(11)),
-            snap_to=to_gdf(snap_to, 25833).clip(mask.buffer(11)),
-            points=to_gdf(points, 25833)
-            .assign(geometry=lambda x: extract_unique_points(x))
-            .clip(mask.buffer(11)),
-            snap_df=to_gdf(snap_df["geometry"], 25833).clip(mask.buffer(11)),
-            as_lines=to_gdf(as_lines, 25833).clip(mask.buffer(11)),
-            title="helt nederst buff",
-        )
-    except Exception:
-        pass
 
     no_values = pd.Series(
         {i: None for i in range(len(rings)) if i not in as_lines.index}
     )
 
-    # TODO TEMP
-    assert len(pd.concat([as_lines, no_values]).sort_index()) == len(rings), (
-        len(pd.concat([as_lines, no_values]).sort_index()),
-        len(rings),
+    return pd.concat([as_lines, no_values]).sort_index()
+
+
+def __snap_linearring(
+    rings: NDArray[LinearRing],
+    snap_to: MultiLineString,
+    # all_gaps: Geometry,
+    geoms: GeoSeries,
+    tolerance: int | float,
+) -> pd.Series:
+    assert len(rings.shape) == 1, "ring array should be 1 dimensional"
+
+    multipoints: NDArray[MultiPoint] = extract_unique_points(rings)
+
+    if not len(multipoints):
+        return pd.Series()
+
+    line_segments: GeoDataFrame = multipoints_to_line_segments(multipoints)
+
+    # to integer index
+    line_segments.index.name = "_ring_index"
+    line_segments = line_segments.reset_index()
+
+    snap_df: GeoDataFrame = join_lines_with_snap_to(
+        lines=line_segments,
+        snap_to=snap_to,
+        tolerance=tolerance,
+    )
+    snap_df["endpoints"] = snap_df.geometry.boundary
+
+    agged = snap_df.groupby(level=0).apply(sorted_unary_union)
+    snap_df = snap_df.loc[lambda x: ~x.index.duplicated()]
+    snap_df.geometry = agged
+
+    snap_df = snap_df.groupby("_ring_index", as_index=False)["geometry"].agg(
+        unary_union
+    )
+    snap_df.geometry = line_merge(snap_df.geometry)
+
+    is_not_merged = snap_df.geom_type == "MultiLineString"
+
+    line_merge_func = functools.partial(line_merge_by_force, max_segment_length=5)
+    snap_df.loc[is_not_merged, "geometry"] = snap_df.loc[
+        is_not_merged, "geometry"
+    ].apply(line_merge_func)
+
+    assert (
+        snap_df.geom_type.isin(["LineString", "LinearRing"])
+    ).all(), snap_df.geom_type
+
+    snap_df.geometry = extract_unique_points(snap_df.geometry.values)
+    snap_df = snap_df.explode(ignore_index=True)
+
+    explore(
+        rings=to_gdf(rings, 25833).assign(ring_index=range(len(rings))),
+        column="ring_index",
+    )
+
+    if 1:
+        explore(snap_df.assign(rim1=lambda x: x._ring_index.astype(str)), "rim1")
+
+        snap_points_df = GeoDataFrame(
+            {"geometry": extract_unique_points(get_parts(line_merge(snap_to)))}
+        ).explode(index_parts=False)
+
+        snap_points_df["wkt"] = snap_points_df.geometry.to_wkt()
+        snap_points_df["snap_to_index"] = range(len(snap_points_df))
+
+        snapped = (
+            snap_points_df.sjoin(buff(snap_df, tolerance, resolution=20))
+            .sort_values(["index_right", "snap_to_index"])
+            .drop_duplicates(["_ring_index", "wkt"])
+            .rename(columns={"index_right": "point_index"})
+        )
+
+        not_snapped = sfilter_inverse(
+            snap_df.loc[lambda x: ~x.index.isin(snapped["point_index"])],
+            snap_to.buffer(tolerance),
+        )
+        not_snapped = clean_overlay(
+            GeoDataFrame({"geometry": rings, "_ring_index": range(len(rings))}),
+            GeoDataFrame({"geometry": [snap_to.buffer(tolerance)]}),
+            how="difference",
+            keep_geom_type=False,
+        )
+        not_snapped.geometry = extract_unique_points(not_snapped.geometry)
+        not_snapped = not_snapped.explode(index_parts=False)
+        explore(not_snapped)
+
+        not_snapped["point_index"] = not_snapped.index
+        not_snapped["snap_to_index"] = (
+            not_snapped.groupby("_ring_index")
+            .apply(
+                lambda x: x.reset_index(drop=True)
+                .sjoin_nearest(snap_points_df)["snap_to_index"]
+                .sort_index()
+            )
+            .values
+        )
+
+        snap_df = pd.concat([not_snapped, snapped]).sort_values(
+            ["point_index", "snap_to_index"]
+        )
+
+        explore(snap_df.assign(ri0=lambda x: x._ring_index.astype(str)), "ri0")
+
+        sorted_points = snap_df.groupby(["_ring_index"])["geometry"].agg(LineString)
+
+        explore(
+            sorted_points.reset_index().assign(ri1=lambda x: x._ring_index.astype(str)),
+            "ri1",
+        )
+
+        sorted_points2 = snap_df.groupby(["_ring_index"])["geometry"].agg(
+            lambda x: LineString(traveling_salesman_problem(x))
+        )
+        sorted_points2 = GeoDataFrame({"geometry": sorted_points2})
+        explore(
+            sorted_points2.reset_index().assign(
+                ri2=lambda x: x._ring_index.astype(str)
+            ),
+            "ri2",
+        )
+        sss
+
+        if 0:  # for ring_idx in snapped["_ring_index"].unique():
+            display(
+                snapped.loc[snapped._ring_index == ring_idx]
+                .reset_index()[["index", "geometry"]]
+                .dropna(),
+            )
+            explore(
+                snapped.loc[snapped._ring_index == ring_idx]
+                .reset_index()[["index", "geometry"]]
+                .dropna(),
+                "index",
+            )
+
+            explore(
+                snapped.loc[snapped._ring_index == ring_idx][
+                    ["index_right", "geometry"]
+                ].dropna(),
+                "index_right",
+            )
+
+            explore(
+                snapped.loc[snapped._ring_index == ring_idx][
+                    ["snap_to_index", "geometry"]
+                ].dropna(),
+                "snap_to_index",
+            )
+            # snapped.index = snapped["_ring_index"]  # ["index_right"]
+
+            explore(
+                snapped.loc[snapped._ring_index == ring_idx].assign(
+                    idx=lambda x: range(len(x))
+                ),
+                "idx",
+            )
+
+        @numba.njit
+        def groups_from_consecutive_values(values):
+            i = 0
+            prev = values[0]
+            indices = [i]
+            for value in values[1:]:
+                if value == prev + 1:
+                    indices.append(i)
+                else:
+                    i += 1
+                    indices.append(i)
+                prev = value
+            return indices
+
+        # column indicating where the chain/line is broken
+        snapped["_line_idx"] = (
+            snapped.groupby("_ring_index")["snap_to_index"]
+            .agg(lambda x: groups_from_consecutive_values(list(x)))
+            .explode()
+            .values
+        )
+
+        display("snapped")
+        display(snapped)
+        display("snap_df")
+        display(snap_df)
+
+        explore(snapped.assign(ri=lambda x: x._ring_index.astype(str)), "ri")
+        sss
+        #      lambda x: LineString(x) if len(x) > 1 else x
+        # )
+        explore(
+            snapped.reset_index(),
+            "_ring_index",
+        )
+
+        """not_within["_line_idx_not_increasing"] = (
+            not_within.groupby(level=0)["_range_idx"]
+            .apply(lambda x: (x.diff().fillna(1) != 1).cumsum() + x.index)
+            .values
+        )"""
+
+        print(snapped.loc[snapped.index == 0])
+        explore(
+            i0=snapped.loc[snapped.index == 0].assign(idx=lambda x: range(len(x))),
+            column="idx",
+        )
+        explore(
+            i0=snapped.loc[snapped._ring_index == 0].assign(
+                idx=lambda x: range(len(x))
+            ),
+            column="idx",
+        )
+        explore(
+            snapped=snapped.assign(_ring_index=lambda x: x._ring_index.astype(str)),
+            column="_ring_index",
+        )
+
+        explore(
+            snap_df=snap_df,
+            snapped=snapped,
+            not_snapped=not_snapped,  # .loc[lambda x: ~x.index.isin(snapped.index)],
+        )
+        """
+        sss
+
+        snap_df.loc[:, "snapped"] = snap_to_nearest(
+            snap_df["geometry"].values, extract_unique_points(snap_to), geoms, tolerance
+        )
+
+        more_snap_points = nearest_points(snap_df["geometry"].values, snap_to)[1]
+        distances = distance(snap_df["geometry"].values, more_snap_points)
+        more_snap_points = more_snap_points[distances < tolerance]
+
+        not_snapped = snap_df["snapped"].isna()
+        if not_snapped.any():
+            snap_df.loc[not_snapped, "snapped"] = snap_to_nearest(
+                snap_df.loc[not_snapped, "geometry"],
+                unary_union(more_snap_points),
+                geoms,
+                tolerance,
+            )
+
+        explore(
+            snap_df=to_gdf(snap_df["geometry"].dropna(), 25833),
+            snapped=to_gdf(snap_df["snapped"].dropna(), 25833),
+        )
+
+        snapped_ = to_gdf(snap_df["snapped"].dropna(), 25833)
+        snap_df_ = to_gdf(snap_df["geometry"].dropna(), 25833)
+
+        snap_df["geometry"] = np.where(
+            snap_df["snapped"].notna(), snap_df["snapped"], snap_df["geometry"]
+        )
+
+        explore(
+            snapped_,
+            snap_df_,
+            snapped_now=to_gdf(
+                snap_df["geometry"],
+                25833,
+            ),
+        )"""
+
+        """distance_to_snap_to = distance(snap_df["geometry"].values, snap_to)
+        snap_df = snap_df.loc[
+            (distance_to_snap_to <= PRECISION) | (distance_to_snap_to >= tolerance)
+        ]"""
+
+    else:
+        snap_df.index = pd.MultiIndex.from_arrays(
+            [snap_df["_ring_index"].values, range(len(snap_df))]
+        )
+
+        snap_points_df = GeoDataFrame(
+            {"geometry": extract_unique_points(get_parts(line_merge(snap_to)))}
+        ).explode(index_parts=False)
+
+        snap_points_df.index = snap_points_df.geometry
+
+        joined = snap_df.sjoin(
+            buff(snap_points_df, tolerance, resolution=10, copy=True)
+        )
+        joined["distance"] = distance(
+            joined.geometry.values, joined["index_right"].values
+        )
+
+        """# remove conections to points that cross the geometries
+        joined.geometry = make_lines_between_points(
+            joined.geometry.values, joined["index_right"].values
+        )
+        joined = sfilter_inverse(joined, geoms)
+        qtm(joined2=joined.clip(mask))"""
+
+        joined["wkt"] = joined["index_right"].astype(str)
+
+        unique: pd.Series = (
+            joined.sort_index()
+            .drop_duplicates(["wkt", "_ring_index"])
+            .sort_values("distance")
+            .loc[lambda x: ~x.index.duplicated(), "index_right"]
+        )
+
+        missing = snap_df.loc[lambda x: ~x.index.isin(unique.index)]
+        missing["geometry"] = snap_to_nearest(
+            missing["geometry"].values, snap_to, geoms, tolerance
+        )
+        snapped = pd.concat([unique, missing["geometry"].dropna()])
+
+        snapped.index = snapped.index.droplevel(0)
+        snap_df.index = snap_df.index.droplevel(0)
+
+        snap_df["geometry"] = np.where(
+            snap_df.index.isin(snapped.index),
+            snap_df.index.map(snapped),
+            snap_df["geometry"],
+        )
+
+        explore(
+            snap_points_df,
+            snap_df=to_gdf(snap_df.geometry, 25833),
+            missing=to_gdf(missing["geometry"].dropna(), 25833),
+            joined=to_gdf(joined["index_right"], 25833),
+            unique=to_gdf(unique, 25833),
+            rings=to_gdf(rings, 25833),
+            snap_to=to_gdf(snap_to, 25833),
+        )
+
+    explore(
+        snap_df=to_gdf(snap_df.geometry, 25833),
+        snap_to=to_gdf(snap_to, 25833),
+        line_segments=to_gdf(line_segments.geometry, 25833),
+        geoms=to_gdf(geoms, 25833),
+    )
+
+    assert snap_df["geometry"].notna().all(), snap_df[snap_df["geometry"].isna()]
+
+    # remove lines with only two points. They cannot be converted to polygons.
+    is_ring = snap_df.groupby("_ring_index").transform("size") > 2
+
+    not_rings = snap_df.loc[~is_ring].loc[lambda x: ~x.index.duplicated()]
+    snap_df = snap_df.loc[is_ring]
+
+    if 0:
+
+        def sort_points(df):
+            return traveling_salesman_problem(df, return_to_start=False)
+
+        snap_df = (
+            snap_df.groupby("_ring_index", as_index=False)["geometry"]
+            .agg(sort_points)
+            .explode("geometry")
+        )
+        print(snap_df)
+
+        """for idx in snap_df["_ring_index"].unique():
+            explore(snap_df=snap_df.loc[snap_df._ring_index==idx].set_crs(25833).reset_index(), column="index")
+        sss"""
+    else:
+        snap_df["wkt"] = snap_df.geometry.to_wkt()
+        snap_df = snap_df.drop_duplicates(["wkt", "_ring_index"])
+
+    to_int_index = {
+        ring_idx: i for i, ring_idx in enumerate(sorted(set(snap_df["_ring_index"])))
+    }
+    int_indices = snap_df["_ring_index"].map(to_int_index)
+    for i in snap_df["_ring_index"].unique():
+        print(snap_df.loc[snap_df._ring_index == i, "geometry"])
+    as_lines = pd.Series(
+        linearrings(
+            get_coordinates(snap_df["geometry"].values),
+            indices=int_indices.values,
+        ),
+        index=snap_df["_ring_index"].unique(),
+    )
+    not_rings = pd.Series(
+        [None] * len(not_rings),
+        index=not_rings["_ring_index"].values,
+    )
+
+    print(snap_df)
+    print(as_lines)
+
+    for idx in snap_df["_ring_index"].unique():
+        explore(
+            rings=to_gdf(rings, 25833),
+            snap_to=to_gdf(snap_to, 25833),
+            snap_df=to_gdf(snap_df.loc[snap_df._ring_index == idx].geometry, 25833),
+            as_lines=to_gdf(as_lines.loc[idx], 25833),
+        )
+
+    explore(
+        as_lines=to_gdf(as_lines, 25833),
+        snap_to=to_gdf(snap_to, 25833),
+        snap_df=to_gdf(snap_df.geometry, 25833),
+        rings=to_gdf(rings, 25833),
+        more_snap_points=to_gdf(more_snap_points, 25833),
+        snapped=to_gdf(snap_df.loc[:, "snapped"].dropna(), 25833),
+    )
+    sssss
+
+    as_lines = pd.concat([as_lines, not_rings]).sort_index()
+
+    no_values = pd.Series(
+        {i: None for i in range(len(rings)) if i not in as_lines.index}
     )
 
     return pd.concat([as_lines, no_values]).sort_index()
 
 
-def get_shortest_line_between_points(points: MultiPoint):
-    points = GeoSeries([points]).explode(index_parts=False)
-    points.index = points.values
-
-    distances = get_all_distances(points, points)
-    edges = [
-        (source, target, weight)
-        for source, target, weight in zip(
-            distances.index, distances["neighbor_index"], distances["distance"]
-        )
-        # if not (source == points.index.iloc[0] and target == points.index.iloc[-1])
-    ]
-
-    graph = nx.Graph()
-    graph.add_weighted_edges_from(edges)
-
-    shortest_path = nx.approximation.traveling_salesman_problem(
-        graph, nodes=list(points.index)
-    )
-    return LineString(shortest_path)
-
-
-def line_merge_by_force(line: MultiLineString | LineString) -> LineString:
+def line_merge_by_force(
+    line: MultiLineString | LineString, max_segment_length: int | float
+) -> LineString:
     """converts a (multi)linestring to a linestring if possible."""
 
-    print("\nhei line_merge_by_force")
-    print(line)
     if isinstance(line, LineString):
         return line
 
@@ -1056,19 +1959,19 @@ def line_merge_by_force(line: MultiLineString | LineString) -> LineString:
     if one_large_ring:
         return _split_line_by_line_points(rings, not_rings)
 
-    """if rings.length.sum() > lines.length.sum() * 0.01:
-        rings = get_cheap_centerlines(rings)
-        qtm(rings, not_rings)
-        qtm(rings)
-        raise ValueError(rings.length)"""
     if rings.length.sum() < PRECISION and len(not_rings) == 1:
         return not_rings
     elif len(rings):
+        display(rings)
+        display(not_rings)
+        display(rings.length)
+        display(not_rings.length)
         if rings.length.sum() < lines.length.sum() * 0.02:
-            rings = get_cheap_centerlines(rings)
+            rings = get_rough_centerlines(rings, max_segment_length)
         else:
             for ring in rings.geometry:
-                qtm(ring)
+                qtm(ring=to_gdf(ring))
+            qtm(rings=(rings), not_rings=(not_rings))
             raise ValueError(rings.length)
 
     not_rings = pd.concat([not_rings, rings[~rings.is_ring]])
@@ -1085,31 +1988,6 @@ def line_merge_by_force(line: MultiLineString | LineString) -> LineString:
         qtm(rings)
         raise ValueError(rings.length)
 
-    qtm(
-        lin=to_gdf(line),
-        lines111=(lines),
-        not_rings=(not_rings),
-        long_not_rings=(not_rings[not_rings.length > PRECISION]),
-        alpha=0.5,
-        title="by_force1",
-    )
-
-    """lines.geometry = extract_unique_points(lines.geometry)
-
-    lines.geometry = lines.geometry.apply(get_shortest_line_between_points)
-    qtm(line=to_gdf(line), lines=(lines), title="by_force nx")"""
-
-    # rings = lines[lines.is_ring]
-    print(lines.length)
-    print(rings.length)
-    qtm(
-        lines222=lines[~lines.is_ring],
-        rings222=lines[lines.is_ring].clip(lines[~lines.is_ring].buffer(1)),
-    )
-    qtm(lines333=lines[~lines.is_ring])
-
-    # lines = lines.loc[lambda x: (~x.index.isin(rings.index)) & (x.length > PRECISION)]
-
     if not (not_rings.length > PRECISION).any():
         print(not_rings)
         qtm(not_rings=(not_rings))
@@ -1122,7 +2000,6 @@ def line_merge_by_force(line: MultiLineString | LineString) -> LineString:
     )
     line = line_merge(unary_union(lines.geometry.values))
 
-    print(line)
     if isinstance(line, LineString):
         assert line.length >= length_before - PRECISION * 100, (
             line.length - length_before
@@ -1130,8 +2007,6 @@ def line_merge_by_force(line: MultiLineString | LineString) -> LineString:
         return line
 
     lines = GeoDataFrame({"geometry": get_parts(line)})
-
-    print(lines)
 
     largest_idx: int = lines.length.idxmax()
     largest = lines.loc[[largest_idx]]
