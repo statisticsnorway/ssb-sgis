@@ -50,7 +50,7 @@ def test_get_centerline():
         )
     ).pipe(sg.buff, 0.1, resolution=10)
 
-    centerline = sg.get_rough_centerlines(cross, 3)
+    centerline = sg.get_rough_centerlines(cross, 2)
 
     sg.qtm(centerline, cross)
 
