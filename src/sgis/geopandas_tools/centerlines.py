@@ -110,8 +110,8 @@ def get_rough_centerlines(
     length_now = end_to_end.length
     end_to_end = (
         end_to_end.intersection(geoms.buffer(precision))
-        .loc[lambda x: x.length > length_now * 0.9]
         .dropna()
+        .loc[lambda x: x.length > length_now * 0.9]
     )
 
     # straight end buffer to remove all in between ends

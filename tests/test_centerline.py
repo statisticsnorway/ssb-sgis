@@ -69,7 +69,6 @@ def test_get_centerline():
     centerlines = sg.get_rough_centerlines(roads, 10)
     sg.qtm(roads, centerlines)
 
-    print("\n\n\nhei")
     df = gpd.read_parquet(Path(__file__).parent / "testdata" / "gaps.parquet")
     for i in [50, 20, 5]:
         centerlines = sg.get_rough_centerlines(df, i)
