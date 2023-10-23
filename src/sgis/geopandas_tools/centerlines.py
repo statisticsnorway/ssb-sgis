@@ -1,3 +1,5 @@
+import warnings
+
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -28,6 +30,9 @@ from .conversion import to_geoseries
 from .general import clean_geoms, make_lines_between_points
 from .neighbors import get_all_distances
 from .sfilter import sfilter_split
+
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 def get_rough_centerlines(
@@ -310,14 +315,22 @@ def get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
         tree = STRtree(lines_around_geometries.values)
         nearest_indices = tree.nearest(to_be_moved.values)
 
-        to_be_moved.loc[:] = lines_around_geometries.iloc[nearest_indices].values
+        relevant_lines_around_geometries = pd.Series(
+            lines_around_geometries.iloc[nearest_indices].values,
+            index=to_be_moved.index,
+        )
 
         # then move the points to the closest vertice
-        to_be_moved.loc[:] = nearest_points(
-            to_be_moved.values,
-            extract_unique_points(geoms.loc[to_be_moved.index]).values,
-        )[1]
-        out_geoms.append(to_be_moved)
+        points_moved = pd.Series(
+            nearest_points(
+                relevant_lines_around_geometries.values,
+                extract_unique_points(
+                    geoms.loc[relevant_lines_around_geometries.index]
+                ).values,
+            )[1],
+            index=to_be_moved.index,
+        )
+        out_geoms.append(points_moved)
 
     return pd.concat(out_geoms)
 
