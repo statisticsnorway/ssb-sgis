@@ -1,5 +1,6 @@
 import numbers
 from collections.abc import Iterator, Sized
+from typing import Any
 
 import geopandas as gpd
 import numpy as np
@@ -11,6 +12,26 @@ from pandas.api.types import is_array_like, is_dict_like, is_list_like
 from shapely import Geometry, box, wkb, wkt
 from shapely.geometry import Point
 from shapely.ops import unary_union
+
+
+def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
+    if crs is None:
+        try:
+            crs = obj.crs
+        except AttributeError:
+            pass
+
+    try:
+        # this works for geodataframe, geoseries and DataFrame with geometry column
+        obj = obj.geometry.values
+    except AttributeError:
+        try:
+            # pandas series
+            obj = obj.values
+        except AttributeError:
+            pass
+
+    return GeoSeries(obj, crs=crs)
 
 
 def to_shapely(obj) -> Geometry:
