@@ -23,7 +23,9 @@ from shapely.errors import GEOSException
 from shapely.geometry import LineString, Point
 from shapely.ops import nearest_points
 
-from .general import clean_geoms
+from ..networkanalysis.traveling_salesman_problem import traveling_salesman_problem
+from .conversion import to_geoseries
+from .general import clean_geoms, make_lines_between_points
 from .neighbors import get_all_distances
 from .sfilter import sfilter_split
 
@@ -34,11 +36,12 @@ def get_rough_centerlines(
 ) -> GeoDataFrame:
     """Get a cheaply calculated centerline of a polygon.
 
-    The line is not guaraneteed to be completely within the polygon.
+    The line is not guaraneteed to be completely within the polygon. The line
+    should start and end at the polygons' "endpoints".
 
-    The function is meant for making centerlines of slivers in coverage_clean and
+    The function is meant for getting centerlines from slivers in coverage_clean and
     snap_polygons. It will give weird results and be extremely slow for
-     complext polygons like (buffered) road networks.
+    complext polygons like (buffered) road networks.
 
     """
 
@@ -50,50 +53,48 @@ def get_rough_centerlines(
     if not gdf.index.is_unique:
         raise ValueError("Index must be unique")
 
-    geoms = gdf.geometry if isinstance(gdf, GeoDataFrame) else gdf
+    geoms: GeoSeries = to_geoseries(gdf).explode(index_parts=False)
 
-    segmentized = segmentize(geoms.geometry, max_segment_length=max_segment_length)
+    segmentized: GeoSeries = segmentize(geoms, max_segment_length=max_segment_length)
 
-    # voronoi can cause problems if coordinates are nearly identical
-    # buffering solves it
-    try:
-        voronoi_lines = voronoi_polygons(segmentized, only_edges=True)
-    except GEOSException:
-        try:
-            segmentized = make_valid(segmentized)
-            voronoi_lines = voronoi_polygons(segmentized, only_edges=True)
-        except GEOSException:
-            voronoi_lines = voronoi_polygons(
-                segmentized.buffer(precision).buffer(-precision), only_edges=True
-            )
+    points: GeoSeries = get_points_in_polygons(segmentized, precision)
 
-    crossing_lines = (
-        segmentized.buffer(precision)
-        .intersection(voronoi_lines)
-        .explode(index_parts=False)
+    has_no_points = geoms.loc[(~geoms.index.isin(points.index))]
+
+    more_points: GeoSeries = get_points_in_polygons(
+        has_no_points.buffer(precision), precision
     )
-    within_polygons, not_within = sfilter_split(
-        crossing_lines, geoms, predicate="within"
-    )
-
-    intersect_polys_at_two_places = (
-        not_within.intersection(unary_union(get_rings(segmentized))).geom_type
-        == "MultiPoint"
-    )
-    not_within_but_relevant = not_within.loc[intersect_polys_at_two_places]
-
-    points: GeoSeries = pd.concat([within_polygons, not_within_but_relevant]).centroid
 
     # Geometries that have no lines inside, might be perfect circles.
     # These can get the centroid as centerline
-    has_no_points = geoms.loc[~geoms.index.isin(points.index)]
-    has_no_points.loc[:] = geoms.loc[has_no_points.index].centroid
+    still_has_no_points = has_no_points.loc[
+        (~has_no_points.index.isin(more_points.index))
+    ]
+    still_has_no_points.loc[:] = geoms.loc[still_has_no_points.index].centroid
 
-    segmentized = segmentized.loc[~segmentized.index.isin(has_no_points.index)]
-    geoms = geoms.loc[~geoms.index.isin(has_no_points.index)]
+    # very thin slivers
+    has_points_now = has_no_points.loc[(has_no_points.index.isin(more_points.index))]
+
+    if len(has_points_now):
+        segmentized = pd.concat(
+            [
+                segmentized.loc[
+                    ~segmentized.index.isin(
+                        still_has_no_points.index.union(has_points_now.index)
+                    )
+                ],
+                has_points_now,
+            ]
+        )
+    else:
+        segmentized = segmentized.loc[
+            ~segmentized.index.isin(still_has_no_points.index)
+        ]
 
     # make sure to include the endpoints
     endpoints = get_approximate_polygon_endpoints(segmentized)
+
+    geoms = geoms.loc[~geoms.index.isin(still_has_no_points.index)]
 
     # check if line between endpoints make up a decent centerline
     has_two = endpoints.groupby(level=0).size() == 2
@@ -109,8 +110,8 @@ def get_rough_centerlines(
     length_now = end_to_end.length
     end_to_end = (
         end_to_end.intersection(geoms.buffer(precision))
-        .dropna()
         .loc[lambda x: x.length > length_now * 0.9]
+        .dropna()
     )
 
     # straight end buffer to remove all in between ends
@@ -188,29 +189,45 @@ def get_rough_centerlines(
 
     if isinstance(gdf, GeoSeries):
         return GeoSeries(
-            pd.concat([centerlines, has_no_points]), crs=gdf.crs
+            pd.concat([centerlines, still_has_no_points]), crs=gdf.crs
         ).sort_index()
 
     centerlines = GeoDataFrame(
-        {"geometry": pd.concat([centerlines, has_no_points])}, crs=gdf.crs
+        {"geometry": pd.concat([centerlines, still_has_no_points])}, crs=gdf.crs
     )
-
     return centerlines
 
 
-def make_lines_between_points(
-    arr1: NDArray[Point], arr2: NDArray[Point]
-) -> NDArray[LineString]:
-    if arr1.shape != arr2.shape:
-        raise ValueError("Arrays must have equal shape.")
-    coords: pd.DataFrame = pd.concat(
-        [
-            pd.DataFrame(get_coordinates(arr1), columns=["x", "y"]),
-            pd.DataFrame(get_coordinates(arr2), columns=["x", "y"]),
-        ]
-    ).sort_index()
+def get_points_in_polygons(geometries: GeoSeries, precision: float) -> GeoSeries:
+    # voronoi can cause problems if coordinates are nearly identical
+    # buffering solves it
+    try:
+        voronoi_lines = voronoi_polygons(geometries, only_edges=True)
+    except GEOSException:
+        try:
+            geometries = make_valid(geometries)
+            voronoi_lines = voronoi_polygons(geometries, only_edges=True)
+        except GEOSException:
+            voronoi_lines = voronoi_polygons(
+                geometries.buffer(precision).buffer(-precision), only_edges=True
+            )
 
-    return linestrings(coords.values, indices=coords.index)
+    crossing_lines = (
+        geometries.buffer(precision)
+        .intersection(voronoi_lines)
+        .explode(index_parts=False)
+    )
+    within_polygons, not_within = sfilter_split(
+        crossing_lines, geometries, predicate="within"
+    )
+
+    intersect_polys_at_two_places = (
+        not_within.intersection(unary_union(get_rings(geometries))).geom_type
+        == "MultiPoint"
+    )
+    not_within_but_relevant = not_within.loc[intersect_polys_at_two_places]
+
+    return pd.concat([within_polygons, not_within_but_relevant]).centroid
 
 
 def get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
@@ -218,9 +235,9 @@ def get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
 
     rectangles = geoms.minimum_rotated_rectangle()
 
-    # get rings returns array with integer index that must be mapped to pandas index
+    # get_rings returns array with integer index that must be mapped to pandas index
     rings, indices = get_rings(rectangles, return_index=True)
-    int_to_pd_index = dict(enumerate(sorted(set(rectangles.index))))
+    int_to_pd_index = dict(enumerate(rectangles.index))
     indices = [int_to_pd_index[i] for i in indices]
 
     rectangles.loc[:] = (
@@ -239,18 +256,23 @@ def get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
         .centroid
     )
 
-    nearest_ring_point = nearest_points(corner_points, geoms.loc[corner_points.index])[
-        1
-    ]
-    distance_to_corner = distance(nearest_ring_point, corner_points)
+    nearest_ring_point = nearest_points(
+        corner_points.values, geoms.loc[corner_points.index].values
+    )[1]
 
-    is_two_nearest: NDArray[np.bool] = (
+    distance_to_corner = pd.Series(
+        distance(nearest_ring_point, corner_points), index=corner_points.index
+    )
+
+    is_two_nearest: NDArray[bool] = (
         distance_to_corner.groupby(level=0)
         .apply(lambda x: x <= x.nsmallest(2).iloc[-1])
         .values
     )
 
-    two_nearest = nearest_ring_point.iloc[is_two_nearest]
+    two_nearest = pd.Series(nearest_ring_point, index=corner_points.index).iloc[
+        is_two_nearest
+    ]
 
     # geometries with more than two endpoints now, are probably crosses/star-like
     more_than_two = two_nearest.loc[lambda x: x.groupby(level=0).size() > 2]
@@ -300,121 +322,59 @@ def get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
     return pd.concat(out_geoms)
 
 
-def traveling_salesman_problem(
-    points: GeoDataFrame | GeoSeries,
-    distances: pd.DataFrame | None = None,
-    return_to_start: bool = True,
-) -> list[Point]:
-    try:
-        points = GeoSeries(points.geometry).drop_duplicates()
-    except AttributeError:
-        points = GeoSeries(points).drop_duplicates()
-
-    if len(points) <= 2:
-        return points
-
-    if distances is None:
-        idx_to_point: dict[int, Point] = dict(enumerate(points))
-        points.index = range(len(points))
-        distances: pd.DataFrame = get_all_distances(points, points)
-    else:
-        idx_to_point: dict[int, Point] = dict(enumerate(points))
-
-        distances = distances.loc[
-            lambda x: (x.index.isin(points.index))
-            & (x["neighbor_index"].isin(points.index))
-        ]
-
-    if not return_to_start:
-        distances["mean_distance"] = distances.groupby(level=0)["distance"].transform(
-            "mean"
-        )
-
-        distances = distances.sort_values(
-            ["mean_distance", "distance"], ascending=[True, False]
-        )
-        max_dist_idx = distances["mean_distance"].idxmax()
-
-        dummy_node_idx = points.index.max() + 1
-        n_points = dummy_node_idx + 1
-        max_dist_and_some = distances["distance"].max() * 1.1
-        dummy_node = pd.DataFrame(
-            {
-                "neighbor_index": [i for i in range(n_points)]
-                + [dummy_node_idx] * dummy_node_idx,
-                "distance": [max_dist_and_some for _ in range(n_points * 2 - 1)],
-            },
-            index=[dummy_node_idx] * (n_points) + [i for i in range(dummy_node_idx)],
-        )
-
-        dummy_node.loc[
-            (dummy_node["neighbor_index"] == max_dist_idx)
-            | (dummy_node.index == max_dist_idx)
-            | (dummy_node["neighbor_index"] == dummy_node.index),
-            "distance",
-        ] = 0
-
-        distances = pd.concat([distances, dummy_node])
-    else:
-        n_points = points.index.max()
-
-    # now to mimick the return values of nx.all_pairs_dijkstra, nested dictionaries of distances and nodes/edges
-    dist, path = {}, {}
-    for i in distances.index.unique():
-        dist[i] = dict(distances.loc[i, ["neighbor_index", "distance"]].values)
-        path[i] = {
-            neighbor: [i, neighbor] for neighbor in distances.loc[i, "neighbor_index"]
-        }
-
-    # the rest of the function is copied from networkx' traveling_salesman_problem
-
-    nx_graph = nx.Graph()
-    for u in range(n_points):
-        for v in range(n_points):
-            if u == v:
-                continue
-            nx_graph.add_edge(u, v, weight=dist[u][v])
-    best = nx.approximation.christofides(nx_graph, "weight")
-
-    best_path = []
-    for u, v in pairwise(best):
-        best_path.extend(path[u][v][:-1])
-    best_path.append(v)
-
-    if return_to_start:
-        return [idx_to_point[i] for i in best_path]
-
-    # drop duplicates, but keep order
-    best_path = list(dict.fromkeys(best_path))
-
-    idx_start = best_path.index(dummy_node_idx)  # - 1
-
-    best_path = best_path[idx_start:] + best_path[:idx_start]
-
-    return [idx_to_point[i] for i in best_path if i != dummy_node_idx]
-
-
-def multipoints_to_line_segments(multipoints: GeoSeries) -> GeoDataFrame:
+def multipoints_to_line_segments(
+    multipoints: GeoSeries | GeoDataFrame, to_next: bool = True
+) -> GeoSeries | GeoDataFrame:
     if not len(multipoints):
         return multipoints
+
+    points = to_geoseries(multipoints)
 
     try:
         crs = multipoints.crs
     except AttributeError:
         crs = None
 
-    points, indices = get_parts(multipoints, return_index=True)
-    point_df = pd.DataFrame({"geometry": GeometryArray(points)}, index=indices)
+    point_df = pd.DataFrame({"geometry": points.explode(index_parts=False)})
 
-    point_df["next"] = point_df.groupby(level=0)["geometry"].shift(-1)
+    point_df
+    if to_next:
+        shift = -1
+        filt = lambda x: ~x.index.duplicated(keep="first")
+    else:
+        shift = 1
+        filt = lambda x: ~x.index.duplicated(keep="last")
 
-    first_points = point_df.loc[lambda x: ~x.index.duplicated(), "geometry"]
+    point_df["next"] = point_df.groupby(level=0)["geometry"].shift(shift)
+
+    first_points = point_df.loc[filt, "geometry"]
     is_last_point = point_df["next"].isna()
 
     point_df.loc[is_last_point, "next"] = first_points
     assert point_df["next"].notna().all()
 
-    lines = [
+    point_df["geometry"] = [
         LineString([x1, x2]) for x1, x2 in zip(point_df["geometry"], point_df["next"])
     ]
-    return GeoSeries(lines, index=point_df.index, crs=crs)
+    if isinstance(multipoints, GeoDataFrame):
+        return GeoDataFrame(
+            point_df.drop(columns=["next"]), geometry="geometry", crs=crs
+        )
+    return GeoSeries(point_df["geometry"], crs=crs)
+
+
+def get_line_segments(lines) -> GeoDataFrame:
+    assert lines.index.is_unique
+    if isinstance(lines, GeoDataFrame):
+        multipoints = lines.assign(
+            **{
+                lines._geometry_column_name: extract_unique_points(
+                    lines.geometry.values
+                )
+            }
+        )
+        return multipoints_to_line_segments(multipoints.geometry)
+
+    multipoints = GeoSeries(extract_unique_points(lines.values), index=lines.index)
+
+    return multipoints_to_line_segments(multipoints)
