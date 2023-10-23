@@ -16,6 +16,7 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp,
     dissexp_by_cluster,
 )
+from .geopandas_tools.centerlines import get_rough_centerlines
 from .geopandas_tools.conversion import (
     coordinate_array,
     get_lonlat,
@@ -66,7 +67,6 @@ from .geopandas_tools.polygon_operations import (
     get_polygon_clusters,
 )
 from .geopandas_tools.polygons_as_rings import PolygonsAsRings
-from .geopandas_tools.polygons_to_lines import get_rough_centerlines
 from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
 
 # from .geopandas_tools.snap_polygons import coverage_clean, snap_polygons
