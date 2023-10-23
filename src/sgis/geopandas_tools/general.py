@@ -7,13 +7,16 @@ import numpy as np
 import pandas as pd
 import pyproj
 from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryDtype
+from geopandas.array import GeometryArray, GeometryDtype
+from numpy.typing import NDArray
 from shapely import (
     Geometry,
+    get_coordinates,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
+    linestrings,
     make_valid,
 )
 from shapely.geometry import LineString, Point
@@ -241,6 +244,12 @@ def get_grouped_centroids(
 def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     """Sort GeoDataFrame by area in decending order.
 
+    Args:
+        gdf: A GeoDataFrame or GeoSeries.
+
+    Returns:
+        A GeoDataFrame or GeoSeries sorted from large to small in area.
+
     Examples
     --------
     Create GeoDataFrame with NaN values.
@@ -275,17 +284,61 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
     0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
     """
+    # using enumerate, then iloc on the sorted dict keys.
+    # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     area_mapper = dict(enumerate(gdf.area.values))
     sorted_areas = dict(reversed(sorted(area_mapper.items(), key=lambda item: item[1])))
     return gdf.iloc[list(sorted_areas)]
 
 
 def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
+    """Sort GeoDataFrame by length in decending order.
+
+    Args:
+        gdf: A GeoDataFrame or GeoSeries.
+
+    Returns:
+        A GeoDataFrame or GeoSeries sorted from large to small in length.
+    """
+    # using enumerate, then iloc on the sorted dict keys.
+    # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     length_mapper = dict(enumerate(gdf.length.values))
     sorted_lengths = dict(
         reversed(sorted(length_mapper.items(), key=lambda item: item[1]))
     )
     return gdf.iloc[list(sorted_lengths)]
+
+
+def make_lines_between_points(
+    arr1: NDArray[Point] | GeometryArray | GeoSeries,
+    arr2: NDArray[Point] | GeometryArray | GeoSeries,
+) -> NDArray[LineString]:
+    """Creates an array of linestrings from two arrays of points.
+
+    The operation is done rowwise.
+
+    Args:
+        arr1: GeometryArray og GeoSeries of points.
+        arr2: GeometryArray og GeoSeries of points of same length as arr1.
+
+    Returns:
+        A numpy array of linestrings.
+
+    Raises:
+        ValueError: If the arrays have unequal shape.
+
+    """
+    if arr1.shape != arr2.shape:
+        raise ValueError("Arrays must have equal shape.")
+
+    coords: pd.DataFrame = pd.concat(
+        [
+            pd.DataFrame(get_coordinates(arr1), columns=["x", "y"]),
+            pd.DataFrame(get_coordinates(arr2), columns=["x", "y"]),
+        ]
+    ).sort_index()
+
+    return linestrings(coords.values, indices=coords.index)
 
 
 def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
