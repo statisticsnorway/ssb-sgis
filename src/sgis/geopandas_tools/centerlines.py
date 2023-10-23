@@ -1,34 +1,26 @@
 import warnings
 
-import networkx as nx
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryArray
-from networkx.utils import pairwise
 from numpy.typing import NDArray
 from shapely import (
     STRtree,
     distance,
     extract_unique_points,
-    get_coordinates,
-    get_parts,
     get_rings,
     line_merge,
-    linestrings,
     make_valid,
     segmentize,
     unary_union,
     voronoi_polygons,
 )
 from shapely.errors import GEOSException
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString
 from shapely.ops import nearest_points
 
 from ..networkanalysis.traveling_salesman_problem import traveling_salesman_problem
 from .conversion import to_geoseries
 from .general import clean_geoms, make_lines_between_points
-from .neighbors import get_all_distances
 from .sfilter import sfilter_split
 
 
