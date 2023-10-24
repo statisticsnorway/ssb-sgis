@@ -60,6 +60,8 @@ from .conversion import to_gdf
 
 
 class PolygonsAsRings:
+    """Convert polygons to linearrings, apply linestring functions, then convert back to polygons."""
+
     def __init__(self, polys: GeoDataFrame | GeoSeries | GeometryArray, crs=None):
         if not isinstance(polys, (pd.DataFrame, pd.Series, GeometryArray)):
             raise TypeError(type(polys))
@@ -82,11 +84,9 @@ class PolygonsAsRings:
             self.rings = pd.Series()
             return
 
-        # TODO: change to get_rings with return_index=True??
-
         exterior = pd.Series(
             get_exterior_ring(self.gdf.geometry.values),
-            index=self.exterior_index,
+            index=self._exterior_index,
         )
 
         self.max_rings: int = np.max(get_num_interior_rings(self.gdf.geometry.values))
@@ -105,7 +105,7 @@ class PolygonsAsRings:
             ),
         ).explode()
 
-        interiors.index = self.interiors_index
+        interiors.index = self._interiors_index
 
         interiors = interiors.dropna()
 
@@ -130,6 +130,7 @@ class PolygonsAsRings:
     def apply_numpy_func_to_interiors(
         self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
     ):
+        """Run an array function on only the interior rings of the polygons."""
         kwargs = kwargs or {}
         args = args or ()
         arr: NDArray[LinearRing] = self.rings.loc[self.is_interior].values
@@ -141,30 +142,10 @@ class PolygonsAsRings:
         self.rings.loc[self.is_interior] = results
         return self
 
-    def apply_geoseries_func(
-        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
-    ):
-        kwargs = kwargs or {}
-        args = args or ()
-
-        ser: pd.Series = self.rings.loc[self.is_interior]
-        index: pd.Index = self.rings.loc[self.is_interior].index
-
-        results = pd.Series(
-            func(
-                GeoSeries(ser, crs=self.crs, index=self.rings.index),
-                *args,
-                **kwargs,
-            ),
-            index=index,
-        )
-        self.rings.loc[self.is_interior] = results
-
-        return self
-
     def apply_numpy_func(
         self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
     ):
+        """Run a function that takes an array of lines/rings and returns an array of lines/rings."""
         kwargs = kwargs or {}
         args = args or ()
 
@@ -174,6 +155,7 @@ class PolygonsAsRings:
     def apply_geoseries_func(
         self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
     ):
+        """Run a function that takes a GeoSeries and returns a GeoSeries."""
         kwargs = kwargs or {}
         args = args or ()
 
@@ -190,6 +172,7 @@ class PolygonsAsRings:
     def apply_gdf_func(
         self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
     ):
+        """Run a function that takes a GeoDataFrame and returns a GeoDataFrame."""
         kwargs = kwargs or {}
         args = args or ()
 
@@ -220,7 +203,7 @@ class PolygonsAsRings:
         return self.rings.index.get_level_values(0) == 0
 
     @property
-    def interiors_index(self):
+    def _interiors_index(self):
         """A three-leveled MultiIndex.
 
         Used to separate interior and exterior and sort the interior in
@@ -243,7 +226,7 @@ class PolygonsAsRings:
         )
 
     @property
-    def exterior_index(self):
+    def _exterior_index(self):
         """A three-leveled MultiIndex.
 
         Used to separate interior and exterior in the 'to_numpy' method.
@@ -278,7 +261,7 @@ class PolygonsAsRings:
 
         empty_interiors = pd.Series(
             [None for _ in range(len(self.gdf) * self.max_rings)],
-            index=self.interiors_index,
+            index=self._interiors_index,
         ).loc[lambda x: ~x.index.isin(nonempty_interiors.index)]
 
         interiors = (
