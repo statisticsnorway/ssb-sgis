@@ -18,7 +18,7 @@ from shapely.errors import GEOSException
 from shapely.geometry import LineString
 from shapely.ops import nearest_points
 
-from ..networkanalysis.traveling_salesman_problem import traveling_salesman_problem
+from ..networkanalysis.traveling_salesman import traveling_salesman_problem
 from .conversion import to_geoseries
 from .general import clean_geoms, make_lines_between_points
 from .sfilter import sfilter_split

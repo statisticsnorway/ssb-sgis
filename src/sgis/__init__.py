@@ -22,6 +22,7 @@ from .geopandas_tools.conversion import (
     get_lonlat,
     get_utm33,
     to_gdf,
+    to_geoseries,
     to_shapely,
 )
 from .geopandas_tools.duplicates import (  # drop_duplicate_geometries,
@@ -104,7 +105,7 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
-from .networkanalysis.traveling_salesman_problem import traveling_salesman_problem
+from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
 from .raster.elevationraster import ElevationRaster
 from .raster.raster import Raster
