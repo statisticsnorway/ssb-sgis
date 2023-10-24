@@ -21,4 +21,6 @@ the same type as the input.
    buffer_dissolve_explode
    geometry_types
    conversion
+   centerlines
+   polygons_as_rings
    geocoding

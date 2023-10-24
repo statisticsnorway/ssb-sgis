@@ -20,4 +20,5 @@ and is not commonly needed.
    finding_isolated_networks
    closing_network_holes
    cutting_lines
+   traveling_salesman
    nodes
