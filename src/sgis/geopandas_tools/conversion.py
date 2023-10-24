@@ -22,16 +22,23 @@ def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
             pass
 
     try:
+        index = obj.index
+    except AttributeError:
+        index = None
+
+    try:
         # this works for geodataframe, geoseries and DataFrame with geometry column
         obj = obj.geometry.values
     except AttributeError:
         try:
-            # pandas series
+            # if pandas series
             obj = obj.values
         except AttributeError:
+            # geoseries will raise an Exception for non-geometry objects,
+            # so we can safely pass here
             pass
 
-    return GeoSeries(obj, crs=crs)
+    return GeoSeries(obj, index=index, crs=crs)
 
 
 def to_shapely(obj) -> Geometry:
