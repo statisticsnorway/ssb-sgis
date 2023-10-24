@@ -34,10 +34,10 @@ class NetworkAnalysisRules:
 
             It can be wise to set a higher search_factor only for the origins and
             destinations that are causing problems in a separate analysis run.
-        split_lines: If False (default), points will be connected to the endpoints
-            of the network lines. If True, the closest line  to each point will be
+        split_lines: If True (default), the closest line  to each point will be
             split in two at the nearest excact point. The weight of the split lines
-            are then adjusted to the new length. Defaults to False because it's faster.
+            are then adjusted to the new length. If False, the points will be
+            connected to the endpoints of the network lines.
         nodedist_kmh: When using "minutes" as weight, this sets the speed in kilometers
             per hour for the edges between origins/destinations and the network nodes
             that connect them. Defaults to None, meaning 0 weight is added for the
@@ -167,7 +167,7 @@ class NetworkAnalysisRules:
     weight: str
     search_tolerance: int = 250
     search_factor: int = 0
-    split_lines: bool = False
+    split_lines: bool = True
     nodedist_multiplier: int | float | None = None
     nodedist_kmh: int | float | None = None
 

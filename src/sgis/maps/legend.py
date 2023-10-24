@@ -476,8 +476,12 @@ class ContinousLegend(Legend):
             for i, _ in enumerate(bins):
                 min_ = np.min(bin_values[i])
                 max_ = np.max(bin_values[i])
-                min_rounded = self._set_rounding([min_], self._rounding)[0]
-                max_rounded = self._set_rounding([max_], self._rounding)[0]
+                try:
+                    min_rounded = self._set_rounding([min_], self._rounding)[0]
+                    max_rounded = self._set_rounding([max_], self._rounding)[0]
+                except ValueError as e:
+                    if "nan" in str(e).lower():
+                        min_rounded, max_rounded == "NaN", "NaN"
                 if min_ == max_:
                     self._categories.append(f"{min_rounded} {self.label_suffix}")
                 else:

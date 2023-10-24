@@ -343,11 +343,14 @@ def get_k_nearest_neighbors(
 
     [100 rows x 3 columns]
     """
+    if not len(gdf) or not len(neighbors):
+        return DataFrame(columns=["neighbor_index", "distance"])
+
     if gdf.crs != neighbors.crs:
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 
     if get_geom_type(gdf) != "point" or get_geom_type(neighbors) != "point":
-        raise ValueError("Geometries must be points.")
+        raise ValueError("Geometries must be points")
 
     # using the range index
     idx_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf.index, strict=True)}
@@ -385,15 +388,18 @@ def k_nearest_neighbors(
     k: int | None = None,
     strict: bool = False,
 ) -> tuple[np.ndarray[float], np.ndarray[int]]:
-    if not k:
+    if not len(to_array) or not len(from_array):
+        return np.array([]), np.array([])
+
+    if k is None:
         k = len(to_array)
 
     if not strict:
         k = k if len(to_array) >= k else len(to_array)
 
     nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(to_array)
-    dists, indices = nbr.kneighbors(from_array)
-    return dists, indices
+    distances, indices = nbr.kneighbors(from_array)
+    return distances, indices
 
 
 def _get_edges(

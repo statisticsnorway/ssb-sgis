@@ -131,6 +131,8 @@ class Parallel:
         if self.processes == 1:
             return list(map(func_with_kwargs, iterable))
 
+        iterable = list(iterable)
+
         # don't use unnecessary processes
         processes = min(self.processes, len(iterable))
 
@@ -202,6 +204,8 @@ class Parallel:
 
         if self.processes == 1:
             return list(itertools.starmap(func_with_kwargs, iterable))
+
+        iterable = list(iterable)
 
         # don't use unnecessary processes
         processes = min(self.processes, len(iterable))
@@ -284,6 +288,7 @@ class Parallel:
         muni_number_col: str = "KOMMUNENR",
         strict: bool = False,
         write_empty: bool = False,
+        clip: bool = True,
     ):
         """Split multiple datasets into municipalities and write as separate files.
 
@@ -313,6 +318,7 @@ class Parallel:
             "muni_number_col": muni_number_col,
             "write_empty": write_empty,
             "with_neighbors": with_neighbors,
+            "clip": clip,
         }
 
         if isinstance(out_data, (str, Path)):

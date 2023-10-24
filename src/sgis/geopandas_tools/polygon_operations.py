@@ -1,24 +1,31 @@
 """Functions for polygon geometries."""
+
 import networkx as nx
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import (
     area,
+    box,
+    buffer,
+    difference,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
+    is_empty,
     make_valid,
     polygons,
     unary_union,
 )
 from shapely.errors import GEOSException
-from shapely.geometry import Polygon
 
 from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .neighbors import get_neighbor_indices
+from .overlay import clean_overlay
+from .polygons_as_rings import PolygonsAsRings
+from .sfilter import sfilter, sfilter_inverse
 
 
 def get_polygon_clusters(
@@ -443,41 +450,74 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, **kwargs):
     else:
         concatted = pd.concat([to_dissolve, to_eliminate])
 
-    only_one = concatted.loc[
+    one_hit = concatted.loc[
         lambda x: (x.groupby("_dissolve_idx").transform("size") == 1)
         & (x["_dissolve_idx"].notna())
     ].set_index("_dissolve_idx")
-    assert len(only_one) == 0
 
-    more_than_one = concatted.loc[
+    assert len(one_hit) == 0
+
+    many_hits = concatted.loc[
         lambda x: x.groupby("_dissolve_idx").transform("size") > 1
     ]
 
-    if not len(more_than_one):
-        return only_one
+    if not len(many_hits):
+        return one_hit
 
     kwargs.pop("as_index", None)
     eliminated = (
-        # more_than_one.dissolve("_dissolve_idx", aggfunc=aggfunc, **kwargs)
-        more_than_one.drop(columns="geometry")
+        many_hits.drop(columns="geometry")
         .groupby("_dissolve_idx", **kwargs)
         .agg(aggfunc)
         .drop(["_area"], axis=1, errors="ignore")
     )
-    eliminated["geometry"] = more_than_one.groupby("_dissolve_idx")["geometry"].agg(
+
+    eliminated["geometry"] = many_hits.groupby("_dissolve_idx")["geometry"].agg(
         lambda x: make_valid(unary_union(x.values))
     )
 
     # setting crs on geometryarray to avoid warning in concat
     not_to_dissolve.geometry.values.crs = crs
     eliminated.geometry.values.crs = crs
-    only_one.geometry.values.crs = crs
+    one_hit.geometry.values.crs = crs
 
-    to_concat = [not_to_dissolve, eliminated, only_one]
+    to_concat = [not_to_dissolve, eliminated, one_hit]
 
     assert all(df.index.name == "_dissolve_idx" for df in to_concat)
 
     return pd.concat(to_concat).sort_index()
+
+
+def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
+    gdf = make_all_singlepart(gdf)
+    holes = get_holes(gdf)
+    inside_holes = sfilter(gdf, holes, predicate="within").unary_union
+
+    def to_none_if_thin(geoms):
+        try:
+            buffered_in = buffer(
+                difference(polygons(geoms), inside_holes), -(tolerance / 2)
+            )
+            return np.where(is_empty(buffered_in), None, geoms)
+        except ValueError as e:
+            if not len(geoms):
+                return geoms
+            raise e
+
+    if not (gdf.geom_type == "Polygon").all():
+        raise ValueError(gdf.geom_type.value_counts())
+
+    return PolygonsAsRings(gdf).apply_numpy_func_to_interiors(to_none_if_thin).to_gdf()
+
+
+def return_correct_geometry_object(in_obj, out_obj):
+    if isinstance(in_obj, GeoDataFrame):
+        in_obj.geometry = out_obj
+        return in_obj
+    elif isinstance(in_obj, GeoSeries):
+        return GeoSeries(out_obj, crs=in_obj.crs)
+    else:
+        return out_obj
 
 
 def close_all_holes(
@@ -538,6 +578,8 @@ def close_all_holes(
     if copy:
         gdf = gdf.copy()
 
+    gdf = make_all_singlepart(gdf)
+
     if ignore_islands:
         geoms = gdf.geometry if isinstance(gdf, GeoDataFrame) else gdf
         holes_closed = make_valid(polygons(get_exterior_ring(geoms)))
@@ -557,6 +599,33 @@ def close_all_holes(
         return gdf
     else:
         return gdf.map(lambda x: _close_all_holes_no_islands(x, all_geoms))
+
+
+def _close_thin_holes(
+    gdf: GeoDataFrame | GeoSeries,
+    tolerance: int | float,
+    *,
+    ignore_islands: bool = False,
+    copy: bool = True,
+) -> GeoDataFrame | GeoSeries:
+    holes = get_holes(gdf)
+
+    if not len(holes):
+        return gdf
+
+    if not ignore_islands:
+        inside_holes = sfilter(gdf, holes, predicate="within")
+
+        def is_thin(x):
+            return x.buffer(-tolerance).is_empty
+
+        in_between = clean_overlay(
+            holes, inside_holes, how="difference", grid_size=None
+        ).loc[is_thin]
+
+        holes = pd.concat([holes, in_between])
+
+    thin_holes = holes.loc[is_thin]
 
 
 def close_small_holes(
@@ -633,6 +702,8 @@ def close_small_holes(
     if copy:
         gdf = gdf.copy()
 
+    gdf = make_all_singlepart(gdf)
+
     if not ignore_islands:
         all_geoms = make_valid(gdf.unary_union)
 
@@ -650,6 +721,7 @@ def close_small_holes(
             gdf.geometry.to_numpy() if isinstance(gdf, GeoDataFrame) else gdf.to_numpy()
         )
         exteriors = get_exterior_ring(geoms)
+        assert len(exteriors) == len(geoms)
 
         max_rings = max(get_num_interior_rings(geoms))
 
@@ -660,6 +732,8 @@ def close_small_holes(
         interiors = np.array(
             [[get_interior_ring(geom, i) for i in range(max_rings)] for geom in geoms]
         )
+        assert interiors.shape == (len(geoms), max_rings), interiors.shape
+
         areas = area(polygons(interiors))
         interiors[(areas < max_area) | np.isnan(areas)] = None
 
@@ -720,13 +794,69 @@ def _close_all_holes_no_islands(poly, all_geoms):
     return make_valid(unary_union(holes_closed))
 
 
-def get_holes(gdf, as_polygons=True):
-    astype = polygons if as_polygons else lambda x: x
+def get_gaps(gdf: GeoDataFrame, include_interiors: bool = False) -> GeoDataFrame:
+    """Get the gaps between polygons.
+
+    Args:
+        gdf: GeoDataFrame of polygons.
+        include_interiors: If False (default), the holes inside individual polygons
+            will not be included as gaps.
+
+    Returns:
+        GeoDataFrame of polygons with only a geometry column.
+    """
     if not len(gdf):
-        return GeoSeries()
-    geoms = gdf.geometry.to_numpy() if isinstance(gdf, GeoDataFrame) else gdf.to_numpy()
+        return GeoDataFrame({"geometry": []}, crs=gdf.crs)
+
+    if not include_interiors:
+        gdf = close_all_holes(gdf)
+
+    bbox = GeoDataFrame(
+        {"geometry": [box(*tuple(gdf.total_bounds)).buffer(1)]}, crs=gdf.crs
+    )
+
+    gaps = make_all_singlepart(
+        clean_overlay(bbox, gdf, how="difference", geom_type="polygon")
+    )
+
+    # remove the outer "gap", i.e. the surrounding area
+    return sfilter_inverse(gaps, get_exterior_ring(bbox.geometry.values)).reset_index(
+        drop=True
+    )
+
+
+def get_holes(gdf: GeoDataFrame, as_polygons=True) -> GeoDataFrame:
+    """Get the holes inside polygons.
+
+    Args:
+        gdf: GeoDataFrame of polygons.
+        as_polygons: If True (default), the holes will be returned as polygons.
+            If False, they will be returned as LinearRings.
+
+    Returns:
+        GeoDataFrame of polygons or linearrings with only a geometry column.
+    """
+    if not len(gdf):
+        return GeoDataFrame({"geometry": []}, crs=gdf.crs)
+
+    def as_linearring(x):
+        return x
+
+    astype = polygons if as_polygons else as_linearring
+
+    geoms = (
+        make_all_singlepart(gdf.geometry).to_numpy()
+        if isinstance(gdf, GeoDataFrame)
+        else make_all_singlepart(gdf).to_numpy()
+    )
+
     rings = [
         GeoSeries(astype(get_interior_ring(geoms, i)), crs=gdf.crs)
         for i in range(max(get_num_interior_rings(geoms)))
     ]
-    return (pd.concat(rings).pipe(clean_geoms).sort_index()) if rings else GeoSeries()
+
+    return (
+        GeoDataFrame({"geometry": (pd.concat(rings).pipe(clean_geoms).sort_index())})
+        if rings
+        else GeoDataFrame({"geometry": []}, crs=gdf.crs)
+    )

@@ -7,6 +7,7 @@ interactive map with layers that can be toggled on and off. The 'samplemap' and
 The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 
+import inspect
 import warnings
 from numbers import Number
 from typing import Any
@@ -14,8 +15,8 @@ from typing import Any
 from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
-from ..geopandas_tools.conversion import to_gdf
-from ..geopandas_tools.general import clean_clip, is_wkt
+from ..geopandas_tools.conversion import to_gdf as to_gdf_func
+from ..geopandas_tools.general import clean_clip, clean_geoms, is_wkt
 from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..helpers import make_namedict
@@ -48,7 +49,7 @@ def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
             kwargs.pop(key)
             if isinstance(value, Number) and value > 1:
                 size = value
-            the_mask = to_gdf([mask], crs=4326).to_crs(crs).buffer(size)
+            the_mask = to_gdf_func([mask], crs=4326).to_crs(crs).buffer(size)
             return the_mask, kwargs
 
     return None, kwargs
@@ -144,7 +145,7 @@ def explore(
         elif isinstance(center, GeoDataFrame):
             mask = center
         else:
-            mask = to_gdf(center, crs=gdfs[0].crs)
+            mask = to_gdf_func(center, crs=gdfs[0].crs)
 
         if get_geom_type(mask) in ["point", "line"]:
             mask = mask.buffer(size)
@@ -171,6 +172,9 @@ def explore(
 
     if m.gdfs is None:
         return
+
+    if not kwargs.pop("explore", True):
+        return qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
     m.explore()
 
@@ -425,6 +429,50 @@ def clipmap(
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
+def explore_locals(*gdfs, to_gdf: bool = True, **kwargs):
+    """Viser kart (explore) over alle lokale GeoDataFrames.
+
+    Lokalt betyr enten inni funksjonen/metoden du er i, eller i notebooken
+    du jobber i.
+
+    Args:
+        *gdfs: Ekstra GeoDataFrames du vil legge til
+        **kwargs: keyword arguments som sendes til sg.explore.
+    """
+    frame = inspect.currentframe()
+
+    while True:
+        local_gdfs = {}
+        for name, value in frame.f_locals.items():
+            if isinstance(value, GeoDataFrame):
+                local_gdfs[name] = value
+                continue
+            if not to_gdf:
+                continue
+            if hasattr(value, "__len__") and not len(value):
+                continue
+            try:
+                gdf = clean_geoms(to_gdf_func(value))
+                if len(gdf):
+                    local_gdfs[name] = gdf
+            except Exception:
+                pass
+
+        if local_gdfs:
+            break
+
+        frame = frame.f_back
+
+        if not frame:
+            break
+
+    mask = kwargs.pop("mask", None)
+    if mask is not None:
+        local_gdfs = {name: gdf.clip(mask) for name, gdf in local_gdfs.items()}
+
+    explore(*gdfs, **local_gdfs, **kwargs)
+
+
 def qtm(
     *gdfs: GeoDataFrame,
     column: str | None = None,
@@ -461,8 +509,23 @@ def qtm(
     See also:
         ThematicMap: Class with more options for customising the plot.
     """
+    gdfs, column = Explore._separate_args(gdfs, column)
+
+    new_kwargs = {}
+    for key, value in kwargs.items():
+        if isinstance(value, GeoDataFrame):
+            value.name = key
+            gdfs += (value,)
+        else:
+            new_kwargs[key] = value
+
+            # self.labels.append(key)
+            # self.show.append(last_show)
 
     m = ThematicMap(*gdfs, column=column, size=size, black=black)
+
+    if m._gdfs is None:
+        return
 
     m.title = title
 
@@ -477,4 +540,4 @@ def qtm(
     if not legend:
         m.legend = None
 
-    m.plot(**kwargs)
+    m.plot(**new_kwargs)

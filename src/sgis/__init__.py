@@ -16,11 +16,13 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp,
     dissexp_by_cluster,
 )
+from .geopandas_tools.centerlines import get_rough_centerlines
 from .geopandas_tools.conversion import (
     coordinate_array,
     get_lonlat,
     get_utm33,
     to_gdf,
+    to_geoseries,
     to_shapely,
 )
 from .geopandas_tools.duplicates import (  # drop_duplicate_geometries,
@@ -55,15 +57,20 @@ from .geopandas_tools.neighbors import (
 from .geopandas_tools.overlay import clean_overlay
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
 from .geopandas_tools.polygon_operations import (
+    PolygonsAsRings,
     close_all_holes,
     close_small_holes,
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
+    get_gaps,
     get_holes,
     get_polygon_clusters,
 )
+from .geopandas_tools.polygons_as_rings import PolygonsAsRings
 from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
+
+# from .geopandas_tools.snap_polygons import coverage_clean, snap_polygons
 from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url
@@ -71,7 +78,7 @@ from .maps.examine import Examine
 from .maps.explore import Explore
 from .maps.httpserver import run_html_server
 from .maps.legend import Legend
-from .maps.maps import clipmap, explore, qtm, samplemap
+from .maps.maps import clipmap, explore, explore_locals, qtm, samplemap
 from .maps.thematicmap import ThematicMap
 from .networkanalysis.closing_network_holes import (
     close_network_holes,
@@ -98,6 +105,7 @@ from .networkanalysis.nodes import (
     make_edge_wkt_cols,
     make_node_ids,
 )
+from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
 from .raster.elevationraster import ElevationRaster
 from .raster.raster import Raster

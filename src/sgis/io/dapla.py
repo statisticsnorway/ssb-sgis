@@ -34,7 +34,7 @@ def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame | DataFrame:
         except TypeError:
             raise TypeError(f"Unexpected type {type(gcs_path)}.")
 
-    if "parquet" in gcs_path:
+    if "parquet" in gcs_path or "prqt" in gcs_path:
         with fs.open(gcs_path, mode="rb") as file:
             try:
                 return gpd.read_parquet(file, **kwargs)
@@ -94,7 +94,7 @@ def write_geopandas(
 
     fs = dp.FileClient.get_gcs_file_system()
 
-    if ".parquet" in gcs_path:
+    if ".parquet" in gcs_path or "prqt" in gcs_path:
         with fs.open(gcs_path, mode="wb") as buffer:
             table = _geopandas_to_arrow(df, index=df.index, schema_version=None)
             parquet.write_table(table, buffer, compression="snappy", **kwargs)

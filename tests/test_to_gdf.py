@@ -394,5 +394,22 @@ def _linestring():
     assert gdf.length.sum()
 
 
+def test_to_geoseries():
+    gdf = sg.random_points(19)
+    gdf.crs = 25833
+    gdf.index = gdf.sample(19).index.values
+    should_equal = gdf.geometry
+
+    assert sg.to_geoseries(gdf).equals(should_equal)
+    assert sg.to_geoseries(gdf.geometry).equals(should_equal)
+    assert sg.to_geoseries(gdf.geometry.values).equals(
+        should_equal.reset_index(drop=True)
+    )
+    assert sg.to_geoseries(list(gdf.geometry)).equals(
+        should_equal.reset_index(drop=True)
+    )
+
+
 if __name__ == "__main__":
+    test_to_geoseries()
     test_to_gdf()

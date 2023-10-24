@@ -116,6 +116,15 @@ def close_network_holes(
     return pd.concat([gdf, new_lines], ignore_index=True)
 
 
+def get_angle(array_a, array_b):
+    dx = array_b[:, 0] - array_a[:, 0]
+    dy = array_b[:, 1] - array_a[:, 1]
+
+    angles_rad = np.arctan2(dx, dy)
+    angles_degrees = np.degrees(angles_rad)
+    return angles_degrees
+
+
 def close_network_holes_to_deadends(
     gdf: GeoDataFrame,
     max_distance: int | float,
@@ -241,14 +250,6 @@ def _find_holes_all_lines(
     all_dists, all_indices = k_nearest_neighbors(deadends_array, nodes_array, k=k)
 
     deadends_other_end_array = coordinate_array(deadends_other_end)
-
-    def get_angle(array_a, array_b):
-        dx = array_b[:, 0] - array_a[:, 0]
-        dy = array_b[:, 1] - array_a[:, 1]
-
-        angles_rad = np.arctan2(dx, dy)
-        angles_degrees = np.degrees(angles_rad)
-        return angles_degrees
 
     # now to find the lines that have the correct angle and distance
     # and endpoints of the new lines in lists, looping through the k neighbour points
