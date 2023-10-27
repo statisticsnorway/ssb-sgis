@@ -7,47 +7,6 @@ import pandas as pd
 import sgis as sg
 
 
-class PathSeries:
-    def __init__(self, data: list[str], index=None):
-        try:
-            self.paths = pd.Series(data, index=index)
-        except Exception as e:
-            raise TypeError from e
-
-        folders = self.paths.iloc[0].split("/")
-        base = []
-        for folder in folders:
-            if not self.paths.str.contains(folder).all():
-                continue
-            base.append(folder)
-
-        self.base = "/".join(base).strip("/")
-
-        self.paths.name = self.base
-
-    @property
-    def loc(self):
-        return self.paths.loc
-
-    def query(self, *args, **kwargs):
-        return self.paths.query(*args, **kwargs)
-
-    def contains(self, text: str):
-        return self.paths.loc[lambda x: x.str.contains(text)]
-
-    def sort(self, text: str):
-        return self.paths.loc[lambda x: x.str.contains(text)]
-
-    def __iter__(self):
-        return iter(self.paths)
-
-    def __repr__(self):
-        return self.paths.str.replace(self.base, "{self.base}").__repr__()
-
-    def __str__(self):
-        return self.paths.str.replace(self.base, "{self.base}").__str__()
-
-
 class DaplaPath:
     def __init__(self, path: str | Path):
         try:
