@@ -91,19 +91,6 @@ class DaplaPath(str):
 
         return ser.iloc[only_newest.index]
 
-    def startswith(self, *args, **kwargs):
-        return self.path.startswith(*args, **kwargs)
-
-    def __repr__(self) -> str:
-        return str(self.path)
-
-    def __str__(self) -> str:
-        """This makes it so that the path is treated as a string."""
-        return str(self.path)
-
-    def __iter__(self):
-        return iter(str(self.path))
-
 
 class Kartbucket:
     def __init__(self, year: int):
