@@ -8,31 +8,42 @@ import sgis as sg
 
 
 class DaplaPath(str):
-    """Path that works like a string, but with methods like exists and ls for Dapla."""
+    """Path that works like a string, with methods like exists and ls for Dapla."""
 
     def __init__(self, path: str | Path):
         try:
-            self.path = str(path)
+            self = str(path)
         except Exception as e:
             raise TypeError from e
 
     def exists(self) -> bool:
-        return dp.FileClient.get_gcs_file_system().exists(self.path)
+        return dp.FileClient.get_gcs_file_system().exists(self)
 
     def get_highest_versions(self, include_versionless: bool = True) -> pd.Series:
-        """Returns the paths that have the highest version number."""
+        """Strips all version numbers off the file paths in the folder and keeps only the highest.
+
+        Does a regex search for the pattern '_v' plus any integer.
+
+        """
         ser = self.ls(time_as_index=True).sort_values()
         return self._drop_version_number_and_keep_last(ser, include_versionless)
 
     def get_newest_versions(self, include_versionless: bool = True) -> pd.Series:
+        """Strips all version numbers off the file paths in the folder and keeps only the newest.
+
+        Does a regex search for the pattern '_v' plus any integer.
+
+        """
         ser = self.ls(time_as_index=True)
         return self._drop_version_number_and_keep_last(ser, include_versionless)
 
     def ls_contains(self, contains: str, time_as_index: bool = True) -> pd.Series:
+        """Returns a list of files containing the given string."""
         ser = self.ls(time_as_index=time_as_index)
         return ser.loc[lambda x: x.str.contains(contains)]
 
     def ls_within(self, within: int) -> pd.Series:
+        """Returns a list of files with a timestamp within the given amount of minutes."""
         ser = self.ls(time_as_index=True)
 
         time_now = pd.Timestamp.now() - pd.Timedelta(minutes=within)
@@ -40,9 +51,8 @@ class DaplaPath(str):
         return ser.loc[lambda x: x.index > time_now]
 
     def ls(self, time_as_index: bool = True) -> pd.Series:
-        info: list[dict] = dp.FileClient.get_gcs_file_system().ls(
-            self.path, detail=True
-        )
+        """Returns a list of files in the directory."""
+        info: list[dict] = dp.FileClient.get_gcs_file_system().ls(self, detail=True)
 
         index_col = "updated" if time_as_index else "size"
 
@@ -74,7 +84,7 @@ class DaplaPath(str):
     def check_files(
         self, contains: str | None = None, within_minutes: int | None = None
     ) -> pd.DataFrame:
-        return sg.check_files(self.path, contains, within_minutes)
+        return sg.check_files(self, contains, within_minutes)
 
     @staticmethod
     def _drop_version_number_and_keep_last(ser, include_versionless: bool) -> pd.Series:
