@@ -7,10 +7,12 @@ import pandas as pd
 import sgis as sg
 
 
-class DaplaPath:
+class DaplaPath(str):
+    """Path that works like a string, but with methods like exists and ls for Dapla."""
+
     def __init__(self, path: str | Path):
         try:
-            self.path = Path(path)
+            self.path = str(path)
         except Exception as e:
             raise TypeError from e
 
@@ -18,27 +20,13 @@ class DaplaPath:
         return dp.FileClient.get_gcs_file_system().exists(self.path)
 
     def get_highest_versions(self, include_versionless: bool = True) -> pd.Series:
+        """Returns the paths that have the highest version number."""
         ser = self.ls(time_as_index=True).sort_values()
         return self._drop_version_number_and_keep_last(ser, include_versionless)
 
     def get_newest_versions(self, include_versionless: bool = True) -> pd.Series:
         ser = self.ls(time_as_index=True)
         return self._drop_version_number_and_keep_last(ser, include_versionless)
-
-    @staticmethod
-    def _drop_version_number_and_keep_last(ser, include_versionless) -> pd.Series:
-        stems = ser.reset_index(drop=True).apply(lambda x: Path(x).stem)
-
-        version_pattern = r"_v\d+"
-
-        if not include_versionless:
-            stems = stems.loc[stems.str.contains(version_pattern)]
-
-        without_version_number = stems.str.replace(version_pattern, "", regex=True)
-
-        only_newest = without_version_number.loc[lambda x: ~x.duplicated(keep="last")]
-
-        return ser.iloc[only_newest.index]
 
     def ls_contains(self, contains: str, time_as_index: bool = True) -> pd.Series:
         ser = self.ls(time_as_index=time_as_index)
@@ -78,6 +66,8 @@ class DaplaPath:
                 .tz_localize(None)
                 .round("s")
             )
+        else:
+            ser.index = ser.index.astype(int)
 
         return ser.sort_index()
 
@@ -86,10 +76,29 @@ class DaplaPath:
     ) -> pd.DataFrame:
         return sg.check_files(self.path, contains, within_minutes)
 
+    @staticmethod
+    def _drop_version_number_and_keep_last(ser, include_versionless: bool) -> pd.Series:
+        stems = ser.reset_index(drop=True).apply(lambda x: Path(x).stem)
+
+        version_pattern = r"_v\d+"
+
+        if not include_versionless:
+            stems = stems.loc[stems.str.contains(version_pattern)]
+
+        without_version_number = stems.str.replace(version_pattern, "", regex=True)
+
+        only_newest = without_version_number.loc[lambda x: ~x.duplicated(keep="last")]
+
+        return ser.iloc[only_newest.index]
+
+    def startswith(self, *args, **kwargs):
+        return self.path.startswith(*args, **kwargs)
+
     def __repr__(self) -> str:
         return str(self.path)
 
     def __str__(self) -> str:
+        """This makes it so that the path is treated as a string."""
         return str(self.path)
 
     def __iter__(self):
@@ -120,3 +129,44 @@ class Kartbucket:
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.delt})"
+
+
+class PathSeries:
+    def __init__(self, data: list[str], index=None):
+        try:
+            self.paths = pd.Series(data, index=index)
+        except Exception as e:
+            raise TypeError from e
+
+        folders = self.paths.iloc[0].split("/")
+        base = []
+        for folder in folders:
+            if not self.paths.str.contains(folder).all():
+                continue
+            base.append(folder)
+
+        self.base = "/".join(base).strip("/")
+
+        self.paths.name = self.base
+
+    @property
+    def loc(self):
+        return self.paths.loc
+
+    def query(self, *args, **kwargs):
+        return self.paths.query(*args, **kwargs)
+
+    def contains(self, text: str):
+        return self.paths.loc[lambda x: x.str.contains(text)]
+
+    def sort(self, text: str):
+        return self.paths.loc[lambda x: x.str.contains(text)]
+
+    def __iter__(self):
+        return iter(self.paths)
+
+    def __repr__(self):
+        return self.paths.str.replace(self.base, "{self.base}").__repr__()
+
+    def __str__(self):
+        return self.paths.str.replace(self.base, "{self.base}").__str__()
