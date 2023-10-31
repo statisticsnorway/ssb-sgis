@@ -46,7 +46,7 @@ roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
 )
 
-connected_roads = sg.get_connected_components(roads).query("connected == 1")
+connected_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1]
 
 directed_roads = sg.make_directed_network_norway(
     connected_roads,

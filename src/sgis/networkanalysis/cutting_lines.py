@@ -167,12 +167,18 @@ def split_lines_by_nearest_point(
     # the snapped points.
 
     splitted = change_line_endpoint(
-        splitted, dists_source, pointmapper_source, change_what="first"
+        splitted,
+        indices=dists_source.index,
+        pointmapper=pointmapper_source,
+        change_what="first",
     )  # i=0)
 
     # same for the lines where the target was split, but change the last coordinate
     splitted = change_line_endpoint(
-        splitted, dists_target, pointmapper_target, change_what="last"
+        splitted,
+        indices=dists_target.index,
+        pointmapper=pointmapper_target,
+        change_what="last",
     )  # , i=-1)
 
     if splitted_col:
@@ -185,7 +191,7 @@ def split_lines_by_nearest_point(
 
 def change_line_endpoint(
     gdf: GeoDataFrame,
-    dists: pd.DataFrame,
+    indices: pd.Index,
     pointmapper: pd.Series,
     change_what: str | int,
 ) -> GeoDataFrame:
@@ -204,7 +210,7 @@ def change_line_endpoint(
             f"change_what should be 'first' or 'last' or 0 or -1. Got {change_what}"
         )
 
-    is_relevant = gdf.index.isin(dists.index)
+    is_relevant = gdf.index.isin(indices)
     relevant_lines = gdf.loc[is_relevant]
 
     relevant_lines.geometry = extract_unique_points(relevant_lines.geometry)

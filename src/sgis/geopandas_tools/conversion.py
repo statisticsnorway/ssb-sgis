@@ -137,6 +137,9 @@ def to_gdf(
     Constructs a GeoDataFrame from any geometry-like object (coordinates, wkt, wkb),
     or any interable of such objects.
 
+    Meant for convenience in testing and exploring, not for production code since it
+    introduces unnecessary overhead.
+
     If obj is a DataFrame or dictionary, geometries can be in one column/key or 2-3
     if coordiantes are in x and x (and z) columns. The column/key "geometry" is used
     by default if it exists. The index and other columns/keys are preserved.
@@ -152,9 +155,6 @@ def to_gdf(
 
     Returns:
         A GeoDataFrame with one column, the geometry column.
-
-    Raises:
-        TypeError: If obj is a GeoDataFrame.
 
     Examples
     --------
@@ -232,7 +232,11 @@ def to_gdf(
     4  POINT Z (58.000 49.000 46.000)
     """
     if isinstance(obj, GeoDataFrame):
-        raise TypeError("'to_gdf' doesn't accept GeoDataFrames as input type.")
+        if not crs:
+            return obj
+        if not obj.crs:
+            return obj.set_crs(crs)
+        return obj.to_crs(crs)
 
     if obj is None:
         raise TypeError("Cannot convert NoneType to GeoDataFrame.")
