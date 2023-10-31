@@ -113,7 +113,7 @@ from .raster.sentinel import Sentinel2
 
 
 try:
-    from .io.dapla import check_files, exists, read_geopandas, write_geopandas
+    from .io.dapla_functions import check_files, exists, read_geopandas, write_geopandas
     from .io.write_municipality_data import write_municipality_data
 except ImportError:
     pass

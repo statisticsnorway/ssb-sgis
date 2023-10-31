@@ -1,9 +1,10 @@
 import functools
 import itertools
 import multiprocessing
+from collections.abc import Callable, Collection, Iterable
 from pathlib import Path
 from typing import Any
-from collections.abc import Collection, Callable, Iterable
+
 
 try:
     import dapla as dp
@@ -20,7 +21,7 @@ from ..helpers import LocalFunctionError, dict_zip, dict_zip_union, in_jupyter
 
 
 try:
-    from ..io.dapla import exists, read_geopandas
+    from ..io.dapla_functions import exists, read_geopandas
     from ..io.write_municipality_data import write_municipality_data
 except ImportError:
     pass
