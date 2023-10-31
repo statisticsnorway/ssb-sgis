@@ -1,5 +1,5 @@
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 
 import pandas as pd
 from dapla import write_pandas
@@ -8,7 +8,7 @@ from pandas import DataFrame
 
 from ..geopandas_tools.general import clean_clip, clean_geoms
 from ..geopandas_tools.neighbors import get_neighbor_indices
-from .dapla import read_geopandas, write_geopandas
+from .dapla_functions import read_geopandas, write_geopandas
 
 
 def write_municipality_data(
