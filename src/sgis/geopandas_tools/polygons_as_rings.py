@@ -56,7 +56,7 @@ from shapely.geometry import (
     Polygon,
 )
 
-from .conversion import to_gdf
+from .conversion import to_gdf, to_geoseries
 
 
 class PolygonsAsRings:
@@ -251,7 +251,7 @@ class PolygonsAsRings:
         if not len(self.rings):
             return np.array([])
 
-        exterior = self.rings.loc[self.is_exterior].sort_index().values
+        exterior = self.rings.loc[self.is_exterior].sort_index()
         assert exterior.shape == (len(self.gdf),)
 
         nonempty_interiors = self.rings.loc[self.is_interior]
@@ -270,8 +270,47 @@ class PolygonsAsRings:
             # make each ring level a column with same length and order as gdf
             .unstack(level=2)
             .sort_index()
-            .values
         )
         assert interiors.shape == (len(self.gdf), self.max_rings), interiors.shape
 
-        return make_valid(polygons(exterior, interiors))
+        try:
+            return make_valid(polygons(exterior.values, interiors.values))
+        except Exception:
+            return _geoms_to_linearrings_fallback(exterior, interiors)
+
+
+def get_linearring_series(geoms):
+    geoms = to_geoseries(geoms).explode(index_parts=False)
+    coords, indices = get_coordinates(geoms, return_index=True)
+    return pd.Series(linearrings(coords, indices=indices), index=geoms.index)
+
+
+def _geoms_to_linearrings_fallback(exterior, interiors):
+    exterior.index = exterior.index.get_level_values(1)
+    interiors.index = interiors.index.get_level_values(1)
+
+    exterior = get_linearring_series(exterior)
+
+    new_interiors = []
+    for col in interiors:
+        new_interiors.append(get_linearring_series(interiors[col]))
+
+    all_none = [[None] * len(new_interiors)] * len(exterior)
+    cols = list(interiors.columns)
+    out_interiors = pd.DataFrame(
+        all_none,
+        columns=cols,
+        index=exterior.index,
+    )
+    out_interiors[cols] = pd.concat(new_interiors, axis=1)
+    for col in out_interiors:
+        out_interiors.loc[out_interiors[col].isna(), col] = None
+
+    return (
+        pd.Series(
+            make_valid(polygons(exterior.values, out_interiors.values)),
+            index=exterior.index,
+        )
+        .groupby(level=0)
+        .agg(unary_union)
+    )

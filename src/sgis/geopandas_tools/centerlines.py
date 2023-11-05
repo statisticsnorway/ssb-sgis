@@ -1,6 +1,7 @@
 import warnings
 
 import pandas as pd
+import shapely
 from geopandas import GeoDataFrame, GeoSeries
 from numpy.typing import NDArray
 from shapely import (
@@ -342,7 +343,6 @@ def multipoints_to_line_segments(
 
     point_df = pd.DataFrame({"geometry": points.explode(index_parts=False)})
 
-    point_df
     if to_next:
         shift = -1
         filt = lambda x: ~x.index.duplicated(keep="first")
@@ -368,18 +368,49 @@ def multipoints_to_line_segments(
     return GeoSeries(point_df["geometry"], crs=crs)
 
 
-def get_line_segments(lines) -> GeoDataFrame:
+def get_line_segments(lines, extract_unique: bool = False) -> GeoDataFrame:
     assert lines.index.is_unique
+
+    if extract_unique:
+        func = extract_unique_points
+    else:
+
+        def func(geoms):
+            return list(shapely.points(shapely.get_coordinates(geoms)))
+
     if isinstance(lines, GeoDataFrame):
-        multipoints = lines.assign(
-            **{
-                lines._geometry_column_name: extract_unique_points(
-                    lines.geometry.values
-                )
-            }
-        )
+        if extract_unique:
+            multipoints = lines.assign(
+                **{
+                    lines._geometry_column_name: extract_unique_points(
+                        lines.geometry.values
+                    )
+                }
+            )
+        else:
+            multipoints = lines.assign(
+                **{lines._geometry_column_name: func(lines.geometry.values)}
+            ).explode(index_parts=False)
         return multipoints_to_line_segments(multipoints.geometry)
 
-    multipoints = GeoSeries(extract_unique_points(lines.values), index=lines.index)
+    multipoints = GeoSeries(func(lines.values), index=lines.index)
 
     return multipoints_to_line_segments(multipoints)
+
+
+def get_line_segments(lines, extract_unique: bool = False) -> GeoDataFrame:
+    try:
+        assert lines.index.is_unique
+    except AttributeError:
+        pass
+
+    lines = to_geoseries(lines)
+
+    if extract_unique:
+        points = extract_unique_points(lines.values)
+    else:
+        coords, indices = shapely.get_coordinates(lines, return_index=True)
+        points = shapely.points(coords)
+        points = GeoSeries(points, index=indices)
+
+    return multipoints_to_line_segments(points)
