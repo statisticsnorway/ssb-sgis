@@ -129,6 +129,10 @@ class Explore(Map):
         # stringify or remove columns not renerable by leaflet (list, geometry etc.)
         new_gdfs, show_new = [], []
         for gdf, show in zip(self.gdfs, self.show, strict=True):
+            try:
+                gdf = gdf.reset_index()
+            except Exception:
+                pass
             for col in gdf.columns:
                 if not len(gdf.loc[gdf[col].notna()]):
                     continue
@@ -366,8 +370,17 @@ class Explore(Map):
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
-        folium.TileLayer("stamentoner", max_zoom=self.max_zoom).add_to(self.map)
-        folium.TileLayer("cartodbdark_matter", max_zoom=self.max_zoom).add_to(self.map)
+        try:
+            folium.TileLayer("stamentoner", max_zoom=self.max_zoom).add_to(self.map)
+        except ValueError:
+            pass
+        try:
+            folium.TileLayer("cartodbdark_matter", max_zoom=self.max_zoom).add_to(
+                self.map
+            )
+        except ValueError:
+            pass
+
         self.map.add_child(folium.LayerControl())
 
     def _create_continous_map(self):
@@ -428,8 +441,15 @@ class Explore(Map):
             self.map.add_child(f)
 
         self.map.add_child(colorbar)
-        folium.TileLayer("stamentoner").add_to(self.map)
-        folium.TileLayer("cartodbdark_matter").add_to(self.map)
+        try:
+            folium.TileLayer("stamentoner").add_to(self.map)
+        except ValueError:
+            pass
+        try:
+            folium.TileLayer("cartodbdark_matter").add_to(self.map)
+        except ValueError:
+            pass
+
         self.map.add_child(folium.LayerControl())
 
     def _tooltip_cols(self, gdf: GeoDataFrame) -> list:
