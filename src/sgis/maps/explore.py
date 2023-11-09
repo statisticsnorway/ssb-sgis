@@ -26,6 +26,7 @@ from ..geopandas_tools.general import clean_geoms, make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
 from ..helpers import unit_is_degrees
 from .httpserver import run_html_server
+from .tilesources import kartverket, xyz
 from .map import Map
 
 
@@ -366,7 +367,6 @@ class Explore(Map):
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
-        folium.TileLayer("stamentoner", max_zoom=self.max_zoom).add_to(self.map)
         folium.TileLayer("cartodbdark_matter", max_zoom=self.max_zoom).add_to(self.map)
         self.map.add_child(folium.LayerControl())
 
@@ -428,7 +428,6 @@ class Explore(Map):
             self.map.add_child(f)
 
         self.map.add_child(colorbar)
-        folium.TileLayer("stamentoner").add_to(self.map)
         folium.TileLayer("cartodbdark_matter").add_to(self.map)
         self.map.add_child(folium.LayerControl())
 
@@ -456,7 +455,7 @@ class Explore(Map):
         self,
         bounds,
         attr=None,
-        tiles="OpenStreetMap",
+        tiles=kartverket.norges_grunnkart,
         width="100%",
         height="100%",
         control_scale=True,
@@ -497,7 +496,7 @@ class Explore(Map):
         # match provider name string to xyzservices.TileProvider
         if isinstance(tiles, str):
             try:
-                tiles = xyzservices.providers.query_name(tiles)
+                tiles = xyz.query_name(tiles)
             except ValueError:
                 pass
 
@@ -505,7 +504,6 @@ class Explore(Map):
             attr = attr if attr else tiles.html_attribution
             map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
             map_kwds["max_zoom"] = tiles.get("max_zoom", 30)
-            tiles = tiles.build_url(scale_factor="{r}")
 
         m = folium.Map(
             location=location,
