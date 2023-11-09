@@ -24,7 +24,6 @@ from shapely.geometry import LineString
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import clean_geoms, make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
-from ..helpers import unit_is_degrees
 from .httpserver import run_html_server
 from .tilesources import kartverket, xyz
 from .map import Map
@@ -367,7 +366,12 @@ class Explore(Map):
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
-        folium.TileLayer("cartodbdark_matter", max_zoom=self.max_zoom).add_to(self.map)
+        folium.TileLayer(
+            xyz.Kartverket.norges_grunnkart_gråtone, name=xyz.Kartverket.norges_grunnkart_gråtone["name"]
+        ).add_to(self.map)
+        folium.TileLayer(
+            xyz.CartoDB.DarkMatter, name=xyz.CartoDB.DarkMatter["name"].replace(".", " ")
+        ).add_to(self.map)
         self.map.add_child(folium.LayerControl())
 
     def _create_continous_map(self):
@@ -428,7 +432,12 @@ class Explore(Map):
             self.map.add_child(f)
 
         self.map.add_child(colorbar)
-        folium.TileLayer("cartodbdark_matter").add_to(self.map)
+        folium.TileLayer(
+            xyz.Kartverket.norges_grunnkart_gråtone, name=xyz.Kartverket.norges_grunnkart_gråtone["name"]
+        ).add_to(self.map)
+        folium.TileLayer(
+            xyz.CartoDB.DarkMatter, name=xyz.CartoDB.DarkMatter["name"].replace(".", " ")
+        ).add_to(self.map)
         self.map.add_child(folium.LayerControl())
 
     def _tooltip_cols(self, gdf: GeoDataFrame) -> list:
@@ -500,16 +509,21 @@ class Explore(Map):
             except ValueError:
                 pass
 
+
         if isinstance(tiles, xyzservices.TileProvider):
             attr = attr if attr else tiles.html_attribution
-            map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
-            map_kwds["max_zoom"] = tiles.get("max_zoom", 30)
+            tiles = folium.TileLayer(
+                tiles,
+                name=tiles.get("name", "deafult"),
+                min_zoom=tiles.get("min_zoom", 0),
+                max_zoom=tiles.get("max_zoom", 30),
+                attr=attr
+            )
 
         m = folium.Map(
             location=location,
             control_scale=control_scale,
             tiles=tiles,
-            attr=attr,
             width=width,
             height=height,
             **map_kwds,
