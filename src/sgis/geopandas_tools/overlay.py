@@ -28,6 +28,11 @@ from .general import clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
+DEFAULT_GRID_SIZE = None
+DEFAULT_LSUFFIX = "_1"
+DEFAULT_RSUFFIX = "_2"
+
+
 def clean_overlay(
     df1: GeoDataFrame,
     df2: GeoDataFrame,
@@ -35,8 +40,8 @@ def clean_overlay(
     keep_geom_type: bool = True,
     geom_type: str | None = None,
     grid_size: float | None = None,
-    lsuffix: str = "_1",
-    rsuffix: str = "_2",
+    lsuffix: str = DEFAULT_LSUFFIX,
+    rsuffix: str = DEFAULT_RSUFFIX,
 ) -> GeoDataFrame:
     """Fixes and explodes geometries before doing a shapely overlay, then cleans up.
 
@@ -200,9 +205,9 @@ def _shapely_pd_overlay(
     df1: DataFrame,
     df2: DataFrame,
     how: str,
-    grid_size: float,
-    lsuffix,
-    rsuffix,
+    grid_size: float = DEFAULT_GRID_SIZE,
+    lsuffix=DEFAULT_LSUFFIX,
+    rsuffix=DEFAULT_RSUFFIX,
 ) -> DataFrame:
     if not grid_size and not len(df1) or not len(df2):
         return _no_intersections_return(df1, df2, how, lsuffix, rsuffix)
