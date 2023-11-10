@@ -1,6 +1,4 @@
-import functools
-import itertools
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 import geopandas as gpd
 import igraph
@@ -257,7 +255,10 @@ class PolygonsAsRings:
         nonempty_interiors = self.rings.loc[self.is_interior]
 
         if not len(nonempty_interiors):
-            return make_valid(polygons(exterior))
+            try:
+                return make_valid(polygons(exterior.values))
+            except Exception:
+                return _geoms_to_linearrings_fallback(exterior)
 
         empty_interiors = pd.Series(
             [None for _ in range(len(self.gdf) * self.max_rings)],
@@ -279,18 +280,30 @@ class PolygonsAsRings:
             return _geoms_to_linearrings_fallback(exterior, interiors)
 
 
-def get_linearring_series(geoms):
+def get_linearring_series(geoms: Any) -> pd.Series:
     geoms = to_geoseries(geoms).explode(index_parts=False)
     coords, indices = get_coordinates(geoms, return_index=True)
     return pd.Series(linearrings(coords, indices=indices), index=geoms.index)
 
 
-def _geoms_to_linearrings_fallback(exterior, interiors):
+def _geoms_to_linearrings_fallback(
+    exterior: pd.Series, interiors: pd.Series | None = None
+) -> pd.Series:
     exterior.index = exterior.index.get_level_values(1)
-    interiors.index = interiors.index.get_level_values(1)
 
     exterior = get_linearring_series(exterior)
 
+    if interiors is None:
+        return (
+            pd.Series(
+                make_valid(polygons(exterior.values)),
+                index=exterior.index,
+            )
+            .groupby(level=0)
+            .agg(unary_union)
+        )
+
+    interiors.index = interiors.index.get_level_values(1)
     new_interiors = []
     for col in interiors:
         new_interiors.append(get_linearring_series(interiors[col]))
