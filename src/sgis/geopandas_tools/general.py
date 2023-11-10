@@ -25,6 +25,12 @@ from shapely.ops import unary_union
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
+def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
+    return tuple(
+        gdf.loc[gdf.geom_type == geom_type] for geom_type in gdf.geom_type.unique()
+    )
+
+
 def get_common_crs(
     iterable: Iterable[Hashable], strict: bool = False
 ) -> pyproj.CRS | None:
