@@ -28,9 +28,19 @@ from .sfilter import sfilter_split
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
+def get_traveling_salesman_lines(df, return_to_start=False):
+    path = traveling_salesman_problem(df, return_to_start=return_to_start)
+    try:
+        return [LineString([p1, p2]) for p1, p2 in zip(path[:-1], path[1:])]
+    except IndexError as e:
+        if len(path) == 1:
+            return path
+        raise e
+
+
 def get_rough_centerlines(
     gdf: GeoDataFrame,
-    max_segment_length: int | None = None,
+    max_segment_length: int,
 ) -> GeoDataFrame:
     """Get a cheaply calculated centerline of a polygon.
 
@@ -43,7 +53,7 @@ def get_rough_centerlines(
 
     """
 
-    precision = 0.01
+    PRECISION = 0.01
 
     if not len(gdf):
         return gdf
@@ -55,12 +65,12 @@ def get_rough_centerlines(
 
     segmentized: GeoSeries = segmentize(geoms, max_segment_length=max_segment_length)
 
-    points: GeoSeries = get_points_in_polygons(segmentized, precision)
+    points: GeoSeries = get_points_in_polygons(segmentized, PRECISION)
 
     has_no_points = geoms.loc[(~geoms.index.isin(points.index))]
 
     more_points: GeoSeries = get_points_in_polygons(
-        has_no_points.buffer(precision), precision
+        has_no_points.buffer(PRECISION), PRECISION
     )
 
     # Geometries that have no lines inside, might be perfect circles.
@@ -107,7 +117,7 @@ def get_rough_centerlines(
     # keep lines 90 percent intersecting the polygon
     length_now = end_to_end.length
     end_to_end = (
-        end_to_end.intersection(geoms.buffer(precision))
+        end_to_end.intersection(geoms.buffer(PRECISION))
         .dropna()
         .loc[lambda x: x.length > length_now * 0.9]
     )
@@ -116,7 +126,7 @@ def get_rough_centerlines(
     to_be_erased = points.index.isin(end_to_end.index)
 
     _, dont_intersect = sfilter_split(
-        points.iloc[to_be_erased], end_to_end.buffer(precision, cap_style=2)
+        points.iloc[to_be_erased], end_to_end.buffer(PRECISION, cap_style=2)
     )
 
     points = (
@@ -140,15 +150,6 @@ def get_rough_centerlines(
             endpoints,
         ]
     )
-
-    def get_traveling_salesman_lines(df):
-        path = traveling_salesman_problem(df, return_to_start=False)
-        try:
-            return [LineString([p1, p2]) for p1, p2 in zip(path[:-1], path[1:])]
-        except IndexError as e:
-            if len(path) == 1:
-                return path
-            raise e
 
     centerlines = GeoSeries(
         points.groupby(level=0).apply(get_traveling_salesman_lines).explode()
@@ -211,7 +212,7 @@ def get_points_in_polygons(geometries: GeoSeries, precision: float) -> GeoSeries
             )
 
     crossing_lines = (
-        geometries.buffer(precision)
+        geometries.buffer(precision, resolution=10)
         .intersection(voronoi_lines)
         .explode(index_parts=False)
     )
