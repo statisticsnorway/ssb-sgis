@@ -449,8 +449,12 @@ def explore_locals(*gdfs, to_gdf: bool = True, **kwargs):
                 continue
             if not to_gdf:
                 continue
-            if hasattr(value, "__len__") and not len(value):
+            try:
+                if hasattr(value, "__len__") and not len(value):
+                    continue
+            except TypeError:
                 continue
+
             try:
                 gdf = clean_geoms(to_gdf_func(value))
                 if len(gdf):
