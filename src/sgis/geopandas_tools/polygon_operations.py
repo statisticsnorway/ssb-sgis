@@ -441,10 +441,6 @@ def _eliminate_by_area(
         errors="ignore",
     )
 
-    if not ignore_index:
-        eliminated.index = eliminated.index.map(idx_mapper)
-        eliminated.index.name = idx_name
-
     out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
 
     if geom_type != "mixed":
@@ -498,19 +494,20 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, **kwargs):
         assert eliminated.index.is_unique
 
         many_hits = many_hits.set_index("_dissolve_idx")
+        many_hits["_row_idx"] = range(len(many_hits))
 
         # TODO kan dette fikses trygt med .duplicated og ~x.duplicated?
         eliminators: pd.Series = many_hits.loc[
             many_hits["_to_eliminate"] != 1, "geometry"
         ]
-        to_be_eliminated: pd.Series = many_hits.loc[
-            many_hits["_to_eliminate"] == 1, "geometry"
-        ]
+        to_be_eliminated = many_hits.loc[many_hits["_to_eliminate"] == 1]
 
         all_geoms: pd.Series = gdf.set_index("_dissolve_idx").geometry
 
         tree = STRtree(all_geoms.values)
-        left, right = tree.query(to_be_eliminated.values, predicate="intersects")
+        left, right = tree.query(
+            to_be_eliminated.geometry.values, predicate="intersects"
+        )
         pairs = pd.Series(right, index=left).to_frame("right")
         pairs["_dissolve_idx"] = pairs.index.map(
             dict(enumerate(to_be_eliminated.index))
@@ -521,9 +518,15 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, **kwargs):
         soon_erased = to_be_eliminated.iloc[pairs.index]
         intersecting = all_geoms.iloc[pairs["right"]]
 
+        missing = to_be_eliminated.loc[
+            (~to_be_eliminated.index.isin(soon_erased.index))
+            | (~to_be_eliminated["_row_idx"].isin(soon_erased["_row_idx"])),
+            "geometry",
+        ]
+
         # allign and aggregate by dissolve index to not get duplicates in difference
         intersecting.index = soon_erased.index
-        soon_erased = soon_erased.groupby(level=0).first()
+        soon_erased = soon_erased.geometry.groupby(level=0).first()
         intersecting = intersecting.groupby(level=0).agg(unary_union)
 
         soon_erased.loc[:] = difference(
@@ -531,13 +534,15 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, **kwargs):
             intersecting.values,
         )
 
-        missing = to_be_eliminated.loc[~to_be_eliminated.index.isin(soon_erased.index)]
-
         eliminated["geometry"] = (
             pd.concat([eliminators, soon_erased, missing])
             .groupby(level=0)
             .agg(lambda x: make_valid(unary_union(x.dropna().values)))
         )
+        from ..maps.maps import explore_locals
+
+        explore_locals()
+
     else:
         eliminated["geometry"] = many_hits.groupby("_dissolve_idx")["geometry"].agg(
             lambda x: make_valid(unary_union(x.values))
