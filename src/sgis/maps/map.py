@@ -139,10 +139,10 @@ class Map:
             self.show.append(show)
         self.labels = new_labels
 
-        if self.show:
+        if len(self._gdfs):
             last_show = self.show[-1]
         else:
-            last_show = True
+            last_show = show
 
         # pop all geometry-like items from kwargs into self._gdfs
         self.kwargs = {}
