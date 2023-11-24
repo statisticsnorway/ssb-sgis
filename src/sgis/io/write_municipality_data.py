@@ -2,7 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
-from dapla import write_pandas
+from dapla import read_pandas, write_pandas
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 
@@ -66,8 +66,14 @@ def _write_municipality_data(
     data = _validate_data(data)
 
     if isinstance(data, (str, Path)):
-        gdf = read_geopandas(str(data))
-    elif isinstance(data, GeoDataFrame):
+        try:
+            gdf = read_geopandas(str(data))
+        except ValueError as e:
+            try:
+                gdf = read_pandas(str(data))
+            except ValueError:
+                raise e.__class__(e, data)
+    elif isinstance(data, DataFrame):
         gdf = data
     else:
         raise TypeError(type(data))
@@ -84,14 +90,14 @@ def _write_municipality_data(
 
         if not len(gdf_muni):
             if write_empty:
-                gdf_muni = gdf_muni.drop(columns="geometry")
+                gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
                 gdf_muni["geometry"] = None
                 write_pandas(gdf_muni, out)
             continue
 
         if not len(gdf_muni):
             if write_empty:
-                gdf_muni = gdf_muni.drop(columns="geometry")
+                gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
                 gdf_muni["geometry"] = None
                 write_pandas(gdf_muni, out)
             continue
