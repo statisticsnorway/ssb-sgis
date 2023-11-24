@@ -171,7 +171,7 @@ def _prepare_make_edge_cols(
 
     geom_col = lines._geometry_column_name
 
-    # some LinearRings are coded as LineStrings and need to be removed manually
+    # some LineStrings are in fact rings and must be removed manually
     boundary = lines[geom_col].boundary
     circles = boundary.loc[boundary.is_empty]
     lines = lines[~lines.index.isin(circles.index)]
