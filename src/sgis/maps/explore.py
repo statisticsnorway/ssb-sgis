@@ -18,6 +18,7 @@ from folium import plugins
 from geopandas import GeoDataFrame
 from IPython.display import display
 from jinja2 import Template
+from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely.geometry import LineString
 
@@ -134,6 +135,13 @@ class Explore(Map):
             except Exception:
                 pass
             for col in gdf.columns:
+                if is_datetime64_any_dtype(gdf[col]):
+                    try:
+                        gdf[col] = [str(x) for x in gdf[col].dt.round("d")]
+                    except Exception:
+                        gdf = gdf.drop(col, axis=1)
+                    continue
+
                 if not len(gdf.loc[gdf[col].notna()]):
                     continue
                 if not isinstance(
@@ -143,7 +151,7 @@ class Explore(Map):
                     and isinstance(gdf.loc[gdf[col].notna(), col].iloc[0], (Geometry))
                 ):
                     try:
-                        gdf[col] = gdf[col].astype(str)
+                        gdf[col] = gdf[col].astype(str).fillna(pd.NA)
                     except Exception:
                         gdf = gdf.drop(col, axis=1)
 
@@ -154,6 +162,7 @@ class Explore(Map):
             new_gdfs.append(gdf)
             show_new.append(show)
         self._gdfs = new_gdfs
+        self._gdf = pd.concat(new_gdfs, ignore_index=True)
         self.show = show_new
 
         if self._is_categorical:
@@ -171,6 +180,9 @@ class Explore(Map):
     def explore(
         self, column: str | None = None, center=None, size=None, **kwargs
     ) -> None:
+        if not any(len(gdf) for gdf in self._gdfs):
+            warnings.warn("None of the GeoDataFrames have rows.")
+            return
         if column:
             self._column = column
             self._update_column()
@@ -346,6 +358,7 @@ class Explore(Map):
 
             gdf = self._to_single_geom_type(gdf)
             gdf = self._prepare_gdf_for_map(gdf)
+
             gjs = self._make_geojson(
                 gdf,
                 show=show,
@@ -358,7 +371,6 @@ class Explore(Map):
                     if key not in ["title"]
                 },
             )
-
             gjs.layer_name = label
 
             gjs.add_to(f)
