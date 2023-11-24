@@ -296,9 +296,10 @@ def to_gdf(
     if geom_col in obj.keys():
         if isinstance(obj, pd.DataFrame):
             notna = obj[geom_col].notna()
-            obj.loc[notna, geom_col] = GeoSeries(
-                make_shapely_geoms(obj.loc[notna, geom_col]), index=index
+            obj.loc[notna, geom_col] = list(
+                make_shapely_geoms(obj.loc[notna, geom_col])
             )
+            obj[geom_col] = GeoSeries(obj[geom_col])
             return GeoDataFrame(obj, geometry=geom_col, crs=crs, **kwargs)
         if isinstance(obj[geom_col], Geometry):
             return GeoDataFrame(
