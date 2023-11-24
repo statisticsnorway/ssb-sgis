@@ -18,7 +18,11 @@ from geopandas import GeoDataFrame, GeoSeries
 
 from .general import _push_geom_col
 from .geometry_types import make_all_singlepart
-from .polygon_operations import get_polygon_clusters
+from .polygon_operations import (
+    get_cluster_mapper,
+    get_grouped_centroids,
+    get_polygon_clusters,
+)
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
@@ -237,21 +241,26 @@ def dissexp_by_cluster(gdf: GeoDataFrame, **dissolve_kwargs) -> GeoDataFrame:
 
     def get_group_clusters(group: GeoDataFrame):
         """Adds cluster column. Applied to each group because much faster."""
-        return make_all_singlepart(group).pipe(
-            get_polygon_clusters,
+        group = group.reset_index(drop=True)
+        group["_cluster"] = get_cluster_mapper(group)  # component_mapper
+        group["_cluster"] = get_grouped_centroids(group, groupby="_cluster")
+        return group
+        return get_polygon_clusters(
+            group,
             cluster_col="_cluster",
             as_string=True,
         )
 
     if by:
         dissolved = (
-            gdf.groupby(by, group_keys=True, dropna=False, as_index=False)
+            make_all_singlepart(gdf)
+            .groupby(by, group_keys=True, dropna=False, as_index=False)
             .apply(get_group_clusters)
             .pipe(dissexp, by=["_cluster"] + by, **dissolve_kwargs)
         )
     else:
-        dissolved = get_group_clusters(gdf).pipe(
-            dissexp, by=["_cluster"] + by, **dissolve_kwargs
+        dissolved = get_group_clusters(make_all_singlepart(gdf)).pipe(
+            dissexp, by="_cluster", **dissolve_kwargs
         )
 
     if not by:
