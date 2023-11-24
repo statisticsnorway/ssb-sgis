@@ -137,18 +137,22 @@ def clean_overlay(
     df1 = DataFrame(df1).reset_index(drop=True)
     df2 = DataFrame(df2).reset_index(drop=True)
 
-    overlayed = gpd.GeoDataFrame(
-        _shapely_pd_overlay(
-            df1,
-            df2,
-            how=how,
-            grid_size=grid_size,
-            lsuffix=lsuffix,
-            rsuffix=rsuffix,
-        ),
-        geometry="geometry",
-        crs=crs,
-    ).pipe(clean_geoms)
+    overlayed = (
+        gpd.GeoDataFrame(
+            _shapely_pd_overlay(
+                df1,
+                df2,
+                how=how,
+                grid_size=grid_size,
+                lsuffix=lsuffix,
+                rsuffix=rsuffix,
+            ),
+            geometry="geometry",
+            crs=crs,
+        )
+        .pipe(clean_geoms)
+        .pipe(make_all_singlepart, ignore_index=True)
+    )
 
     if keep_geom_type:
         overlayed = to_single_geom_type(overlayed, geom_type)
