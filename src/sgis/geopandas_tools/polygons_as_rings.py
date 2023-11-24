@@ -69,6 +69,7 @@ class PolygonsAsRings:
         if not isinstance(polys, pd.DataFrame):
             polys = to_gdf(polys, crs)
 
+        self._index_mapper = dict(enumerate(polys.index))
         self.gdf = polys.reset_index(drop=True)
 
         if crs is not None:
@@ -159,7 +160,11 @@ class PolygonsAsRings:
 
         self.rings.loc[:] = np.array(
             func(
-                GeoSeries(self.rings, crs=self.crs, index=self.rings.index),
+                GeoSeries(
+                    self.rings.values,
+                    crs=self.crs,
+                    index=self.rings.index.get_level_values(1).map(self._index_mapper),
+                ),
                 *args,
                 **kwargs,
             )
@@ -177,7 +182,7 @@ class PolygonsAsRings:
         gdf = GeoDataFrame(
             {"geometry": self.rings.values},
             crs=self.crs,
-            index=self.rings.index.get_level_values(1),
+            index=self.rings.index.get_level_values(1).map(self._index_mapper),
         ).join(self.gdf.drop(columns="geometry"))
 
         assert len(gdf) == len(self.rings)
@@ -243,6 +248,11 @@ class PolygonsAsRings:
         """Return the GeoDataFrame with polygons."""
         self.gdf.geometry = self.to_numpy()
         return self.gdf
+
+    def to_geoseries(self) -> GeoDataFrame:
+        """Return the GeoDataFrame with polygons."""
+        self.gdf.geometry = self.to_numpy()
+        return self.gdf.geometry
 
     def to_numpy(self) -> NDArray[Polygon]:
         """Return a numpy array of polygons."""
