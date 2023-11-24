@@ -42,6 +42,9 @@ def test_sfilter():
             assert sg.sfilter(df1, df2.unary_union, predicate=predicate).equals(
                 should_equal
             )
+            assert sg.sfilter(
+                df1.geometry, df2.unary_union, predicate=predicate
+            ).equals(should_equal.geometry)
 
     df1 = sg.to_gdf([(0, 0), (0, 1), (1, 1)])
     df1["idx"] = [3, 1, 2]
