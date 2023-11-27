@@ -97,9 +97,11 @@ class MeasureControlFix(plugins.MeasureControl):
         )
 
 
-def to_tile(tile: str | xyzservices.TileProvider) -> folium.TileLayer:
-    bagrunnskart = {
-        "openstreetmap": "OpenStreetMap",
+def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileLayer:
+    common_bgmaps = {
+        "openstreetmap": folium.TileLayer(
+            "OpenStreetMap", min_zoom=0, max_zoom=max_zoom
+        ),
         "grunnkart": kartverket.norges_grunnkart,
         "gråtone": kartverket.norges_grunnkart_gråtone,
         "norge_i_bilder": kartverket.norge_i_bilder,
@@ -112,16 +114,28 @@ def to_tile(tile: str | xyzservices.TileProvider) -> folium.TileLayer:
 
     if not isinstance(tile, str):
         try:
-            return folium.TileLayer(tile, name=name)
+            return folium.TileLayer(tile, name=name, max_zoom=max_zoom)
         except TypeError:
-            return folium.TileLayer(tile)
+            return folium.TileLayer(tile, max_zoom=max_zoom)
 
     try:
-        provider = bagrunnskart[tile.lower()]
+        provider = common_bgmaps[tile.lower()]
     except KeyError:
         provider = xyzservices.providers.query_name(tile)
 
-    return folium.TileLayer(provider, name=name)
+    if isinstance(provider, folium.TileLayer):
+        return provider
+
+    if isinstance(provider, xyzservices.TileProvider):
+        attr = provider.html_attribution
+        provider = provider.build_url(scale_factor="{r}")
+    else:
+        try:
+            attr = provider["attr"]
+        except (AttributeError, TypeError):
+            attr = None
+
+    return folium.TileLayer(provider, name=name, attr=attr, max_zoom=max_zoom)
 
 
 class Explore(Map):
@@ -421,7 +435,7 @@ class Explore(Map):
         self, mapobj: folium.Map, tiles: list[str, xyzservices.TileProvider]
     ):
         for tile in tiles:
-            to_tile(tile).add_to(mapobj)
+            to_tile(tile, max_zoom=self.max_zoom).add_to(mapobj)
 
     def _create_continous_map(self):
         self._prepare_continous_map()
@@ -553,7 +567,7 @@ class Explore(Map):
         else:
             default_tile, more_tiles = tiles, []
 
-        default_tile = to_tile(default_tile)
+        default_tile = to_tile(default_tile, max_zoom=self.max_zoom)
 
         if isinstance(default_tile, xyzservices.TileProvider):
             attr = attr if attr else default_tile.html_attribution
