@@ -14,6 +14,7 @@ import folium
 import matplotlib
 import numpy as np
 import pandas as pd
+import xyzservices
 from folium import plugins
 from geopandas import GeoDataFrame
 from IPython.display import display
@@ -28,6 +29,7 @@ from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
 from ..helpers import unit_is_degrees
 from .httpserver import run_html_server
 from .map import Map
+from .tilesources import kartverket, xyz
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -43,6 +45,9 @@ NAN_COLOR = "#969696"
 
 # cols to not show when hovering over geometries (tooltip)
 COLS_TO_DROP = ["color", "col_as_int", "geometry"]
+
+
+DEFAULT_TILES = ["OpenStreetMap", "dark"]
 
 
 # from geopandas
@@ -90,6 +95,30 @@ class MeasureControlFix(plugins.MeasureControl):
         super().__init__(
             active_color=active_color, completed_color=completed_color, **kwargs
         )
+
+
+def to_tile(tile: str | xyzservices.TileProvider):
+    bagrunnskart = {
+        "openstreetmap": "OpenStreetMap",
+        "grunnkart": kartverket.norges_grunnkart,
+        "gråtone": kartverket.norges_grunnkart_gråtone,
+        "norge_i_bilder": kartverket.norge_i_bilder,
+        "dark": xyz.CartoDB.DarkMatter,
+    }
+    if not isinstance(tile, str):
+        return folium.TileLayer(tile)
+
+    try:
+        tile = bagrunnskart[tile.lower()]
+    except KeyError:
+        tile = xyzservices.providers.query_name(tile)
+
+    try:
+        name = tile["name"]
+    except TypeError:
+        name = tile
+
+    return folium.TileLayer(tile, name=name)
 
 
 class Explore(Map):
@@ -382,14 +411,14 @@ class Explore(Map):
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
-        try:
-            folium.TileLayer("cartodbdark_matter", max_zoom=self.max_zoom).add_to(
-                self.map
-            )
-        except ValueError:
-            pass
 
         self.map.add_child(folium.LayerControl())
+
+    def _add_tiles(
+        self, mapobj: folium.Map, tiles: list[str, xyzservices.TileProvider]
+    ):
+        for tile in tiles:
+            to_tile(tile).add_to(mapobj)
 
     def _create_continous_map(self):
         self._prepare_continous_map()
@@ -484,17 +513,18 @@ class Explore(Map):
         self,
         bounds,
         attr=None,
-        tiles="OpenStreetMap",
+        tiles=None,
         width="100%",
         height="100%",
         control_scale=True,
         map_kwds=None,
         **kwargs,
     ):
-        import xyzservices
-
         if not map_kwds:
             map_kwds = {}
+
+        if tiles is None:
+            tiles = DEFAULT_TILES
 
         # create folium.Map object
         # Get bounds to specify location and map extent
@@ -521,29 +551,31 @@ class Explore(Map):
             **map_kwds,
             **{i: kwargs[i] for i in kwargs.keys() if i in _MAP_KWARGS},
         }
+        map_kwds["min_zoom"] = 0
+        map_kwds["max_zoom"] = kwargs.get("max_zoom")
 
-        # match provider name string to xyzservices.TileProvider
-        if isinstance(tiles, str):
-            try:
-                tiles = xyzservices.providers.query_name(tiles)
-            except ValueError:
-                pass
+        if isinstance(tiles, (list, tuple)):
+            default_tile, *more_tiles = tiles
+        else:
+            default_tile, more_tiles = tiles, []
 
-        if isinstance(tiles, xyzservices.TileProvider):
-            attr = attr if attr else tiles.html_attribution
-            map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
-            map_kwds["max_zoom"] = tiles.get("max_zoom", 30)
-            tiles = tiles.build_url(scale_factor="{r}")
+        default_tile = to_tile(default_tile)
+
+        if isinstance(default_tile, xyzservices.TileProvider):
+            attr = attr if attr else default_tile.html_attribution
+            default_tile = default_tile.build_url(scale_factor="{r}")
 
         m = folium.Map(
             location=location,
             control_scale=control_scale,
-            tiles=tiles,
+            tiles=default_tile,
             attr=attr,
             width=width,
             height=height,
             **map_kwds,
         )
+
+        self._add_tiles(m, more_tiles)
 
         if self.measure_control:
             MeasureControlFix(
