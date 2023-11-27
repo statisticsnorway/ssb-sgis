@@ -105,20 +105,23 @@ def to_tile(tile: str | xyzservices.TileProvider) -> folium.TileLayer:
         "norge_i_bilder": kartverket.norge_i_bilder,
         "dark": xyz.CartoDB.DarkMatter,
     }
-    if not isinstance(tile, str):
-        return folium.TileLayer(tile)
-
-    try:
-        tile = bagrunnskart[tile.lower()]
-    except KeyError:
-        tile = xyzservices.providers.query_name(tile)
-
     try:
         name = tile["name"]
     except TypeError:
         name = tile
 
-    return folium.TileLayer(tile, name=name)
+    if not isinstance(tile, str):
+        try:
+            return folium.TileLayer(tile, name=name)
+        except TypeError:
+            return folium.TileLayer(tile)
+
+    try:
+        provider = bagrunnskart[tile.lower()]
+    except KeyError:
+        provider = xyzservices.providers.query_name(tile)
+
+    return folium.TileLayer(provider, name=name)
 
 
 class Explore(Map):
