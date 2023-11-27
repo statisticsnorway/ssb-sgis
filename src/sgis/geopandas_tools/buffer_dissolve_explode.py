@@ -245,11 +245,6 @@ def dissexp_by_cluster(gdf: GeoDataFrame, **dissolve_kwargs) -> GeoDataFrame:
         group["_cluster"] = get_cluster_mapper(group)  # component_mapper
         group["_cluster"] = get_grouped_centroids(group, groupby="_cluster")
         return group
-        return get_polygon_clusters(
-            group,
-            cluster_col="_cluster",
-            as_string=True,
-        )
 
     if by:
         dissolved = (
