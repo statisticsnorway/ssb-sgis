@@ -354,6 +354,10 @@ def clipmap(
 
     gdfs, column = Explore._separate_args(gdfs, column)
 
+    if mask is None and len(gdfs) > 1:
+        mask = gdfs[-1]
+        gdfs = gdfs[:-1]
+
     center = kwargs.pop("center", None)
     size = kwargs.pop("size", None)
 
