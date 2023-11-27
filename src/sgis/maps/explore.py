@@ -97,7 +97,7 @@ class MeasureControlFix(plugins.MeasureControl):
         )
 
 
-def to_tile(tile: str | xyzservices.TileProvider):
+def to_tile(tile: str | xyzservices.TileProvider) -> folium.TileLayer:
     bagrunnskart = {
         "openstreetmap": "OpenStreetMap",
         "grunnkart": kartverket.norges_grunnkart,
