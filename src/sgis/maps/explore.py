@@ -368,7 +368,7 @@ class Explore(Map):
                 **{
                     key: value
                     for key, value in self.kwargs.items()
-                    if key not in ["title"]
+                    if key not in ["title", "tiles"]
                 },
             )
             gjs.layer_name = label
@@ -382,10 +382,6 @@ class Explore(Map):
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
-        try:
-            folium.TileLayer("stamentoner", max_zoom=self.max_zoom).add_to(self.map)
-        except ValueError:
-            pass
         try:
             folium.TileLayer("cartodbdark_matter", max_zoom=self.max_zoom).add_to(
                 self.map
