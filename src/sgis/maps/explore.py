@@ -546,7 +546,7 @@ class Explore(Map):
             **{i: kwargs[i] for i in kwargs.keys() if i in _MAP_KWARGS},
         }
         map_kwds["min_zoom"] = 0
-        map_kwds["max_zoom"] = kwargs.get("max_zoom")
+        map_kwds["max_zoom"] = kwargs.get("max_zoom", self.max_zoom)
 
         if isinstance(tiles, (list, tuple)):
             default_tile, *more_tiles = tiles
