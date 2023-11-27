@@ -478,15 +478,6 @@ class Explore(Map):
             self.map.add_child(f)
 
         self.map.add_child(colorbar)
-        try:
-            folium.TileLayer("stamentoner").add_to(self.map)
-        except ValueError:
-            pass
-        try:
-            folium.TileLayer("cartodbdark_matter").add_to(self.map)
-        except ValueError:
-            pass
-
         self.map.add_child(folium.LayerControl())
 
     def _tooltip_cols(self, gdf: GeoDataFrame) -> list:
