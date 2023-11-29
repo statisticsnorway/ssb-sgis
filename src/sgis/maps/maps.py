@@ -145,7 +145,11 @@ def explore(
         elif isinstance(center, GeoDataFrame):
             mask = center
         else:
-            mask = to_gdf_func(center, crs=gdfs[0].crs)
+            try:
+                mask = to_gdf_func(center, crs=gdfs[0].crs)
+            except IndexError:
+                df = [x for x in kwargs.values() if hasattr(x, "crs")][0]
+                mask = to_gdf_func(center, crs=df.crs)
 
         if get_geom_type(mask) in ["point", "line"]:
             mask = mask.buffer(size)
