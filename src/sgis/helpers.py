@@ -193,6 +193,8 @@ def make_namedict(gdfs: tuple[GeoDataFrame]) -> dict[int, str]:
 
 
 def sort_nans_last(df, ignore_index: bool = False):
+    if not len(df):
+        return df
     df["n_nan"] = df.isna().sum(axis=1).values
 
     df["_idx"] = range(len(df))
