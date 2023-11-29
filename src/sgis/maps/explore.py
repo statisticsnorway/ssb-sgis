@@ -26,7 +26,6 @@ from shapely.geometry import LineString
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import clean_geoms, make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
-from ..helpers import unit_is_degrees
 from .httpserver import run_html_server
 from .map import Map
 from .tilesources import kartverket, xyz
@@ -47,7 +46,7 @@ NAN_COLOR = "#969696"
 COLS_TO_DROP = ["color", "col_as_int", "geometry"]
 
 
-DEFAULT_TILES = ["OpenStreetMap", "dark", "norge_i_bilder"]
+DEFAULT_TILES = ["OpenStreetMap", "dark", "norge_i_bilder", "grunnkart", "gråtone"]
 
 
 # from geopandas
