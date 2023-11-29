@@ -47,7 +47,7 @@ NAN_COLOR = "#969696"
 COLS_TO_DROP = ["color", "col_as_int", "geometry"]
 
 
-DEFAULT_TILES = ["OpenStreetMap", "dark"]
+DEFAULT_TILES = ["OpenStreetMap", "dark", "norge_i_bilder"]
 
 
 # from geopandas
