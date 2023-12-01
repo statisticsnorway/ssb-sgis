@@ -22,7 +22,7 @@ def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
             pass
 
     try:
-        index = obj.index.values
+        index = obj.index
     except AttributeError:
         index = None
 
