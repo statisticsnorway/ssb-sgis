@@ -12,14 +12,22 @@ from pandas import DataFrame
 from pyarrow import parquet
 
 
-def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame | DataFrame:
+def read_geopandas(
+    gcs_path: str | Path, pandas_fallback: bool = False, **kwargs
+) -> GeoDataFrame | DataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
+
+    If the file has 0 rows, the contents will be returned as a pandas.DataFrame,
+    since geopandas does not read and write empty tables.
 
     Note:
         Does not currently read shapefiles or filegeodatabases.
 
     Args:
         gcs_path: path to a file on Google Cloud Storage.
+        pandas_fallback: If False (default), an exception is raised if the file can
+            not be read with geopandas and the number of rows is more than 0. If True,
+            the file will be read as
         **kwargs: Additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
@@ -40,7 +48,7 @@ def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame | DataFrame:
                 return gpd.read_parquet(file, **kwargs)
             except ValueError as e:
                 df = dp.read_pandas(gcs_path, **kwargs)
-                if not len(df):
+                if pandas_fallback or not len(df):
                     return df
                 else:
                     raise e
@@ -50,7 +58,7 @@ def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame | DataFrame:
                 return gpd.read_file(file, **kwargs)
             except ValueError as e:
                 df = dp.read_pandas(gcs_path, **kwargs)
-                if not len(df):
+                if pandas_fallback or not len(df):
                     return df
                 else:
                     raise e
