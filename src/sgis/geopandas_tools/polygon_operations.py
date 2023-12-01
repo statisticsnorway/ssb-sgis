@@ -971,6 +971,9 @@ def get_gaps(gdf: GeoDataFrame, include_interiors: bool = False) -> GeoDataFrame
         include_interiors: If False (default), the holes inside individual polygons
             will not be included as gaps.
 
+    Note:
+        See get_holes to find holes inside singlepart polygons.
+
     Returns:
         GeoDataFrame of polygons with only a geometry column.
     """
@@ -984,14 +987,14 @@ def get_gaps(gdf: GeoDataFrame, include_interiors: bool = False) -> GeoDataFrame
         {"geometry": [box(*tuple(gdf.total_bounds)).buffer(1)]}, crs=gdf.crs
     )
 
-    gaps = make_all_singlepart(
+    bbox_diff = make_all_singlepart(
         clean_overlay(bbox, gdf, how="difference", geom_type="polygon")
     )
 
     # remove the outer "gap", i.e. the surrounding area
-    return sfilter_inverse(gaps, get_exterior_ring(bbox.geometry.values)).reset_index(
-        drop=True
-    )
+    bbox_ring = get_exterior_ring(bbox.geometry.values)
+    without_outer_ring = sfilter_inverse(bbox_diff, bbox_ring)
+    return without_outer_ring.reset_index(drop=True)
 
 
 def get_holes(gdf: GeoDataFrame, as_polygons=True) -> GeoDataFrame:
@@ -1002,22 +1005,21 @@ def get_holes(gdf: GeoDataFrame, as_polygons=True) -> GeoDataFrame:
         as_polygons: If True (default), the holes will be returned as polygons.
             If False, they will be returned as LinearRings.
 
+    Note:
+        See get_gaps to find holes/gaps between undissolved polygons.
+
     Returns:
         GeoDataFrame of polygons or linearrings with only a geometry column.
     """
     if not len(gdf):
-        return GeoDataFrame({"geometry": []}, crs=gdf.crs)
+        return GeoDataFrame({"geometry": []}, index=gdf.index, crs=gdf.crs)
 
     def as_linearring(x):
         return x
 
     astype = polygons if as_polygons else as_linearring
 
-    geoms = (
-        make_all_singlepart(gdf.geometry).to_numpy()
-        if isinstance(gdf, GeoDataFrame)
-        else make_all_singlepart(gdf).to_numpy()
-    )
+    geoms = make_all_singlepart(gdf.geometry).to_numpy()
 
     rings = [
         GeoSeries(astype(get_interior_ring(geoms, i)), crs=gdf.crs)
