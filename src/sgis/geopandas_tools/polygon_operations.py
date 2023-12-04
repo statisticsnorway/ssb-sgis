@@ -770,33 +770,6 @@ def close_all_holes(
         return gdf.map(lambda x: _close_all_holes_no_islands(x, all_geoms))
 
 
-def _close_thin_holes(
-    gdf: GeoDataFrame | GeoSeries,
-    tolerance: int | float,
-    *,
-    ignore_islands: bool = False,
-    copy: bool = True,
-) -> GeoDataFrame | GeoSeries:
-    holes = get_holes(gdf)
-
-    if not len(holes):
-        return gdf
-
-    if not ignore_islands:
-        inside_holes = sfilter(gdf, holes, predicate="within")
-
-        def is_thin(x):
-            return x.buffer(-tolerance).is_empty
-
-        in_between = clean_overlay(
-            holes, inside_holes, how="difference", grid_size=None
-        ).loc[is_thin]
-
-        holes = pd.concat([holes, in_between])
-
-    thin_holes = holes.loc[is_thin]
-
-
 def close_small_holes(
     gdf: GeoDataFrame | GeoSeries,
     max_area: int | float,
