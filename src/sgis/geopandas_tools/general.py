@@ -459,6 +459,9 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     >>> sg.qtm(lines, "l")
     """
 
+    if not all(isinstance(gdf, (GeoSeries, GeoDataFrame)) for gdf in gdfs):
+        raise TypeError("gdf must be GeoDataFrame or GeoSeries")
+
     if any(gdf.geom_type.isin(["Point", "MultiPoint"]).any() for gdf in gdfs):
         raise ValueError("Cannot convert points to lines.")
 
@@ -492,7 +495,12 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         if copy:
             gdf = gdf.copy()
 
-        gdf.geometry = gdf.geometry.map(_shapely_geometry_to_lines)
+        mapped = gdf.geometry.map(_shapely_geometry_to_lines)
+        try:
+            gdf.geometry = mapped
+        except AttributeError:
+            # geoseries
+            gdf.loc[:] = mapped
 
         gdf = to_single_geom_type(gdf, "line")
 
