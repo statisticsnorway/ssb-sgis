@@ -22,7 +22,12 @@ def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
             pass
 
     try:
-        index = obj.index
+        if hasattr(obj.index, "values"):
+            # pandas objects
+            index = obj.index
+        else:
+            # list
+            index = None
     except AttributeError:
         index = None
 
