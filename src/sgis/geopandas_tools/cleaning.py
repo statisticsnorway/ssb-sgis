@@ -1,132 +1,42 @@
 """
 The
 """
-import functools
-import itertools
 import warnings
-from typing import Callable, Iterable
 
-import geopandas as gpd
-import igraph
-import networkx as nx
-import numba
-import numpy as np
 import pandas as pd
-import shapely
 from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryArray
-from IPython.display import display
-from numpy import ndarray
 from numpy.typing import NDArray
-from pandas import Index
-from pandas.core.groupby import SeriesGroupBy
 from shapely import (
-    Geometry,
-    box,
-    buffer,
-    centroid,
-    difference,
-    distance,
     extract_unique_points,
     get_coordinates,
     get_exterior_ring,
-    get_interior_ring,
-    get_num_interior_rings,
-    get_parts,
-    get_rings,
-    intersection,
-    intersects,
-    is_empty,
-    is_ring,
-    length,
-    line_merge,
     linearrings,
-    linestrings,
     make_valid,
-    points,
-    polygonize,
     polygons,
-    segmentize,
-    snap,
-    unary_union,
 )
-from shapely.geometry import (
-    LinearRing,
-    LineString,
-    MultiLineString,
-    MultiPoint,
-    MultiPolygon,
-    Point,
-    Polygon,
-)
-from shapely.ops import nearest_points
+from shapely.geometry import LinearRing
 
-from ..maps.maps import explore, explore_locals, qtm
-from ..networkanalysis.closing_network_holes import (
-    _close_holes_all_lines,
-    close_network_holes,
-    close_network_holes_to,
-    get_angle,
-)
-from ..networkanalysis.cutting_lines import (
-    change_line_endpoint,
-    split_lines_by_nearest_point,
-)
-from ..networkanalysis.nodes import make_edge_wkt_cols, make_node_ids
-from ..networkanalysis.traveling_salesman import traveling_salesman_problem
-from .bounds import get_total_bounds, make_grid
-from .buffer_dissolve_explode import (
-    buff,
-    buffdissexp_by_cluster,
-    dissexp,
-    dissexp_by_cluster,
-)
-from .centerlines import (
-    get_line_segments,
-    get_rough_centerlines,
-    get_traveling_salesman_lines,
-    multipoints_to_line_segments,
-)
-from .conversion import coordinate_array, to_gdf, to_geoseries
+from .buffer_dissolve_explode import buff, dissexp, dissexp_by_cluster
+from .conversion import to_geoseries
 from .duplicates import get_intersections, update_geometries
-from .general import clean_clip, clean_geoms
-from .general import sort_large_first as sort_large_first_func
-from .general import sort_long_first, to_lines
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-from .neighbors import get_all_distances, k_nearest_neighbors
+from .general import sort_long_first
+from .geometry_types import get_geom_type
 from .overlay import clean_overlay
-from .polygon_operations import (
-    close_all_holes,
-    close_small_holes,
-    close_thin_holes,
-    eliminate_by_longest,
-    get_cluster_mapper,
-    get_gaps,
-    get_holes,
-)
+from .polygon_operations import close_all_holes, close_thin_holes, get_gaps
 from .polygons_as_rings import PolygonsAsRings
-from .sfilter import sfilter, sfilter_inverse, sfilter_split
+from .sfilter import sfilter_inverse
 
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
-mask = to_gdf(
-    [
-        "POINT (905200 7878700)",
-        "POINT (905250 7878780)",
-    ],
-    25833,
-).pipe(buff, 30)
 
 PRECISION = 1e-4
 BUFFER_RES = 50
 
 
 def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
-    def _remove_spikes(
-        geoms: NDArray[LinearRing], tolerance: int | float
-    ) -> NDArray[LinearRing]:
+    def _remove_spikes(geoms: NDArray[LinearRing]) -> NDArray[LinearRing]:
         if not len(geoms):
             return geoms
         geoms = to_geoseries(geoms).reset_index(drop=True)
@@ -135,54 +45,28 @@ def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
             polys = GeoSeries(make_valid(polygons(get_exterior_ring(x))))
 
             return (
-                polys.buffer(-PRECISION * 2, resolution=BUFFER_RES)
+                polys.buffer(-tolerance * 2, resolution=BUFFER_RES)
                 .explode(index_parts=False)
-                # .buffer(PRECISION, resolution=BUFFER_RES)
                 .pipe(close_all_holes)
                 .pipe(get_exterior_ring)
-                # .buffer(PRECISION, resolution=BUFFER_RES)
             )
 
-        buffered = (
-            geoms.buffer(PRECISION, resolution=BUFFER_RES).pipe(
-                to_buffered_rings_without_spikes
-            )  # Polygon(x.exterior))
-            # .buffer(-PRECISION * 2, resolution=BUFFER_RES)
-            # .explode(index_parts=False)
-            # # .buffer(PRECISION, resolution=BUFFER_RES)
-            # .pipe(close_all_holes)
-            # .pipe(get_exterior_ring)
-            # .buffer(PRECISION, resolution=BUFFER_RES)
+        buffered = geoms.buffer(tolerance, resolution=BUFFER_RES).pipe(
+            to_buffered_rings_without_spikes
         )
-        if 0:
-            for i, g in geoms.geometry.items():
-                print(i, g)
-            is_empty = buffered.is_empty
-            print(geoms.index)
-            print(buffered.index)
-            print(is_empty)
-            buffered.loc[is_empty] = geoms.loc[is_empty]
 
-        points = extract_unique_points(geoms).explode(index_parts=False)
-        # points_without_spikes = sfilter(points, buffered)
-        points_without_spikes = points[
-            points.distance(buffered.unary_union) <= PRECISION * 2
+        points_without_spikes = (
+            extract_unique_points(geoms)
+            .explode(index_parts=False)
+            .loc[lambda x: x.distance(buffered.unary_union) <= tolerance * 10]
+        )
+
+        # linearrings require at least 4 coordinate pairs, or three unique
+        points_without_spikes = points_without_spikes.loc[
+            lambda x: x.groupby(level=0).size() >= 3
         ]
-        if 0:
-            explore(
-                points,
-                p6=points.loc[6],
-                points_without_spikes=points_without_spikes,
-                geoms=geoms,
-                buffered=buffered,
-            )
-            print(points_without_spikes.index.value_counts())
-            for i in points_without_spikes.index.unique():
-                explore(
-                    points_without_spikes.loc[i],
-                    p0=points.loc[i],
-                    geoms=geoms.loc[i],
-                )
+
+        # need an index from 0 to n-1 in 'linearrings'
         to_int_index = {
             ring_idx: i
             for i, ring_idx in enumerate(sorted(set(points_without_spikes.index)))
@@ -197,6 +81,7 @@ def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
             index=points_without_spikes.index.unique(),
         )
         missing = geoms.loc[~geoms.index.isin(as_lines.index)]
+
         missing = pd.Series(
             [None] * len(missing),
             index=missing.index.values,
@@ -205,9 +90,7 @@ def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
         return pd.concat([as_lines, missing]).sort_index()
 
     gdf.geometry = (
-        PolygonsAsRings(gdf.geometry)
-        .apply_numpy_func(_remove_spikes, args=(tolerance,))
-        .to_numpy()
+        PolygonsAsRings(gdf.geometry).apply_numpy_func(_remove_spikes).to_numpy()
     )
     return gdf
 
@@ -217,19 +100,42 @@ def coverage_clean(
     tolerance: int | float,
     duplicate_action: str = "fix",
 ) -> GeoDataFrame:
-    """
+    """Fix thin gaps, holes, slivers and double surfaces.
 
     Rules:
-    - Internal holes thinner than the tolerance are closed.
-    - Polygons thinner than the tolerance are removed and filled
-        by the surrounding polygons.
+    - Holes (interiors) thinner than the tolerance are closed.
+    - Gaps between polygons are filled if thinner than the tolerance.
+    - Sliver polygons thinner than the tolerance are eliminated
+        into the neighbor polygon with the longest shared border.
+    - Double surfaces thinner than the tolerance are eliminated.
+        If duplicate_action is "fix", thicker double surfaces will
+        be updated from top to bottom of the GeoDataFrame's rows.
     - Line and point geometries are removed.
     - MultiPolygons are exploded to Polygons.
     - Index is reset.
 
+    Args:
+        gdf: GeoDataFrame to be cleaned.
+        tolerance: distance (usually meters) used as the minimum thickness
+            for polygons to be eliminated. Any gap, hole, sliver or double
+            surface that are empty after a negative buffer of tolerance / 2
+            are eliminated into the neighbor with the longest shared border.
+        duplicate action: Either "fix", "error" or "ignore".
+            If "fix" (default), double surfaces thicker than the
+            tolerance will be updated from top to bottom (function update_geometries)
+            and then dissolved into the neighbor polygon with the longest shared border.
+            If "error", an Exception is raised if there are any double surfaces thicker
+            than the tolerance. If "ignore", double surfaces are kept as is.
+
+    Returns:
+
+
     """
 
     _cleaning_checks(gdf, tolerance, duplicate_action)
+
+    if not gdf.index.is_unique:
+        gdf = gdf.reset_index(drop=True)
 
     gdf = close_thin_holes(gdf, tolerance)
 
@@ -267,12 +173,25 @@ def coverage_clean(
         .pipe(update_geometries)
     )
 
-    return (
+    cleaned = (
         dissexp(pd.concat([gdf, intersected]), by="_poly_idx", aggfunc="first")
         .reset_index(drop=True)
         .loc[lambda x: ~x.buffer(-PRECISION).is_empty]
-        .pipe(remove_spikes, tolerance=tolerance)
+        .pipe(remove_spikes, tolerance=PRECISION)
     )
+
+    missing_indices: pd.Index = sfilter_inverse(
+        gdf.representative_point(), cleaned
+    ).index
+
+    missing = clean_overlay(
+        gdf.loc[missing_indices].drop(columns="_poly_idx"),
+        cleaned,
+        how="difference",
+        geom_type="polygon",
+    )
+
+    return pd.concat([cleaned, missing], ignore_index=True)
 
 
 def _dissolve_thick_double_and_update(gdf, double, thin_double):
@@ -287,8 +206,6 @@ def _dissolve_thick_double_and_update(gdf, double, thin_double):
 def _cleaning_checks(gdf, tolerance, duplicate_action):
     if not len(gdf) or not tolerance:
         return gdf
-    if not gdf.index.is_unique:
-        raise ValueError("Index must be unique")
     if get_geom_type(gdf) != "polygon":
         raise ValueError("Must be polygons.")
     if tolerance < PRECISION:
@@ -296,8 +213,8 @@ def _cleaning_checks(gdf, tolerance, duplicate_action):
             f"'tolerance' must be larger than {PRECISION} to avoid "
             "problems with floating point precision."
         )
-    if duplicate_action not in ["fix", "error"]:
-        raise ValueError("duplicate_action must be 'fix' or 'error'")
+    if duplicate_action not in ["fix", "error", "ignore"]:
+        raise ValueError("duplicate_action must be 'fix', 'error' or 'ignore'")
 
 
 def split_out_slivers(
