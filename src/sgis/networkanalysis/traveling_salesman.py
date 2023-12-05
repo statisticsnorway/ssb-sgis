@@ -20,7 +20,8 @@ def traveling_salesman_problem(
         return_to_start: If True (default), the path
             will make a full circle to the startpoint.
             If False, a dummy node will be added to make the
-            salesman focus only on getting to the last node.
+            salesman focus only on getting to the last node. Not
+            guaranteed to work, meaning the wrong edge might be removed.
         distances: Optional DataFrame of distances between all points.
             If not provided, the calculation is done within this function.
             The DataFrame should be identical to the DataFrame created
@@ -75,7 +76,7 @@ def traveling_salesman_problem(
             & (x["neighbor_index"].isin(points.index))
         ]
 
-        # need integer index
+        # need tange integer index
         to_int_idx = {idx: i for i, idx in enumerate(points.index)}
         points.index = points.index.map(to_int_idx)
         points = points.sort_index()
@@ -92,11 +93,12 @@ def traveling_salesman_problem(
         distances = distances.sort_values(
             ["mean_distance", "distance"], ascending=[True, False]
         )
+
         max_dist_idx = distances["mean_distance"].idxmax()
 
         dummy_node_idx = points.index.max() + 1
         n_points = dummy_node_idx + 1
-        max_dist_and_some = distances["distance"].max() * 1.1
+        max_dist_and_some = distances["distance"].sum() * 1.01
 
         # add edges in both directions to the dummy node
         dummy_node = pd.DataFrame(
@@ -152,4 +154,6 @@ def traveling_salesman_problem(
 
     best_path = best_path[idx_start:] + best_path[:idx_start]
 
-    return [idx_to_point[i] for i in best_path if i != dummy_node_idx]
+    as_points = [idx_to_point[i] for i in best_path if i != dummy_node_idx]
+
+    return as_points  # + [as_points[0]]
