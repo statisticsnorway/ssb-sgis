@@ -1,6 +1,7 @@
 from .geopandas_tools.bounds import (
     bounds_to_points,
     bounds_to_polygon,
+    get_total_bounds,
     gridloop,
     make_grid,
     make_grid_from_bbox,
@@ -17,6 +18,7 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp_by_cluster,
 )
 from .geopandas_tools.centerlines import get_rough_centerlines
+from .geopandas_tools.cleaning import coverage_clean
 from .geopandas_tools.conversion import (
     coordinate_array,
     get_lonlat,
@@ -69,8 +71,6 @@ from .geopandas_tools.polygon_operations import (
 )
 from .geopandas_tools.polygons_as_rings import PolygonsAsRings
 from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
-
-# from .geopandas_tools.snap_polygons import coverage_clean, snap_polygons
 from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url
