@@ -80,6 +80,8 @@ from .maps.httpserver import run_html_server
 from .maps.legend import Legend
 from .maps.maps import clipmap, explore, explore_locals, qtm, samplemap
 from .maps.thematicmap import ThematicMap
+from .maps.tilesources import kartverket as kartverket_tiles
+from .maps.tilesources import xyz as xyztiles
 from .networkanalysis.closing_network_holes import (
     close_network_holes,
     close_network_holes_to_deadends,
