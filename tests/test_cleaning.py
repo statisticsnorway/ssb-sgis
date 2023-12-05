@@ -58,54 +58,60 @@ def test_snap_problem_area():
         Path(__file__).parent / "testdata" / "snap_problem_area_1144.parquet"
     )
 
-    tolerance = 0.1
+    for tolerance in [1, 0.1, 0.01, 0.001]:
+        print(tolerance)
 
-    cleaned = sg.coverage_clean(df, tolerance)
+        cleaned = sg.coverage_clean(df, tolerance)
 
-    gaps = sg.get_gaps(cleaned)
-    double = sg.get_intersections(cleaned)
+        gaps = sg.get_gaps(cleaned)
+        double = sg.get_intersections(cleaned)
 
-    # sg.explore(
-    #     df,  # =cleaned.assign(wkt=lambda x: x.geometry.to_wkt()),
-    #     cleaned,  # =cleaned.assign(wkt=lambda x: x.geometry.to_wkt()),
-    #     double,  # =double.assign(wkt=lambda x: x.to_wkt()),
-    #     gaps,  # =gaps.assign(wkt=lambda x: x.to_wkt()),
-    # )
+        sg.explore(
+            df,  # =cleaned.assign(wkt=lambda x: x.geometry.to_wkt()),
+            cleaned,  # =cleaned.assign(wkt=lambda x: x.geometry.to_wkt()),
+            double,  # =double.assign(wkt=lambda x: x.to_wkt()),
+            gaps,  # =gaps.assign(wkt=lambda x: x.to_wkt()),
+        )
 
-    cols = [
-        "ARGRUNNF",
-        "ARJORDBR",
-        "ARKARTSTD",
-        "ARSKOGBON",
-        "ARTRESLAG",
-        "ARTYPE",
-        "ARVEGET",
-        "ASTSSB",
-        "geometry",
-        "kilde",
-    ]
+        cols = [
+            "ARGRUNNF",
+            "ARJORDBR",
+            "ARKARTSTD",
+            "ARSKOGBON",
+            "ARTRESLAG",
+            "ARTYPE",
+            "ARVEGET",
+            "ASTSSB",
+            "geometry",
+            "kilde",
+        ]
 
-    assert list(sorted(cleaned.columns)) == cols, list(sorted(cleaned.columns))
+        assert list(sorted(cleaned.columns)) == cols, list(sorted(cleaned.columns))
 
-    assert double.area.sum() < 1e-6, double.area.sum()
-    assert gaps.area.sum() < 1e-2, gaps.area.sum()
-    assert int(cleaned.area.sum()) == 154240, cleaned.area.sum()
-    assert int(df.area.sum()) == 154240, df.area.sum()
+        assert double.area.sum() < 1e-6, double.area.sum()
+        assert gaps.area.sum() < 1e-2, (
+            gaps.area.sum(),
+            gaps.area.max(),
+            gaps.area,
+            gaps,
+        )
+        assert int(cleaned.area.sum()) == 154240, cleaned.area.sum()
+        assert int(df.area.sum()) == 154240, df.area.sum()
 
-    assert sg.get_geom_type(cleaned) == "polygon", sg.get_geom_type(cleaned)
+        assert sg.get_geom_type(cleaned) == "polygon", sg.get_geom_type(cleaned)
 
-    cleaned2 = sg.coverage_clean(cleaned, tolerance=tolerance)
+        cleaned2 = sg.coverage_clean(cleaned, tolerance=tolerance)
 
-    gaps = sg.get_gaps(cleaned2)
-    double = sg.get_intersections(cleaned2)
+        gaps = sg.get_gaps(cleaned2)
+        double = sg.get_intersections(cleaned2)
 
-    assert list(sorted(cleaned2.columns)) == cols, cleaned2.columns
+        assert list(sorted(cleaned2.columns)) == cols, cleaned2.columns
 
-    assert double.area.sum() < 1e-6, double.area.sum()
-    assert gaps.area.sum() < 1e-2, gaps.area.sum()
-    assert int(cleaned2.area.sum()) == 154240, cleaned2.area.sum()
+        assert double.area.sum() < 1e-6, double.area.sum()
+        assert gaps.area.sum() < 1e-2, gaps.area.sum()
+        assert int(cleaned2.area.sum()) == 154240, cleaned2.area.sum()
 
-    assert sg.get_geom_type(cleaned2) == "polygon", sg.get_geom_type(cleaned2)
+        assert sg.get_geom_type(cleaned2) == "polygon", sg.get_geom_type(cleaned2)
 
 
 def test_snap():
@@ -155,7 +161,7 @@ def test_snap():
     assert list(sorted(cleaned.columns)) == ["geometry"], cleaned.columns
 
     assert double.area.sum() < 1e-6, double.area.sum()
-    assert gaps.area.sum() < 1e-2, gaps.area.sum()
+    assert gaps.area.sum() < 1e-2, (gaps.area.sum(), gaps.area.max())
     assert int(cleaned.area.sum()) == 431076, cleaned.area.sum()
 
     assert sg.get_geom_type(cleaned) == "polygon", sg.get_geom_type(cleaned)
@@ -171,7 +177,7 @@ def test_snap():
     assert list(sorted(cleaned2.columns)) == ["geometry"], cleaned2.columns
 
     assert double.area.sum() < 1e-6, double.area.sum()
-    assert gaps.area.sum() < 1e-2, gaps.area.sum()
+    assert gaps.area.sum() < 1e-2, (gaps.area.sum(), gaps.area.max())
     assert cleaned2.area.sum() > df.area.sum()
     assert int(cleaned2.area.sum()) == 431076, cleaned2.area.sum()
 
@@ -225,47 +231,11 @@ def test_snap():
             # column="idx",
         )
 
-    return
-
-    snapped = sg.snap_polygons(df, snap_to=cleaned2, tolerance=tolerance)
-
-    """snapped.to_parquet(
-        Path(__file__).parent / "testdata" / "polygon_snap_result3.parquet"
-    )"""
-
-    mask = sg.to_gdf("POINT (905139.722 7878785.909)", crs=25833).buffer(110)
-
-    sg.qtm(snapped=snapped.clip(mask), alpha=0.5)
-
-    sg.qtm(
-        snapped=snapped.clip(mask),
-        cleaned2=cleaned2.clip(mask),
-        cleaned=cleaned.clip(mask),
-        µalpha=0.5,
-    )
-    gaps = sg.get_gaps(snapped)
-
-    double = sg.get_intersections(snapped)
-
-    sg.explore(snapped, double, gaps)
-
-    assert list(sorted(snapped.columns)) == ["geometry"], snapped.columns
-
-    assert double.area.sum() < 1e-6, double.area.sum()
-
-    assert gaps.area.sum() < 1e-2, gaps.area.sum()
-
-    assert snapped.area.sum() > df.area.sum()
-
-    assert int(snapped.area.sum()) == 431076, snapped.area.sum()
-
-    assert sg.get_geom_type(snapped) == "polygon", sg.get_geom_type(snapped)
-
 
 def main():
-    test_snap()
-    test_coverage_clean()
     test_snap_problem_area()
+    test_coverage_clean()
+    test_snap()
 
 
 if __name__ == "__main__":
