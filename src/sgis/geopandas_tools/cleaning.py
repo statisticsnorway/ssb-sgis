@@ -106,10 +106,10 @@ def coverage_clean(
     - Holes (interiors) thinner than the tolerance are closed.
     - Gaps between polygons are filled if thinner than the tolerance.
     - Sliver polygons thinner than the tolerance are eliminated
-        into the neighbor polygon with the longest shared border.
+    into the neighbor polygon with the longest shared border.
     - Double surfaces thinner than the tolerance are eliminated.
-        If duplicate_action is "fix", thicker double surfaces will
-        be updated from top to bottom of the GeoDataFrame's rows.
+    If duplicate_action is "fix", thicker double surfaces will
+    be updated from top to bottom of the GeoDataFrame's rows.
     - Line and point geometries are removed.
     - MultiPolygons are exploded to Polygons.
     - Index is reset.
@@ -128,7 +128,7 @@ def coverage_clean(
             than the tolerance. If "ignore", double surfaces are kept as is.
 
     Returns:
-
+        A GeoDataFrame with cleaned polygons.
 
     """
 
