@@ -14,6 +14,7 @@ the same type as the input.
    sfilter
    overlay
    polygon_operations
+   cleaning
    point_operations
    neighbors
    duplicates
