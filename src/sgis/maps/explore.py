@@ -46,9 +46,6 @@ NAN_COLOR = "#969696"
 COLS_TO_DROP = ["color", "col_as_int", "geometry"]
 
 
-DEFAULT_TILES = ["OpenStreetMap", "dark", "norge_i_bilder", "grunnkart"]
-
-
 # from geopandas
 _MAP_KWARGS = [
     "location",
@@ -139,6 +136,9 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 
 
 class Explore(Map):
+    # class attribute that can be overridden locally
+    tiles = ("OpenStreetMap", "dark", "norge_i_bilder", "grunnkart")
+
     def __init__(
         self,
         *gdfs,
@@ -532,7 +532,7 @@ class Explore(Map):
             map_kwds = {}
 
         if tiles is None:
-            tiles = DEFAULT_TILES
+            tiles = self.tiles
 
         # create folium.Map object
         # Get bounds to specify location and map extent
