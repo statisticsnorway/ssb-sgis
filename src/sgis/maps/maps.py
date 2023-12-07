@@ -271,6 +271,8 @@ def samplemap(
         if mask is not None:
             m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
             m._gdf = m._gdf.clip(mask)
+            m._nan_idx = m._gdf[m._column].isna()
+            m._get_unique_values()
 
         if m.gdfs is None:
             return
@@ -377,7 +379,8 @@ def clipmap(
         )
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
         m._gdf = m._gdf.clip(mask)
-
+        m._nan_idx = m._gdf[m._column].isna()
+        m._get_unique_values()
         m.explore(center=center, size=size)
     else:
         m = Map(
@@ -388,6 +391,8 @@ def clipmap(
         )
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
         m._gdf = m._gdf.clip(mask)
+        m._nan_idx = m._gdf[m._column].isna()
+        m._get_unique_values()
 
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
