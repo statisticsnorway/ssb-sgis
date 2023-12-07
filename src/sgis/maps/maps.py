@@ -268,14 +268,14 @@ def samplemap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
+        if m.gdfs is None:
+            return
         if mask is not None:
             m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
             m._gdf = m._gdf.clip(mask)
             m._nan_idx = m._gdf[m._column].isna()
             m._get_unique_values()
 
-        if m.gdfs is None:
-            return
         m.samplemap(size, sample_from_first=sample_from_first)
 
     else:
@@ -377,6 +377,9 @@ def clipmap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
+        if m.gdfs is None:
+            return
+
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
         m._gdf = m._gdf.clip(mask)
         m._nan_idx = m._gdf[m._column].isna()
@@ -389,6 +392,9 @@ def clipmap(
             labels=labels,
             **kwargs,
         )
+        if m.gdfs is None:
+            return
+
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
         m._gdf = m._gdf.clip(mask)
         m._nan_idx = m._gdf[m._column].isna()
