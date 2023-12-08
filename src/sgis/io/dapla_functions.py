@@ -1,6 +1,5 @@
 """Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla.
 """
-import os
 from pathlib import Path
 
 import dapla as dp
