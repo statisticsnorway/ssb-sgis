@@ -14,9 +14,9 @@ from .overlay import clean_overlay
 
 def update_geometries(
     gdf: GeoDataFrame,
+    geom_type: str | None = None,
     keep_geom_type: bool = True,
     grid_size: int | None = None,
-    copy: bool = True,
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
@@ -29,9 +29,11 @@ def update_geometries(
             of intersection resulting in multiple geometry types or
             GeometryCollections. If False, return all resulting geometries
             (potentially mixed types).
+        geom_type: Optionally specify what geometry type to keep.,
+            if there are mixed geometry types. Must be either "polygon",
+            "line" or "point".
         grid_size: Precision grid size to round the geometries. Will use the highest
             precision of the inputs by default.
-        copy: Defaults to True.
 
     Example
     ------
@@ -78,53 +80,46 @@ def update_geometries(
     if len(gdf) <= 1:
         return gdf
 
-    df = pd.DataFrame(gdf, copy=copy)
-
-    unioned = Polygon()
-    out_rows, indices, geometries = [], [], []
-
-    if keep_geom_type:
+    if geom_type:
+        gdf = to_single_geom_type(gdf, geom_type)
+        keep_geom_type = True
+    elif keep_geom_type:
         geom_type = get_geom_type(gdf)
         if geom_type == "mixed":
             raise ValueError("Cannot have mixed geometries when keep_geom_type is True")
 
-    for i, row in df.iterrows():
-        geom = row.pop("geometry")
+    geom_col = gdf._geometry_column_name
+    index_mapper = {i: idx for i, idx in enumerate(gdf.index)}
+    gdf = gdf.reset_index(drop=True)
 
-        if any(geom.equals(geom2) for geom2 in geometries):
-            continue
+    tree = STRtree(gdf.geometry.values)
+    left, right = tree.query(gdf.geometry.values, predicate="intersects")
+    indices = pd.Series(right, index=left).loc[lambda x: x.index > x.values]
 
-        try:
-            new = difference(geom, unioned, grid_size=grid_size)
-        except GEOSException:
-            try:
-                geom = make_valid(geom)
-                new = difference(geom, unioned, grid_size=grid_size)
-            except GEOSException:
-                unioned = to_single_geom_type(unioned, geom_type=geom_type)
-                new = difference(geom, unioned, grid_size=grid_size)
+    # select geometries from 'right', index from 'left', dissolve by 'left'
+    erasers = (
+        pd.Series(gdf.geometry.loc[indices.values].values, index=indices.index)
+        .groupby(level=0)
+        .agg(unary_union)
+    )
 
-        if not new:
-            continue
+    # match up the aggregated erasers by index
+    erased = difference(
+        gdf.geometry.loc[erasers.index],
+        erasers,
+        grid_size=grid_size,
+    )
 
-        try:
-            unioned = unary_union([new, unioned], grid_size=grid_size)
-        except GEOSException:
-            new = make_valid(new)
-            unioned = unary_union([new, unioned], grid_size=grid_size)
+    gdf.loc[erased.index, geom_col] = erased
 
-        unioned = make_valid(unioned)
+    gdf = gdf.loc[~gdf.is_empty]
 
-        out_rows.append(row)
-        geometries.append(new)
-        indices.append(i)
-
-    out = GeoDataFrame(out_rows, geometry=geometries, index=indices, crs=gdf.crs)
+    gdf.index = gdf.index.map(index_mapper)
 
     if keep_geom_type:
-        out = to_single_geom_type(out, geom_type)
+        gdf = to_single_geom_type(gdf, geom_type)
 
-    return out
+    return gdf
 
 
 def get_intersections(
@@ -142,6 +137,11 @@ def get_intersections(
 
     Args:
         gdf: GeoDataFrame of polygons.
+        geom_type: Optionally specify which geometry type to keep.
+            Either "polygon", "line" or "point".
+        keep_geom_type: Whether to keep the original geometry type.
+            If mixed geometry types and keep_geom_type=True,
+            an exception is raised.
 
     Returns:
         A GeoDataFrame of the overlapping polygons.
@@ -230,9 +230,18 @@ def _get_intersecting_geometries(
     )
     left["idx_left"] = left.index
 
-    not_identical = lambda x: x["idx_left"] != x["idx_right"]
+    def are_not_identical(df):
+        return df["idx_left"] != df["idx_right"]
 
-    if geom_type is None and get_geom_type(gdf) == "mixed":
+    if geom_type or get_geom_type(gdf) != "mixed":
+        intersected = clean_overlay(
+            left,
+            right,
+            how="intersection",
+            geom_type=geom_type,
+            keep_geom_type=keep_geom_type,
+        ).loc[are_not_identical]
+    else:
         if keep_geom_type:
             raise ValueError(
                 "Cannot set keep_geom_type=True when the geom_type is mixed."
@@ -245,15 +254,7 @@ def _get_intersecting_geometries(
             intersected += [
                 clean_overlay(left, right, how="intersection", geom_type=geom_type)
             ]
-        intersected = pd.concat(intersected, ignore_index=True).loc[not_identical]
-    else:
-        intersected = clean_overlay(
-            left,
-            right,
-            how="intersection",
-            geom_type=geom_type,
-            keep_geom_type=keep_geom_type,
-        ).loc[not_identical]
+        intersected = pd.concat(intersected, ignore_index=True).loc[are_not_identical]
 
     # make sure it's correct by sjoining a point inside the polygons
     points_joined = intersected.representative_point().to_frame().sjoin(intersected)
