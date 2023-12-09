@@ -119,6 +119,15 @@ def get_neighbor_indices(
     return joined["neighbor_index"]
 
 
+def get_neighbor_dfs(
+    df: GeoDataFrame | DataFrame,
+    neighbor_mapper: Series,
+) -> list[GeoDataFrame | DataFrame]:
+    return [
+        df[df.index.isin(neighbor_mapper[i])] for i in neighbor_mapper.index.unique()
+    ]
+
+
 def get_all_distances(
     gdf: GeoDataFrame | GeoSeries, neighbors: GeoDataFrame | GeoSeries
 ) -> DataFrame:
