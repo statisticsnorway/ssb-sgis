@@ -153,23 +153,38 @@ def unit_is_degrees(gdf: GeoDataFrame) -> bool:
     return False
 
 
-def get_object_name(var: object, n: int = 5) -> str | None:
+def get_object_name(
+    var: object, start: int = 2, stop: int = 7, ignore_self: bool = True
+) -> str | None:
     """Searches through the local variables down one level at a time."""
-    frame = inspect.currentframe().f_back.f_back
+    frame = inspect.currentframe()
 
-    for _ in range(n):
+    for _ in range(start):
+        frame = frame.f_back
+
+    for _ in np.arange(start, stop):
         names = [
             var_name for var_name, var_val in frame.f_locals.items() if var_val is var
         ]
         if names and len(names) == 1:
+            if ignore_self and names[0] == "self":
+                frame = frame.f_back
+                continue
             return names[0]
 
         names = [name for name in names if not name.startswith("_")]
 
         if names and len(names) == 1:
+            if ignore_self and names[0] == "self":
+                frame = frame.f_back
+                continue
+
             return names[0]
 
         if names and len(names) > 1:
+            if ignore_self and names[0] == "self":
+                frame = frame.f_back
+                continue
             warnings.warn(
                 "More than one local variable matches the object. Name might be wrong."
             )
