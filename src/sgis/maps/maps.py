@@ -56,7 +56,7 @@ def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
 
 
 def explore(
-    *gdfs: GeoDataFrame,
+    *gdfs: GeoDataFrame | dict[str, GeoDataFrame],
     column: str | None = None,
     center: Any | None = None,
     labels: tuple[str] | None = None,
@@ -120,6 +120,8 @@ def explore(
     >>> points["meters"] = points.length
     >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
     """
+
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
 
@@ -255,6 +257,8 @@ def samplemap(
     if gdfs and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
+
     mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
     kwargs.pop("size")
 
@@ -358,7 +362,7 @@ def clipmap(
     samplemap: same functionality, but shows only a random area of a given size.
     """
 
-    gdfs, column = Explore._separate_args(gdfs, column)
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     if mask is None and len(gdfs) > 1:
         mask = gdfs[-1]
@@ -487,7 +491,7 @@ def qtm(
     See also:
         ThematicMap: Class with more options for customising the plot.
     """
-    gdfs, column = Explore._separate_args(gdfs, column)
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     new_kwargs = {}
     for key, value in kwargs.items():
