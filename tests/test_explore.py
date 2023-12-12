@@ -66,6 +66,15 @@ def test_explore(points_oslo, roads_oslo):
 
     sg.explore(
         r300,
+        {"r200": r200, "r100": r100},
+        bygdoy=1,
+        size=10_000,
+        show_in_browser=False,
+        show=False,
+    )
+
+    sg.explore(
+        r300,
         **{"r200": r200, "r100": r100},
         bygdoy=1,
         size=10_000,

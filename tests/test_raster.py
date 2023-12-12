@@ -319,7 +319,7 @@ def not_test_write():
 if __name__ == "__main__":
     # save_two_band_image()
 
-    if 1:
+    if 0:
         path = "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster/dtm_10.tif"
         raster = sg.Raster.from_path(path)
         raster.plot()
