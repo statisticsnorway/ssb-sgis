@@ -151,7 +151,7 @@ class Explore(Map):
         measure_control: bool = True,
         geocoder: bool = True,
         save=None,
-        show: bool | Iterable[bool] = True,
+        show: bool | Iterable[bool] | None = None,
         **kwargs,
     ):
         self.popup = popup
@@ -167,6 +167,12 @@ class Explore(Map):
             self.browser = kwargs.pop("show_in_browser")
         if not self.browser and "in_browser" in kwargs:
             self.browser = kwargs.pop("in_browser")
+
+        if show is None:
+            show_was_none = True
+            show = True
+        else:
+            show_was_none = False
 
         super().__init__(*gdfs, column=column, show=show, **kwargs)
 
@@ -210,6 +216,9 @@ class Explore(Map):
         self._gdfs = new_gdfs
         self._gdf = pd.concat(new_gdfs, ignore_index=True)
         self.show = show_new
+
+        if show_was_none and len(self._gdfs) > 6:
+            self.show = [False] * len(self._gdfs)
 
         if self._is_categorical:
             if len(self.gdfs) == 1:
@@ -607,7 +616,7 @@ class Explore(Map):
             separator=", ",
             empty_string="NaN",
             lng_first=True,
-            num_digits=5,
+            num_digits=8,
         ).add_to(m)
 
         if self.geocoder:
