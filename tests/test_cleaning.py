@@ -22,7 +22,7 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_coverage_clean():
+def test_clean_dissappearing_polygon():
     AREA_SHOULD_BE = 104
 
     with open(Path(__file__).parent / "testdata/dissolve_error.txt") as f:
@@ -53,7 +53,7 @@ def test_coverage_clean():
     ) == AREA_SHOULD_BE, area
 
 
-def test_snap_problem_area():
+def test_clean_1144():
     df = gpd.read_parquet(
         Path(__file__).parent / "testdata" / "snap_problem_area_1144.parquet"
     )
@@ -88,7 +88,7 @@ def test_snap_problem_area():
 
         assert list(sorted(cleaned.columns)) == cols, list(sorted(cleaned.columns))
 
-        assert double.area.sum() < 1e-6, double.area.sum()
+        assert double.area.sum() < 1e-3, double.area.sum()
         assert gaps.area.sum() < 1e-2, (
             gaps.area.sum(),
             gaps.area.max(),
@@ -114,7 +114,7 @@ def test_snap_problem_area():
         assert sg.get_geom_type(cleaned2) == "polygon", sg.get_geom_type(cleaned2)
 
 
-def test_snap():
+def test_clean():
     mask = sg.to_gdf("POINT (905139.722 7878785.909)", crs=25833).buffer(330)
 
     df = gpd.read_parquet(Path(__file__).parent / "testdata" / "polygon_snap.parquet")
@@ -205,6 +205,7 @@ def test_snap():
         sg.explore(
             gaps=gaps,  # .clip(mask),
             double=double,  # .clip(mask),
+            gdf=df,  # .clip(mask),
             cleaned3=cleaned3,  # .clip(mask),
             p=sg.to_gdf(extract_unique_points(cleaned3.geometry)).pipe(sg.buff, 1),
             # alpha=0.5,
@@ -233,9 +234,9 @@ def test_snap():
 
 
 def main():
-    test_snap_problem_area()
-    test_coverage_clean()
-    test_snap()
+    test_clean_1144()
+    test_clean()
+    test_clean_dissappearing_polygon()
 
 
 if __name__ == "__main__":

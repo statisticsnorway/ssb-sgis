@@ -16,15 +16,16 @@ from shapely import (
 )
 from shapely.geometry import LinearRing
 
-from .buffer_dissolve_explode import buff, dissexp, dissexp_by_cluster
-from .conversion import to_geoseries
+from ..networkanalysis.closing_network_holes import get_angle
+from .buffer_dissolve_explode import buff, dissexp
+from .conversion import coordinate_array, to_geoseries
 from .duplicates import get_intersections, update_geometries
-from .general import sort_long_first
+from .general import sort_large_first, sort_long_first
 from .geometry_types import get_geom_type
 from .overlay import clean_overlay
 from .polygon_operations import close_all_holes, close_thin_holes, get_gaps
 from .polygons_as_rings import PolygonsAsRings
-from .sfilter import sfilter_inverse
+from .sfilter import sfilter, sfilter_inverse, sfilter_split
 
 
 warnings.simplefilter(action="ignore", category=UserWarning)
@@ -35,30 +36,76 @@ PRECISION = 1e-4
 BUFFER_RES = 50
 
 
+def get_angle_between_indexed_points(point_df: GeoDataFrame):
+    """ "Get angle difference between the two lines"""
+
+    point_df["next"] = point_df.groupby(level=0)["geometry"].shift(-1)
+
+    notna = point_df["next"].notna()
+
+    this = coordinate_array(point_df.loc[notna, "geometry"].values)
+    next_ = coordinate_array(point_df.loc[notna, "next"].values)
+
+    point_df.loc[notna, "angle"] = get_angle(this, next_)
+    point_df["prev_angle"] = point_df.groupby(level=0)["angle"].shift(1)
+
+    point_df["angle_diff"] = point_df["angle"] - point_df["prev_angle"]
+
+    return point_df
+
+
 def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
+    """Remove thin spikes in polygons.
+
+    Note that this function might be slow. Should only be used if nessecary.
+
+    Args:
+        gdf: GeoDataFrame of polygons
+        tolerance: distance (usually meters) used as the minimum thickness
+            for polygons to be eliminated. Any spike thinner than the tolerance
+            will be removed.
+
+    Returns:
+        A GeoDataFrame of polygons without spikes thinner.
+    """
+
     def _remove_spikes(geoms: NDArray[LinearRing]) -> NDArray[LinearRing]:
         if not len(geoms):
             return geoms
         geoms = to_geoseries(geoms).reset_index(drop=True)
 
+        points = (
+            extract_unique_points(geoms).explode(index_parts=False).to_frame("geometry")
+        )
+
+        points = get_angle_between_indexed_points(points)
+
+        indices_with_spikes = points[
+            lambda x: (x["angle_diff"] >= 180) & (x["angle_diff"] < 180.01)
+        ].index.unique()
+
+        rings_with_spikes = geoms[geoms.index.isin(indices_with_spikes)]
+        rings_without_spikes = geoms[~geoms.index.isin(indices_with_spikes)]
+
         def to_buffered_rings_without_spikes(x):
             polys = GeoSeries(make_valid(polygons(get_exterior_ring(x))))
 
             return (
-                polys.buffer(-tolerance * 2, resolution=BUFFER_RES)
+                polys.buffer(-tolerance, resolution=BUFFER_RES)
                 .explode(index_parts=False)
                 .pipe(close_all_holes)
                 .pipe(get_exterior_ring)
+                .buffer(tolerance * 10)
             )
 
-        buffered = geoms.buffer(tolerance, resolution=BUFFER_RES).pipe(
-            to_buffered_rings_without_spikes
+        buffered = to_buffered_rings_without_spikes(
+            rings_with_spikes.buffer(tolerance / 2, resolution=BUFFER_RES)
         )
 
         points_without_spikes = (
-            extract_unique_points(geoms)
+            extract_unique_points(rings_with_spikes)
             .explode(index_parts=False)
-            .loc[lambda x: x.distance(buffered.unary_union) <= tolerance * 10]
+            .loc[lambda x: x.index.isin(sfilter(x, buffered).index)]
         )
 
         # linearrings require at least 4 coordinate pairs, or three unique
@@ -80,6 +127,9 @@ def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
             ),
             index=points_without_spikes.index.unique(),
         )
+        as_lines = pd.concat([as_lines, rings_without_spikes])
+
+        # the missing polygons are thin and/or spiky. Let's remove them
         missing = geoms.loc[~geoms.index.isin(as_lines.index)]
 
         missing = pd.Series(
@@ -99,6 +149,7 @@ def coverage_clean(
     gdf: GeoDataFrame,
     tolerance: int | float,
     duplicate_action: str = "fix",
+    remove_isolated: bool = False,
 ) -> GeoDataFrame:
     """Fix thin gaps, holes, slivers and double surfaces.
 
@@ -154,31 +205,110 @@ def coverage_clean(
     if not all_are_thin and duplicate_action == "fix":
         gdf = _dissolve_thick_double_and_update(gdf, double, thin_gaps_and_double)
         gdf, more_slivers = split_out_slivers(gdf, tolerance)
+        slivers = pd.concat([slivers, more_slivers], ignore_index=True)
+        gaps = get_gaps(gdf, include_interiors=True)
+        double = get_intersections(gdf)
+        double["_double_idx"] = range(len(double))
+        thin_gaps_and_double = pd.concat([gaps, double]).loc[
+            lambda x: x.buffer(-tolerance / 2).is_empty
+        ]
+        all_are_thin = (
+            double["_double_idx"].isin(thin_gaps_and_double["_double_idx"]).all()
+        )
+        assert all_are_thin
+        # gaps = pd.concat([gaps, more_gaps], ignore_index=True)
+        # double = pd.concat([double, more_double], ignore_index=True)
     elif not all_are_thin and duplicate_action == "error":
         raise ValueError("Large double surfaces.")
-    else:
-        more_slivers = GeoDataFrame({"geometry": []})
 
-    to_eliminate = pd.concat(
-        [thin_gaps_and_double, slivers, more_slivers], ignore_index=True
-    ).loc[lambda x: ~x.buffer(-PRECISION).is_empty]
+    to_eliminate = pd.concat([thin_gaps_and_double, slivers], ignore_index=True).loc[
+        lambda x: ~x.buffer(-PRECISION / 10).is_empty
+    ]
+    to_eliminate["_eliminate_idx"] = range(len(to_eliminate))
     gdf["_poly_idx"] = range(len(gdf))
 
-    to_eliminate["_gap_idx"] = to_eliminate.index
+    gdf_geoms_idx = gdf[["_poly_idx", "geometry"]]
 
-    intersected = (
-        buff(gdf, tolerance, resolution=BUFFER_RES)
-        .pipe(clean_overlay, to_eliminate, geom_type="polygon")
-        .pipe(sort_long_first)[["geometry", "_poly_idx"]]
-        .pipe(update_geometries)
+    joined = to_eliminate.sjoin(gdf_geoms_idx, how="left")
+    isolated = joined[lambda x: x["_poly_idx"].isna()]
+    intersecting = joined[lambda x: x["_poly_idx"].notna()]
+
+    poly_idx_mapper: pd.Series = (
+        clean_overlay(
+            intersecting[["_eliminate_idx", "geometry"]],
+            buff(gdf_geoms_idx, tolerance, resolution=BUFFER_RES),
+            geom_type="polygon",
+        )
+        .pipe(sort_long_first)
+        .drop_duplicates("_eliminate_idx")
+        .set_index("_eliminate_idx")["_poly_idx"]
     )
+    intersecting["_poly_idx"] = intersecting["_eliminate_idx"].map(poly_idx_mapper)
+    without_double = update_geometries(intersecting).drop(
+        columns=["_eliminate_idx", "_double_idx", "index_right"]
+    )
+
+    if 0:
+        identitied = clean_overlay(
+            to_eliminate,
+            buff(gdf_geoms_idx, tolerance, resolution=BUFFER_RES),
+            how="identity",
+            geom_type="polygon",
+        )
+        intersected = identitied[lambda x: x["_poly_idx"].notna()]
+        diff = identitied.loc[lambda x: x["_poly_idx"].isna()].drop(columns="_poly_idx")
+        diff = diff.sjoin(gdf_geoms_idx, how="left")
+        isolated = diff[lambda x: x["_poly_idx"].isna()]
+        intersecting = diff[lambda x: x["_poly_idx"].notna()]
+
+        # to_eliminate, isolated = sfilter_split(to_eliminate, gdf)
+
+        intersected = (
+            # buff(gdf, tolerance, resolution=BUFFER_RES)
+            # .pipe(clean_overlay, to_eliminate, geom_type="polygon")
+            pd.concat([intersected, intersecting])[["geometry", "_poly_idx"]]
+            .pipe(sort_long_first)
+            .pipe(update_geometries)
+        )
 
     cleaned = (
-        dissexp(pd.concat([gdf, intersected]), by="_poly_idx", aggfunc="first")
+        dissexp(pd.concat([gdf, without_double]), by="_poly_idx", aggfunc="first")
         .reset_index(drop=True)
-        .loc[lambda x: ~x.buffer(-PRECISION).is_empty]
-        .pipe(remove_spikes, tolerance=PRECISION)
+        .loc[lambda x: ~x.buffer(-PRECISION / 10).is_empty]
+        # .pipe(remove_spikes, tolerance=PRECISION)
+        # .pipe(close_thin_holes, tolerance=PRECISION)
     )
+
+    if 0:
+        from ..maps.maps import explore
+        from .conversion import to_gdf
+
+        explore(
+            gdf,
+            isolated,
+            thin_gaps_and_double,
+            slivers,
+            to_eliminate,
+            # intersected,
+            intersecting,
+            cleaned,
+            mask=to_gdf([11.06330572, 60.11251561], 4326).to_crs(25833).buffer(30),
+        )
+
+    if not remove_isolated:
+        cleaned = pd.concat(
+            [
+                cleaned,
+                isolated.drop(
+                    columns=[
+                        "_double_idx",
+                        "_eliminate_idx",
+                        "_poly_idx",
+                        "index_right",
+                    ]
+                ),
+            ]
+        )
 
     missing_indices: pd.Index = sfilter_inverse(
         gdf.representative_point(), cleaned
@@ -198,7 +328,8 @@ def _dissolve_thick_double_and_update(gdf, double, thin_double):
     large = (
         double.loc[~double["_double_idx"].isin(thin_double["_double_idx"])]
         .drop(columns="_double_idx")
-        .pipe(dissexp_by_cluster)
+        .pipe(sort_large_first)
+        .pipe(update_geometries)  # dissexp_by_cluster)
     )
     return clean_overlay(gdf, large, how="update")
 
