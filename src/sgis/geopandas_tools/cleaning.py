@@ -1,6 +1,3 @@
-"""
-The
-"""
 import warnings
 
 import pandas as pd
@@ -25,7 +22,7 @@ from .geometry_types import get_geom_type
 from .overlay import clean_overlay
 from .polygon_operations import close_all_holes, close_thin_holes, get_gaps
 from .polygons_as_rings import PolygonsAsRings
-from .sfilter import sfilter, sfilter_inverse, sfilter_split
+from .sfilter import sfilter, sfilter_inverse
 
 
 warnings.simplefilter(action="ignore", category=UserWarning)
@@ -248,52 +245,11 @@ def coverage_clean(
         columns=["_eliminate_idx", "_double_idx", "index_right"]
     )
 
-    if 0:
-        identitied = clean_overlay(
-            to_eliminate,
-            buff(gdf_geoms_idx, tolerance, resolution=BUFFER_RES),
-            how="identity",
-            geom_type="polygon",
-        )
-        intersected = identitied[lambda x: x["_poly_idx"].notna()]
-        diff = identitied.loc[lambda x: x["_poly_idx"].isna()].drop(columns="_poly_idx")
-        diff = diff.sjoin(gdf_geoms_idx, how="left")
-        isolated = diff[lambda x: x["_poly_idx"].isna()]
-        intersecting = diff[lambda x: x["_poly_idx"].notna()]
-
-        # to_eliminate, isolated = sfilter_split(to_eliminate, gdf)
-
-        intersected = (
-            # buff(gdf, tolerance, resolution=BUFFER_RES)
-            # .pipe(clean_overlay, to_eliminate, geom_type="polygon")
-            pd.concat([intersected, intersecting])[["geometry", "_poly_idx"]]
-            .pipe(sort_long_first)
-            .pipe(update_geometries)
-        )
-
     cleaned = (
         dissexp(pd.concat([gdf, without_double]), by="_poly_idx", aggfunc="first")
         .reset_index(drop=True)
         .loc[lambda x: ~x.buffer(-PRECISION / 10).is_empty]
-        # .pipe(remove_spikes, tolerance=PRECISION)
-        # .pipe(close_thin_holes, tolerance=PRECISION)
     )
-
-    if 0:
-        from ..maps.maps import explore
-        from .conversion import to_gdf
-
-        explore(
-            gdf,
-            isolated,
-            thin_gaps_and_double,
-            slivers,
-            to_eliminate,
-            # intersected,
-            intersecting,
-            cleaned,
-            mask=to_gdf([11.06330572, 60.11251561], 4326).to_crs(25833).buffer(30),
-        )
 
     if not remove_isolated:
         cleaned = pd.concat(
@@ -329,9 +285,13 @@ def _dissolve_thick_double_and_update(gdf, double, thin_double):
         double.loc[~double["_double_idx"].isin(thin_double["_double_idx"])]
         .drop(columns="_double_idx")
         .pipe(sort_large_first)
-        .pipe(update_geometries)  # dissexp_by_cluster)
+        .pipe(update_geometries)
     )
-    return clean_overlay(gdf, large, how="update")
+    return (
+        clean_overlay(gdf, large, how="update")
+        .pipe(sort_large_first)
+        .pipe(update_geometries)
+    )
 
 
 def _cleaning_checks(gdf, tolerance, duplicate_action):
