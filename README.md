@@ -2,6 +2,8 @@
 
 GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 
+See documentation [here](https://statisticsnorway.github.io/ssb-sgis/reference/index.html).
+
 [![PyPI](https://img.shields.io/pypi/v/ssb-sgis.svg)][pypi_]
 [![Status](https://img.shields.io/pypi/status/ssb-sgis.svg)][status]
 [![Python Version](https://img.shields.io/pypi/pyversions/ssb-sgis)][python version]
