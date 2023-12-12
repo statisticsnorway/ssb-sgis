@@ -18,7 +18,7 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp_by_cluster,
 )
 from .geopandas_tools.centerlines import get_rough_centerlines
-from .geopandas_tools.cleaning import coverage_clean
+from .geopandas_tools.cleaning import coverage_clean, remove_spikes
 from .geopandas_tools.conversion import (
     coordinate_array,
     get_lonlat,
