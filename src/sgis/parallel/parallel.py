@@ -60,9 +60,13 @@ class Parallel:
             offered through joblib's Parallel class.
         context: Start method for the processes. Defaults to 'spawn'
             to avoid frozen processes.
+        maxtasksperchild: Number of tasks a worker process can complete before
+            it will exit and be replaced with a fresh worker process, to enable
+            unused resources to be freed. Defaults to 10 to
         **kwargs: Keyword arguments to be passed to either
             multiprocessing.Pool or joblib.Parallel, depending
-            on the backend.
+            on the backend. Not to be confused with the kwargs passed to functions in
+            the map and starmap methods.
     """
 
     def __init__(
@@ -70,9 +74,11 @@ class Parallel:
         processes: int,
         backend: str = "multiprocessing",
         context: str = "spawn",
+        maxtasksperchild: int = 10,
         **kwargs,
     ):
         self.processes = int(processes)
+        self.maxtasksperchild = maxtasksperchild
         self.backend = backend
         self.context = context
         self.kwargs = kwargs
@@ -166,7 +172,7 @@ class Parallel:
 
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
-                processes, **self.kwargs
+                processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
             ) as pool:
                 return pool.map(func_with_kwargs, iterable)
 
@@ -263,7 +269,7 @@ class Parallel:
 
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
-                processes, **self.kwargs
+                processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
             ) as pool:
                 return pool.starmap(func_with_kwargs, iterable)
 
