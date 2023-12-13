@@ -12,7 +12,10 @@ from pyarrow import parquet
 
 
 def read_geopandas(
-    gcs_path: str | Path, pandas_fallback: bool = False, **kwargs
+    gcs_path: str | Path,
+    pandas_fallback: bool = False,
+    fs: dp.gcs.GCSFileSystem | None = None,
+    **kwargs,
 ) -> GeoDataFrame | DataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
 
@@ -33,7 +36,6 @@ def read_geopandas(
      Returns:
          A GeoDataFrame if it has rows. If zero rows, a pandas DataFrame is returned.
     """
-    fs = dp.FileClient.get_gcs_file_system()
 
     if not isinstance(gcs_path, str):
         try:
@@ -41,12 +43,16 @@ def read_geopandas(
         except TypeError:
             raise TypeError(f"Unexpected type {type(gcs_path)}.")
 
+    if fs is None:
+        fs = dp.FileClient.get_gcs_file_system()
+
     if "parquet" in gcs_path or "prqt" in gcs_path:
         with fs.open(gcs_path, mode="rb") as file:
             try:
                 return gpd.read_parquet(file, **kwargs)
             except ValueError as e:
                 df = dp.read_pandas(gcs_path, **kwargs)
+
                 if pandas_fallback or not len(df):
                     return df
                 else:
@@ -57,6 +63,7 @@ def read_geopandas(
                 return gpd.read_file(file, **kwargs)
             except ValueError as e:
                 df = dp.read_pandas(gcs_path, **kwargs)
+
                 if pandas_fallback or not len(df):
                     return df
                 else:
@@ -64,7 +71,11 @@ def read_geopandas(
 
 
 def write_geopandas(
-    df: gpd.GeoDataFrame, gcs_path: str | Path, overwrite: bool = True, **kwargs
+    df: gpd.GeoDataFrame,
+    gcs_path: str | Path,
+    overwrite: bool = True,
+    fs: dp.gcs.GCSFileSystem | None = None,
+    **kwargs,
 ) -> None:
     """Writes a GeoDataFrame to the speficied format.
 
@@ -87,6 +98,9 @@ def write_geopandas(
 
     if not overwrite and exists(gcs_path):
         raise ValueError("File already exists.")
+
+    if fs is None:
+        fs = dp.FileClient.get_gcs_file_system()
 
     pd.io.parquet.BaseImpl.validate_dataframe(df)
 
