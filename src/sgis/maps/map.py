@@ -324,12 +324,16 @@ class Map:
                     if isinstance(value, (GeoDataFrame, GeoSeries, Geometry)):
                         more_gdfs[key] = value
                     elif isinstance(value, dict) or hasattr(value, "__dict__"):
-                        # same as above, one level down
-                        more_gdfs |= {
-                            k: v
-                            for k, v in value.items()
-                            if isinstance(v, (GeoDataFrame, GeoSeries, Geometry))
-                        }
+                        try:
+                            # same as above, one level down
+                            more_gdfs |= {
+                                k: v
+                                for k, v in value.items()
+                                if isinstance(v, (GeoDataFrame, GeoSeries, Geometry))
+                            }
+                        except Exception:
+                            # no need to raise here
+                            pass
 
                 kwargs |= more_gdfs
 
