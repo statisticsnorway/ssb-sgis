@@ -196,7 +196,7 @@ def get_cluster_mapper(gdf, predicate="intersects"):
 
 
 def eliminate_by_longest(
-    gdf: GeoDataFrame,
+    gdf: GeoDataFrame | list[GeoDataFrame],
     to_eliminate: GeoDataFrame,
     *,
     remove_isolated: bool = False,
@@ -204,7 +204,7 @@ def eliminate_by_longest(
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
     **kwargs,
-) -> GeoDataFrame:
+) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Dissolves selected polygons with the longest bordering neighbor polygon.
 
     Eliminates selected geometries by dissolving them with the neighboring
@@ -214,7 +214,7 @@ def eliminate_by_longest(
     Note that this might be a lot slower than eliminate_by_largest.
 
     Args:
-        gdf: GeoDataFrame with polygon geometries.
+        gdf: GeoDataFrame with polygon geometries, or a list of GeoDataFrames.
         to_eliminate: The geometries to be eliminated by 'gdf'.
         remove_isolated: If False (default), polygons in 'to_eliminate' that share
             no border with any polygon in 'gdf' will be kept. If True, the isolated
@@ -234,8 +234,16 @@ def eliminate_by_longest(
         kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
-        The GeoDataFrame with the small polygons dissolved into the large polygons.
+        The GeoDataFrame (gdf) with the geometries of 'to_eliminate' dissolved in.
+        If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
     """
+    if isinstance(gdf, (list, tuple)):
+        was_multiple_gdfs = True
+        original_cols = [df.columns for df in gdf]
+        gdf = pd.concat(df.assign(**{"_dfnum": i}) for i, df in enumerate(gdf))
+    else:
+        was_multiple_gdfs = False
+
     crs = gdf.crs
     geom_type = get_geom_type(gdf)
 
@@ -309,11 +317,21 @@ def eliminate_by_longest(
     if geom_type != "mixed":
         out = to_single_geom_type(out, geom_type)
 
-    return out.reset_index(drop=True) if ignore_index else out
+    out = out.reset_index(drop=True) if ignore_index else out
+
+    if not was_multiple_gdfs:
+        return out
+
+    gdfs = ()
+    for i, cols in enumerate(original_cols):
+        df = out.loc[out["_dfnum"] == i, cols]
+        gdfs += (df,)
+
+    return gdfs
 
 
 def eliminate_by_largest(
-    gdf: GeoDataFrame,
+    gdf: GeoDataFrame | list[GeoDataFrame],
     to_eliminate: GeoDataFrame,
     *,
     max_distance: int | float | None = None,
@@ -323,7 +341,7 @@ def eliminate_by_largest(
     aggfunc: str | dict | list | None = None,
     predicate: str = "intersects",
     **kwargs,
-) -> GeoDataFrame:
+) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Dissolves selected polygons with the largest neighbor polygon.
 
     Eliminates selected geometries by dissolving them with the neighboring
@@ -331,7 +349,7 @@ def eliminate_by_largest(
     large polygons will be kept, unless else is specified.
 
     Args:
-        gdf: GeoDataFrame with polygon geometries.
+        gdf: GeoDataFrame with polygon geometries, or a list of GeoDataFrames.
         to_eliminate: The geometries to be eliminated by 'gdf'.
         remove_isolated: If False (default), polygons in 'to_eliminate' that share
             no border with any polygon in 'gdf' will be kept. If True, the isolated
@@ -352,8 +370,9 @@ def eliminate_by_largest(
         kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
-        The GeoDataFrame with the selected polygons dissolved into the polygons of
-        'gdf'.
+        The GeoDataFrame (gdf) with the geometries of 'to_eliminate' dissolved in.
+        If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
+
     """
     return _eliminate_by_area(
         gdf,
@@ -370,7 +389,7 @@ def eliminate_by_largest(
 
 
 def eliminate_by_smallest(
-    gdf: GeoDataFrame,
+    gdf: GeoDataFrame | list[GeoDataFrame],
     to_eliminate: GeoDataFrame,
     *,
     max_distance: int | float | None = None,
@@ -380,7 +399,7 @@ def eliminate_by_smallest(
     predicate: str = "intersects",
     fix_double: bool = False,
     **kwargs,
-) -> GeoDataFrame:
+) -> GeoDataFrame | tuple[GeoDataFrame]:
     return _eliminate_by_area(
         gdf,
         to_eliminate=to_eliminate,
@@ -407,6 +426,13 @@ def _eliminate_by_area(
     fix_double: bool = False,
     **kwargs,
 ) -> GeoDataFrame:
+    if isinstance(gdf, (list, tuple)):
+        was_multiple_gdfs = True
+        original_cols = [df.columns for df in gdf]
+        gdf = pd.concat(df.assign(**{"_dfnum": i}) for i, df in enumerate(gdf))
+    else:
+        was_multiple_gdfs = False
+
     crs = gdf.crs
     geom_type = get_geom_type(gdf)
 
@@ -463,7 +489,17 @@ def _eliminate_by_area(
     if geom_type != "mixed":
         out = to_single_geom_type(out, geom_type)
 
-    return out.reset_index(drop=True) if ignore_index else out
+    out = out.reset_index(drop=True) if ignore_index else out
+
+    if not was_multiple_gdfs:
+        return out
+
+    gdfs = ()
+    for i, cols in enumerate(original_cols):
+        df = out.loc[out["_dfnum"] == i, cols]
+        gdfs += (df,)
+
+    return gdfs
 
 
 def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, **kwargs):
