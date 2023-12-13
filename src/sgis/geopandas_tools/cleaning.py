@@ -200,19 +200,10 @@ def coverage_clean(
     all_are_thin = double["_double_idx"].isin(thin_gaps_and_double["_double_idx"]).all()
 
     if not all_are_thin and duplicate_action == "fix":
-        gdf = _dissolve_thick_double_and_update(gdf, double, thin_gaps_and_double)
-        gdf, more_slivers = split_out_slivers(gdf, tolerance)
-        slivers = pd.concat([slivers, more_slivers], ignore_index=True)
-        gaps = get_gaps(gdf, include_interiors=True)
-        double = get_intersections(gdf)
-        double["_double_idx"] = range(len(double))
-        thin_gaps_and_double = pd.concat([gaps, double]).loc[
-            lambda x: x.buffer(-tolerance / 2).is_empty
-        ]
-        all_are_thin = (
-            double["_double_idx"].isin(thin_gaps_and_double["_double_idx"]).all()
+        gdf, thin_gaps_and_double = _properly_fix_duplicates(
+            gdf, double, slivers, thin_gaps_and_double, tolerance
         )
-        assert all_are_thin
+
         # gaps = pd.concat([gaps, more_gaps], ignore_index=True)
         # double = pd.concat([double, more_double], ignore_index=True)
     elif not all_are_thin and duplicate_action == "error":
@@ -278,6 +269,29 @@ def coverage_clean(
     )
 
     return pd.concat([cleaned, missing], ignore_index=True)
+
+
+def _properly_fix_duplicates(gdf, double, slivers, thin_gaps_and_double, tolerance):
+    for _ in range(4):
+        gdf = _dissolve_thick_double_and_update(gdf, double, thin_gaps_and_double)
+        gdf, more_slivers = split_out_slivers(gdf, tolerance)
+        slivers = pd.concat([slivers, more_slivers], ignore_index=True)
+        gaps = get_gaps(gdf, include_interiors=True)
+        double = get_intersections(gdf)
+        double["_double_idx"] = range(len(double))
+        thin_gaps_and_double = pd.concat([gaps, double]).loc[
+            lambda x: x.buffer(-tolerance / 2).is_empty
+        ]
+        all_are_thin = (
+            double["_double_idx"].isin(thin_gaps_and_double["_double_idx"]).all()
+        )
+        if all_are_thin:
+            return gdf, thin_gaps_and_double
+
+    not_thin = double[
+        lambda x: ~x["_double_idx"].isin(thin_gaps_and_double["_double_idx"]).all()
+    ]
+    raise ValueError("Failed to properly fix thick double surfaces", not_thin.geometry)
 
 
 def _dissolve_thick_double_and_update(gdf, double, thin_double):
