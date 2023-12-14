@@ -216,6 +216,21 @@ def _test_get_intersections():
     assert not len(once_again)
 
 
+def test_random_update_geometries(n=100):
+    for i in range(n):
+        print(i, end="\r")
+        circles = sg.random_points(n).buffer(0.05).to_frame("geometry")
+        updated = sg.update_geometries(circles)
+        duplicates = sg.get_intersections(updated).loc[
+            lambda x: ~x.buffer(-1e-6).is_empty
+        ]
+        assert not len(duplicates), (
+            sg.explore(duplicates, updated, circles),
+            duplicates.area,
+            duplicates.geometry,
+        )
+
+
 def test_update_geometries():
     coords = [(0, 0), (0, 1), (1, 1), (1, 0)]
     buffers = [0.9, 1.3, 0.7, 1.1]
@@ -240,6 +255,7 @@ def test_update_geometries():
 
 
 if __name__ == "__main__":
+    test_random_update_geometries(200)
     test_random_get_intersections()
     not_test_bug2()
     test_get_intersections()
