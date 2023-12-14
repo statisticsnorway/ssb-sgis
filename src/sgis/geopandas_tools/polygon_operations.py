@@ -238,9 +238,10 @@ def eliminate_by_longest(
         If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
     """
     if isinstance(gdf, (list, tuple)):
+        # concat, then break up the dataframes in the end
         was_multiple_gdfs = True
         original_cols = [df.columns for df in gdf]
-        gdf = pd.concat(df.assign(**{"_dfnum": i}) for i, df in enumerate(gdf))
+        gdf = pd.concat(df.assign(**{"_df_idx": i}) for i, df in enumerate(gdf))
     else:
         was_multiple_gdfs = False
 
@@ -324,7 +325,7 @@ def eliminate_by_longest(
 
     gdfs = ()
     for i, cols in enumerate(original_cols):
-        df = out.loc[out["_dfnum"] == i, cols]
+        df = out.loc[out["_df_idx"] == i, cols]
         gdfs += (df,)
 
     return gdfs
@@ -429,7 +430,7 @@ def _eliminate_by_area(
     if isinstance(gdf, (list, tuple)):
         was_multiple_gdfs = True
         original_cols = [df.columns for df in gdf]
-        gdf = pd.concat(df.assign(**{"_dfnum": i}) for i, df in enumerate(gdf))
+        gdf = pd.concat(df.assign(**{"_df_idx": i}) for i, df in enumerate(gdf))
     else:
         was_multiple_gdfs = False
 
@@ -496,7 +497,7 @@ def _eliminate_by_area(
 
     gdfs = ()
     for i, cols in enumerate(original_cols):
-        df = out.loc[out["_dfnum"] == i, cols]
+        df = out.loc[out["_df_idx"] == i, cols]
         gdfs += (df,)
 
     return gdfs
