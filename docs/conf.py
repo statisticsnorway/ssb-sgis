@@ -30,6 +30,7 @@ author = "Statistics Norway"
 
 # -- General configuration ---------------------------------------------------
 
+
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
@@ -68,7 +69,7 @@ html_theme = "furo"
 # -- Other configuration ---------------------------------------------------
 
 autodoc_typehints = "description"
-autodoc_mock_imports = ["dapla"]
+autodoc_mock_imports = ["dapla", "sgis"]
 
 
 pygments_style = "sphinx"
