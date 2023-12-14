@@ -225,9 +225,66 @@ def test_eliminate():
         Polygon([(10, 10), (-10.1, 11), (10, 12), (-11, 12), (-12, 12), (-11, 11)])
     ).assign(what="isolated", num=4)
 
-    polys = pd.concat([small_poly, large_poly], ignore_index=True)
+    small_poly.index = [5]
+    large_poly.index = [7]
 
-    polys.index = [5, 7]
+    small_poly_eliminated, large_poly_eliminated = sg.eliminate_by_longest(
+        [small_poly, large_poly], sliver
+    )
+    if __name__ == "__main__":
+        sg.qtm(small_poly_eliminated, large_poly_eliminated, alpha=0.5)
+    assert (
+        area := sg.clean_overlay(small_poly_eliminated, large_poly_eliminated)
+        .buffer(-0.0001)
+        .area.sum()
+        == 0
+    ), area
+    assert list(small_poly_eliminated.index) == [5], list(small_poly_eliminated.index)
+    assert list(large_poly_eliminated.index) == [7], list(large_poly_eliminated.index)
+    assert list(small_poly_eliminated.num) == [2], list(small_poly_eliminated.num)
+    assert list(large_poly_eliminated.num) == [3], list(large_poly_eliminated.num)
+    assert list(small_poly_eliminated.what) == ["small"], list(
+        small_poly_eliminated.what
+    )
+    assert list(large_poly_eliminated.what) == ["large"], list(
+        large_poly_eliminated.what
+    )
+    assert list(round(small_poly_eliminated.area, 1)) == [2.1], list(
+        small_poly_eliminated.area
+    )
+    assert list(round(large_poly_eliminated.area, 1)) == [5.4], list(
+        large_poly_eliminated.area
+    )
+
+    small_poly_eliminated, large_poly_eliminated = sg.eliminate_by_largest(
+        [small_poly, large_poly], sliver
+    )
+    if __name__ == "__main__":
+        sg.qtm(small_poly_eliminated, large_poly_eliminated, alpha=0.5)
+    assert (
+        area := sg.clean_overlay(small_poly_eliminated, large_poly_eliminated)
+        .buffer(-0.0001)
+        .area.sum()
+        == 0
+    ), area
+    assert list(small_poly_eliminated.index) == [5], list(small_poly_eliminated.index)
+    assert list(large_poly_eliminated.index) == [7], list(large_poly_eliminated.index)
+    assert list(small_poly_eliminated.num) == [2], list(small_poly_eliminated.num)
+    assert list(large_poly_eliminated.num) == [3], list(large_poly_eliminated.num)
+    assert list(small_poly_eliminated.what) == ["small"], list(
+        small_poly_eliminated.what
+    )
+    assert list(large_poly_eliminated.what) == ["large"], list(
+        large_poly_eliminated.what
+    )
+    assert list(round(small_poly_eliminated.area, 1)) == [1.9], list(
+        small_poly_eliminated.area
+    )
+    assert list(round(large_poly_eliminated.area, 1)) == [5.6], list(
+        large_poly_eliminated.area
+    )
+
+    polys = pd.concat([small_poly, large_poly])
 
     eliminated = sg.eliminate_by_longest(polys, sliver)
 
@@ -325,3 +382,5 @@ if __name__ == "__main__":
 
     test_close_holes()
     test_get_polygon_clusters()
+
+# %%
