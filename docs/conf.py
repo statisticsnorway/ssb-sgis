@@ -69,7 +69,7 @@ html_theme = "furo"
 # -- Other configuration ---------------------------------------------------
 
 autodoc_typehints = "description"
-autodoc_mock_imports = ["dapla", "sgis"]
+autodoc_mock_imports = ["dapla"]
 
 
 pygments_style = "sphinx"
