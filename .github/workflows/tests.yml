@@ -44,7 +44,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry env use "3.10"     # Needed to cache dependencies
           poetry install --no-root
 
       - name: Run pytest with coverage
@@ -58,7 +57,7 @@ jobs:
           poetry run pytest --verbose --durations=5 --cov --cov-report=term --cov-report=xml --junitxml=pytest-report.xml
 
       - name: SonarCloud Scan
-        if: ${{ (matrix.os == 'ubuntu-latest') }}
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' }}
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed to get PR information, if any
