@@ -1,6 +1,7 @@
 """Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla.
 """
 from pathlib import Path
+from typing import Optional
 
 import dapla as dp
 import geopandas as gpd
@@ -14,7 +15,7 @@ from pyarrow import parquet
 def read_geopandas(
     gcs_path: str | Path,
     pandas_fallback: bool = False,
-    fs: dp.gcs.GCSFileSystem | None = None,
+    fs: Optional[dp.gcs.GCSFileSystem] = None,
     **kwargs,
 ) -> GeoDataFrame | DataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
@@ -74,7 +75,7 @@ def write_geopandas(
     df: gpd.GeoDataFrame,
     gcs_path: str | Path,
     overwrite: bool = True,
-    fs: dp.gcs.GCSFileSystem | None = None,
+    fs: Optional[dp.gcs.GCSFileSystem] = None,
     **kwargs,
 ) -> None:
     """Writes a GeoDataFrame to the speficied format.
