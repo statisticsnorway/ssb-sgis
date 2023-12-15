@@ -1,7 +1,7 @@
 """Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla.
 """
-import os
 from pathlib import Path
+from typing import Optional
 
 import dapla as dp
 import geopandas as gpd
@@ -12,21 +12,31 @@ from pandas import DataFrame
 from pyarrow import parquet
 
 
-def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame | DataFrame:
+def read_geopandas(
+    gcs_path: str | Path,
+    pandas_fallback: bool = False,
+    fs: Optional[dp.gcs.GCSFileSystem] = None,
+    **kwargs,
+) -> GeoDataFrame | DataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
+
+    If the file has 0 rows, the contents will be returned as a pandas.DataFrame,
+    since geopandas does not read and write empty tables.
 
     Note:
         Does not currently read shapefiles or filegeodatabases.
 
     Args:
         gcs_path: path to a file on Google Cloud Storage.
+        pandas_fallback: If False (default), an exception is raised if the file can
+            not be read with geopandas and the number of rows is more than 0. If True,
+            the file will be read as
         **kwargs: Additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
      Returns:
          A GeoDataFrame if it has rows. If zero rows, a pandas DataFrame is returned.
     """
-    fs = dp.FileClient.get_gcs_file_system()
 
     if not isinstance(gcs_path, str):
         try:
@@ -34,13 +44,17 @@ def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame | DataFrame:
         except TypeError:
             raise TypeError(f"Unexpected type {type(gcs_path)}.")
 
+    if fs is None:
+        fs = dp.FileClient.get_gcs_file_system()
+
     if "parquet" in gcs_path or "prqt" in gcs_path:
         with fs.open(gcs_path, mode="rb") as file:
             try:
                 return gpd.read_parquet(file, **kwargs)
             except ValueError as e:
                 df = dp.read_pandas(gcs_path, **kwargs)
-                if not len(df):
+
+                if pandas_fallback or not len(df):
                     return df
                 else:
                     raise e
@@ -50,14 +64,19 @@ def read_geopandas(gcs_path: str | Path, **kwargs) -> GeoDataFrame | DataFrame:
                 return gpd.read_file(file, **kwargs)
             except ValueError as e:
                 df = dp.read_pandas(gcs_path, **kwargs)
-                if not len(df):
+
+                if pandas_fallback or not len(df):
                     return df
                 else:
                     raise e
 
 
 def write_geopandas(
-    df: gpd.GeoDataFrame, gcs_path: str | Path, overwrite: bool = True, **kwargs
+    df: gpd.GeoDataFrame,
+    gcs_path: str | Path,
+    overwrite: bool = True,
+    fs: Optional[dp.gcs.GCSFileSystem] = None,
+    **kwargs,
 ) -> None:
     """Writes a GeoDataFrame to the speficied format.
 
@@ -80,6 +99,9 @@ def write_geopandas(
 
     if not overwrite and exists(gcs_path):
         raise ValueError("File already exists.")
+
+    if fs is None:
+        fs = dp.FileClient.get_gcs_file_system()
 
     pd.io.parquet.BaseImpl.validate_dataframe(df)
 

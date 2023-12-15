@@ -65,11 +65,11 @@ def _get_sfilter_indices(
 
 
 def sfilter(
-    gdf: GeoDataFrame,
+    gdf: GeoDataFrame | GeoSeries,
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
 ) -> GeoDataFrame:
-    """Filter a GeoDataFrame by spatial predicate.
+    """Filter a GeoDataFrame or GeoSeries by spatial predicate.
 
     Does an sjoin and returns the rows of 'gdf' that were returned
     without getting duplicates or columns from 'other'.
@@ -135,11 +135,11 @@ def sfilter(
 
 
 def sfilter_split(
-    gdf: GeoDataFrame,
+    gdf: GeoDataFrame | GeoSeries,
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
-    """Split a GeoDataFrame by spatial predicate.
+    """Split a GeoDataFrame or GeoSeries by spatial predicate.
 
     Like sfilter, but returns both the rows that do and do not match
     the spatial predicate as separate GeoDataFrames.
@@ -207,16 +207,16 @@ def sfilter_split(
 
 
 def sfilter_inverse(
-    gdf: GeoDataFrame,
+    gdf: GeoDataFrame | GeoSeries,
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
-) -> tuple[GeoDataFrame, GeoDataFrame]:
-    """Filter a GeoDataFrame by inverse spatial predicate.
+) -> GeoDataFrame | GeoSeries:
+    """Filter a GeoDataFrame or GeoSeries by inverse spatial predicate.
 
     Returns the rows that do not match the spatial predicate.
 
     Args:
-        gdf: The GeoDataFrame.
+        gdf: The GeoDataFrame or GeoSeries.
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
 

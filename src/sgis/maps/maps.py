@@ -56,7 +56,7 @@ def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
 
 
 def explore(
-    *gdfs: GeoDataFrame,
+    *gdfs: GeoDataFrame | dict[str, GeoDataFrame],
     column: str | None = None,
     center: Any | None = None,
     labels: tuple[str] | None = None,
@@ -121,6 +121,8 @@ def explore(
     >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
     """
 
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
+
     loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
 
     kwargs.pop("size", None)
@@ -145,7 +147,11 @@ def explore(
         elif isinstance(center, GeoDataFrame):
             mask = center
         else:
-            mask = to_gdf_func(center, crs=gdfs[0].crs)
+            try:
+                mask = to_gdf_func(center, crs=gdfs[0].crs)
+            except IndexError:
+                df = [x for x in kwargs.values() if hasattr(x, "crs")][0]
+                mask = to_gdf_func(center, crs=df.crs)
 
         if get_geom_type(mask) in ["point", "line"]:
             mask = mask.buffer(size)
@@ -176,7 +182,7 @@ def explore(
     if not kwargs.pop("explore", True):
         return qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
-    m.explore()
+    return m.explore()
 
 
 def samplemap(
@@ -251,19 +257,10 @@ def samplemap(
     if gdfs and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
+
     mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
     kwargs.pop("size")
-
-    if mask is not None:
-        gdfs, column = Explore._separate_args(gdfs, column)
-        gdfs, kwargs = _prepare_clipmap(
-            *gdfs,
-            mask=mask,
-            labels=labels,
-            **kwargs,
-        )
-        if not gdfs:
-            return
 
     if explore:
         m = Explore(
@@ -277,6 +274,12 @@ def samplemap(
         )
         if m.gdfs is None:
             return
+        if mask is not None:
+            m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
+            m._gdf = m._gdf.clip(mask)
+            m._nan_idx = m._gdf[m._column].isna()
+            m._get_unique_values()
+
         m.samplemap(size, sample_from_first=sample_from_first)
 
     else:
@@ -309,38 +312,6 @@ def samplemap(
         m._gdf = m._gdf.clip(random_point.buffer(size))
 
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
-
-
-def _prepare_clipmap(*gdfs, mask, labels, **kwargs):
-    if mask is None:
-        mask, kwargs = _get_location_mask(kwargs, gdfs)
-        if mask is None and len(gdfs) > 1:
-            *gdfs, mask = gdfs
-        elif mask is None:
-            raise ValueError("Must speficy mask.")
-
-    # storing object names in dict here, since the names disappear after clip
-    if not labels:
-        namedict = make_namedict(gdfs)
-        kwargs["namedict"] = namedict
-
-    clipped: tuple[GeoDataFrame] = ()
-
-    if mask is not None:
-        for gdf in gdfs:
-            clipped_ = gdf.clip(mask)
-            clipped = clipped + (clipped_,)
-
-    else:
-        for gdf in gdfs[:-1]:
-            clipped_ = gdf.clip(gdfs[-1])
-            clipped = clipped + (clipped_,)
-
-    if not any(len(gdf) for gdf in clipped):
-        warnings.warn("None of the GeoDataFrames are within the mask extent.")
-        return None, None
-
-    return clipped, kwargs
 
 
 def clipmap(
@@ -391,23 +362,18 @@ def clipmap(
     samplemap: same functionality, but shows only a random area of a given size.
     """
 
-    gdfs, column = Explore._separate_args(gdfs, column)
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
-    clipped, kwargs = _prepare_clipmap(
-        *gdfs,
-        mask=mask,
-        labels=labels,
-        **kwargs,
-    )
-    if not clipped:
-        return
+    if mask is None and len(gdfs) > 1:
+        mask = gdfs[-1]
+        gdfs = gdfs[:-1]
 
     center = kwargs.pop("center", None)
     size = kwargs.pop("size", None)
 
     if explore:
         m = Explore(
-            *clipped,
+            *gdfs,
             column=column,
             labels=labels,
             browser=browser,
@@ -418,6 +384,10 @@ def clipmap(
         if m.gdfs is None:
             return
 
+        m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
+        m._gdf = m._gdf.clip(mask)
+        m._nan_idx = m._gdf[m._column].isna()
+        m._get_unique_values()
         m.explore(center=center, size=size)
     else:
         m = Map(
@@ -426,6 +396,14 @@ def clipmap(
             labels=labels,
             **kwargs,
         )
+        if m.gdfs is None:
+            return
+
+        m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
+        m._gdf = m._gdf.clip(mask)
+        m._nan_idx = m._gdf[m._column].isna()
+        m._get_unique_values()
+
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
@@ -449,8 +427,12 @@ def explore_locals(*gdfs, to_gdf: bool = True, **kwargs):
                 continue
             if not to_gdf:
                 continue
-            if hasattr(value, "__len__") and not len(value):
+            try:
+                if hasattr(value, "__len__") and not len(value):
+                    continue
+            except TypeError:
                 continue
+
             try:
                 gdf = clean_geoms(to_gdf_func(value))
                 if len(gdf):
@@ -509,7 +491,7 @@ def qtm(
     See also:
         ThematicMap: Class with more options for customising the plot.
     """
-    gdfs, column = Explore._separate_args(gdfs, column)
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     new_kwargs = {}
     for key, value in kwargs.items():

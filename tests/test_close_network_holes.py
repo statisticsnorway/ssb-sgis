@@ -218,8 +218,8 @@ def test_close_network_holes(roads_oslo, points_oslo):
     if __name__ == "__main__":
         sg.qtm(nw, "connected", title="after filling holes")
 
-    assert sum(nw.connected == 1) == 827, sum(nw.connected == 1)
-    assert sum(nw.connected == 0) == 20, sum(nw.connected == 0)
+    assert sum(nw["connected"] == 1) == 827, sum(nw["connected"] == 1)
+    assert sum(nw["connected"] == 0) == 20, sum(nw["connected"] == 0)
 
 
 def main():

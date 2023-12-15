@@ -3,13 +3,61 @@
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame
 from shapely import shortest_line
 
-from ..geopandas_tools.conversion import coordinate_array
+from ..geopandas_tools.conversion import coordinate_array, to_geoseries
+from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.neighbors import k_nearest_neighbors
 from .nodes import make_edge_wkt_cols, make_node_ids
+
+
+def close_network_holes_to(
+    lines: GeoDataFrame | GeoSeries,
+    extend_to: GeoDataFrame | GeoSeries,
+    max_distance: int | float,
+    max_angle: int | float,
+) -> GeoDataFrame | GeoSeries:
+    if isinstance(lines, GeoSeries):
+        lines = lines.to_frame("geometry")
+        was_geoseries = True
+    else:
+        was_geoseries = False
+
+    lines, _ = make_node_ids(lines)
+
+    if isinstance(extend_to, GeoSeries):
+        extend_to = extend_to.to_frame("geometry")
+
+    if not (extend_to.geom_type == "Point").all():
+        raise ValueError("'extend_to' must be singlepart point geometries")
+
+    extend_to["wkt"] = extend_to.geometry.to_wkt()
+    extend_to = extend_to.drop_duplicates("wkt")
+    extend_to["node_id"] = range(len(extend_to))
+
+    new_lines: GeoSeries = _close_holes_all_lines(
+        lines, extend_to, max_distance=max_distance, max_angle=max_angle, idx_start=0
+    )
+
+    if was_geoseries:
+        return pd.concat([lines.geometry, new_lines])
+
+    new_lines = gpd.GeoDataFrame(
+        {"geometry": new_lines}, geometry="geometry", crs=lines.crs
+    )
+
+    return pd.concat([lines, new_lines], ignore_index=True).drop(
+        columns=[
+            "source_wkt",
+            "target_wkt",
+            "source",
+            "target",
+            "n_source",
+            "n_target",
+        ]
+    )
 
 
 def close_network_holes(
@@ -88,32 +136,42 @@ def close_network_holes(
     intentional. They are road blocks where most cars aren't allowed to pass. Fill the
     holes only if it makes the travel times/routes more realistic.
     """
-    gdf, nodes = make_node_ids(gdf)
 
-    new_lines = _find_holes_all_lines(
-        gdf,
-        nodes,
-        max_distance,
-        max_angle=max_angle,
+    lines, nodes = make_node_ids(gdf)
+
+    # remove duplicates of lines going both directions
+    lines["sorted"] = [
+        "_".join(sorted([s, t]))
+        for s, t in zip(lines["source"], lines["target"], strict=True)
+    ]
+
+    new_lines: GeoSeries = _close_holes_all_lines(
+        lines.drop_duplicates("sorted"), nodes, max_distance, max_angle, idx_start=1
+    )
+
+    new_lines = gpd.GeoDataFrame(
+        {"geometry": new_lines}, geometry="geometry", crs=gdf.crs
     )
 
     if not len(new_lines):
-        gdf[hole_col] = 0 if hole_col not in gdf.columns else gdf[hole_col].fillna(0)
-        return gdf
+        lines[hole_col] = (
+            0 if hole_col not in lines.columns else lines[hole_col].fillna(0)
+        )
+        return lines
 
     new_lines = make_edge_wkt_cols(new_lines)
 
-    wkt_id_dict = {
-        wkt: id for wkt, id in zip(nodes["wkt"], nodes["node_id"], strict=True)
-    }
+    wkt_id_dict = dict(zip(nodes["wkt"], nodes["node_id"], strict=True))
     new_lines["source"] = new_lines["source_wkt"].map(wkt_id_dict)
     new_lines["target"] = new_lines["target_wkt"].map(wkt_id_dict)
 
     if hole_col:
         new_lines[hole_col] = 1
-        gdf[hole_col] = 0 if hole_col not in gdf.columns else gdf[hole_col].fillna(0)
+        lines[hole_col] = (
+            0 if hole_col not in lines.columns else lines[hole_col].fillna(0)
+        )
 
-    return pd.concat([gdf, new_lines], ignore_index=True)
+    return pd.concat([lines, new_lines], ignore_index=True)
 
 
 def get_angle(array_a, array_b):
@@ -200,49 +258,29 @@ def close_network_holes_to_deadends(
     return pd.concat([gdf, new_lines], ignore_index=True)
 
 
-def _find_holes_all_lines(
-    lines: GeoDataFrame,
-    nodes: GeoDataFrame,
-    max_distance: int | float,
-    max_angle: int,
-) -> GeoDataFrame | DataFrame:
-    """Creates lines between deadends and closest node.
-
-    Creates lines if distance is less than max_distance and angle less than max_angle.
-
-    wkt: well-known text, e.g. "POINT (60 10)"
-    """
-    k = 50 if len(nodes) >= 50 else len(nodes)
-    crs = nodes.crs
-
-    # remove duplicates of lines going both directions
-    lines["sorted"] = [
-        "_".join(sorted([s, t]))
-        for s, t in zip(lines["source"], lines["target"], strict=True)
-    ]
-
-    no_dups = lines.drop_duplicates("sorted")
-
-    no_dups, nodes = make_node_ids(no_dups)
+def _close_holes_all_lines(
+    lines, nodes, max_distance, max_angle, idx_start: int
+) -> GeoSeries:
+    k = min(len(nodes), 50)
 
     # make point gdf for the deadends and the other endpoint of the deadend lines
-    deadends_target = no_dups.loc[no_dups.n_target == 1].rename(
+    deadends_target = lines.loc[lines["n_target"] == 1].rename(
         columns={"target_wkt": "wkt", "source_wkt": "wkt_other_end"}
     )
-    deadends_source = no_dups.loc[no_dups.n_source == 1].rename(
+    deadends_source = lines.loc[lines["n_source"] == 1].rename(
         columns={"source_wkt": "wkt", "target_wkt": "wkt_other_end"}
     )
     deadends = pd.concat([deadends_source, deadends_target], ignore_index=True)
 
     if len(deadends) <= 1:
-        return DataFrame()
+        return GeoSeries()
 
     deadends_other_end = deadends.copy()
     deadends_other_end["geometry"] = gpd.GeoSeries.from_wkt(
-        deadends_other_end["wkt_other_end"], crs=crs
+        deadends_other_end["wkt_other_end"]
     )
 
-    deadends["geometry"] = gpd.GeoSeries.from_wkt(deadends["wkt"], crs=crs)
+    deadends["geometry"] = gpd.GeoSeries.from_wkt(deadends["wkt"])
 
     deadends_array = coordinate_array(deadends)
     nodes_array = coordinate_array(nodes)
@@ -255,7 +293,7 @@ def _find_holes_all_lines(
     # and endpoints of the new lines in lists, looping through the k neighbour points
     new_sources: list[str] = []
     new_targets: list[str] = []
-    for i in np.arange(1, k):
+    for i in np.arange(idx_start, k):
         # to break out of the loop if no new_targets that meet the condition are found
         len_now = len(new_sources)
 
@@ -263,7 +301,7 @@ def _find_holes_all_lines(
         indices = all_indices[:, i]
         dists = all_dists[:, i]
 
-        these_nodes_array = coordinate_array(nodes.loc[indices])
+        these_nodes_array = coordinate_array(nodes.iloc[indices])
 
         if np.all(deadends_other_end_array == these_nodes_array):
             continue
@@ -286,7 +324,7 @@ def _find_holes_all_lines(
 
         from_wkt = deadends.loc[condition, "wkt"]
         to_idx = indices[condition]
-        to_wkt = nodes.loc[to_idx, "wkt"]
+        to_wkt = nodes.iloc[to_idx]["wkt"]
 
         # now add the wkts to the lists of new sources and targets. If the source
         # is already added, the new wks will not be added again
@@ -301,18 +339,10 @@ def _find_holes_all_lines(
         if len_now == len(new_sources):
             break
 
-    # make GeoDataFrame with straight lines
-    new_sources = gpd.GeoSeries.from_wkt(new_sources, crs=crs)
-    new_targets = gpd.GeoSeries.from_wkt(new_targets, crs=crs)
-    new_lines = shortest_line(new_sources, new_targets)
-    new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
-
-    if not len(new_lines):
-        return new_lines
-
-    new_lines = make_edge_wkt_cols(new_lines)
-
-    return new_lines
+    # make GeoSeries with straight lines
+    new_sources = gpd.GeoSeries.from_wkt(new_sources, crs=lines.crs)
+    new_targets = gpd.GeoSeries.from_wkt(new_targets, crs=lines.crs)
+    return shortest_line(new_sources, new_targets)
 
 
 def _find_holes_deadends(
@@ -361,8 +391,5 @@ def _find_holes_deadends(
     # GeoDataFrame with straight lines
     new_lines = shortest_line(from_geom, to_geom)
     new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
-
-    if not len(new_lines):
-        return new_lines
 
     return new_lines

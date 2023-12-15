@@ -101,7 +101,7 @@ def split_lines_by_nearest_point(
 
     gdf = gdf.copy()
 
-    # move the points to the nearest exact point of the line
+    # move the points to the nearest exact location on the line
     if max_distance:
         snapped = snap_within_distance(points, gdf, max_distance=max_distance)
     else:

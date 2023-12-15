@@ -83,8 +83,7 @@ class Map:
         scheme: str = DEFAULT_SCHEME,
         **kwargs,
     ):
-        if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
-            gdfs, column = self._separate_args(gdfs, column)
+        gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
 
         self._column = column
         self.bins = bins
@@ -139,10 +138,10 @@ class Map:
             self.show.append(show)
         self.labels = new_labels
 
-        if self.show:
+        if len(self._gdfs):
             last_show = self.show[-1]
         else:
-            last_show = True
+            last_show = show
 
         # pop all geometry-like items from kwargs into self._gdfs
         self.kwargs = {}
@@ -296,8 +295,16 @@ class Map:
     def _separate_args(
         args: tuple,
         column: str | None,
+        kwargs: dict,
     ) -> tuple[tuple[GeoDataFrame], str]:
         """Separate GeoDataFrames from string (column argument)."""
+
+        def as_dict(obj):
+            if hasattr(obj, "__dict__"):
+                return obj.__dict__
+            elif isinstance(obj, dict):
+                return obj
+            raise TypeError
 
         gdfs: tuple[GeoDataFrame] = ()
         for arg in args:
@@ -310,8 +317,27 @@ class Map:
                     )
             elif isinstance(arg, (GeoDataFrame, GeoSeries, Geometry)):
                 gdfs = gdfs + (arg,)
+            elif isinstance(arg, dict) or hasattr(arg, "__dict__"):
+                # add dicts or classes with GeoDataFrames to kwargs
+                more_gdfs = {}
+                for key, value in as_dict(arg).items():
+                    if isinstance(value, (GeoDataFrame, GeoSeries, Geometry)):
+                        more_gdfs[key] = value
+                    elif isinstance(value, dict) or hasattr(value, "__dict__"):
+                        try:
+                            # same as above, one level down
+                            more_gdfs |= {
+                                k: v
+                                for k, v in value.items()
+                                if isinstance(v, (GeoDataFrame, GeoSeries, Geometry))
+                            }
+                        except Exception:
+                            # no need to raise here
+                            pass
 
-        return gdfs, column
+                kwargs |= more_gdfs
+
+        return gdfs, column, kwargs
 
     def _prepare_continous_map(self):
         """Create bins if not already done and adjust k if needed."""

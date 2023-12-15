@@ -1,4 +1,5 @@
 import functools
+import inspect
 import itertools
 import multiprocessing
 from collections.abc import Callable, Collection, Iterable
@@ -27,6 +28,13 @@ except ImportError:
     pass
 
 
+def turn_args_into_kwargs(func: Callable, args: tuple, index_start: int):
+    if not isinstance(args, tuple):
+        raise TypeError("args should be a tuple (it should not be unpacked with *)")
+    argnames = inspect.getfullargspec(func).args[index_start:]
+    return {name: value for value, name in zip(args, argnames, strict=False)}
+
+
 class Parallel:
     """Run functions in parallell.
 
@@ -52,9 +60,13 @@ class Parallel:
             offered through joblib's Parallel class.
         context: Start method for the processes. Defaults to 'spawn'
             to avoid frozen processes.
+        maxtasksperchild: Number of tasks a worker process can complete before
+            it will exit and be replaced with a fresh worker process, to enable
+            unused resources to be freed. Defaults to 10 to
         **kwargs: Keyword arguments to be passed to either
             multiprocessing.Pool or joblib.Parallel, depending
-            on the backend.
+            on the backend. Not to be confused with the kwargs passed to functions in
+            the map and starmap methods.
     """
 
     def __init__(
@@ -62,9 +74,11 @@ class Parallel:
         processes: int,
         backend: str = "multiprocessing",
         context: str = "spawn",
+        maxtasksperchild: int = 10,
         **kwargs,
     ):
         self.processes = int(processes)
+        self.maxtasksperchild = maxtasksperchild
         self.backend = backend
         self.context = context
         self.kwargs = kwargs
@@ -75,14 +89,17 @@ class Parallel:
         self,
         func: Callable,
         iterable: Collection,
+        args: tuple | None = None,
         kwargs: dict | None = None,
     ) -> list[Any]:
-        """Run functions in parallel with items of an iterable as first arguemnt.
+        """Run functions in parallel with items of an iterable as 0th arguemnt.
 
         Args:
             func: Function to be run.
             iterable: An iterable where each item will be passed to func as
-                first positional argument.
+                0th positional argument.
+            Args: Positional arguments passed to 'func' starting from the 1st argument.
+                The 0th argument will be reserved for the values of 'iterable'.
             kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
                 not unpacked into separate keyword arguments.
 
@@ -102,14 +119,21 @@ class Parallel:
         >>> results
         [2, 4, 6]
 
-        With kwargs.
+        With args and kwargs.
 
         >>> iterable = [1, 2, 3]
         >>> def x2(x, plus, minus):
         ...     return x * 2 + plus - minus
         >>> p = sg.Parallel(4, backend="loky")
-        >>> results = p.map(x2, iterable, kwargs=dict(plus=2, minus=1))
-        >>> results
+        ...
+        >>> # these three are the same
+        >>> results1 = p.map(x2, iterable, args=(2, 1))
+        >>> results2 = p.map(x2, iterable, kwargs=dict(plus=2, minus=1))
+        >>> results3 = p.map(x2, iterable, args=(2,), kwargs=dict(minus=1))
+        >>> assert results1 == results2 == results3
+        ...
+        >>> results1
+        [3, 5, 7]
 
         If in Jupyter the function should be defined in another module.
         And if using the multiprocessing backend, the code should be
@@ -123,9 +147,15 @@ class Parallel:
         [2, 4, 6]
         """
 
+        if args:
+            # start at index 1, meaning the 0th argument (the iterable) is still available
+            args_as_kwargs = turn_args_into_kwargs(func, args, index_start=1)
+        else:
+            args_as_kwargs = {}
+
         self.validate_execution(func)
 
-        kwargs = self._validate_kwargs(kwargs)
+        kwargs = self._validate_kwargs(kwargs) | args_as_kwargs
 
         func_with_kwargs = functools.partial(func, **kwargs)
 
@@ -142,7 +172,7 @@ class Parallel:
 
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
-                processes, **self.kwargs
+                processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
             ) as pool:
                 return pool.map(func_with_kwargs, iterable)
 
@@ -155,6 +185,7 @@ class Parallel:
         self,
         func: Callable,
         iterable: Collection[Iterable[Any]],
+        args: tuple | None = None,
         kwargs: dict | None = None,
     ) -> list[Any]:
         """Run functions in parallel where items of the iterable are unpacked.
@@ -166,6 +197,8 @@ class Parallel:
             func: Function to be run.
             iterable: An iterable of iterables, where each item will be
                 unpacked as positional argument to the function.
+            Args: Positional arguments passed to 'func' starting at argument position
+                n + 1, where n is the length of the iterables inside the iterable.
             kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
                 not unpacked into separate keyword arguments.
 
@@ -185,6 +218,17 @@ class Parallel:
         >>> results
         [3, 5, 7]
 
+        With args and kwargs. Since the iterables inside 'iterable' are of length 2,
+        'args' will start at argument number three, e.i. 'c'.
+
+        >>> iterable = [(1, 2), (2, 3), (3, 4)]
+        >>> def add(a, b, c, *, d):
+        ...     return a + b + c + d
+        >>> p = sg.Parallel(3, backend="loky")
+        >>> results = p.starmap(add, iterable, args=(1,), kwargs={"d": 0.1})
+        >>> results
+        [4.1, 6.1, 8.1]
+
         If in Jupyter the function should be defined in another module.
         And if using the multiprocessing backend, the code should be
         guarded by if __name__ == "__main__".
@@ -197,9 +241,18 @@ class Parallel:
         [3, 5, 7]
 
         """
+        if args:
+            # starting the count at the length of the iterables inside the iterables
+            iterable = list(iterable)
+            args_as_kwargs = turn_args_into_kwargs(
+                func, args, index_start=len(iterable[0])
+            )
+        else:
+            args_as_kwargs = {}
+
         self.validate_execution(func)
 
-        kwargs = self._validate_kwargs(kwargs)
+        kwargs = self._validate_kwargs(kwargs) | args_as_kwargs
 
         func_with_kwargs = functools.partial(func, **kwargs)
 
@@ -216,7 +269,7 @@ class Parallel:
 
         if self.backend == "multiprocessing":
             with multiprocessing.get_context(self.context).Pool(
-                processes, **self.kwargs
+                processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
             ) as pool:
                 return pool.starmap(func_with_kwargs, iterable)
 

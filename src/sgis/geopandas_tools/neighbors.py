@@ -97,6 +97,9 @@ def get_neighbor_indices(
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
+    if isinstance(neighbors, GeoSeries):
+        neighbors = neighbors.to_frame()
+
     # buffer and keep only geometry column
     if max_distance and predicate != "nearest":
         gdf = gdf.buffer(max_distance).to_frame()
@@ -114,6 +117,15 @@ def get_neighbor_indices(
         )
 
     return joined["neighbor_index"]
+
+
+def get_neighbor_dfs(
+    df: GeoDataFrame | DataFrame,
+    neighbor_mapper: Series,
+) -> list[GeoDataFrame | DataFrame]:
+    return [
+        df[df.index.isin(neighbor_mapper[i])] for i in neighbor_mapper.index.unique()
+    ]
 
 
 def get_all_distances(
