@@ -1,13 +1,21 @@
 from collections.abc import Iterable
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from shapely import STRtree, difference, intersection, make_valid, unary_union, union
+from shapely import (
+    STRtree,
+    difference,
+    intersection,
+    is_valid,
+    make_valid,
+    unary_union,
+    union,
+)
 from shapely.errors import GEOSException
-from shapely.geometry import Polygon
 
-from .general import _push_geom_col, clean_geoms
+from .general import _determine_geom_type_args, _push_geom_col, clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .overlay import clean_overlay
 
@@ -15,7 +23,7 @@ from .overlay import clean_overlay
 def update_geometries(
     gdf: GeoDataFrame,
     geom_type: str | None = None,
-    keep_geom_type: bool = True,
+    keep_geom_type: bool | None = None,
     grid_size: int | None = None,
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
@@ -80,13 +88,11 @@ def update_geometries(
     if len(gdf) <= 1:
         return gdf
 
-    if geom_type:
-        gdf = to_single_geom_type(gdf, geom_type)
-        keep_geom_type = True
-    elif keep_geom_type:
-        geom_type = get_geom_type(gdf)
-        if geom_type == "mixed":
-            raise ValueError("Cannot have mixed geometries when keep_geom_type is True")
+    gdf = make_all_singlepart(clean_geoms(gdf))
+
+    gdf, geom_type, keep_geom_type = _determine_geom_type_args(
+        gdf, geom_type, keep_geom_type
+    )
 
     geom_col = gdf._geometry_column_name
     index_mapper = {i: idx for i, idx in enumerate(gdf.index)}
@@ -100,14 +106,16 @@ def update_geometries(
     erasers = (
         pd.Series(gdf.geometry.loc[indices.values].values, index=indices.index)
         .groupby(level=0)
-        .agg(unary_union)
+        .agg(lambda x: make_valid(unary_union(x, grid_size=grid_size)))
     )
 
     # match up the aggregated erasers by index
-    erased = difference(
-        gdf.geometry.loc[erasers.index],
-        erasers,
-        grid_size=grid_size,
+    erased = make_valid(
+        difference(
+            gdf.geometry.loc[erasers.index],
+            erasers,
+            grid_size=grid_size,
+        )
     )
 
     gdf.loc[erased.index, geom_col] = erased
@@ -123,7 +131,7 @@ def update_geometries(
 
 
 def get_intersections(
-    gdf: GeoDataFrame, geom_type: str | None = None, keep_geom_type: bool = True
+    gdf: GeoDataFrame, geom_type: str | None = None, keep_geom_type: bool | None = None
 ) -> GeoDataFrame:
     """Find geometries that intersect in a GeoDataFrame.
 
@@ -203,6 +211,10 @@ def get_intersections(
     else:
         was_geoseries = False
 
+    gdf, geom_type, keep_geom_type = _determine_geom_type_args(
+        gdf, geom_type, keep_geom_type
+    )
+
     idx_name = gdf.index.name
     gdf = gdf.assign(orig_idx=gdf.index).reset_index(drop=True)
 
@@ -212,8 +224,10 @@ def get_intersections(
 
     duplicated_geoms.index = duplicated_geoms["orig_idx"].values
     duplicated_geoms.index.name = idx_name
+
     if was_geoseries:
         return duplicated_geoms.geometry
+
     return duplicated_geoms.drop(columns="orig_idx")
 
 
