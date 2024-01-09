@@ -7,6 +7,8 @@ version of the solution from GH 2792.
 'clean_overlay' also includes the overlay type "update", which can be specified in the
 "how" parameter, in addition to the five native geopandas how-s.
 """
+import functools
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -409,9 +411,11 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
     """Aggregate areas in right by unique values of left, then use those to clip
     areas out of left"""
 
+    agg_geoms_partial = functools.partial(agg_geoms, grid_size=grid_size)
+
     clip_left = pairs.groupby(level=0).agg(
         {
-            "geom_right": agg_geoms,
+            "geom_right": agg_geoms_partial,
             **{
                 c: "first"
                 for c in df1.columns
@@ -433,12 +437,14 @@ def _shapely_diffclip_left(pairs, df1, grid_size):
 
 
 def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix):
+    agg_geoms_partial = functools.partial(agg_geoms, grid_size=grid_size)
+
     clip_right = (
         pairs.rename(columns={"geometry": "geom_left", "geom_right": "geometry"})
         .groupby(by="_overlay_index_right")
         .agg(
             {
-                "geom_left": agg_geoms,
+                "geom_left": agg_geoms_partial,
                 "geometry": "first",
             }
         )
@@ -479,5 +485,7 @@ def _try_difference(left, right, grid_size):
         )
 
 
-def agg_geoms(g):
-    return make_valid(unary_union(g)) if len(g) > 1 else make_valid(g)
+def agg_geoms(g, grid_size=None):
+    return (
+        make_valid(unary_union(g, grid_size=grid_size)) if len(g) > 1 else make_valid(g)
+    )
