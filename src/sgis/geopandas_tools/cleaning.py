@@ -671,7 +671,8 @@ def explore_geosexception(e: GEOSException, *gdfs):
     from ..maps.maps import explore
     from .conversion import to_gdf
 
-    pattern = r"(\d+\.\d+)\s+(\d+\.\d+)"
+    pattern = r"(\d+\.\d+)\s{1,5}(\d+\.\d+)"
+
     matches = re.findall(pattern, str(e))
     coords_in_error_message = [(float(match[0]), float(match[1])) for match in matches]
     exception_point = to_gdf(coords_in_error_message, crs=gdfs[0].crs)
