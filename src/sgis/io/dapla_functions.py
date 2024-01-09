@@ -52,6 +52,8 @@ def read_geopandas(
             try:
                 return gpd.read_parquet(file, **kwargs)
             except ValueError as e:
+                if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
+                    raise e
                 df = dp.read_pandas(gcs_path, **kwargs)
 
                 if pandas_fallback or not len(df):
@@ -63,6 +65,8 @@ def read_geopandas(
             try:
                 return gpd.read_file(file, **kwargs)
             except ValueError as e:
+                if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
+                    raise e
                 df = dp.read_pandas(gcs_path, **kwargs)
 
                 if pandas_fallback or not len(df):
@@ -75,6 +79,7 @@ def write_geopandas(
     df: gpd.GeoDataFrame,
     gcs_path: str | Path,
     overwrite: bool = True,
+    pandas_fallback: bool = False,
     fs: Optional[dp.gcs.GCSFileSystem] = None,
     **kwargs,
 ) -> None:
@@ -106,12 +111,10 @@ def write_geopandas(
     pd.io.parquet.BaseImpl.validate_dataframe(df)
 
     if not len(df):
-        try:
-            dp.write_pandas(df, gcs_path, **kwargs)
-        except Exception:
-            dp.write_pandas(
-                df.drop(df._geometry_column_name, axis=1), gcs_path, **kwargs
-            )
+        if pandas_fallback:
+            df.geometry = df.geometry.astype(str)
+            df = pd.DataFrame(df)
+        dp.write_pandas(df, gcs_path, **kwargs)
         return
 
     fs = dp.FileClient.get_gcs_file_system()

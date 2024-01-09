@@ -203,6 +203,7 @@ def eliminate_by_longest(
     fix_double: bool = True,
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
+    grid_size=None,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Dissolves selected polygons with the longest bordering neighbor polygon.
@@ -236,6 +237,33 @@ def eliminate_by_longest(
     Returns:
         The GeoDataFrame (gdf) with the geometries of 'to_eliminate' dissolved in.
         If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
+
+    Examples
+    --------
+
+    Create two polygons with a sliver in between:
+
+    >>> sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)]))
+    >>> small_poly = sg.to_gdf(
+    ...     Polygon([(0, 0), (-0.1, 1), (0, 2), (-1, 2), (-2, 2), (-1, 1)])
+    ... )
+    >>> large_poly = sg.to_gdf(
+    ...     Polygon([(0, 0), (0.1, 1), (1, 2), (2, 2), (3, 2), (3, 0)])
+    ... )
+
+    Using multiple GeoDataFrame as input, the sliver is eliminated into the small
+    polygon (because it has the longest border with sliver).
+
+    >>> small_poly_eliminated, large_poly_eliminated = sg.eliminate_by_longest(
+    ...     [small_poly, large_poly], sliver
+    ... )
+
+    With only one input GeoDataFrame:
+
+    >>> polys = pd.concat([small_poly, large_poly])
+    >>> eliminated = sg.eliminate_by_longest(polys, sliver)
+
+
     """
     if isinstance(gdf, (list, tuple)):
         # concat, then break up the dataframes in the end
@@ -297,6 +325,7 @@ def eliminate_by_longest(
         aggfunc,
         crs,
         fix_double,
+        grid_size=grid_size,
         **kwargs,
     )
 
@@ -341,6 +370,7 @@ def eliminate_by_largest(
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
     predicate: str = "intersects",
+    grid_size=None,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Dissolves selected polygons with the largest neighbor polygon.
@@ -374,6 +404,31 @@ def eliminate_by_largest(
         The GeoDataFrame (gdf) with the geometries of 'to_eliminate' dissolved in.
         If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
 
+    Examples
+    --------
+
+    Create two polygons with a sliver in between:
+
+    >>> sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)]))
+    >>> small_poly = sg.to_gdf(
+    ...     Polygon([(0, 0), (-0.1, 1), (0, 2), (-1, 2), (-2, 2), (-1, 1)])
+    ... )
+    >>> large_poly = sg.to_gdf(
+    ...     Polygon([(0, 0), (0.1, 1), (1, 2), (2, 2), (3, 2), (3, 0)])
+    ... )
+
+    Using multiple GeoDataFrame as input, the sliver is eliminated into
+    the large polygon.
+
+    >>> small_poly_eliminated, large_poly_eliminated = sg.eliminate_by_largest(
+    ...     [small_poly, large_poly], sliver
+    ... )
+
+    With only one input GeoDataFrame:
+
+    >>> polys = pd.concat([small_poly, large_poly])
+    >>> eliminated = sg.eliminate_by_largest(polys, sliver)
+
     """
     return _eliminate_by_area(
         gdf,
@@ -385,6 +440,7 @@ def eliminate_by_largest(
         aggfunc=aggfunc,
         predicate=predicate,
         fix_double=fix_double,
+        grid_size=grid_size,
         **kwargs,
     )
 
@@ -399,6 +455,7 @@ def eliminate_by_smallest(
     aggfunc: str | dict | list | None = None,
     predicate: str = "intersects",
     fix_double: bool = False,
+    grid_size=None,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     return _eliminate_by_area(
@@ -411,6 +468,7 @@ def eliminate_by_smallest(
         aggfunc=aggfunc,
         predicate=predicate,
         fix_double=fix_double,
+        grid_size=grid_size,
         **kwargs,
     )
 
@@ -425,6 +483,7 @@ def _eliminate_by_area(
     aggfunc: str | dict | list | None = None,
     predicate="intersects",
     fix_double: bool = False,
+    grid_size=None,
     **kwargs,
 ) -> GeoDataFrame:
     if isinstance(gdf, (list, tuple)):
@@ -468,7 +527,9 @@ def _eliminate_by_area(
 
     notna = joined.loc[lambda x: x["_dissolve_idx"].notna()]
 
-    eliminated = _eliminate(gdf, notna, aggfunc, crs, fix_double=fix_double, **kwargs)
+    eliminated = _eliminate(
+        gdf, notna, aggfunc, crs, fix_double=fix_double, grid_size=grid_size, **kwargs
+    )
 
     if not ignore_index:
         eliminated.index = eliminated.index.map(idx_mapper)
@@ -503,7 +564,7 @@ def _eliminate_by_area(
     return gdfs
 
 
-def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, **kwargs):
+def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, **kwargs):
     if not len(to_eliminate):
         return gdf
 
@@ -660,8 +721,12 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, **kwargs):
 
         # allign and aggregate by dissolve index to not get duplicates in difference
         intersecting.index = soon_erased.index
-        soon_erased = soon_erased.geometry.groupby(level=0).agg(unary_union)
-        intersecting = intersecting.groupby(level=0).agg(unary_union)
+        soon_erased = soon_erased.geometry.groupby(level=0).agg(
+            lambda x: unary_union(x, grid_size=grid_size)
+        )
+        intersecting = intersecting.groupby(level=0).agg(
+            lambda x: unary_union(x, grid_size=grid_size)
+        )
 
         # from ..maps.maps import explore_locals
         # explore_locals()
@@ -674,12 +739,16 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, **kwargs):
         eliminated["geometry"] = (
             pd.concat([eliminators, soon_erased, missing])
             .groupby(level=0)
-            .agg(lambda x: make_valid(unary_union(x.dropna().values)))
+            .agg(
+                lambda x: make_valid(
+                    unary_union(x.dropna().values, grid_size=grid_size)
+                )
+            )
         )
 
     else:
         eliminated["geometry"] = many_hits.groupby("_dissolve_idx")["geometry"].agg(
-            lambda x: make_valid(unary_union(x.values))
+            lambda x: make_valid(unary_union(x.values, grid_size=grid_size))
         )
 
     # setting crs on the GeometryArrays to avoid warning in concat
@@ -973,7 +1042,11 @@ def _close_all_holes_no_islands(poly, all_geoms):
     return make_valid(unary_union(holes_closed))
 
 
-def get_gaps(gdf: GeoDataFrame, include_interiors: bool = False) -> GeoDataFrame:
+def get_gaps(
+    gdf: GeoDataFrame,
+    include_interiors: bool = False,
+    grid_size: float | int | None = None,
+) -> GeoDataFrame:
     """Get the gaps between polygons.
 
     Args:
@@ -998,7 +1071,9 @@ def get_gaps(gdf: GeoDataFrame, include_interiors: bool = False) -> GeoDataFrame
     )
 
     bbox_diff = make_all_singlepart(
-        clean_overlay(bbox, gdf, how="difference", geom_type="polygon")
+        clean_overlay(
+            bbox, gdf, how="difference", geom_type="polygon", grid_size=grid_size
+        )
     )
 
     # remove the outer "gap", i.e. the surrounding area

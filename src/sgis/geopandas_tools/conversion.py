@@ -61,7 +61,7 @@ def to_shapely(obj) -> Geometry:
         raise TypeError(obj) from e
 
 
-def get_utm33(lon: float, lat: float, crs=25833):
+def from_4326(lon: float, lat: float, crs=25833):
     """Get utm 33 N coordinates from lonlat (4326)."""
     transformer = pyproj.Transformer.from_crs(
         "EPSG:4326", f"EPSG:{crs}", always_xy=True
@@ -69,7 +69,7 @@ def get_utm33(lon: float, lat: float, crs=25833):
     return transformer.transform(lon, lat)
 
 
-def get_lonlat(lon: float, lat: float, crs=25833):
+def to_4326(lon: float, lat: float, crs=25833):
     """Get degree coordinates  33 N coordinates from lonlat (4326)."""
     transformer = pyproj.Transformer.from_crs(
         f"EPSG:{crs}", "EPSG:4326", always_xy=True
