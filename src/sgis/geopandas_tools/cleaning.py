@@ -8,24 +8,21 @@ from geopandas import GeoDataFrame, GeoSeries
 from geopandas.array import GeometryArray
 from numpy.typing import NDArray
 from shapely import (
-    buffer,
     extract_unique_points,
     force_2d,
     get_coordinates,
     get_exterior_ring,
     get_parts,
-    intersection,
     linearrings,
     linestrings,
     make_valid,
     polygons,
-    voronoi_polygons,
 )
 from shapely.errors import GEOSException
 from shapely.geometry import LinearRing, LineString, Point
 
 from ..networkanalysis.closing_network_holes import get_angle
-from .buffer_dissolve_explode import buff, dissexp, dissexp_by_cluster
+from .buffer_dissolve_explode import buff, dissexp
 from .conversion import coordinate_array, to_geoseries
 from .duplicates import get_intersections, update_geometries
 from .general import (
@@ -39,11 +36,9 @@ from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_t
 from .overlay import clean_overlay
 from .polygon_operations import (
     close_all_holes,
-    close_thin_holes,
     eliminate_by_longest,
     get_cluster_mapper,
     get_gaps,
-    get_polygon_clusters,
 )
 from .polygons_as_rings import PolygonsAsRings
 from .sfilter import sfilter, sfilter_inverse
@@ -68,7 +63,6 @@ def coverage_clean(
         # 1e-5,
         # 1e-4,
     ),
-    logger=None,
 ) -> GeoDataFrame:
     """Fix thin gaps, holes, slivers and double surfaces.
 
@@ -103,7 +97,7 @@ def coverage_clean(
 
     """
 
-    _cleaning_checks(gdf, tolerance, duplicate_action)  # , spike_action)
+    _cleaning_checks(gdf, tolerance, duplicate_action)
 
     if not gdf.index.is_unique:
         gdf = gdf.reset_index(drop=True)
@@ -141,66 +135,7 @@ def coverage_clean(
         double = get_intersections(gdf)
         double["_double_idx"] = range(len(double))
 
-    # from ..maps.maps import explore
-    # from .conversion import to_gdf
-
-    # explore(
-    #     # without_double,
-    #     # not_really_isolated,
-    #     # really_isolated,
-    #     # isolated,
-    #     # intersecting,
-    #     # to_eliminate,
-    #     # cleaned,
-    #     dups0=get_intersections(gdf),
-    #     gdf_cl=gdf,
-    #     # column="ARTYPE",
-    #     mask=to_gdf([11.7427056, 62.133131527], 4326).to_crs(25833).buffer(1000),
-    # )
-
-    # if spike_action != "ignore":
-    #     try:
-    #         gdf = split_spiky_polygons(gdf, tolerance=tolerance, grid_sizes=grid_sizes)
-    #     except GEOSException as e:
-    #         if spike_action == "fix":
-    #             raise e.__class__(
-    #                 e, "Set spike_action='try' to ignore this error message."
-    #             )
-
-    # from ..maps.maps import explore
-    # from .conversion import to_gdf
-
-    # explore(
-    #     # without_double,
-    #     # not_really_isolated,
-    #     # really_isolated,
-    #     # isolated,
-    #     # intersecting,
-    #     # to_eliminate,
-    #     # cleaned,
-    #     dups1=get_intersections(gdf),
-    #     gdf_cl=gdf,
-    #     # column="ARTYPE",
-    #     mask=to_gdf([11.7427056, 62.133131527], 4326).to_crs(25833).buffer(1000),
-    # )
-
     gdf, slivers = split_out_slivers(gdf, tolerance)
-    # from ..maps.maps import explore
-    # from .conversion import to_gdf
-
-    # explore(
-    #     # without_double,
-    #     # not_really_isolated,
-    #     # really_isolated,
-    #     # isolated,
-    #     # intersecting,
-    #     # to_eliminate,
-    #     # cleaned,
-    #     dup2s=get_intersections(gdf),
-    #     gdf_cl=gdf,
-    #     # column="ARTYPE",
-    #     mask=to_gdf([11.7427056, 62.133131527], 4326).to_crs(25833).buffer(1000),
-    # )
 
     thin_gaps_and_double = pd.concat([gaps, double]).loc[
         lambda x: x.buffer(-tolerance / 2).is_empty
@@ -213,26 +148,8 @@ def coverage_clean(
             gdf, double, slivers, thin_gaps_and_double, tolerance
         )
 
-        # gaps = pd.concat([gaps, more_gaps], ignore_index=True)
-        # double = pd.concat([double, more_double], ignore_index=True)
     elif not all_are_thin and duplicate_action == "error":
         raise ValueError("Large double surfaces.")
-
-    # x1 = sfilter(
-    #     slivers, to_gdf([6.25326819, 62.60568757], 4326).to_crs(25833).buffer(5)
-    # )
-    # explore(x1, x2=buff(x1, -PRECISION / 2))
-    # print([x.wkt for x in x1.geometry])
-    # explore(
-    #     gdf,
-    #     slivers,
-    #     thin_gaps_and_double,
-    #     to_el=pd.concat([thin_gaps_and_double, slivers], ignore_index=True).loc[
-    #         lambda x: ~x.buffer(-PRECISION / 10).is_empty
-    #     ],
-    #     to_el2=pd.concat([thin_gaps_and_double, slivers], ignore_index=True),
-    #     mask=to_gdf([6.25326819, 62.60568757], 4326).to_crs(25833).buffer(100),
-    # )
 
     to_eliminate = pd.concat([thin_gaps_and_double, slivers], ignore_index=True)
     to_eliminate.geometry = shapely.simplify(to_eliminate.geometry, PRECISION)
@@ -267,30 +184,6 @@ def coverage_clean(
     joined = to_eliminate.sjoin(gdf_geoms_idx, how="left")
     isolated = joined[lambda x: x["_poly_idx"].isna()]
     intersecting = joined[lambda x: x["_poly_idx"].notna()]
-
-    # explore(
-    #     # without_double,
-    #     # not_really_isolated,
-    #     # really_isolated,
-    #     isolated,
-    #     intersecting,
-    #     to_eliminate,
-    #     # cleaned,
-    #     gdf_cl=gdf,
-    #     # column="ARTYPE",
-    #     mask=to_gdf([11.7427056, 62.133131527], 4326).to_crs(25833).buffer(1000),
-    # )
-
-    # from ..maps.maps import explore
-    # from .conversion import to_gdf
-
-    # explore(
-    #     joined,
-    #     isolated,
-    #     to_eliminate,
-    #     gdf,
-    #     mask=to_gdf([6.25326819, 62.60568757], 4326).to_crs(25833).buffer(100),
-    # )
 
     poly_idx_mapper: pd.Series = (
         clean_overlay(
@@ -332,26 +225,6 @@ def coverage_clean(
     really_isolated["_poly_idx"] = (
         really_isolated["_cluster"] + gdf["_poly_idx"].max() + 1
     )
-
-    # # dissolve overlapping isolated
-    # _, _, isolated = get_polygon_clusters(
-    #     gdf, without_double, isolated, cluster_col="_cluster"
-    # )
-    # # isolated["_cluster"] = get_cluster_mapper(isolated.buffer(PRECISION))
-
-    # isolated["_poly_idx"] = (
-    #     isolated["_cluster"]
-    #     + max(gdf["_poly_idx"].max(), without_double["_poly_idx"].max())
-    #     + 1
-    # )
-    # isolated = isolated.drop(
-    #     columns=[
-    #         "_double_idx",
-    #         "_eliminate_idx",
-    #         "_cluster",
-    #         "index_right",
-    #     ]
-    # )
 
     for i, grid_size in enumerate(grid_sizes):
         try:
@@ -399,30 +272,6 @@ def coverage_clean(
                 )
                 raise e
 
-    #     from ..maps.maps import explore
-    #     from .conversion import to_gdf
-    #     explore(
-    #         slivers,
-    #         gdf,
-    #         cleaned,
-    #         joined,
-    #         isolated,
-    #         without_double,
-    #         cleaned_d=get_intersections(cleaned),
-    #         isolatedd=get_intersections(isolated),
-    #         without_doubled=get_intersections(without_double),
-    #         mask=to_gdf([4.70993435, 60.76502035
-    # ], 4326)
-    #                     .to_crs(25833)
-    #                     .buffer(30),
-    #                 )
-
-    # isolated["_cluster"] = get_cluster_mapper(isolated)  # component_mapper
-    # isolated = dissexp_by_cluster(sort_large_first(isolated), by=list(isolated.columns.difference(isolated._geometry_column_name)))
-
-    # if logger:
-    #     logger.debug("cleaned1", get_intersections(cleaned).area.sum())
-
     missing_indices: pd.Index = sfilter_inverse(
         gdf.representative_point(), cleaned
     ).index
@@ -433,25 +282,6 @@ def coverage_clean(
         how="difference",
         geom_type="polygon",
     )
-
-    # explore(
-    #     without_double,
-    #     not_really_isolated,
-    #     really_isolated,
-    #     isolated,
-    #     intersecting,
-    #     missing,
-    #     gdf_cl=gdf,
-    #     mask=to_gdf([6.25326819, 62.60568757], 4326).to_crs(25833).buffer(100),
-    # )
-
-    # if logger:
-    #     logger.debug(
-    #         "cleaned2",
-    #         get_intersections(
-    #             pd.concat([cleaned, missing], ignore_index=True)
-    #         ).area.sum(),
-    #     )
 
     cleaned = pd.concat([cleaned, missing], ignore_index=True)
     cleaned.geometry = shapely.make_valid(shapely.simplify(cleaned.geometry, PRECISION))
@@ -486,16 +316,7 @@ def split_spiky_polygons(
         points = df.copy()
         points.geometry = extract_unique_points(points.geometry)
         points = points.explode(index_parts=False)
-
-        # coords, indices = shapely.get_coordinates(df.geometry, return_index=True)
-        # points = GeoDataFrame(
-        #     {
-        #         "geometry": GeoSeries(shapely.points(coords), index=indices),
-        #     },
-        #     crs=df.crs,
-        # )
         points["_idx"] = range(len(points))
-        # points["_ring_idx"] = indices
 
         not_spikes = points.sjoin(donuts_around_polygons).loc[
             lambda x: x["_ring_idx"] == x["index_right"]
@@ -511,18 +332,6 @@ def split_spiky_polygons(
         )
 
         missing = df[~df["_ring_idx"].isin(without_spikes.index)].geometry
-
-        # missing.loc[lambda x: x.buffer(-tolerance / 2).is_empty] = None
-
-        # from ..maps.maps import explore
-        # from .conversion import to_gdf
-
-        # explore(
-        #     without_spikes0hee=without_spikes,
-        #     missing0=missing,
-        #     can_be_polygons=can_be_polygons,
-        #     mask=to_gdf([6.2532728, 62.605688], 4326).to_crs(25833).buffer(20),
-        # )
 
         return pd.concat([without_spikes, missing]).sort_index()
 
@@ -545,63 +354,12 @@ def split_spiky_polygons(
         ]
     )
 
-    # from .conversion import to_gdf
-    # from ..maps.maps import explore
-
-    # explore(
-    #     polygons_without_spikes,
-    #     donuts_around_polygons,
-    #     gdf1=(gdf),
-    #     without_spikes1=without_spikes,
-    # )
-
-    # def try_for_grid_sizes(func):
-    #     for i, grid_size in enumerate(grid_sizes):
-    #         try:
-    #             return func(grid_size=grid_size)
-    #         except GEOSException as e:
-    #             if i == len(grid_sizes) - 1:
-    #                 raise e
-
-    # without_spikes = try_for_grid_sizes(
-    #     lambda grid_size: update_geometries(
-    #         sort_small_first(without_spikes), grid_size=grid_size, geom_type="polygon"
-    #     )
-    # )
-    # without_spikes = try_for_grid_sizes(
-    #     lambda grid_size: update_geometries(
-    #         sort_small_first(without_spikes), grid_size=grid_size, geom_type="polygon"
-    #     )
-    # )
-    # return try_for_grid_sizes(
-    #     lambda grid_size: clean_overlay(
-    #         gdf, without_spikes, how="identity", grid_size=grid_size
-    #     )
-    # )
-
-    # without_spikes = update_geometries(
-    #     sort_small_first(without_spikes), geom_type="polygon"
-    # )
-
-    # put the spikes on top
-    # without_spikes = coverage_clean(
-    #     sort_small_first(without_spikes),
-    #     tolerance=tolerance,
-    #     spike_action="ignore",
-    #     grid_sizes=grid_sizes,
-    # )
     for _ in range(2):
         for i, grid_size in enumerate(grid_sizes):
             try:
                 without_spikes = update_geometries(
                     sort_small_first(without_spikes), geom_type="polygon"
                 )
-                # without_spikes = coverage_clean(
-                #     sort_small_first(without_spikes),
-                #     tolerance=tolerance,
-                #     spike_action="ignore",
-                #     grid_sizes=grid_sizes,
-                # )
                 break
             except GEOSException as e:
                 if i == len(grid_sizes) - 1:
@@ -609,79 +367,12 @@ def split_spiky_polygons(
 
     for i, grid_size in enumerate(grid_sizes):
         try:
-            # explore(
-            #     # polygons_without_spikes,
-            #     # donuts_around_polygons,
-            #     # gdf1=(gdf),
-            #     # without_spikes1=without_spikes,
-            #     **{"without_spikes_upd" + str(_): without_spikes},
-            #     identityed=clean_overlay(
-            #             gdf, without_spikes, how="identity", grid_size=grid_size
-            #         ),
-            #     mask=to_gdf([6.25327192, 62.60568806], 4326).to_crs(25833).buffer(50),
-            # )
             return clean_overlay(
                 gdf, without_spikes, how="identity", grid_size=grid_size
             )
         except GEOSException as e:
             if i == len(grid_sizes) - 1:
                 raise e
-
-    #     explore(
-    #         **{f"without_spikes_grid{grid_size}": without_spikes},
-    #         mask=to_gdf([4.70993435, 60.76502035], 4326).to_crs(25833).buffer(50),
-    #     )
-    # # if without_spikes.area.sum() <= gdf.area.sum() - tolerance:
-    #     return clean_overlay(gdf, without_spikes, how="identity")
-
-    # duplicates = get_intersections(without_spikes).loc[
-    #     lambda x: ~x.buffer(-PRECISION * 10).is_empty
-    # ]
-
-    # explore(
-    #     gdf2=(gdf),
-    #     without_spikes2=without_spikes,
-    #     duplicates2=duplicates,
-    #     mask=to_gdf([8.00822745, 58.27210215], 4326).to_crs(25833).buffer(100),
-    # )
-    # from ..maps.maps import explore
-    # from .conversion import to_gdf
-
-    # explore(
-    #     gdf=(gdf),
-    #     without_spikes=(without_spikes),
-    #     donuts_around_polygons=(donuts_around_polygons),
-    #     polygons_without_spikes=(polygons_without_spikes),
-    #     mask=to_gdf([4.72034128, 60.75264796], 4326).to_crs(25833).buffer(30),
-    # )
-
-    # if len(
-    #     duplicates := get_intersections(without_spikes).loc[
-    #         lambda x: ~x.buffer(-PRECISION * 10).is_empty
-    #     ]
-    # ):
-    #     from ..maps.maps import explore
-
-    #     new_duplicates = clean_overlay(
-    #         without_spikes,
-    #         duplicates,
-    #         how="difference",
-    #         geom_type="polygon",
-    #     )
-    #     print(new_duplicates)
-
-    #     if len(new_duplicates.loc[lambda x: ~x.buffer(-PRECISION * 10).is_empty]):
-    #         explore(
-    #             gdf3=(gdf),
-    #             without_spikes3=(without_spikes),
-    #             new_duplicate3s=new_duplicates,
-    #             duplicat3es=(duplicates),
-    #         )
-    #         raise ValueError(
-    #             "duplicates", new_duplicates.area.sum(), new_duplicates.area.max()
-    #         )
-
-    # return clean_overlay(gdf, without_spikes, how="identity")
 
 
 def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
@@ -720,13 +411,6 @@ def _remove_spikes(
 
     points = get_angle_between_indexed_points(points)
 
-    indices_with_spikes = points[
-        lambda x: (x["angle_diff"] >= 180) & (x["angle_diff"] < 180.01)
-    ].index.unique()
-
-    rings_with_spikes = geoms  # [geoms.index.isin(indices_with_spikes)]
-    # rings_without_spikes = geoms[~geoms.index.isin(indices_with_spikes)]
-
     def to_buffered_rings_without_spikes(x):
         polys = GeoSeries(make_valid(polygons(get_exterior_ring(x))))
 
@@ -739,11 +423,11 @@ def _remove_spikes(
         )
 
     buffered = to_buffered_rings_without_spikes(
-        rings_with_spikes.buffer(tolerance / 2, resolution=BUFFER_RES)
+        geoms.buffer(tolerance / 2, resolution=BUFFER_RES)
     )
 
     points_without_spikes = (
-        extract_unique_points(rings_with_spikes)
+        extract_unique_points(geoms)
         .explode(index_parts=False)
         .loc[lambda x: x.index.isin(sfilter(x, buffered).index)]
     )
@@ -767,7 +451,6 @@ def _remove_spikes(
         ),
         index=points_without_spikes.index.unique(),
     )
-    # as_lines = pd.concat([as_lines, rings_without_spikes])
 
     # the missing polygons are thin and/or spiky. Let's remove them
     missing = geoms.loc[~geoms.index.isin(as_lines.index)]
@@ -823,31 +506,6 @@ def _properly_fix_duplicates(gdf, double, slivers, thin_gaps_and_double, toleran
 
     return gdf, thin_gaps_and_double, slivers
 
-    for _ in range(3):
-        gdf = _dissolve_thick_double_and_update(gdf, double, thin_gaps_and_double)
-        gdf, more_slivers = split_out_slivers(gdf, tolerance)
-        slivers = pd.concat([slivers, more_slivers], ignore_index=True)
-        gaps = get_gaps(gdf, include_interiors=True)
-        assert "_double_idx" not in gaps
-        double = get_intersections(gdf)
-        double["_double_idx"] = range(len(double))
-        thin_gaps_and_double = pd.concat([gaps, double], ignore_index=True).loc[
-            lambda x: x.buffer(-tolerance / 2).is_empty
-        ]
-        all_are_thin = (
-            double["_double_idx"].isin(thin_gaps_and_double["_double_idx"]).all()
-        )
-        if all_are_thin:
-            return gdf, thin_gaps_and_double, slivers
-
-    not_thin = double[
-        lambda x: ~x["_double_idx"].isin(thin_gaps_and_double["_double_idx"])
-    ]
-    raise ValueError(
-        "Failed to properly fix thick double surfaces",
-        [x.wkt for x in not_thin.geometry],
-    )
-
 
 def _dissolve_thick_double_and_update(gdf, double, thin_double):
     large = (
@@ -873,8 +531,6 @@ def _cleaning_checks(gdf, tolerance, duplicate_action):  # , spike_action):
         )
     if duplicate_action not in ["fix", "error", "ignore"]:
         raise ValueError("duplicate_action must be 'fix', 'error' or 'ignore'")
-    # if spike_action not in ["fix", "try", "ignore"]:
-    #     raise ValueError("duplicate_action must be 'fix', 'try' or 'ignore'")
 
 
 def split_out_slivers(
@@ -914,17 +570,6 @@ def split_by_neighbors(df, split_by, tolerance):
 
     buffered = buff(extended_lines, tolerance, single_sided=True)
 
-    from ..maps.maps import explore
-    from .conversion import to_gdf
-
-    explore(
-        df,
-        intersecting_lines,
-        extended_lines,
-        buffered,
-        endpoints=endpoints.to_frame(),
-        mask=to_gdf([4.69931532, 60.777209065], 4326).to_crs(25833).buffer(10),
-    )
     return clean_overlay(df, buffered, how="identity")
 
 
