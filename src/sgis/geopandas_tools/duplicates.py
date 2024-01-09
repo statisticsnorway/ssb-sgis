@@ -1,19 +1,9 @@
 from collections.abc import Iterable
 
 import networkx as nx
-import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from shapely import (
-    STRtree,
-    difference,
-    intersection,
-    is_valid,
-    make_valid,
-    unary_union,
-    union,
-)
-from shapely.errors import GEOSException
+from shapely import STRtree, difference, make_valid, unary_union
 
 from .general import _determine_geom_type_args, _push_geom_col, clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
