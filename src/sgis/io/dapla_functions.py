@@ -80,7 +80,7 @@ def write_geopandas(
     gcs_path: str | Path,
     overwrite: bool = True,
     pandas_fallback: bool = False,
-    fs: dp.gcs.GCSFileSystem | None = None,
+    fs: Optional[dp.gcs.GCSFileSystem] = None,
     **kwargs,
 ) -> None:
     """Writes a GeoDataFrame to the speficied format.
