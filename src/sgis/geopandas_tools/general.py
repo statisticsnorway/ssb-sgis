@@ -441,10 +441,15 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
 
 def random_points_in_polygons(gdf: GeoDataFrame, n: int) -> GeoDataFrame:
     all_points = []
+
+    rng = np.random.default_rng()
+
     for i, geom in enumerate(gdf.geometry):
         minx, miny, maxx, maxy = geom.bounds
-        xs = np.random.uniform(minx, maxx, size=n * 500)
-        ys = np.random.uniform(miny, maxy, size=n * 500)
+
+        xs = rng.uniform(minx, maxx, size=n * 500)
+        ys = rng.uniform(miny, maxy, size=n * 500)
+
         points = GeoSeries(shapely_points(xs, y=ys), index=[i] * len(xs))
         all_points.append(points)
 
