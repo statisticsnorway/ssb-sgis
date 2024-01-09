@@ -14,7 +14,9 @@ for the following:
 - The buff function returns a GeoDataFrame, the geopandas method returns a GeoSeries.
 """
 
+import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
+from shapely import make_valid, unary_union
 
 from .general import _push_geom_col
 from .geometry_types import make_all_singlepart
@@ -46,6 +48,7 @@ def buffdissexp(
     resolution: int = 50,
     index_parts: bool = False,
     copy: bool = True,
+    grid_size: float | int | None = None,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Buffers and dissolves overlapping geometries.
@@ -75,6 +78,7 @@ def buffdissexp(
         distance,
         resolution=resolution,
         copy=copy,
+        grid_size=grid_size,
         **dissolve_kwargs,
     )
 
@@ -159,11 +163,54 @@ def buffdiss(
     """
     buffered = buff(gdf, distance, resolution=resolution, copy=copy)
 
+    return _dissolve(buffered, **dissolve_kwargs)
     dissolved = buffered.dissolve(**dissolve_kwargs)
 
     dissolved[gdf._geometry_column_name] = dissolved.make_valid()
 
     return dissolved
+
+
+def _dissolve(gdf, aggfunc="first", grid_size=None, **dissolve_kwargs):
+    geom_col = gdf._geometry_column_name
+    if grid_size is None:
+        dissolved = gdf.dissolve(aggfunc=aggfunc, **dissolve_kwargs)
+
+        dissolved[geom_col] = dissolved.make_valid()
+        return dissolved
+
+    def merge_geometries(x):
+        return make_valid(unary_union(x, grid_size=grid_size))
+
+    geom_col = gdf._geometry_column_name
+
+    by = dissolve_kwargs.pop("by", None)
+
+    if by is None and dissolve_kwargs.get("level") is None:
+        by = np.zeros(len(gdf), dtype="int64")
+        other_cols = list(gdf.columns.difference({geom_col}))
+    else:
+        if isinstance(by, str):
+            by = [by]
+        other_cols = list(gdf.columns.difference({geom_col} | set(by)))
+
+    dissolved = gdf.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
+    geoms_agged = gdf.groupby(by, **dissolve_kwargs)[geom_col].agg(merge_geometries)
+
+    if not dissolve_kwargs.get("as_index"):
+        try:
+            geoms_agged = geoms_agged[geom_col]
+        except KeyError:
+            pass
+    dissolved[geom_col] = geoms_agged
+
+    # else:
+    #     dissolved = (
+    #         gdf[list(gdf.columns.difference({geom_col}))].agg(aggfunc).reset_index
+    #     )
+    #     dissolved[geom_col] = gdf[geom_col].agg(merge_geometries)
+
+    return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
 
 
 def dissexp(
@@ -172,6 +219,7 @@ def dissexp(
     aggfunc="first",
     as_index: bool = True,
     index_parts: bool = False,
+    grid_size: float | int | None = None,
     **dissolve_kwargs,
 ):
     """Dissolves overlapping geometries.
@@ -191,19 +239,42 @@ def dissexp(
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
-    geom_col = gdf._geometry_column_name
-
     dissolve_kwargs = dissolve_kwargs | {
         "by": by,
-        "aggfunc": aggfunc,
         "as_index": as_index,
     }
 
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
-    dissolved = gdf.dissolve(**dissolve_kwargs)
+    dissolved = _dissolve(gdf, aggfunc=aggfunc, grid_size=grid_size, **dissolve_kwargs)
 
-    dissolved[geom_col] = dissolved.make_valid()
+    return make_all_singlepart(
+        dissolved, ignore_index=ignore_index, index_parts=index_parts
+    )
+
+    if grid_size is not None:
+
+        def merge_geometries(x):
+            return make_valid(unary_union(x, grid_size=grid_size))
+
+        geom_col = gdf._geometry_column_name
+        if by:
+            dissolved = gdf.groupby(**dissolve_kwargs)[
+                list(gdf.columns.difference({geom_col} | set(by)))
+            ].agg(aggfunc)
+            dissolved[geom_col] = gdf.groupby(**dissolve_kwargs)[geom_col].agg(
+                merge_geometries
+            )
+        else:
+            dissolved = gdf[list(gdf.columns.difference({geom_col} | set(by)))].agg(
+                aggfunc
+            )
+            dissolved[geom_col] = gdf[geom_col].agg(merge_geometries)
+        dissolved = GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
+    else:
+        dissolved = gdf.dissolve(aggfunc=aggfunc, **dissolve_kwargs)
+
+        dissolved[geom_col] = dissolved.make_valid()
 
     return make_all_singlepart(
         dissolved, ignore_index=ignore_index, index_parts=index_parts

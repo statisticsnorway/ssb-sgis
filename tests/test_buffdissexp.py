@@ -140,41 +140,48 @@ def test_dissexp(gdf_fixture):
     assert len(dissexped) == 4
 
 
-def test_buffdissexp_index():
+def test_dissexp_grid_size():
+    test_buffdissexp_index(grid_size=1e-4)
+    test_buffdissexp_index(grid_size=1e-2)
+
+
+def test_buffdissexp_index(grid_size=None):
     gdf = sg.to_gdf([(0, 0), (1, 1), (2, 2)]).assign(cat=[*"aab"])
 
     # when not dissolving by column, index should be 0, 1, 2...
-    singlepart = sg.buffdissexp(gdf, 0.1)
+    singlepart = sg.buffdissexp(gdf, 0.1, grid_size=grid_size)
     assert list(singlepart.index) == [0, 1, 2], singlepart
     assert list(singlepart.columns) == ["cat", "geometry"], singlepart
 
     # when by and not as_index, index should be 0, 1, 2...
-    singlepart = sg.buffdissexp(gdf, 0.1, by="cat", as_index=False)
+    singlepart = sg.buffdissexp(gdf, 0.1, by="cat", as_index=False, grid_size=grid_size)
     assert list(singlepart.index) == [0, 1, 2], singlepart
     assert list(singlepart.cat) == [*"aab"], singlepart
     assert list(singlepart.columns) == ["cat", "geometry"], singlepart
 
     # to respect geopandas, only specifying 'by' should give 'by' column as index
-    singlepart = sg.buffdissexp(gdf, 0.1, by="cat")
+    singlepart = sg.buffdissexp(gdf, 0.1, by="cat", grid_size=grid_size)
     assert list(singlepart.index) == [*"aab"], singlepart
     assert list(singlepart.columns) == ["geometry"], singlepart
 
-    singlepart = sg.buffdissexp(gdf[["geometry"]], 0.1)
+    singlepart = sg.buffdissexp(gdf[["geometry"]], 0.1, grid_size=grid_size)
     assert list(singlepart.index) == [0, 1, 2], singlepart
     assert list(singlepart.columns) == ["geometry"], singlepart
 
-    singlepart = sg.buffdissexp(gdf, 1)
+    singlepart = sg.buffdissexp(gdf, 1, grid_size=grid_size)
     assert list(singlepart.index) == [0], singlepart
     assert (list(sorted(singlepart.columns))) == (
         ["cat", "geometry"]
     ), singlepart.columns
 
     # if the index is set, it will be gone after dissolve (same in geopandas)
-    singlepart = sg.buffdissexp(gdf.set_index("cat"), 0.1)
+    singlepart = sg.buffdissexp(gdf.set_index("cat"), 0.1, grid_size=grid_size)
     assert list(singlepart.index) == [0, 1, 2], singlepart
     assert list(singlepart.columns) == ["geometry"], singlepart
 
-    singlepart = sg.buffdissexp(gdf, 0.1, by="cat", ignore_index=True)
+    singlepart = sg.buffdissexp(
+        gdf, 0.1, by="cat", ignore_index=True, grid_size=grid_size
+    )
     assert list(singlepart.index) == [0, 1, 2], singlepart
 
 
@@ -226,6 +233,7 @@ def test_dissexp_index():
 if __name__ == "__main__":
     import cProfile
 
+    test_dissexp_grid_size()
     test_dissexp_by_cluster()
 
     test_dissexp_index()

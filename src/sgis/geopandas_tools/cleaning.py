@@ -61,7 +61,7 @@ def coverage_clean(
     gdf: GeoDataFrame,
     tolerance: int | float,
     duplicate_action: str = "fix",
-    spike_action: str = "ignore",
+    # spike_action: str = "ignore",
     grid_sizes: tuple[None | int] = (
         None,
         # 1e-6,
@@ -103,17 +103,24 @@ def coverage_clean(
 
     """
 
-    _cleaning_checks(gdf, tolerance, duplicate_action, spike_action)
+    _cleaning_checks(gdf, tolerance, duplicate_action)  # , spike_action)
 
     if not gdf.index.is_unique:
         gdf = gdf.reset_index(drop=True)
 
-    gdf = make_all_singlepart(close_thin_holes(gdf, tolerance)).loc[
+    gdf = make_all_singlepart(gdf).loc[
         lambda x: x.geom_type.isin(["Polygon", "MultiPolygon"])
     ]
-    gdf.geometry = shapely.simplify(gdf.geometry, PRECISION)
 
     gdf = clean_geoms(gdf)
+
+    gdf.geometry = shapely.simplify(gdf.geometry, PRECISION)
+
+    gdf = (
+        clean_geoms(gdf)
+        .pipe(make_all_singlepart)
+        .loc[lambda x: x.geom_type.isin(["Polygon", "MultiPolygon"])]
+    )
 
     try:
         gaps = get_gaps(gdf, include_interiors=True)
@@ -124,7 +131,7 @@ def coverage_clean(
                 break
             except GEOSException as e:
                 if i == len(grid_sizes) - 1:
-                    explore_geosexception(gdf, e)
+                    explore_geosexception(e, gdf)
                     raise e
 
     if duplicate_action == "ignore":
@@ -134,16 +141,66 @@ def coverage_clean(
         double = get_intersections(gdf)
         double["_double_idx"] = range(len(double))
 
-    if spike_action != "ignore":
-        try:
-            gdf = split_spiky_polygons(gdf, tolerance=tolerance, grid_sizes=grid_sizes)
-        except GEOSException as e:
-            if spike_action == "fix":
-                raise e.__class__(
-                    e, "Set spike_action='try' to ignore this error message."
-                )
+    # from ..maps.maps import explore
+    # from .conversion import to_gdf
+
+    # explore(
+    #     # without_double,
+    #     # not_really_isolated,
+    #     # really_isolated,
+    #     # isolated,
+    #     # intersecting,
+    #     # to_eliminate,
+    #     # cleaned,
+    #     dups0=get_intersections(gdf),
+    #     gdf_cl=gdf,
+    #     # column="ARTYPE",
+    #     mask=to_gdf([11.7427056, 62.133131527], 4326).to_crs(25833).buffer(1000),
+    # )
+
+    # if spike_action != "ignore":
+    #     try:
+    #         gdf = split_spiky_polygons(gdf, tolerance=tolerance, grid_sizes=grid_sizes)
+    #     except GEOSException as e:
+    #         if spike_action == "fix":
+    #             raise e.__class__(
+    #                 e, "Set spike_action='try' to ignore this error message."
+    #             )
+
+    # from ..maps.maps import explore
+    # from .conversion import to_gdf
+
+    # explore(
+    #     # without_double,
+    #     # not_really_isolated,
+    #     # really_isolated,
+    #     # isolated,
+    #     # intersecting,
+    #     # to_eliminate,
+    #     # cleaned,
+    #     dups1=get_intersections(gdf),
+    #     gdf_cl=gdf,
+    #     # column="ARTYPE",
+    #     mask=to_gdf([11.7427056, 62.133131527], 4326).to_crs(25833).buffer(1000),
+    # )
 
     gdf, slivers = split_out_slivers(gdf, tolerance)
+    # from ..maps.maps import explore
+    # from .conversion import to_gdf
+
+    # explore(
+    #     # without_double,
+    #     # not_really_isolated,
+    #     # really_isolated,
+    #     # isolated,
+    #     # intersecting,
+    #     # to_eliminate,
+    #     # cleaned,
+    #     dup2s=get_intersections(gdf),
+    #     gdf_cl=gdf,
+    #     # column="ARTYPE",
+    #     mask=to_gdf([11.7427056, 62.133131527], 4326).to_crs(25833).buffer(1000),
+    # )
 
     thin_gaps_and_double = pd.concat([gaps, double]).loc[
         lambda x: x.buffer(-tolerance / 2).is_empty
@@ -160,9 +217,6 @@ def coverage_clean(
         # double = pd.concat([double, more_double], ignore_index=True)
     elif not all_are_thin and duplicate_action == "error":
         raise ValueError("Large double surfaces.")
-
-    from ..maps.maps import explore
-    from .conversion import to_gdf
 
     # x1 = sfilter(
     #     slivers, to_gdf([6.25326819, 62.60568757], 4326).to_crs(25833).buffer(5)
@@ -186,9 +240,20 @@ def coverage_clean(
     # eliminate super-thin slivers causing weird geometries
     is_thin = to_eliminate.buffer(-PRECISION).is_empty
     thick, thin = to_eliminate[~is_thin], to_eliminate[is_thin]
-    to_eliminate = eliminate_by_longest(
-        thick, thin, remove_isolated=False, ignore_index=True
-    )
+    for i, grid_size in enumerate(grid_sizes):
+        try:
+            to_eliminate = eliminate_by_longest(
+                thick,
+                thin,
+                remove_isolated=False,
+                ignore_index=True,
+                grid_size=grid_size,
+            )
+            break
+        except GEOSException as e:
+            if i == len(grid_sizes) - 1:
+                explore_geosexception(e, gdf, thick, thin)
+                raise e
 
     to_eliminate = to_eliminate.loc[lambda x: ~x.buffer(-PRECISION / 10).is_empty]
 
@@ -202,6 +267,19 @@ def coverage_clean(
     joined = to_eliminate.sjoin(gdf_geoms_idx, how="left")
     isolated = joined[lambda x: x["_poly_idx"].isna()]
     intersecting = joined[lambda x: x["_poly_idx"].notna()]
+
+    # explore(
+    #     # without_double,
+    #     # not_really_isolated,
+    #     # really_isolated,
+    #     isolated,
+    #     intersecting,
+    #     to_eliminate,
+    #     # cleaned,
+    #     gdf_cl=gdf,
+    #     # column="ARTYPE",
+    #     mask=to_gdf([11.7427056, 62.133131527], 4326).to_crs(25833).buffer(1000),
+    # )
 
     # from ..maps.maps import explore
     # from .conversion import to_gdf
@@ -237,7 +315,7 @@ def coverage_clean(
                 intersecting.geometry, PRECISION * (10 * i + 1)
             )
             if i == len(grid_sizes) - 1:
-                explore_geosexception(gdf, e)
+                explore_geosexception(e, gdf, intersecting, isolated)
                 raise e
 
     not_really_isolated = isolated.drop(
@@ -275,35 +353,33 @@ def coverage_clean(
     #     ]
     # )
 
-    # from ..maps.maps import explore
-    # from .conversion import to_gdf
-
-    # explore(
-    #     without_double,
-    #     not_really_isolated,
-    #     really_isolated,
-    #     isolated,
-    #     intersecting,
-    #     to_eliminate,
-    #     gdf_cl=gdf,
-    #     column="_poly_idx",
-    #     mask=to_gdf([6.25326819, 62.60568757], 4326).to_crs(25833).buffer(100),
-    # )
-
-    cleaned = (
-        dissexp(
-            pd.concat([gdf, without_double, isolated, really_isolated]).drop(
-                columns=["_cluster", "_eliminate_idx", "index_right", "_double_idx"],
-                errors="ignore",
-            ),
-            by="_poly_idx",
-            aggfunc="first",
-            dropna=False,
-        )
-        .sort_index()
-        .reset_index(drop=True)
-        # .loc[lambda x: ~x.buffer(-PRECISION / 10).is_empty]
-    )
+    for i, grid_size in enumerate(grid_sizes):
+        try:
+            cleaned = (
+                dissexp(
+                    pd.concat([gdf, without_double, isolated, really_isolated]).drop(
+                        columns=[
+                            "_cluster",
+                            "_eliminate_idx",
+                            "index_right",
+                            "_double_idx",
+                        ],
+                        errors="ignore",
+                    ),
+                    by="_poly_idx",
+                    aggfunc="first",
+                    dropna=True,
+                    grid_size=grid_size,
+                )
+                .sort_index()
+                .reset_index(drop=True)
+                # .loc[lambda x: ~x.buffer(-PRECISION / 10).is_empty]
+            )
+            break
+        except GEOSException as e:
+            if i == len(grid_sizes) - 1:
+                explore_geosexception(e, gdf, without_double, isolated, really_isolated)
+                raise e
 
     cleaned.geometry = shapely.make_valid(shapely.simplify(cleaned.geometry, PRECISION))
 
@@ -318,7 +394,9 @@ def coverage_clean(
                 cleaned.geometry, PRECISION * (10 * i + 1)
             )
             if i == len(grid_sizes) - 1:
-                explore_geosexception(gdf, e)
+                explore_geosexception(
+                    e, gdf, cleaned, without_double, isolated, really_isolated
+                )
                 raise e
 
     #     from ..maps.maps import explore
@@ -387,10 +465,7 @@ def split_spiky_polygons(
     if not len(gdf):
         return gdf
 
-    if get_geom_type(gdf) != "polygon":
-        raise ValueError("Geometries must be polygons.")
-
-    gdf = make_all_singlepart(gdf)
+    gdf = to_single_geom_type(make_all_singlepart(gdf), "polygon")
 
     if not gdf.index.is_unique:
         gdf = gdf.reset_index(drop=True)
@@ -788,11 +863,9 @@ def _dissolve_thick_double_and_update(gdf, double, thin_double):
     )
 
 
-def _cleaning_checks(gdf, tolerance, duplicate_action, spike_action):
+def _cleaning_checks(gdf, tolerance, duplicate_action):  # , spike_action):
     if not len(gdf) or not tolerance:
         return gdf
-    if get_geom_type(gdf) != "polygon":
-        raise ValueError("Must be polygons.")
     if tolerance < PRECISION:
         raise ValueError(
             f"'tolerance' must be larger than {PRECISION} to avoid "
@@ -800,8 +873,8 @@ def _cleaning_checks(gdf, tolerance, duplicate_action, spike_action):
         )
     if duplicate_action not in ["fix", "error", "ignore"]:
         raise ValueError("duplicate_action must be 'fix', 'error' or 'ignore'")
-    if spike_action not in ["fix", "try", "ignore"]:
-        raise ValueError("duplicate_action must be 'fix', 'try' or 'ignore'")
+    # if spike_action not in ["fix", "try", "ignore"]:
+    #     raise ValueError("duplicate_action must be 'fix', 'try' or 'ignore'")
 
 
 def split_out_slivers(
@@ -949,16 +1022,16 @@ def multipoints_to_line_segments(multipoints: GeoSeries) -> GeoDataFrame:
     return GeoDataFrame(point_df.drop(columns=["next"]), geometry="geometry", crs=crs)
 
 
-def explore_geosexception(gdf, e: GEOSException):
+def explore_geosexception(e: GEOSException, *gdfs):
     from ..maps.maps import explore
     from .conversion import to_gdf
 
     pattern = r"(\d+\.\d+)\s+(\d+\.\d+)"
     matches = re.findall(pattern, str(e))
     coords_in_error_message = [(float(match[0]), float(match[1])) for match in matches]
-    exception_point = to_gdf(coords_in_error_message, crs=gdf.crs)
+    exception_point = to_gdf(coords_in_error_message, crs=gdfs[0].crs)
     if len(exception_point):
         exception_point["wkt"] = exception_point.to_wkt()
-        explore(gdf, exception_point, mask=exception_point.buffer(100))
+        explore(exception_point, *gdfs, mask=exception_point.buffer(100))
     else:
-        explore(gdf)
+        explore(*gdfs)

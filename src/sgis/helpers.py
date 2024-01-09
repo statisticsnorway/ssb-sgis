@@ -219,6 +219,14 @@ def sort_nans_last(df, ignore_index: bool = False):
     return df.reset_index(drop=True) if ignore_index else df
 
 
+def is_number(text) -> bool:
+    try:
+        float(text)
+        return True
+    except ValueError:
+        return False
+
+
 class LocalFunctionError(ValueError):
     def __init__(self, func: str):
         self.func = func.__name__
