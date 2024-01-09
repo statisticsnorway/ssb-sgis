@@ -203,6 +203,7 @@ class Raster(RasterBase):
 
         self.root = kwargs.pop("root", None)
 
+        # TODO fix
         self._hash = uuid.uuid4()
 
         # override the above with kwargs
@@ -731,10 +732,10 @@ class Raster(RasterBase):
 
         return self
 
-    def get_coords(self):
-        # TODO: droppe
-        self.check_for_array()
-        return _generate_spatial_coords(self.transform, self.width, self.height)
+    # def get_coords(self):
+    #     # TODO: droppe
+    #     self.check_for_array()
+    #     return _generate_spatial_coords(self.transform, self.width, self.height)
 
     @property
     def subfolder(self):

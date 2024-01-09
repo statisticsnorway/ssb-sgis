@@ -31,9 +31,8 @@ try:
     from ..io.dapla import check_files, read_geopandas, write_geopandas
 except ImportError:
     pass
-from .base import get_index_mapper
+from .base import RasterBase, get_index_mapper
 from .cubebase import (
-    CubeBase,
     _add,
     _floordiv,
     _from_gdf_func,
@@ -48,10 +47,8 @@ from .cubebase import (
     _write_func,
     intersection_base,
 )
-from .cubepool import CubePool
 from .elevationraster import ElevationRaster
 from .explode import explode
-from .indices import ndvi_formula
 from .merge import cube_merge, merge_by_bounds
 from .sample import RandomCubeSample
 from .sentinel import Sentinel2
@@ -67,7 +64,7 @@ CANON_RASTER_TYPES = {
 CUBE_DF_NAME = "cube_df.parquet"
 
 
-class GeoDataCube(CubeBase):
+class GeoDataCube(RasterBase):
     """Raster data stored in a DataFrame.
 
     Examples
@@ -414,10 +411,6 @@ class GeoDataCube(CubeBase):
         cube.df["raster"] = cube.run_raster_method("gradient", degrees=degrees)
         return cube
 
-    # def pool(self, processes: int, copy: bool = True) -> CubePool:
-    #     cube = self.copy() if copy else self
-    #     return CubePool(cube, processes=processes)
-
     def array_map(self, func: Callable, **kwargs):
         """Maps each raster array to a function.
 
@@ -465,15 +458,6 @@ class GeoDataCube(CubeBase):
             cubes.append(cube)
 
         return concat_cubes(cubes, ignore_index=True)
-
-    def ndvi(self, band_name_red, band_name_nir, copy=True):
-        return self._index_calc(
-            band_name1=band_name_red,
-            band_name2=band_name_nir,
-            index_formula=ndvi_formula,
-            index_name="ndvi",
-            copy=copy,
-        )
 
     def sample(self, n=1, buffer=1000, mask=None, **kwargs):
         return RandomCubeSample(self, n=n, buffer=buffer, mask=mask, **kwargs)
@@ -907,6 +891,91 @@ class GeoDataCube(CubeBase):
         for col in ["raster", "band_index"]:
             if df[col].isna().any():
                 raise ValueError(f"Column {col!r} cannot have missing values.")
+
+    def calculate_index(
+        self,
+        index_func: Callable,
+        band_name1,
+        band_name2,
+        # index_name: str,
+        copy=True,
+    ):
+        cube = self.copy() if copy else self
+
+        raster_pairs: list[tuple[Raster, Raster]] = get_raster_pairs(
+            cube, band_name1=band_name1, band_name2=band_name2
+        )
+
+        index_calc = functools.partial(
+            index_calc_pair, index_formula=index_formula, index_name=index_name
+        )
+
+        rasters = [index_calc(items) for items in raster_pairs]
+
+        return cube.__class__(rasters)
+
+    def clip_base(self, mask):
+        if (
+            hasattr(mask, "crs")
+            and mask.crs
+            and not pyproj.CRS(self.crs).equals(pyproj.CRS(mask.crs))
+        ):
+            raise ValueError("crs mismatch.")
+
+        # first remove rows not within mask
+        self._df = self._df.loc[self.boxes.intersects(to_shapely(mask))]
+
+        return self
+
+    def assign_datadict_to_rasters(self):
+        for raster, (_, row) in zip(self.df["raster"], self.df.iterrows()):
+            raster._datadict = row.drop("raster").to_dict()
+
+        return self
+
+    def write_base(self, subfolder_col, filename, root):
+        if self._chain is None:
+            self.check_for_array()
+
+        if self.df["name"].isna().any():
+            raise ValueError(
+                "Cannot have missing values in 'name' column when writing."
+            )
+
+        if self.df["name"].duplicated().any():
+            raise ValueError("Cannot have duplicate names when writing files.")
+
+        self.validate_self_df(self.df)
+
+        if subfolder_col:
+            for raster, folder in zip(self.df["raster"], self.df[subfolder_col]):
+                raster._out_folder = str(Path(root) / Path(folder))
+        else:
+            for raster in self.df["raster"]:
+                raster._out_folder = str(Path(root))
+
+        if filename in self.BASE_CUBE_COLS:
+            return self
+
+        for raster, name in zip(self.df["raster"], self.df[filename]):
+            raster._filename = name
+
+        return self
+
+    def zonal_func(self, poly_iter, array_func, aggfunc, func_names):
+        i, polygon = poly_iter
+        clipped = self.clipmerge(polygon)
+        assert len(clipped) == 1
+        array = clipped[0].array
+        if array_func:
+            array = array_func(array)
+        flat_array = array.flatten()
+        no_nans = flat_array[~np.isnan(flat_array)]
+        data = {}
+        for f, name in zip(aggfunc, func_names, strict=True):
+            num = f(no_nans)
+            data[name] = num
+        return pd.DataFrame(data, index=[i])
 
     @classmethod
     def get_cube_template(cls) -> DataFrame:
