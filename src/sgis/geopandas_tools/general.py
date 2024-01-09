@@ -439,10 +439,10 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     )
 
 
-def random_points_in_polygons(gdf: GeoDataFrame, n: int) -> GeoDataFrame:
+def random_points_in_polygons(gdf: GeoDataFrame, n: int, seed=None) -> GeoDataFrame:
     all_points = []
 
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
 
     for i, geom in enumerate(gdf.geometry):
         minx, miny, maxx, maxy = geom.bounds
