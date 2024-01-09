@@ -19,6 +19,7 @@ from shapely import (
     linestrings,
     make_valid,
 )
+from shapely import points as shapely_points
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
@@ -304,7 +305,7 @@ def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
         gdf: A GeoDataFrame or GeoSeries.
 
     Returns:
-        A GeoDataFrame or GeoSeries sorted from large to small in length.
+        A GeoDataFrame or GeoSeries sorted from long to short in length.
     """
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
@@ -313,6 +314,39 @@ def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
         reversed(sorted(length_mapper.items(), key=lambda item: item[1]))
     )
     return gdf.iloc[list(sorted_lengths)]
+
+
+def sort_short_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
+    """Sort GeoDataFrame by length in ascending order.
+
+    Args:
+        gdf: A GeoDataFrame or GeoSeries.
+
+    Returns:
+        A GeoDataFrame or GeoSeries sorted from short to long in length.
+    """
+    # using enumerate, then iloc on the sorted dict keys.
+    # to avoid creating a temporary area column (which doesn't work for GeoSeries).
+    length_mapper = dict(enumerate(gdf.length.values))
+    sorted_lengths = dict(sorted(length_mapper.items(), key=lambda item: item[1]))
+    return gdf.iloc[list(sorted_lengths)]
+
+
+def sort_small_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
+    """Sort GeoDataFrame by area in ascending order.
+
+    Args:
+        gdf: A GeoDataFrame or GeoSeries.
+
+    Returns:
+        A GeoDataFrame or GeoSeries sorted from small to large in area.
+
+    """
+    # using enumerate, then iloc on the sorted dict keys.
+    # to avoid creating a temporary area column (which doesn't work for GeoSeries).
+    area_mapper = dict(enumerate(gdf.area.values))
+    sorted_areas = dict(sorted(area_mapper.items(), key=lambda item: item[1]))
+    return gdf.iloc[list(sorted_areas)]
 
 
 def make_lines_between_points(
@@ -402,6 +436,23 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
 
     return GeoDataFrame(
         (Point(x, y) for x, y in zip(x, y, strict=True)), columns=["geometry"]
+    )
+
+
+def random_points_in_polygons(gdf: GeoDataFrame, n: int) -> GeoDataFrame:
+    all_points = []
+    for i, geom in enumerate(gdf.geometry):
+        minx, miny, maxx, maxy = geom.bounds
+        xs = np.random.uniform(minx, maxx, size=n * 500)
+        ys = np.random.uniform(miny, maxy, size=n * 500)
+        points = GeoSeries(shapely_points(xs, y=ys), index=[i] * len(xs))
+        all_points.append(points)
+
+    return (
+        pd.concat(all_points)
+        .loc[lambda x: x.intersects(gdf.geometry)]
+        .groupby(level=0)
+        .head(n)
     )
 
 
@@ -527,7 +578,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 def clean_clip(
     gdf: GeoDataFrame | GeoSeries,
     mask: GeoDataFrame | GeoSeries | Geometry,
-    keep_geom_type: bool = True,
+    keep_geom_type: bool | None = None,
     geom_type: str | None = None,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries:
@@ -540,6 +591,12 @@ def clean_clip(
     Args:
         gdf: GeoDataFrame or GeoSeries to be clipped
         mask: the geometry to clip gdf
+        geom_type: Optionally specify what geometry type to keep.,
+            if there are mixed geometry types. Must be either "polygon",
+            "line" or "point".
+        keep_geom_type: Defaults to None, meaning True if 'geom_type' is given
+            and True if the geometries are single-typed and False if the geometries
+            are mixed.
         **kwargs: Keyword arguments passed to geopandas.GeoDataFrame.clip
 
     Returns:
@@ -551,12 +608,9 @@ def clean_clip(
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
-    if geom_type is None and keep_geom_type:
-        geom_type = get_geom_type(gdf)
-        if geom_type == "mixed":
-            raise ValueError(
-                "Mixed geometry types is not allowed when keep_geom_type is True."
-            )
+    gdf, geom_type, keep_geom_type = _determine_geom_type_args(
+        gdf, geom_type, keep_geom_type
+    )
 
     try:
         gdf = gdf.clip(mask, **kwargs).pipe(clean_geoms)
@@ -569,7 +623,26 @@ def clean_clip(
 
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
 
-    if geom_type is not None or keep_geom_type:
+    if keep_geom_type:
         gdf = to_single_geom_type(gdf, geom_type)
 
     return gdf
+
+
+def _determine_geom_type_args(
+    gdf: GeoDataFrame, geom_type: str | None, keep_geom_type: bool | None
+) -> tuple[GeoDataFrame, str, bool]:
+    if geom_type:
+        gdf = to_single_geom_type(gdf, geom_type)
+        keep_geom_type = True
+    elif keep_geom_type is None:
+        geom_type = get_geom_type(gdf)
+        if geom_type == "mixed":
+            keep_geom_type = False
+        else:
+            keep_geom_type = True
+    elif keep_geom_type:
+        geom_type = get_geom_type(gdf)
+        if geom_type == "mixed":
+            raise ValueError("Cannot set keep_geom_type=True with mixed geometries")
+    return gdf, geom_type, keep_geom_type
