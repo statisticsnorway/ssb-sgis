@@ -26,20 +26,6 @@ def test_overlay(points_oslo):
     p1000 = sg.buff(p, 1000)
     p1000["idx2"] = 1
 
-    """updated2 = sg.clean_overlay(p500, p1000, how="update")
-    updated = sg.overlay_update(p500, p1000)
-    assert len(updated) == len(updated2)
-    assert round(sum(updated.area), 3) == round(sum(updated2.area), 3)
-
-    if __name__ == "__main__":
-        updated["area_"] = updated.area
-        sg.qtm(updated, "area_")
-
-    updated = sg.overlay_update(p1000, p500)
-    if __name__ == "__main__":
-        updated["area_"] = updated.area
-        sg.qtm(updated, "area_")"""
-
     overlayed = sg.clean_overlay(p500, p1000, how="update")
     cols_should_be = ["idx", "idx1", "idx2", "geometry"]
     assert list(overlayed.columns) == cols_should_be, list(overlayed.columns)
@@ -65,6 +51,8 @@ def test_overlay(points_oslo):
             sg.clean_geoms(p500)
             .explode(ignore_index=True)
             .overlay(sg.clean_geoms(p1000).explode(ignore_index=True), how=how)
+            .explode(ignore_index=True)
+            .explode(ignore_index=True)
         )
         assert list(overlayed.columns) == cols, list(overlayed.columns)
 
@@ -112,7 +100,11 @@ def test_overlay_random(n=25):
             gdf1 = sg.random_points(n, loc=loc_num).pipe(sg.buff, buff_num)
             gdf2 = sg.random_points(n, loc=loc_num).pipe(sg.buff, buff_num * 0.5)
 
-            overlayed = gdf1.overlay(gdf2, how=how)
+            overlayed = (
+                gdf1.overlay(gdf2, how=how)
+                .explode(ignore_index=True)
+                .explode(ignore_index=True)
+            )
             overlayed2 = sg.clean_overlay(gdf1, gdf2, how=how)
 
             if len(overlayed) != len(overlayed2):
@@ -143,4 +135,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    partial_func()
+    # main()

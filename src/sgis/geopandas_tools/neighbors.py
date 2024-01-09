@@ -97,6 +97,9 @@ def get_neighbor_indices(
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
+    if isinstance(neighbors, GeoSeries):
+        neighbors = neighbors.to_frame()
+
     # buffer and keep only geometry column
     if max_distance and predicate != "nearest":
         gdf = gdf.buffer(max_distance).to_frame()
@@ -114,6 +117,15 @@ def get_neighbor_indices(
         )
 
     return joined["neighbor_index"]
+
+
+def get_neighbor_dfs(
+    df: GeoDataFrame | DataFrame,
+    neighbor_mapper: Series,
+) -> list[GeoDataFrame | DataFrame]:
+    return [
+        df[df.index.isin(neighbor_mapper[i])] for i in neighbor_mapper.index.unique()
+    ]
 
 
 def get_all_distances(
@@ -343,11 +355,14 @@ def get_k_nearest_neighbors(
 
     [100 rows x 3 columns]
     """
+    if not len(gdf) or not len(neighbors):
+        return DataFrame(columns=["neighbor_index", "distance"])
+
     if gdf.crs != neighbors.crs:
         raise ValueError("crs mismatch:", gdf.crs, "and", neighbors.crs)
 
     if get_geom_type(gdf) != "point" or get_geom_type(neighbors) != "point":
-        raise ValueError("Geometries must be points.")
+        raise ValueError("Geometries must be points")
 
     # using the range index
     idx_dict_gdf = {i: col for i, col in zip(range(len(gdf)), gdf.index, strict=True)}
@@ -385,15 +400,18 @@ def k_nearest_neighbors(
     k: int | None = None,
     strict: bool = False,
 ) -> tuple[np.ndarray[float], np.ndarray[int]]:
-    if not k:
+    if not len(to_array) or not len(from_array):
+        return np.array([]), np.array([])
+
+    if k is None:
         k = len(to_array)
 
     if not strict:
         k = k if len(to_array) >= k else len(to_array)
 
     nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(to_array)
-    dists, indices = nbr.kneighbors(from_array)
-    return dists, indices
+    distances, indices = nbr.kneighbors(from_array)
+    return distances, indices
 
 
 def _get_edges(

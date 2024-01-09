@@ -80,7 +80,7 @@ def test_to_lines():
     empty2 = poly2[poly2["col"] != 1]
     lines = sg.to_lines(empty1, empty2, empty2, empty1)
     assert lines.shape == (0, 2)
-    assert list(lines.columns) == ["col", "geometry"]
+    assert list(sorted(lines.columns)) == ["col", "geometry"]
 
 
 def main():

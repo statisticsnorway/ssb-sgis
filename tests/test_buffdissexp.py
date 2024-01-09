@@ -32,6 +32,7 @@ def test_dissexp_by_cluster():
         "x",
         "y",
     ], by_cluster.columns
+
     assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
 
     diss = sg.dissexp_by_cluster(gdf, by="x")

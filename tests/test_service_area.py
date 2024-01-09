@@ -40,22 +40,46 @@ def test_service_area(points_oslo, roads_oslo):
     nw = sg.get_connected_components(r).query("connected == 1")
     nwa = sg.NetworkAnalysis(nw, rules=rules)
 
+    nwa.rules.split_lines = False
     x = nwa.service_area(point, breaks=30, dissolve=False)
-    assert all(x.geometry.isna()) and len(x) == 1
-    x = nwa.service_area(point, breaks=125, dissolve=False)
+
     if __name__ == "__main__":
-        sg.qtm(r100, x, point, title="undirected 125")
-    assert len(x) == 8
+        sg.qtm(r100, x, point, title="undirected 30")
+    assert all(x.geometry.isna()) and len(x) == 1, x
+
+    # assert len(x) == 8, len(x)
 
     x = nwa.precice_service_area(point, breaks=30, dissolve=False)
     if __name__ == "__main__":
-        sg.qtm(r100, x, point, title="undirected 30, precice")
-    assert len(x) == 4
+        sg.qtm(
+            r100,
+            x.assign(l=lambda df: df.length),
+            point,
+            title="undirected 30, precice",
+        )
+    assert len(x) == 4, len(x)
 
+    nwa.rules.split_lines = True
+    x = nwa.precice_service_area(point, breaks=30, dissolve=False)
+    if __name__ == "__main__":
+        sg.qtm(
+            r100,
+            x.assign(l=lambda df: df.length),
+            point,
+            title="undirected 30, precice, split_lines",
+        )
+    assert len(x) == 5, len(x)
+
+    nwa.rules.split_lines = False
     x = nwa.precice_service_area(point, breaks=125, dissolve=False)
     if __name__ == "__main__":
-        sg.qtm(r100, x, point, title="undirected 125, precice")
-    assert len(x) == 19
+        sg.qtm(
+            r100,
+            x,
+            point,
+            title="undirected 125, precice",
+        )
+    assert len(x) == 19, len(x)
 
     nwa.rules.split_lines = True
     x = nwa.precice_service_area(point, breaks=125, dissolve=False)
@@ -66,26 +90,27 @@ def test_service_area(points_oslo, roads_oslo):
             point,
             title="undirected 125, precice,\n split_lines=True",
         )
-    assert len(x) == 10, x
+    assert len(x) == 10, len(x)
 
-    rules.split_lines = False
+    # directed
 
     nw = sg.make_directed_network_norway(nw, dropnegative=True)
     rules = sg.NetworkAnalysisRules(
         directed=True,
         weight="meters",
     )
+    rules.split_lines = False
     nwa = sg.NetworkAnalysis(nw, rules=rules)
 
     x = nwa.service_area(point, breaks=30, dissolve=False)
-    assert all(x.geometry.isna()) and len(x) == 1
+    assert all(x.geometry.isna()) and len(x) == 1, x
     x = nwa.service_area(point, breaks=125, dissolve=False)
-    assert len(x) == 3
+    assert len(x) == 3, len(x)
     if __name__ == "__main__":
         sg.qtm(r100, x, point, title="directed 125")
 
     x = nwa.precice_service_area(point, breaks=30, dissolve=False)
-    assert len(x) == 2
+    assert len(x) == 2, len(x)
     if __name__ == "__main__":
         sg.qtm(r100, x, point, title="directed 30, precice")
     x = nwa.precice_service_area(point, breaks=125, dissolve=False)
@@ -102,7 +127,7 @@ def test_service_area(points_oslo, roads_oslo):
             point,
             title="directed 125, precice,\n split_lines=True",
         )
-    assert len(x) == 7, x
+    assert len(x) == 7, len(x)
 
 
 def not_test_service_area(points_oslo, roads_oslo):
@@ -134,6 +159,7 @@ def not_test_service_area(points_oslo, roads_oslo):
         nwa.service_area(p, breaks=(100, 300, 500))
 
     print("_not_precice", timeit.timeit(lambda: _not_precice(), number=1))
+
     print("_precice", timeit.timeit(lambda: _precice(), number=1))
     print("_not_precice", timeit.timeit(lambda: _not_precice(), number=1))
     print("_precice", timeit.timeit(lambda: _precice(), number=1))

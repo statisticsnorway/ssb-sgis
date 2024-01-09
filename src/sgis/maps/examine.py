@@ -78,7 +78,7 @@ class Examine:
         only_show_mask: bool = False,
         **kwargs,
     ):
-        if not all(isinstance(gdf, gpd.GeoDataFrame) for gdf in gdfs):
+        if not all(isinstance(gdf, gpd.GeoDataFrame) or not len(gdf) for gdf in gdfs):
             raise ValueError("gdfs must be of type GeoDataFrame.")
 
         self._gdfs = gdfs
@@ -86,6 +86,15 @@ class Examine:
             self.mask_gdf = gdfs[0]
         else:
             self.mask_gdf = mask_gdf
+
+        self.indices = list(range(len(self.mask_gdf)))
+        self.i = 0
+        self.column = column
+        self.size = size
+        self.kwargs = kwargs
+
+        if not len(self.mask_gdf):
+            return
 
         if unit_is_degrees(self.mask_gdf) and size > 360:
             raise ValueError(
@@ -102,12 +111,6 @@ class Examine:
             ):
                 self.mask_gdf["area"] = self.mask_gdf.area
             self.mask_gdf = self.mask_gdf.sort_values(sort_values)
-
-        self.indices = list(range(len(gdfs[0])))
-        self.i = 0
-        self.column = column
-        self.size = size
-        self.kwargs = kwargs
 
         if only_show_mask:
             self.kwargs["show"] = [True] + [False] * len(self._gdfs[1:])

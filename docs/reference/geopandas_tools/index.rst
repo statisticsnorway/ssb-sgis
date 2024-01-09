@@ -14,6 +14,7 @@ the same type as the input.
    sfilter
    overlay
    polygon_operations
+   cleaning
    point_operations
    neighbors
    duplicates
@@ -21,4 +22,6 @@ the same type as the input.
    buffer_dissolve_explode
    geometry_types
    conversion
+   centerlines
+   polygons_as_rings
    geocoding

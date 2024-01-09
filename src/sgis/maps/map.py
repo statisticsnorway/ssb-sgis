@@ -13,9 +13,11 @@ from jenkspy import jenks_breaks
 from mapclassify import classify
 from shapely import Geometry
 
+from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import (
     clean_geoms,
     drop_inactive_geometry_columns,
+    get_common_crs,
     rename_geometry_if,
 )
 from ..helpers import get_object_name
@@ -81,8 +83,7 @@ class Map:
         scheme: str = DEFAULT_SCHEME,
         **kwargs,
     ):
-        if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
-            gdfs, column = self._separate_args(gdfs, column)
+        gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
 
         self._column = column
         self.bins = bins
@@ -93,10 +94,12 @@ class Map:
         self.scheme = scheme
 
         if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
-            raise ValueError("gdfs must be GeoDataFrames.")
-
-        if not any(len(gdf) for gdf in gdfs):
-            raise ValueError("None of the GeoDataFrames have rows.")
+            gdfs = [
+                to_gdf(gdf) if not isinstance(gdf, GeoDataFrame) else gdf
+                for gdf in gdfs
+            ]
+            if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
+                raise ValueError("gdfs must be GeoDataFrames.")
 
         if "namedict" in kwargs:
             for i, gdf in enumerate(gdfs):
@@ -109,9 +112,7 @@ class Map:
         if not self.labels:
             self._get_labels(gdfs)
 
-        show = kwargs.pop("show", None)
-        if not show:
-            show = [True for _ in range(len(gdfs))]
+        show = kwargs.pop("show", True)
         if isinstance(show, (int, bool)):
             show_temp = [bool(show) for _ in range(len(gdfs))]
         elif not hasattr(show, "__iter__") or len(show) != len(gdfs):
@@ -125,6 +126,9 @@ class Map:
         new_labels = []
         self.show = []
         for label, gdf, show in zip(self.labels, gdfs, show_temp, strict=True):
+            if not len(gdf):
+                continue
+
             gdf = clean_geoms(gdf).reset_index(drop=True)
             if not len(gdf):
                 continue
@@ -134,7 +138,32 @@ class Map:
             self.show.append(show)
         self.labels = new_labels
 
-        self.kwargs = kwargs
+        if len(self._gdfs):
+            last_show = self.show[-1]
+        else:
+            last_show = show
+
+        # pop all geometry-like items from kwargs into self._gdfs
+        self.kwargs = {}
+        for key, value in kwargs.items():
+            if isinstance(value, GeoDataFrame):
+                self._gdfs.append(value)
+                self.labels.append(key)
+                self.show.append(last_show)
+                continue
+            try:
+                self._gdfs.append(to_gdf(value))
+                self.labels.append(key)
+                self.show.append(last_show)
+            except Exception:
+                self.kwargs[key] = value
+
+        if not any(len(gdf) for gdf in self._gdfs):
+            warnings.warn("None of the GeoDataFrames have rows.")
+            self._gdfs = None
+            self._is_categorical = True
+            self._unique_values = []
+            return
 
         if not self.labels:
             self._set_labels()
@@ -152,7 +181,13 @@ class Map:
             self._column = "label"
             self._gdfs = gdfs
 
-        self._gdf = pd.concat(self._gdfs, ignore_index=True)
+        try:
+            self._gdf = pd.concat(self._gdfs, ignore_index=True)
+        except ValueError:
+            crs = get_common_crs(self._gdfs)
+            for gdf in self._gdfs:
+                gdf.crs = crs
+            self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
         self._nan_idx = self._gdf[self._column].isna()
         self._get_unique_values()
@@ -161,7 +196,7 @@ class Map:
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
         else:
-            unique = list(self._gdf.loc[~self._nan_idx, self._column].unique())
+            unique = list(self._gdf[self._column].unique())
             try:
                 self._unique_values = sorted(unique)
             except TypeError:
@@ -260,8 +295,16 @@ class Map:
     def _separate_args(
         args: tuple,
         column: str | None,
+        kwargs: dict,
     ) -> tuple[tuple[GeoDataFrame], str]:
         """Separate GeoDataFrames from string (column argument)."""
+
+        def as_dict(obj):
+            if hasattr(obj, "__dict__"):
+                return obj.__dict__
+            elif isinstance(obj, dict):
+                return obj
+            raise TypeError
 
         gdfs: tuple[GeoDataFrame] = ()
         for arg in args:
@@ -274,8 +317,27 @@ class Map:
                     )
             elif isinstance(arg, (GeoDataFrame, GeoSeries, Geometry)):
                 gdfs = gdfs + (arg,)
+            elif isinstance(arg, dict) or hasattr(arg, "__dict__"):
+                # add dicts or classes with GeoDataFrames to kwargs
+                more_gdfs = {}
+                for key, value in as_dict(arg).items():
+                    if isinstance(value, (GeoDataFrame, GeoSeries, Geometry)):
+                        more_gdfs[key] = value
+                    elif isinstance(value, dict) or hasattr(value, "__dict__"):
+                        try:
+                            # same as above, one level down
+                            more_gdfs |= {
+                                k: v
+                                for k, v in value.items()
+                                if isinstance(v, (GeoDataFrame, GeoSeries, Geometry))
+                            }
+                        except Exception:
+                            # no need to raise here
+                            pass
 
-        return gdfs, column
+                kwargs |= more_gdfs
+
+        return gdfs, column, kwargs
 
     def _prepare_continous_map(self):
         """Create bins if not already done and adjust k if needed."""
@@ -436,6 +498,9 @@ class Map:
         If 'scheme' is not specified, the jenks_breaks function is used, which is
         much faster than the one from Mapclassifier.
         """
+
+        if not len(gdf.loc[~self._nan_idx, column]):
+            return np.array([0])
 
         n_classes = (
             self._k if len(self._unique_values) > self._k else len(self._unique_values)

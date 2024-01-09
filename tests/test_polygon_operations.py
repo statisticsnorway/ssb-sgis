@@ -1,8 +1,10 @@
 # %%
 
+
 import sys
 from pathlib import Path
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,13 +17,16 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
-def test_close_holes():
+def test_polygonsasrings():
     p = sg.to_gdf([0, 0])
 
     buff1 = sg.buffdissexp(p, 100)
 
     no_holes_closed = sg.close_all_holes(buff1)
-    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3)
+    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3), (
+        no_holes_closed,
+        buff1,
+    )
     no_holes_closed = sg.close_small_holes(buff1, max_area=1_000_000)
     assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3)
 
@@ -31,10 +36,55 @@ def test_close_holes():
     buff0 = sg.buffdissexp(p, 30)
     ring_with_hole_and_island = pd.concat([ring_with_hole, buff0])
 
+    p2 = sg.to_gdf([150, 0]).buffer(10).to_frame()
+    two_holes = sg.clean_overlay(ring_with_hole_and_island, p2, how="difference")
+
+    rings = sg.PolygonsAsRings(two_holes).get_rings()
+    assert int(rings.length.sum()) == 2136, rings.length.sum()
+    assert isinstance(rings, gpd.GeoDataFrame), type(rings)
+
+    rings = sg.PolygonsAsRings(two_holes.geometry).get_rings()
+    assert int(rings.length.sum()) == 2136, rings.length.sum()
+    assert isinstance(rings, gpd.GeoSeries), type(rings)
+
+    rings = sg.PolygonsAsRings(two_holes.geometry.values).get_rings()
+    assert int(rings.length.sum()) == 2136, rings.length.sum()
+    assert isinstance(rings, gpd.array.GeometryArray), type(rings)
+
+
+def test_close_holes():
+    p = sg.to_gdf([0, 0])
+
+    buff1 = sg.buffdissexp(p, 100)
+
+    no_holes_closed = sg.close_all_holes(buff1)
+    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3), (
+        no_holes_closed,
+        buff1,
+    )
+    no_holes_closed = sg.close_small_holes(buff1, max_area=1_000_000)
+    assert round(np.sum(no_holes_closed.area), 3) == round(np.sum(buff1.area), 3)
+
+    buff2 = sg.buffdissexp(p, 200)
+    ring_with_hole = sg.clean_overlay(buff2, buff1, how="difference")
+
+    buff0 = sg.buffdissexp(p, 30)
+    ring_with_hole_and_island = pd.concat([ring_with_hole, buff0])
+
+    p2 = sg.to_gdf([150, 0]).buffer(10).to_frame()
+    two_holes = sg.clean_overlay(ring_with_hole_and_island, p2, how="difference")
+
+    assert len(sg.get_holes(buff1)) == 0
+    assert len(sg.get_holes(ring_with_hole)) == 1
+    assert len(sg.get_holes(two_holes)) == 2
+
     # run this for different geometry input types
     def _close_the_holes(ring_with_hole):
         all_closed = sg.close_all_holes(ring_with_hole)
+
         assert sum(all_closed.area) > sum(ring_with_hole.area)
+        all_closed2 = sg.close_all_holes(two_holes)
+        assert sum(all_closed.area) == sum(all_closed.area)
 
         # this should return the entire hole
         closed_island_ignored = sg.close_all_holes(ring_with_hole, ignore_islands=True)
@@ -65,13 +115,17 @@ def test_close_holes():
         all_closed3 = sg.close_small_holes(
             ring_with_hole, max_area=32_000, ignore_islands=ignore_islands
         )
+        print(type(all_closed3))
 
         assert round(np.sum(all_closed3.area), 3) > round(np.sum(all_closed.area), 3)
 
         hole_not_closed3 = sg.close_small_holes(
             ring_with_hole, max_area=30_000, ignore_islands=ignore_islands
         )
-        assert np.sum(hole_not_closed3.area) == np.sum(ring_with_hole.area)
+        assert np.sum(hole_not_closed3.area) == np.sum(ring_with_hole.area), (
+            hole_not_closed3,
+            ring_with_hole,
+        )
 
     _close_the_holes(ring_with_hole_and_island)
     _close_the_holes(ring_with_hole_and_island.geometry)
@@ -171,58 +225,122 @@ def test_eliminate():
         Polygon([(10, 10), (-10.1, 11), (10, 12), (-11, 12), (-12, 12), (-11, 11)])
     ).assign(what="isolated", num=4)
 
-    polys1 = pd.concat([small_poly, large_poly], ignore_index=True)
-    polys2 = pd.concat([sliver, small_poly, large_poly], ignore_index=True)
+    small_poly.index = [5]
+    large_poly.index = [7]
+
+    small_poly_eliminated, large_poly_eliminated = sg.eliminate_by_longest(
+        [small_poly, large_poly], sliver
+    )
+    if __name__ == "__main__":
+        sg.qtm(small_poly_eliminated, large_poly_eliminated, alpha=0.5)
+    assert (
+        area := sg.clean_overlay(small_poly_eliminated, large_poly_eliminated)
+        .buffer(-0.0001)
+        .area.sum()
+        == 0
+    ), area
+    assert list(small_poly_eliminated.index) == [5], list(small_poly_eliminated.index)
+    assert list(large_poly_eliminated.index) == [7], list(large_poly_eliminated.index)
+    assert list(small_poly_eliminated.num) == [2], list(small_poly_eliminated.num)
+    assert list(large_poly_eliminated.num) == [3], list(large_poly_eliminated.num)
+    assert list(small_poly_eliminated.what) == ["small"], list(
+        small_poly_eliminated.what
+    )
+    assert list(large_poly_eliminated.what) == ["large"], list(
+        large_poly_eliminated.what
+    )
+    assert list(round(small_poly_eliminated.area, 1)) == [2.1], list(
+        small_poly_eliminated.area
+    )
+    assert list(round(large_poly_eliminated.area, 1)) == [5.4], list(
+        large_poly_eliminated.area
+    )
+
+    small_poly_eliminated, large_poly_eliminated = sg.eliminate_by_largest(
+        [small_poly, large_poly], sliver
+    )
+    if __name__ == "__main__":
+        sg.qtm(small_poly_eliminated, large_poly_eliminated, alpha=0.5)
+    assert (
+        area := sg.clean_overlay(small_poly_eliminated, large_poly_eliminated)
+        .buffer(-0.0001)
+        .area.sum()
+        == 0
+    ), area
+    assert list(small_poly_eliminated.index) == [5], list(small_poly_eliminated.index)
+    assert list(large_poly_eliminated.index) == [7], list(large_poly_eliminated.index)
+    assert list(small_poly_eliminated.num) == [2], list(small_poly_eliminated.num)
+    assert list(large_poly_eliminated.num) == [3], list(large_poly_eliminated.num)
+    assert list(small_poly_eliminated.what) == ["small"], list(
+        small_poly_eliminated.what
+    )
+    assert list(large_poly_eliminated.what) == ["large"], list(
+        large_poly_eliminated.what
+    )
+    assert list(round(small_poly_eliminated.area, 1)) == [1.9], list(
+        small_poly_eliminated.area
+    )
+    assert list(round(large_poly_eliminated.area, 1)) == [5.6], list(
+        large_poly_eliminated.area
+    )
+
+    polys = pd.concat([small_poly, large_poly])
+
+    eliminated = sg.eliminate_by_longest(polys, sliver)
 
     if __name__ == "__main__":
-        sg.qtm(polys2, "what", alpha=0.8)
-    polys1.index = [5, 7]
-    polys2.index = [3, 5, 7]
-    assert list(polys2.area) == [0.2, 1.9, 5.4], list(polys2.area)
+        sg.qtm(eliminated, "what", title="after eliminate_by_longest", alpha=0.8)
+    assert list(eliminated.index) == [5, 7], list(eliminated.index)
+    assert list(eliminated.num) == [2, 3], list(eliminated.num)
+    assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
+    assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
 
-    for polys in [polys1, polys2]:
-        eliminated = sg.eliminate_by_longest(polys, sliver)
+    eliminated = sg.eliminate_by_longest(
+        polys, sliver, aggfunc={"num": "sum", "what": "first"}
+    )
+    if __name__ == "__main__":
+        sg.qtm(eliminated, "num", title="", alpha=0.8)
 
-        if __name__ == "__main__":
-            sg.qtm(eliminated, "what", title="after eliminate_by_longest", alpha=0.8)
-        assert list(eliminated.index) == [5, 7], list(eliminated.index)
-        assert list(eliminated.num) == [2, 3], list(eliminated.num)
-        assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
-        assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
+    assert list(eliminated.num) == [3, 3], list(eliminated.num)
+    assert list(sorted(eliminated.columns)) == ["geometry", "num", "what"], list(
+        sorted(eliminated.columns)
+    )
 
-        eliminated = sg.eliminate_by_longest(
-            polys, sliver, aggfunc={"num": "sum", "what": "first"}
-        )
-        assert list(eliminated.num) == [3, 3], list(eliminated.num)
+    eliminated = sg.eliminate_by_largest(polys, sliver)
+    if __name__ == "__main__":
+        sg.qtm(eliminated, "what", title="after eliminate_by_largest", alpha=0.8)
+    assert list(eliminated.index) == [5, 7], list(eliminated.index)
+    assert list(eliminated.num) == [2, 3], list(eliminated.num)
+    assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
+    assert list(round(eliminated.area, 1)) == [1.9, 5.6], list(eliminated.area)
+    assert list(sorted(eliminated.columns)) == ["geometry", "num", "what"], list(
+        sorted(eliminated.columns)
+    )
 
-        eliminated = sg.eliminate_by_largest(polys, sliver)
-        if __name__ == "__main__":
-            sg.qtm(eliminated, "what", title="after eliminate_by_largest", alpha=0.8)
-        assert list(eliminated.index) == [5, 7], list(eliminated.index)
-        assert list(eliminated.num) == [2, 3], list(eliminated.num)
-        assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
-        assert list(round(eliminated.area, 1)) == [1.9, 5.6], list(eliminated.area)
+    eliminated = sg.eliminate_by_largest(
+        polys, sliver, aggfunc={"num": "sum", "what": "first"}
+    )
+    assert list(eliminated.num) == [2, 4], list(eliminated.num)
+    assert list(sorted(eliminated.columns)) == ["geometry", "num", "what"], list(
+        sorted(eliminated.columns)
+    )
+    eliminated = sg.eliminate_by_smallest(
+        polys, sliver, aggfunc={"num": "sum", "what": "first"}
+    )
+    if __name__ == "__main__":
+        sg.qtm(eliminated, "what", title="after eliminate_by_smallest", alpha=0.8)
+    assert list(eliminated.index) == [5, 7], list(eliminated.index)
+    assert list(eliminated.num) == [3, 3], list(eliminated.num)
+    assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
+    assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
+    assert list(sorted(eliminated.columns)) == ["geometry", "num", "what"], list(
+        sorted(eliminated.columns)
+    )
+    missing_value = polys.assign(what=pd.NA)
+    eliminated = sg.eliminate_by_smallest(missing_value, sliver)
+    assert eliminated["what"].isna().all()
 
-        eliminated = sg.eliminate_by_largest(
-            polys, sliver, aggfunc={"num": "sum", "what": "first"}
-        )
-        assert list(eliminated.num) == [2, 4], list(eliminated.num)
-
-        eliminated = sg.eliminate_by_smallest(
-            polys, sliver, aggfunc={"num": "sum", "what": "first"}
-        )
-        if __name__ == "__main__":
-            sg.qtm(eliminated, "what", title="after eliminate_by_smallest", alpha=0.8)
-        assert list(eliminated.index) == [5, 7], list(eliminated.index)
-        assert list(eliminated.num) == [3, 3], list(eliminated.num)
-        assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
-        assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
-
-        missing_value = polys.assign(what=pd.NA)
-        eliminated = sg.eliminate_by_smallest(missing_value, sliver)
-        assert eliminated["what"].isna().all()
-
-    eliminated = sg.eliminate_by_longest(polys1, isolated)
+    eliminated = sg.eliminate_by_longest(polys, isolated)
 
     if __name__ == "__main__":
         sg.qtm(eliminated, "what", title="with isolated", alpha=0.8)
@@ -231,15 +349,38 @@ def test_eliminate():
         eliminated.what
     )
 
-    eliminated = sg.eliminate_by_largest(polys1, isolated)
+    eliminated = sg.eliminate_by_largest(polys, isolated)
     assert list(eliminated.what) == ["small", "large", "isolated"], list(
         eliminated.what
     )
     assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
 
+    eliminated = sg.eliminate_by_longest(polys, sg.buff(sliver, 0.1), fix_double=True)
+    double = sg.get_intersections(eliminated)
+    if __name__ == "__main__":
+        sg.qtm(
+            eliminated, double, "what", title="with buffer and fix double", alpha=0.5
+        )
+
+    assert double.area.sum() < 1e-10, double
+
+    eliminated = sg.eliminate_by_largest(polys, sg.buff(sliver, 0.1), fix_double=True)
+    double = sg.get_intersections(eliminated)
+    if __name__ == "__main__":
+        sg.qtm(
+            eliminated, double, "what", title="with buffer and fix double", alpha=0.5
+        )
+    assert list(sorted(eliminated.columns)) == ["geometry", "num", "what"], list(
+        sorted(eliminated.columns)
+    )
+    assert double.area.sum() < 1e-10, double
+
 
 if __name__ == "__main__":
     test_eliminate()
+    test_polygonsasrings()
 
     test_close_holes()
     test_get_polygon_clusters()
+
+# %%

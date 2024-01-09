@@ -44,7 +44,7 @@ def test_transform():
     assert transform1 == transform
 
 
-def test_elevation(elevation_raster_two_bands):
+def test_elevation():
     arr = np.array(
         [
             [100, 100, 100, 100, 100],
@@ -68,12 +68,13 @@ def test_elevation(elevation_raster_two_bands):
 
     assert np.max(degrees.array) == 45, degrees.array
 
-    r = elevation_raster_two_bands  # om_path(path_two_bands, band_index=(1, 2)).load()
+    r = sg.ElevationRaster.from_path(path_two_bands, band_index=(1, 2))
+    # r = elevation_raster_two_bands  # om_path(path_two_bands, band_index=(1, 2)).load()
     print(r.band_index)
     print(r._band_index)
     assert r.shape == (2, 101, 101), r.shape
 
-    degrees = r.gradient(
+    degrees = r.load().gradient(
         degrees=True,
     )
 
@@ -318,6 +319,13 @@ def not_test_write():
 if __name__ == "__main__":
     # save_two_band_image()
 
+    if 0:
+        path = "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster/dtm_10.tif"
+        raster = sg.Raster.from_path(path)
+        raster.plot()
+        raster
+
+    test_elevation()
     test_clip()
     test_resize()
     test_res()
@@ -331,7 +339,6 @@ if __name__ == "__main__":
     test_indexes_and_shape()
 
     test_to_crs()
-    test_elevation()
     test_zonal()
     test_sample()
 

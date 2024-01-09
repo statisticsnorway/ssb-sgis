@@ -151,17 +151,17 @@ def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
 
 
 def _prepare_make_edge_cols(
-    lines: GeoDataFrame,
+    lines: GeoDataFrame, strict: bool = False
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     lines = lines.loc[lines.geom_type != "LinearRing"]
 
-    if not all(lines.geom_type == "LineString"):
+    if not (lines.geom_type == "LineString").all():
         multilinestring_error_message = (
             "MultiLineStrings have more than two endpoints. "
             "Try shapely.line_merge and/or explode() to get LineStrings. "
             "Or use the Network class methods, where the lines are prepared correctly."
         )
-        if any(lines.geom_type == "MultiLinestring"):
+        if (lines.geom_type == "MultiLinestring").any():
             raise ValueError(multilinestring_error_message)
         else:
             raise ValueError(
@@ -171,17 +171,18 @@ def _prepare_make_edge_cols(
 
     geom_col = lines._geometry_column_name
 
-    # some LinearRings are coded as LineStrings and need to be removed manually
+    # some LineStrings are in fact rings and must be removed manually
     boundary = lines[geom_col].boundary
     circles = boundary.loc[boundary.is_empty]
     lines = lines[~lines.index.isin(circles.index)]
 
     endpoints = lines[geom_col].boundary.explode(ignore_index=True)
 
-    if len(endpoints) / len(lines) != 2:
+    if len(lines) and len(endpoints) / len(lines) != 2:
         raise ValueError(
             "The lines should have only two endpoints each. "
-            "Try splitting multilinestrings with explode."
+            "Try splitting multilinestrings with explode.",
+            lines[geom_col],
         )
 
     return lines, endpoints
@@ -194,7 +195,7 @@ def _prepare_make_edge_cols_simple(
 
     endpoints = lines[lines._geometry_column_name].boundary.explode(ignore_index=True)
 
-    if len(endpoints) / len(lines) != 2:
+    if len(lines) and len(endpoints) / len(lines) != 2:
         raise ValueError(
             "The lines should have only two endpoints each. "
             "Try splitting multilinestrings with explode."

@@ -35,7 +35,7 @@ def get_connected_components(gdf: GeoDataFrame) -> GeoDataFrame:
 
     Removing the isolated network islands.
 
-    >>> connected_roads = get_connected_components(roads).query("connected == 1")
+    >>> connected_roads = get_connected_components(roads).loc[lambda x: x["connected"] == 1]
     >>> roads.connected.value_counts()
     1.0    85638
     Name: connected, dtype: int64

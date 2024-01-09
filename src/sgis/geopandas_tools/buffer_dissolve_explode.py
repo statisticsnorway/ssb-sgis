@@ -18,7 +18,11 @@ from geopandas import GeoDataFrame, GeoSeries
 
 from .general import _push_geom_col
 from .geometry_types import make_all_singlepart
-from .polygon_operations import get_polygon_clusters
+from .polygon_operations import (
+    get_cluster_mapper,
+    get_grouped_centroids,
+    get_polygon_clusters,
+)
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
@@ -224,29 +228,46 @@ def dissexp_by_cluster(gdf: GeoDataFrame, **dissolve_kwargs) -> GeoDataFrame:
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
+    is_geoseries = isinstance(gdf, GeoSeries)
+
     by = dissolve_kwargs.pop("by", [])
     if isinstance(by, str):
-        by = ["cluster_", by]
-    elif by is None:
-        by = ["cluster_"]
+        by = [by]
+    elif by:
+        by = list(by)
+
+    if not len(gdf):
+        return dissexp(gdf, by=by, **dissolve_kwargs)
+
+    def get_group_clusters(group: GeoDataFrame):
+        """Adds cluster column. Applied to each group because much faster."""
+        group = group.reset_index(drop=True)
+        group["_cluster"] = get_cluster_mapper(group)  # component_mapper
+        group["_cluster"] = get_grouped_centroids(group, groupby="_cluster")
+        return group
+
+    if by:
+        dissolved = (
+            make_all_singlepart(gdf)
+            .groupby(by, group_keys=True, dropna=False, as_index=False)
+            .apply(get_group_clusters)
+            .pipe(dissexp, by=["_cluster"] + by, **dissolve_kwargs)
+        )
     else:
-        by = ["cluster_"] + list(by)
+        dissolved = get_group_clusters(make_all_singlepart(gdf)).pipe(
+            dissexp, by="_cluster", **dissolve_kwargs
+        )
 
-    dissolved = (
-        gdf.explode(ignore_index=True)
-        .explode(ignore_index=True)
-        .pipe(get_polygon_clusters, cluster_col="cluster_")
-        .pipe(dissexp, by=by, **dissolve_kwargs)
-    )
+    if not by:
+        dissolved = dissolved.reset_index(drop=True)
 
-    if by == ["cluster_"]:
-        return dissolved.reset_index(drop=True)
-
-    if dissolve_kwargs.get("as_index", True):
+    elif dissolve_kwargs.get("as_index", True):
         dissolved.index = dissolved.index.droplevel(0)
-        return dissolved
 
-    return dissolved.drop("cluster_", axis=1)
+    if is_geoseries:
+        return dissolved.geometry
+
+    return dissolved.drop("_cluster", axis=1, errors="ignore")
 
 
 def buffdissexp_by_cluster(

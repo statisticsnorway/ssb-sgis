@@ -2,6 +2,8 @@
 
 GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 
+See documentation [here](https://statisticsnorway.github.io/ssb-sgis/reference/index.html).
+
 [![PyPI](https://img.shields.io/pypi/v/ssb-sgis.svg)][pypi_]
 [![Status](https://img.shields.io/pypi/status/ssb-sgis.svg)][status]
 [![Python Version](https://img.shields.io/pypi/pyversions/ssb-sgis)][python version]
@@ -46,7 +48,7 @@ roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
 )
 
-connected_roads = sg.get_connected_components(roads).query("connected == 1")
+connected_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1]
 
 directed_roads = sg.make_directed_network_norway(
     connected_roads,

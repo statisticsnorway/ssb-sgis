@@ -1,28 +1,39 @@
 import numbers
 import warnings
-from typing import Any, Iterable
+from collections.abc import Hashable, Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pyproj
 from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryDtype
-from geopandas.tools.sjoin import _geom_predicate_query
+from geopandas.array import GeometryArray, GeometryDtype
+from numpy.typing import NDArray
 from shapely import (
     Geometry,
+    get_coordinates,
     get_exterior_ring,
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
+    linestrings,
+    make_valid,
 )
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from .conversion import to_gdf
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
-def get_common_crs(iterable: Iterable[Any], strict: bool = False) -> pyproj.CRS | None:
+def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
+    return tuple(
+        gdf.loc[gdf.geom_type == geom_type] for geom_type in gdf.geom_type.unique()
+    )
+
+
+def get_common_crs(
+    iterable: Iterable[Hashable], strict: bool = False
+) -> pyproj.CRS | None:
     """Returns the common not-None crs or raises a ValueError if more than one.
 
     Args:
@@ -38,13 +49,18 @@ def get_common_crs(iterable: Iterable[Any], strict: bool = False) -> pyproj.CRS 
         ValueError if there are more than one crs. If strict is True,
         None is included.
     """
-    try:
-        crs = list({x.crs for x in iterable})
-    except AttributeError:
-        crs = list(set(iterable))
+    crs = set()
+    for obj in iterable:
+        try:
+            crs.add(obj.crs)
+        except AttributeError:
+            pass
 
     if not crs:
-        return None
+        try:
+            crs = list(set(iterable))
+        except TypeError:
+            return None
 
     truthy_crs = list({x for x in crs if x})
 
@@ -52,7 +68,18 @@ def get_common_crs(iterable: Iterable[Any], strict: bool = False) -> pyproj.CRS 
         raise ValueError("Mix of falsy and truthy CRS-es found.")
 
     if len(truthy_crs) > 1:
+        # sometimes the bbox is slightly different, resulting in different
+        # hash values for same crs. Therefore, trying to
+        actually_different = set()
+        for x in truthy_crs:
+            if x.to_string() in {j.to_string() for j in actually_different}:
+                continue
+            actually_different.add(x)
+
+        if len(actually_different) == 1:
+            return list(actually_different)[0]
         raise ValueError("'crs' mismatch.", truthy_crs)
+
     return pyproj.CRS(truthy_crs[0])
 
 
@@ -168,19 +195,17 @@ def clean_geoms(
     warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
 
     if isinstance(gdf, GeoDataFrame):
-        geom_col = gdf._geometry_column_name
-
         # only repair if necessary
-        if not gdf[geom_col].is_valid.all():
-            gdf[geom_col] = gdf.make_valid()
+        if not gdf.geometry.is_valid.all():
+            gdf.geometry = gdf.make_valid()
 
         notna = gdf.geometry.notna()
         if not notna.all():
             gdf = gdf.loc[notna]
 
-        nonempty = gdf.geometry.map(bool)
-        if not nonempty.all():
-            gdf = gdf.loc[nonempty]
+        is_empty = gdf.geometry.is_empty
+        if is_empty.any():
+            gdf = gdf.loc[~is_empty]
 
     elif isinstance(gdf, GeoSeries):
         if not gdf.is_valid.all():
@@ -190,9 +215,9 @@ def clean_geoms(
         if not notna.all():
             gdf = gdf.loc[notna]
 
-        nonempty = gdf.map(bool)
-        if not nonempty.all():
-            gdf = gdf.loc[nonempty]
+        is_empty = gdf.is_empty
+        if is_empty.any():
+            gdf = gdf.loc[~is_empty]
 
     else:
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
@@ -222,8 +247,14 @@ def get_grouped_centroids(
     return gdf[groupby].map(grouped_centerpoints["wkt"])
 
 
-def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
+def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     """Sort GeoDataFrame by area in decending order.
+
+    Args:
+        gdf: A GeoDataFrame or GeoSeries.
+
+    Returns:
+        A GeoDataFrame or GeoSeries sorted from large to small in area.
 
     Examples
     --------
@@ -259,19 +290,61 @@ def sort_large_first(gdf: GeoDataFrame) -> GeoDataFrame:
     3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
     0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
     """
-    return (
-        gdf.assign(area_=gdf.area)
-        .sort_values("area_", ascending=False)
-        .drop(columns="area_")
-    )
+    # using enumerate, then iloc on the sorted dict keys.
+    # to avoid creating a temporary area column (which doesn't work for GeoSeries).
+    area_mapper = dict(enumerate(gdf.area.values))
+    sorted_areas = dict(reversed(sorted(area_mapper.items(), key=lambda item: item[1])))
+    return gdf.iloc[list(sorted_areas)]
 
 
-def sort_long_first(gdf: GeoDataFrame) -> GeoDataFrame:
-    return (
-        gdf.assign(length_=gdf.length)
-        .sort_values("length_", ascending=False)
-        .drop(columns="length_")
+def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
+    """Sort GeoDataFrame by length in decending order.
+
+    Args:
+        gdf: A GeoDataFrame or GeoSeries.
+
+    Returns:
+        A GeoDataFrame or GeoSeries sorted from large to small in length.
+    """
+    # using enumerate, then iloc on the sorted dict keys.
+    # to avoid creating a temporary area column (which doesn't work for GeoSeries).
+    length_mapper = dict(enumerate(gdf.length.values))
+    sorted_lengths = dict(
+        reversed(sorted(length_mapper.items(), key=lambda item: item[1]))
     )
+    return gdf.iloc[list(sorted_lengths)]
+
+
+def make_lines_between_points(
+    arr1: NDArray[Point] | GeometryArray | GeoSeries,
+    arr2: NDArray[Point] | GeometryArray | GeoSeries,
+) -> NDArray[LineString]:
+    """Creates an array of linestrings from two arrays of points.
+
+    The operation is done rowwise.
+
+    Args:
+        arr1: GeometryArray og GeoSeries of points.
+        arr2: GeometryArray og GeoSeries of points of same length as arr1.
+
+    Returns:
+        A numpy array of linestrings.
+
+    Raises:
+        ValueError: If the arrays have unequal shape.
+
+    """
+    if arr1.shape != arr2.shape:
+        raise ValueError("Arrays must have equal shape.")
+
+    coords: pd.DataFrame = pd.concat(
+        [
+            pd.DataFrame(get_coordinates(arr1), columns=["x", "y"]),
+            pd.DataFrame(get_coordinates(arr2), columns=["x", "y"]),
+        ]
+    ).sort_index()
+
+    return linestrings(coords.values, indices=coords.index)
 
 
 def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
@@ -386,6 +459,9 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     >>> sg.qtm(lines, "l")
     """
 
+    if not all(isinstance(gdf, (GeoSeries, GeoDataFrame)) for gdf in gdfs):
+        raise TypeError("gdf must be GeoDataFrame or GeoSeries")
+
     if any(gdf.geom_type.isin(["Point", "MultiPoint"]).any() for gdf in gdfs):
         raise ValueError("Cannot convert points to lines.")
 
@@ -419,9 +495,12 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         if copy:
             gdf = gdf.copy()
 
-        gdf[gdf._geometry_column_name] = gdf[gdf._geometry_column_name].map(
-            _shapely_geometry_to_lines
-        )
+        mapped = gdf.geometry.map(_shapely_geometry_to_lines)
+        try:
+            gdf.geometry = mapped
+        except AttributeError:
+            # geoseries
+            gdf.loc[:] = mapped
 
         gdf = to_single_geom_type(gdf, "line")
 
@@ -448,6 +527,8 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 def clean_clip(
     gdf: GeoDataFrame | GeoSeries,
     mask: GeoDataFrame | GeoSeries | Geometry,
+    keep_geom_type: bool = True,
+    geom_type: str | None = None,
     **kwargs,
 ) -> GeoDataFrame | GeoSeries:
     """Clips and clean geometries.
@@ -470,8 +551,12 @@ def clean_clip(
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
-    if kwargs.get("keep_geom_type"):
+    if geom_type is None and keep_geom_type:
         geom_type = get_geom_type(gdf)
+        if geom_type == "mixed":
+            raise ValueError(
+                "Mixed geometry types is not allowed when keep_geom_type is True."
+            )
 
     try:
         gdf = gdf.clip(mask, **kwargs).pipe(clean_geoms)
@@ -480,11 +565,11 @@ def clean_clip(
         try:
             mask = clean_geoms(mask)
         except TypeError:
-            mask = clean_geoms(to_gdf(mask, crs=gdf.crs))
+            mask = make_valid(mask)
 
         return gdf.clip(mask, **kwargs).pipe(clean_geoms)
 
-    if kwargs.get("keep_geom_type"):
+    if geom_type is not None or keep_geom_type:
         gdf = to_single_geom_type(gdf, geom_type)
 
     return gdf

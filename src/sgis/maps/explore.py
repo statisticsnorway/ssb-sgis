@@ -5,28 +5,30 @@ clipmap functions from the 'maps' module.
 """
 import os
 import warnings
+from collections.abc import Iterable
 from numbers import Number
 from statistics import mean
-from typing import Iterable
 
 import branca as bc
 import folium
 import matplotlib
 import numpy as np
 import pandas as pd
+import xyzservices
 from folium import plugins
 from geopandas import GeoDataFrame
 from IPython.display import display
 from jinja2 import Template
+from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely.geometry import LineString
 
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import clean_geoms, make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
-from ..helpers import unit_is_degrees
 from .httpserver import run_html_server
 from .map import Map
+from .tilesources import kartverket, xyz
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -91,7 +93,52 @@ class MeasureControlFix(plugins.MeasureControl):
         )
 
 
+def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileLayer:
+    common_bgmaps = {
+        "openstreetmap": folium.TileLayer(
+            "OpenStreetMap", min_zoom=0, max_zoom=max_zoom
+        ),
+        "grunnkart": kartverket.norges_grunnkart,
+        "gråtone": kartverket.norges_grunnkart_gråtone,
+        "norge_i_bilder": kartverket.norge_i_bilder,
+        "dark": xyz.CartoDB.DarkMatter,
+        "voyager": xyz.CartoDB.Voyager,
+    }
+    try:
+        name = tile["name"]
+    except TypeError:
+        name = tile
+
+    if not isinstance(tile, str):
+        try:
+            return folium.TileLayer(tile, name=name, max_zoom=max_zoom)
+        except TypeError:
+            return folium.TileLayer(tile, max_zoom=max_zoom)
+
+    try:
+        provider = common_bgmaps[tile.lower()]
+    except KeyError:
+        provider = xyzservices.providers.query_name(tile)
+
+    if isinstance(provider, folium.TileLayer):
+        return provider
+
+    if isinstance(provider, xyzservices.TileProvider):
+        attr = provider.html_attribution
+        provider = provider.build_url(scale_factor="{r}")
+    else:
+        try:
+            attr = provider["attr"]
+        except (AttributeError, TypeError):
+            attr = None
+
+    return folium.TileLayer(provider, name=name, attr=attr, max_zoom=max_zoom)
+
+
 class Explore(Map):
+    # class attribute that can be overridden locally
+    tiles = ("OpenStreetMap", "dark", "norge_i_bilder", "grunnkart")
+
     def __init__(
         self,
         *gdfs,
@@ -104,7 +151,7 @@ class Explore(Map):
         measure_control: bool = True,
         geocoder: bool = True,
         save=None,
-        show: bool | Iterable[bool] = True,
+        show: bool | Iterable[bool] | None = None,
         **kwargs,
     ):
         self.popup = popup
@@ -121,25 +168,57 @@ class Explore(Map):
         if not self.browser and "in_browser" in kwargs:
             self.browser = kwargs.pop("in_browser")
 
+        if show is None:
+            show_was_none = True
+            show = True
+        else:
+            show_was_none = False
+
         super().__init__(*gdfs, column=column, show=show, **kwargs)
 
-        # stringify or remove columns not renerable by leaflet (list etc.)
+        if self.gdfs is None:
+            return
+
+        # stringify or remove columns not renerable by leaflet (list, geometry etc.)
         new_gdfs, show_new = [], []
         for gdf, show in zip(self.gdfs, self.show, strict=True):
+            try:
+                gdf = gdf.reset_index()
+            except Exception:
+                pass
             for col in gdf.columns:
+                if is_datetime64_any_dtype(gdf[col]):
+                    try:
+                        gdf[col] = [str(x) for x in gdf[col].dt.round("d")]
+                    except Exception:
+                        gdf = gdf.drop(col, axis=1)
+                    continue
+
                 if not len(gdf.loc[gdf[col].notna()]):
                     continue
                 if not isinstance(
                     gdf.loc[gdf[col].notna(), col].iloc[0], (Number, str, Geometry)
+                ) or (
+                    col != gdf._geometry_column_name
+                    and isinstance(gdf.loc[gdf[col].notna(), col].iloc[0], (Geometry))
                 ):
                     try:
-                        gdf[col] = gdf[col].astype(str)
+                        gdf[col] = gdf[col].astype(str).fillna(pd.NA)
                     except Exception:
                         gdf = gdf.drop(col, axis=1)
+
+            try:
+                gdf.index = gdf.index.astype(str)
+            except Exception:
+                pass
             new_gdfs.append(gdf)
             show_new.append(show)
         self._gdfs = new_gdfs
+        self._gdf = pd.concat(new_gdfs, ignore_index=True)
         self.show = show_new
+
+        if show_was_none and len(self._gdfs) > 6:
+            self.show = [False] * len(self._gdfs)
 
         if self._is_categorical:
             if len(self.gdfs) == 1:
@@ -156,6 +235,9 @@ class Explore(Map):
     def explore(
         self, column: str | None = None, center=None, size=None, **kwargs
     ) -> None:
+        if not any(len(gdf) for gdf in self._gdfs):
+            warnings.warn("None of the GeoDataFrames have rows.")
+            return
         if column:
             self._column = column
             self._update_column()
@@ -198,8 +280,6 @@ class Explore(Map):
             self._update_column()
             kwargs.pop("column", None)
 
-        self.previous_sample_count = 0
-
         if sample_from_first:
             sample = self._gdfs[0].sample(1)
         else:
@@ -225,6 +305,7 @@ class Explore(Map):
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
         self._gdf = pd.concat(gdfs, ignore_index=True)
+
         self._get_unique_values()
         self._explore(**kwargs)
 
@@ -342,10 +423,9 @@ class Explore(Map):
                 **{
                     key: value
                     for key, value in self.kwargs.items()
-                    if key not in ["title"]
+                    if key not in ["title", "tiles"]
                 },
             )
-
             gjs.layer_name = label
 
             gjs.add_to(f)
@@ -357,9 +437,14 @@ class Explore(Map):
             self._categories_colors_dict.keys(),
             self._categories_colors_dict.values(),
         )
-        folium.TileLayer("stamentoner", max_zoom=self.max_zoom).add_to(self.map)
-        folium.TileLayer("cartodbdark_matter", max_zoom=self.max_zoom).add_to(self.map)
+
         self.map.add_child(folium.LayerControl())
+
+    def _add_tiles(
+        self, mapobj: folium.Map, tiles: list[str, xyzservices.TileProvider]
+    ):
+        for tile in tiles:
+            to_tile(tile, max_zoom=self.max_zoom).add_to(mapobj)
 
     def _create_continous_map(self):
         self._prepare_continous_map()
@@ -419,8 +504,6 @@ class Explore(Map):
             self.map.add_child(f)
 
         self.map.add_child(colorbar)
-        folium.TileLayer("stamentoner").add_to(self.map)
-        folium.TileLayer("cartodbdark_matter").add_to(self.map)
         self.map.add_child(folium.LayerControl())
 
     def _tooltip_cols(self, gdf: GeoDataFrame) -> list:
@@ -447,17 +530,18 @@ class Explore(Map):
         self,
         bounds,
         attr=None,
-        tiles="OpenStreetMap",
+        tiles=None,
         width="100%",
         height="100%",
         control_scale=True,
         map_kwds=None,
         **kwargs,
     ):
-        import xyzservices
-
         if not map_kwds:
             map_kwds = {}
+
+        if tiles is None:
+            tiles = self.tiles
 
         # create folium.Map object
         # Get bounds to specify location and map extent
@@ -484,29 +568,31 @@ class Explore(Map):
             **map_kwds,
             **{i: kwargs[i] for i in kwargs.keys() if i in _MAP_KWARGS},
         }
+        map_kwds["min_zoom"] = 0
+        map_kwds["max_zoom"] = kwargs.get("max_zoom", self.max_zoom)
 
-        # match provider name string to xyzservices.TileProvider
-        if isinstance(tiles, str):
-            try:
-                tiles = xyzservices.providers.query_name(tiles)
-            except ValueError:
-                pass
+        if isinstance(tiles, (list, tuple)):
+            default_tile, *more_tiles = tiles
+        else:
+            default_tile, more_tiles = tiles, []
 
-        if isinstance(tiles, xyzservices.TileProvider):
-            attr = attr if attr else tiles.html_attribution
-            map_kwds["min_zoom"] = tiles.get("min_zoom", 0)
-            map_kwds["max_zoom"] = tiles.get("max_zoom", 30)
-            tiles = tiles.build_url(scale_factor="{r}")
+        default_tile = to_tile(default_tile, max_zoom=self.max_zoom)
+
+        if isinstance(default_tile, xyzservices.TileProvider):
+            attr = attr if attr else default_tile.html_attribution
+            default_tile = default_tile.build_url(scale_factor="{r}")
 
         m = folium.Map(
             location=location,
             control_scale=control_scale,
-            tiles=tiles,
+            tiles=default_tile,
             attr=attr,
             width=width,
             height=height,
             **map_kwds,
         )
+
+        self._add_tiles(m, more_tiles)
 
         if self.measure_control:
             MeasureControlFix(
@@ -530,7 +616,7 @@ class Explore(Map):
             separator=", ",
             empty_string="NaN",
             lng_first=True,
-            num_digits=5,
+            num_digits=8,
         ).add_to(m)
 
         if self.geocoder:
@@ -666,8 +752,10 @@ class Explore(Map):
             tooltip = None
             popup = None
 
+        gdf_as_json = gdf.__geo_interface__
+
         return folium.GeoJson(
-            gdf.__geo_interface__,
+            gdf_as_json,
             tooltip=tooltip,
             popup=popup,
             marker=marker,
@@ -681,7 +769,6 @@ class Explore(Map):
 
 def _tooltip_popup(type, fields, gdf, **kwds):
     """get tooltip or popup"""
-    import folium
 
     # specify fields to show in the tooltip
     if fields is False or fields is None or fields == 0:

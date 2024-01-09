@@ -19,24 +19,7 @@ def _od_cost_matrix(
     assert origins.index.name == "temp_idx"
     assert destinations.index.name == "temp_idx"
 
-    distances: list[list[float]] = graph.distances(
-        weights="weight",
-        source=origins.index,
-        target=destinations.index,
-    )
-
-    ori_idx, des_idx, costs = [], [], []
-    for i, f_idx in enumerate(origins.index):
-        for j, t_idx in enumerate(destinations.index):
-            ori_idx.append(f_idx)
-            des_idx.append(t_idx)
-            costs.append(distances[i][j])
-
-    results = (
-        pd.DataFrame(data={"origin": ori_idx, "destination": des_idx, weight: costs})
-        .replace([np.inf, -np.inf], np.nan)
-        .reset_index(drop=True)
-    )
+    results = _get_od_df(graph, origins.index, destinations.index, weight)
 
     # calculating all-to-all distances is much faster than looping rowwise,
     # so filtering to rowwise afterwards instead
@@ -62,3 +45,26 @@ def _od_cost_matrix(
     results = results.drop(["wkt_ori", "wkt_des"], axis=1, errors="ignore")
 
     return results.reset_index(drop=True)
+
+
+def _get_od_df(graph, origins, destinations, weight_col):
+    distances: list[list[float]] = graph.distances(
+        weights="weight",
+        source=origins,
+        target=destinations,
+    )
+
+    ori_idx, des_idx, costs = [], [], []
+    for i, f_idx in enumerate(origins):
+        for j, t_idx in enumerate(destinations):
+            ori_idx.append(f_idx)
+            des_idx.append(t_idx)
+            costs.append(distances[i][j])
+
+    return (
+        pd.DataFrame(
+            data={"origin": ori_idx, "destination": des_idx, weight_col: costs}
+        )
+        .replace([np.inf, -np.inf], np.nan)
+        .reset_index(drop=True)
+    )

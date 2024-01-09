@@ -50,11 +50,11 @@ def test_snap_geoseries():
     points = sg.to_gdf([(0, 0), (1, 0), (2, 0), (3, 0)]).geometry
 
     snapped = sg.snap_all(points, point)
-    assert isinstance(snapped, gpd.GeoSeries)
+    assert isinstance(snapped, gpd.GeoSeries), snapped
     assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry)
 
     snapped = sg.snap_within_distance(points, point, 10)
-    assert isinstance(snapped, gpd.GeoSeries)
+    assert isinstance(snapped, gpd.GeoSeries), snapped
 
     # should return GeoDataFrame when distance_col is specified
     snapped = sg.snap_within_distance(points, point, 10, distance_col="snap_distance")

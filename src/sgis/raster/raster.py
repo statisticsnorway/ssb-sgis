@@ -2,10 +2,10 @@ import numbers
 import re
 import uuid
 import warnings
+from collections.abc import Callable
 from copy import copy, deepcopy
 from json import loads
 from pathlib import Path
-from typing import Callable
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -20,6 +20,10 @@ try:
     import xarray as xr
 except ImportError:
     pass
+try:
+    from rioxarray.rioxarray import _generate_spatial_coords
+except ImportError:
+    pass
 from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_list_like
@@ -29,7 +33,6 @@ from rasterio.io import DatasetReader
 from rasterio.mask import mask as rast_mask
 from rasterio.vrt import WarpedVRT
 from rasterio.warp import reproject
-from rioxarray.rioxarray import _generate_spatial_coords
 from shapely import Geometry, box
 from shapely.geometry import Point, Polygon, shape
 
@@ -70,18 +73,18 @@ class Raster(RasterBase):
 
     Read tif file.
 
-    >>> path = 'https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/dtm_10.tif'
+    >>> path = 'https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster/dtm_10.tif'
     >>> raster = sg.Raster.from_path(path)
     >>> raster
-    Raster(shape=(1, 201, 201), res=10, crs=ETRS89 / UTM zone 33N (N-E), path=https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/dtm_10.tif)
+    Raster(shape=(1, 201, 201), res=10, crs=ETRS89 / UTM zone 33N (N-E), path=https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster/dtm_10.tif)
 
     Load the entire image as an numpy ndarray.
     Operations are done in place to save memory.
     The array is stored in the array attribute.
 
-    >>> r.load()
-    >>> r.array[r.array < 0] = 0
-    >>> r.array
+    >>> raster.load()
+    >>> raster.array[raster.array < 0] = 0
+    >>> raster.array
     [[[  0.    0.    0.  ... 158.4 155.6 152.6]
     [  0.    0.    0.  ... 158.  154.8 151.9]
     [  0.    0.    0.  ... 158.5 155.1 152.3]
@@ -92,41 +95,43 @@ class Raster(RasterBase):
 
     Save as tif file.
 
-    >>> r.write("path/to/file.tif")
+    >>> raster.write("path/to/file.tif")
 
     Convert to GeoDataFrame.
 
-    >>> gdf = r.to_gdf(column="elevation")
+    >>> gdf = raster.to_gdf(column="elevation")
     >>> gdf
-           elevation                                           geometry  band
-    0            1.9  POLYGON ((-25665.000 6676005.000, -25665.000 6...     1
-    1           11.0  POLYGON ((-25655.000 6676005.000, -25655.000 6...     1
-    2           18.1  POLYGON ((-25645.000 6676005.000, -25645.000 6...     1
-    3           15.8  POLYGON ((-25635.000 6676005.000, -25635.000 6...     1
-    4           11.6  POLYGON ((-25625.000 6676005.000, -25625.000 6...     1
-    ...          ...                                                ...   ...
-    25096       13.4  POLYGON ((-24935.000 6674005.000, -24935.000 6...     1
-    25097        9.4  POLYGON ((-24925.000 6674005.000, -24925.000 6...     1
-    25098        5.3  POLYGON ((-24915.000 6674005.000, -24915.000 6...     1
-    25099        2.3  POLYGON ((-24905.000 6674005.000, -24905.000 6...     1
-    25100        0.1  POLYGON ((-24895.000 6674005.000, -24895.000 6...     1
+           elevation                                           geometry  band_index
+    0            1.9  POLYGON ((-25665.000 6676005.000, -25665.000 6...           1
+    1           11.0  POLYGON ((-25655.000 6676005.000, -25655.000 6...           1
+    2           18.1  POLYGON ((-25645.000 6676005.000, -25645.000 6...           1
+    3           15.8  POLYGON ((-25635.000 6676005.000, -25635.000 6...           1
+    4           11.6  POLYGON ((-25625.000 6676005.000, -25625.000 6...           1
+    ...          ...                                                ...         ...
+    25096       13.4  POLYGON ((-24935.000 6674005.000, -24935.000 6...           1
+    25097        9.4  POLYGON ((-24925.000 6674005.000, -24925.000 6...           1
+    25098        5.3  POLYGON ((-24915.000 6674005.000, -24915.000 6...           1
+    25099        2.3  POLYGON ((-24905.000 6674005.000, -24905.000 6...           1
+    25100        0.1  POLYGON ((-24895.000 6674005.000, -24895.000 6...           1
 
     The image can also be clipped by a mask while loading.
 
-    >>> small_circle = gdf.centroid.buffer(50)
-    >>> raster = sg.Raster.from_path(path).clip(small_circle, crop=True)
-    Raster(shape=(1, 11, 11), res=10, crs=ETRS89 / UTM zone 33N (N-E), path=https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/dtm_10.tif)
+    >>> small_circle = raster_as_polygons.unary_union.centroid.buffer(50)
+    >>> raster = sg.Raster.from_path(path).clip(small_circle)
+    Raster(shape=(1, 10, 10), res=10, crs=ETRS89 / UTM zone 33N (N-E), path=https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster/dtm_10.tif)
 
     Construct raster from GeoDataFrame.
     The arrays are put on top of each other in a 3 dimensional array.
 
-    >>> r2 = r.from_gdf(gdf, columns=["elevation", "elevation_x2"], res=20)
-    >>> r2
-    Raster(shape=(2, 100, 100), res=20, crs=ETRS89 / UTM zone 33N (N-E), path=None)
+    >>> raster_as_polygons["elevation_x2"] = raster_as_polygons["elevation"] * 2
+    >>> raster_from_polygons = sg.Raster.from_gdf(raster_as_polygons, columns=["elevation", "elevation_x2"], res=20)
+    >>> raster_from_polygons
+    Raster(shape=(2, 100, 100), res=20, raster_id=-260056673995, crs=ETRS89 / UTM zone 33N (N-E), path=None)
 
     Calculate zonal statistics for each polygon in 'gdf'.
 
-    >>> zonal = r.zonal(gdf, aggfunc=["sum", np.mean])
+    >>> zonal = raster.zonal(raster_as_polygons, aggfunc=["sum", np.mean])
+    >>> zonal
             sum  mean                                           geometry
     0       1.9   1.9  POLYGON ((-25665.000 6676005.000, -25665.000 6...
     1      11.0  11.0  POLYGON ((-25655.000 6676005.000, -25655.000 6...

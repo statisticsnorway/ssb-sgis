@@ -1,14 +1,14 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pandas as pd
-from dapla import write_pandas
+from dapla import read_pandas, write_pandas
 from geopandas import GeoDataFrame
 from pandas import DataFrame
 
 from ..geopandas_tools.general import clean_clip, clean_geoms
 from ..geopandas_tools.neighbors import get_neighbor_indices
-from .dapla import read_geopandas, write_geopandas
+from .dapla_functions import read_geopandas, write_geopandas
 
 
 def write_municipality_data(
@@ -20,6 +20,7 @@ def write_municipality_data(
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
+    clip: bool = True,
 ) -> None:
     write_func = (
         _write_neighbor_municipality_data
@@ -35,6 +36,7 @@ def write_municipality_data(
         file_type=file_type,
         func=func,
         write_empty=write_empty,
+        clip=clip,
     )
 
 
@@ -59,13 +61,27 @@ def _write_municipality_data(
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
+    clip: bool = True,
 ) -> None:
     data = _validate_data(data)
 
     if isinstance(data, (str, Path)):
-        gdf = read_geopandas(str(data))
+        try:
+            gdf = read_geopandas(str(data))
+        except ValueError as e:
+            try:
+                gdf = read_pandas(str(data))
+            except ValueError:
+                raise e.__class__(e, data)
+    elif isinstance(data, DataFrame):
+        gdf = data
+    else:
+        raise TypeError(type(data))
 
-    gdf = _fix_missing_muni_numbers(gdf, municipalities, muni_number_col)
+    if func is not None:
+        gdf = func(gdf)
+
+    gdf = _fix_missing_muni_numbers(gdf, municipalities, muni_number_col, clip)
 
     for muni in municipalities[muni_number_col]:
         out = _get_out_path(out_folder, muni, file_type)
@@ -74,17 +90,14 @@ def _write_municipality_data(
 
         if not len(gdf_muni):
             if write_empty:
-                gdf_muni = gdf_muni.drop(columns="geometry")
+                gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
                 gdf_muni["geometry"] = None
                 write_pandas(gdf_muni, out)
             continue
 
-        if func is not None:
-            gdf_muni = func(gdf_muni)
-
         if not len(gdf_muni):
             if write_empty:
-                gdf_muni = gdf_muni.drop(columns="geometry")
+                gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
                 gdf_muni["geometry"] = None
                 write_pandas(gdf_muni, out)
             continue
@@ -100,13 +113,17 @@ def _write_neighbor_municipality_data(
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
+    clip: bool = True,
 ) -> None:
     data = _validate_data(data)
 
     if isinstance(data, (str, Path)):
         gdf = read_geopandas(str(data))
 
-    gdf = _fix_missing_muni_numbers(gdf, municipalities, muni_number_col)
+    if func is not None:
+        gdf = func(gdf)
+
+    gdf = _fix_missing_muni_numbers(gdf, municipalities, muni_number_col, clip)
 
     if municipalities.index.name != muni_number_col:
         municipalities = municipalities.set_index(muni_number_col)
@@ -127,13 +144,10 @@ def _write_neighbor_municipality_data(
                 write_pandas(gdf_neighbor, out)
             continue
 
-        if func is not None:
-            gdf_neighbor = func(gdf_neighbor)
-
         write_geopandas(gdf_neighbor, out)
 
 
-def _fix_missing_muni_numbers(gdf, municipalities, muni_number_col):
+def _fix_missing_muni_numbers(gdf, municipalities, muni_number_col, clip):
     if muni_number_col in gdf and gdf[muni_number_col].notna().all():
         return gdf
 
@@ -170,13 +184,17 @@ def _fix_missing_muni_numbers(gdf, municipalities, muni_number_col):
 
         isna = gdf[gdf[muni_number_col].isna()].drop(muni_number_col, axis=1)
 
-        if len(isna) < 10_000:
+        if not clip:
+            notna_anymore = isna.sjoin(municipalities).drop(columns="index_right")
+        elif len(isna) < 10_000:
             notna_anymore = _clean_overlay(isna, municipalities)
         else:
             notna_anymore = _clean_clip(isna, municipalities, muni_number_col)
 
         return pd.concat([notna, notna_anymore])
 
+    if not clip:
+        return gdf.sjoin(municipalities).drop(columns="index_right")
     if len(gdf) < 10_000:
         return _clean_overlay(gdf, municipalities)
     else:

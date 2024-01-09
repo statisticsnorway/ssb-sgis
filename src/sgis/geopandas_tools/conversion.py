@@ -1,5 +1,6 @@
 import numbers
 from collections.abc import Iterator, Sized
+from typing import Any
 
 import geopandas as gpd
 import numpy as np
@@ -11,6 +12,38 @@ from pandas.api.types import is_array_like, is_dict_like, is_list_like
 from shapely import Geometry, box, wkb, wkt
 from shapely.geometry import Point
 from shapely.ops import unary_union
+
+
+def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
+    if crs is None:
+        try:
+            crs = obj.crs
+        except AttributeError:
+            pass
+
+    try:
+        if hasattr(obj.index, "values"):
+            # pandas objects
+            index = obj.index
+        else:
+            # list
+            index = None
+    except AttributeError:
+        index = None
+
+    try:
+        # this works for geodataframe, geoseries and DataFrame with geometry column
+        obj = obj.geometry.values
+    except AttributeError:
+        try:
+            # if pandas series
+            obj = obj.values
+        except AttributeError:
+            # geoseries will raise an Exception for non-geometry objects,
+            # so we can safely pass here
+            pass
+
+    return GeoSeries(obj, index=index, crs=crs)
 
 
 def to_shapely(obj) -> Geometry:
@@ -46,6 +79,7 @@ def get_lonlat(lon: float, lat: float, crs=25833):
 
 def coordinate_array(
     gdf: GeoDataFrame | GeoSeries,
+    strict=False,
 ) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
     """Creates a 2d ndarray of coordinates from point geometries.
 
@@ -80,9 +114,12 @@ def coordinate_array(
         [0.38045827, 0.87878816]])
     """
     if isinstance(gdf, GeoDataFrame):
-        return np.array([(geom.x, geom.y) for geom in gdf.geometry])
-    else:
+        gdf = gdf.geometry
+    if strict:
         return np.array([(geom.x, geom.y) for geom in gdf])
+    return np.array(
+        [(geom.x, geom.y) if hasattr(geom, "x") else (None, None) for geom in gdf]
+    )
 
 
 def to_gdf(
@@ -105,6 +142,9 @@ def to_gdf(
     Constructs a GeoDataFrame from any geometry-like object (coordinates, wkt, wkb),
     or any interable of such objects.
 
+    Meant for convenience in testing and exploring, not for production code since it
+    introduces unnecessary overhead.
+
     If obj is a DataFrame or dictionary, geometries can be in one column/key or 2-3
     if coordiantes are in x and x (and z) columns. The column/key "geometry" is used
     by default if it exists. The index and other columns/keys are preserved.
@@ -120,9 +160,6 @@ def to_gdf(
 
     Returns:
         A GeoDataFrame with one column, the geometry column.
-
-    Raises:
-        TypeError: If obj is a GeoDataFrame.
 
     Examples
     --------
@@ -200,7 +237,11 @@ def to_gdf(
     4  POINT Z (58.000 49.000 46.000)
     """
     if isinstance(obj, GeoDataFrame):
-        raise TypeError("'to_gdf' doesn't accept GeoDataFrames as input type.")
+        if not crs:
+            return obj
+        if not obj.crs:
+            return obj.set_crs(crs)
+        return obj.to_crs(crs)
 
     if obj is None:
         raise TypeError("Cannot convert NoneType to GeoDataFrame.")
@@ -210,7 +251,9 @@ def to_gdf(
         return _geoseries_to_gdf(obj, geom_col, crs, **kwargs)
 
     if is_array_like(geometry) and len(geometry) == len(obj):
-        geometry = GeoSeries(_make_one_shapely_geom(g) for g in geometry)
+        geometry = GeoSeries(
+            _make_one_shapely_geom(g) for g in geometry if g is not None
+        )
         return GeoDataFrame(obj, geometry=geometry, crs=crs, **kwargs)
 
     geom_col: str = find_geometry_column(obj, geometry)
@@ -218,8 +261,13 @@ def to_gdf(
 
     # get done with iterators that get consumed by 'all'
     if isinstance(obj, Iterator) and not isinstance(obj, Sized):
-        obj = GeoSeries((_make_one_shapely_geom(g) for g in obj), index=index)
+        obj = GeoSeries(
+            (_make_one_shapely_geom(g) for g in obj if g is not None), index=index
+        )
         return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
+
+    if hasattr(obj, "__len__") and not len(obj):
+        return GeoDataFrame({"geometry": []}, crs=crs)
 
     crs = crs or get_crs_from_dict(obj)
 
@@ -229,7 +277,10 @@ def to_gdf(
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
         if is_nested_geojson(obj):
             # crs = crs or get_crs_from_dict(obj)
-            obj = pd.concat((GeoSeries(_from_json(g)) for g in obj), ignore_index=True)
+            obj = pd.concat(
+                (GeoSeries(_from_json(g)) for g in obj if g is not None),
+                ignore_index=True,
+            )
             if index is not None:
                 obj.index = index
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
@@ -249,7 +300,11 @@ def to_gdf(
 
     if geom_col in obj.keys():
         if isinstance(obj, pd.DataFrame):
-            obj[geom_col] = GeoSeries(make_shapely_geoms(obj[geom_col]), index=index)
+            notna = obj[geom_col].notna()
+            obj.loc[notna, geom_col] = list(
+                make_shapely_geoms(obj.loc[notna, geom_col])
+            )
+            obj[geom_col] = GeoSeries(obj[geom_col])
             return GeoDataFrame(obj, geometry=geom_col, crs=crs, **kwargs)
         if isinstance(obj[geom_col], Geometry):
             return GeoDataFrame(
@@ -294,7 +349,10 @@ def to_gdf(
         obj = GeoSeries(_from_json(obj), index=index)
         return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
 
-    geoseries = _series_like_to_geoseries(obj, index=index)
+    try:
+        geoseries = _series_like_to_geoseries(obj, index=index)
+    except ValueError:
+        geoseries = _series_like_to_geoseries(obj.dropna(), index=obj.dropna().index)
     return GeoDataFrame(geometry=geoseries, crs=crs, **kwargs)
 
 
