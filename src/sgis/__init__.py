@@ -18,11 +18,15 @@ from .geopandas_tools.buffer_dissolve_explode import (
     dissexp_by_cluster,
 )
 from .geopandas_tools.centerlines import get_rough_centerlines
-from .geopandas_tools.cleaning import coverage_clean, remove_spikes
+from .geopandas_tools.cleaning import (
+    coverage_clean,
+    remove_spikes,
+    split_spiky_polygons,
+)
 from .geopandas_tools.conversion import (
     coordinate_array,
-    get_lonlat,
-    get_utm33,
+    from_4326,
+    to_4326,
     to_gdf,
     to_geoseries,
     to_shapely,
@@ -38,9 +42,12 @@ from .geopandas_tools.general import (
     get_common_crs,
     get_grouped_centroids,
     random_points,
+    random_points_in_polygons,
     rename_geometry_if,
     sort_large_first,
     sort_long_first,
+    sort_short_first,
+    sort_small_first,
     to_lines,
 )
 from .geopandas_tools.geocoding import address_to_coords, address_to_gdf
@@ -63,6 +70,7 @@ from .geopandas_tools.polygon_operations import (
     PolygonsAsRings,
     close_all_holes,
     close_small_holes,
+    close_thin_holes,
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
