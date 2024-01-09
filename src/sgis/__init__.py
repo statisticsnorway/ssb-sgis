@@ -1,4 +1,5 @@
 from .geopandas_tools.bounds import (
+    Gridlooper,
     bounds_to_points,
     bounds_to_polygon,
     get_total_bounds,
