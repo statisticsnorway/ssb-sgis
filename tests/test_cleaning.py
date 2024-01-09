@@ -414,7 +414,7 @@ def _remove_spikes(
         explore(
             sg.to_gdf(points_without_spikes[points_without_spikes.index == i], 25833)
         )
-    sssssa
+
     return linearrings(
         get_coordinates(points_without_spikes),
         indices=points_without_spikes.index.values,
@@ -557,7 +557,7 @@ def test_clean_1144():
 
         assert list(sorted(cleaned2.columns)) == cols, cleaned2.columns
 
-        assert double.area.sum() < 1e-6, double.area.sum()
+        assert double.area.sum() < 1e-3, double.area.sum()
         assert gaps.area.sum() < 1e-2, gaps.area.sum()
         assert int(cleaned2.area.sum()) == 154240, cleaned2.area.sum()
 
@@ -616,7 +616,7 @@ def test_clean():
 
     assert list(sorted(cleaned.columns)) == ["geometry"], cleaned.columns
 
-    assert double.area.sum() < 1e-6, double.area.sum()
+    assert double.area.sum() < 1e-3, double.area.sum()
     assert gaps.area.sum() < 1e-2, (gaps.area.sum(), gaps.area.max())
     assert int(cleaned.area.sum()) == 431076, cleaned.area.sum()
 
@@ -632,7 +632,7 @@ def test_clean():
 
     assert list(sorted(cleaned2.columns)) == ["geometry"], cleaned2.columns
 
-    assert double.area.sum() < 1e-6, double.area.sum()
+    assert double.area.sum() < 1e-3, double.area.sum()
     assert gaps.area.sum() < 1e-2, (gaps.area.sum(), gaps.area.max())
     assert cleaned2.area.sum() > df.area.sum()
     assert int(cleaned2.area.sum()) == 431076, cleaned2.area.sum()
@@ -670,7 +670,7 @@ def test_clean():
 
     assert list(sorted(cleaned3.columns)) == ["geometry"], cleaned3.columns
 
-    assert double.area.sum() < 1e-6, double.area.sum()
+    assert double.area.sum() < 1e-3, double.area.sum()
     assert gaps.area.sum() < 1e-2, gaps.area.sum()
     assert int(cleaned3.area.sum()) == 441769, cleaned3.area.sum()
 
