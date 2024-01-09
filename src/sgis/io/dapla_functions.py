@@ -142,6 +142,20 @@ def write_geopandas(
         df.to_file(file, driver=driver, layer=layer)
 
 
+def exists(path: str | Path) -> bool:
+    """Returns True if the path exists, and False if it doesn't.
+
+    Args:
+        path (str): The path to the file or directory.
+
+    Returns:
+        True if the path exists, False if not.
+    """
+
+    fs = dp.FileClient.get_gcs_file_system()
+    return fs.exists(path)
+
+
 def check_files(
     folder: str,
     contains: str | None = None,
