@@ -17,23 +17,79 @@ from .conversion import to_gdf
 from .general import clean_clip, is_bbox_like
 
 
-def test(self):
-    looper = Gridlooper(
-        gridsize=1500,
-        gridbuffer=0,
-        mask=self.kommuneflate,
-        clip=True,
-        keep_geom_type=True,
-        parallelizer=sg.Parallel(20, backend="loky"),
-    )
-
-    oppdatert = looper.run(poly_update, arstat, ar5).pipe(
-        looper.run(sg.coverage_clean, 1)
-    )
-
-
 @dataclass
 class Gridlooper:
+    """Run functions in a loop cellwise based on a grid.
+
+    Args:
+        gridsize: Size of the grid cells in units of the crs (meters, degrees).
+        mask: Geometry object to create a grid around.
+        gridbuffer: Units to buffer each gridcell by. For edge cases.
+            Defaults to 0.
+        clip: If True (default) geometries are clipped by the grid cells.
+            If False, all geometries that intersect will be selected in each iteration.
+        verbose: Whether to print progress. Defaults to False.
+        keep_geom_type: Whether to keep only the input geometry types after clipping.
+            Defaults to True.
+
+    Examples
+    --------
+
+    Get some points and some polygons.
+
+    >>> import sgis as sg
+    >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
+    >>> points["idx"] = points.index
+    >>> buffered = sg.buff(points, 100)
+    >>> buffered
+        idx                                           geometry
+    0      0  POLYGON ((263222.700 6651184.900, 263222.651 6...
+    1      1  POLYGON ((272556.100 6653369.500, 272556.051 6...
+    2      2  POLYGON ((270182.300 6653032.700, 270182.251 6...
+    3      3  POLYGON ((259904.800 6650339.700, 259904.751 6...
+    4      4  POLYGON ((272976.200 6652889.100, 272976.151 6...
+    ..   ...                                                ...
+    995  995  POLYGON ((266901.700 6647844.500, 266901.651 6...
+    996  996  POLYGON ((261374.000 6653593.400, 261373.951 6...
+    997  997  POLYGON ((263642.900 6645427.000, 263642.851 6...
+    998  998  POLYGON ((269326.700 6650628.000, 269326.651 6...
+    999  999  POLYGON ((264670.300 6644239.500, 264670.251 6...
+
+    [1000 rows x 2 columns]
+
+    Instantiate a gridlooper.
+
+    >>> looper = sg.Gridlooper(gridsize=200, mask=buffered, parallelizer=sg.Parallel(1, backend="multiprocessing"))
+
+    Run the function clean_overlay in a gridloop.
+
+    >>> resultslist = looper.run(
+    ...     sg.clean_overlay,
+    ...     points,
+    ...     buffered,
+    ... )
+    >>> type(resultslist)
+    list
+
+    >>> results = pd.concat(resultslist, ignore_index=True)
+    >>> results
+        idx_1 idx_2                        geometry
+    0      220   220  POINT (254575.200 6661631.500)
+    1      735   735  POINT (256337.400 6649931.700)
+    2      575   575  POINT (256369.200 6650413.300)
+    3       39    39  POINT (256142.300 6650526.300)
+    4      235   235  POINT (256231.300 6650720.200)
+    ...    ...   ...                             ...
+    1481   711   795  POINT (272845.500 6655048.800)
+    1482   711   711  POINT (272845.500 6655048.800)
+    1483   757   757  POINT (273507.600 6652806.600)
+    1484   457   457  POINT (273524.400 6652979.900)
+    1485   284   284  POINT (273650.800 6653000.500)
+
+    [1486 rows x 3 columns]
+
+    """
+
     gridsize: int
     mask: GeoDataFrame | GeoSeries | Geometry
     gridbuffer: int = 0
@@ -47,90 +103,6 @@ class Gridlooper:
             self.mask = to_gdf(self.mask)
 
     def run(self, func: Callable, *args, **kwargs):
-        """Runs a function in a loop cellwise based on a grid.
-
-        Creates grid from a mask, and runs the function for each cell
-        with all GeoDataFrame keyword arguments clipped to the cell
-        extent.
-
-        Args:
-            func: Function to run cellwise.
-            mask: Geometry object to create a grid around.
-            gridsize: Size of the grid cells in units of the crs (meters, degrees).
-            gridbuffer: Units to buffer each gridcell by. For edge cases.
-                Defaults to 0.
-            clip: If True (default) geometries are clipped by the grid cells.
-                If False, all geometries that intersect will be selected in each iteration.
-            verbose: Whether to print progress. Defaults to False.
-            keep_geom_type: Whether to keep only the input geometry types after clipping.
-                Defaults to True.
-            args: Positional arguments to pass to the function. Arguments
-                of type GeoDataFrame or GeoSeries will be clipped by the grid cells in
-                a loop.
-            kwargs: Keyword arguments to pass to the function. Arguments
-                of type GeoDataFrame or GeoSeries will be clipped by the grid cells in
-                a loop.
-
-        Returns:
-            List of results with the same length as number of grid cells.
-
-        Examples
-        --------
-
-        Get some points and some polygons.
-
-        >>> import sgis as sg
-        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
-        >>> points["idx"] = points.index
-        >>> buffered = sg.buff(points, 100)
-        >>> buffered
-            idx                                           geometry
-        0      0  POLYGON ((263222.700 6651184.900, 263222.651 6...
-        1      1  POLYGON ((272556.100 6653369.500, 272556.051 6...
-        2      2  POLYGON ((270182.300 6653032.700, 270182.251 6...
-        3      3  POLYGON ((259904.800 6650339.700, 259904.751 6...
-        4      4  POLYGON ((272976.200 6652889.100, 272976.151 6...
-        ..   ...                                                ...
-        995  995  POLYGON ((266901.700 6647844.500, 266901.651 6...
-        996  996  POLYGON ((261374.000 6653593.400, 261373.951 6...
-        997  997  POLYGON ((263642.900 6645427.000, 263642.851 6...
-        998  998  POLYGON ((269326.700 6650628.000, 269326.651 6...
-        999  999  POLYGON ((264670.300 6644239.500, 264670.251 6...
-
-        [1000 rows x 2 columns]
-
-        Run the function clean_overlay where the data is clipped to a grid
-        of 1000x1000 meters. Args are the first two arguments of clean_overlay,
-        kwargs are additional keyword arguments.
-
-        >>> resultslist = sg.gridloop(
-        ...     func=sg.clean_overlay,
-        ...     mask=buffered,
-        ...     gridsize=1000,
-        ...     args=(points, buffered),
-        ...     kwargs={"how": "intersection"}
-        ... )
-        >>> type(resultslist)
-        list
-
-        >>> results = pd.concat(resultslist, ignore_index=True)
-        >>> results
-            idx_1 idx_2                        geometry
-        0      220   220  POINT (254575.200 6661631.500)
-        1      735   735  POINT (256337.400 6649931.700)
-        2      575   575  POINT (256369.200 6650413.300)
-        3       39    39  POINT (256142.300 6650526.300)
-        4      235   235  POINT (256231.300 6650720.200)
-        ...    ...   ...                             ...
-        1481   711   795  POINT (272845.500 6655048.800)
-        1482   711   711  POINT (272845.500 6655048.800)
-        1483   757   757  POINT (273507.600 6652806.600)
-        1484   457   457  POINT (273524.400 6652979.900)
-        1485   284   284  POINT (273650.800 6653000.500)
-
-        [1486 rows x 3 columns]
-
-        """
         intersects_mask = lambda df: df.index.isin(df.sjoin(self.mask).index)
         grid: GeoSeries = (
             make_grid(self.mask, gridsize=self.gridsize).loc[intersects_mask].geometry
@@ -193,8 +165,8 @@ class Gridlooper:
 def gridloop(
     func: Callable,
     gridsize: int,
+    mask: GeoDataFrame | GeoSeries | Geometry,
     gridbuffer: int = 0,
-    mask: GeoDataFrame | GeoSeries | Geometry = None,
     clip: bool = True,
     keep_geom_type: bool = True,
     verbose: bool = False,
@@ -296,19 +268,7 @@ def gridloop(
     elif not isinstance(args, tuple):
         raise TypeError("args should be a tuple")
 
-    if mask is None:
-        geoms = [
-            value
-            for value in args
-            if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry))
-        ] + [
-            value
-            for value in kwargs.values()
-            if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry))
-        ]
-        mask = to_gdf(get_total_bounds(*geoms))
-
-    elif not isinstance(mask, GeoDataFrame):
+    if not isinstance(mask, GeoDataFrame):
         mask = to_gdf(mask)
 
     intersects_mask = lambda df: df.index.isin(df.sjoin(mask).index)
