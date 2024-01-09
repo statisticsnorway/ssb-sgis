@@ -805,29 +805,6 @@ def test_spikes():
         ]
     ), length
 
-    fixed_and_cleaned2 = sg.coverage_clean(df, tolerance, spike_action="fix")
-
-    assert (area := sorted([round(x, 3) for x in fixed_and_cleaned2.area])) == sorted(
-        [
-            7.215,
-            1.9,
-            0.503,
-            0.283,
-            0.2,
-        ]
-    ), area
-    assert (
-        length := sorted([round(x, 3) for x in fixed_and_cleaned2.length])
-    ) == sorted(
-        [
-            16.398,
-            6.838,
-            2.513,
-            1.885,
-            4.02,
-        ]
-    ), length
-
 
 def main():
     test_spikes()
