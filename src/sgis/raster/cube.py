@@ -4,7 +4,7 @@ import re
 import uuid
 from copy import copy, deepcopy
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Optional
 
 import geopandas as gpd
 import numpy as np
@@ -23,6 +23,7 @@ from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
 from ..helpers import dict_zip_intersection, get_all_files, get_numpy_func
 from ..io._is_dapla import is_dapla
+from ..parallel.parallel import Parallel
 from .raster import Raster
 
 
@@ -79,16 +80,18 @@ class GeoDataCube(CubeBase):
 
     def __init__(
         self,
-        data: Raster | Iterable[Raster] | None = None,
+        data: Iterable[Raster] | None = None,
         df: DataFrame | None = None,
         root: str | None = None,
         crs: Any | None = None,
         copy: bool = False,
+        parallelizer: Optional[Parallel] = None,
     ) -> None:
         self._arrays = None
         self._crs = None
         self._hash = uuid.uuid4()
         self.root = root
+        self.parallelizer = parallelizer
 
         if data is None:
             self._df = self.get_cube_template()
@@ -99,8 +102,6 @@ class GeoDataCube(CubeBase):
                 self[key] = value
             return
 
-        if isinstance(data, Raster):
-            data = [data]
         if not is_list_like(data) and all(isinstance(r, Raster) for r in data):
             raise TypeError("'data' must be a Raster instance or an iterable.")
 
@@ -413,9 +414,9 @@ class GeoDataCube(CubeBase):
         cube.df["raster"] = cube.run_raster_method("gradient", degrees=degrees)
         return cube
 
-    def pool(self, processes: int, copy: bool = True) -> CubePool:
-        cube = self.copy() if copy else self
-        return CubePool(cube, processes=processes)
+    # def pool(self, processes: int, copy: bool = True) -> CubePool:
+    #     cube = self.copy() if copy else self
+    #     return CubePool(cube, processes=processes)
 
     def array_map(self, func: Callable, **kwargs):
         """Maps each raster array to a function.
@@ -943,9 +944,6 @@ class GeoDataCube(CubeBase):
         mess = "Arrays are not loaded. " + text
         if self.arrays.isna().all():
             raise ValueError(mess)
-
-    def __hash__(self):
-        return hash(self._hash)
 
     def __iter__(self):
         return iter(self._df["raster"])
