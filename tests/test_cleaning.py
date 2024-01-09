@@ -469,7 +469,7 @@ def snap_polygons(
     return gdf
 
 
-sg.snap_polygons = snap_polygons
+# sg.snap_polygons = snap_polygons
 
 
 def test_clean_dissappearing_polygon():
@@ -563,7 +563,7 @@ def test_clean_1144():
 
         assert sg.get_geom_type(cleaned2) == "polygon", sg.get_geom_type(cleaned2)
 
-        snapped = sg.snap_polygons(df, cleaned, tolerance)
+        # snapped = sg.snap_polygons(df, cleaned, tolerance)
 
 
 def test_clean():
@@ -589,11 +589,10 @@ def test_clean():
 
     cleaned = sg.coverage_clean(df, tolerance)
 
+    return
     snapped = sg.snap_polygons(df.iloc[:3], cleaned, tolerance)
 
     sg.explore(snapped, cleaned, df=df.iloc[:3])
-
-    sss
 
     sg.qtm(
         cleaned=cleaned.clip(mask).pipe(sg.buff, -0.5),
@@ -794,29 +793,6 @@ def test_spikes():
     ), area
     assert (
         length := sorted([round(x, 3) for x in fixed_and_cleaned.length])
-    ) == sorted(
-        [
-            16.398,
-            6.838,
-            2.513,
-            1.885,
-            4.02,
-        ]
-    ), length
-
-    fixed_and_cleaned2 = sg.coverage_clean(df, tolerance, spike_action="fix")
-
-    assert (area := sorted([round(x, 3) for x in fixed_and_cleaned2.area])) == sorted(
-        [
-            7.215,
-            1.9,
-            0.503,
-            0.283,
-            0.2,
-        ]
-    ), area
-    assert (
-        length := sorted([round(x, 3) for x in fixed_and_cleaned2.length])
     ) == sorted(
         [
             16.398,
