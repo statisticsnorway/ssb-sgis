@@ -44,7 +44,7 @@ def test_gridloop():
             sg.gridloop(
                 sg.clean_overlay,
                 gridsize=200,
-                mask=points,
+                # mask=points,
                 kwargs={"df1": points, "df2": grid},
             ),
             ignore_index=True,
@@ -52,6 +52,8 @@ def test_gridloop():
         .sort_values("i")
         .reset_index(drop=True)
     )
+    print(intersected)
+    print(intersected2)
 
     assert intersected.equals(intersected2)
 
@@ -60,7 +62,7 @@ def test_gridloop():
             sg.gridloop(
                 sg.clean_overlay,
                 gridsize=200,
-                mask=points,
+                # mask=points,
                 args=(points, grid),
             ),
             ignore_index=True,
@@ -77,7 +79,7 @@ def test_gridloop():
                 sg.clean_overlay,
                 gridsize=200,
                 gridbuffer=100,
-                mask=points,
+                # mask=points,
                 args=(points, grid),
             ),
             ignore_index=True,
@@ -87,6 +89,60 @@ def test_gridloop():
     )
 
     assert intersected.equals(intersected4)
+
+    intersected5 = (
+        pd.concat(
+            sg.gridloop(
+                sg.clean_overlay,
+                gridsize=200,
+                gridbuffer=100,
+                # mask=points,
+                args=(points, grid),
+                parallelizer=sg.Parallel(1, backend="multiprocessing"),
+            ),
+            ignore_index=True,
+        )
+        .sort_values("i")
+        .reset_index(drop=True)
+    )
+
+    assert intersected.equals(intersected5)
+
+    intersected6 = (
+        pd.concat(
+            sg.gridloop(
+                sg.clean_overlay,
+                gridsize=200,
+                gridbuffer=100,
+                # mask=points,
+                args=(points, grid),
+                parallelizer=sg.Parallel(3, backend="multiprocessing"),
+            ),
+            ignore_index=True,
+        )
+        .sort_values("i")
+        .reset_index(drop=True)
+    )
+
+    assert intersected.equals(intersected6)
+
+    intersected7 = (
+        pd.concat(
+            sg.gridloop(
+                sg.clean_overlay,
+                gridsize=200,
+                gridbuffer=100,
+                # mask=points,
+                args=(points, grid),
+                parallelizer=sg.Parallel(3, backend="loky"),
+            ),
+            ignore_index=True,
+        )
+        .sort_values("i")
+        .reset_index(drop=True)
+    )
+
+    assert intersected.equals(intersected7)
 
 
 def test_bounds():
@@ -155,7 +211,14 @@ def test_bounds():
 
 
 if __name__ == "__main__":
-    test_gridloop()
-    test_bounds()
+    import cProfile
 
-# %%
+    # test_gridloop()
+    # test_bounds()
+    cProfile.run(
+        """
+test_gridloop()
+test_bounds()
+    """,
+        sort="cumtime",
+    )

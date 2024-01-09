@@ -60,6 +60,7 @@ def test_explore(points_oslo, roads_oslo):
     r100 = roads.clip(p.buffer(100))
 
     sg.explore(r300, "meters", r100, bygdoy=7000)
+    sss
     sg.clipmap(r300, r200, "meters", show_in_browser=False)
     sg.explore(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
     not_test_center(r300, r200, r100, p)

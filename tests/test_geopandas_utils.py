@@ -19,6 +19,15 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+def test_random_points_in_polygons():
+    n_circles = 10
+    n_points = 10
+    circles = sg.random_points(n_circles).buffer(0.1)
+    points_in_circles = sg.random_points_in_polygons(circles, n_points)
+    assert len(points_in_circles) == len(circles) * n_points
+    assert (points_in_circles.groupby(level=0).size() == n_points).all()
+
+
 def test_get_common_crs():
     gdf = sg.to_gdf([0, 0], crs=25833)
     gdf2 = sg.to_gdf([0, 0], crs=None)
@@ -86,13 +95,16 @@ def test_area():
 
 def test_clean_clip():
     p = sg.random_points(100)
-    buff1 = sg.buff(p, 100)
-    buff2 = sg.buff(p, 200)
+    buff1 = sg.buff(p, 200)
+    buff2 = sg.buff(p, 100)
 
     clipped = buff1.clip(buff2)
     clipped["geometry"] = clipped.make_valid()
     clipped2 = sg.clean_clip(buff1, buff2)
     assert clipped.equals(clipped2)
+
+    mixed = pd.concat([p, buff1])
+    sg.clean_clip(mixed, buff2)
 
 
 def test_clean():
@@ -166,6 +178,13 @@ def test_sort():
     assert list(sorted_.index) == [4, 3, 2, 1, 0]
     assert list(sorted_) == [5, 4, 3, 2, 1]
 
+    sorted_ = sg.sort_small_first(buffered)["idx"]
+    assert list(sorted_.index) == [0, 1, 2, 3, 4]
+    assert list(sorted_) == [1, 2, 3, 4, 5]
+    sorted_ = sg.sort_short_first(buffered)["idx"]
+    assert list(sorted_.index) == [0, 1, 2, 3, 4]
+    assert list(sorted_) == [1, 2, 3, 4, 5]
+
     df = sg.random_points(5)
     df.index = [0, 0, 1, 2, 3]
     df.geometry = df.buffer([1, 2, 3, 4, 5])
@@ -211,6 +230,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+    test_clean_clip()
+    test_random_points_in_polygons()
     test_sort()
     test_clean()
     test_get_common_crs()

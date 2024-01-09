@@ -255,9 +255,9 @@ def test_update_geometries():
 
 
 if __name__ == "__main__":
+    test_update_geometries()
     test_random_update_geometries(200)
     test_random_get_intersections()
     not_test_bug2()
     test_get_intersections()
-    test_update_geometries()
     not_test_drop_duplicate_geometries()
