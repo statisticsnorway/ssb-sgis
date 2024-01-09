@@ -23,7 +23,7 @@ from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely.geometry import LineString
 
-from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.conversion import from_4326, to_gdf
 from ..geopandas_tools.general import clean_geoms, make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
 from .httpserver import run_html_server
@@ -103,6 +103,7 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
         "norge_i_bilder": kartverket.norge_i_bilder,
         "dark": xyz.CartoDB.DarkMatter,
         "voyager": xyz.CartoDB.Voyager,
+        "strava": xyz.Strava.All,
     }
     try:
         name = tile["name"]
@@ -142,6 +143,7 @@ class Explore(Map):
     def __init__(
         self,
         *gdfs,
+        mask=None,
         column: str | None = None,
         popup: bool = True,
         max_zoom: int = 30,
@@ -152,6 +154,7 @@ class Explore(Map):
         geocoder: bool = True,
         save=None,
         show: bool | Iterable[bool] | None = None,
+        text: str | None = None,
         **kwargs,
     ):
         self.popup = popup
@@ -161,6 +164,8 @@ class Explore(Map):
         self.measure_control = measure_control
         self.geocoder = geocoder
         self.save = save
+        self.mask = mask
+        self.text = text
 
         self.browser = browser
         if not self.browser and "show_in_browser" in kwargs:
@@ -232,6 +237,11 @@ class Explore(Map):
         if self._gdf.crs is None:
             self.kwargs["crs"] = "Simple"
 
+        self.original_crs = self.gdf.crs
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}()"
+
     def explore(
         self, column: str | None = None, center=None, size=None, **kwargs
     ) -> None:
@@ -242,6 +252,9 @@ class Explore(Map):
             self._column = column
             self._update_column()
             kwargs.pop("column", None)
+
+        if self.mask is not None:
+            return self.clipmap(mask=self.mask, column=self._column, **kwargs)
 
         if center is None:
             self.to_show = self._gdfs
@@ -626,6 +639,12 @@ class Explore(Map):
         if fit and "zoom_start" not in kwargs:
             m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
+        if self.text:
+            style = bc.element.MacroElement()
+            style._template = bc.element.Template(get_textbox(self.text))
+            m.get_root().add_child(style)
+            # folium.LayerControl(collapsed=False).add_to(m)
+
         return m
 
     def _make_geojson(
@@ -907,3 +926,59 @@ def _categorical_legend(m, title, categories, colors):
     # Add Body
     body = bc.element.Element(body, "legend")
     m.get_root().html.add_child(body)
+
+
+def get_textbox(text: str) -> str:
+    return f"""
+{{% macro html(this, kwargs) %}}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Textbox Project</title>
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha512-MV7K8+y+gLIBoVD59lQIYicR65iaqukzvf/nwasF0nqhPay5w/9lJmVM2hMDcnK1OnMGCdVK+iQrJ7lzPJQd1w==" crossorigin="anonymous" referrerpolicy="no-referrer"/>
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <script>
+      $( function() {{
+        $( "#textbox" ).draggable({{
+          start: function (event, ui) {{
+            $(this).css({{
+              right: "auto",
+              top: "auto",
+              bottom: "auto"
+            }});
+          }}
+        }});
+      }});
+    </script>
+  </head>
+
+  <body>
+    <div id="textbox" class="textbox">
+      <div class="textbox-content">
+        <p>{text}</p>
+      </div>
+    </div>
+
+</body>
+</html>
+
+<style type='text/css'>
+  .textbox {{
+    position: absolute;
+    z-index:9999;
+    border-radius:4px;
+    background: white;
+    padding: 1px;
+    font-size:11px;
+    left: 20px;
+    top: 50%;
+    color: black;
+  }}
+</style>
+{{% endmacro %}}
+"""

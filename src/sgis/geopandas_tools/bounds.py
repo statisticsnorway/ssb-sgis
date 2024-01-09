@@ -1,28 +1,206 @@
+import functools
 import numbers
-from typing import Any
 from collections.abc import Callable, Collection, Mapping
+from dataclasses import dataclass
+from typing import Any
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_dict_like
 from shapely import Geometry, box, extract_unique_points
 from shapely.geometry import Polygon
 
+from ..parallel.parallel import Parallel
 from .conversion import to_gdf
 from .general import clean_clip, is_bbox_like
 
 
+def test(self):
+    looper = Gridlooper(
+        gridsize=1500,
+        gridbuffer=0,
+        mask=self.kommuneflate,
+        clip=True,
+        keep_geom_type=True,
+        parallelizer=sg.Parallel(20, backend="loky"),
+    )
+
+    oppdatert = looper.run(poly_update, arstat, ar5).pipe(
+        looper.run(sg.coverage_clean, 1)
+    )
+
+
+@dataclass
+class Gridlooper:
+    gridsize: int
+    mask: GeoDataFrame | GeoSeries | Geometry
+    gridbuffer: int = 0
+    clip: bool = True
+    keep_geom_type: bool = True
+    verbose: bool = False
+    parallelizer: Parallel | None = None
+
+    def __post_init__(self):
+        if not isinstance(self.mask, GeoDataFrame):
+            self.mask = to_gdf(self.mask)
+
+    def run(self, func: Callable, *args, **kwargs):
+        """Runs a function in a loop cellwise based on a grid.
+
+        Creates grid from a mask, and runs the function for each cell
+        with all GeoDataFrame keyword arguments clipped to the cell
+        extent.
+
+        Args:
+            func: Function to run cellwise.
+            mask: Geometry object to create a grid around.
+            gridsize: Size of the grid cells in units of the crs (meters, degrees).
+            gridbuffer: Units to buffer each gridcell by. For edge cases.
+                Defaults to 0.
+            clip: If True (default) geometries are clipped by the grid cells.
+                If False, all geometries that intersect will be selected in each iteration.
+            verbose: Whether to print progress. Defaults to False.
+            keep_geom_type: Whether to keep only the input geometry types after clipping.
+                Defaults to True.
+            args: Positional arguments to pass to the function. Arguments
+                of type GeoDataFrame or GeoSeries will be clipped by the grid cells in
+                a loop.
+            kwargs: Keyword arguments to pass to the function. Arguments
+                of type GeoDataFrame or GeoSeries will be clipped by the grid cells in
+                a loop.
+
+        Returns:
+            List of results with the same length as number of grid cells.
+
+        Examples
+        --------
+
+        Get some points and some polygons.
+
+        >>> import sgis as sg
+        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
+        >>> points["idx"] = points.index
+        >>> buffered = sg.buff(points, 100)
+        >>> buffered
+            idx                                           geometry
+        0      0  POLYGON ((263222.700 6651184.900, 263222.651 6...
+        1      1  POLYGON ((272556.100 6653369.500, 272556.051 6...
+        2      2  POLYGON ((270182.300 6653032.700, 270182.251 6...
+        3      3  POLYGON ((259904.800 6650339.700, 259904.751 6...
+        4      4  POLYGON ((272976.200 6652889.100, 272976.151 6...
+        ..   ...                                                ...
+        995  995  POLYGON ((266901.700 6647844.500, 266901.651 6...
+        996  996  POLYGON ((261374.000 6653593.400, 261373.951 6...
+        997  997  POLYGON ((263642.900 6645427.000, 263642.851 6...
+        998  998  POLYGON ((269326.700 6650628.000, 269326.651 6...
+        999  999  POLYGON ((264670.300 6644239.500, 264670.251 6...
+
+        [1000 rows x 2 columns]
+
+        Run the function clean_overlay where the data is clipped to a grid
+        of 1000x1000 meters. Args are the first two arguments of clean_overlay,
+        kwargs are additional keyword arguments.
+
+        >>> resultslist = sg.gridloop(
+        ...     func=sg.clean_overlay,
+        ...     mask=buffered,
+        ...     gridsize=1000,
+        ...     args=(points, buffered),
+        ...     kwargs={"how": "intersection"}
+        ... )
+        >>> type(resultslist)
+        list
+
+        >>> results = pd.concat(resultslist, ignore_index=True)
+        >>> results
+            idx_1 idx_2                        geometry
+        0      220   220  POINT (254575.200 6661631.500)
+        1      735   735  POINT (256337.400 6649931.700)
+        2      575   575  POINT (256369.200 6650413.300)
+        3       39    39  POINT (256142.300 6650526.300)
+        4      235   235  POINT (256231.300 6650720.200)
+        ...    ...   ...                             ...
+        1481   711   795  POINT (272845.500 6655048.800)
+        1482   711   711  POINT (272845.500 6655048.800)
+        1483   757   757  POINT (273507.600 6652806.600)
+        1484   457   457  POINT (273524.400 6652979.900)
+        1485   284   284  POINT (273650.800 6653000.500)
+
+        [1486 rows x 3 columns]
+
+        """
+        intersects_mask = lambda df: df.index.isin(df.sjoin(self.mask).index)
+        grid: GeoSeries = (
+            make_grid(self.mask, gridsize=self.gridsize).loc[intersects_mask].geometry
+        )
+
+        n = len(grid)
+
+        buffered_grid = grid.buffer(self.gridbuffer, resolution=1, join_style=2)
+
+        if self.parallelizer is not None:
+            func_with_clip = functools.partial(
+                _clip_and_run_func,
+                func=func,
+                args=args,
+                kwargs=kwargs,
+                keep_geom_type=self.keep_geom_type,
+                clip=self.clip,
+            )
+            results = self.parallelizer.map(func_with_clip, buffered_grid)
+            if not self.gridbuffer or not self.clip:
+                return results
+            out = []
+            for cell_res, unbuffered in zip(results, grid, strict=True):
+                out.append(
+                    _clip_back_to_unbuffered_grid(
+                        cell_res, unbuffered, self.keep_geom_type
+                    )
+                )
+            return out
+
+        results = []
+        for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid)):
+            cell_kwargs = {
+                key: _clip_if_isinstance(
+                    value, buffered, self.keep_geom_type, self.clip
+                )
+                for key, value in kwargs.items()
+            }
+            cell_args = tuple(
+                _clip_if_isinstance(value, buffered, self.keep_geom_type, self.clip)
+                for value in args
+            )
+
+            cell_res = func(*cell_args, **cell_kwargs)
+
+            # clip back to original
+            if self.gridbuffer and self.clip:
+                cell_res = _clip_back_to_unbuffered_grid(
+                    cell_res, unbuffered, self.keep_geom_type
+                )
+
+            results.append(cell_res)
+
+            if self.verbose:
+                print(f"Done with {i+1} of {n} grid cells", end="\r")
+
+        return results
+
+
 def gridloop(
     func: Callable,
-    mask: GeoDataFrame | GeoSeries | Geometry,
     gridsize: int,
     gridbuffer: int = 0,
+    mask: GeoDataFrame | GeoSeries | Geometry = None,
     clip: bool = True,
     keep_geom_type: bool = True,
     verbose: bool = False,
     args: tuple | None = None,
     kwargs: dict | None = None,
+    parallelizer: Parallel | None = None,
 ) -> list[Any]:
     """Runs a function in a loop cellwise based on a grid.
 
@@ -108,9 +286,6 @@ def gridloop(
     [1486 rows x 3 columns]
 
     """
-    if not isinstance(mask, GeoDataFrame):
-        mask = to_gdf(mask)
-
     if kwargs is None:
         kwargs = {}
     elif not isinstance(kwargs, dict):
@@ -121,55 +296,120 @@ def gridloop(
     elif not isinstance(args, tuple):
         raise TypeError("args should be a tuple")
 
+    if mask is None:
+        geoms = [
+            value
+            for value in args
+            if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry))
+        ] + [
+            value
+            for value in kwargs.values()
+            if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry))
+        ]
+        mask = to_gdf(get_total_bounds(*geoms))
+
+    elif not isinstance(mask, GeoDataFrame):
+        mask = to_gdf(mask)
+
     intersects_mask = lambda df: df.index.isin(df.sjoin(mask).index)
     grid: GeoSeries = make_grid(mask, gridsize=gridsize).loc[intersects_mask].geometry
 
-    if verbose:
-        n = len(grid)
+    n = len(grid)
 
-    def clip_if_isinstance(value, cell, keep_geom_type):
-        if not isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry)):
-            return value
+    buffered_grid = grid.buffer(gridbuffer, resolution=1, join_style=2)
 
-        if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries)):
-            if clip:
-                return clean_clip(value, cell, keep_geom_type=keep_geom_type)
-            return value.loc[value.intersects(cell)]
-
-        return value.intersection(cell).make_valid()
-
-    buffered = grid.buffer(gridbuffer, resolution=1, join_style=2)
+    if parallelizer is not None:
+        func_with_clip = functools.partial(
+            _clip_and_run_func,
+            func=func,
+            args=args,
+            kwargs=kwargs,
+            keep_geom_type=keep_geom_type,
+            clip=clip,
+        )
+        results = parallelizer.map(func_with_clip, buffered_grid)
+        if not gridbuffer or not clip:
+            return results
+        out = []
+        for cell_res, unbuffered in zip(results, grid, strict=True):
+            out.append(
+                _clip_back_to_unbuffered_grid(cell_res, unbuffered, keep_geom_type)
+            )
+        return out
 
     results = []
-    for i, (cell, buffered) in enumerate(zip(grid, buffered)):
-        cell_kwargs = {}
-        for key, value in kwargs.items():
-            value = clip_if_isinstance(value, buffered, keep_geom_type)
-            cell_kwargs[key] = value
-
-        cell_args = ()
-        for arg in args:
-            arg = clip_if_isinstance(arg, buffered, keep_geom_type)
-            cell_args = cell_args + (arg,)
+    for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid)):
+        cell_kwargs = {
+            key: _clip_if_isinstance(value, buffered, keep_geom_type, clip)
+            for key, value in kwargs.items()
+        }
+        cell_args = tuple(
+            _clip_if_isinstance(value, buffered, keep_geom_type, clip) for value in args
+        )
 
         cell_res = func(*cell_args, **cell_kwargs)
 
         # clip back to original
         if gridbuffer and clip:
-            if isinstance(cell_res, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry)):
-                cell_res = clip_if_isinstance(cell_res, cell, keep_geom_type)
-            else:
-                try:
-                    for res in cell_res:
-                        res = clip_if_isinstance(res, cell, keep_geom_type)
-                except TypeError:
-                    pass
+            cell_res = _clip_back_to_unbuffered_grid(
+                cell_res, unbuffered, keep_geom_type
+            )
 
         results.append(cell_res)
 
         if verbose:
             print(f"Done with {i+1} of {n} grid cells", end="\r")
 
+    return results
+
+
+def _clip_and_run_func(
+    grid_cell: Polygon,
+    func: Callable,
+    args: tuple,
+    kwargs: dict,
+    keep_geom_type: bool,
+    clip: bool,
+):
+    cell_args = tuple(
+        _clip_if_isinstance(value, grid_cell, keep_geom_type, clip) for value in args
+    )
+    cell_kwargs = {
+        key: _clip_if_isinstance(value, grid_cell, keep_geom_type, clip)
+        for key, value in kwargs.items()
+    }
+
+    return func(*cell_args, **cell_kwargs)
+
+
+def _clip_if_isinstance(value, cell, keep_geom_type, clip: bool):
+    if not isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry)):
+        return value
+
+    if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries)):
+        if clip:
+            return clean_clip(value, cell, keep_geom_type=keep_geom_type)
+        return value.loc[value.intersects(cell)]
+
+    return value.intersection(cell).make_valid()
+
+
+def _clip_back_to_unbuffered_grid(results, mask, keep_geom_type):
+    if isinstance(results, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry)):
+        return _clip_if_isinstance(results, mask, keep_geom_type, clip=True)
+    elif isinstance(results, (pd.DataFrame, pd.Series, np.ndarray)):
+        return results
+    try:
+        for key, value in results.items():
+            results[key] = _clip_if_isinstance(value, mask, keep_geom_type, clip=True)
+    except AttributeError:
+        try:
+            return [
+                _clip_if_isinstance(res, mask, keep_geom_type, clip=True)
+                for res in results
+            ]
+        except TypeError:
+            pass
     return results
 
 
@@ -506,7 +746,6 @@ def get_total_bounds(
         minx, miny, maxx, maxy = to_bbox(obj)
         xs += [minx, maxx]
         ys += [miny, maxy]
-
     return min(xs), min(ys), max(xs), max(ys)
 
 
