@@ -164,11 +164,6 @@ def buffdiss(
     buffered = buff(gdf, distance, resolution=resolution, copy=copy)
 
     return _dissolve(buffered, **dissolve_kwargs)
-    dissolved = buffered.dissolve(**dissolve_kwargs)
-
-    dissolved[gdf._geometry_column_name] = dissolved.make_valid()
-
-    return dissolved
 
 
 def _dissolve(gdf, aggfunc="first", grid_size=None, **dissolve_kwargs):
@@ -203,12 +198,6 @@ def _dissolve(gdf, aggfunc="first", grid_size=None, **dissolve_kwargs):
         except KeyError:
             pass
     dissolved[geom_col] = geoms_agged
-
-    # else:
-    #     dissolved = (
-    #         gdf[list(gdf.columns.difference({geom_col}))].agg(aggfunc).reset_index
-    #     )
-    #     dissolved[geom_col] = gdf[geom_col].agg(merge_geometries)
 
     return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
 
@@ -247,34 +236,6 @@ def dissexp(
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
     dissolved = _dissolve(gdf, aggfunc=aggfunc, grid_size=grid_size, **dissolve_kwargs)
-
-    return make_all_singlepart(
-        dissolved, ignore_index=ignore_index, index_parts=index_parts
-    )
-
-    if grid_size is not None:
-
-        def merge_geometries(x):
-            return make_valid(unary_union(x, grid_size=grid_size))
-
-        geom_col = gdf._geometry_column_name
-        if by:
-            dissolved = gdf.groupby(**dissolve_kwargs)[
-                list(gdf.columns.difference({geom_col} | set(by)))
-            ].agg(aggfunc)
-            dissolved[geom_col] = gdf.groupby(**dissolve_kwargs)[geom_col].agg(
-                merge_geometries
-            )
-        else:
-            dissolved = gdf[list(gdf.columns.difference({geom_col} | set(by)))].agg(
-                aggfunc
-            )
-            dissolved[geom_col] = gdf[geom_col].agg(merge_geometries)
-        dissolved = GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
-    else:
-        dissolved = gdf.dissolve(aggfunc=aggfunc, **dissolve_kwargs)
-
-        dissolved[geom_col] = dissolved.make_valid()
 
     return make_all_singlepart(
         dissolved, ignore_index=ignore_index, index_parts=index_parts

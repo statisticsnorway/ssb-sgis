@@ -118,8 +118,8 @@ def clean_overlay(
     if original_geom_type:
         df2 = to_single_geom_type(df2, geom_type)
 
-    assert df1.is_valid.all()
-    assert df2.is_valid.all()
+    assert df1.is_valid.all(), df1.is_valid.value_counts()
+    assert df2.is_valid.all(), df2.is_valid.value_counts()
     assert df1.geometry.notna().all()
     assert df2.geometry.notna().all()
 
