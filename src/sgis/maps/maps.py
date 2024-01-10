@@ -16,10 +16,9 @@ from geopandas import GeoDataFrame, GeoSeries
 from shapely import Geometry
 
 from ..geopandas_tools.conversion import to_gdf as to_gdf_func
-from ..geopandas_tools.general import clean_clip, clean_geoms, is_wkt
+from ..geopandas_tools.general import clean_geoms, get_common_crs, is_wkt
 from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
-from ..helpers import make_namedict
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
@@ -27,12 +26,16 @@ from .thematicmap import ThematicMap
 
 def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
     try:
-        crs = gdfs[0].crs
+        crs = get_common_crs(gdfs)
     except IndexError:
-        crs = [x for x in kwargs.values() if isinstance(x, GeoDataFrame)][0].crs
+        try:
+            crs = [x for x in kwargs.values() if hasattr(x, "crs")][0].crs
+        except IndexError:
+            crs = None
 
     masks = {
         "bygdoy": (10.6976899, 59.9081695),
+        "akersveien": (10.7476367, 59.9222191),
         "kongsvinger": (12.0035242, 60.1875279),
         "stavanger": (5.6960601, 58.8946196),
         "volda": (6.0705987, 62.146643),
@@ -60,7 +63,7 @@ def explore(
     column: str | None = None,
     center: Any | None = None,
     labels: tuple[str] | None = None,
-    max_zoom: int = 30,
+    max_zoom: int = 40,
     browser: bool = False,
     smooth_factor: int | float = 1.5,
     size: int | None = None,
@@ -182,7 +185,7 @@ def explore(
     if not kwargs.pop("explore", True):
         return qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
-    return m.explore()
+    m.explore()
 
 
 def samplemap(
@@ -191,7 +194,7 @@ def samplemap(
     size: int = 1000,
     sample_from_first: bool = True,
     labels: tuple[str] | None = None,
-    max_zoom: int = 30,
+    max_zoom: int = 40,
     smooth_factor: int = 1.5,
     explore: bool = True,
     browser: bool = False,
@@ -320,7 +323,7 @@ def clipmap(
     mask: GeoDataFrame | GeoSeries | Geometry = None,
     labels: tuple[str] | None = None,
     explore: bool = True,
-    max_zoom: int = 30,
+    max_zoom: int = 40,
     smooth_factor: int | float = 1.5,
     browser: bool = False,
     **kwargs,

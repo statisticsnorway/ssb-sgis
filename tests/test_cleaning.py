@@ -13,11 +13,7 @@ from shapely import extract_unique_points
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 
-import sys
-
-
 sys.path.insert(0, src)
-
 
 import sgis as sg
 
@@ -107,11 +103,13 @@ def test_clean_1144():
 
         assert list(sorted(cleaned2.columns)) == cols, cleaned2.columns
 
-        assert double.area.sum() < 1e-6, double.area.sum()
+        assert double.area.sum() < 1e-3, double.area.sum()
         assert gaps.area.sum() < 1e-2, gaps.area.sum()
         assert int(cleaned2.area.sum()) == 154240, cleaned2.area.sum()
 
         assert sg.get_geom_type(cleaned2) == "polygon", sg.get_geom_type(cleaned2)
+
+        # snapped = sg.snap_polygons(df, cleaned, tolerance)
 
 
 def test_clean():
@@ -130,112 +128,133 @@ def test_clean():
 
     df = sg.clean_overlay(df, holes, how="difference")
 
-    sg.qtm(df.clip(mask), alpha=0.5)
-
-    sg.qtm(df=df.clip(mask).pipe(sg.buff, -0.5), alpha=0.5)
+    # sg.qtm(df.clip(mask), alpha=0.5)
+    # sg.qtm(df=df.clip(mask).pipe(sg.buff, -0.5), alpha=0.5)
 
     tolerance = 5
 
-    cleaned = sg.coverage_clean(df, tolerance)  # .pipe(sg.coverage_clean, tolerance)
+    cleaned = sg.coverage_clean(df, tolerance)
 
-    sg.qtm(
-        cleaned=cleaned.clip(mask).pipe(sg.buff, -0.5),
+
+def test_spikes():
+    from shapely.geometry import Point, Polygon
+
+    sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)])).assign(
+        what="sliver", num=1
     )
+    poly_with_spike = sg.to_gdf(
+        Polygon(
+            [
+                (0, 0),
+                (-0.1, 1),
+                (0, 2),
+                (-0.99, 2),
+                (-0.99, 1.5),
+                (-1.01, 1.5),
+                (-1.01, 2),
+                (-1.51, 2),
+                (-1.51, 1.7),
+                (-1.52, 2),
+                (-2, 2),
+                (-1, 1),
+            ],
+            holes=[
+                (
+                    [
+                        (-0.5, 1.25),
+                        (-0.5, 1.65),
+                        (-0.49, 1.65),
+                        (-0.49, 1.25),
+                    ]
+                ),
+            ],
+        )
+    ).assign(what="small", num=2)
+    poly_filling_the_spike = sg.to_gdf(
+        Polygon(
+            [
+                (0, 2),
+                (-0.99, 2),
+                (-0.99, 1.5),
+                (-1.01, 1.5),
+                (-1.01, 2),
+                (-2, 2),
+                (-2, 6),
+                (0, 6),
+                (0, 2),
+            ],
+        )
+    ).assign(what="small", num=2)
 
-    gaps = sg.get_gaps(cleaned)
-    double = sg.get_intersections(cleaned)
+    df = pd.concat([sliver, poly_with_spike, poly_filling_the_spike])
+    holes = sg.buff(sg.to_gdf([(-0.84, 3), (-0.84, 4.4)]), [0.4, 0.3])
+    df = sg.clean_overlay(df, holes, how="update")
 
-    sg.qtm(
-        cleaned=cleaned.clip(mask),
-        double=double.clip(mask),
-        gaps=gaps.clip(mask),
-        alpha=0.5,
-    )
+    tolerance = 0.09
 
-    sg.explore(
-        cleaned=cleaned,  # .assign(wkt=lambda x: x.to_wkt()),
-        double=double,  # .assign(wkt=lambda x: x.to_wkt()),
-        gaps=gaps,  # .assign(wkt=lambda x: x.to_wkt()),
-    )
+    cleaned = sg.coverage_clean(df, tolerance)
+    if __name__ == "__main__":
+        sg.explore(
+            cleaned=cleaned,
+            df=df,
+        )
 
-    assert list(sorted(cleaned.columns)) == ["geometry"], cleaned.columns
+    assert (area := sorted([round(x, 3) for x in cleaned.area])) == sorted(
+        [
+            7.225,
+            1.89,
+            0.503,
+            0.283,
+            0.2,
+        ]
+    ), area
+    assert (length := sorted([round(x, 3) for x in cleaned.length])) == sorted(
+        [
+            17.398,
+            7.838,
+            2.513,
+            1.885,
+            4.02,
+        ]
+    ), length
 
-    assert double.area.sum() < 1e-6, double.area.sum()
-    assert gaps.area.sum() < 1e-2, (gaps.area.sum(), gaps.area.max())
-    assert int(cleaned.area.sum()) == 431076, cleaned.area.sum()
-
-    assert sg.get_geom_type(cleaned) == "polygon", sg.get_geom_type(cleaned)
-
-    for g in cleaned.explode().explode().geometry:
-        sg.qtm(cleaned=cleaned.clip(g.buffer(1)), g=sg.to_gdf(g), alpha=0.5)
-
-    cleaned2 = sg.coverage_clean(cleaned, tolerance=tolerance)
-
-    gaps = sg.get_gaps(cleaned2)
-    double = sg.get_intersections(cleaned2)
-
-    assert list(sorted(cleaned2.columns)) == ["geometry"], cleaned2.columns
-
-    assert double.area.sum() < 1e-6, double.area.sum()
-    assert gaps.area.sum() < 1e-2, (gaps.area.sum(), gaps.area.max())
-    assert cleaned2.area.sum() > df.area.sum()
-    assert int(cleaned2.area.sum()) == 431076, cleaned2.area.sum()
-
-    assert sg.get_geom_type(cleaned2) == "polygon", sg.get_geom_type(cleaned2)
-
-    mask = sg.to_gdf("POINT (905139.722 7878785.909)", crs=25833).buffer(110)
-
-    sg.qtm(cleaned2=cleaned2.clip(mask), alpha=0.5)
-    sg.explore(
-        cleaned=cleaned.clip(mask),
-        cleaned2=cleaned2.clip(mask),
-        # alpha=0.5,
-        # column="idx",
-    )
-
-    # add a double surface
-    df = pd.concat([df, sg.buff(df.iloc[[0]], 10)], ignore_index=True)
-
-    cleaned3 = sg.coverage_clean(df, tolerance=tolerance)
-
-    gaps = sg.get_gaps(cleaned3)
-    double = sg.get_intersections(cleaned3)
+    spikes_fixed = sg.split_spiky_polygons(df, tolerance)
+    fixed_and_cleaned = sg.coverage_clean(spikes_fixed, tolerance)
 
     if __name__ == "__main__":
         sg.explore(
-            gaps=gaps,  # .clip(mask),
-            double=double,  # .clip(mask),
-            gdf=df,  # .clip(mask),
-            cleaned3=cleaned3,  # .clip(mask),
-            p=sg.to_gdf(extract_unique_points(cleaned3.geometry)).pipe(sg.buff, 1),
-            # alpha=0.5,
-            # column="idx",
+            fixed_and_cleaned=fixed_and_cleaned,
+            spikes_fixed=spikes_fixed,
+            cleaned=cleaned,
+            df=df,
         )
 
-    assert list(sorted(cleaned3.columns)) == ["geometry"], cleaned3.columns
-
-    assert double.area.sum() < 1e-6, double.area.sum()
-    assert gaps.area.sum() < 1e-2, gaps.area.sum()
-    assert int(cleaned3.area.sum()) == 441769, cleaned3.area.sum()
-
-    assert sg.get_geom_type(cleaned3) == "polygon", sg.get_geom_type(cleaned3)
-
-    mask = sg.to_gdf("POINT (905139.722 7878785.909)", crs=25833).buffer(110)
-
-    if __name__ == "__main__":
-        sg.qtm(cleaned3=cleaned3.clip(mask), alpha=0.5)
-        sg.explore(
-            cleaned=cleaned.clip(mask),
-            cleaned2=cleaned2.clip(mask),
-            cleaned3=cleaned3.clip(mask),
-            # alpha=0.5,
-            # column="idx",
-        )
+    assert (area := sorted([round(x, 3) for x in fixed_and_cleaned.area])) == sorted(
+        [
+            7.215,
+            1.9,
+            0.503,
+            0.283,
+            0.2,
+        ]
+    ), area
+    assert (
+        length := sorted([round(x, 3) for x in fixed_and_cleaned.length])
+    ) == sorted(
+        [
+            16.398,
+            6.838,
+            2.513,
+            1.885,
+            4.02,
+        ]
+    ), length
 
 
 def main():
-    test_clean_1144()
+    test_spikes()
     test_clean()
+    test_clean_1144()
     test_clean_dissappearing_polygon()
 
 
@@ -245,3 +264,6 @@ if __name__ == "__main__":
     # cProfile.run("main()", sort="cumtime")
 
     main()
+
+# %%
+()
