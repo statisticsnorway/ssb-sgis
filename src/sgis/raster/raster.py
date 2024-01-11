@@ -47,6 +47,7 @@ from .base import (
     get_index_mapper,
     memfile_from_array,
 )
+from .elevationraster import get_gradient
 from .zonal import (
     _aggregate,
     _no_overlap_df,
@@ -57,7 +58,7 @@ from .zonal import (
 
 
 numpy_func_message = (
-    "aggfunc must be functions or " "strings of numpy functions or methods."
+    "aggfunc must be functions or strings of numpy functions or methods."
 )
 
 
@@ -417,6 +418,27 @@ class Raster(RasterBase):
                 self[key] = value
         return self
 
+    def write(self, path: str, window=None, **kwargs):
+        """Write the raster as a single file.
+
+        Multiband arrays will result in a multiband image file.
+
+        Args:
+            path: File path to write to.
+            window: Optional window to clip the image to.
+        """
+
+        if self.array is None:
+            raise AttributeError("The image hasn't been loaded yet.")
+
+        profile = self.profile | kwargs
+
+        with opener(path) as file:
+            with rasterio.open(file, "w", **profile) as dst:
+                self._write(dst, window)
+
+        self.path = str(path)
+
     def load(self, res: int | None = None, **kwargs):
         """Load the entire image as an np.array.
 
@@ -516,26 +538,58 @@ class Raster(RasterBase):
             dropna=dropna,
         )
 
-    def write(self, path: str, window=None, **kwargs):
-        """Write the raster as a single file.
+    def gradient(self, degrees: bool = False, copy: bool = False):
+        """Get the slope of an elevation raster.
 
-        Multiband arrays will result in a multiband image file.
+        Calculates the absolute slope between the grid cells
+        based on the image resolution.
+
+        For multiband images, the calculation is done for each band.
 
         Args:
-            path: File path to write to.
-            window: Optional window to clip the image to.
+            degrees: If False (default), the returned values will be in ratios,
+                where a value of 1 means 1 meter up per 1 meter forward. If True,
+                the values will be in degrees from 0 to 90.
+            copy: Whether to copy or overwrite the original Raster.
+                Defaults to False to save memory.
+
+        Returns:
+            The class instance with new array values, or a copy if copy is True.
+
+        Examples
+        --------
+        Making an array where the gradient to the center is always 10.
+
+        >>> import sgis as sg
+        >>> import numpy as np
+        >>> arr = np.array(
+        ...         [
+        ...             [100, 100, 100, 100, 100],
+        ...             [100, 110, 110, 110, 100],
+        ...             [100, 110, 120, 110, 100],
+        ...             [100, 110, 110, 110, 100],
+        ...             [100, 100, 100, 100, 100],
+        ...         ]
+        ...     )
+
+        Now let's create an ElevationRaster from this array with a resolution of 10.
+
+        >>> r = sg.ElevationRaster.from_array(arr, crs=None, bounds=(0, 0, 50, 50))
+        >>> r.res
+        (10.0, 10.0)
+
+        The gradient will be 1 (1 meter up for every meter forward).
+        The calculation is by default done in place to save memory.
+
+        >>> r.gradient()
+        >>> r.array
+        array([[0., 1., 1., 1., 0.],
+            [1., 1., 1., 1., 1.],
+            [1., 1., 0., 1., 1.],
+            [1., 1., 1., 1., 1.],
+            [0., 1., 1., 1., 0.]])
         """
-
-        if self.array is None:
-            raise AttributeError("The image hasn't been loaded yet.")
-
-        profile = self.profile | kwargs
-
-        with opener(path) as file:
-            with rasterio.open(file, "w", **profile) as dst:
-                self._write(dst, window)
-
-        self.path = str(path)
+        return get_gradient(self, degrees=degrees, copy=copy)
 
     def to_xarray(self) -> xr.DataArray:
         self.check_for_array()
@@ -732,15 +786,10 @@ class Raster(RasterBase):
 
         return self
 
-    # def get_coords(self):
-    #     # TODO: droppe
-    #     self.check_for_array()
-    #     return _generate_spatial_coords(self.transform, self.width, self.height)
-
     @property
     def subfolder(self):
         try:
-            folder = Path(Path(self.path).parent).name
+            folder = Path(self.path).parent.name
             if self.root:
                 return folder.difference(self.root)
             else:
@@ -954,12 +1003,6 @@ class Raster(RasterBase):
         if len(self.shape) == 2:
             return (1,)
         return tuple(i + 1 for i in range(self.shape[0]))
-
-    def get(self, key, default=None):
-        try:
-            return self[key]
-        except (KeyError, ValueError, IndexError):
-            return default
 
     def copy(self, deep=True):
         """Returns a (deep) copy of the class instance.
@@ -1204,11 +1247,6 @@ class Raster(RasterBase):
 
     def __hash__(self):
         return hash(self._hash)
-
-    def __eq__(self, other):
-        if isinstance(other, Raster):
-            return np.all(np.array_equal(self.array, other.array))
-        return NotImplemented
 
     def __repr__(self) -> str:
         """The print representation."""
