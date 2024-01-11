@@ -169,13 +169,12 @@ def test_gridlooper_class():
 
     assert intersected.equals(intersected2)
 
+    looper.concat = True
+
     intersected3 = (
-        pd.concat(
-            looper.run(
-                sg.clean_overlay,
-                *(points, grid),
-            ),
-            ignore_index=True,
+        looper.run(
+            sg.clean_overlay,
+            *(points, grid),
         )
         .sort_values("i")
         .reset_index(drop=True)
@@ -183,6 +182,7 @@ def test_gridlooper_class():
 
     assert intersected.equals(intersected3)
 
+    looper.concat = False
     looper.gridbuffer = 100
 
     intersected4 = (

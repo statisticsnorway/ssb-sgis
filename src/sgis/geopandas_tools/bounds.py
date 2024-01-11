@@ -93,10 +93,11 @@ class Gridlooper:
     gridsize: int
     mask: GeoDataFrame | GeoSeries | Geometry
     gridbuffer: int = 0
+    parallelizer: Parallel | None = None
+    concat: bool = False
     clip: bool = True
     keep_geom_type: bool = True
     verbose: bool = False
-    parallelizer: Parallel | None = None
 
     def __post_init__(self):
         if not isinstance(self.mask, GeoDataFrame):
@@ -123,7 +124,11 @@ class Gridlooper:
             )
             results = self.parallelizer.map(func_with_clip, buffered_grid)
             if not self.gridbuffer or not self.clip:
-                return results
+                return (
+                    results
+                    if not self.concat
+                    else pd.concat(results, ignore_index=True)
+                )
             out = []
             for cell_res, unbuffered in zip(results, grid, strict=True):
                 out.append(
@@ -131,7 +136,7 @@ class Gridlooper:
                         cell_res, unbuffered, self.keep_geom_type
                     )
                 )
-            return out
+            return out if not self.concat else pd.concat(out, ignore_index=True)
 
         results = []
         for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid)):
@@ -159,7 +164,7 @@ class Gridlooper:
             if self.verbose:
                 print(f"Done with {i+1} of {n} grid cells", end="\r")
 
-        return results
+        return results if not self.concat else pd.concat(results, ignore_index=True)
 
 
 def gridloop(
