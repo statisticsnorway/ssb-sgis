@@ -146,7 +146,7 @@ class Explore(Map):
         mask=None,
         column: str | None = None,
         popup: bool = True,
-        max_zoom: int = 30,
+        max_zoom: int = 40,
         smooth_factor: float = 1.5,
         browser: bool = False,
         prefer_canvas: bool = True,
@@ -155,6 +155,7 @@ class Explore(Map):
         save=None,
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
+        decimals: int = 6,
         **kwargs,
     ):
         self.popup = popup
@@ -166,6 +167,7 @@ class Explore(Map):
         self.save = save
         self.mask = mask
         self.text = text
+        self.decimals = decimals
 
         self.browser = browser
         if not self.browser and "show_in_browser" in kwargs:
@@ -609,12 +611,16 @@ class Explore(Map):
 
         if self.measure_control:
             MeasureControlFix(
-                primary_length_unit="meters",
+                primary_length_unit="m",
                 secondary_length_unit="kilometers",
                 primary_area_unit="sqmeters",
                 secondary_area_unit="sqkilometers",
                 position="bottomleft",
                 capture_z_index=False,
+                thousands_sep="",
+                units={
+                    "m": {"factor": 1, "display": "m", "decimals": self.decimals},
+                },
             ).add_to(m)
 
         plugins.Fullscreen(
