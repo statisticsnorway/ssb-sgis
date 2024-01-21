@@ -20,23 +20,20 @@ class Sentinel2(Raster):
         "B12": "swir",
     }
 
-    def __init__(self, raster=None, **kwargs):
-        kwargs = {
-            "nodata": 0,
-            "dtype": np.uint16,
-            "band_index": 1,
-            "name_regex": r"B\d{1,2}A|B\d{1,2}",
-            "date_regex": r"20\d{6}",
-            "shortname": "sentinel2",
-        } | kwargs
+    name_regex = r"B\d{1,2}A|B\d{1,2}"
+    date_regex = r"(\d{8})"  # r"20\d{8}"
+    date_format: str = "%Y%m%d"
+    nodata = 0
+    _dtype = np.uint16
 
-        super().__init__(raster, **kwargs)
+    def __init__(self, raster=None, indexes=1, **kwargs):
+        super().__init__(raster, indexes=indexes, **kwargs)
 
     @property
     def band_color(self):
         if not self.name:
             return None
-        return self.colors[self.name]
+        return self.band_colors[self.name]
 
     @property
     def is_mask(self):

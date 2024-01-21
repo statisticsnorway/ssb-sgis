@@ -1,17 +1,7 @@
 import numpy as np
 
-from .raster import Raster
 
-
-class ElevationRaster(Raster):
-    """For raster calculation on elevation images."""
-
-    def __init__(self, raster=None, **kwargs):
-        kwargs = {"band_index": 1} | kwargs
-        super().__init__(raster, **kwargs)
-
-
-def get_gradient(raster: Raster, degrees: bool = False, copy: bool = False):
+def get_gradient(raster, degrees: bool = False, copy: bool = False):
     """Get the slope of an elevation raster.
 
     Calculates the absolute slope between the grid cells
@@ -71,11 +61,11 @@ def get_gradient(raster: Raster, degrees: bool = False, copy: bool = False):
             out_array.append(results)
         array = np.array(out_array)
 
-    return raster._return_raster_or_copy(array, copy)
+    return raster._return_self_or_copy(array, copy)
 
 
 def _slope_2d(array, res, degrees) -> np.ndarray:
-    gradient_x, gradient_y = np.gradient(array, res[0], res[1])
+    gradient_x, gradient_y = np.gradient(array, res, res)
 
     gradient = abs(gradient_x) + abs(gradient_y)
 
