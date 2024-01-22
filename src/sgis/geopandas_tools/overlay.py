@@ -12,21 +12,12 @@ import functools
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
 from pandas import DataFrame
-from pyproj import CRS
-from shapely import (
-    STRtree,
-    box,
-    difference,
-    intersection,
-    is_valid,
-    make_valid,
-    unary_union,
-)
+from shapely import STRtree, box, difference, intersection, make_valid, unary_union
 from shapely.errors import GEOSException
 
-from .general import clean_geoms
+from .general import _determine_geom_type_args, clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
 
@@ -39,7 +30,7 @@ def clean_overlay(
     df1: GeoDataFrame,
     df2: GeoDataFrame,
     how: str = "intersection",
-    keep_geom_type: bool = True,
+    keep_geom_type: bool | None = None,
     geom_type: str | None = None,
     grid_size: float | None = None,
     lsuffix: str = DEFAULT_LSUFFIX,
@@ -92,19 +83,17 @@ def clean_overlay(
 
     crs = df1.crs
 
-    original_geom_type = geom_type
+    # original_geom_type = geom_type
 
-    if not geom_type:
-        geom_type = get_geom_type(df1)
-        if geom_type == "mixed":
+    df1, geom_type, keep_geom_type = _determine_geom_type_args(
+        df1, geom_type, keep_geom_type
+    )
+
+    if not geom_type or geom_type == "mixed":
+        if keep_geom_type and geom_type == "mixed":
             raise ValueError(
                 "mixed geometries are not allowed when geom_type isn't specified.",
-                df1.geometry,
-            )
-        if get_geom_type(df2) == "mixed":
-            raise ValueError(
-                "mixed geometries are not allowed when geom_type isn't specified.",
-                df2.geometry,
+                df1.geometry.geom_type.value_counts(),
             )
 
     df1 = clean_geoms(df1)
@@ -113,9 +102,10 @@ def clean_overlay(
     df1 = make_all_singlepart(df1, ignore_index=True)
     df2 = make_all_singlepart(df2, ignore_index=True)
 
-    df1 = to_single_geom_type(df1, geom_type)
+    if keep_geom_type:
+        df1 = to_single_geom_type(df1, geom_type)
 
-    if original_geom_type:
+    if geom_type and get_geom_type(df1) == get_geom_type(df2):
         df2 = to_single_geom_type(df2, geom_type)
 
     assert df1.is_valid.all(), df1.is_valid.value_counts()
