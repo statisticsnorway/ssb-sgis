@@ -3,7 +3,7 @@ from collections.abc import Iterable
 import networkx as nx
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
-from shapely import STRtree, difference, make_valid, unary_union
+from shapely import STRtree, difference, make_valid, simplify, unary_union
 
 from .general import _determine_geom_type_args, _push_geom_col, clean_geoms
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
@@ -261,7 +261,14 @@ def _get_intersecting_geometries(
         intersected = pd.concat(intersected, ignore_index=True).loc[are_not_identical]
 
     # make sure it's correct by sjoining a point inside the polygons
-    points_joined = intersected.representative_point().to_frame().sjoin(intersected)
+    points_joined = (
+        # large and very detailed geometries can dissappear with small negative buffer
+        simplify(intersected.geometry, 1e-3)
+        .buffer(-1e-3)
+        .representative_point()
+        .to_frame()
+        .sjoin(intersected)
+    )
 
     duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
 
