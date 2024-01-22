@@ -115,17 +115,20 @@ class Map:
         show = kwargs.pop("show", True)
         if isinstance(show, (int, bool)):
             show_temp = [bool(show) for _ in range(len(gdfs))]
-        elif not hasattr(show, "__iter__") or len(show) != len(gdfs):
+        elif not hasattr(show, "__iter__"):
             raise ValueError(
-                "'show' must be boolean or an iterable of boleans same length as gdfs"
+                "'show' must be boolean or an iterable of boleans same "
+                f"length as gdfs ({len(gdfs)}). Got len {len(show)}"
             )
         else:
             show_temp = show
 
+        show_args = show_temp[: len(gdfs)]
+        show_kwargs = show_temp[len(gdfs) :]
         self._gdfs = []
         new_labels = []
         self.show = []
-        for label, gdf, show in zip(self.labels, gdfs, show_temp, strict=True):
+        for label, gdf, show in zip(self.labels, gdfs, show_args):
             if not len(gdf):
                 continue
 
@@ -138,25 +141,42 @@ class Map:
             self.show.append(show)
         self.labels = new_labels
 
-        if len(self._gdfs):
-            last_show = self.show[-1]
-        else:
-            last_show = show
+        # if len(self._gdfs):
+        #     last_show = self.show[-1]
+        # else:
+        #     last_show = show
 
         # pop all geometry-like items from kwargs into self._gdfs
         self.kwargs = {}
+        i = 0
         for key, value in kwargs.items():
-            if isinstance(value, GeoDataFrame):
-                self._gdfs.append(value)
-                self.labels.append(key)
-                self.show.append(last_show)
-                continue
+            # if isinstance(value, GeoDataFrame):
+            #     self._gdfs.append(value)
+            #     self.labels.append(key)
+            #     try:
+            #         show = show_kwargs[i]
+            #     except IndexError:
+            #         pass
+            #     self.show.append(show)
+            #     i += 1
+            #     continue
             try:
                 self._gdfs.append(to_gdf(value))
                 self.labels.append(key)
-                self.show.append(last_show)
+                try:
+                    show = show_kwargs[i]
+                    i += 1
+                except IndexError:
+                    pass
+                self.show.append(show)
             except Exception:
                 self.kwargs[key] = value
+
+        if hasattr(self.show, "__iter__") and len(self.show) != len(self._gdfs):
+            raise ValueError(
+                "'show' must be boolean or an iterable of boleans same "
+                f"length as gdfs ({len(gdfs)}). Got len {len(show)}"
+            )
 
         if not any(len(gdf) for gdf in self._gdfs):
             warnings.warn("None of the GeoDataFrames have rows.")
