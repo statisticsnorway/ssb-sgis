@@ -59,6 +59,16 @@ def read_geopandas(
                 if pandas_fallback or not len(df):
                     return df
                 else:
+                    try:
+                        raise e.__class__(e, gcs_path)
+                    except Exception:
+                        print(gcs_path)
+                        raise e
+            except Exception as e:
+                try:
+                    raise e.__class__(e, gcs_path)
+                except Exception:
+                    print(gcs_path)
                     raise e
     else:
         with file_system.open(gcs_path, mode="rb") as file:
