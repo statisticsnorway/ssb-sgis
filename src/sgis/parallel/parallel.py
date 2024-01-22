@@ -343,6 +343,7 @@ class Parallel:
         strict: bool = False,
         write_empty: bool = False,
         clip: bool = True,
+        max_rows_per_intersection: int = 150_000,
     ):
         """Split multiple datasets into municipalities and write as separate files.
 
@@ -357,7 +358,8 @@ class Parallel:
             year: Year of the municipality numbers.
             funcdict: Dictionary with the keys of 'in_data' and functions as values.
                 The functions should take a GeoDataFrame as input and return a
-                GeoDataFrame.
+                GeoDataFrame. The function will be excecuted before the right after
+                the data is read.
             file_type: Defaults to parquet.
             muni_number_col: String column name with municipality
                 number/identifier. Defaults to KOMMUNENR.
@@ -373,6 +375,7 @@ class Parallel:
             "write_empty": write_empty,
             "with_neighbors": with_neighbors,
             "clip": clip,
+            "max_rows_per_intersection": max_rows_per_intersection,
         }
 
         if isinstance(out_data, (str, Path)):
