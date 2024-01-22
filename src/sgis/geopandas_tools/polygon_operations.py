@@ -288,11 +288,12 @@ def eliminate_by_longest(
     # convert to lines to get the borders
     lines_eliminate = to_lines(to_eliminate[["_eliminate_idx", "geometry"]])
 
-    borders = (
-        gdf[["_dissolve_idx", "geometry"]]
-        .overlay(lines_eliminate, keep_geom_type=False)
-        .loc[lambda x: x["_eliminate_idx"].notna()]
-    )
+    borders = clean_overlay(
+        gdf[["_dissolve_idx", "geometry"]],
+        lines_eliminate,
+        keep_geom_type=False,
+        grid_size=grid_size,
+    ).loc[lambda x: x["_eliminate_idx"].notna()]
 
     borders["_length"] = borders.length
 
@@ -682,43 +683,6 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, **kwargs)
             "geometry",
         ]
 
-        if 0:
-            from ..geopandas_tools.conversion import to_gdf
-            from ..maps.maps import explore, explore_locals
-
-            display(pairs)
-            display(soon_erased.index.unique())
-            display(soon_erased._row_idx.unique())
-            display(to_be_eliminated.index.unique())
-            display(to_be_eliminated._row_idx.unique())
-            display(missing.index.unique())
-
-            display(soon_erased)
-            display(to_be_eliminated)
-            display(missing)
-
-            explore(
-                to_gdf(soon_erased, 25833), intersecting=to_gdf(intersecting, 25833)
-            )
-            for j, ((i, g), (i2, g2)) in enumerate(
-                zip(intersecting.items(), soon_erased.geometry.items())
-            ):
-                explore(
-                    to_gdf(g, 25833).assign(ii=i, j=j),
-                    g2=to_gdf(g2, 25833).assign(ii=i2, j=j),
-                )
-
-        if 0:
-            explore(to_gdf(to_be_eliminated.iloc[[16]]))
-            explore(to_gdf(to_be_eliminated.iloc[[15]]))
-            explore(to_gdf(to_be_eliminated.iloc[[0]]))
-            print("hei")
-            explore(to_gdf(soon_erased.loc[soon_erased.index == 16]))
-            explore(to_gdf(soon_erased.loc[soon_erased.index == 36]))
-
-            explore(to_gdf(soon_erased.loc[soon_erased._row_idx == 16]))
-            explore(to_gdf(soon_erased.loc[soon_erased._row_idx == 36]))
-
         # allign and aggregate by dissolve index to not get duplicates in difference
         intersecting.index = soon_erased.index
         soon_erased = soon_erased.geometry.groupby(level=0).agg(
@@ -774,6 +738,13 @@ def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
                 difference(polygons(geoms), inside_holes), -(tolerance / 2)
             )
             return np.where(is_empty(buffered_in), None, geoms)
+        except GEOSException:
+            buffered_in = buffer(
+                difference(make_valid(polygons(make_valid(geoms))), inside_holes),
+                -(tolerance / 2),
+            )
+            return np.where(is_empty(buffered_in), None, geoms)
+
         except ValueError as e:
             if not len(geoms):
                 return geoms
