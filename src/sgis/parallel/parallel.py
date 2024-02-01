@@ -13,33 +13,25 @@ except ImportError:
     pass
 
 import joblib
-import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
 from pandas import DataFrame
-from shapely.geometry import MultiPolygon, Polygon
 
-from ..geopandas_tools.general import clean_clip, clean_geoms
-from ..geopandas_tools.neighbors import get_neighbor_indices
-from ..geopandas_tools.overlay import clean_overlay
 from ..helpers import LocalFunctionError, dict_zip, dict_zip_union, in_jupyter
 
 
 try:
-    from ..io.dapla_functions import exists, read_geopandas, write_geopandas
-
-    # from ..io.write_municipality_data import write_municipality_data
+    from ..io.dapla_functions import exists, read_geopandas
+    from ..io.write_municipality_data import write_municipality_data
 except ImportError:
     pass
 
 
-try:
-    from dapla import read_pandas, write_pandas
-except ImportError:
-    pass
+def _turn_args_into_kwargs(func: Callable, args: tuple, index_start: int) -> dict:
+    """Assigns keywords to each args starting at an index.
 
-
-def turn_args_into_kwargs(func: Callable, args: tuple, index_start: int):
+    Because starmap occupies the n first positional arguments.
+    """
     if not isinstance(args, tuple):
         raise TypeError("args should be a tuple (it should not be unpacked with *)")
     argnames = inspect.getfullargspec(func).args[index_start:]
@@ -159,8 +151,8 @@ class Parallel:
         """
 
         if args:
-            # start at index 1, meaning the 0th argument (the iterable) is still available
-            args_as_kwargs = turn_args_into_kwargs(func, args, index_start=1)
+            # start at index 1, making the 0th argument (the iterable) is still available
+            args_as_kwargs = _turn_args_into_kwargs(func, args, index_start=1)
         else:
             args_as_kwargs = {}
 
@@ -255,9 +247,9 @@ class Parallel:
         if args:
             # starting the count at the length of the iterables inside the iterables
             iterable = list(iterable)
-            args_as_kwargs = turn_args_into_kwargs(
-                func, args, index_start=len(iterable[0])
-            )
+            # all sub-iterables must be the same length, so taking 0th is fine
+            index_start = len(iterable[0])
+            args_as_kwargs = _turn_args_into_kwargs(func, args, index_start=index_start)
         else:
             args_as_kwargs = {}
 
@@ -354,8 +346,6 @@ class Parallel:
         strict: bool = False,
         write_empty: bool = False,
         clip: bool = True,
-        max_rows_per_intersection: int = 150_000,
-        processes_in_clip: int = 1,
     ):
         """Split multiple datasets into municipalities and write as separate files.
 
@@ -370,8 +360,7 @@ class Parallel:
             year: Year of the municipality numbers.
             funcdict: Dictionary with the keys of 'in_data' and functions as values.
                 The functions should take a GeoDataFrame as input and return a
-                GeoDataFrame. The function will be excecuted before the right after
-                the data is read.
+                GeoDataFrame.
             file_type: Defaults to parquet.
             muni_number_col: String column name with municipality
                 number/identifier. Defaults to KOMMUNENR.
@@ -387,8 +376,6 @@ class Parallel:
             "write_empty": write_empty,
             "with_neighbors": with_neighbors,
             "clip": clip,
-            "max_rows_per_intersection": max_rows_per_intersection,
-            "processes_in_clip": processes_in_clip,
         }
 
         if isinstance(out_data, (str, Path)):
@@ -467,249 +454,3 @@ class Parallel:
             f"{self.__class__.__name__}(processes={self.processes}, "
             f"backend='{self.backend}', context='{self.context}')"
         )
-
-
-def write_municipality_data(
-    data: str | GeoDataFrame | DataFrame,
-    out_folder: str,
-    municipalities: GeoDataFrame,
-    with_neighbors: bool = False,
-    muni_number_col: str = "KOMMUNENR",
-    file_type: str = "parquet",
-    func: Callable | None = None,
-    write_empty: bool = False,
-    clip: bool = True,
-    max_rows_per_intersection: int = 150_000,
-    processes_in_clip: int = 1,
-) -> None:
-    write_func = (
-        _write_neighbor_municipality_data
-        if with_neighbors
-        else _write_municipality_data
-    )
-
-    return write_func(
-        data=data,
-        out_folder=out_folder,
-        municipalities=municipalities,
-        muni_number_col=muni_number_col,
-        file_type=file_type,
-        func=func,
-        write_empty=write_empty,
-        clip=clip,
-        max_rows_per_intersection=max_rows_per_intersection,
-        processes_in_clip=processes_in_clip,
-    )
-
-
-def _validate_data(data: str | list[str]) -> str:
-    if isinstance(data, (str, Path)):
-        return data
-    if hasattr(data, "__iter__") and len(data) == 1:
-        return data[0]
-    elif not isinstance(data, GeoDataFrame):
-        raise TypeError("'data' Must be a file path or a GeoDataFrame. Got", type(data))
-
-
-def _get_out_path(out_folder, muni, file_type):
-    return str(Path(out_folder) / f"{muni}.{file_type.strip('.')}")
-
-
-def _write_municipality_data(
-    data: str | GeoDataFrame | DataFrame,
-    out_folder: str,
-    municipalities: GeoDataFrame,
-    muni_number_col: str = "KOMMUNENR",
-    file_type: str = "parquet",
-    func: Callable | None = None,
-    write_empty: bool = False,
-    clip: bool = True,
-    max_rows_per_intersection: int = 150_000,
-    processes_in_clip: int = 1,
-) -> None:
-    data = _validate_data(data)
-
-    if isinstance(data, (str, Path)):
-        try:
-            gdf = read_geopandas(str(data))
-        except ValueError as e:
-            try:
-                gdf = read_pandas(str(data))
-            except ValueError:
-                raise e.__class__(e, data)
-    elif isinstance(data, DataFrame):
-        gdf = data
-    else:
-        raise TypeError(type(data))
-
-    if func is not None:
-        gdf = func(gdf)
-
-    gdf = _fix_missing_muni_numbers(
-        gdf,
-        municipalities,
-        muni_number_col,
-        clip,
-        max_rows_per_intersection,
-        processes_in_clip=processes_in_clip,
-    )
-
-    for muni in municipalities[muni_number_col]:
-        print(muni)
-        out = _get_out_path(out_folder, muni, file_type)
-
-        gdf_muni = gdf.loc[gdf[muni_number_col] == muni]
-
-        if not len(gdf_muni):
-            if write_empty:
-                gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
-                gdf_muni["geometry"] = None
-                write_pandas(gdf_muni, out)
-            continue
-
-        write_geopandas(gdf_muni, out)
-
-
-def _write_neighbor_municipality_data(
-    data: str | GeoDataFrame | DataFrame,
-    out_folder: str,
-    municipalities: GeoDataFrame,
-    muni_number_col: str = "KOMMUNENR",
-    file_type: str = "parquet",
-    func: Callable | None = None,
-    write_empty: bool = False,
-    clip: bool = True,
-    max_rows_per_intersection: int = 150_000,
-    processes_in_clip: int = 1,
-) -> None:
-    data = _validate_data(data)
-
-    if isinstance(data, (str, Path)):
-        gdf = read_geopandas(str(data))
-
-    if func is not None:
-        gdf = func(gdf)
-
-    gdf = _fix_missing_muni_numbers(
-        gdf,
-        municipalities,
-        muni_number_col,
-        clip,
-        max_rows_per_intersection,
-        processes_in_clip,
-    )
-
-    if municipalities.index.name != muni_number_col:
-        municipalities = municipalities.set_index(muni_number_col)
-
-    neighbor_munis = get_neighbor_indices(
-        municipalities, municipalities, max_distance=1
-    )
-
-    for muni in municipalities.index:
-        out = _get_out_path(out_folder, muni, file_type)
-
-        muni_and_neighbors = neighbor_munis.loc[[muni]]
-        gdf_neighbor = gdf.loc[gdf[muni_number_col].isin(muni_and_neighbors)]
-
-        if not len(gdf_neighbor):
-            if write_empty:
-                gdf_neighbor["geometry"] = gdf_neighbor["geometry"].astype(str)
-                write_pandas(gdf_neighbor, out)
-            continue
-
-        write_geopandas(gdf_neighbor, out)
-
-
-def _fix_missing_muni_numbers(
-    gdf,
-    municipalities,
-    muni_number_col,
-    clip,
-    max_rows_per_intersection,
-    processes_in_clip,
-):
-    if muni_number_col in gdf and gdf[muni_number_col].notna().all():
-        if municipalities is None:
-            return gdf
-        if diffs := set(gdf[muni_number_col].values).difference(
-            set(municipalities[muni_number_col].values)
-        ):
-            raise ValueError(f"Different municipality numbers: {diffs}")
-
-        return gdf
-
-    if municipalities is None:
-        if muni_number_col not in gdf:
-            raise ValueError(
-                f"Cannot find column {muni_number_col}. "
-                "Specify another column or a municipality GeoDataFrame to clip "
-                "the geometries by."
-            )
-        assert gdf[muni_number_col].isna().any()
-        raise ValueError(
-            f"Column {muni_number_col} has missing values. Make sure gdf has "
-            "correct municipality number info or specify a municipality "
-            "GeoDataFrame to clip the geometries by."
-        )
-
-    municipalities = municipalities[[muni_number_col, "geometry"]].to_crs(gdf.crs)
-
-    if muni_number_col in gdf and gdf[muni_number_col].isna().any():
-        notna = gdf[gdf[muni_number_col].notna()]
-
-        isna = gdf[gdf[muni_number_col].isna()].drop(muni_number_col, axis=1)
-
-        if not clip:
-            notna_anymore = isna.sjoin(municipalities).drop(columns="index_right")
-        else:
-            notna_anymore = intersect_by_municipalities(
-                isna,
-                municipalities,
-                muni_number_col,
-                max_rows_per_intersection,
-                processes_in_clip,
-            )
-
-        return pd.concat([notna, notna_anymore], ignore_index=True)
-
-    if not clip:
-        return gdf.sjoin(municipalities).drop(columns="index_right")
-    else:
-        return intersect_by_municipalities(
-            gdf,
-            municipalities,
-            muni_number_col,
-            max_rows_per_intersection,
-            processes_in_clip,
-        )
-
-
-def intersect_by_municipalities(
-    df: GeoDataFrame,
-    municipalities: GeoDataFrame,
-    muni_number_col: str,
-    max_rows_per_intersection: int,
-    processes_in_clip: int,
-) -> GeoDataFrame:
-    if len(df) < max_rows_per_intersection:
-        return clean_overlay(df, municipalities)
-
-    municipalities = municipalities.dissolve(by=muni_number_col, as_index=False)
-
-    n_chunks = len(df) // max_rows_per_intersection
-    chunks = np.array_split(np.arange(len(df)), n_chunks)
-
-    df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
-
-    notna_anymore = Parallel(processes_in_clip, backend="loky").map(
-        _clean_intersection,
-        df_chunked,
-        args=(municipalities,),
-    )
-    return pd.concat(notna_anymore, ignore_index=True)
-
-
-def _clean_intersection(df1, df2):
-    print(len(df1))
-    return clean_overlay(df1, df2, how="intersection")
