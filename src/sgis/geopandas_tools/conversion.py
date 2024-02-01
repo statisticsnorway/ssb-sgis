@@ -341,6 +341,9 @@ def to_gdf(
         if is_bbox_like(obj):
             obj = GeoSeries(shapely.box(*obj), index=index)
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
+        elif all(hasattr(obj, attr) for attr in ["minx", "miny", "maxx", "maxy"]):
+            obj = GeoSeries(shapely.box(*to_bbox(obj)), index=index)
+            return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
         if is_nested_geojson(obj):
             # crs = crs or get_crs_from_dict(obj)
             obj = pd.concat(
@@ -446,8 +449,9 @@ def make_shapely_geoms(obj):
 
 def is_bbox_like(obj) -> bool:
     if (
-        hasattr(obj, "__iter__")
+        hasattr(obj, "__len__")
         and len(obj) == 4
+        and hasattr(obj, "__iter__")
         and all(isinstance(x, numbers.Number) for x in obj)
     ):
         return True
