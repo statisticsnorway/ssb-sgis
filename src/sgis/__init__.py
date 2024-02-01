@@ -1,3 +1,5 @@
+from sgis.raster.raster import Raster
+
 from .geopandas_tools.bounds import (
     Gridlooper,
     bounds_to_points,
