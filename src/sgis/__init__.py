@@ -1,6 +1,3 @@
-import sgis.raster.bands as bands
-import sgis.raster.indices as indices
-
 from .geopandas_tools.bounds import (
     Gridlooper,
     bounds_to_points,
@@ -24,9 +21,10 @@ from .geopandas_tools.centerlines import get_rough_centerlines
 from .geopandas_tools.cleaning import (
     coverage_clean,
     remove_spikes,
+    snap_polygons,
+    snap_to_mask,
     split_and_eliminate_by_longest,
     split_by_neighbors,
-    split_spiky_polygons,
 )
 from .geopandas_tools.conversion import (
     coordinate_array,
@@ -86,7 +84,6 @@ from .geopandas_tools.polygon_operations import (
 )
 from .geopandas_tools.polygons_as_rings import PolygonsAsRings
 from .geopandas_tools.sfilter import sfilter, sfilter_inverse, sfilter_split
-from .geopandas_tools.snap_polygons import snap_polygons
 from .helpers import get_object_name, sort_nans_last
 from .io.opener import opener
 from .io.read_parquet import read_parquet_url
@@ -125,8 +122,6 @@ from .networkanalysis.nodes import (
 )
 from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
-from .raster.cube import DataCube
-from .raster.raster import Raster, get_shape_from_bounds, get_transform_from_bounds
 
 
 try:
