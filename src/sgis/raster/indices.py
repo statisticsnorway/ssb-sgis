@@ -42,8 +42,8 @@ def get_raster_pairs(
     raster_pairs = []
     for tile, date in zip(unique["tile"], unique["date"]):
         query = (cube.tile == tile) & (cube.date == date)
-        band1 = cube.copy()[query & (cube.name == band_name1)]
-        band2 = cube.copy()[query & (cube.name == band_name2)]
+        band1 = cube.copy()[query & (cube.band == band_name1)]
+        band2 = cube.copy()[query & (cube.band == band_name2)]
         if not len(band1) and not len(band2):
             continue
         if len(band1) > 1:

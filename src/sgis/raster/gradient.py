@@ -35,11 +35,9 @@ def get_gradient(raster, degrees: bool = False, copy: bool = False):
     ...         ]
     ...     )
 
-    Now let's create an ElevationRaster from this array with a resolution of 10.
+    Now let's create a Raster from this array with a resolution of 10.
 
-    >>> r = sg.ElevationRaster.from_array(arr, crs=None, bounds=(0, 0, 50, 50))
-    >>> r.res
-    (10.0, 10.0)
+    >>> r = sg.Raster.from_array(arr, crs=None, bounds=(0, 0, 50, 50), res=10)
 
     The gradient will be 1 (1 meter up for every meter forward).
     The calculation is by default done in place to save memory.
