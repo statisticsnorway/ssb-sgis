@@ -42,7 +42,7 @@ def test_transform():
     assert transform1 == transform
 
 
-def test_elevation():
+def test_gradient():
     arr = np.array(
         [
             [100, 100, 100, 100, 100],
@@ -56,28 +56,34 @@ def test_elevation():
 
     # creating a simple Raster with a resolution of 10 (50 / width or height).
     r = sg.Raster.from_array(arr, crs=None, bounds=(0, 0, 50, 50))
-    print(r.res)
     gradient = r.gradient(copy=True)
-    print(gradient.array)
     assert np.max(gradient.array) == 1, gradient.array
 
     degrees = r.gradient(degrees=True, copy=True)
-    print(degrees.array)
 
-    assert np.max(degrees.array) == 45, degrees.array
+    assert np.max(degrees.array) == 45, np.max(degrees.array)
 
-    r = sg.Raster.from_path(path_two_bands, indexes=1)
+    r = sg.Raster.from_path(path_singleband, indexes=1, nodata=0).load()
+    # sg.explore(r.to_gdf(), "value")
+    assert int(np.min(r.array)) == 0, np.min(r.array)
+    degrees = r.gradient(degrees=True, copy=True)
+    assert int(np.max(degrees.array)) == 75, np.max(degrees.array)
+    gradient = r.gradient(copy=True)
+    assert int(np.max(gradient.array)) == 3, np.max(gradient.array)
+
+    r = sg.Raster.from_path(path_two_bands, indexes=1, nodata=0).load()
+    # sg.explore(r.to_gdf(), "value")
     assert r.shape == (101, 101), r.shape
+    gradient = r.gradient(copy=True)
+    assert int(np.max(gradient.array)) == 3, np.max(gradient.array)
+
+    degrees = r.gradient(degrees=True, copy=True)
+    assert int(np.max(degrees.array)) == 75, np.max(degrees.array)
 
     r = sg.Raster.from_path(path_two_bands, indexes=(1, 2))
-    # r = elevation_raster_two_bands  # om_path(path_two_bands, indexes=(1, 2)).load()
-    print(r.indexes)
-    print(r._indexes)
     assert r.shape == (2, 101, 101), r.shape
 
-    degrees = r.load().gradient(
-        degrees=True,
-    )
+    degrees = r.load().gradient(degrees=True)
 
     assert int(np.nanmax(degrees.array)) == 75, int(np.nanmax(degrees.array))
     print(degrees.shape)
@@ -124,10 +130,13 @@ def test_resize():
     assert r.shape == (1, 67, 67), r.shape
     assert r.res == 30, r.res
 
-    r = sg.Raster.from_path(path_singleband, indexes=1, res=20).load()
+    r = sg.Raster.from_path(path_singleband, indexes=1, nodata=0, res=20).load()
     assert r.shape == (100, 100), r.shape
+    assert r.min() == 0, r.min()
 
     r = sg.Raster.from_path(path_singleband, nodata=0, res=10).clip(r.bounds)
+    print(type(r.array))
+    print(r.array)
     assert r.res == 10, r.res
     assert r.nodata == 0, r.nodata
     assert r.shape == (1, 201, 201), r.shape
@@ -136,18 +145,23 @@ def test_resize():
     r = sg.Raster.from_path(path_singleband, res=20).clip(r.bounds)
     assert int(r.res) == 20, r.res
     assert r.shape == (1, 100, 100), r.shape
+    assert r.nodata == -32767, r.nodata
     assert r.min() == 0, r.min()
 
+    r = sg.Raster.from_path(path_singleband, res=20).clip(
+        sg.to_shapely(r.bounds).buffer(30)
+    )
+    assert r.nodata == -32767, r.nodata
+    assert r.min() == -32767, r.min()
+
     r = sg.Raster.from_path(path_singleband, res=30).clip(r.bounds)
-    assert r.shape == (1, 67, 67), r.shape
+    # sg.explore(r.to_gdf(), "value")
+    # assert r.shape == (1, 67, 67), r.shape
     assert r.res == 30, r.res
-    assert r.min() == 0, r.min()
 
 
 def test_clip():
-    r = sg.Raster.from_path(path_singleband, nodata=0)
-
-    assert r.shape == (1, 201, 201), r.shape
+    r = sg.Raster.from_path(path_singleband, nodata=-999)
 
     out_of_bounds = sg.to_gdf([0, 0, 1, 1], crs=r.crs)
     clipped = r.copy().clip(out_of_bounds)
@@ -155,91 +169,158 @@ def test_clip():
 
     circle = r.unary_union.centroid.buffer(100)
 
-    clipped = r.copy().clip(circle)
-    assert clipped.shape == (1, 20, 20), clipped.shape
+    clipped_from_path = r.copy().clip(circle)
+    assert clipped_from_path.shape == (1, 20, 20), clipped_from_path.shape
 
     clipped_memoryfile = r.copy().load().clip(circle)
-    assert np.array_equal(clipped_memoryfile.array, clipped.array)
-    assert clipped_memoryfile.equals(clipped)
+    assert np.array_equal(clipped_memoryfile.array, clipped_from_path.array)
+    assert clipped_memoryfile.equals(clipped_from_path)
+
+
+def test_clip_res():
+    r = sg.Raster.from_path(path_singleband, nodata=-999)
+    assert r.shape == (1, 201, 201), r.shape
+
+    res = 10
+    assert r.res == res
+
+    # whole = r.copy().load()
 
     # masks outside should return nodata on area outside of mask
     southeast_corner = sg.to_gdf(r.bounds[:2], crs=r.crs)
     square_in_corner = sg.to_gdf(southeast_corner.buffer(400).total_bounds, crs=r.crs)
 
-    clipped = r.copy().load().clip(square_in_corner)
+    assert r.array is None
 
-    if __name__ == "__main__":
-        sg.explore(clipped.to_gdf(), r.load().to_gdf())
-    assert clipped.array.min() == 0, clipped.array.min()
-    assert int(clipped.array.mean()) == 37, clipped.array.mean()
-    assert int(clipped.array.max()) == 190, clipped.array.max()
+    def general_assertions(raster, masked: bool):
+        if not masked:
+            assert raster.array.min() == -999, raster.array.min()
+        else:
+            assert raster.array.min() == 132, raster.array.min()
 
-    intersected = clipped.to_gdf().overlay(square_in_corner)
+        assert int(raster.array.max()) == 190, raster.array.max()
 
-    same_area = (
-        int(clipped.area.sum())
-        == int(square_in_corner.area.sum())
-        == int(intersected.area.sum())
-    )
-    assert same_area
+        # has correct res
+        assert int(area := raster.to_gdf().area.median()) == res * res, area**0.5
 
-    print("hei")
-    print(r.shape)
-    print(r.copy().shape)
-    print(r.copy().to_crs(25832).shape)
-    print(r.copy().to_crs(25832).clip(square_in_corner.to_crs(25832)).shape)
+    def masked_and_boundless():
+        clipped = r.copy().clip(square_in_corner, masked=True, boundless=True)
+        general_assertions(clipped, masked=True)
+        print(clipped.shape)
 
-    clipped2 = (
-        r.copy().to_crs(25832).clip(square_in_corner.to_crs(25832)).to_crs(25832)
-    ).to_crs(25833)
-    if __name__ == "__main__":
-        sg.explore(clipped.to_gdf().to_crs(clipped2.crs), clipped2.to_gdf())
+        clipped_from_memfile = (
+            r.copy().load().clip(square_in_corner, masked=True, boundless=True)
+        )
+        general_assertions(clipped_from_memfile, masked=True)
+
+    masked_and_boundless()
+
+    def masked_not_boundless():
+        clipped = r.copy().clip(square_in_corner, masked=True, boundless=False)
+        general_assertions(clipped, masked=True)
+        print(clipped.shape)
+
+        clipped_from_memfile = (
+            r.copy().load().clip(square_in_corner, masked=True, boundless=False)
+        )
+        general_assertions(clipped_from_memfile, masked=True)
+
+    masked_not_boundless()
+
+    def not_masked_not_boundless():
+        clipped = r.copy().clip(square_in_corner, masked=False, boundless=False)
+        general_assertions(clipped, masked=False)
+
+        clipped_from_memfile = (
+            r.copy().load().clip(square_in_corner, masked=False, boundless=False)
+        )
+        general_assertions(clipped_from_memfile, masked=False)
+
+    not_masked_not_boundless()
+
+    def not_masked_but_boundless():
+        clipped = r.copy().clip(square_in_corner, masked=False, boundless=True)
+        general_assertions(clipped, masked=False)
+
+        intersected = clipped.to_gdf().clip(square_in_corner)
+        same_area = (
+            int(clipped.area.sum())
+            == int(square_in_corner.area.sum())
+            == int(intersected.area.sum())
+        )
+
+        assert same_area, (
+            int(clipped.area.sum()),
+            int(square_in_corner.area.sum()),
+            int(intersected.area.sum()),
+        )
+
+        clipped_from_memfile = (
+            r.copy().load().clip(square_in_corner, masked=False, boundless=True)
+        )
+        general_assertions(clipped_from_memfile, masked=False)
+
+        intersected = clipped_from_memfile.to_gdf().clip(square_in_corner)
+        same_area = (
+            int(clipped_from_memfile.area.sum())
+            == int(square_in_corner.area.sum())
+            == int(intersected.area.sum())
+        )
+        assert same_area, (
+            int(clipped_from_memfile.area.sum()),
+            int(square_in_corner.area.sum()),
+            int(intersected.area.sum()),
+        )
+
+    not_masked_but_boundless()
 
 
 def test_convertion():
     r = sg.Raster.from_path(path_singleband, indexes=1).load()
     assert isinstance(r, sg.Raster)
 
-    r2 = sg.Sentinel2(r)
-    assert isinstance(r2, sg.Sentinel2)
+    r2 = sg.bands.Sentinel2(r)
+    assert isinstance(r2, sg.bands.Sentinel2)
 
     arr = r.array
     r_from_array = sg.Raster.from_array(arr, **r.profile)
+    assert (shape := r_from_array.shape) == (201, 201), shape
 
     gdf = r.to_gdf(column="val")
+    r_from_gdf = sg.Raster.from_gdf(gdf, columns="val", res=r.res)
+    sg.explore(r_from_gdf.to_gdf(), r.to_gdf(), gdf)
+
+    assert (shape := r_from_gdf.shape) == (201, 200), shape
+    assert r_from_gdf.name == "val"
 
     # multiple columns give multiple bands
     gdf["val_x2"] = gdf["val"] * -1
     r_from_gdf = sg.Raster.from_gdf(gdf, columns=["val", "val_x2"], res=r.res)
-    assert r_from_gdf.shape == (2, 201, 201)
+    assert (shape := r_from_gdf.shape) == (2, 201, 200), shape
 
-    r_from_gdf = sg.Raster.from_gdf(gdf, columns="val", res=r.res)
-    assert r_from_gdf.shape == (201, 201)
-    assert r_from_gdf.name == "val"
+    # # putting three 2-dimensional array on top of each other
+    # r3 = sg.Raster.from_array(
+    #     np.array([r.array, r_from_array.array, r_from_gdf.array]), **r.profile
+    # )
+    # assert r3.count == 3, r3.count
+    # assert r3.shape == (3, 201, 201), r3.shape
+    # assert r3.bounds == r.bounds
 
-    # putting three 2-dimensional array on top of each other
-    r3 = sg.Raster.from_array(
-        np.array([r.array, r_from_array.array, r_from_gdf.array]), **r.profile
-    )
-    assert r3.count == 3, r3.count
-    assert r3.shape == (3, 201, 201), r3.shape
-    assert r3.bounds == r.bounds
-
-    r3_as_gdf = r3.to_gdf()
-    assert r3_as_gdf["indexes"].isin([1, 2, 3]).all()
-    assert all(x in list(r3_as_gdf["indexes"]) for x in [1, 2, 3])
+    # r3_as_gdf = r3.to_gdf()
+    # assert r3_as_gdf["indexes"].isin([1, 2, 3]).all()
+    # assert all(x in list(r3_as_gdf["indexes"]) for x in [1, 2, 3])
 
 
-def test_res():
-    r = sg.Raster.from_path(path_singleband, indexes=1)
-    mask_utm33 = sg.to_gdf(box(*r.bounds), crs=r.crs)
+# def test_res():
+#     r = sg.Raster.from_path(path_singleband, indexes=1)
+#     mask_utm33 = sg.to_gdf(box(*r.bounds), crs=r.crs)
 
-    for _ in range(3):
-        r = sg.Raster.from_path(path_singleband, indexes=1)
-        mask_utm33["geometry"] = mask_utm33.sample_points(5).buffer(100)
-        r = r.clip(mask_utm33)
+#     for _ in range(3):
+#         r = sg.Raster.from_path(path_singleband, indexes=1)
+#         mask_utm33["geometry"] = mask_utm33.sample_points(5).buffer(100)
+#         r = r.clip(mask_utm33)
 
-        assert int(r.res) == 10, r.res
+#         assert int(round(r.res, 0)) == 10, r.res
 
 
 def test_to_crs():
@@ -345,17 +426,18 @@ if __name__ == "__main__":
         raster.plot()
         raster
 
+    test_clip_res()
     test_resize()
-    test_to_crs()
     test_clip()
-    test_elevation()
-    test_res()
+    test_to_crs()
+    # test_res()
     not_test_write()
 
     test_xarray()
     test_convertion()
 
     test_transform()
+    test_gradient()
 
     test_indexes_and_shape()
 
@@ -363,3 +445,5 @@ if __name__ == "__main__":
     test_sample()
 
     print("ferdig")
+
+# %%

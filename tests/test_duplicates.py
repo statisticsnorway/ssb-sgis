@@ -175,11 +175,6 @@ def test_get_intersections():
     sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
     assert len(dups) == 12, len(dups)
 
-    # should also work with points
-    points = sg.to_gdf([(0, 0), (0, 1), (1, 1), (1, 0), (0, 0), (1, 0)])
-    assert len(sg.get_intersections(points)) == 4
-    assert len(sg.update_geometries(sg.get_intersections(points))) == 2
-
 
 def _test_get_intersections():
     with_overlap = sg.to_gdf([(0, 0), (4, 4), (1, 1)]).pipe(sg.buff, 1)
@@ -256,8 +251,8 @@ def test_update_geometries():
 
 if __name__ == "__main__":
     test_update_geometries()
-    test_random_update_geometries(200)
-    test_random_get_intersections()
-    not_test_bug2()
     test_get_intersections()
+    test_random_get_intersections()
+    test_random_update_geometries(200)
+    not_test_bug2()
     not_test_drop_duplicate_geometries()

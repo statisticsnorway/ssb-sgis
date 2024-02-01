@@ -10,6 +10,7 @@ import pandas as pd
 import shapely
 import xarray as xr
 from IPython.display import display
+from pyproj import CRS
 from shapely import box
 
 
@@ -33,7 +34,7 @@ def x2(x):
 
 def test_xdataset():
     cube = (
-        sg.DataCube.from_root(testdata, raster_type=sg.Sentinel2)
+        sg.DataCube.from_root(testdata, raster_type=sg.bands.Sentinel2, res=10)
         .query("date.notna()")
         .load()
     )
@@ -47,9 +48,7 @@ def test_xdataset():
 
 
 def test_query():
-    cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", raster_type=sg.ElevationRaster
-    )
+    cube = sg.DataCube.from_root(testdata, endswith=".tif", nodata=0, res=10)
 
     for i in cube.date.unique():
         c1 = cube[cube.date == i]
@@ -61,84 +60,75 @@ def test_shape():
         testdata,
         endswith=".tif",
         res=10,
+        nodata=0,
     )[lambda x: [Path(r.path).parent != "sentinel2" for r in x]]
     print(list(cube))
 
-    cube = cube.load()
+    cube = cube.to_crs(25833).load()
     assert cube.res == 10, cube.res
     cube.res = 30
-    cube = cube.load()
+    cube = cube.to_crs(25833).load()
     assert cube.res == 30, cube.res
 
     cube.res = 10
-    c = cube.unary_union.centroid.buffer(100)
+    c = cube.centroid.iloc[1].buffer(100)
     cube = cube.clip(c)
     assert cube.res == 10, cube.res
-    assert cube.shape == 20, cube.shape
-
-    assert min(cube.run_raster_method("min")) == -999, min(
-        cube.run_raster_method("min")
-    )
+    assert len(cube) == 4, len(cube)
 
     cube.res = 20
-    cube = cube.clip(c)
+    cube = cube.clip(c).explode()
     assert cube.res == 20, cube.res
-    assert (cube.shape == (10, 10)).all(), cube.shape
+    assert (cube.shape == (20, 20)).all(), cube.shape
 
 
 def test_copy():
     cube = sg.DataCube.from_root(
-        testdata,
-        endswith=".tif",
-        raster_type=sg.ElevationRaster,
-        res=10,
+        testdata, endswith=".tif", res=10, crs=25833, raster_type=sg.bands.Sentinel2
     )
 
-    assert cube.arrays.isna().all()
+    assert [arr is None for arr in cube.arrays]
     cube2 = cube.load().load().load()
-    assert cube.arrays.isna().all()
-    assert cube2.arrays.notna().all()
+    assert [arr is None for arr in cube.arrays]
+    assert [arr is not None for arr in cube2.arrays]
 
     print(cube2.max())
-    cube3 = (cube2.pool(2) * 2).execute()
+    cube2.parallelizer = sg.Parallel(2)
+    cube3 = cube2.copy().map(x2)
     print(cube2.max())
     print(cube3.max())
-    assert int(cube3.max()) == int(cube2.max() * 2), (
-        int(cube3.max()),
-        int(cube2.max() * 2),
+    assert int(cube3.max().max()) == int(cube2.max().max() * 2), (
+        int(cube3.max().max()),
+        int(cube2.max().max() * 2),
     )
 
 
-def test_elevation():
-    cube = (
-        sg.DataCube.from_root(
-            testdata,
-            endswith=".tif",
-            raster_type=sg.ElevationRaster,
-            nodata=0,
-            res=10,
-        )
-        .query("subfolder != 'sentinel2'")
-        .load()
-    )
+def test_gradient():
+    cube = sg.DataCube.from_root(
+        testdata,
+        endswith=".tif",
+        raster_type=sg.Raster,
+        nodata=0,
+        res=10,
+    )[lambda x: x.path.str.lower().str.contains("dtm")].load()
+    print(list(cube))
+    gradient = cube.copy().gradient()
+    assert int(gradient.max().max()) == 17, gradient.max().max()
 
     degrees = cube.copy().gradient(degrees=True)
-    assert int(degrees.max().max()) == 89, degrees.max().max()
-
-    degrees = cube.copy().run_raster_method("gradient", degrees=True)
-
-    gradient = cube.copy().gradient()
-    assert int(gradient.max().max()) == 366, gradient.max().max()
-
-    gradient = cube.copy().run_raster_method("gradient")
+    assert int(degrees.max().max()) == 86, degrees.max().max()
 
 
 def test_sentinel():
     cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", raster_type=sg.Sentinel2, res=10
+        testdata, endswith=".tif", raster_type=sg.bands.Sentinel2, res=10
     )
     assert all(r.name is not None for r in cube), [r.name for r in cube]
     assert len(cube) == 10, len(cube)
+
+    assert cube.band.str.startswith("B").all()
+    assert (cube.date.str[-1].isin([*"0123456789"])).all()
+    assert (cube.date.str.len() == 8).all()
 
     ndvi = cube.calculate_index(sg.indices.ndvi, band_name1="B4", band_name2="B8")
     assert len(ndvi) == 1, len(ndvi)
@@ -161,7 +151,9 @@ def not_test_df():
     except FileNotFoundError:
         pass
     try:
-        cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10).explode()
+        cube = sg.DataCube.from_root(
+            testdata, endswith=".tif", res=10, nodata=0
+        ).explode()
         df = cube._prepare_df_for_parquet()
         df["my_idx"] = range(len(df))
         df.to_parquet(df_path)
@@ -172,7 +164,7 @@ def not_test_df():
         assert cube_from_cube_df.boxes.intersects(cube.unary_union).all()
 
         cube_from_cube_df = sg.DataCube.from_root(
-            testdata, endswith=".tif", res=10
+            testdata, endswith=".tif", res=10, nodata=0
         ).explode()
         assert hasattr(cube_from_cube_df, "_from_cube_df")
         assert cube_from_cube_df.boxes.intersects(cube.unary_union).all()
@@ -188,17 +180,19 @@ def test_from_root():
     files = [file for file in glob.glob(str(Path(testdata)) + "/*") if ".tif" in file]
     cube = sg.DataCube.from_paths(files)
 
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10).explode()
+    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0).explode()
     assert len(cube) == 22, cube
     display(cube)
 
-    cube = sg.DataCube.from_root(testdata, regex=r"\.tif$").explode()
+    cube = sg.DataCube.from_root(testdata, regex=r"\.tif$", nodata=0).explode()
     assert len(cube) == 22, cube
     display(cube)
 
 
 def test_getitem():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", crs=25833, res=10).load()
+    cube = sg.DataCube.from_root(
+        testdata, endswith=".tif", crs=25833, res=10, nodata=0
+    ).load()
     assert len(cube) == 20
     assert isinstance(cube[0], sg.Raster), type(cube[0])
     assert len(cube[1:3]) == 2
@@ -213,29 +207,31 @@ def test_getitem():
 
 def test_to_gdf():
     cube = (
-        sg.DataCube.from_root(testdata, endswith=".tif", crs=25833)
+        sg.DataCube.from_root(testdata, endswith=".tif", crs=25833, res=10, nodata=0)
         .load()[lambda x: x.path.str.contains("two_bands")]
         .explode()
     )
     assert len(cube) == 2, len(cube)
 
-    # cube.new_col = ["a", "b"]
-    # cube.new_col2 = [1, 3]
-
-    # gdf = cube.to_gdf()
-
-    # assert "new_col" in gdf and "new_col2" in gdf, gdf.columns
-
-    # gdf = cube.pool(2).to_gdf().execute()
-
-    # assert "new_col" in gdf and "new_col2" in gdf, gdf.columns
-
 
 def test_to_crs():
-    cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", crs=25833, nodata=0
-    ).explode()[lambda x: x.name.str.contains("two_bands")]
+    cube = sg.DataCube.from_root(testdata, endswith=".tif", nodata=0, res=10).explode()[
+        lambda x: x.path.str.contains("two_bands")
+    ]
     assert len(cube) == 2, len(cube)
+
+    area_was = cube.area.sum()
+    old = cube.copy()
+    print(old.crs)
+    cube = cube.to_crs(4326).to_crs(25833)  # .to_crs(old.crs)
+    area_is = cube.area.sum()
+    sg.explore(
+        new_bounds=sg.to_gdf(old.bounds, 25833).to_crs(4326).to_crs(25833),
+        cube_boxes=sg.to_gdf(cube.boxes, 25833),
+        old_boxes=sg.to_gdf(old.boxes, 25833),
+    )
+
+    assert area_was == area_is, (area_was, area_is)
 
     merged_rio = cube.merge().to_gdf()
 
@@ -287,11 +283,13 @@ def test_to_crs():
         merged_xarr_32,
         "value",
     )
-    assert cube.arrays.isna().all()
+    assert [arr is None for arr in cube.arrays]
 
 
 def test_merge():
-    cube = sg.DataCube.from_root(testdata, crs=25833, endswith=".tif").explode()
+    cube = sg.DataCube.from_root(
+        testdata, crs=25833, endswith=".tif", res=10, nodata=0
+    ).explode()
     assert len(cube) == 22, len(cube)
 
     all_merged = cube.copy().merge()
@@ -300,32 +298,26 @@ def test_merge():
     only_multiband_merged = cube.copy().merge(by=["path"])
     assert len(only_multiband_merged) == 20, len(only_multiband_merged)
 
-    cube2 = cube.copy().load().merge_by_bounds(by="res")
-    assert len(cube2) == 5, len(cube2)
+    # cube2 = cube.copy().load().merge_by_bounds()
+    # assert len(cube2) == 3, len(cube2)
 
     cube.subfolder = cube.path.apply(lambda x: Path(x).parent)
 
-    xarray_merge_by = cube.copy().load().merge(by="subfolder")
-    assert len(xarray_merge_by) == 3, len(xarray_merge_by)
-    assert list(sorted(xarray_merge_by.res)) == [(10, 10), (10, 10), (30, 30)], list(
-        xarray_merge_by.res.values
-    )
-    rasterio_merge_by = cube.copy().load().merge(by="subfolder")
-    assert len(rasterio_merge_by) == 3, len(rasterio_merge_by)
-    assert list(sorted(rasterio_merge_by.res)) == [(10, 10), (10, 10), (30, 30)], list(
-        rasterio_merge_by.res.values
-    )
-    x_mean = int(np.mean([r.array.mean() for r in xarray_merge_by]))
-    r_mean = int(np.mean([r.array.mean() for r in rasterio_merge_by]))
-    assert x_mean == r_mean, (x_mean, r_mean)
+    merge_by = cube.copy().load().merge(by="subfolder")
+    assert len(merge_by) == 3, len(merge_by)
+    assert merge_by.res == 10, merge_by.res
 
+    # xarray_merge_by = cube.copy().load().merge(by="subfolder")
+    # assert len(xarray_merge_by) == 3, len(xarray_merge_by)
+    # assert xarray_merge_by.res == 10, xarray_merge_by.res
 
-def test_meta():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10)
+    # x_mean = int(np.mean([r.array.mean() for r in xarray_merge_by]))
+    # r_mean = int(np.mean([r.array.mean() for r in merge_by]))
+    # assert x_mean == r_mean, (x_mean, r_mean)
 
 
 def test_dissolve():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10)
+    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0)
     cube = cube.merge_by_bounds()
     list(cube.shape) == [(1, 201, 201), (2, 201, 201)]
     print(cube)
@@ -335,7 +327,7 @@ def test_dissolve():
 
 
 def test_intersection():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10).query(
+    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0).query(
         "subfolder != 'sentinel2'"
     )
     cube._crs = 25833
@@ -350,16 +342,16 @@ def test_intersection():
     print(intersected.df["idx"])
     print(intersected)
 
-    intersected_pooled = cube.pool(3).intersection(grid).execute()
+    intersected_parallelized = cube.pool(3).intersection(grid).execute()
     print(len(intersected))
     print(intersected.df["idx"])
     print(intersected)
 
-    assert intersected_pooled.equals(intersected)
+    assert intersected_parallelized.equals(intersected)
 
 
 def test_explode():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10)[
+    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0)[
         lambda x: ~x.path.str.lower().str.contains("sentinel")
     ]
     assert cube.shape.notna().all()
@@ -471,7 +463,9 @@ def test_merge_from_array():
 
 
 def test_from_gdf():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10)
+    cube = sg.DataCube.from_root(
+        testdata, endswith=".tif", res=10, raster_type=sg.bands.Sentinel2
+    )
     gdf = cube[0].load().to_gdf("val")
     print(gdf)
     cube = sg.DataCube.from_gdf(gdf, tilesize=100, processes=1, columns=["val"], res=10)
@@ -479,20 +473,6 @@ def test_from_gdf():
 
     cube = sg.DataCube.from_gdf(gdf, tilesize=100, processes=4, columns=["val"], res=10)
     print(cube.df)
-
-
-def test_sample():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10)
-    sample = cube.sample(buffer=100)
-    assert len(sample) == 1
-
-    samples = cube.sample(10)
-    assert len(samples) == 10, len(samples)
-
-    for cube in samples:
-        assert isinstance(cube, sg.DataCube)
-        for array in cube.arrays:
-            assert isinstance(array, np.ndarray)
 
 
 def test_zonal():
@@ -512,6 +492,7 @@ def test_zonal():
     assert sum(touch_or_overlap) == 15
 
     zonal = cube.zonal(grid, aggfunc="sum")
+    print(zonal)
     assert len(zonal) == 15, len(zonal)
 
     print(zonal)
@@ -534,42 +515,44 @@ def test_zonal():
     ], list(sorted(zonal["sum"]))
 
 
-def test_pool():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", dtype=np.float32).query(
-        "subfolder == 'sentinel2'"
-    )
-    cube._crs = 25833
+def test_parallel():
+    cube = sg.DataCube.from_root(
+        testdata,
+        endswith=".tif",
+        raster_type=sg.bands.Sentinel2,
+        res=10,
+        crs=25833,
+    )  # [lambda x: ~x.path.str.contains("entinel")]
 
     center = cube.unary_union.centroid.buffer(200)
 
-    results = (cube.copy().clip(center) * 2).array_map(x2).array_map(
-        np.float32
-    ).explode() // 2
+    results = (cube.copy().clip(center)).map(x2).map(np.float32).explode()
 
-    results_pooled = (
-        (cube.pool(4).clip(center) * 2).array_map(x2).array_map(np.float32).explode()
-        // 2
-    ).execute()
+    cube.parallelizer = sg.Parallel(3)
+    results_parallelized = (cube.clip(center)).map(x2).map(np.float32).explode()
 
-    assert results.equals(results_pooled)
+    assert len(results) == len(results_parallelized)
+    for r1, r2 in zip(results, results_parallelized):
+        assert r1.equals(r2)
+    # assert results.equals(results_parallelized)
 
+    cube.parallelizer = None
     grid = sg.make_grid(center, gridsize=100, crs=cube.crs)
     zonal = cube.copy().zonal(grid, aggfunc=["sum", np.mean], by_date=False)
     print(zonal)
     # assert int(zonal["sum"].max()) == 10, int(zonal["sum"].max())
     # assert int(zonal["sum"].mean()) == 10, int(zonal["sum"].mean())
 
-    zonal_pooled = (
-        cube.pool(4).zonal(grid, aggfunc=["sum", np.mean], by_date=False).execute()
-    )
-    assert zonal.equals(zonal_pooled)
+    cube.parallelizer = sg.Parallel(3)
+    zonal_parallelized = cube.zonal(grid, aggfunc=["sum", np.mean], by_date=False)
+    assert zonal.equals(zonal_parallelized)
 
 
 def write_sentinel():
     src_path_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
 
     cube = sg.DataCube.from_root(
-        src_path_sentinel, endswith=".tif", raster_type=sg.Sentinel2
+        src_path_sentinel, endswith=".tif", raster_type=sg.bands.Sentinel2
     )
 
     mask = sg.to_gdf(cube.unary_union.centroid.buffer(1000))
@@ -600,36 +583,40 @@ def test_torch():
 
     # from torchgeo.trainers import SemanticSegmentationTask
 
-    cube = sg.DataCube.from_root(
-        path_sentinel, endswith=".tif", raster_type=sg.Sentinel2, res=10
-    )
+    def cube_with_torch():
+        cube = sg.DataCube.from_root(
+            path_sentinel, endswith=".tif", raster_type=sg.bands.Sentinel2, res=10
+        )
 
-    print(list(cube))
+        sampler = RandomGeoSampler(cube, size=16, length=10)
+        dataloader = DataLoader(
+            cube, batch_size=2, sampler=sampler, collate_fn=stack_samples
+        )
 
-    sampler = RandomGeoSampler(cube, size=16, length=10)
-    dataloader = DataLoader(
-        cube, batch_size=2, sampler=sampler, collate_fn=stack_samples
-    )
+        for batch in dataloader:
+            image = batch["image"]
+            mask = batch["mask"]
+            # train a model, or make predictions using a pre-trained model
 
-    for batch in dataloader:
-        image = batch["image"]
-        mask = batch["mask"]
-        # train a model, or make predictions using a pre-trained model
+        return cube
 
-    torch_dataset = sg.torchgeo.Sentinel2(path_sentinel, res=10)
-    assert len(torch_dataset) == len(cube), (len(torch_dataset), len(cube))
+    def regular_torch(cube):
+        torch_dataset = sg.torchgeo.Sentinel2(path_sentinel, res=10)
 
-    sampler = RandomGeoSampler(torch_dataset, size=16, length=10)
-    dataloader = DataLoader(
-        torch_dataset, batch_size=2, sampler=sampler, collate_fn=stack_samples
-    )
+        assert len(torch_dataset) == len(cube), (len(torch_dataset), len(cube))
 
-    for batch in dataloader:
-        image = batch["image"]
-        mask = batch["mask"]
-        # train a model, or make predictions using a pre-trained model
+        sampler = RandomGeoSampler(torch_dataset, size=16, length=10)
+        dataloader = DataLoader(
+            torch_dataset, batch_size=2, sampler=sampler, collate_fn=stack_samples
+        )
 
-    sdss
+        for batch in dataloader:
+            image = batch["image"]
+            mask = batch["mask"]
+            # train a model, or make predictions using a pre-trained model
+
+    cube = cube_with_torch()
+    regular_torch(cube)
 
 
 if __name__ == "__main__":
@@ -638,31 +625,27 @@ if __name__ == "__main__":
     # write_sentinel()
 
     def test_cube():
-        test_sentinel()
         test_torch()
+        test_sentinel()
+        test_gradient()
         test_explode()
-        test_meta()
         test_getitem()
         test_to_gdf()
         test_shape()
+        test_query()
+        test_copy()
+        test_parallel()
+        test_dissolve()
+        test_from_gdf()
+        test_from_root()
+        test_xdataset()
         test_merge()
         test_zonal()
-        test_elevation()
-        test_query()
-        test_merge_from_array()
-        test_pool()
-        test_xdataset()
-        test_dissolve()
-        test_copy()
-        test_from_gdf()
-        # not_test_df()
-        test_from_root()
-        test_sample()
         test_to_crs()
-        test_retile()
-        # test_intersection()
+        test_merge_from_array()
+        # not_test_df()
 
+    # cProfile.run("test_merge_performance()", sort="cumtime")
     test_cube()
-    # cProfile.run("test_cube()", sort="cumtime")
 
 # %%

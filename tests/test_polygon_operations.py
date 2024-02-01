@@ -134,6 +134,7 @@ def test_close_holes():
 def test_get_polygon_clusters():
     gdf = sg.to_gdf([(0, 0)]).loc[lambda x: x.index > 0]
     assert len(gdf) == 0
+
     c = sg.get_polygon_clusters(gdf)
 
     INDEX = [1, 3, 5, 7, 9, 11, 13]
@@ -144,6 +145,8 @@ def test_get_polygon_clusters():
     gdf.index = INDEX
 
     should_give = pd.Series([4, 2, 1], name="cluster", index=[0, 2, 1])
+
+    c, c2 = sg.get_polygon_clusters(gdf, gdf)
 
     gdf_clustered = sg.get_polygon_clusters(gdf)
 
@@ -377,10 +380,10 @@ def test_eliminate():
 
 
 if __name__ == "__main__":
+    test_get_polygon_clusters()
     test_eliminate()
     test_polygonsasrings()
 
     test_close_holes()
-    test_get_polygon_clusters()
 
 # %%
