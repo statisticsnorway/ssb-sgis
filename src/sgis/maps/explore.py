@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import xyzservices
 from folium import plugins
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
 from IPython.display import display
 from jinja2 import Template
 from pandas.api.types import is_datetime64_any_dtype
@@ -529,6 +529,9 @@ class Explore(Map):
 
     @staticmethod
     def _prepare_gdf_for_map(gdf):
+        if isinstance(gdf, GeoSeries):
+            gdf = gdf.to_frame("geometry")
+
         # convert LinearRing to LineString
         rings_mask = gdf.geom_type == "LinearRing"
         if rings_mask.any():

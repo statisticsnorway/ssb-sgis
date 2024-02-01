@@ -435,7 +435,7 @@ def explore_locals(*gdfs, to_gdf: bool = True, **kwargs):
                     continue
             except TypeError:
                 continue
-
+            #
             try:
                 gdf = clean_geoms(to_gdf_func(value))
                 if len(gdf):
