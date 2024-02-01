@@ -287,6 +287,6 @@ def _get_sfilter_indices(
     l_idx, r_idx = sindex.query(input_geoms, predicate=predicate, sort=False)
 
     if original_predicate == "within":
-        return np.unique(r_idx)
+        return np.sort(np.unique(r_idx))
 
-    return np.unique(l_idx)
+    return np.sort(np.unique(l_idx))
