@@ -26,7 +26,7 @@ from .duplicates import get_intersections
 from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .neighbors import get_neighbor_indices
-from .overlay import clean_overlay
+from .overlay import _try_difference, clean_overlay
 from .polygons_as_rings import PolygonsAsRings
 from .sfilter import sfilter, sfilter_inverse
 
@@ -695,9 +695,11 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, **kwargs)
         # from ..maps.maps import explore_locals
         # explore_locals()
 
-        soon_erased.loc[:] = difference(
+        soon_erased.loc[:] = _try_difference(
             soon_erased.values,
             intersecting.values,
+            grid_size=grid_size,
+            geom_type="polygon",
         )
 
         eliminated["geometry"] = (
