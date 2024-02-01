@@ -388,6 +388,7 @@ class Parallel:
             "with_neighbors": with_neighbors,
             "clip": clip,
             "max_rows_per_intersection": max_rows_per_intersection,
+            "processes_in_clip": processes_in_clip,
         }
 
         if isinstance(out_data, (str, Path)):
@@ -406,7 +407,6 @@ class Parallel:
                 "data": data,
                 "func": postfunc,
                 "out_folder": folder,
-                "processes_in_clip": processes_in_clip,
             }
             partial_func = functools.partial(write_municipality_data, **kwds)
             self.funcs.append(partial_func)
@@ -555,16 +555,10 @@ def _write_municipality_data(
     )
 
     for muni in municipalities[muni_number_col]:
+        print(muni)
         out = _get_out_path(out_folder, muni, file_type)
 
         gdf_muni = gdf.loc[gdf[muni_number_col] == muni]
-
-        if not len(gdf_muni):
-            if write_empty:
-                gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
-                gdf_muni["geometry"] = None
-                write_pandas(gdf_muni, out)
-            continue
 
         if not len(gdf_muni):
             if write_empty:
@@ -669,7 +663,7 @@ def _fix_missing_muni_numbers(
         if not clip:
             notna_anymore = isna.sjoin(municipalities).drop(columns="index_right")
         else:
-            notna_anymore = _clip_rows_missing_muni_num(
+            notna_anymore = intersect_by_municipalities(
                 isna,
                 municipalities,
                 muni_number_col,
@@ -682,7 +676,7 @@ def _fix_missing_muni_numbers(
     if not clip:
         return gdf.sjoin(municipalities).drop(columns="index_right")
     else:
-        return _clip_rows_missing_muni_num(
+        return intersect_by_municipalities(
             gdf,
             municipalities,
             muni_number_col,
@@ -691,40 +685,31 @@ def _fix_missing_muni_numbers(
         )
 
 
-def _clip_rows_missing_muni_num(
-    gdf_with_no_muni_num,
-    municipalities,
-    muni_number_col,
-    max_rows_per_intersection,
-    processes_in_clip,
-):
-    if len(gdf_with_no_muni_num) < max_rows_per_intersection:
-        return clean_overlay(gdf_with_no_muni_num, municipalities)
+def intersect_by_municipalities(
+    df: GeoDataFrame,
+    municipalities: GeoDataFrame,
+    muni_number_col: str,
+    max_rows_per_intersection: int,
+    processes_in_clip: int,
+) -> GeoDataFrame:
+    if len(df) < max_rows_per_intersection:
+        return clean_overlay(df, municipalities)
 
-    municipalities = municipalities.dissolve(by=muni_number_col, as_index=True)[
-        municipalities._geometry_column_name
-    ]
-    municipality_iter = list(municipalities.geometry.items())
+    municipalities = municipalities.dissolve(by=muni_number_col, as_index=False)
 
-    assert isinstance(municipalities, GeoSeries)
-    notna_anymore = Parallel(processes_in_clip, backend="loky").starmap(
-        _clean_clip,
-        municipality_iter,
-        kwargs={"df": gdf_with_no_muni_num, "muni_number_col": muni_number_col},
+    n_chunks = len(df) // max_rows_per_intersection
+    chunks = np.array_split(np.arange(len(df)), n_chunks)
+
+    df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
+
+    notna_anymore = Parallel(processes_in_clip, backend="loky").map(
+        _clean_intersection,
+        df_chunked,
+        args=(municipalities,),
     )
     return pd.concat(notna_anymore, ignore_index=True)
 
 
-def _clean_clip(muni_number, municipality, df, muni_number_col):
-    """Looping clip for large datasets because it's faster and safer."""
-    # assert len(municipality) == 1
-    # assert municipality.index.name == muni_number_col
-    # muni: str = municipality[muni_number_col]
-    assert isinstance(municipality, (Polygon, MultiPolygon))
-    assert isinstance(muni_number, str), muni_number
-    assert len(muni_number) == 4, muni_number
-    # print(muni)
-    # assert isinstance(muni, str)
-    clipped = clean_clip(df, municipality)
-    clipped[muni_number_col] = muni_number
-    return clipped
+def _clean_intersection(df1, df2):
+    print(len(df1))
+    return clean_overlay(df1, df2, how="intersection")
