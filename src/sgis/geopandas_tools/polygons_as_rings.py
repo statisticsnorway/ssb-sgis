@@ -76,7 +76,8 @@ class PolygonsAsRings:
 
         if not allow_multipart and not (polys.geom_type == "Polygon").all():
             raise ValueError(
-                "All geometries must be single-type Polygons. Set allow_multipart=True to allow MultiPolygons"
+                "All geometries must be single-type Polygons. Set allow_multipart=True to allow MultiPolygons",
+                polys.geom_type.value_counts(),
             )
         if not polys.geom_type.isin(["Polygon", "MultiPolygon"]).all():
             raise ValueError(
