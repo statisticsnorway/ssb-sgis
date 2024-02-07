@@ -104,7 +104,9 @@ class Gridlooper:
             self.mask = to_gdf(self.mask)
 
     def run(self, func: Callable, *args, **kwargs):
-        intersects_mask = lambda df: df.index.isin(df.sjoin(self.mask).index)
+        def intersects_mask(df):
+            return df.index.isin(df.sjoin(self.mask).index)
+
         grid: GeoSeries = (
             make_grid(self.mask, gridsize=self.gridsize).loc[intersects_mask].geometry
         )

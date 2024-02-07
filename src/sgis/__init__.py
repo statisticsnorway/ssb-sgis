@@ -1,3 +1,7 @@
+config = {
+    "n_jobs": 1,
+}
+
 from sgis.raster.raster import Raster
 
 from .geopandas_tools.bounds import (
@@ -27,6 +31,7 @@ from .geopandas_tools.cleaning import (
     snap_to_mask,
     split_and_eliminate_by_longest,
     split_by_neighbors,
+    split_spiky_polygons,
 )
 from .geopandas_tools.conversion import (
     coordinate_array,
@@ -124,6 +129,7 @@ from .networkanalysis.nodes import (
 )
 from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
+from .raster.cube import DataCube
 
 
 try:

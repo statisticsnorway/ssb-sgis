@@ -354,7 +354,7 @@ class Parallel:
         strict: bool = False,
         write_empty: bool = False,
         clip: bool = True,
-        max_rows_per_intersection: int = 150_000,
+        max_rows_per_chunk: int = 150_000,
         processes_in_clip: int = 1,
     ):
         """Split multiple datasets into municipalities and write as separate files.
@@ -387,7 +387,7 @@ class Parallel:
             "write_empty": write_empty,
             "with_neighbors": with_neighbors,
             "clip": clip,
-            "max_rows_per_intersection": max_rows_per_intersection,
+            "max_rows_per_chunk": max_rows_per_chunk,
             "processes_in_clip": processes_in_clip,
         }
 
@@ -412,6 +412,37 @@ class Parallel:
             self.funcs.append(partial_func)
 
         return self._execute()
+
+    def chunkwise(
+        self,
+        func: Callable,
+        df: GeoDataFrame,
+        args: tuple | None = None,
+        kwargs: dict | None = None,
+        max_rows_per_chunk: int = 150_000,
+        n_chunks: int = None,
+        concat: bool = False,
+    ) -> GeoDataFrame:
+        if len(df) < max_rows_per_chunk:
+            return func(df, *args, **kwargs)
+
+        if n_chunks is None:
+            n_chunks = len(df) // max_rows_per_chunk
+
+        chunks = np.array_split(np.arange(len(df)), n_chunks)
+
+        df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
+
+        out = self.map(
+            func,
+            df_chunked,
+            args=args,
+            kwargs=kwargs,
+        )
+        if concat:
+            return pd.concat(out, ignore_index=True)
+        else:
+            return out
 
     def validate_execution(self, func):
         """Multiprocessing doesn't work with local variables in interactive interpreter.
@@ -479,7 +510,7 @@ def write_municipality_data(
     func: Callable | None = None,
     write_empty: bool = False,
     clip: bool = True,
-    max_rows_per_intersection: int = 150_000,
+    max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
 ) -> None:
     write_func = (
@@ -497,7 +528,7 @@ def write_municipality_data(
         func=func,
         write_empty=write_empty,
         clip=clip,
-        max_rows_per_intersection=max_rows_per_intersection,
+        max_rows_per_chunk=max_rows_per_chunk,
         processes_in_clip=processes_in_clip,
     )
 
@@ -524,7 +555,7 @@ def _write_municipality_data(
     func: Callable | None = None,
     write_empty: bool = False,
     clip: bool = True,
-    max_rows_per_intersection: int = 150_000,
+    max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
 ) -> None:
     data = _validate_data(data)
@@ -550,7 +581,7 @@ def _write_municipality_data(
         municipalities,
         muni_number_col,
         clip,
-        max_rows_per_intersection,
+        max_rows_per_chunk,
         processes_in_clip=processes_in_clip,
     )
 
@@ -579,7 +610,7 @@ def _write_neighbor_municipality_data(
     func: Callable | None = None,
     write_empty: bool = False,
     clip: bool = True,
-    max_rows_per_intersection: int = 150_000,
+    max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
 ) -> None:
     data = _validate_data(data)
@@ -595,7 +626,7 @@ def _write_neighbor_municipality_data(
         municipalities,
         muni_number_col,
         clip,
-        max_rows_per_intersection,
+        max_rows_per_chunk,
         processes_in_clip,
     )
 
@@ -626,7 +657,7 @@ def _fix_missing_muni_numbers(
     municipalities,
     muni_number_col,
     clip,
-    max_rows_per_intersection,
+    max_rows_per_chunk,
     processes_in_clip,
 ):
     if muni_number_col in gdf and gdf[muni_number_col].notna().all():
@@ -667,7 +698,7 @@ def _fix_missing_muni_numbers(
                 isna,
                 municipalities,
                 muni_number_col,
-                max_rows_per_intersection,
+                max_rows_per_chunk,
                 processes_in_clip,
             )
 
@@ -680,7 +711,7 @@ def _fix_missing_muni_numbers(
             gdf,
             municipalities,
             muni_number_col,
-            max_rows_per_intersection,
+            max_rows_per_chunk,
             processes_in_clip,
         )
 
@@ -689,27 +720,56 @@ def intersect_by_municipalities(
     df: GeoDataFrame,
     municipalities: GeoDataFrame,
     muni_number_col: str,
-    max_rows_per_intersection: int,
+    max_rows_per_chunk: int,
     processes_in_clip: int,
 ) -> GeoDataFrame:
-    if len(df) < max_rows_per_intersection:
+    if len(df) < max_rows_per_chunk:
         return clean_overlay(df, municipalities)
 
     municipalities = municipalities.dissolve(by=muni_number_col, as_index=False)
 
-    n_chunks = len(df) // max_rows_per_intersection
+    n_chunks = len(df) // max_rows_per_chunk
     chunks = np.array_split(np.arange(len(df)), n_chunks)
 
     df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
 
-    notna_anymore = Parallel(processes_in_clip, backend="loky").map(
+    out = Parallel(processes_in_clip, backend="loky").map(
         _clean_intersection,
         df_chunked,
         args=(municipalities,),
     )
-    return pd.concat(notna_anymore, ignore_index=True)
+    return pd.concat(out, ignore_index=True)
 
 
 def _clean_intersection(df1, df2):
     print(len(df1))
     return clean_overlay(df1, df2, how="intersection")
+
+
+def chunkwise(
+    func: Callable,
+    df: GeoDataFrame,
+    max_rows_per_chunk: int = 150_000,
+    n_chunks: int = None,
+    args: tuple | None = None,
+    kwargs: dict | None = None,
+    n_jobs: int = 1,
+    backend: str = "loky",
+) -> GeoDataFrame:
+    if len(df) < max_rows_per_chunk:
+        return func(df, *args, **kwargs)
+
+    if n_chunks is None:
+        n_chunks = len(df) // max_rows_per_chunk
+
+    chunks = np.array_split(np.arange(len(df)), n_chunks)
+
+    df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
+
+    out = Parallel(n_jobs, backend=backend).map(
+        func,
+        df_chunked,
+        args=args,
+        kwargs=kwargs,
+    )
+    return pd.concat(out, ignore_index=True)

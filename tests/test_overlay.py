@@ -26,61 +26,64 @@ def test_overlay(points_oslo):
     p1000 = sg.buff(p, 1000)
     p1000["idx2"] = 1
 
-    overlayed = sg.clean_overlay(p500, p1000, how="update")
-    cols_should_be = ["idx", "idx1", "idx2", "geometry"]
-    assert list(overlayed.columns) == cols_should_be, list(overlayed.columns)
+    for n_jobs in [1, 3]:
+        overlayed = sg.clean_overlay(p500, p1000, how="update", n_jobs=n_jobs)
+        cols_should_be = ["idx", "idx1", "idx2", "geometry"]
+        assert list(overlayed.columns) == cols_should_be, list(overlayed.columns)
 
-    hows = [
-        "difference",
-        "symmetric_difference",
-        "union",
-        "identity",
-        "intersection",
-    ]
-    cols_should_be = [
-        ["idx", "idx1", "geometry"],
-        ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
-        ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
-        ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
-        ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
-    ]
-    for cols, how in zip(cols_should_be, hows):
-        print(how)
-        print(p500.columns)
-        overlayed = (
-            sg.clean_geoms(p500)
-            .explode(ignore_index=True)
-            .overlay(sg.clean_geoms(p1000).explode(ignore_index=True), how=how)
-            .explode(ignore_index=True)
-            .explode(ignore_index=True)
-        )
-        assert list(overlayed.columns) == cols, list(overlayed.columns)
+        hows = [
+            "difference",
+            "symmetric_difference",
+            "union",
+            "identity",
+            "intersection",
+        ]
+        cols_should_be = [
+            ["idx", "idx1", "geometry"],
+            ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
+            ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
+            ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
+            ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
+        ]
+        for cols, how in zip(cols_should_be, hows):
+            print(how)
+            print(p500.columns)
+            overlayed = (
+                sg.clean_geoms(p500)
+                .explode(ignore_index=True)
+                .overlay(sg.clean_geoms(p1000).explode(ignore_index=True), how=how)
+                .explode(ignore_index=True)
+                .explode(ignore_index=True)
+            )
+            assert list(overlayed.columns) == cols, list(overlayed.columns)
 
-        overlayed2 = sg.clean_overlay(p500, p1000, how=how)
-        assert list(overlayed2.columns) == cols, list(overlayed2.columns)
+            overlayed2 = sg.clean_overlay(p500, p1000, how=how)
+            assert list(overlayed2.columns) == cols, list(overlayed2.columns)
 
-        if int(overlayed.area.sum()) != int(overlayed2.area.sum()):
-            raise ValueError(int(overlayed.area.sum()) != int(overlayed2.area.sum()))
-
-        if len(overlayed) != len(overlayed2):
-            raise ValueError(how, len(overlayed), len(overlayed2))
-
-        # area is slightly different, but same area with 3 digits is good enough
-        for i in [1, 2, 3]:
-            if round(sum(overlayed.area), i) != round(sum(overlayed2.area), i):
+            if int(overlayed.area.sum()) != int(overlayed2.area.sum()):
                 raise ValueError(
-                    how,
-                    i,
-                    round(sum(overlayed.area), i),
-                    round(sum(overlayed2.area), i),
+                    int(overlayed.area.sum()) != int(overlayed2.area.sum())
                 )
 
-            sg.clean_overlay(
-                p500.sample(1),
-                p1000.sample(1),
-                how=how,
-                geom_type="polygon",
-            )
+            if len(overlayed) != len(overlayed2):
+                raise ValueError(how, len(overlayed), len(overlayed2))
+
+            # area is slightly different, but same area with 3 digits is good enough
+            for i in [1, 2, 3]:
+                if round(sum(overlayed.area), i) != round(sum(overlayed2.area), i):
+                    raise ValueError(
+                        how,
+                        i,
+                        round(sum(overlayed.area), i),
+                        round(sum(overlayed2.area), i),
+                    )
+
+                sg.clean_overlay(
+                    p500.sample(1),
+                    p1000.sample(1),
+                    how=how,
+                    geom_type="polygon",
+                )
 
 
 def test_overlay_random(n=25):
