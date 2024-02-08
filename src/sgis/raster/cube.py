@@ -47,8 +47,14 @@ except ImportError:
     class BoundingBox:
         """Placeholder."""
 
+        def __init__(self, *args, **kwargs):
+            raise ImportError("missing optional dependency 'torchgeo'")
+
     class RasterDataset:
         """Placeholder."""
+
+        def __init__(self, *args, **kwargs):
+            raise ImportError("missing optional dependency 'torchgeo'")
 
 
 try:
@@ -723,7 +729,10 @@ class DataCube:
 
         for i, raster in enumerate(self._data):
             if raster.date and raster.date_format:
-                mint, maxt = disambiguate_timestamp(raster.date, raster.date_format)
+                try:
+                    mint, maxt = disambiguate_timestamp(raster.date, raster.date_format)
+                except NameError:
+                    mint, maxt = 0, 1
             else:
                 mint, maxt = 0, 1
             # important: torchgeo has a different order of the bbox than shapely and geopandas

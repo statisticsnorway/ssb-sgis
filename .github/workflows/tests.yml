@@ -54,7 +54,7 @@ jobs:
       - name: Run raster pytest with coverage
         if: ${{ (matrix.os == 'ubuntu-latest') }}
         run: |
-          poetry run pytest -k "not (tests/test_cube.py)" --verbose --durations=5 --cov --cov-report=term --cov-report=xml --junitxml=pytest-report.xml
+          poetry run pytest -k "not tests/test_cube.py" --verbose --durations=5 --cov --cov-report=term --cov-report=xml --junitxml=pytest-report.xml
 
       - name: SonarCloud Scan
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' }}

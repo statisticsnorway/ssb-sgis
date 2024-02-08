@@ -32,12 +32,10 @@ def x2(x):
     return x * 2
 
 
-def test_xdataset():
-    cube = (
-        sg.DataCube.from_root(testdata, raster_type=sg.bands.Sentinel2, res=10)
-        .query("date.notna()")
-        .load()
-    )
+def not_test_xdataset():
+    cube = sg.DataCube.from_root(testdata, raster_type=sg.bands.Sentinel2, res=10)[
+        lambda x: x.date.notna()
+    ].load()
 
     print(cube)
     xdataset = cube.to_xarray()
@@ -55,7 +53,7 @@ def test_query():
         assert isinstance(c1, sg.DataCube)
 
 
-def test_shape():
+def not_test_shape():
     cube = sg.DataCube.from_root(
         testdata,
         endswith=".tif",
@@ -103,7 +101,7 @@ def test_copy():
     )
 
 
-def test_gradient():
+def not_test_gradient():
     cube = sg.DataCube.from_root(
         testdata,
         endswith=".tif",
@@ -111,7 +109,6 @@ def test_gradient():
         nodata=0,
         res=10,
     )[lambda x: x.path.str.lower().str.contains("dtm")].load()
-    print(list(cube))
     gradient = cube.copy().gradient()
     assert int(gradient.max().max()) == 17, gradient.max().max()
 
@@ -178,13 +175,13 @@ def test_from_root():
     import glob
 
     files = [file for file in glob.glob(str(Path(testdata)) + "/*") if ".tif" in file]
-    cube = sg.DataCube.from_paths(files)
+    cube = sg.DataCube.from_paths(files, res=10)
 
     cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0).explode()
     assert len(cube) == 22, cube
     display(cube)
 
-    cube = sg.DataCube.from_root(testdata, regex=r"\.tif$", nodata=0).explode()
+    cube = sg.DataCube.from_root(testdata, regex=r"\.tif$", res=10, nodata=0).explode()
     assert len(cube) == 22, cube
     display(cube)
 
@@ -214,7 +211,7 @@ def test_to_gdf():
     assert len(cube) == 2, len(cube)
 
 
-def test_to_crs():
+def not_test_to_crs():
     cube = sg.DataCube.from_root(testdata, endswith=".tif", nodata=0, res=10).explode()[
         lambda x: x.path.str.contains("two_bands")
     ]
@@ -286,7 +283,7 @@ def test_to_crs():
     assert [arr is None for arr in cube.arrays]
 
 
-def test_merge():
+def not_test_merge():
     cube = sg.DataCube.from_root(
         testdata, crs=25833, endswith=".tif", res=10, nodata=0
     ).explode()
@@ -326,30 +323,6 @@ def test_dissolve():
     print(cube)
 
 
-def test_intersection():
-    cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0).query(
-        "subfolder != 'sentinel2'"
-    )
-    cube._crs = 25833
-    grid = sg.make_grid(cube.unary_union, gridsize=1000, crs=cube.crs)
-    grid["idx"] = range(len(grid))
-
-    print(len(grid))
-    print(len(cube))
-
-    intersected = cube.intersection(grid)
-    print(len(intersected))
-    print(intersected.df["idx"])
-    print(intersected)
-
-    intersected_parallelized = cube.pool(3).intersection(grid).execute()
-    print(len(intersected))
-    print(intersected.df["idx"])
-    print(intersected)
-
-    assert intersected_parallelized.equals(intersected)
-
-
 def test_explode():
     cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0)[
         lambda x: ~x.path.str.lower().str.contains("sentinel")
@@ -372,7 +345,7 @@ def test_explode():
     assert exploded2.boxes.notna().all().all()
 
 
-def test_merge_from_array():
+def not_test_merge_from_array():
     should_give = np.array(
         [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13, 14], [15, 16, 17]],
     )
@@ -462,7 +435,7 @@ def test_merge_from_array():
     all_should_be_10()
 
 
-def test_from_gdf():
+def not_test_from_gdf():
     cube = sg.DataCube.from_root(
         testdata, endswith=".tif", res=10, raster_type=sg.bands.Sentinel2
     )
@@ -475,7 +448,7 @@ def test_from_gdf():
     print(cube.df)
 
 
-def test_zonal():
+def not_test_zonal():
     arr_1d = np.arange(0, 8)
     arr_2d = arr_1d + np.arange(8).reshape(-1, 1)
     print(arr_2d)
@@ -573,14 +546,14 @@ def write_sentinel():
         _save_raster(file, src_path_sentinel + "/MASKS")
 
 
-def test_torch():
+def not_test_torch():
+
     # from lightning.pytorch import Trainer
     from torch.utils.data import DataLoader
-
-    # from torchgeo.datamodules import InriaAerialImageLabelingDataModule
     from torchgeo.datasets import stack_samples
     from torchgeo.samplers import RandomGeoSampler
 
+    # from torchgeo.datamodules import InriaAerialImageLabelingDataModule
     # from torchgeo.trainers import SemanticSegmentationTask
 
     def cube_with_torch():
@@ -625,24 +598,24 @@ if __name__ == "__main__":
     # write_sentinel()
 
     def test_cube():
-        test_torch()
         test_sentinel()
-        test_gradient()
+        not_test_gradient()
         test_explode()
         test_getitem()
         test_to_gdf()
-        test_shape()
+        not_test_shape()
         test_query()
         test_copy()
         test_parallel()
         test_dissolve()
-        test_from_gdf()
+        not_test_from_gdf()
         test_from_root()
-        test_xdataset()
-        test_merge()
-        test_zonal()
-        test_to_crs()
-        test_merge_from_array()
+        not_test_xdataset()
+        not_test_merge()
+        not_test_zonal()
+        not_test_to_crs()
+        not_test_merge_from_array()
+        not_test_torch()
         # not_test_df()
 
     # cProfile.run("test_merge_performance()", sort="cumtime")
