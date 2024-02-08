@@ -1319,14 +1319,9 @@ class Raster:
             if self.bounds is None:
                 self._bounds = to_bbox(mask)
 
-            if boundless:
-                window = rasterio.windows.from_bounds(
-                    *to_bbox(mask), transform=self.transform
-                )
-            else:
-                window = rasterio.windows.from_bounds(
-                    *to_bbox(mask), transform=self.transform
-                )
+            window = rasterio.windows.from_bounds(
+                *to_bbox(mask), transform=self.transform
+            )
 
             out_shape = get_shape_from_bounds(mask, self.res)
 
