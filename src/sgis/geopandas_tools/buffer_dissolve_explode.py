@@ -189,7 +189,7 @@ def _dissolve(gdf, aggfunc="first", grid_size=None, n_jobs=1, **dissolve_kwargs)
     else:
         if isinstance(by, str):
             by = [by]
-        other_cols = list(gdf.columns.difference({geom_col} | set(by)))
+        other_cols = list(gdf.columns.difference({geom_col} | set(by or {})))
 
     dissolved = gdf.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
 
@@ -284,7 +284,7 @@ def dissexp(
 
 
 def dissexp_by_cluster(
-    gdf: GeoDataFrame, n_jobs: int = 1, **dissolve_kwargs
+    gdf: GeoDataFrame, predicate=None, n_jobs: int = 1, **dissolve_kwargs
 ) -> GeoDataFrame:
     """Dissolves overlapping geometries through clustering with sjoin and networkx.
 
@@ -317,7 +317,9 @@ def dissexp_by_cluster(
     def get_group_clusters(group: GeoDataFrame):
         """Adds cluster column. Applied to each group because much faster."""
         group = group.reset_index(drop=True)
-        group["_cluster"] = get_cluster_mapper(group)  # component_mapper
+        group["_cluster"] = get_cluster_mapper(
+            group, predicate=predicate
+        )  # component_mapper
         group["_cluster"] = get_grouped_centroids(group, groupby="_cluster")
         return group
 

@@ -19,8 +19,13 @@ from typing_extensions import Self  # TODO: imperter fra typing når python 3.11
 
 try:
     import xarray as xr
+    from xarray import DataArray
 except ImportError:
-    pass
+
+    class DataArray:
+        pass
+
+
 try:
     from rioxarray.rioxarray import _generate_spatial_coords
 except ImportError:
@@ -570,7 +575,7 @@ class Raster:
         """
         return get_gradient(self, degrees=degrees, copy=copy)
 
-    def to_xarray(self) -> xr.DataArray:
+    def to_xarray(self) -> DataArray:
         self._check_for_array()
         self.name = self.name or self.__class__.__name__.lower()
         coords = _generate_spatial_coords(self.transform, self.width, self.height)
@@ -958,7 +963,7 @@ class Raster:
     def transform(self) -> Affine | None:
         try:
             return rasterio.transform.from_bounds(*self.bounds, self.width, self.height)
-        except ZeroDivisionError:
+        except (ZeroDivisionError, TypeError):
             if not self.width or not self.height:
                 return None
 
@@ -1306,9 +1311,26 @@ class Raster:
         kwargs["mask"] = mask
 
         def _read(self, src, mask, **kwargs):
+            print(self.bounds)
             self._add_meta_from_src(src)
-            transform = self.transform
-            window = rasterio.windows.from_bounds(*to_bbox(mask), transform=transform)
+            print(self.bounds)
+            if self.bounds is None:
+                self._bounds = to_bbox(mask)
+            if boundless:
+                self._bounds = to_bbox(mask)
+                print(self.bounds)
+                window = rasterio.windows.from_bounds(
+                    *to_bbox(mask), transform=self.transform
+                )
+            else:
+                intersected = to_shapely(self.bounds).intersection(to_shapely(mask))
+                if intersected.is_empty:
+                    self._bounds = None
+                else:
+                    self._bounds = intersected.bounds
+                window = rasterio.windows.from_bounds(
+                    *to_bbox(mask), transform=self.transform
+                )
 
             out_shape = get_shape_from_bounds(mask, self.res)
 
@@ -1328,9 +1350,11 @@ class Raster:
             if boundless:
                 self._bounds = src.window_bounds(window=window)
             else:
-                self._bounds = (
-                    to_shapely(self.bounds).intersection(to_shapely(mask)).bounds
-                )
+                intersected = to_shapely(self.bounds).intersection(to_shapely(mask))
+                if intersected.is_empty:
+                    self._bounds = None
+                else:
+                    self._bounds = intersected.bounds
 
             if not np.size(self.array):
                 return
@@ -1366,7 +1390,9 @@ def get_transform_from_bounds(
     return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
 
 
-def get_shape_from_bounds(obj: GeoDataFrame | GeoSeries | Geometry | tuple, res: int):
+def get_shape_from_bounds(
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple, res: int
+) -> tuple[int, int]:
     resx, resy = (res, res) if isinstance(res, numbers.Number) else res
 
     minx, miny, maxx, maxy = to_bbox(obj)

@@ -2,7 +2,8 @@ config = {
     "n_jobs": 1,
 }
 
-from sgis.raster.raster import Raster
+import sgis.raster.bands as bands
+from sgis.raster.raster import Raster, get_shape_from_bounds, get_transform_from_bounds
 
 from .geopandas_tools.bounds import (
     Gridlooper,

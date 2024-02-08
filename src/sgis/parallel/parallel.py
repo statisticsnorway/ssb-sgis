@@ -731,6 +731,10 @@ def intersect_by_municipalities(
     n_chunks = len(df) // max_rows_per_chunk
     chunks = np.array_split(np.arange(len(df)), n_chunks)
 
+    x_mapper = dict(enumerate(df.centroid))
+    sorted_xs = dict(reversed(sorted(x_mapper.items(), key=lambda item: item[1])))
+    df = df.iloc[list(sorted_xs)]
+
     df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
 
     out = Parallel(processes_in_clip, backend="loky").map(
