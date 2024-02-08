@@ -377,7 +377,6 @@ def coverage_clean(
                 raise e
 
     cleaned = sort_small_first(cleaned)
-    # cleaned = sort_large_first(cleaned)
 
     # slivers on bottom
     cleaned = pd.concat(split_out_slivers(cleaned, tolerance))
@@ -420,9 +419,9 @@ def safe_simplify(gdf, tolerance: float | int):
     copied.geometry = shapely.make_valid(
         shapely.simplify(copied.geometry.values, tolerance=tolerance)
     )
-    copied.loc[
-        copied.area > length_then * 1.01, copied._geometry_column_name
-    ] = gdf.loc[copied.area > length_then * 1.01, copied._geometry_column_name]
+    copied.loc[copied.area > length_then * 1.01, copied._geometry_column_name] = (
+        gdf.loc[copied.area > length_then * 1.01, copied._geometry_column_name]
+    )
 
     return copied
 
@@ -498,8 +497,8 @@ def split_out_slivers(
     is_sliver = gdf.buffer(-tolerance / 2).is_empty
     slivers = gdf.loc[is_sliver]
     gdf = gdf.loc[~is_sliver]
-    # slivers, isolated = sfilter_split(slivers, gdf.buffer(PRECISION))
-    # gdf = pd.concat([gdf, isolated])
+    slivers, isolated = sfilter_split(slivers, gdf.buffer(PRECISION))
+    gdf = pd.concat([gdf, isolated])
     return gdf, slivers
 
 
@@ -728,8 +727,6 @@ def snap_polygons(
             mask: GeoDataFrame = mask[["geometry"]]
         except Exception:
             mask: GeoDataFrame = to_geoseries(mask).to_frame("geometry")
-
-    # gdf.geometry = shapely.set_precision(gdf.geometry, grid_size=PRECISION)
 
     gdf_copy = gdf.copy()
 

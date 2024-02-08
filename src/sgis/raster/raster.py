@@ -1311,23 +1311,34 @@ class Raster:
         kwargs["mask"] = mask
 
         def _read(self, src, mask, **kwargs):
-            print(self.bounds)
             self._add_meta_from_src(src)
-            print(self.bounds)
             if self.bounds is None:
                 self._bounds = to_bbox(mask)
+
+            # intersected = to_shapely(self.bounds).intersection(to_shapely(mask))
+            # if intersected.is_empty:
+            #     self._bounds = None
+            # else:
+            #     self._bounds = intersected.bounds
+
             if boundless:
-                self._bounds = to_bbox(mask)
+                # self._bounds = to_bbox(mask)
+                print("hei")
                 print(self.bounds)
+                print(self.transform)
+                print(self.shape)
+                print(self.res)
+                print(to_bbox(mask))
+                print(to_shapely(self.bounds).intersection(to_shapely(mask)))
                 window = rasterio.windows.from_bounds(
                     *to_bbox(mask), transform=self.transform
                 )
             else:
-                intersected = to_shapely(self.bounds).intersection(to_shapely(mask))
-                if intersected.is_empty:
-                    self._bounds = None
-                else:
-                    self._bounds = intersected.bounds
+                # intersected = to_shapely(self.bounds).intersection(to_shapely(mask))
+                # if intersected.is_empty:
+                #     self._bounds = None
+                # else:
+                #     self._bounds = intersected.bounds
                 window = rasterio.windows.from_bounds(
                     *to_bbox(mask), transform=self.transform
                 )

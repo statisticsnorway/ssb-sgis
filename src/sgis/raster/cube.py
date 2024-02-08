@@ -817,8 +817,6 @@ class DataCube:
     @property
     def res(self) -> int:
         return self._res
-        return list(self.raster_attribute("res"))[0]
-        return self.raster_attribute("res")
 
     @res.setter
     def res(self, value):
@@ -871,10 +869,6 @@ class DataCube:
             (minx, maxx, miny, maxy, mint, maxt) of the dataset
         """
         return BoundingBox(*self.index.bounds)
-        minx, miny, maxx, maxy, mint, maxt = self.index.bounds
-        return BoundingBox(
-            minx=minx, miny=miny, maxx=maxx, maxy=maxy, mint=mint, maxt=maxt
-        )
 
     def copy(self, deep=True) -> Self:
         """Returns a (deep) copy of the class instance and its rasters.
