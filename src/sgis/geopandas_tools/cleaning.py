@@ -64,13 +64,6 @@ warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
 
-from ..maps.maps import explore
-
-
-# def explore(*args, **kwargs):
-#     pass
-
-
 PRECISION = 1e-3
 BUFFER_RES = 50
 
@@ -753,7 +746,7 @@ def snap_polygons(
     missing = clean_overlay(mask, gdf, how="difference")
 
     gdf = eliminate_by_longest(
-        gdf, missing.buffer(PRECISION * 10).to_frame("geometry"), remove_isolated=True
+        gdf, missing.buffer(PRECISION * 10).to_frame("geometry"), remove_isolated=False
     ).pipe(clean_clip, mask, geom_type="polygon")
 
     gdf = update_geometries(
@@ -844,14 +837,14 @@ def _snap_to_anchors(
         .loc[lambda x: ~x.index.duplicated()]
     )
 
-    explore(
-        anchors,
-        to_be_snapped,
-        snapped=snapped,
-        left_on_top=points.loc[lambda x: (~x.index.isin(left_on_top.values))],
-        indices=points.loc[lambda x: (~x.index.isin(indices.values))],
-        points_i_snap_to=points.set_crs(25833),
-    )
+    # explore(
+    #     anchors,
+    #     to_be_snapped,
+    #     snapped=snapped,
+    #     left_on_top=points.loc[lambda x: (~x.index.isin(left_on_top.values))],
+    #     indices=points.loc[lambda x: (~x.index.isin(indices.values))],
+    #     points_i_snap_to=points.set_crs(25833),
+    # )
 
     points.loc[snapped.index, "geometry"] = snapped
 
@@ -951,22 +944,22 @@ def _snap_linearrings(
         points_by_mask_nodes.buffer(tolerance),
         predicate="within",
     )
-    explore(
-        relevant_mask_nodes,
-        points_by_mask_nodes,
-        points=points.set_crs(25833),
-        mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
-    )
+    # explore(
+    #     relevant_mask_nodes,
+    #     points_by_mask_nodes,
+    #     points=points.set_crs(25833),
+    #     mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
+    # )
 
-    explore(
-        mask,
-        gdf,
-        relevant_mask_nodes,
-        points_by_mask_nodes,
-        segments,
-        points=points.set_crs(25833),
-        mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
-    )
+    # explore(
+    #     mask,
+    #     gdf,
+    #     relevant_mask_nodes,
+    #     points_by_mask_nodes,
+    #     segments,
+    #     points=points.set_crs(25833),
+    #     mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
+    # )
 
     if len(relevant_mask_nodes):
         mask_nodes["_right_geom"] = mask_nodes.geometry
@@ -1021,16 +1014,16 @@ def _snap_linearrings(
         mask_nodes, as_polygons.buffer(PRECISION)
     ).pipe(sfilter, as_polygons.buffer(PRECISION + tolerance))
 
-    explore(
-        mask,
-        gdf,
-        anchors,
-        missing_mask_nodes,
-        snapped,
-        as_polygons,
-        points=points.set_crs(25833),
-        mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
-    )
+    # explore(
+    #     mask,
+    #     gdf,
+    #     anchors,
+    #     missing_mask_nodes,
+    #     snapped,
+    #     as_polygons,
+    #     points=points.set_crs(25833),
+    #     mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
+    # )
 
     if snap_to_nodes or len(missing_mask_nodes):
         thin_gaps = get_gaps(as_polygons, include_interiors=True).loc[
@@ -1121,14 +1114,6 @@ def _remove_legit_spikes(df):
 
     assert df["next"].notna().all()
     assert df["prev"].notna().all()
-
-    print(df)
-    print(df.loc[lambda x: x["next"] != x["prev"]])
-    explore(
-        df.set_crs(25833),
-        df.loc[lambda x: x["next"] != x["prev"]],
-        df.loc[lambda x: x["next"] == x["prev"]],
-    )
 
     return df.loc[lambda x: x["next"] != x["prev"]]
 
@@ -1255,18 +1240,6 @@ def split_spiky_polygons(
         missing = df.loc[
             ~df["_ring_idx"].isin(without_spikes.index), df._geometry_column_name
         ]
-        from ..maps.maps import explore
-
-        explore(
-            gdf,
-            # points,
-            # not_spikes,
-            without_spikes.buffer(1e-3).to_frame(),
-            donuts_around_polygons,
-            center=(56249, 6901798),
-            size=100,
-        )  # , without_spikes, donuts_around_polygons, polygons_without_spikes)
-
         return pd.concat(
             [without_spikes, missing]
         ).sort_index()  # .to_frame("geometry")

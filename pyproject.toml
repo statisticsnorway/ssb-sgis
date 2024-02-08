@@ -98,7 +98,7 @@ notebook_metadata_filter = "jupytext.text_representation,-jupytext.text_represen
 cell_metadata_filter = "-all"
 
 [tool.pytest.ini_options]
-addopts = "--ignore=tests/test_cube.py --ignore=tests/test_cleaning.py"
+addopts = "--ignore=tests/test_cube.py"
 pythonpath = [
   "src"
 ]
