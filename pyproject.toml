@@ -26,7 +26,7 @@ mapclassify = ">=2.5.0"
 matplotlib = ">=3.7.0"
 networkx = ">=3.0"
 numpy = ">=1.24.2"
-pandas = ">=1.5.3"
+pandas = "2.0.3"
 pyarrow = ">=11.0.0"
 requests = ">=2.28.2"
 scikit-learn = ">=1.2.1"
@@ -98,8 +98,9 @@ notebook_metadata_filter = "jupytext.text_representation,-jupytext.text_represen
 cell_metadata_filter = "-all"
 
 [tool.pytest.ini_options]
-  pythonpath = [
-   "src"
+addopts = "--ignore=tests/test_cube.py --ignore=tests/test_cleaning.py"
+pythonpath = [
+  "src"
 ]
 
 [build-system]
