@@ -435,7 +435,11 @@ class Raster:
         return self
 
     def clip(
-        self, mask, masked: bool = False, boundless: bool = False, **kwargs
+        self,
+        mask,
+        masked: bool = False,
+        boundless: bool = True,
+        **kwargs,
     ) -> Self:
         """Load the part of the image inside the mask.
 
@@ -1315,30 +1319,11 @@ class Raster:
             if self.bounds is None:
                 self._bounds = to_bbox(mask)
 
-            # intersected = to_shapely(self.bounds).intersection(to_shapely(mask))
-            # if intersected.is_empty:
-            #     self._bounds = None
-            # else:
-            #     self._bounds = intersected.bounds
-
             if boundless:
-                # self._bounds = to_bbox(mask)
-                print("hei")
-                print(self.bounds)
-                print(self.transform)
-                print(self.shape)
-                print(self.res)
-                print(to_bbox(mask))
-                print(to_shapely(self.bounds).intersection(to_shapely(mask)))
                 window = rasterio.windows.from_bounds(
                     *to_bbox(mask), transform=self.transform
                 )
             else:
-                # intersected = to_shapely(self.bounds).intersection(to_shapely(mask))
-                # if intersected.is_empty:
-                #     self._bounds = None
-                # else:
-                #     self._bounds = intersected.bounds
                 window = rasterio.windows.from_bounds(
                     *to_bbox(mask), transform=self.transform
                 )

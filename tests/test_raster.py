@@ -213,8 +213,6 @@ def test_clip_res():
         )
         general_assertions(clipped_from_memfile, masked=True)
 
-    masked_and_boundless()
-
     def masked_not_boundless():
         clipped = r.copy().clip(square_in_corner, masked=True, boundless=False)
         general_assertions(clipped, masked=True)
@@ -225,8 +223,6 @@ def test_clip_res():
         )
         general_assertions(clipped_from_memfile, masked=True)
 
-    masked_not_boundless()
-
     def not_masked_not_boundless():
         clipped = r.copy().clip(square_in_corner, masked=False, boundless=False)
         general_assertions(clipped, masked=False)
@@ -235,8 +231,6 @@ def test_clip_res():
             r.copy().load().clip(square_in_corner, masked=False, boundless=False)
         )
         general_assertions(clipped_from_memfile, masked=False)
-
-    not_masked_not_boundless()
 
     def not_masked_but_boundless():
         clipped = r.copy().clip(square_in_corner, masked=False, boundless=True)
@@ -272,6 +266,9 @@ def test_clip_res():
             int(intersected.area.sum()),
         )
 
+    not_masked_not_boundless()
+    masked_not_boundless()
+    masked_and_boundless()
     not_masked_but_boundless()
 
 
@@ -426,12 +423,12 @@ if __name__ == "__main__":
         raster.plot()
         raster
 
-    test_clip_res()
-    test_resize()
     test_clip()
+    test_clip_res()
+    test_zonal()
+    test_resize()
     test_to_crs()
     # test_res()
-    not_test_write()
 
     test_xarray()
     test_convertion()
@@ -441,8 +438,8 @@ if __name__ == "__main__":
 
     test_indexes_and_shape()
 
-    test_zonal()
     test_sample()
+    not_test_write()
 
     print("ferdig")
 

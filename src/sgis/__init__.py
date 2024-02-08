@@ -3,6 +3,7 @@ config = {
 }
 
 import sgis.raster.bands as bands
+import sgis.raster.indices as indices
 from sgis.raster.raster import Raster, get_shape_from_bounds, get_transform_from_bounds
 
 from .geopandas_tools.bounds import (
