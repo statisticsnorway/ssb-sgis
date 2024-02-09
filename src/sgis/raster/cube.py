@@ -13,12 +13,22 @@ import pandas as pd
 import pyproj
 import rasterio
 import shapely
-import xarray as xr
 from geopandas import GeoDataFrame, GeoSeries
 from pandas import DataFrame, Series
 from pandas.api.types import is_dict_like, is_list_like
 from rasterio import merge as rasterio_merge
-from rioxarray.merge import merge_arrays
+
+
+try:
+    import xarray as xr
+    from rioxarray.merge import merge_arrays
+    from xarray import Dataset
+except ImportError:
+
+    class Dataset:
+        pass
+
+
 from rtree.index import Index, Property
 from shapely import Geometry
 from typing_extensions import Self  # TODO: imperter fra typing når python 3.11
@@ -399,7 +409,7 @@ class DataCube:
             return pd.concat(gdfs, ignore_index=ignore_index)
         return gdfs
 
-    def to_xarray(self) -> xr.Dataset:
+    def to_xarray(self) -> Dataset:
         return xr.Dataset({i: r.to_xarray() for i, r in enumerate(self.data)})
 
     def zonal(
