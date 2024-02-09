@@ -27,7 +27,6 @@ from shapely import (
     get_interior_ring,
     get_num_interior_rings,
     get_parts,
-    get_rings,
     intersection,
     intersects,
     is_empty,
@@ -60,7 +59,13 @@ from .conversion import to_gdf, to_geoseries
 class PolygonsAsRings:
     """Convert polygons to linearrings, apply linestring functions, then convert back to polygons."""
 
-    def __init__(self, polys: GeoDataFrame | GeoSeries | GeometryArray, crs=None):
+    def __init__(
+        self,
+        polys: GeoDataFrame | GeoSeries | GeometryArray,
+        crs=None,
+        allow_multipart: bool = False,
+        gridsize: int | None = None,
+    ):
         if not isinstance(polys, (pd.DataFrame, pd.Series, GeometryArray)):
             raise TypeError(type(polys))
 
@@ -68,6 +73,16 @@ class PolygonsAsRings:
 
         if not isinstance(polys, pd.DataFrame):
             polys = to_gdf(polys, crs)
+
+        if not allow_multipart and not (polys.geom_type == "Polygon").all():
+            raise ValueError(
+                "All geometries must be single-type Polygons. Set allow_multipart=True to allow MultiPolygons",
+                polys.geom_type.value_counts(),
+            )
+        if not polys.geom_type.isin(["Polygon", "MultiPolygon"]).all():
+            raise ValueError(
+                f"All geometries must be Polygons. Got {polys.geom_type.value_counts()}"
+            )
 
         self._index_mapper = dict(enumerate(polys.index))
         self.gdf = polys.reset_index(drop=True)
@@ -113,6 +128,8 @@ class PolygonsAsRings:
     def get_rings(self, agg: bool = False):
         gdf = self.gdf.copy()
         rings = self.rings.copy()
+        if not len(rings):
+            return GeoSeries()
         if agg:
             gdf.geometry = rings.groupby(level=1).agg(unary_union)
         else:
@@ -148,7 +165,15 @@ class PolygonsAsRings:
         kwargs = kwargs or {}
         args = args or ()
 
-        self.rings.loc[:] = np.array(func(self.rings.values, *args, **kwargs))
+        results = np.array(func(self.rings.values, *args, **kwargs))
+
+        if len(results) != len(self.rings):
+            raise ValueError(
+                f"Different length of results. Got {len(results)} and n rings {len(self.rings)}"
+            )
+
+        self.rings.loc[:] = results
+
         return self
 
     def apply_geoseries_func(
@@ -310,7 +335,7 @@ def _geoms_to_linearrings_fallback(
                 index=exterior.index,
             )
             .groupby(level=0)
-            .agg(unary_union)
+            .agg(lambda x: make_valid(unary_union(x)))
         )
 
     interiors.index = interiors.index.get_level_values(1)
@@ -335,5 +360,5 @@ def _geoms_to_linearrings_fallback(
             index=exterior.index,
         )
         .groupby(level=0)
-        .agg(unary_union)
+        .agg(lambda x: make_valid(unary_union(x)))
     )

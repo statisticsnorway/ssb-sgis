@@ -161,12 +161,16 @@ def test_get_neighbor_indices():
     neighbor_indices = sg.get_neighbor_indices(two_points, two_points)
     assert neighbor_indices.equals(pd.Series([0, 1], index=[0, 1]))
 
-    neighbor_indices = sg.get_neighbor_indices(two_points, two_points, max_distance=1)
-    assert neighbor_indices.equals(pd.Series([0, 0, 1, 1], index=[0, 1, 0, 1]))
+    neighbor_indices = sg.get_neighbor_indices(
+        two_points, two_points, max_distance=1
+    ).sort_values()
+    assert neighbor_indices.equals(
+        pd.Series([0, 0, 1, 1], index=[0, 1, 0, 1])
+    ), neighbor_indices
 
     neighbor_indices = sg.get_neighbor_indices(
         two_points, two_points.set_index("text"), max_distance=1
-    )
+    ).sort_values()
     assert neighbor_indices.equals(pd.Series(["a", "a", "b", "b"], index=[0, 1, 0, 1]))
 
     assert list(neighbor_indices.values) == ["a", "a", "b", "b"]
@@ -174,7 +178,7 @@ def test_get_neighbor_indices():
 
     neighbor_indices = sg.get_neighbor_indices(
         two_points, two_points.set_index("text"), predicate="nearest"
-    )
+    ).sort_values()
     assert neighbor_indices.equals(pd.Series(["a", "b"], index=[0, 1]))
     assert list(neighbor_indices.values) == ["a", "b"]
     assert list(neighbor_indices.index) == [0, 1]
@@ -193,8 +197,8 @@ def main():
 
     points_oslo = points_oslo()
 
-    test_k_neighbors(points_oslo)
     test_get_neighbor_indices()
+    test_k_neighbors(points_oslo)
 
 
 if __name__ == "__main__":

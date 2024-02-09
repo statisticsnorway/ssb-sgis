@@ -8,4 +8,3 @@ Functions for reading and writing geodata.
 
    dapla
    read_parquet_url
-   write_municipality_data

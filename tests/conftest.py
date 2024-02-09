@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from geopandas import GeoDataFrame, GeoSeries, read_parquet
 
-from sgis import ElevationRaster, Raster, to_gdf
+from sgis import Raster, to_gdf
 
 
 @pytest.fixture(scope="module")
@@ -32,13 +32,6 @@ def raster_singleband() -> GeoDataFrame:
 def raster_two_bands() -> GeoDataFrame:
     return Raster.from_path(
         Path(__file__).parent / "testdata/raster/dtm_10_two_bands.tif"
-    ).load()
-
-
-@pytest.fixture(scope="module")
-def elevation_raster_two_bands() -> GeoDataFrame:
-    return ElevationRaster.from_path(
-        Path(__file__).parent / "testdata/raster/dtm_10_two_bands.tif", indexes=None
     ).load()
 
 

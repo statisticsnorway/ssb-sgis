@@ -7,4 +7,3 @@ Class for raster analysis from image files, arrays and GeoDataFrames.
    :maxdepth: 3
 
    raster
-   elevationraster

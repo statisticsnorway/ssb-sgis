@@ -13,7 +13,7 @@ from shapely import Geometry, box, extract_unique_points
 from shapely.geometry import Polygon
 
 from ..parallel.parallel import Parallel
-from .conversion import to_gdf
+from .conversion import to_bbox, to_gdf
 from .general import clean_clip, is_bbox_like
 
 
@@ -93,17 +93,20 @@ class Gridlooper:
     gridsize: int
     mask: GeoDataFrame | GeoSeries | Geometry
     gridbuffer: int = 0
+    parallelizer: Parallel | None = None
+    concat: bool = False
     clip: bool = True
     keep_geom_type: bool = True
     verbose: bool = False
-    parallelizer: Parallel | None = None
 
     def __post_init__(self):
         if not isinstance(self.mask, GeoDataFrame):
             self.mask = to_gdf(self.mask)
 
     def run(self, func: Callable, *args, **kwargs):
-        intersects_mask = lambda df: df.index.isin(df.sjoin(self.mask).index)
+        def intersects_mask(df):
+            return df.index.isin(df.sjoin(self.mask).index)
+
         grid: GeoSeries = (
             make_grid(self.mask, gridsize=self.gridsize).loc[intersects_mask].geometry
         )
@@ -123,7 +126,11 @@ class Gridlooper:
             )
             results = self.parallelizer.map(func_with_clip, buffered_grid)
             if not self.gridbuffer or not self.clip:
-                return results
+                return (
+                    results
+                    if not self.concat
+                    else pd.concat(results, ignore_index=True)
+                )
             out = []
             for cell_res, unbuffered in zip(results, grid, strict=True):
                 out.append(
@@ -131,7 +138,7 @@ class Gridlooper:
                         cell_res, unbuffered, self.keep_geom_type
                     )
                 )
-            return out
+            return out if not self.concat else pd.concat(out, ignore_index=True)
 
         results = []
         for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid)):
@@ -159,7 +166,7 @@ class Gridlooper:
             if self.verbose:
                 print(f"Done with {i+1} of {n} grid cells", end="\r")
 
-        return results
+        return results if not self.concat else pd.concat(results, ignore_index=True)
 
 
 def gridloop(
@@ -637,64 +644,6 @@ def bounds_to_points(
         return GeoSeries(extract_unique_points(as_bounds), index=gdf.index)
     gdf.geometry = extract_unique_points(as_bounds.geometry)
     return gdf
-
-
-def to_bbox(
-    obj: GeoDataFrame | GeoSeries | Geometry | Collection | Mapping,
-) -> tuple[float, float, float, float]:
-    """Returns 4-length tuple of bounds if possible, else raises ValueError.
-
-    Args:
-        obj: Object to be converted to bounding box. Can be geopandas or shapely
-            objects, iterables of exactly four numbers or dictionary like/class
-            with a the keys/attributes "minx", "miny", "maxx", "maxy" or
-            "xmin", "ymin", "xmax", "ymax".
-    """
-    if isinstance(obj, (GeoDataFrame, GeoSeries)):
-        return tuple(obj.total_bounds)
-    if isinstance(obj, Geometry):
-        return tuple(obj.bounds)
-    if (
-        hasattr(obj, "__iter__")
-        and len(obj) == 4
-        and all(isinstance(x, numbers.Number) for x in obj)
-    ):
-        return tuple(obj)
-
-    if is_dict_like(obj) and all(x in obj for x in ["minx", "miny", "maxx", "maxy"]):
-        try:
-            minx = np.min(obj["minx"])
-            miny = np.min(obj["miny"])
-            maxx = np.max(obj["maxx"])
-            maxy = np.max(obj["maxy"])
-        except TypeError:
-            minx = np.min(obj.minx)
-            miny = np.min(obj.miny)
-            maxx = np.max(obj.maxx)
-            maxy = np.max(obj.maxy)
-        return minx, miny, maxx, maxy
-    if is_dict_like(obj) and all(x in obj for x in ["xmin", "ymin", "xmax", "ymax"]):
-        try:
-            xmin = np.min(obj["xmin"])
-            ymin = np.min(obj["ymin"])
-            xmax = np.max(obj["xmax"])
-            ymax = np.max(obj["ymax"])
-        except TypeError:
-            xmin = np.min(obj.xmin)
-            ymin = np.min(obj.ymin)
-            xmax = np.max(obj.xmax)
-            ymax = np.max(obj.ymax)
-        return xmin, ymin, xmax, ymax
-    if is_dict_like(obj) and hasattr(obj, "geometry"):
-        try:
-            return tuple(GeoSeries(obj["geometry"]).total_bounds)
-        except Exception:
-            return tuple(GeoSeries(obj.geometry).total_bounds)
-    try:
-        of_length = f" of length {len(obj)}"
-    except TypeError:
-        of_length = ""
-    raise TypeError(f"Cannot convert type {obj.__class__.__name__}{of_length} to bbox")
 
 
 def get_total_bounds(

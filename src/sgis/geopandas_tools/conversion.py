@@ -1,5 +1,6 @@
 import numbers
-from collections.abc import Iterator, Sized
+import re
+from collections.abc import Collection, Iterator, Mapping, Sized
 from typing import Any
 
 import geopandas as gpd
@@ -12,6 +13,19 @@ from pandas.api.types import is_array_like, is_dict_like, is_list_like
 from shapely import Geometry, box, wkb, wkt
 from shapely.geometry import Point
 from shapely.ops import unary_union
+
+
+@staticmethod
+def crs_to_string(crs):
+    if crs is None:
+        return "None"
+    crs = pyproj.CRS(crs)
+    crs_str = str(crs.to_json_dict()["name"])
+    pattern = r"\d{4,5}"
+    try:
+        return re.search(pattern, crs_str).group()
+    except AttributeError:
+        return crs_str
 
 
 def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
@@ -53,12 +67,64 @@ def to_shapely(obj) -> Geometry:
         raise TypeError(type(obj))
     if hasattr(obj, "unary_union"):
         return obj.unary_union
-    if is_bbox_like(obj):
-        return box(*obj)
+    # if is_bbox_like(obj):
+    #     return box(*obj)
     try:
         return Point(*obj)
-    except TypeError as e:
-        raise TypeError(obj) from e
+    except TypeError:
+        return box(*to_bbox(obj))
+
+
+def to_bbox(
+    obj: GeoDataFrame | GeoSeries | Geometry | Collection | Mapping,
+) -> tuple[float, float, float, float]:
+    """Returns 4-length tuple of bounds if possible, else raises ValueError.
+
+    Args:
+        obj: Object to be converted to bounding box. Can be geopandas or shapely
+            objects, iterables of exactly four numbers or dictionary like/class
+            with a the keys/attributes "minx", "miny", "maxx", "maxy" or
+            "xmin", "ymin", "xmax", "ymax".
+    """
+    if isinstance(obj, (GeoDataFrame, GeoSeries)):
+        return tuple(obj.total_bounds)
+    if isinstance(obj, Geometry):
+        return tuple(obj.bounds)
+
+    try:
+        minx = int(np.min(obj["minx"]))
+        miny = int(np.min(obj["miny"]))
+        maxx = int(np.max(obj["maxx"]))
+        maxy = int(np.max(obj["maxy"]))
+        return minx, miny, maxx, maxy
+    except Exception:
+        try:
+            minx = int(np.min(obj.minx))
+            miny = int(np.min(obj.miny))
+            maxx = int(np.max(obj.maxx))
+            maxy = int(np.max(obj.maxy))
+            return minx, miny, maxx, maxy
+        except Exception:
+            pass
+
+    if hasattr(obj, "geometry"):
+        try:
+            return tuple(GeoSeries(obj["geometry"]).total_bounds)
+        except Exception:
+            return tuple(GeoSeries(obj.geometry).total_bounds)
+
+    if (
+        hasattr(obj, "__len__")
+        and len(obj) == 4
+        and all(isinstance(x, numbers.Number) for x in obj)
+    ):
+        return tuple(obj)
+
+    try:
+        of_length = f" of length {len(obj)}"
+    except TypeError:
+        of_length = ""
+    raise TypeError(f"Cannot convert type {obj.__class__.__name__}{of_length} to bbox")
 
 
 def from_4326(lon: float, lat: float, crs=25833):
@@ -275,6 +341,9 @@ def to_gdf(
         if is_bbox_like(obj):
             obj = GeoSeries(shapely.box(*obj), index=index)
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
+        elif all(hasattr(obj, attr) for attr in ["minx", "miny", "maxx", "maxy"]):
+            obj = GeoSeries(shapely.box(*to_bbox(obj)), index=index)
+            return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
         if is_nested_geojson(obj):
             # crs = crs or get_crs_from_dict(obj)
             obj = pd.concat(
@@ -380,8 +449,9 @@ def make_shapely_geoms(obj):
 
 def is_bbox_like(obj) -> bool:
     if (
-        hasattr(obj, "__iter__")
+        hasattr(obj, "__len__")
         and len(obj) == 4
+        and hasattr(obj, "__iter__")
         and all(isinstance(x, numbers.Number) for x in obj)
     ):
         return True

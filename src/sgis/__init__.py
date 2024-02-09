@@ -1,3 +1,11 @@
+config = {
+    "n_jobs": 1,
+}
+
+import sgis.raster.bands as bands
+import sgis.raster.indices as indices
+from sgis.raster.raster import Raster, get_shape_from_bounds, get_transform_from_bounds
+
 from .geopandas_tools.bounds import (
     Gridlooper,
     bounds_to_points,
@@ -8,7 +16,6 @@ from .geopandas_tools.bounds import (
     make_grid_from_bbox,
     make_ssb_grid,
     points_in_bounds,
-    to_bbox,
 )
 from .geopandas_tools.buffer_dissolve_explode import (
     buff,
@@ -22,12 +29,17 @@ from .geopandas_tools.centerlines import get_rough_centerlines
 from .geopandas_tools.cleaning import (
     coverage_clean,
     remove_spikes,
+    snap_polygons,
+    snap_to_mask,
+    split_and_eliminate_by_longest,
+    split_by_neighbors,
     split_spiky_polygons,
 )
 from .geopandas_tools.conversion import (
     coordinate_array,
     from_4326,
     to_4326,
+    to_bbox,
     to_gdf,
     to_geoseries,
     to_shapely,
@@ -119,13 +131,16 @@ from .networkanalysis.nodes import (
 )
 from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
-from .raster.elevationraster import ElevationRaster
-from .raster.raster import Raster
-from .raster.sentinel import Sentinel2
+from .raster.cube import DataCube
+
+
+try:
+    import sgis.raster.torchgeo as torchgeo
+except ImportError:
+    pass
 
 
 try:
     from .io.dapla_functions import check_files, read_geopandas, write_geopandas
-    from .io.write_municipality_data import write_municipality_data
 except ImportError:
     pass

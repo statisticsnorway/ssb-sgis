@@ -3,6 +3,7 @@ import warnings
 from collections.abc import Hashable, Iterable
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
 import pyproj
@@ -20,8 +21,8 @@ from shapely import (
     make_valid,
 )
 from shapely import points as shapely_points
+from shapely import unary_union
 from shapely.geometry import LineString, Point
-from shapely.ops import unary_union
 
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 
@@ -651,3 +652,95 @@ def _determine_geom_type_args(
         if geom_type == "mixed":
             raise ValueError("Cannot set keep_geom_type=True with mixed geometries")
     return gdf, geom_type, keep_geom_type
+
+
+def merge_geometries(geoms: GeoSeries, grid_size=None) -> Geometry:
+    return make_valid(unary_union(geoms, grid_size=grid_size))
+
+
+def parallel_unary_union(
+    gdf: GeoDataFrame, n_jobs: int = 1, by=None, grid_size=None, **kwargs
+) -> list[Geometry]:
+    try:
+        geom_col = gdf._geometry_column_name
+    except AttributeError:
+        geom_col = "geometry"
+
+    if by is not None and not isinstance(by, str):
+        gdf = gdf.copy()
+        try:
+            gdf["_by"] = gdf[by].astype(str).agg("-".join, axis=1)
+        except KeyError:
+            gdf["_by"] = by
+        by = "_by"
+
+    if gdf.crs is None:
+        gdf.crs = 25833
+        _was_none = True
+    else:
+        _was_none = False
+
+    if isinstance(gdf.index, pd.MultiIndex):
+        gdf = gdf.reset_index(drop=True)
+
+    dissolved = (
+        dask_geopandas.from_geopandas(gdf, npartitions=n_jobs).dissolve(by).compute()
+    )
+    if _was_none:
+        dissolved.crs = None
+
+    return dissolved.geometry
+
+
+def parallel_unary_union_geoseries(
+    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
+) -> list[Geometry]:
+    if ser.crs is None:
+        ser.crs = 25833
+        _was_none = True
+    else:
+        _was_none = False
+
+    if isinstance(ser.index, pd.MultiIndex):
+        ser = ser.reset_index(drop=True)
+
+    dissolved = (
+        dask_geopandas.from_geopandas(ser.to_frame("geometry"), npartitions=n_jobs)
+        .dissolve(**kwargs)
+        .compute()
+    )
+    if _was_none:
+        dissolved.crs = None
+
+    return dissolved.geometry
+
+
+def parallel_unary_union(
+    gdf: GeoDataFrame, n_jobs: int = 1, by=None, grid_size=None, **kwargs
+) -> list[Geometry]:
+    try:
+        geom_col = gdf._geometry_column_name
+    except AttributeError:
+        geom_col = "geometry"
+
+    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
+        delayed_operations = []
+        for _, geoms in gdf.groupby(by, **kwargs)[geom_col]:
+            delayed_operations.append(
+                joblib.delayed(merge_geometries)(geoms, grid_size=grid_size)
+            )
+
+        return parallel(delayed_operations)
+
+
+def parallel_unary_union_geoseries(
+    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
+) -> list[Geometry]:
+    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
+        delayed_operations = []
+        for _, geoms in ser.groupby(**kwargs):
+            delayed_operations.append(
+                joblib.delayed(merge_geometries)(geoms, grid_size=grid_size)
+            )
+
+        return parallel(delayed_operations)

@@ -17,34 +17,78 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+def not_test_dissexp_n_jobs():
+    n = 1000
+    gdf = (
+        sg.random_points(n)
+        .assign(
+            x=[np.random.choice([*"abcde"]) for _ in range(n)],
+            y=[np.random.choice([*"abcde"]) for _ in range(n)],
+        )
+        .pipe(sg.buff, 0.07)
+    )
+
+    for n_jobs in [
+        1,
+        2,
+        4,
+        8,
+    ]:
+        print(
+            n_jobs,
+            timeit.timeit(lambda: sg.clean_overlay(gdf, gdf, n_jobs=n_jobs), number=5),
+        )
+        print(
+            n_jobs,
+            "                      ",
+            timeit.timeit(
+                lambda: sg.clean_overlay(gdf, gdf, how="difference", n_jobs=n_jobs),
+                number=5,
+            ),
+        )
+
+        print(
+            n_jobs,
+            "                                           ",
+            timeit.timeit(
+                lambda: sg.dissexp(gdf, by=["x", "y"], n_jobs=n_jobs), number=5
+            ),
+        )
+
+
 def test_dissexp_by_cluster():
     gdf = sg.random_points(100).assign(
         x=[np.random.choice([*"abc"]) for _ in range(100)],
         y=[np.random.choice([*"abc"]) for _ in range(100)],
     )
-    by_cluster = sg.dissexp_by_cluster(gdf)
-    regular = sg.dissexp(gdf)
-    assert len(by_cluster) == len(regular)
-    assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
-    assert list(sorted(by_cluster.columns)) == [
-        "geometry",
-        "x",
-        "y",
-    ], by_cluster.columns
+    for n_jobs in [
+        1,
+        3,
+    ]:
+        by_cluster = sg.dissexp_by_cluster(gdf, n_jobs=n_jobs)
+        regular = sg.dissexp(gdf, n_jobs=n_jobs)
+        assert len(by_cluster) == len(regular)
+        assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
-    assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
+        assert list(sorted(by_cluster.columns)) == [
+            "geometry",
+            "x",
+            "y",
+        ], by_cluster.columns
 
-    diss = sg.dissexp_by_cluster(gdf, by="x")
-    assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
-    diss = sg.dissexp_by_cluster(gdf, by=["x", "y"])
-    assert list(diss.columns) == ["geometry"], diss.columns
-    diss = sg.dissexp_by_cluster(gdf, by=("y",))
-    assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+        assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
 
-    sg.buffdissexp_by_cluster(gdf, 0.1).pipe(sg.buff, 0.1).pipe(
-        sg.buffdissexp_by_cluster, 0.1
-    )
+        diss = sg.dissexp_by_cluster(gdf, by="x", n_jobs=n_jobs)
+        assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
+        diss = sg.dissexp_by_cluster(gdf, by=["x", "y"], n_jobs=n_jobs)
+        assert list(diss.columns) == ["geometry"], diss.columns
+        diss = sg.dissexp_by_cluster(gdf, by=("y",), n_jobs=n_jobs)
+        assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+
+        sg.buffdissexp_by_cluster(gdf, 0.1, n_jobs=n_jobs).pipe(sg.buff, 0.1).pipe(
+            sg.buffdissexp_by_cluster, 0.1, n_jobs=n_jobs
+        )
 
 
 def test_buffdissexp_by_cluster(gdf_fixture):
@@ -233,8 +277,8 @@ def test_dissexp_index():
 if __name__ == "__main__":
     import cProfile
 
-    test_dissexp_grid_size()
-    test_dissexp_by_cluster()
-
+    # not_test_dissexp_n_jobs()
     test_dissexp_index()
     test_buffdissexp_index()
+    test_dissexp_by_cluster()
+    test_dissexp_grid_size()

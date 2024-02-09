@@ -3,6 +3,7 @@ import numpy as np
 
 from ..geopandas_tools.bounds import get_total_bounds
 from ..helpers import unit_is_degrees
+from .map import Map
 from .maps import clipmap, explore, samplemap
 
 
@@ -75,23 +76,26 @@ class Examine:
         mask_gdf: gpd.GeoDataFrame | None = None,
         sort_values: str | None = None,
         size: int | float = 1000,
-        only_show_mask: bool = False,
+        only_show_mask: bool = True,
         **kwargs,
     ):
-        if not all(isinstance(gdf, gpd.GeoDataFrame) or not len(gdf) for gdf in gdfs):
-            raise ValueError("gdfs must be of type GeoDataFrame.")
+        gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
-        self._gdfs = gdfs
         if mask_gdf is None:
             self.mask_gdf = gdfs[0]
         else:
             self.mask_gdf = mask_gdf
 
+        m = Map(*gdfs, column=column, **kwargs)
+        self._gdfs: dict[str, gpd.GeoDataFrame] = dict(zip(m.labels, m.gdfs))
+
         self.indices = list(range(len(self.mask_gdf)))
         self.i = 0
         self.column = column
         self.size = size
-        self.kwargs = kwargs
+        self.kwargs = {
+            key: value for key, value in kwargs.items() if key not in self._gdfs
+        }
 
         if not len(self.mask_gdf):
             return
@@ -113,14 +117,9 @@ class Examine:
             self.mask_gdf = self.mask_gdf.sort_values(sort_values)
 
         if only_show_mask:
-            self.kwargs["show"] = [True] + [False] * len(self._gdfs[1:])
-        elif not kwargs.get("show"):
-            self.kwargs["show"] = [True] * len(self._gdfs)
-
-    def add_gdfs(self, *gdfs):
-        self._gdfs = self._gdfs + gdfs
-        self.kwargs["show"] += [True for _ in range(len(gdfs))]
-        return self
+            self.kwargs["show"] = [True] + [False] * (len(self._gdfs) - 1)
+        elif not kwargs.get("show", True):
+            self.kwargs["show"] = [False] * len(self._gdfs)
 
     def next(self, i: int | None = None, **kwargs):
         """Displays a map of geometries within the next row of the mask gdf.
@@ -145,8 +144,8 @@ class Examine:
 
         print(f"i == {self.i} (of {len(self.mask_gdf)})")
         clipmap(
-            *self._gdfs,
             self.column,
+            **self._gdfs,
             mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
             **self.kwargs,
         )
@@ -166,8 +165,8 @@ class Examine:
 
         print(f"Showing index {i}")
         clipmap(
-            *self._gdfs,
             self.column,
+            **self._gdfs,
             mask=self.mask_gdf.iloc[[i]].buffer(self.size),
             **self.kwargs,
         )
@@ -185,8 +184,8 @@ class Examine:
 
         print(f"{self.i + 1} of {len(self.mask_gdf)}")
         clipmap(
-            *self._gdfs,
             self.column,
+            **self._gdfs,
             mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
             **self.kwargs,
         )
@@ -198,8 +197,8 @@ class Examine:
             self.kwargs = self.kwargs | kwargs
 
         explore(
-            *self._gdfs,
-            self.column,
+            **self._gdfs,
+            column=self.column,
             **self.kwargs,
         )
 
@@ -210,8 +209,8 @@ class Examine:
             self.kwargs = self.kwargs | kwargs
 
         clipmap(
-            *self._gdfs,
-            self.column,
+            **self._gdfs,
+            column=self.column,
             **self.kwargs,
         )
 
@@ -222,8 +221,8 @@ class Examine:
             self.kwargs = self.kwargs | kwargs
 
         samplemap(
-            *self._gdfs,
-            self.column,
+            **self._gdfs,
+            column=self.column,
             **self.kwargs,
         )
 
@@ -233,17 +232,17 @@ class Examine:
         return self.mask_gdf.iloc[[self.i]]
 
     @property
-    def gdfs(self) -> tuple[gpd.GeoDataFrame]:
+    def gdfs(self) -> dict[str, gpd.GeoDataFrame]:
         """Returns all GeoDataFrames in the area of the last shown mask geometry."""
         mask = self.mask_gdf.iloc[[self.i]]
-        gdfs = ()
-        for gdf in self._gdfs:
-            gdfs = gdfs + (gdf.clip(mask.buffer(self.size)),)
+        gdfs = {}
+        for label, gdf in self._gdfs.items():
+            gdfs[label] = gdf.clip(mask.buffer(self.size))
         return gdfs
 
     @property
     def bounds(self):
-        return get_total_bounds(*self.gdfs)
+        return get_total_bounds(*list(self.gdfs.values()))
 
     def _fix_kwargs(self, kwargs) -> dict:
         self.size = kwargs.pop("size", self.size)

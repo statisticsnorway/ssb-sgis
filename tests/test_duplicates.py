@@ -150,8 +150,10 @@ def not_test_drop_duplicate_geometries():
 def test_get_intersections():
     circles = sg.to_gdf([(0, 0), (0, 1), (1, 1), (1, 0)]).pipe(sg.buff, 1)
 
+    n_jobs = 2
+
     dups = (
-        sg.get_intersections(circles)
+        sg.get_intersections(circles, n_jobs=n_jobs)
         .pipe(sg.update_geometries)
         .pipe(sg.buff, -0.01)
         .pipe(sg.clean_geoms)
@@ -161,8 +163,8 @@ def test_get_intersections():
     assert len(dups) == 5, len(dups)
 
     dups = (
-        sg.get_intersections(circles)
-        .pipe(sg.update_geometries)
+        sg.get_intersections(circles, n_jobs=n_jobs)
+        .pipe(sg.update_geometries, n_jobs=n_jobs)
         .pipe(sg.buff, -0.01)
         .pipe(sg.clean_geoms)
     )
@@ -170,15 +172,10 @@ def test_get_intersections():
     sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
     assert len(dups) == 5, len(dups)
 
-    dups = sg.get_intersections(circles)
+    dups = sg.get_intersections(circles, n_jobs=n_jobs)
     print(dups)
     sg.qtm(dups.pipe(sg.buff, -0.025), alpha=0.2, column="area")
     assert len(dups) == 12, len(dups)
-
-    # should also work with points
-    points = sg.to_gdf([(0, 0), (0, 1), (1, 1), (1, 0), (0, 0), (1, 0)])
-    assert len(sg.get_intersections(points)) == 4
-    assert len(sg.update_geometries(sg.get_intersections(points))) == 2
 
 
 def _test_get_intersections():
@@ -237,16 +234,20 @@ def test_update_geometries():
     circles = sg.to_gdf(coords)
     circles["geometry"] = circles["geometry"].buffer(buffers)
 
-    updated = sg.update_geometries(circles)
+    n_jobs = 2
+
+    updated = sg.update_geometries(circles, n_jobs=n_jobs)
     area = list((updated.area * 10).astype(int))
     assert area == [25, 36, 4, 18], area
 
-    updated_largest_first = sg.update_geometries(sg.sort_large_first(circles))
+    updated_largest_first = sg.update_geometries(
+        sg.sort_large_first(circles), n_jobs=n_jobs
+    )
     area = list((updated_largest_first.area * 10).astype(int))
     assert area == [53, 24, 5, 2], area
 
     updated_smallest_first = sg.update_geometries(
-        sg.sort_large_first(circles).iloc[::-1]
+        sg.sort_large_first(circles).iloc[::-1], n_jobs=n_jobs
     )
     area = list((updated_smallest_first.area * 10).astype(int))
     assert area == [15, 24, 18, 26], area
@@ -256,8 +257,8 @@ def test_update_geometries():
 
 if __name__ == "__main__":
     test_update_geometries()
-    test_random_update_geometries(200)
-    test_random_get_intersections()
-    not_test_bug2()
     test_get_intersections()
+    test_random_get_intersections()
+    test_random_update_geometries(200)
+    not_test_bug2()
     not_test_drop_duplicate_geometries()

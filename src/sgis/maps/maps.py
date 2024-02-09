@@ -32,6 +32,17 @@ def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
             crs = [x for x in kwargs.values() if hasattr(x, "crs")][0].crs
         except IndexError:
             crs = None
+        except Exception:
+            crs = set()
+            for x in kwargs.values():
+                try:
+                    crs.add(x.crs)
+                except Exception:
+                    pass
+            try:
+                crs = list(crs)[0]
+            except IndexError:
+                crs = None
 
     masks = {
         "bygdoy": (10.6976899, 59.9081695),
@@ -435,7 +446,7 @@ def explore_locals(*gdfs, to_gdf: bool = True, **kwargs):
                     continue
             except TypeError:
                 continue
-
+            #
             try:
                 gdf = clean_geoms(to_gdf_func(value))
                 if len(gdf):

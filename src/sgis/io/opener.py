@@ -10,7 +10,7 @@ from ._is_dapla import is_dapla
 
 
 @contextmanager
-def opener(path, mode="rb"):
+def opener(path, mode="rb", file_system=None):
     """Yields a gcs buffer if in Dapla, otherwise yields the path.
 
     Example
@@ -20,7 +20,8 @@ def opener(path, mode="rb"):
     >>>         array = src.read()
     """
     if is_dapla():
-        fs = dp.FileClient.get_gcs_file_system()
-        yield fs.open(str(path), mode=mode)
+        if file_system is None:
+            file_system = dp.FileClient.get_gcs_file_system()
+        yield file_system.open(str(path), mode=mode)
     else:
         yield str(path)

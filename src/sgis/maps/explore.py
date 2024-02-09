@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import xyzservices
 from folium import plugins
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
 from IPython.display import display
 from jinja2 import Template
 from pandas.api.types import is_datetime64_any_dtype
@@ -146,7 +146,7 @@ class Explore(Map):
         mask=None,
         column: str | None = None,
         popup: bool = True,
-        max_zoom: int = 30,
+        max_zoom: int = 40,
         smooth_factor: float = 1.5,
         browser: bool = False,
         prefer_canvas: bool = True,
@@ -155,6 +155,7 @@ class Explore(Map):
         save=None,
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
+        decimals: int = 6,
         **kwargs,
     ):
         self.popup = popup
@@ -166,6 +167,7 @@ class Explore(Map):
         self.save = save
         self.mask = mask
         self.text = text
+        self.decimals = decimals
 
         self.browser = browser
         if not self.browser and "show_in_browser" in kwargs:
@@ -527,6 +529,9 @@ class Explore(Map):
 
     @staticmethod
     def _prepare_gdf_for_map(gdf):
+        if isinstance(gdf, GeoSeries):
+            gdf = gdf.to_frame("geometry")
+
         # convert LinearRing to LineString
         rings_mask = gdf.geom_type == "LinearRing"
         if rings_mask.any():
@@ -609,12 +614,16 @@ class Explore(Map):
 
         if self.measure_control:
             MeasureControlFix(
-                primary_length_unit="meters",
+                primary_length_unit="m",
                 secondary_length_unit="kilometers",
                 primary_area_unit="sqmeters",
                 secondary_area_unit="sqkilometers",
                 position="bottomleft",
                 capture_z_index=False,
+                thousands_sep="",
+                units={
+                    "m": {"factor": 1, "display": "m", "decimals": self.decimals},
+                },
             ).add_to(m)
 
         plugins.Fullscreen(

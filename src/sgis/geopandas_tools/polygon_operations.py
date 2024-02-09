@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import shapely
 from geopandas import GeoDataFrame, GeoSeries
+from geopandas.array import GeometryArray
 from shapely import (
     STRtree,
     area,
@@ -23,10 +24,17 @@ from shapely import (
 from shapely.errors import GEOSException
 
 from .duplicates import get_intersections
-from .general import _push_geom_col, clean_geoms, get_grouped_centroids, to_lines
+from .general import (
+    _push_geom_col,
+    clean_geoms,
+    get_grouped_centroids,
+    parallel_unary_union,
+    parallel_unary_union_geoseries,
+    to_lines,
+)
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .neighbors import get_neighbor_indices
-from .overlay import clean_overlay
+from .overlay import _try_difference, clean_overlay
 from .polygons_as_rings import PolygonsAsRings
 from .sfilter import sfilter, sfilter_inverse
 
@@ -204,6 +212,7 @@ def eliminate_by_longest(
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
     grid_size=None,
+    n_jobs: int = 1,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Dissolves selected polygons with the longest bordering neighbor polygon.
@@ -265,6 +274,9 @@ def eliminate_by_longest(
 
 
     """
+    if not len(to_eliminate):
+        return gdf
+
     if isinstance(gdf, (list, tuple)):
         # concat, then break up the dataframes in the end
         was_multiple_gdfs = True
@@ -288,11 +300,13 @@ def eliminate_by_longest(
     # convert to lines to get the borders
     lines_eliminate = to_lines(to_eliminate[["_eliminate_idx", "geometry"]])
 
-    borders = (
-        gdf[["_dissolve_idx", "geometry"]]
-        .overlay(lines_eliminate, keep_geom_type=False)
-        .loc[lambda x: x["_eliminate_idx"].notna()]
-    )
+    borders = clean_overlay(
+        gdf[["_dissolve_idx", "geometry"]],
+        lines_eliminate,
+        keep_geom_type=False,
+        grid_size=grid_size,
+        n_jobs=n_jobs,
+    ).loc[lambda x: x["_eliminate_idx"].notna()]
 
     borders["_length"] = borders.length
 
@@ -326,6 +340,7 @@ def eliminate_by_longest(
         crs,
         fix_double,
         grid_size=grid_size,
+        n_jobs=n_jobs,
         **kwargs,
     )
 
@@ -371,6 +386,7 @@ def eliminate_by_largest(
     aggfunc: str | dict | list | None = None,
     predicate: str = "intersects",
     grid_size=None,
+    n_jobs: int = 1,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Dissolves selected polygons with the largest neighbor polygon.
@@ -441,6 +457,7 @@ def eliminate_by_largest(
         predicate=predicate,
         fix_double=fix_double,
         grid_size=grid_size,
+        n_jobs=n_jobs,
         **kwargs,
     )
 
@@ -456,6 +473,7 @@ def eliminate_by_smallest(
     predicate: str = "intersects",
     fix_double: bool = False,
     grid_size=None,
+    n_jobs: int = 1,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     return _eliminate_by_area(
@@ -469,6 +487,7 @@ def eliminate_by_smallest(
         predicate=predicate,
         fix_double=fix_double,
         grid_size=grid_size,
+        n_jobs=n_jobs,
         **kwargs,
     )
 
@@ -484,8 +503,11 @@ def _eliminate_by_area(
     predicate="intersects",
     fix_double: bool = False,
     grid_size=None,
+    n_jobs: int = 1,
     **kwargs,
 ) -> GeoDataFrame:
+    if not len(to_eliminate):
+        return gdf
     if isinstance(gdf, (list, tuple)):
         was_multiple_gdfs = True
         original_cols = [df.columns for df in gdf]
@@ -528,7 +550,14 @@ def _eliminate_by_area(
     notna = joined.loc[lambda x: x["_dissolve_idx"].notna()]
 
     eliminated = _eliminate(
-        gdf, notna, aggfunc, crs, fix_double=fix_double, grid_size=grid_size, **kwargs
+        gdf,
+        notna,
+        aggfunc,
+        crs,
+        fix_double=fix_double,
+        grid_size=grid_size,
+        n_jobs=n_jobs,
+        **kwargs,
     )
 
     if not ignore_index:
@@ -564,7 +593,9 @@ def _eliminate_by_area(
     return gdfs
 
 
-def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, **kwargs):
+def _eliminate(
+    gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, n_jobs, **kwargs
+):
     if not len(to_eliminate):
         return gdf
 
@@ -618,41 +649,6 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, **kwargs)
         ]
         to_be_eliminated = many_hits.loc[many_hits["_to_eliminate"] == 1]
 
-        if 0:
-            tree = STRtree(eliminators.values)
-            left, right = tree.query(
-                to_be_eliminated.geometry.values, predicate="intersects"
-            )
-            pairs = pd.Series(right, index=left).to_frame("right")
-            pairs["_dissolve_idx"] = pairs.index.map(
-                dict(enumerate(to_be_eliminated.index))
-            )
-
-            soon_erased = to_be_eliminated.iloc[pairs.index]
-            intersecting = eliminators.iloc[pairs["right"]]
-
-            intersecting.index = soon_erased.index
-            soon_erased = soon_erased.geometry.groupby(level=0).agg(unary_union)
-            intersecting = intersecting.groupby(level=0).agg(unary_union)
-
-            soon_erased.loc[:] = difference(
-                soon_erased.values,
-                intersecting.values,
-            )
-            intersecting.loc[:] = difference(
-                intersecting.values,
-                soon_erased.values,
-            )
-
-            eliminated["geometry"] = (
-                pd.concat([intersecting, soon_erased])
-                .groupby(level=0)
-                .agg(lambda x: make_valid(unary_union(x.dropna().values)))
-            )
-            from ..maps.maps import explore, explore_locals
-
-            explore_locals()
-
         # all_geoms: pd.Series = gdf.set_index("_dissolve_idx").geometry
         all_geoms: pd.Series = gdf.geometry
 
@@ -682,43 +678,6 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, **kwargs)
             "geometry",
         ]
 
-        if 0:
-            from ..geopandas_tools.conversion import to_gdf
-            from ..maps.maps import explore, explore_locals
-
-            display(pairs)
-            display(soon_erased.index.unique())
-            display(soon_erased._row_idx.unique())
-            display(to_be_eliminated.index.unique())
-            display(to_be_eliminated._row_idx.unique())
-            display(missing.index.unique())
-
-            display(soon_erased)
-            display(to_be_eliminated)
-            display(missing)
-
-            explore(
-                to_gdf(soon_erased, 25833), intersecting=to_gdf(intersecting, 25833)
-            )
-            for j, ((i, g), (i2, g2)) in enumerate(
-                zip(intersecting.items(), soon_erased.geometry.items())
-            ):
-                explore(
-                    to_gdf(g, 25833).assign(ii=i, j=j),
-                    g2=to_gdf(g2, 25833).assign(ii=i2, j=j),
-                )
-
-        if 0:
-            explore(to_gdf(to_be_eliminated.iloc[[16]]))
-            explore(to_gdf(to_be_eliminated.iloc[[15]]))
-            explore(to_gdf(to_be_eliminated.iloc[[0]]))
-            print("hei")
-            explore(to_gdf(soon_erased.loc[soon_erased.index == 16]))
-            explore(to_gdf(soon_erased.loc[soon_erased.index == 36]))
-
-            explore(to_gdf(soon_erased.loc[soon_erased._row_idx == 16]))
-            explore(to_gdf(soon_erased.loc[soon_erased._row_idx == 36]))
-
         # allign and aggregate by dissolve index to not get duplicates in difference
         intersecting.index = soon_erased.index
         soon_erased = soon_erased.geometry.groupby(level=0).agg(
@@ -731,29 +690,51 @@ def _eliminate(gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, **kwargs)
         # from ..maps.maps import explore_locals
         # explore_locals()
 
-        soon_erased.loc[:] = difference(
-            soon_erased.values,
-            intersecting.values,
+        soon_erased.loc[:] = _try_difference(
+            soon_erased.to_numpy(),
+            intersecting.to_numpy(),
+            grid_size=grid_size,
+            n_jobs=n_jobs,
+            geom_type="polygon",
         )
 
-        eliminated["geometry"] = (
-            pd.concat([eliminators, soon_erased, missing])
-            .groupby(level=0)
-            .agg(
-                lambda x: make_valid(
-                    unary_union(x.dropna().values, grid_size=grid_size)
+        if n_jobs > 1:
+            eliminated["geometry"] = GeoSeries(
+                parallel_unary_union_geoseries(
+                    pd.concat([eliminators, soon_erased, missing]),
+                    level=0,
+                    grid_size=grid_size,
+                    n_jobs=n_jobs,
+                ),
+                index=eliminated.index,
+            )
+        else:
+            eliminated["geometry"] = (
+                pd.concat([eliminators, soon_erased, missing])
+                .groupby(level=0)
+                .agg(
+                    lambda x: make_valid(
+                        unary_union(x.dropna().values, grid_size=grid_size)
+                    )
                 )
             )
-        )
 
     else:
-        eliminated["geometry"] = many_hits.groupby("_dissolve_idx")["geometry"].agg(
-            lambda x: make_valid(unary_union(x.values, grid_size=grid_size))
-        )
+        if n_jobs > 1:
+            eliminated["geometry"] = parallel_unary_union(
+                many_hits, by="_dissolve_idx", grid_size=grid_size, n_jobs=n_jobs
+            )
+        else:
+            eliminated["geometry"] = many_hits.groupby("_dissolve_idx")["geometry"].agg(
+                lambda x: make_valid(unary_union(x.values, grid_size=grid_size))
+            )
 
     # setting crs on the GeometryArrays to avoid warning in concat
     not_to_dissolve.geometry.values.crs = crs
-    eliminated.geometry.values.crs = crs
+    try:
+        eliminated.geometry.values.crs = crs
+    except AttributeError:
+        pass
     one_hit.geometry.values.crs = crs
 
     to_concat = [not_to_dissolve, eliminated, one_hit]
@@ -774,6 +755,13 @@ def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
                 difference(polygons(geoms), inside_holes), -(tolerance / 2)
             )
             return np.where(is_empty(buffered_in), None, geoms)
+        except GEOSException:
+            buffered_in = buffer(
+                difference(make_valid(polygons(make_valid(geoms))), inside_holes),
+                -(tolerance / 2),
+            )
+            return np.where(is_empty(buffered_in), None, geoms)
+
         except ValueError as e:
             if not len(geoms):
                 return geoms

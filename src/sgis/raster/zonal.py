@@ -36,7 +36,7 @@ def zonal_func(
 ) -> pd.DataFrame:
     cube = cube.copy()
     i, polygon = poly_iter
-    if not by_date or cube.df["date"].isna().all():
+    if not by_date or cube.date.isna().all():
         df = _clip_and_aggregate(
             cube, polygon, array_func, aggfunc, func_names, date=None, i=i
         )
@@ -44,16 +44,16 @@ def zonal_func(
 
     out = []
 
-    na_date = cube.query("date.isna()")
+    na_date = cube[cube.date.isna()]
     df = _clip_and_aggregate(
         na_date, polygon, array_func, aggfunc, func_names, date=pd.NA, i=i
     )
     out.append(df)
 
-    cube.df = cube.df[lambda x: x["date"].notna()]
+    cube = cube[lambda x: x["date"].notna()]
 
-    for dt in cube.df["date"].unique():
-        cube_date = cube.query(f"date == {dt}")
+    for dt in cube.date.unique():
+        cube_date = cube[cube.date == dt]
         df = _clip_and_aggregate(
             cube_date, polygon, array_func, aggfunc, func_names, dt, i
         )
@@ -73,7 +73,8 @@ def _clip_and_aggregate(cube, polygon, array_func, aggfunc, func_names, date, i)
     if not len(cube):
         return _no_overlap_df(func_names, i, date)
     clipped = cube.clipmerge(polygon)
-    if not len(clipped) or clipped.arrays.isna().all():
+    print(list(clipped))
+    if not len(clipped) or [arr is None for arr in clipped.arrays]:
         return _no_overlap_df(func_names, i, date)
     assert len(clipped) == 1
     array = clipped[0].array
