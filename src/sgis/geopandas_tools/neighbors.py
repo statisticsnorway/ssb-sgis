@@ -7,9 +7,12 @@ GeoDataFrames.
 The results of all functions will be identical with GeoDataFrame and GeoSeries as input
 types.
 """
+
 import numpy as np
+import shapely
 from geopandas import GeoDataFrame, GeoSeries
-from pandas import DataFrame, Series
+from pandas import DataFrame, Series, concat
+from shapely import STRtree
 from sklearn.neighbors import NearestNeighbors
 
 from .conversion import coordinate_array
@@ -235,6 +238,33 @@ def get_all_distances(
         neighbors=neighbors,
         k=len(neighbors),
     )
+
+
+def sjoin_within_distance(
+    gdf: GeoDataFrame | GeoSeries,
+    neighbors: GeoDataFrame | GeoSeries,
+    distance: int | float,
+    distance_col: str = "distance",
+    **kwargs,
+) -> GeoDataFrame:
+    """Sjoin with a buffer on the right GeoDataFrame and adds a distance column."""
+
+    new_neighbor_cols = {"__left_range_idx": range(len(neighbors))}
+    if distance:
+        new_neighbor_cols[neighbors._geometry_column_name] = lambda x: x.buffer(
+            distance
+        )
+
+    # using assign to get a copy
+    neighbors = neighbors.assign(**new_neighbor_cols)
+
+    out = gdf.sjoin(neighbors, **kwargs)
+
+    out[distance_col] = shapely.distance(
+        out.geometry.values, neighbors.geometry.iloc[out["__left_range_idx"]].values
+    )
+
+    return out.drop(columns="__left_range_idx")
 
 
 def get_k_nearest_neighbors(
