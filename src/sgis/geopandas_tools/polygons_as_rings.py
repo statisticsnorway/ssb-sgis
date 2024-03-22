@@ -169,7 +169,7 @@ class PolygonsAsRings:
 
         if len(results) != len(self.rings):
             raise ValueError(
-                f"Different length of results. Got {len(results)} and n rings {len(self.rings)}"
+                f"Different length of results. Got {len(results)} and {len(self.rings)} original rings"
             )
 
         self.rings.loc[:] = results
