@@ -36,18 +36,6 @@ class DaplaRasterDataset(RasterDataset):
         if is_dapla():
             [file.close() for file in self.files]
 
-    def _get_gcs_paths(self, paths: str | Iterable[str], fs=None) -> set[str]:
-        if fs is None:
-            fs = dp.FileClient.get_gcs_file_system()
-
-        # Using set to remove any duplicates if directories are overlapping
-        out_paths: set[str] = set()
-        for path in paths:
-            pathname = os.path.join(path, "**", self.filename_glob)
-            if is_dapla():
-                out_paths |= {x for x in fs.glob(pathname, recursive=True) if "." in x}
-        return out_paths
-
     @property
     def files(self) -> set[str] | set[GCSFile]:
         """A list of all files in the dataset.
@@ -105,6 +93,18 @@ class DaplaRasterDataset(RasterDataset):
                 return vrt
             else:
                 return src
+
+    def _get_gcs_paths(self, paths: str | Iterable[str], fs=None) -> set[str]:
+        if fs is None:
+            fs = dp.FileClient.get_gcs_file_system()
+
+        # Using set to remove any duplicates if directories are overlapping
+        out_paths: set[str] = set()
+        for path in paths:
+            pathname = os.path.join(path, "**", self.filename_glob)
+            if is_dapla():
+                out_paths |= {x for x in fs.glob(pathname, recursive=True) if "." in x}
+        return out_paths
 
 
 class Sentinel2(DaplaRasterDataset):
