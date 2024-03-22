@@ -299,6 +299,16 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     return gdf.iloc[list(sorted_areas)]
 
 
+def sort_df(
+    df: pd.DataFrame | GeoDataFrame, sort_col: pd.Series
+) -> pd.DataFrame | GeoDataFrame:
+    value_mapper: dict[int, Any] = dict(enumerate(sort_col.values))
+    sorted_indices = dict(
+        reversed(sorted(value_mapper.items(), key=lambda item: item[1]))
+    )
+    return df.iloc[list(sorted_indices)]
+
+
 def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     """Sort GeoDataFrame by length in decending order.
 
@@ -736,6 +746,31 @@ def parallel_unary_union(
 def parallel_unary_union_geoseries(
     ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
 ) -> list[Geometry]:
+
+    is_one_hit = ser.groupby(**kwargs).transform("size") == 1
+
+    one_hit = ser.loc[is_one_hit]
+    many_hits = ser.loc[~is_one_hit]
+
+    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
+        delayed_operations = []
+        for _, geoms in many_hits.groupby(**kwargs):
+            delayed_operations.append(
+                joblib.delayed(merge_geometries)(geoms, grid_size=grid_size)
+            )
+
+        dissolved = pd.Series(
+            parallel(delayed_operations),
+            index=is_one_hit[lambda x: x == False].index.unique(),
+        )
+
+    return pd.concat([dissolved, one_hit]).sort_index().values
+
+
+def parallel_unary_union_geoseries(
+    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
+) -> list[Geometry]:
+
     with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
         delayed_operations = []
         for _, geoms in ser.groupby(**kwargs):
