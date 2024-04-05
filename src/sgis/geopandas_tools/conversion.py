@@ -10,7 +10,9 @@ import pyproj
 import shapely
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_array_like, is_dict_like, is_list_like
+from pyproj import CRS
 from shapely import Geometry, box, wkb, wkt
+from shapely.errors import GEOSException
 from shapely.geometry import Point
 from shapely.ops import unary_union
 
@@ -189,16 +191,18 @@ def coordinate_array(
 
 
 def to_gdf(
-    obj: Geometry
-    | str
-    | bytes
-    | list
-    | tuple
-    | dict
-    | GeoSeries
-    | pd.Series
-    | pd.DataFrame
-    | Iterator,
+    obj: (
+        Geometry
+        | str
+        | bytes
+        | list
+        | tuple
+        | dict
+        | GeoSeries
+        | pd.Series
+        | pd.DataFrame
+        | Iterator
+    ),
     crs: str | tuple[str] | None = None,
     geometry: str | tuple[str] | int | None = None,
     **kwargs,
@@ -315,6 +319,22 @@ def to_gdf(
     if isinstance(obj, GeoSeries):
         geom_col = geometry or "geometry"
         return _geoseries_to_gdf(obj, geom_col, crs, **kwargs)
+
+    if crs is None:
+        try:
+            crs = obj.crs
+        except AttributeError:
+            try:
+                matches = re.search(r"SRID=(\d+);", obj)
+            except TypeError:
+                try:
+                    matches = re.search(r"SRID=(\d+);", obj[0])
+                except Exception:
+                    pass
+            try:
+                crs = CRS(int("".join(x for x in matches.group(0) if x.isnumeric())))
+            except Exception:
+                pass
 
     if is_array_like(geometry) and len(geometry) == len(obj):
         geometry = GeoSeries(
@@ -583,7 +603,14 @@ def _make_one_shapely_geom(obj):
     Works recursively if the object is a nested iterable.
     """
     if isinstance(obj, str):
-        return wkt.loads(obj)
+        try:
+            return wkt.loads(obj)
+        except GEOSException:
+            if obj.startswith("geography"):
+                matches = re.search(r"SRID=(\d+);", obj)
+                srid = matches.group(0)
+                _, _wkt = obj.split(srid)
+                return wkt.loads(_wkt)
 
     if isinstance(obj, bytes):
         return wkb.loads(obj)
