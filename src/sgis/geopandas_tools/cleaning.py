@@ -873,64 +873,6 @@ def _snap_to_anchors(
         .loc[lambda x: ~x.index.duplicated()]
     )
 
-    if 0:
-        # snapped_to_mask = snapped[lambda x: x["_geom_idx"] < idx_start]
-        # snapped_to_nodes = snapped  # [lambda x: x["_geom_idx"] >= idx_start]
-        snapped_to_other_polygon, snapped_to_self = (
-            snapped[
-                lambda x: (x["_geom_idx"] != x["_geom_idx_left"])
-                & (x["_geom_idx"] >= idx_start)
-            ],
-            snapped[
-                lambda x: (x["_geom_idx"] == x["_geom_idx_left"])
-                | (x["_geom_idx"] < idx_start)
-            ],
-        )
-
-        # anchors_as_polygons = anchors[
-        #     lambda x: x["_geom_idx"] >= idx_start, "_geom_idx"
-        # ].map(polygon_mapper)
-        # assert anchors_as_polygons.notna().all()
-
-        lines_to_snapped = shapely.shortest_line(
-            snapped_to_other_polygon.geometry.values,
-            snapped_to_other_polygon["_right_geom"].values,
-        )
-        assert polygon_mapper.index.name == "_geom_idx"
-        polygon_mapper = polygon_mapper.loc[
-            snapped_to_other_polygon["_geom_idx"].values
-        ]
-        was_snapped_too_far = shapely.intersects(
-            lines_to_snapped,
-            polygon_mapper.values,
-            # polygon_mapper,
-        )
-
-        snapped = pd.concat(
-            [
-                snapped_to_other_polygon["_right_geom"].iloc[
-                    was_snapped_too_far == False
-                ],
-                snapped_to_self["_right_geom"],
-            ]
-        )
-        # not_snapped_too_far = snapped_to_nodes.iloc[was_snapped_too_far == False]
-        # snapped = pd.concat(
-        #     [snapped_to_mask["_right_geom"], not_snapped_too_far["_right_geom"]]
-        # )
-
-        # lines_to_snapped = lines_to_snapped.intersects(polygon_mapper)
-
-        explore(
-            anchors,
-            snapped,
-            lines_to_snapped=to_gdf(lines_to_snapped, 25833),
-            too_far=snapped_to_other_polygon["_right_geom"].iloc[
-                was_snapped_too_far == False
-            ],
-            points_i_snap_to=points.set_crs(25833),
-        )
-
     points.loc[snapped.index, "geometry"] = snapped
 
     return points, anchors[["geometry"]]
