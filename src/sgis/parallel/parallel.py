@@ -727,12 +727,11 @@ def _fix_missing_muni_numbers(
         if not clip:
             notna_anymore = isna.sjoin(municipalities).drop(columns="index_right")
         else:
-            notna_anymore = intersect_by_municipalities(
+            notna_anymore = parallel_overlay(
                 isna,
-                municipalities,
-                muni_number_col,
-                max_rows_per_chunk,
-                processes_in_clip,
+                municipalities[[muni_number_col, municipalities._geometry_column_name]],
+                processes=processes_in_clip,
+                max_rows_per_chunk=max_rows_per_chunk,
             )
 
         return pd.concat([notna, notna_anymore], ignore_index=True)
@@ -740,43 +739,46 @@ def _fix_missing_muni_numbers(
     if not clip:
         return gdf.sjoin(municipalities).drop(columns="index_right")
     else:
-        return intersect_by_municipalities(
+        return parallel_overlay(
             gdf,
-            municipalities,
-            muni_number_col,
-            max_rows_per_chunk,
-            processes_in_clip,
+            municipalities[[muni_number_col, municipalities._geometry_column_name]],
+            processes=processes_in_clip,
+            max_rows_per_chunk=max_rows_per_chunk,
         )
 
 
-def intersect_by_municipalities(
-    df: GeoDataFrame,
-    municipalities: GeoDataFrame,
-    muni_number_col: str,
+def parallel_overlay(
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
+    # muni_number_col: str,
+    processes: int,
     max_rows_per_chunk: int,
-    processes_in_clip: int,
+    backend: str = "loky",
+    **kwargs,
 ) -> GeoDataFrame:
-    if len(df) < max_rows_per_chunk:
-        return clean_overlay(df, municipalities)
+    # df2 = df2[[muni_number_col, df2._geometry_column_name]]
 
-    municipalities = municipalities.dissolve(by=muni_number_col, as_index=False)
+    if len(df1) < max_rows_per_chunk:
+        return clean_overlay(df1, df2, **kwargs)
 
-    n_chunks = len(df) // max_rows_per_chunk
-    chunks = np.array_split(np.arange(len(df)), n_chunks)
+    # df2 = df2.dissolve(by=muni_number_col, as_index=False)
+
+    n_chunks = len(df1) // max_rows_per_chunk
+    chunks = np.array_split(np.arange(len(df1)), n_chunks)
 
     try:
-        x_mapper = dict(enumerate(df.centroid))
+        x_mapper = dict(enumerate(df1.centroid))
         sorted_xs = dict(reversed(sorted(x_mapper.items(), key=lambda item: item[1])))
-        df = df.iloc[list(sorted_xs)]
+        df1 = df1.iloc[list(sorted_xs)]
     except TypeError:
         pass
 
-    df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
+    df1_chunked: list[GeoDataFrame] = [df1.iloc[chunk] for chunk in chunks]
 
-    out = Parallel(processes_in_clip, backend="loky").map(
+    out = Parallel(processes, backend=backend).map(
         _clean_intersection,
-        df_chunked,
-        args=(municipalities,),
+        df1_chunked,
+        args=(df2,),
     )
     return pd.concat(out, ignore_index=True)
 

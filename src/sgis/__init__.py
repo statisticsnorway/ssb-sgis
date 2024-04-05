@@ -22,13 +22,17 @@ from .geopandas_tools.buffer_dissolve_explode import (
     buffdiss,
     buffdissexp,
     buffdissexp_by_cluster,
+    diss,
+    diss_by_cluster,
     dissexp,
     dissexp_by_cluster,
 )
 from .geopandas_tools.centerlines import get_rough_centerlines
 from .geopandas_tools.cleaning import (
     coverage_clean,
+    remove_interior_slivers,
     remove_spikes,
+    simplify_and_update,
     snap_polygons,
     snap_to_mask,
     split_and_eliminate_by_longest,
@@ -76,6 +80,7 @@ from .geopandas_tools.neighbors import (
     get_neighbor_dfs,
     get_neighbor_indices,
     k_nearest_neighbors,
+    sjoin_within_distance,
 )
 from .geopandas_tools.overlay import clean_overlay
 from .geopandas_tools.point_operations import snap_all, snap_within_distance
@@ -87,6 +92,7 @@ from .geopandas_tools.polygon_operations import (
     eliminate_by_largest,
     eliminate_by_longest,
     eliminate_by_smallest,
+    get_cluster_mapper,
     get_gaps,
     get_holes,
     get_polygon_clusters,
@@ -130,7 +136,7 @@ from .networkanalysis.nodes import (
     make_node_ids,
 )
 from .networkanalysis.traveling_salesman import traveling_salesman_problem
-from .parallel.parallel import Parallel
+from .parallel.parallel import Parallel, parallel_overlay
 from .raster.cube import DataCube
 
 
