@@ -586,6 +586,7 @@ def not_test_torch():
         for batch in dataloader:
             image = batch["image"]
             mask = batch["mask"]
+            print(image)
             # train a model, or make predictions using a pre-trained model
 
     cube = cube_with_torch()
@@ -598,6 +599,8 @@ if __name__ == "__main__":
     # write_sentinel()
 
     def test_cube():
+        not_test_torch()
+        sss
         test_sentinel()
         not_test_gradient()
         test_explode()
@@ -615,7 +618,6 @@ if __name__ == "__main__":
         not_test_zonal()
         not_test_to_crs()
         not_test_merge_from_array()
-        not_test_torch()
         # not_test_df()
 
     # cProfile.run("test_merge_performance()", sort="cumtime")

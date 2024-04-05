@@ -103,6 +103,37 @@ def test_clean_1144():
             lambda x: ~x.buffer(-tolerance / 2).is_empty, "df_idx"
         ]
 
+        cleaned = sg.coverage_clean(df, tolerance)
+
+        # cleaned = sg.coverage_clean(
+        #     sg.sort_large_first(df), tolerance, mask=kommune_utenhav
+        # ).pipe(sg.snap_polygons, 0.1, mask=kommune_utenhav)
+
+        # allow edge cases
+        cleaned_clipped = sg.clean_clip(cleaned, bbox.buffer(-tolerance * 1.1))
+
+        gaps = sg.get_gaps(cleaned_clipped)
+        double = sg.get_intersections(cleaned_clipped)
+        missing = get_missing(
+            sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)), cleaned_clipped
+        )
+
+        print(
+            "cleaned",
+            gaps.area.sum(),
+            double.area.sum(),
+            missing.area.sum(),
+        )
+
+        assert thick_df_indices.isin(cleaned_clipped["df_idx"]).all(), sg.explore(
+            df,
+            cleaned,
+            missing_polygons=df[
+                (df["df_idx"].isin(thick_df_indices))
+                & (~df["df_idx"].isin(cleaned_clipped["df_idx"]))
+            ],
+        )
+
         snapped_to_mask = sg.snap_to_mask(
             sg.sort_large_first(df), tolerance, mask=kommune_utenhav
         )
@@ -152,17 +183,17 @@ def test_clean_1144():
 
         gaps = sg.get_gaps(snapped)
         double = sg.get_intersections(snapped)
+
         missing = get_missing(sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)), snapped)
 
-        if missing.area.sum() > 1:
-            sg.explore(
-                missing,
-                gaps,
-                double,
-                snapped,
-                df,
-                kommune_utenhav,
-            )
+        sg.explore(
+            missing,
+            gaps,
+            double,
+            snapped,
+            df,
+            kommune_utenhav,
+        )
 
         # assert thick_df_indices.isin(snapped["df_idx"]).all(), sg.explore(
         #     df,
@@ -182,40 +213,10 @@ def test_clean_1144():
             double.area.sum(),
             missing.area.sum(),
         )
+        sss
 
-        cleaned = df.pipe(sg.coverage_clean, tolerance)
-
-        # cleaned = sg.coverage_clean(
-        #     sg.sort_large_first(df), tolerance, mask=kommune_utenhav
-        # ).pipe(sg.snap_polygons, 0.1, mask=kommune_utenhav)
-
-        # allow edge cases
-        cleaned = sg.clean_clip(cleaned, bbox.buffer(-tolerance * 1.1))
-
-        gaps = sg.get_gaps(cleaned)
-        double = sg.get_intersections(cleaned)
-        missing = get_missing(sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)), cleaned)
-
-        print(
-            "cleaned",
-            gaps.area.sum(),
-            double.area.sum(),
-            missing.area.sum(),
-        )
-
-        assert thick_df_indices.isin(cleaned["df_idx"]).all(), sg.explore(
-            df,
-            snapped_to_mask,
-            missing_polygons=df[
-                (df["df_idx"].isin(thick_df_indices))
-                & (~df["df_idx"].isin(cleaned["df_idx"]))
-            ],
-        )
-
-        cleaned_and_snapped = (
-            df.pipe(  # .pipe(sg.snap_to_mask, tolerance, mask=kommune_utenhav)
-                sg.coverage_clean, tolerance
-            ).pipe(sg.snap_to_mask, tolerance, mask=kommune_utenhav)
+        cleaned_and_snapped_to_mask = sg.snap_to_mask(
+            cleaned, tolerance, mask=kommune_utenhav
         )
 
         # cleaned = sg.coverage_clean(
@@ -223,18 +224,19 @@ def test_clean_1144():
         # ).pipe(sg.snap_polygons, 0.1, mask=kommune_utenhav)
 
         # allow edge cases
-        cleaned_and_snapped = sg.clean_clip(
-            cleaned_and_snapped, bbox.buffer(-tolerance * 1.1)
+        cleaned_and_snapped_to_mask = sg.clean_clip(
+            cleaned_and_snapped_to_mask, bbox.buffer(-tolerance * 1.1)
         )
 
-        gaps = sg.get_gaps(cleaned_and_snapped)
-        double = sg.get_intersections(cleaned_and_snapped)
+        gaps = sg.get_gaps(cleaned_and_snapped_to_mask)
+        double = sg.get_intersections(cleaned_and_snapped_to_mask)
         missing = get_missing(
-            sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)), cleaned_and_snapped
+            sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)),
+            cleaned_and_snapped_to_mask,
         )
 
         print(
-            "cleaned_and_snapped",
+            "cleaned_and_snapped_to_mask",
             gaps.area.sum(),
             double.area.sum(),
             missing.area.sum(),
@@ -254,14 +256,16 @@ def test_clean_1144():
         )
 
         assert list(sorted(cleaned.columns)) == cols, list(sorted(cleaned.columns))
-        # assert thick_df_indices.isin(cleaned_and_snapped["df_idx"]).all(), sg.explore(
-        #     df,
-        #     snapped_to_mask,
-        #     missing_polygons=df[
-        #         (df["df_idx"].isin(thick_df_indices))
-        #         & (~df["df_idx"].isin(cleaned_and_snapped["df_idx"]))
-        #     ],
-        # )
+        assert thick_df_indices.isin(
+            cleaned_and_snapped_to_mask["df_idx"]
+        ).all(), sg.explore(
+            df,
+            snapped_to_mask,
+            missing_polygons=df[
+                (df["df_idx"].isin(thick_df_indices))
+                & (~df["df_idx"].isin(cleaned_and_snapped_to_mask["df_idx"]))
+            ],
+        )
 
         assert double.area.sum() < 1e-4, double.area.sum()
         assert gaps.area.sum() < 1e-3, (
@@ -283,12 +287,12 @@ def test_clean_1144():
         assert sg.get_geom_type(cleaned) == "polygon", sg.get_geom_type(cleaned)
 
         print("cleaning cleaned")
-        cleaned2 = sg.coverage_clean(cleaned, tolerance=tolerance).pipe(
-            sg.snap_polygons, 0.1, mask=kommune_utenhav
+        cleaned_and_snapped_to_mask = sg.snap_polygons(
+            cleaned, tolerance, mask=kommune_utenhav
         )
 
-        gaps = sg.get_gaps(cleaned2)
-        double = sg.get_intersections(cleaned2)
+        gaps = sg.get_gaps(cleaned_and_snapped_to_mask)
+        double = sg.get_intersections(cleaned_and_snapped_to_mask)
         missing = get_missing(sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)), cleaned)
 
         sg.explore(
@@ -306,7 +310,9 @@ def test_clean_1144():
             max_zoom=50,
         )
 
-        assert list(sorted(cleaned2.columns)) == cols, cleaned2.columns
+        assert (
+            list(sorted(cleaned_and_snapped_to_mask.columns)) == cols
+        ), cleaned_and_snapped_to_mask.columns
 
         assert double.area.sum() < 1e-3, double.area.sum()
         assert gaps.area.sum() < 1e-3, gaps.area.sum()
@@ -315,12 +321,14 @@ def test_clean_1144():
             missing.area.sort_values(),
         )
 
-        # assert int(cleaned2.area.sum()) == 154240, (
-        #     cleaned2.area.sum(),
+        # assert int(cleaned_and_snapped_to_mask.area.sum()) == 154240, (
+        #     cleaned_and_snapped_to_mask.area.sum(),
         #     f"tolerance: {tolerance}",
         # )
 
-        assert sg.get_geom_type(cleaned2) == "polygon", sg.get_geom_type(cleaned2)
+        assert (
+            sg.get_geom_type(cleaned_and_snapped_to_mask) == "polygon"
+        ), sg.get_geom_type(cleaned_and_snapped_to_mask)
 
         # cleaned = sg.coverage_clean(df, tolerance)
 
@@ -557,7 +565,8 @@ def not_test_spikes():
 
     tolerance = 0.09 * factor
 
-    # fixed_and_cleaned = sg.snap_polygons(df, tolerance)
+    snapped = sg.snap_polygons(df, tolerance)
+    spikes_removed = sg.remove_spikes(df, tolerance)
     spikes_fixed = sg.split_spiky_polygons(df, tolerance)
     fixed_and_cleaned = sg.coverage_clean(
         spikes_fixed, tolerance  # , pre_dissolve_func=_buff
@@ -566,6 +575,8 @@ def not_test_spikes():
     if __name__ == "__main__":
         sg.explore(
             fixed_and_cleaned=fixed_and_cleaned,
+            snapped=snapped,
+            spikes_removed=spikes_removed,
             # spikes_fixed=spikes_fixed,
             df=df,
         )
@@ -614,6 +625,7 @@ def not_test_spikes():
     # assert (area := sorted([round(x, 3) for x in cleaned.area])) == sorted(
 
     #     [
+
     #         7.225,
     #         1.89,
     #         0.503,
@@ -630,12 +642,14 @@ def not_test_spikes():
 
     #         4.02,
     #     ]
+
     # ), length
 
 
 def main():
     test_clean_1144()
     test_clean_dissappearing_polygon()
+
     test_clean()
     not_test_spikes()
 

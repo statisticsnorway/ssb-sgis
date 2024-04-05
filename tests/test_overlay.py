@@ -1,4 +1,5 @@
 # %%
+import random
 import sys
 import warnings
 from pathlib import Path
@@ -29,7 +30,10 @@ def test_overlay(points_oslo):
     for n_jobs in [1, 3]:
         overlayed = sg.clean_overlay(p500, p1000, how="update", n_jobs=n_jobs)
         cols_should_be = ["idx", "idx1", "idx2", "geometry"]
-        assert list(overlayed.columns) == cols_should_be, list(overlayed.columns)
+        assert list(overlayed.columns) == cols_should_be, (
+            list(overlayed.columns),
+            cols_should_be,
+        )
 
         hows = [
             "difference",
@@ -55,10 +59,10 @@ def test_overlay(points_oslo):
                 .explode(ignore_index=True)
                 .explode(ignore_index=True)
             )
-            assert list(overlayed.columns) == cols, list(overlayed.columns)
+            assert list(overlayed.columns) == cols, (list(overlayed.columns), cols)
 
             overlayed2 = sg.clean_overlay(p500, p1000, how=how)
-            assert list(overlayed2.columns) == cols, list(overlayed2.columns)
+            assert list(overlayed2.columns) == cols, (list(overlayed2.columns), cols)
 
             if int(overlayed.area.sum()) != int(overlayed2.area.sum()):
                 raise ValueError(
@@ -102,6 +106,9 @@ def test_overlay_random(n=25):
             # results should be identical as is
             gdf1 = sg.random_points(n, loc=loc_num).pipe(sg.buff, buff_num)
             gdf2 = sg.random_points(n, loc=loc_num).pipe(sg.buff, buff_num * 0.5)
+
+            gdf1.index = [np.random.randint(low=0, high=10) for _ in range(len(gdf1))]
+            gdf2.index = [np.random.randint(low=0, high=10) for _ in range(len(gdf2))]
 
             overlayed = (
                 gdf1.overlay(gdf2, how=how)

@@ -79,6 +79,13 @@ def test_dissexp_by_cluster():
 
         assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
 
+        diss = sg.diss_by_cluster(gdf, by="x", n_jobs=n_jobs)
+        assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
+        diss = sg.diss_by_cluster(gdf, by=["x", "y"], n_jobs=n_jobs)
+        assert list(diss.columns) == ["geometry"], diss.columns
+        diss = sg.diss_by_cluster(gdf, by=("y",), n_jobs=n_jobs)
+        assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+
         diss = sg.dissexp_by_cluster(gdf, by="x", n_jobs=n_jobs)
         assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
         diss = sg.dissexp_by_cluster(gdf, by=["x", "y"], n_jobs=n_jobs)
