@@ -564,61 +564,52 @@ def _shapely_diffclip_left(pairs, df1, grid_size, geom_type, n_jobs):
             lambda x: x.columns.difference({"geom_right"}),
         ]
 
-        if 1:
+        index_mapper = {
+            i: x
+            for i, x in many_hits.groupby(level=0)["_overlay_index_right"]
+            .unique()
+            .apply(lambda j: tuple(sorted(j)))
+            .items()
+        }
 
-            index_mapper = {
-                i: x
-                for i, x in many_hits.groupby(level=0)["_overlay_index_right"]
+        many_hits_agged["_right_indices"] = index_mapper
+
+        inverse_index_mapper = pd.Series(
+            {
+                x[0]: x
+                for x in many_hits_agged.reset_index()
+                .groupby("_right_indices")["index"]
                 .unique()
-                .apply(lambda j: tuple(sorted(j)))
-                .items()
+                .apply(tuple)
             }
+        ).explode()
+        inverse_index_mapper = pd.Series(
+            inverse_index_mapper.index, index=inverse_index_mapper.values
+        )
 
-            many_hits_agged["_right_indices"] = index_mapper
+        agger = (
+            pd.Series(index_mapper.values(), index=index_mapper.keys())
+            .drop_duplicates()
+            .explode()
+            .to_frame("_overlay_index_right")
+        )
+        agger["geom_right"] = agger["_overlay_index_right"].map(
+            {
+                i: g
+                for i, g in zip(
+                    many_hits["_overlay_index_right"], many_hits["geom_right"]
+                )
+            }
+        )
 
-            inverse_index_mapper = pd.Series(
-                {
-                    x[0]: x
-                    for x in many_hits_agged.reset_index()
-                    .groupby("_right_indices")["index"]
-                    .unique()
-                    .apply(tuple)
-                }
-            ).explode()
-            inverse_index_mapper = pd.Series(
-                inverse_index_mapper.index, index=inverse_index_mapper.values
-            )
-
-            agger = (
-                pd.Series(index_mapper.values(), index=index_mapper.keys())
-                .drop_duplicates()
-                .explode()
-                .to_frame("_overlay_index_right")
-            )
-            agger["geom_right"] = agger["_overlay_index_right"].map(
-                {
-                    i: g
-                    for i, g in zip(
-                        many_hits["_overlay_index_right"], many_hits["geom_right"]
-                    )
-                }
-            )
-
-            agged = pd.Series(
-                {
-                    i: agg_geoms_partial(geoms)
-                    for i, geoms in agger.groupby(level=0)["geom_right"]
-                }
-            )
-            many_hits_agged["geom_right"] = inverse_index_mapper.map(agged)
-            many_hits_agged = many_hits_agged.drop(columns=["_right_indices"])
-        else:
-            many_hits_agged["geom_right"] = {
+        agged = pd.Series(
+            {
                 i: agg_geoms_partial(geoms)
-                for i, geoms in many_hits.groupby(level=0)["geom_right"]
-            }  # .agg(
-            #     agg_geoms_partial
-            # )
+                for i, geoms in agger.groupby(level=0)["geom_right"]
+            }
+        )
+        many_hits_agged["geom_right"] = inverse_index_mapper.map(agged)
+        many_hits_agged = many_hits_agged.drop(columns=["_right_indices"])
 
         clip_left = pd.concat([one_hit, many_hits_agged])
     except IndexError:
