@@ -6,10 +6,18 @@ from geopandas import GeoDataFrame, GeoSeries
 from shapely import STRtree, difference, make_valid, simplify, unary_union
 from shapely.errors import GEOSException
 
-from .buffer_dissolve_explode import parallel_unary_union_geoseries
-from .general import _determine_geom_type_args, _push_geom_col, clean_geoms
+from .general import (
+    _determine_geom_type_args,
+    _push_geom_col,
+    clean_geoms,
+    parallel_unary_union_geoseries,
+)
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
 from .overlay import _run_overlay_dask, clean_overlay, make_valid_and_keep_geom_type
+from .sfilter import sfilter_inverse, sfilter_split
+
+
+PRECISION = 1e-3
 
 
 def update_geometries(
@@ -18,6 +26,7 @@ def update_geometries(
     keep_geom_type: bool | None = None,
     grid_size: int | None = None,
     n_jobs: int = 1,
+    predicate: str | None = "intersects",
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
@@ -81,40 +90,43 @@ def update_geometries(
     if len(gdf) <= 1:
         return gdf
 
-    gdf = make_all_singlepart(clean_geoms(gdf))
+    copied = make_all_singlepart(clean_geoms(gdf))
 
-    gdf, geom_type, keep_geom_type = _determine_geom_type_args(
-        gdf, geom_type, keep_geom_type
+    copied, geom_type, keep_geom_type = _determine_geom_type_args(
+        copied, geom_type, keep_geom_type
     )
 
-    geom_col = gdf._geometry_column_name
-    index_mapper = {i: idx for i, idx in enumerate(gdf.index)}
-    gdf = gdf.reset_index(drop=True)
+    geom_col = copied._geometry_column_name
+    index_mapper = {i: idx for i, idx in enumerate(copied.index)}
+    copied = copied.reset_index(drop=True)
 
-    tree = STRtree(gdf.geometry.values)
-    left, right = tree.query(gdf.geometry.values, predicate="intersects")
+    tree = STRtree(copied.geometry.values)
+    left, right = tree.query(copied.geometry.values, predicate=predicate)
     indices = pd.Series(right, index=left).loc[lambda x: x.index > x.values]
 
     # select geometries from 'right', index from 'left', dissolve by 'left'
+    erasers = pd.Series(copied.geometry.loc[indices.values].values, index=indices.index)
     if n_jobs > 1:
         erasers = parallel_unary_union_geoseries(
-            pd.Series(gdf.geometry.loc[indices.values].values, index=indices.index),
+            erasers,
             level=0,
             n_jobs=n_jobs,
             grid_size=grid_size,
-            # index=indices.index.unique(),
         )
         erasers = pd.Series(erasers, index=indices.index.unique())
     else:
-        erasers = (
-            pd.Series(gdf.geometry.loc[indices.values].values, index=indices.index)
+        only_one = erasers.groupby(level=0).transform("size") == 1
+        one_hit = erasers[only_one]
+        many_hits = (
+            erasers[~only_one]
             .groupby(level=0)
             .agg(lambda x: make_valid(unary_union(x, grid_size=grid_size)))
         )
+        erasers = pd.concat([one_hit, many_hits]).sort_index()
 
     # match up the aggregated erasers by index
     if n_jobs > 1:
-        arr1 = gdf.geometry.loc[erasers.index].to_numpy()
+        arr1 = copied.geometry.loc[erasers.index].to_numpy()
         arr2 = erasers.to_numpy()
         try:
             erased = _run_overlay_dask(
@@ -134,28 +146,85 @@ def update_geometries(
     else:
         erased = make_valid(
             difference(
-                gdf.geometry.loc[erasers.index],
+                copied.geometry.loc[erasers.index],
                 erasers,
                 grid_size=grid_size,
             )
         )
 
-    gdf.loc[erased.index, geom_col] = erased
+    copied.loc[erased.index, geom_col] = erased
 
-    gdf = gdf.loc[~gdf.is_empty]
+    copied = copied.loc[~copied.is_empty]
 
-    gdf.index = gdf.index.map(index_mapper)
+    copied.index = copied.index.map(index_mapper)
+
+    # TODO check why polygons dissappear in rare cases. For now, just add back the missing
+    dissapeared = sfilter_inverse(gdf, copied.buffer(-PRECISION))
+    copied = pd.concat([copied, dissapeared])
+
+    # TODO fix dupliates again with dissolve?
+    # dups = get_intersections(copied, geom_type="polygon")
+    # dups["_cluster"] = get_cluster_mapper(dups.geometry.values)
+    # no_dups = dissexp(dups, by="_cluster").drop(columns="_cluster")
+    # copied = clean_overlay(copied, no_dups, how="update", geom_type="polygon")
 
     if keep_geom_type:
-        gdf = to_single_geom_type(gdf, geom_type)
+        copied = to_single_geom_type(copied, geom_type)
 
-    return gdf
+    return copied
+
+
+def _update(many_hits, right_index_name):
+    many_hits_agged = many_hits.loc[lambda x: ~x.index.duplicated()]
+
+    index_mapper = {
+        i: x
+        for i, x in many_hits.groupby(level=0)[right_index_name]
+        .unique()
+        .apply(lambda j: tuple(sorted(j)))
+        .items()
+    }
+
+    many_hits_agged["_right_indices"] = index_mapper
+
+    inverse_index_mapper = pd.Series(
+        {
+            x[0]: x
+            for x in many_hits_agged.reset_index()
+            .groupby("_right_indices")["index"]
+            .unique()
+            .apply(tuple)
+        }
+    ).explode()
+    inverse_index_mapper = pd.Series(
+        inverse_index_mapper.index, index=inverse_index_mapper.values
+    )
+
+    agger = (
+        pd.Series(index_mapper.values(), index=index_mapper.keys())
+        .drop_duplicates()
+        .explode()
+        .to_frame(right_index_name)
+    )
+    agger["geom_right"] = agger[right_index_name].map(
+        {i: g for i, g in zip(many_hits[right_index_name], many_hits["geom_right"])}
+    )
+
+    agged = pd.Series(
+        {
+            i: agg_geoms_partial(geoms)
+            for i, geoms in agger.groupby(level=0)["geom_right"]
+        }
+    )
+    many_hits_agged["geom_right"] = inverse_index_mapper.map(agged)
+    many_hits_agged = many_hits_agged.drop(columns=["_right_indices"])
 
 
 def get_intersections(
     gdf: GeoDataFrame,
     geom_type: str | None = None,
     keep_geom_type: bool | None = None,
+    predicate: str | None = "intersects",
     n_jobs: int = 1,
 ) -> GeoDataFrame:
     """Find geometries that intersect in a GeoDataFrame.
@@ -248,6 +317,7 @@ def get_intersections(
         geom_type,
         keep_geom_type,
         n_jobs=n_jobs,
+        predicate=predicate,
     ).pipe(clean_geoms)
 
     duplicated_geoms.index = duplicated_geoms["orig_idx"].values
@@ -260,7 +330,7 @@ def get_intersections(
 
 
 def _get_intersecting_geometries(
-    gdf: GeoDataFrame, geom_type, keep_geom_type, n_jobs
+    gdf: GeoDataFrame, geom_type, keep_geom_type, n_jobs, predicate
 ) -> GeoDataFrame:
     right = gdf[[gdf._geometry_column_name]]
     right["idx_right"] = right.index
@@ -280,6 +350,7 @@ def _get_intersecting_geometries(
             left,
             right,
             how="intersection",
+            predicate=predicate,
             geom_type=geom_type,
             keep_geom_type=keep_geom_type,
             n_jobs=n_jobs,
@@ -296,7 +367,12 @@ def _get_intersecting_geometries(
                 continue
             intersected += [
                 clean_overlay(
-                    left, right, how="intersection", geom_type=geom_type, n_jobs=n_jobs
+                    left,
+                    right,
+                    how="intersection",
+                    predicate=predicate,
+                    geom_type=geom_type,
+                    n_jobs=n_jobs,
                 )
             ]
         intersected = pd.concat(intersected, ignore_index=True).loc[are_not_identical]
