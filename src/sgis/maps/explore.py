@@ -140,10 +140,9 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 class Explore(Map):
     # class attribute that can be overridden locally
     tiles = (
-        "OpenStreetMap",
-        "dark",
-        "norge_i_bilder",
         "grunnkart",
+        "norge_i_bilder",
+        "dark",
         "OpenStreetMap",
     )
 
