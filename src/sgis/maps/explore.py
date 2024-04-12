@@ -3,6 +3,7 @@
 This module holds the Explore class, which is the basis for the explore, samplemap and
 clipmap functions from the 'maps' module.
 """
+
 import os
 import warnings
 from collections.abc import Iterable
@@ -138,7 +139,13 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 
 class Explore(Map):
     # class attribute that can be overridden locally
-    tiles = ("OpenStreetMap", "dark", "norge_i_bilder", "grunnkart")
+    tiles = (
+        "OpenStreetMap",
+        "dark",
+        "norge_i_bilder",
+        "grunnkart",
+        "OpenStreetMap",
+    )
 
     def __init__(
         self,
@@ -151,7 +158,7 @@ class Explore(Map):
         browser: bool = False,
         prefer_canvas: bool = True,
         measure_control: bool = True,
-        geocoder: bool = True,
+        geocoder: bool = False,
         save=None,
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
