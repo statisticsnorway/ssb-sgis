@@ -65,7 +65,7 @@ warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
 
-from ..maps.maps import explore
+from ..maps.maps import explore, explore_locals
 
 
 # def explore(*args, **kwargs):
@@ -400,8 +400,8 @@ def coverage_clean(
                 )
                 raise e
 
-    cleaned = safe_simplify(cleaned, PRECISION)
-    cleaned.geometry = shapely.make_valid(cleaned.geometry)
+    # cleaned = safe_simplify(cleaned, PRECISION)
+    # cleaned.geometry = shapely.make_valid(cleaned.geometry)
 
     # TODO check why polygons dissappear in rare cases. For now, just add back the missing
     dissapeared_polygons = sfilter_inverse(gdf, cleaned.buffer(-PRECISION))

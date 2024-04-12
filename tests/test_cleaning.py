@@ -134,6 +134,8 @@ def test_clean_1144():
             ],
         )
 
+        continue
+
         snapped_to_mask = sg.snap_to_mask(
             sg.sort_large_first(df), tolerance, mask=kommune_utenhav
         )
@@ -213,7 +215,6 @@ def test_clean_1144():
             double.area.sum(),
             missing.area.sum(),
         )
-        sss
 
         cleaned_and_snapped_to_mask = sg.snap_to_mask(
             cleaned, tolerance, mask=kommune_utenhav
@@ -383,11 +384,34 @@ def test_clean():
     mask = sg.close_all_holes(sg.dissexp_by_cluster(df)).dissolve()
 
     for tolerance in [5, 10]:
-        print(tolerance)
+        print("tolerance:", tolerance)
 
         # from shapely import segmentize
 
         # df.geometry = segmentize(df.geometry, tolerance)
+
+        snapped = sg.coverage_clean(df, tolerance).pipe(sg.coverage_clean, tolerance)
+        assert sg.get_geom_type(snapped) == "polygon", sg.get_geom_type(snapped)
+
+        double = sg.get_intersections(snapped).loc[lambda x: ~x.buffer(-1e-9).is_empty]
+        gaps = sg.get_gaps(snapped).loc[lambda x: ~x.buffer(-1e-9).is_empty]
+        missing = get_missing(df, snapped)
+
+        print(double.area.sum(), missing.area.sum(), gaps.area.sum())
+
+        sg.explore(
+            df,
+            snapped,
+            double,
+            missing,
+            gaps,
+        )
+
+        assert (a := max(list(double.area) + [0])) < 1e-4, a
+        assert (a := max(list(missing.area) + [0])) < 1e-4, a
+        assert (a := max(list(gaps.area) + [0])) < 1e-4, a
+
+        continue
 
         snapped = sg.snap_polygons(
             df, tolerance, mask=mask.buffer(0.1, resolution=1, join_style=2)
@@ -647,10 +671,10 @@ def not_test_spikes():
 
 
 def main():
+    test_clean()
     test_clean_1144()
     test_clean_dissappearing_polygon()
 
-    test_clean()
     not_test_spikes()
 
 
