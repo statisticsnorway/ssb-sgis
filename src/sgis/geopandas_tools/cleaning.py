@@ -218,7 +218,6 @@ def coverage_clean(
         raise ValueError("Large double surfaces.")
 
     to_eliminate = pd.concat([thin_gaps_and_double, slivers], ignore_index=True)
-    # to_eliminate = safe_simplify(to_eliminate, PRECISION)
 
     to_eliminate = to_eliminate.loc[lambda x: ~x.buffer(-PRECISION / 10).is_empty]
 
