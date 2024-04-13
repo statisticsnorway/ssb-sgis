@@ -336,7 +336,7 @@ def _run_overlay_dask(arr1, arr2, func, n_jobs, grid_size):
     return res.compute(scheduler="threads", optimize_graph=False, num_workers=n_jobs)
 
 
-def _run_overlay_dask(arr1, arr2, func, n_jobs, grid_size):
+def _run_overlay_joblib_threading(arr1, arr2, func, n_jobs, grid_size):
     if len(arr1) // n_jobs <= 1:
         try:
             return func(arr1, arr2, grid_size=grid_size)
@@ -359,10 +359,8 @@ def _intersection(pairs, grid_size, geom_type, n_jobs=1) -> GeoDataFrame:
     arr2 = intersections["geom_right"].to_numpy()
 
     if n_jobs > 1 and len(arr1) / n_jobs > 10:
-        # dask_arr1 = da.from_array(arr1, chunks=int(len(arr1) / n_jobs))
-        # dask_arr2 = da.from_array(arr2, chunks=int(len(arr2) / n_jobs))
         try:
-            res = _run_overlay_dask(
+            res = _run_overlay_joblib_threading(
                 arr1,
                 arr2,
                 func=intersection,
@@ -379,10 +377,7 @@ def _intersection(pairs, grid_size, geom_type, n_jobs=1) -> GeoDataFrame:
             arr1 = arr1.loc[lambda x: x.index.isin(arr2.index)]
             arr2 = arr2.loc[lambda x: x.index.isin(arr1.index)]
 
-            # dask_arr1 = da.from_array(arr1, chunks=int(len(arr1) / n_jobs))
-            # dask_arr2 = da.from_array(arr2, chunks=int(len(arr2) / n_jobs))
-
-            res = _run_overlay_dask(
+            res = _run_overlay_joblib_threading(
                 arr1.to_numpy(),
                 arr2.to_numpy(),
                 func=intersection,
@@ -615,11 +610,6 @@ def _shapely_diffclip_left(pairs, df1, grid_size, geom_type, n_jobs):
     except IndexError:
         clip_left = pairs.loc[:, list(keep_cols)]
 
-    # if n_jobs > 1:
-    #     clip_left["geom_right"] = parallel_unary_union(
-    #         pairs, level=0, n_jobs=n_jobs, grid_size=grid_size
-    #     )
-
     assert clip_left["geometry"].notna().all()
     assert clip_left["geom_right"].notna().all()
 
@@ -665,7 +655,6 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix, geom_type, n_jo
             )
         )
     except IndexError:
-        # one_hit = pairs[lambda x: x.index == min(x.index) - 1]
         clip_right = pairs.join(df2.drop(columns=["geometry"])).rename(
             columns={
                 c: f"{c}{rsuffix}" if c in df1.columns and c != "geometry" else c
@@ -689,12 +678,8 @@ def _shapely_diffclip_right(pairs, df1, df2, grid_size, rsuffix, geom_type, n_jo
 def _try_difference(left, right, grid_size, geom_type, n_jobs=1):
     """Try difference overlay, then make_valid and retry."""
     if n_jobs > 1 and len(left) / n_jobs > 10:
-        # dask_arr1 = da.from_array(left, chunks=int(len(left) / n_jobs))
-        # dask_arr2 = da.from_array(right, chunks=int(len(right) / n_jobs))
-        # dask_arr1 = make_valid_and_keep_geom_type(dask_arr1, geom_type=geom_type)
-        # dask_arr2 = make_valid_and_keep_geom_type(dask_arr2, geom_type=geom_type)
         try:
-            return _run_overlay_dask(
+            return _run_overlay_joblib_threading(
                 left,
                 right,
                 func=difference,
@@ -710,10 +695,8 @@ def _try_difference(left, right, grid_size, geom_type, n_jobs=1):
             )
             left = left.loc[lambda x: x.index.isin(right.index)]
             right = right.loc[lambda x: x.index.isin(left.index)]
-            # dask_arr1 = da.from_array(arr1, chunks=int(len(arr1) / n_jobs))
-            # dask_arr2 = da.from_array(arr2, chunks=int(len(arr2) / n_jobs))
 
-            return _run_overlay_dask(
+            return _run_overlay_joblib_threading(
                 left.to_numpy(),
                 right.to_numpy(),
                 func=difference,
@@ -758,10 +741,8 @@ def make_valid_and_keep_geom_type(
     only_one = geoms.groupby(level=0).transform("size") == 1
     one_hit = geoms[only_one]
     many_hits = geoms[~only_one].groupby(level=0).agg(unary_union)
-    return pd.concat([one_hit, many_hits]).sort_index()  # .to_numpy()
+    return pd.concat([one_hit, many_hits]).sort_index()
 
 
 def agg_geoms(g, grid_size=None):
-    return make_valid(
-        unary_union(g, grid_size=grid_size)
-    )  # if len(g) > 1 else make_valid(g)
+    return make_valid(unary_union(g, grid_size=grid_size))

@@ -174,52 +174,6 @@ def update_geometries(
     return copied
 
 
-def _update(many_hits, right_index_name):
-    many_hits_agged = many_hits.loc[lambda x: ~x.index.duplicated()]
-
-    index_mapper = {
-        i: x
-        for i, x in many_hits.groupby(level=0)[right_index_name]
-        .unique()
-        .apply(lambda j: tuple(sorted(j)))
-        .items()
-    }
-
-    many_hits_agged["_right_indices"] = index_mapper
-
-    inverse_index_mapper = pd.Series(
-        {
-            x[0]: x
-            for x in many_hits_agged.reset_index()
-            .groupby("_right_indices")["index"]
-            .unique()
-            .apply(tuple)
-        }
-    ).explode()
-    inverse_index_mapper = pd.Series(
-        inverse_index_mapper.index, index=inverse_index_mapper.values
-    )
-
-    agger = (
-        pd.Series(index_mapper.values(), index=index_mapper.keys())
-        .drop_duplicates()
-        .explode()
-        .to_frame(right_index_name)
-    )
-    agger["geom_right"] = agger[right_index_name].map(
-        {i: g for i, g in zip(many_hits[right_index_name], many_hits["geom_right"])}
-    )
-
-    agged = pd.Series(
-        {
-            i: agg_geoms_partial(geoms)
-            for i, geoms in agger.groupby(level=0)["geom_right"]
-        }
-    )
-    many_hits_agged["geom_right"] = inverse_index_mapper.map(agged)
-    many_hits_agged = many_hits_agged.drop(columns=["_right_indices"])
-
-
 def get_intersections(
     gdf: GeoDataFrame,
     geom_type: str | None = None,
