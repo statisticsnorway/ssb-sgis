@@ -8,12 +8,11 @@ The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 
 import inspect
-import warnings
 from numbers import Number
 from typing import Any
 
 from geopandas import GeoDataFrame, GeoSeries
-from pandas.api.types import is_list_like
+from pyproj import CRS
 from shapely import Geometry
 
 from ..geopandas_tools.conversion import to_gdf as to_gdf_func
@@ -25,24 +24,23 @@ from .map import Map
 from .thematicmap import ThematicMap
 
 
+try:
+    from torchgeo.datasets.geo import RasterDataset
+except ImportError:
+
+    class RasterDataset:
+        """Placeholder"""
+
+
 def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
     try:
         crs = get_common_crs(gdfs)
     except IndexError:
-        try:
-            crs = [x for x in kwargs.values() if hasattr(x, "crs")][0].crs
-        except IndexError:
-            crs = None
-        except Exception:
-            crs = set()
-            for x in kwargs.values():
-                try:
-                    crs.add(x.crs)
-                except Exception:
-                    pass
+        for x in kwargs.values():
             try:
-                crs = list(crs)[0]
-            except IndexError:
+                crs = CRS(x.crs) if hasattr(x, "crs") else CRS(x["crs"])
+                break
+            except Exception:
                 crs = None
 
     masks = {
@@ -215,7 +213,7 @@ def explore(
         **kwargs,
     )
 
-    if m.gdfs is None:
+    if m.gdfs is None and not len(m.raster_datasets):
         return
 
     if not kwargs.pop("explore", True):
@@ -311,7 +309,7 @@ def samplemap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
-        if m.gdfs is None:
+        if m.gdfs is None and not len(m.raster_datasets):
             return
         if mask is not None:
             m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
@@ -420,7 +418,7 @@ def clipmap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
-        if m.gdfs is None:
+        if m.gdfs is None and not len(m.raster_datasets):
             return
 
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
@@ -467,6 +465,8 @@ def explore_locals(*gdfs, convert: bool = True, **kwargs):
 
     frame = inspect.currentframe().f_back
 
+    allowed_types = (GeoDataFrame, GeoSeries, Geometry, RasterDataset)
+
     local_gdfs = {}
     while True:
         for name, value in frame.f_locals.items():
@@ -479,7 +479,7 @@ def explore_locals(*gdfs, convert: bool = True, **kwargs):
             if isinstance(value, dict) or hasattr(value, "__dict__"):
                 # add dicts or classes with GeoDataFrames to kwargs
                 for key, value in as_dict(value).items():
-                    if isinstance(value, (GeoDataFrame, GeoSeries, Geometry)):
+                    if isinstance(value, allowed_types):
                         gdf = clean_geoms(to_gdf_func(value))
                         if len(gdf):
                             local_gdfs[key] = gdf
@@ -487,7 +487,7 @@ def explore_locals(*gdfs, convert: bool = True, **kwargs):
                     elif isinstance(value, dict) or hasattr(value, "__dict__"):
                         try:
                             for k, v in value.items():
-                                if isinstance(v, (GeoDataFrame, GeoSeries, Geometry)):
+                                if isinstance(v, allowed_types):
                                     gdf = clean_geoms(to_gdf_func(v))
                                     if len(gdf):
                                         local_gdfs[k] = gdf

@@ -32,6 +32,14 @@ from .map import Map
 from .tilesources import kartverket, xyz
 
 
+try:
+    from torchgeo.datasets.geo import RasterDataset
+except ImportError:
+
+    class RasterDataset:
+        """Placeholder"""
+
+
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(
     action="ignore", category=matplotlib.MatplotlibDeprecationWarning
@@ -187,6 +195,13 @@ class Explore(Map):
         else:
             show_was_none = False
 
+        self.raster_datasets = tuple(
+            raster_dataset_to_background_map(x)
+            for x in gdfs
+            if isinstance(x, RasterDataset)
+        )
+        self.tiles  # += self.raster_datasets
+
         super().__init__(*gdfs, column=column, show=show, **kwargs)
 
         if self.gdfs is None:
@@ -253,7 +268,7 @@ class Explore(Map):
     def explore(
         self, column: str | None = None, center=None, size=None, **kwargs
     ) -> None:
-        if not any(len(gdf) for gdf in self._gdfs):
+        if not any(len(gdf) for gdf in self._gdfs) and not len(self.raster_datasets):
             warnings.warn("None of the GeoDataFrames have rows.")
             return
         if column:
@@ -825,6 +840,11 @@ def _tooltip_popup(type, fields, gdf, **kwds):
         return folium.GeoJsonTooltip(fields, **kwds)
     elif type == "popup":
         return folium.GeoJsonPopup(fields, **kwds)
+
+
+def raster_dataset_to_background_map(dataset: RasterDataset):
+    crs = dataset.crs
+    bbox = dataset.bounds
 
 
 def _categorical_legend(m, title, categories, colors):
