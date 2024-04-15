@@ -89,6 +89,29 @@ def test_overlay(points_oslo):
                     geom_type="polygon",
                 )
 
+            overlayed3 = sg.parallel_overlay(
+                p500, p1000, processes=4, max_rows_per_chunk=100, how=how
+            )
+            assert list(overlayed3.columns) == cols, (list(overlayed3.columns), cols)
+
+            if int(overlayed.area.sum()) != int(overlayed3.area.sum()):
+                raise ValueError(
+                    int(overlayed.area.sum()) != int(overlayed3.area.sum())
+                )
+
+            if len(overlayed) != len(overlayed3):
+                raise ValueError(how, len(overlayed), len(overlayed3))
+
+            # area is slightly different, but same area with 3 digits is good enough
+            for i in [1, 2, 3]:
+                if round(sum(overlayed.area), i) != round(sum(overlayed3.area), i):
+                    raise ValueError(
+                        how,
+                        i,
+                        round(sum(overlayed.area), i),
+                        round(sum(overlayed3.area), i),
+                    )
+
 
 def test_overlay_random(n=25):
     for _ in range(n):
