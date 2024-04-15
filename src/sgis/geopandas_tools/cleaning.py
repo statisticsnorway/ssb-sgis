@@ -765,27 +765,6 @@ def snap_polygons(
 
     return gdf  # .pipe(clean_clip, mask, geom_type="polygon")
 
-    if snap_to_nodes:
-        missing = clean_overlay(gdf_copy, gdf, how="difference")
-
-        missing, isolated = sfilter_split(missing, gdf)
-        isolated.geometry = isolated.buffer(PRECISION * 10)
-        gdf = eliminate_by_longest(
-            gdf, pd.concat([missing, isolated]), remove_isolated=False
-        )
-
-    missing = clean_overlay(mask, gdf, how="difference")
-
-    gdf = eliminate_by_longest(
-        gdf, missing.buffer(PRECISION * 10).to_frame("geometry"), remove_isolated=False
-    ).pipe(clean_clip, mask, geom_type="polygon")
-
-    gdf = update_geometries(
-        sort_small_first(close_small_holes(gdf, PRECISION)), geom_type="polygon"
-    )
-
-    return gdf  # .pipe(clean_clip, mask, geom_type="polygon")
-
 
 def _snap_to_anchors(
     points: GeoDataFrame,
