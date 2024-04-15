@@ -32,12 +32,8 @@ from .geopandas_tools.cleaning import (
     coverage_clean,
     remove_interior_slivers,
     remove_spikes,
-    simplify_and_update,
-    snap_polygons,
-    snap_to_mask,
     split_and_eliminate_by_longest,
     split_by_neighbors,
-    split_spiky_polygons,
 )
 from .geopandas_tools.conversion import (
     coordinate_array,
