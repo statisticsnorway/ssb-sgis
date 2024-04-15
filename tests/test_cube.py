@@ -546,7 +546,7 @@ def write_sentinel():
         _save_raster(file, src_path_sentinel + "/MASKS")
 
 
-def not_test_torch():
+def test_torch():
 
     # from lightning.pytorch import Trainer
     from torch.utils.data import DataLoader
@@ -599,7 +599,7 @@ if __name__ == "__main__":
     # write_sentinel()
 
     def test_cube():
-        not_test_torch()
+        test_torch()
         sss
         test_sentinel()
         not_test_gradient()
