@@ -134,11 +134,11 @@ def test_clean_1144():
             ],
         )
 
-        continue
-
         snapped_to_mask = sg.snap_to_mask(
             sg.sort_large_first(df), tolerance, mask=kommune_utenhav
         )
+
+        continue
 
         gaps = sg.get_gaps(snapped_to_mask)
         double = sg.get_intersections(snapped_to_mask)
@@ -411,12 +411,12 @@ def test_clean():
         assert (a := max(list(missing.area) + [0])) < 1e-4, a
         assert (a := max(list(gaps.area) + [0])) < 1e-4, a
 
-        continue
-
         snapped = sg.snap_polygons(
             df, tolerance, mask=mask.buffer(0.1, resolution=1, join_style=2)
         )
         assert sg.get_geom_type(snapped) == "polygon", sg.get_geom_type(snapped)
+
+        continue
 
         double = sg.get_intersections(snapped).loc[lambda x: ~x.buffer(-1e-9).is_empty]
         gaps = sg.get_gaps(snapped).loc[lambda x: ~x.buffer(-1e-9).is_empty]
