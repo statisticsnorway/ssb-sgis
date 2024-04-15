@@ -8,6 +8,7 @@ import pandas as pd
 
 
 src = str(Path(__file__).parent).strip("tests") + "src"
+testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 
 import sys
 
@@ -15,6 +16,16 @@ import sys
 sys.path.insert(0, src)
 
 import sgis as sg
+
+
+path_sentinel = testdata + "/sentinel2"
+
+
+def test_torch():
+
+    torch_dataset = sg.torchgeo.Sentinel2(path_sentinel, res=10)
+
+    sg.explore(torch_dataset, "value")
 
 
 def not_test_center(r300, r200, r100, p):

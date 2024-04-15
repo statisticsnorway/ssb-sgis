@@ -57,6 +57,23 @@ def not_test_map():
         assert results == [1, 3, 5, 7, 9, 11], results
 
 
+def test_args_to_kwargs():
+    def func(x, y, z):
+        pass
+
+    x = 1
+    y = ["xx"]
+    z = {1: "a", 2: "b"}
+    args = (x, y, z)
+    kwargs = sg.parallel.parallel.turn_args_into_kwargs(func, args, 0)
+    assert list(kwargs) == ["x", "y", "z"], kwargs
+    assert list(kwargs.values()) == [x, y, z], kwargs
+
+    kwargs = sg.parallel.parallel.turn_args_into_kwargs(func, (y, z), 1)
+    assert list(kwargs) == ["y", "z"], kwargs
+    assert list(kwargs.values()) == [y, z], kwargs
+
+
 def not_test_starmap():
     iterable = [(1, 2), (2, 3), (3, 4)]
 
@@ -75,5 +92,6 @@ def not_test_starmap():
 
 
 if __name__ == "__main__":
+    test_args_to_kwargs()
     not_test_map()
     not_test_starmap()
