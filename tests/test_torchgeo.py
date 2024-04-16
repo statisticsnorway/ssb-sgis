@@ -32,6 +32,8 @@ def test_torch():
     from torchgeo.samplers import RandomGeoSampler
 
     torch_dataset = sg.torchgeo.Sentinel2(path_sentinel, res=10)
+    data_loaded = torch_dataset[torch_dataset.bounds]
+    torch_dataset.plot(data_loaded)
 
     sg.explore(torch_dataset, "value")
     gdf = sg.to_gdf(torch_dataset)
