@@ -39,7 +39,15 @@ def x2_with_arg_kwarg(x, plus, minus):
     return x * 2 + plus - minus
 
 
-def not_test_map():
+def add(x, y):
+    return x + y
+
+
+def add2(x, y, z):
+    return x + y + z
+
+
+def test_map():
     for backend in ["loky", "multiprocessing", "threading"]:
         print(backend)
         iterable = [1, 2, 3, 4, 5, 6]
@@ -57,23 +65,51 @@ def not_test_map():
         assert results == [1, 3, 5, 7, 9, 11], results
 
 
-def not_test_starmap():
+def test_args_to_kwargs():
+    def func(x, y, z):
+        pass
+
+    x = 1
+    y = ["xx"]
+    z = {1: "a", 2: "b"}
+    args = (x, y, z)
+    kwargs = sg.parallel.parallel.turn_args_into_kwargs(func, args, 0)
+    assert list(kwargs) == ["x", "y", "z"], kwargs
+    assert list(kwargs.values()) == [x, y, z], kwargs
+
+    kwargs = sg.parallel.parallel.turn_args_into_kwargs(func, (y, z), 1)
+    assert list(kwargs) == ["y", "z"], kwargs
+    assert list(kwargs.values()) == [y, z], kwargs
+
+
+def test_starmap():
     iterable = [(1, 2), (2, 3), (3, 4)]
 
-    def add(x, y):
-        return x + y
-
-    p = sg.Parallel(3, backend="loky")
+    p = sg.Parallel(1, backend="loky")
     results = p.starmap(add, iterable)
     assert results == [3, 5, 7]
 
-    def add2(x, y, z):
-        return x + y + z
+    results = p.starmap(add2, iterable, kwargs=dict(z=1))
+    assert results == [4, 6, 8]
+
+    p = sg.Parallel(2, backend="loky")
+    results = p.starmap(add, [])
+    assert results == []
+    results = p.starmap(add, iterable)
+    assert results == [3, 5, 7]
+
+    results = p.starmap(add2, iterable, kwargs=dict(z=1))
+    assert results == [4, 6, 8]
+
+    p = sg.Parallel(2, backend="multiprocessing")
+    results = p.starmap(add, iterable)
+    assert results == [3, 5, 7]
 
     results = p.starmap(add2, iterable, kwargs=dict(z=1))
     assert results == [4, 6, 8]
 
 
 if __name__ == "__main__":
-    not_test_map()
-    not_test_starmap()
+    test_args_to_kwargs()
+    test_starmap()
+    test_map()

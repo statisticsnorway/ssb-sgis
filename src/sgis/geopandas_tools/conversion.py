@@ -7,12 +7,25 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pyproj
+import rasterio
 import shapely
+from affine import Affine
 from geopandas import GeoDataFrame, GeoSeries
 from pandas.api.types import is_array_like, is_dict_like, is_list_like
+from pyproj import CRS
+from rasterio import features
 from shapely import Geometry, box, wkb, wkt
-from shapely.geometry import Point
+from shapely.errors import GEOSException
+from shapely.geometry import Point, shape
 from shapely.ops import unary_union
+
+
+try:
+    from torchgeo.datasets.geo import RasterDataset
+except ImportError:
+
+    class RasterDataset:
+        """Placeholder"""
 
 
 @staticmethod
@@ -189,16 +202,18 @@ def coordinate_array(
 
 
 def to_gdf(
-    obj: Geometry
-    | str
-    | bytes
-    | list
-    | tuple
-    | dict
-    | GeoSeries
-    | pd.Series
-    | pd.DataFrame
-    | Iterator,
+    obj: (
+        Geometry
+        | str
+        | bytes
+        | list
+        | tuple
+        | dict
+        | GeoSeries
+        | pd.Series
+        | pd.DataFrame
+        | Iterator
+    ),
     crs: str | tuple[str] | None = None,
     geometry: str | tuple[str] | int | None = None,
     **kwargs,
@@ -316,6 +331,37 @@ def to_gdf(
         geom_col = geometry or "geometry"
         return _geoseries_to_gdf(obj, geom_col, crs, **kwargs)
 
+    if crs is None:
+        try:
+            crs = obj.crs
+        except AttributeError:
+            try:
+                matches = re.search(r"SRID=(\d+);", obj)
+            except TypeError:
+                try:
+                    matches = re.search(r"SRID=(\d+);", obj[0])
+                except Exception:
+                    pass
+            try:
+                crs = CRS(int("".join(x for x in matches.group(0) if x.isnumeric())))
+            except Exception:
+                pass
+
+    if isinstance(obj, RasterDataset):
+        # read the entire dataset
+        obj = obj[obj.bounds]
+        crs = obj["crs"]
+        array = np.array(obj["image"])
+        transform = get_transform_from_bounds(obj["bbox"], shape=array.shape)
+        return gpd.GeoDataFrame(
+            pd.DataFrame(
+                _array_to_geojson(array, transform),
+                columns=["value", "geometry"],
+            ),
+            geometry="geometry",
+            crs=crs,
+        )
+
     if is_array_like(geometry) and len(geometry) == len(obj):
         geometry = GeoSeries(
             _make_one_shapely_geom(g) for g in geometry if g is not None
@@ -423,6 +469,33 @@ def to_gdf(
     except ValueError:
         geoseries = _series_like_to_geoseries(obj.dropna(), index=obj.dropna().index)
     return GeoDataFrame(geometry=geoseries, crs=crs, **kwargs)
+
+
+def _array_to_geojson(array: np.ndarray, transform: Affine):
+    try:
+        return [
+            (value, shape(geom))
+            for geom, value in features.shapes(array, transform=transform)
+        ]
+    except ValueError:
+        array = array.astype(np.float32)
+        return [
+            (value, shape(geom))
+            for geom, value in features.shapes(array, transform=transform)
+        ]
+
+
+def get_transform_from_bounds(
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple, shape: tuple[float, ...]
+) -> Affine:
+    minx, miny, maxx, maxy = to_bbox(obj)
+    if len(shape) == 2:
+        width, height = shape
+    elif len(shape) == 3:
+        _, width, height = shape
+    else:
+        raise ValueError
+    return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
 
 
 def make_shapely_geoms(obj):
@@ -583,7 +656,14 @@ def _make_one_shapely_geom(obj):
     Works recursively if the object is a nested iterable.
     """
     if isinstance(obj, str):
-        return wkt.loads(obj)
+        try:
+            return wkt.loads(obj)
+        except GEOSException:
+            if obj.startswith("geography"):
+                matches = re.search(r"SRID=(\d+);", obj)
+                srid = matches.group(0)
+                _, _wkt = obj.split(srid)
+                return wkt.loads(_wkt)
 
     if isinstance(obj, bytes):
         return wkb.loads(obj)

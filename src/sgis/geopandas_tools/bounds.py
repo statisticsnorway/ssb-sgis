@@ -59,19 +59,15 @@ class Gridlooper:
 
     Instantiate a gridlooper.
 
-    >>> looper = sg.Gridlooper(gridsize=200, mask=buffered, parallelizer=sg.Parallel(1, backend="multiprocessing"))
+    >>> looper = sg.Gridlooper(gridsize=200, mask=buffered, concat=True, parallelizer=sg.Parallel(1, backend="multiprocessing"))
 
     Run the function clean_overlay in a gridloop.
 
-    >>> resultslist = looper.run(
+    >>> results = looper.run(
     ...     sg.clean_overlay,
     ...     points,
     ...     buffered,
     ... )
-    >>> type(resultslist)
-    list
-
-    >>> results = pd.concat(resultslist, ignore_index=True)
     >>> results
         idx_1 idx_2                        geometry
     0      220   220  POINT (254575.200 6661631.500)

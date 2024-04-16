@@ -1,5 +1,6 @@
 """Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla.
 """
+
 from pathlib import Path
 from typing import Optional
 
@@ -59,16 +60,6 @@ def read_geopandas(
                 if pandas_fallback or not len(df):
                     return df
                 else:
-                    try:
-                        raise e.__class__(e, gcs_path)
-                    except Exception:
-                        print(gcs_path)
-                        raise e
-            except Exception as e:
-                try:
-                    raise e.__class__(e, gcs_path)
-                except Exception:
-                    print(gcs_path)
                     raise e
     else:
         with file_system.open(gcs_path, mode="rb") as file:
@@ -127,6 +118,8 @@ def write_geopandas(
         dp.write_pandas(df, gcs_path, **kwargs)
         return
 
+    file_system = dp.FileClient.get_gcs_file_system()
+
     if ".parquet" in gcs_path or "prqt" in gcs_path:
         with file_system.open(gcs_path, mode="wb") as buffer:
             table = _geopandas_to_arrow(df, index=df.index, schema_version=None)
@@ -177,10 +170,10 @@ def check_files(
         within_minutes: Optionally include only files that were updated in the
             last n minutes.
     """
-    fs = dp.FileClient.get_gcs_file_system()
+    file_system = dp.FileClient.get_gcs_file_system()
 
     # (recursive doesn't work, so doing recursive search below)
-    info = fs.ls(folder, detail=True, recursive=True)
+    info = file_system.ls(folder, detail=True, recursive=True)
 
     if not info:
         return pd.DataFrame(columns=["kb", "mb", "name", "child", "path"])
@@ -232,7 +225,7 @@ def check_files(
 
 
 def get_files_in_subfolders(folderinfo: list[dict]) -> list[dict]:
-    fs = dp.FileClient.get_gcs_file_system()
+    file_system = dp.FileClient.get_gcs_file_system()
 
     if isinstance(folderinfo, (str, Path)):
         folderinfo = [folderinfo]
@@ -242,7 +235,7 @@ def get_files_in_subfolders(folderinfo: list[dict]) -> list[dict]:
     while folderinfo:
         new_folderinfo = []
         for m in folderinfo:
-            more_info = fs.ls(m, detail=True, recursive=True)
+            more_info = file_system.ls(m, detail=True, recursive=True)
             if not more_info:
                 continue
 

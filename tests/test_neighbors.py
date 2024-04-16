@@ -14,6 +14,70 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+def test_within_distance(points_oslo):
+    p = points_oslo.copy()
+
+    p["idx"] = p.index
+    p["idx2"] = np.random.randint(10_000, 20_000, size=len(p))
+    p.index = np.random.choice(range(len(p) // 10), len(p))
+
+    df = sg.sjoin_within_distance(
+        gdf=p,
+        neighbors=p,
+        distance=0,
+        lsuffix="left",
+        rsuffix="right",
+    ).sort_index()
+    print(df)
+    assert len(df) == len(p)
+    assert (x := df["distance"] == 0).all(), x
+
+    df2 = p.sjoin(
+        p,
+        lsuffix="left",
+        rsuffix="right",
+    ).sort_index()
+    assert (df2 := df2.loc[:, lambda x: list(sorted(x.columns))]).equals(
+        df1 := df.loc[:, lambda x: list(sorted(x.columns))].drop(columns="distance")
+    ), (df1, df2)
+
+    # with buffer
+    distance = 100
+    p = p.sample(100)
+
+    df = (
+        sg.sjoin_within_distance(
+            gdf=p,
+            neighbors=p,
+            distance=distance,
+            lsuffix="left",
+            rsuffix="right",
+        )
+        .sort_index()
+        .loc[:, lambda x: list(sorted(x.columns))]
+    )
+    df = df.sort_values(list(df.columns.difference({"geometry", "distance"})))
+
+    assert (x := df["distance"] <= distance).all(), x
+
+    df2 = (
+        p.sjoin(
+            p.assign(geometry=p.buffer(distance)),
+            lsuffix="left",
+            rsuffix="right",
+        )
+        .sort_index()
+        .loc[:, lambda x: list(sorted(x.columns))]
+    )
+    df2 = df2.sort_values(list(df2.columns.difference({"geometry"})))
+
+    for col in df2.columns.difference({"geometry"}):
+        assert df2[col].equals(df[col]), (col, df2[col], df[col])
+    assert df2.index.equals(df.index), (df2.sort_index().index, df.sort_index().index)
+
+    # assert df2.equals(df.drop(columns="distance")), (df2, df.drop(columns="distance"))
+
+
 def test_k_neighbors(points_oslo):
     p = points_oslo
 
@@ -197,6 +261,7 @@ def main():
 
     points_oslo = points_oslo()
 
+    test_within_distance(points_oslo)
     test_get_neighbor_indices()
     test_k_neighbors(points_oslo)
 

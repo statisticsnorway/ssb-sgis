@@ -2,6 +2,7 @@
 
 This module holds the Map class, which is the basis for the Explore class.
 """
+
 import warnings
 
 import matplotlib
@@ -21,6 +22,14 @@ from ..geopandas_tools.general import (
     rename_geometry_if,
 )
 from ..helpers import get_object_name
+
+
+try:
+    from torchgeo.datasets.geo import RasterDataset
+except ImportError:
+
+    class RasterDataset:
+        """Placeholder"""
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -83,6 +92,7 @@ class Map:
         scheme: str = DEFAULT_SCHEME,
         **kwargs,
     ):
+
         gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
 
         self._column = column
@@ -326,7 +336,9 @@ class Map:
                 return obj
             raise TypeError
 
-        gdfs: tuple[GeoDataFrame] = ()
+        allowed_types = (GeoDataFrame, GeoSeries, Geometry, RasterDataset)
+
+        gdfs: tuple[GeoDataFrame | GeoSeries | Geometry | RasterDataset] = ()
         for arg in args:
             if isinstance(arg, str):
                 if column is None:
@@ -335,13 +347,13 @@ class Map:
                     raise ValueError(
                         "Can specify at most one string as a positional argument."
                     )
-            elif isinstance(arg, (GeoDataFrame, GeoSeries, Geometry)):
+            elif isinstance(arg, allowed_types):
                 gdfs = gdfs + (arg,)
             elif isinstance(arg, dict) or hasattr(arg, "__dict__"):
                 # add dicts or classes with GeoDataFrames to kwargs
                 more_gdfs = {}
                 for key, value in as_dict(arg).items():
-                    if isinstance(value, (GeoDataFrame, GeoSeries, Geometry)):
+                    if isinstance(value, allowed_types):
                         more_gdfs[key] = value
                     elif isinstance(value, dict) or hasattr(value, "__dict__"):
                         try:
@@ -349,7 +361,7 @@ class Map:
                             more_gdfs |= {
                                 k: v
                                 for k, v in value.items()
-                                if isinstance(v, (GeoDataFrame, GeoSeries, Geometry))
+                                if isinstance(v, allowed_types)
                             }
                         except Exception:
                             # no need to raise here

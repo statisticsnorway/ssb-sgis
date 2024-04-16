@@ -3,6 +3,7 @@
 This module holds the Explore class, which is the basis for the explore, samplemap and
 clipmap functions from the 'maps' module.
 """
+
 import os
 import warnings
 from collections.abc import Iterable
@@ -29,6 +30,14 @@ from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
 from .httpserver import run_html_server
 from .map import Map
 from .tilesources import kartverket, xyz
+
+
+try:
+    from torchgeo.datasets.geo import RasterDataset
+except ImportError:
+
+    class RasterDataset:
+        """Placeholder"""
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -138,7 +147,12 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 
 class Explore(Map):
     # class attribute that can be overridden locally
-    tiles = ("OpenStreetMap", "dark", "norge_i_bilder", "grunnkart")
+    tiles = (
+        "grunnkart",
+        "norge_i_bilder",
+        "dark",
+        "OpenStreetMap",
+    )
 
     def __init__(
         self,
@@ -151,7 +165,7 @@ class Explore(Map):
         browser: bool = False,
         prefer_canvas: bool = True,
         measure_control: bool = True,
-        geocoder: bool = True,
+        geocoder: bool = False,
         save=None,
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
@@ -180,6 +194,13 @@ class Explore(Map):
             show = True
         else:
             show_was_none = False
+
+        self.raster_datasets = tuple(
+            raster_dataset_to_background_map(x)
+            for x in gdfs
+            if isinstance(x, RasterDataset)
+        )
+        self.tiles  # += self.raster_datasets
 
         super().__init__(*gdfs, column=column, show=show, **kwargs)
 
@@ -247,7 +268,7 @@ class Explore(Map):
     def explore(
         self, column: str | None = None, center=None, size=None, **kwargs
     ) -> None:
-        if not any(len(gdf) for gdf in self._gdfs):
+        if not any(len(gdf) for gdf in self._gdfs) and not len(self.raster_datasets):
             warnings.warn("None of the GeoDataFrames have rows.")
             return
         if column:
@@ -819,6 +840,11 @@ def _tooltip_popup(type, fields, gdf, **kwds):
         return folium.GeoJsonTooltip(fields, **kwds)
     elif type == "popup":
         return folium.GeoJsonPopup(fields, **kwds)
+
+
+def raster_dataset_to_background_map(dataset: RasterDataset):
+    crs = dataset.crs
+    bbox = dataset.bounds
 
 
 def _categorical_legend(m, title, categories, colors):

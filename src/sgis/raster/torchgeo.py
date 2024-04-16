@@ -8,6 +8,7 @@ import rasterio.merge
 from rasterio.io import DatasetReader
 from rasterio.vrt import WarpedVRT
 from torchgeo.datasets.geo import RasterDataset
+from torchgeo.datasets.sentinel import Sentinel2 as TorchgeoSentinel2
 
 
 try:
@@ -28,28 +29,16 @@ from ..io.opener import opener
 from .bands import SENTINEL2_FILENAME_REGEX
 
 
-class DaplaRasterDataset(RasterDataset):
-    """Custom version of torchgeo's class that works in and outside of Dapla (stat norway)."""
+class GCSRasterDataset(RasterDataset):
+    """Wrapper around torchgeo's RasterDataset that works in and outside of Dapla (stat norway)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if is_dapla():
             [file.close() for file in self.files]
 
-    def _get_gcs_paths(self, paths: str | Iterable[str], fs=None) -> set[str]:
-        if fs is None:
-            fs = dp.FileClient.get_gcs_file_system()
-
-        # Using set to remove any duplicates if directories are overlapping
-        out_paths: set[str] = set()
-        for path in paths:
-            pathname = os.path.join(path, "**", self.filename_glob)
-            if is_dapla():
-                out_paths |= {x for x in fs.glob(pathname, recursive=True) if "." in x}
-        return out_paths
-
     @property
-    def files(self) -> set[str] | set[GCSFile]:
+    def files(self) -> set[GCSFile] | set[str]:
         """A list of all files in the dataset.
 
         Returns:
@@ -64,7 +53,12 @@ class DaplaRasterDataset(RasterDataset):
 
         if is_dapla():
             fs = dp.FileClient.get_gcs_file_system()
-            files = {fs.open(x) for x in self._get_gcs_paths(paths, fs)}
+            files: set[GCSFile] = {
+                fs.open(x)
+                for x in _get_gcs_paths(
+                    paths, filename_glob=self.filename_glob, file_system=fs
+                )
+            }
             return files
 
         # Using set to remove any duplicates if directories are overlapping
@@ -107,16 +101,30 @@ class DaplaRasterDataset(RasterDataset):
                 return src
 
 
-class Sentinel2(DaplaRasterDataset):
+def _get_gcs_paths(
+    paths: str | Iterable[str], filename_glob: str, file_system=None
+) -> set[str]:
+    if file_system is None:
+        file_system = dp.FileClient.get_gcs_file_system()
+
+    # Using set to remove any duplicates if directories are overlapping
+    out_paths: set[str] = set()
+    for path in paths:
+        pathname = os.path.join(path, "**", filename_glob)
+        if is_dapla():
+            out_paths |= {
+                x for x in file_system.glob(pathname, recursive=True) if "." in x
+            }
+    return out_paths
+
+
+class Sentinel2(GCSRasterDataset):
     """Works like torchgeo's Sentinel2, with custom regexes."""
 
     date_format: str = "%Y%m%d"
     filename_glob = "SENTINEL2X_*_*.*"
 
     filename_regex = SENTINEL2_FILENAME_REGEX
-
-    _indexes = 1
-    _nodata = 0
 
     all_bands = [
         # "B1",
@@ -138,3 +146,5 @@ class Sentinel2(DaplaRasterDataset):
     separate_files = True
 
     cmap: dict[int, tuple[int, int, int, int]] = {}
+
+    plot = TorchgeoSentinel2.plot

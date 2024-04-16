@@ -2,6 +2,7 @@ import functools
 import inspect
 import itertools
 import multiprocessing
+import warnings
 from collections.abc import Callable, Collection, Iterable
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,7 @@ class Parallel:
         iterable: Collection,
         args: tuple | None = None,
         kwargs: dict | None = None,
+        chunksize: int = 1,
     ) -> list[Any]:
         """Run functions in parallel with items of an iterable as 0th arguemnt.
 
@@ -185,7 +187,11 @@ class Parallel:
             with multiprocessing.get_context(self.context).Pool(
                 processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
             ) as pool:
-                return pool.map(func_with_kwargs, iterable)
+                try:
+                    return pool.map(func_with_kwargs, iterable, chunksize=chunksize)
+                except Exception as e:
+                    pool.terminate()
+                    raise e
 
         with joblib.Parallel(
             n_jobs=processes, backend=self.backend, **self.kwargs
@@ -198,6 +204,7 @@ class Parallel:
         iterable: Collection[Iterable[Any]],
         args: tuple | None = None,
         kwargs: dict | None = None,
+        chunksize: int = 1,
     ) -> list[Any]:
         """Run functions in parallel where items of the iterable are unpacked.
 
@@ -282,7 +289,11 @@ class Parallel:
             with multiprocessing.get_context(self.context).Pool(
                 processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
             ) as pool:
-                return pool.starmap(func_with_kwargs, iterable)
+                try:
+                    return pool.starmap(func_with_kwargs, iterable, chunksize=chunksize)
+                except Exception as e:
+                    pool.terminate()
+                    raise e
 
         with joblib.Parallel(
             n_jobs=processes, backend=self.backend, **self.kwargs
@@ -363,22 +374,30 @@ class Parallel:
 
         Args:
             in_data: Dictionary with dataset names as keys and file paths or
-                (Geo)DataFrames as values.
+                (Geo)DataFrames as values. Note that the files will be read
+                in parallel if file paths are used.
             out_data: Either a single folder path or a dictionary with same keys as
-                'in_data' and folder paths as values. If a single folder is given,
+                'in_data' and folder paths as values. If a single folder is passed,
                 the 'in_data' keys will be used as subfolders.
-            year: Year of the municipality numbers.
+            municipalities: GeoDataFrame of municipalities (or similar) of which to
+                split the data by.
+            with_neighbors: If True, the resulting data will include
+                neighbor municipalities, as well as the munipality itself.
+                Defaults to False.
             funcdict: Dictionary with the keys of 'in_data' and functions as values.
                 The functions should take a GeoDataFrame as input and return a
                 GeoDataFrame. The function will be excecuted before the right after
                 the data is read.
             file_type: Defaults to parquet.
             muni_number_col: String column name with municipality
-                number/identifier. Defaults to KOMMUNENR.
+                number/identifier. Defaults to KOMMUNENR. If the column is not present
+                in the data to be split, the data will be intersected with the
+                municipalities.
             strict: If False (default), the dictionaries 'out_data' and 'funcdict' does
                 not have to have the same length as 'in_data'.
             write_empty: If False (default), municipalities with no data will be skipped.
                 If True, an empty parquet file will be written.
+            clip: If True (default), the data will be clipped.
         """
         shared_kwds = {
             "municipalities": municipalities,
@@ -389,6 +408,7 @@ class Parallel:
             "clip": clip,
             "max_rows_per_chunk": max_rows_per_chunk,
             "processes_in_clip": processes_in_clip,
+            "strict": strict,
         }
 
         if isinstance(out_data, (str, Path)):
@@ -512,6 +532,7 @@ def write_municipality_data(
     clip: bool = True,
     max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
+    strict: bool = True,
 ) -> None:
     write_func = (
         _write_neighbor_municipality_data
@@ -530,6 +551,7 @@ def write_municipality_data(
         clip=clip,
         max_rows_per_chunk=max_rows_per_chunk,
         processes_in_clip=processes_in_clip,
+        strict=strict,
     )
 
 
@@ -540,6 +562,7 @@ def _validate_data(data: str | list[str]) -> str:
         return data[0]
     elif not isinstance(data, GeoDataFrame):
         raise TypeError("'data' Must be a file path or a GeoDataFrame. Got", type(data))
+    return data
 
 
 def _get_out_path(out_folder, muni, file_type):
@@ -557,6 +580,7 @@ def _write_municipality_data(
     clip: bool = True,
     max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
+    strict: bool = True,
 ) -> None:
     data = _validate_data(data)
 
@@ -583,6 +607,7 @@ def _write_municipality_data(
         clip,
         max_rows_per_chunk,
         processes_in_clip=processes_in_clip,
+        strict=strict,
     )
 
     for muni in municipalities[muni_number_col]:
@@ -612,6 +637,7 @@ def _write_neighbor_municipality_data(
     clip: bool = True,
     max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
+    strict: bool = True,
 ) -> None:
     data = _validate_data(data)
 
@@ -628,6 +654,7 @@ def _write_neighbor_municipality_data(
         clip,
         max_rows_per_chunk,
         processes_in_clip,
+        strict=strict,
     )
 
     if municipalities.index.name != muni_number_col:
@@ -659,6 +686,7 @@ def _fix_missing_muni_numbers(
     clip,
     max_rows_per_chunk,
     processes_in_clip,
+    strict,
 ):
     if muni_number_col in gdf and gdf[muni_number_col].notna().all():
         if municipalities is None:
@@ -666,8 +694,13 @@ def _fix_missing_muni_numbers(
         if diffs := set(gdf[muni_number_col].values).difference(
             set(municipalities[muni_number_col].values)
         ):
-            raise ValueError(f"Different municipality numbers: {diffs}")
-
+            message = (
+                f"Different municipality numbers: {diffs}. Set 'strict=False' to ignore"
+            )
+            if strict:
+                raise ValueError(message)
+            else:
+                warnings.warn(message)
         return gdf
 
     if municipalities is None:
@@ -694,12 +727,11 @@ def _fix_missing_muni_numbers(
         if not clip:
             notna_anymore = isna.sjoin(municipalities).drop(columns="index_right")
         else:
-            notna_anymore = intersect_by_municipalities(
+            notna_anymore = parallel_overlay(
                 isna,
-                municipalities,
-                muni_number_col,
-                max_rows_per_chunk,
-                processes_in_clip,
+                municipalities[[muni_number_col, municipalities._geometry_column_name]],
+                processes=processes_in_clip,
+                max_rows_per_chunk=max_rows_per_chunk,
             )
 
         return pd.concat([notna, notna_anymore], ignore_index=True)
@@ -707,40 +739,46 @@ def _fix_missing_muni_numbers(
     if not clip:
         return gdf.sjoin(municipalities).drop(columns="index_right")
     else:
-        return intersect_by_municipalities(
+        return parallel_overlay(
             gdf,
-            municipalities,
-            muni_number_col,
-            max_rows_per_chunk,
-            processes_in_clip,
+            municipalities[[muni_number_col, municipalities._geometry_column_name]],
+            processes=processes_in_clip,
+            max_rows_per_chunk=max_rows_per_chunk,
         )
 
 
-def intersect_by_municipalities(
-    df: GeoDataFrame,
-    municipalities: GeoDataFrame,
-    muni_number_col: str,
+def parallel_overlay(
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
+    # muni_number_col: str,
+    processes: int,
     max_rows_per_chunk: int,
-    processes_in_clip: int,
+    backend: str = "loky",
+    **kwargs,
 ) -> GeoDataFrame:
-    if len(df) < max_rows_per_chunk:
-        return clean_overlay(df, municipalities)
+    # df2 = df2[[muni_number_col, df2._geometry_column_name]]
 
-    municipalities = municipalities.dissolve(by=muni_number_col, as_index=False)
+    if len(df1) < max_rows_per_chunk:
+        return clean_overlay(df1, df2, **kwargs)
 
-    n_chunks = len(df) // max_rows_per_chunk
-    chunks = np.array_split(np.arange(len(df)), n_chunks)
+    # df2 = df2.dissolve(by=muni_number_col, as_index=False)
 
-    x_mapper = dict(enumerate(df.centroid))
-    sorted_xs = dict(reversed(sorted(x_mapper.items(), key=lambda item: item[1])))
-    df = df.iloc[list(sorted_xs)]
+    n_chunks = len(df1) // max_rows_per_chunk
+    chunks = np.array_split(np.arange(len(df1)), n_chunks)
 
-    df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
+    try:
+        x_mapper = dict(enumerate(df1.centroid))
+        sorted_xs = dict(reversed(sorted(x_mapper.items(), key=lambda item: item[1])))
+        df1 = df1.iloc[list(sorted_xs)]
+    except TypeError:
+        pass
 
-    out = Parallel(processes_in_clip, backend="loky").map(
+    df1_chunked: list[GeoDataFrame] = [df1.iloc[chunk] for chunk in chunks]
+
+    out = Parallel(processes, backend=backend).map(
         _clean_intersection,
-        df_chunked,
-        args=(municipalities,),
+        df1_chunked,
+        args=(df2,),
     )
     return pd.concat(out, ignore_index=True)
 

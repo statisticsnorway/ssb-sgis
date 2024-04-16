@@ -14,17 +14,13 @@ for the following:
 - The buff function returns a GeoDataFrame, the geopandas method returns a GeoSeries.
 """
 
-import joblib
-import numpy as np
-from geopandas import GeoDataFrame, GeoSeries
-from shapely import Geometry, make_valid, unary_union
+from typing import Callable
 
-from .general import (
-    _push_geom_col,
-    merge_geometries,
-    parallel_unary_union,
-    parallel_unary_union_geoseries,
-)
+import numpy as np
+import pandas as pd
+from geopandas import GeoDataFrame, GeoSeries
+
+from .general import merge_geometries, parallel_unary_union
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper, get_grouped_centroids
 
@@ -172,16 +168,15 @@ def buffdiss(
 
 
 def _dissolve(gdf, aggfunc="first", grid_size=None, n_jobs=1, **dissolve_kwargs):
-    geom_col = gdf._geometry_column_name
-    # if grid_size is None:
-    #     dissolved = gdf.dissolve(aggfunc=aggfunc, **dissolve_kwargs)
 
-    #     dissolved[geom_col] = dissolved.make_valid()
-    #     return dissolved
+    if not len(gdf):
+        return gdf
 
     geom_col = gdf._geometry_column_name
 
     by = dissolve_kwargs.pop("by", None)
+
+    by_was_none = not bool(by)
 
     if by is None and dissolve_kwargs.get("level") is None:
         by = np.zeros(len(gdf), dtype="int64")
@@ -191,32 +186,50 @@ def _dissolve(gdf, aggfunc="first", grid_size=None, n_jobs=1, **dissolve_kwargs)
             by = [by]
         other_cols = list(gdf.columns.difference({geom_col} | set(by or {})))
 
-    dissolved = gdf.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
+    try:
+        is_one_hit = gdf.groupby(by, **dissolve_kwargs).transform("size") == 1
+    except IndexError:
+        # if no rows when dropna=True
+        original_by = [x for x in by]
+        query = gdf[by.pop(0)].notna()
+        for col in gdf[by]:
+            query &= gdf[col].notna()
+        gdf = gdf.loc[query]
+        assert not len(gdf), gdf
+        if not by_was_none and dissolve_kwargs.get("as_index", True):
+            try:
+                gdf = gdf.set_index(original_by)
+            except Exception as e:
+                print(gdf)
+                print(original_by)
+                raise e
+        return gdf
+
+    if not by_was_none and dissolve_kwargs.get("as_index", True):
+        one_hit = gdf[is_one_hit].set_index(by)
+    else:
+        one_hit = gdf[is_one_hit]
+    many_hits = gdf[~is_one_hit]
+
+    if not len(many_hits):
+        return GeoDataFrame(one_hit, geometry=geom_col, crs=gdf.crs)
+
+    dissolved = many_hits.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
+
+    # dissolved = gdf.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
 
     if n_jobs > 1:
-        dissolved[geom_col] = parallel_unary_union(
-            gdf, n_jobs=n_jobs, by=by, grid_size=grid_size, **dissolve_kwargs
-        )
         try:
+            agged = parallel_unary_union(
+                many_hits, n_jobs=n_jobs, by=by, grid_size=grid_size, **dissolve_kwargs
+            )
+            dissolved[geom_col] = agged
             return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
         except Exception as e:
-            print(e, dissolved[geom_col])
+            print(e, dissolved, agged, many_hits)
             raise e
-        # import dask_geopandas
 
-        # if not isinstance(by, str):
-        #     gdf["_by"] = 1
-        # ddf = dask_geopandas.from_geopandas(gdf, npartitions=n_jobs, by=by)
-
-        with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
-            delayed_operations = []
-            for _, geoms in gdf.groupby(by, **dissolve_kwargs)[geom_col]:
-                delayed_operations.append(joblib.delayed(merge_geometries)(geoms))
-
-            dissolved[geom_col] = parallel(delayed_operations)
-            return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
-
-    geoms_agged = gdf.groupby(by, **dissolve_kwargs)[geom_col].agg(
+    geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
         lambda x: merge_geometries(x, grid_size=grid_size)
     )
 
@@ -228,7 +241,53 @@ def _dissolve(gdf, aggfunc="first", grid_size=None, n_jobs=1, **dissolve_kwargs)
 
     dissolved[geom_col] = geoms_agged
 
-    return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
+    return GeoDataFrame(
+        pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs
+    )
+
+
+def diss(
+    gdf: GeoDataFrame,
+    by=None,
+    aggfunc="first",
+    as_index: bool = True,
+    grid_size: float | int | None = None,
+    n_jobs: int = 1,
+    **dissolve_kwargs,
+):
+    """Dissolves geometries.
+
+    It takes a GeoDataFrame and dissolves and fixes geometries.
+
+    Args:
+        gdf: the GeoDataFrame that will be dissolved and exploded.
+        by: Columns to dissolve by.
+        aggfunc: How to aggregate the non-geometry colums not in "by".
+        as_index: Whether the 'by' columns should be returned as index. Defaults to
+            True to be consistent with geopandas.
+        **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
+
+    Returns:
+        A GeoDataFrame with dissolved geometries.
+    """
+    if not len(gdf):
+        if as_index:
+            try:
+                return gdf.set_index(by)
+            except Exception:
+                return gdf
+        else:
+            return gdf
+
+    return _dissolve(
+        gdf,
+        by=by,
+        aggfunc=aggfunc,
+        grid_size=grid_size,
+        n_jobs=n_jobs,
+        as_index=as_index,
+        **dissolve_kwargs,
+    )
 
 
 def dissexp(
@@ -258,15 +317,6 @@ def dissexp(
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
-    if not len(gdf):
-        if as_index:
-            try:
-                return gdf.set_index(by)
-            except Exception:
-                return gdf
-        else:
-            return gdf
-
     dissolve_kwargs = dissolve_kwargs | {
         "by": by,
         "as_index": as_index,
@@ -274,7 +324,7 @@ def dissexp(
 
     dissolve_kwargs, ignore_index = _decide_ignore_index(dissolve_kwargs)
 
-    dissolved = _dissolve(
+    dissolved = diss(
         gdf, aggfunc=aggfunc, grid_size=grid_size, n_jobs=n_jobs, **dissolve_kwargs
     )
 
@@ -303,6 +353,60 @@ def dissexp_by_cluster(
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
+    return _run_func_by_cluster(
+        dissexp, gdf, predicate=predicate, n_jobs=n_jobs, **dissolve_kwargs
+    )
+
+
+def diss_by_cluster(
+    gdf: GeoDataFrame, predicate=None, n_jobs: int = 1, **dissolve_kwargs
+) -> GeoDataFrame:
+    """Dissolves overlapping geometries through clustering with sjoin and networkx.
+
+    Works exactly like dissexp, but, before dissolving, the geometries are divided
+    into clusters based on overlap (uses the function sgis.get_polygon_clusters).
+    The geometries are then dissolved based on this column (and optionally other
+    columns).
+
+    This might be many times faster than a regular dissexp, if there are many
+    non-overlapping geometries.
+
+    Args:
+        gdf: the GeoDataFrame that will be dissolved and exploded.
+        **dissolve_kwargs: Keyword arguments passed to geopandas' dissolve.
+
+    Returns:
+        A GeoDataFrame where overlapping geometries are dissolved.
+    """
+    return _run_func_by_cluster(
+        diss, gdf, predicate=predicate, n_jobs=n_jobs, **dissolve_kwargs
+    )
+
+
+def _run_func_by_cluster(
+    func: Callable,
+    gdf: GeoDataFrame,
+    predicate=None,
+    n_jobs: int = 1,
+    **dissolve_kwargs,
+) -> GeoDataFrame:
+    """Dissolves overlapping geometries through clustering with sjoin and networkx.
+
+    Works exactly like dissexp, but, before dissolving, the geometries are divided
+    into clusters based on overlap (uses the function sgis.get_polygon_clusters).
+    The geometries are then dissolved based on this column (and optionally other
+    columns).
+
+    This might be many times faster than a regular dissexp, if there are many
+    non-overlapping geometries.
+
+    Args:
+        gdf: the GeoDataFrame that will be dissolved and exploded.
+        **dissolve_kwargs: Keyword arguments passed to geopandas' dissolve.
+
+    Returns:
+        A GeoDataFrame where overlapping geometries are dissolved.
+    """
     is_geoseries = isinstance(gdf, GeoSeries)
 
     by = dissolve_kwargs.pop("by", [])
@@ -312,7 +416,7 @@ def dissexp_by_cluster(
         by = list(by)
 
     if not len(gdf):
-        return dissexp(gdf, by=by, **dissolve_kwargs)
+        return func(gdf, by=by, **dissolve_kwargs)
 
     def get_group_clusters(group: GeoDataFrame):
         """Adds cluster column. Applied to each group because much faster."""
@@ -328,11 +432,11 @@ def dissexp_by_cluster(
             make_all_singlepart(gdf)
             .groupby(by, group_keys=True, dropna=False, as_index=False)
             .apply(get_group_clusters)
-            .pipe(dissexp, by=["_cluster"] + by, n_jobs=n_jobs, **dissolve_kwargs)
+            .pipe(func, by=["_cluster"] + by, n_jobs=n_jobs, **dissolve_kwargs)
         )
     else:
         dissolved = get_group_clusters(make_all_singlepart(gdf)).pipe(
-            dissexp, by="_cluster", n_jobs=n_jobs, **dissolve_kwargs
+            func, by="_cluster", n_jobs=n_jobs, **dissolve_kwargs
         )
 
     if not by:

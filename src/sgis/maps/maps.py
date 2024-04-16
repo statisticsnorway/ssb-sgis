@@ -8,11 +8,11 @@ The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 
 import inspect
-import warnings
 from numbers import Number
 from typing import Any
 
 from geopandas import GeoDataFrame, GeoSeries
+from pyproj import CRS
 from shapely import Geometry
 
 from ..geopandas_tools.conversion import to_gdf as to_gdf_func
@@ -24,24 +24,23 @@ from .map import Map
 from .thematicmap import ThematicMap
 
 
+try:
+    from torchgeo.datasets.geo import RasterDataset
+except ImportError:
+
+    class RasterDataset:
+        """Placeholder"""
+
+
 def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
     try:
         crs = get_common_crs(gdfs)
     except IndexError:
-        try:
-            crs = [x for x in kwargs.values() if hasattr(x, "crs")][0].crs
-        except IndexError:
-            crs = None
-        except Exception:
-            crs = set()
-            for x in kwargs.values():
-                try:
-                    crs.add(x.crs)
-                except Exception:
-                    pass
+        for x in kwargs.values():
             try:
-                crs = list(crs)[0]
-            except IndexError:
+                crs = CRS(x.crs) if hasattr(x, "crs") else CRS(x["crs"])
+                break
+            except Exception:
                 crs = None
 
     masks = {
@@ -73,6 +72,7 @@ def explore(
     *gdfs: GeoDataFrame | dict[str, GeoDataFrame],
     column: str | None = None,
     center: Any | None = None,
+    center_4326: Any | None = None,
     labels: tuple[str] | None = None,
     max_zoom: int = 40,
     browser: bool = False,
@@ -120,19 +120,23 @@ def explore(
 
     Examples
     --------
-    >>> from sgis import read_parquet_url, explore
-    >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
-    >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
+    >>> import sgis as sg
+    >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
+    >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
 
-    Simple explore of two GeoDataFrames.
+    Explore the area 500 meter around a given point. Coordinates are in UTM 33 format (25833).
 
-    >>> explore(roads, points)
+    >>> sg.explore(roads, points, center=(262274.6528, 6650143.176, 500))
+
+    Same as above, but with coordinates given as WGS84, same as the coordinates displayed in the corner of the map.
+
+    >>> sg.explore(roads, points, center_4326=(10.7463, 59.92, 500))
 
     With additional arguments.
 
     >>> roads["meters"] = roads.length
     >>> points["meters"] = points.length
-    >>> explore(roads, points, column="meters", cmap="plasma", max_zoom=60)
+    >>> sg.explore(roads, points, column="meters", cmap="plasma", max_zoom=60, center_4326=(10.7463, 59.92, 500))
     """
 
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
@@ -154,18 +158,37 @@ def explore(
             **kwargs,
         )
 
+    try:
+        to_crs = gdfs[0].crs
+    except IndexError:
+        try:
+            to_crs = [x for x in kwargs.values() if hasattr(x, "crs")][0].crs
+        except IndexError:
+            to_crs = None
+
+    if center_4326 is not None:
+        from_crs = 4326
+        center = center_4326
+    elif "crs" in kwargs:
+        from_crs = kwargs.pop("crs")
+    else:
+        from_crs = to_crs
+
     if center is not None:
         size = size or 1000
         if isinstance(center, str) and not is_wkt(center):
-            mask = address_to_gdf(center, crs=gdfs[0].crs).buffer(size)
-        elif isinstance(center, GeoDataFrame):
+            mask = address_to_gdf(center, crs=from_crs)
+        elif isinstance(center, (GeoDataFrame, GeoSeries)):
             mask = center
         else:
-            try:
-                mask = to_gdf_func(center, crs=gdfs[0].crs)
-            except IndexError:
-                df = [x for x in kwargs.values() if hasattr(x, "crs")][0]
-                mask = to_gdf_func(center, crs=df.crs)
+            if isinstance(center, (tuple, list)) and len(center) == 3:
+                *center, size = center
+            mask = to_gdf_func(center, crs=from_crs)
+
+        try:
+            mask = mask.to_crs(to_crs)
+        except ValueError:
+            pass
 
         if get_geom_type(mask) in ["point", "line"]:
             mask = mask.buffer(size)
@@ -190,7 +213,7 @@ def explore(
         **kwargs,
     )
 
-    if m.gdfs is None:
+    if m.gdfs is None and not len(m.raster_datasets):
         return
 
     if not kwargs.pop("explore", True):
@@ -286,7 +309,7 @@ def samplemap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
-        if m.gdfs is None:
+        if m.gdfs is None and not len(m.raster_datasets):
             return
         if mask is not None:
             m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
@@ -395,7 +418,7 @@ def clipmap(
             smooth_factor=smooth_factor,
             **kwargs,
         )
-        if m.gdfs is None:
+        if m.gdfs is None and not len(m.raster_datasets):
             return
 
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
@@ -421,36 +444,63 @@ def clipmap(
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
-def explore_locals(*gdfs, to_gdf: bool = True, **kwargs):
-    """Viser kart (explore) over alle lokale GeoDataFrames.
+def explore_locals(*gdfs, convert: bool = True, **kwargs):
+    """Displays all local variables with geometries (GeoDataFrame etc.).
 
-    Lokalt betyr enten inni funksjonen/metoden du er i, eller i notebooken
-    du jobber i.
+    Local means inside a function or file/notebook.
 
     Args:
-        *gdfs: Ekstra GeoDataFrames du vil legge til
-        **kwargs: keyword arguments som sendes til sg.explore.
+        *gdfs: Additional GeoDataFrames.
+        convert: If True (default), non-GeoDataFrames will be converted
+            to GeoDataFrames if possible.
+        **kwargs: keyword arguments passed to sg.explore.
     """
-    frame = inspect.currentframe()
 
+    def as_dict(obj):
+        if hasattr(obj, "__dict__"):
+            return obj.__dict__
+        elif isinstance(obj, dict):
+            return obj
+        raise TypeError
+
+    frame = inspect.currentframe().f_back
+
+    allowed_types = (GeoDataFrame, GeoSeries, Geometry, RasterDataset)
+
+    local_gdfs = {}
     while True:
-        local_gdfs = {}
         for name, value in frame.f_locals.items():
-            if isinstance(value, GeoDataFrame):
+            if isinstance(value, GeoDataFrame) and len(value):
                 local_gdfs[name] = value
                 continue
-            if not to_gdf:
+            if not convert:
                 continue
-            try:
-                if hasattr(value, "__len__") and not len(value):
-                    continue
-            except TypeError:
+
+            if isinstance(value, dict) or hasattr(value, "__dict__"):
+                # add dicts or classes with GeoDataFrames to kwargs
+                for key, value in as_dict(value).items():
+                    if isinstance(value, allowed_types):
+                        gdf = clean_geoms(to_gdf_func(value))
+                        if len(gdf):
+                            local_gdfs[key] = gdf
+
+                    elif isinstance(value, dict) or hasattr(value, "__dict__"):
+                        try:
+                            for k, v in value.items():
+                                if isinstance(v, allowed_types):
+                                    gdf = clean_geoms(to_gdf_func(v))
+                                    if len(gdf):
+                                        local_gdfs[k] = gdf
+                        except Exception:
+                            # no need to raise here
+                            pass
+
                 continue
-            #
             try:
                 gdf = clean_geoms(to_gdf_func(value))
                 if len(gdf):
                     local_gdfs[name] = gdf
+                continue
             except Exception:
                 pass
 
@@ -461,10 +511,6 @@ def explore_locals(*gdfs, to_gdf: bool = True, **kwargs):
 
         if not frame:
             break
-
-    mask = kwargs.pop("mask", None)
-    if mask is not None:
-        local_gdfs = {name: gdf.clip(mask) for name, gdf in local_gdfs.items()}
 
     explore(*gdfs, **local_gdfs, **kwargs)
 

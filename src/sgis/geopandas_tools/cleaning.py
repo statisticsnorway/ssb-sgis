@@ -2,6 +2,7 @@ import re
 import warnings
 from typing import Callable
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import shapely
@@ -46,7 +47,7 @@ from .general import (
     to_lines,
 )
 from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-from .neighbors import get_k_nearest_neighbors
+from .neighbors import get_k_nearest_neighbors, get_neighbor_indices
 from .overlay import clean_overlay
 from .polygon_operations import (
     close_all_holes,
@@ -126,7 +127,7 @@ def coverage_clean(
     it might be a good idea to buffer the gaps, slivers and double surfaces
     before elimination to make sure the polygons are properly dissolved.
 
-    >>> def _small<_buffer(df):
+    >>> def _small_buffer(df):
     ...     df.geometry = df.buffer(0.001)
     ...     return df
     ...
@@ -151,7 +152,10 @@ def coverage_clean(
         lambda x: x.geom_type.isin(["Polygon", "MultiPolygon"])
     ]
 
-    gdf = safe_simplify(gdf, PRECISION)
+    try:
+        gdf = safe_simplify(gdf, PRECISION)
+    except GEOSException:
+        pass
 
     gdf = (
         clean_geoms(gdf)
@@ -188,9 +192,7 @@ def coverage_clean(
     gdf["_poly_idx"] = range(len(gdf))
 
     thin_gaps_and_double = pd.concat([gaps, double]).loc[
-        lambda x: (
-            shapely.simplify(x.geometry, PRECISION).buffer(-tolerance / 2).is_empty
-        )
+        lambda x: (x.buffer(-tolerance / 2).is_empty)
     ]
 
     all_are_thin = double["_double_idx"].isin(thin_gaps_and_double["_double_idx"]).all()
@@ -209,7 +211,6 @@ def coverage_clean(
         raise ValueError("Large double surfaces.")
 
     to_eliminate = pd.concat([thin_gaps_and_double, slivers], ignore_index=True)
-    to_eliminate = safe_simplify(to_eliminate, PRECISION)
 
     to_eliminate = to_eliminate.loc[lambda x: ~x.buffer(-PRECISION / 10).is_empty]
 
@@ -309,7 +310,10 @@ def coverage_clean(
         one_hit = cleaned[only_one].drop(columns="_poly_idx")
         many_hits = cleaned[~only_one]
     except IndexError:
-        one_hit = cleaned[lambda x: x.index == min(x.index) - 1]
+        assert not cleaned["_poly_idx"].notna().any(), cleaned
+        one_hit = cleaned[lambda x: x.index == min(x.index) - 1].drop(
+            columns="_poly_idx", errors="ignore"
+        )
         many_hits = cleaned
 
     for i, grid_size in enumerate(grid_sizes):
@@ -336,10 +340,12 @@ def coverage_clean(
 
     cleaned = pd.concat([many_hits, one_hit], ignore_index=True)
 
+    gdf = gdf.drop(columns="_poly_idx")
+
     for i, grid_size in enumerate(grid_sizes):
         try:
             cleaned = clean_overlay(
-                gdf.drop(columns="_poly_idx"),
+                gdf,
                 cleaned,
                 how="update",
                 geom_type="polygon",
@@ -347,16 +353,6 @@ def coverage_clean(
             )
             break
         except GEOSException as e:
-            if 1 == 0:
-                try:
-                    cleaned = update_geometries(
-                        sort_small_first(cleaned),
-                        geom_type="polygon",
-                        grid_size=grid_size,
-                        n_jobs=n_jobs,
-                    )
-                except GEOSException:
-                    pass
             if i == len(grid_sizes) - 1:
                 explore_geosexception(
                     e,
@@ -369,7 +365,7 @@ def coverage_clean(
                 )
                 raise e
 
-    cleaned = sort_small_first(cleaned)
+    cleaned = sort_large_first(cleaned)
 
     # slivers on bottom
     cleaned = pd.concat(split_out_slivers(cleaned, tolerance))
@@ -396,13 +392,17 @@ def coverage_clean(
                 )
                 raise e
 
-    cleaned = safe_simplify(cleaned, PRECISION)
-    cleaned.geometry = shapely.make_valid(cleaned.geometry)
+    # cleaned = safe_simplify(cleaned, PRECISION)
+    # cleaned.geometry = shapely.make_valid(cleaned.geometry)
 
-    return cleaned
+    # TODO check why polygons dissappear in rare cases. For now, just add back the missing
+    dissapeared_polygons = sfilter_inverse(gdf, cleaned.buffer(-PRECISION))
+    cleaned = pd.concat([cleaned, dissapeared_polygons])
+
+    return to_single_geom_type(cleaned, "polygon")
 
 
-def safe_simplify(gdf, tolerance: float | int):
+def safe_simplify(gdf, tolerance: float | int, **kwargs):
     """Simplify only if the resulting area is no more than 1 percent larger.
 
     Because simplifying can result in holes being filled.
@@ -412,21 +412,28 @@ def safe_simplify(gdf, tolerance: float | int):
     copied.geometry = shapely.make_valid(
         shapely.simplify(copied.geometry.values, tolerance=tolerance)
     )
-    copied.loc[copied.area > length_then * 1.01, copied._geometry_column_name] = (
-        gdf.loc[copied.area > length_then * 1.01, copied._geometry_column_name]
-    )
+    filt = (copied.area > length_then * 1.01) | (copied.geometry.is_empty)
+    copied.loc[filt, copied._geometry_column_name] = gdf.loc[
+        filt, copied._geometry_column_name
+    ]
 
     return copied
 
 
-def simplify_and_put_small_on_top(gdf, tolerance: float | int, grid_size=None):
-    copied = sort_small_first(gdf)
-    copied.geometry = shapely.make_valid(
-        shapely.simplify(
-            shapely.segmentize(copied.geometry.values, tolerance), tolerance=tolerance
-        )
+def remove_interior_slivers(gdf, tolerance):
+    gdf, slivers = split_out_slivers(gdf, tolerance)
+    slivers["_idx"] = range(len(slivers))
+    without_thick = clean_overlay(
+        to_lines(slivers), buff(gdf, PRECISION), how="difference"
     )
-    return update_geometries(copied, geom_type="polygon", grid_size=grid_size)
+    return pd.concat(
+        [
+            gdf,
+            slivers[lambda x: x["_idx"].isin(without_thick["_idx"])].drop(
+                columns="_idx"
+            ),
+        ]
+    )
 
 
 def remove_spikes(
@@ -501,10 +508,8 @@ def try_for_grid_size(
     args: tuple | None = None,
     kwargs: dict | None = None,
 ):
-    if args is None:
-        args = ()
-    if kwargs is None:
-        kwargs = {}
+    args = args or ()
+    kwargs = kwargs or {}
     for i, grid_size in enumerate(grid_sizes):
         try:
             return func(*args, grid_size=grid_size, **kwargs)
@@ -589,7 +594,10 @@ def split_by_neighbors(df, split_by, tolerance, grid_size=None):
 
     intersecting_lines = (
         clean_overlay(
-            to_lines(split_by), buff(df, tolerance), how="identity", grid_size=grid_size
+            to_lines(split_by),
+            buff(df, tolerance),
+            how="intersection",
+            grid_size=grid_size,
         )
         .pipe(get_line_segments)
         .reset_index(drop=True)
@@ -654,468 +662,6 @@ def make_lines_between_points(
     ).sort_index()
 
     return linestrings(coords.values, indices=coords.index)
-
-
-def explore_geosexception(e: GEOSException, *gdfs, logger=None):
-    from ..maps.maps import Explore, explore
-    from .conversion import to_gdf
-
-    pattern = r"(\d+\.\d+)\s+(\d+\.\d+)"
-
-    matches = re.findall(pattern, str(e))
-    coords_in_error_message = [(float(match[0]), float(match[1])) for match in matches]
-    exception_point = to_gdf(coords_in_error_message, crs=gdfs[0].crs)
-    if len(exception_point):
-        exception_point["wkt"] = exception_point.to_wkt()
-        if logger:
-            logger.error(
-                e, Explore(exception_point, *gdfs, mask=exception_point.buffer(100))
-            )
-        else:
-            explore(exception_point, *gdfs, mask=exception_point.buffer(100))
-    else:
-        if logger:
-            logger.error(e, Explore(*gdfs))
-        else:
-            explore(*gdfs)
-
-
-def snap_to_mask(
-    gdf: GeoDataFrame, tolerance: int | float, mask: GeoDataFrame | GeoSeries | Geometry
-):
-    return snap_polygons(
-        gdf,
-        mask=mask,
-        tolerance=tolerance,
-        snap_to_nodes=False,
-    )
-
-
-def snap_polygons(
-    gdf: GeoDataFrame,
-    tolerance: int | float,
-    mask: GeoDataFrame | GeoSeries | Geometry | None = None,
-    snap_to_nodes: bool = True,
-    **kwargs,
-):
-    if not len(gdf):
-        return gdf
-
-    geom_type = "polygon"
-
-    gdf = safe_simplify(gdf, PRECISION)
-
-    gdf = (
-        clean_geoms(gdf)
-        .pipe(make_all_singlepart, ignore_index=True)
-        .pipe(to_single_geom_type, geom_type)
-    )
-
-    gdf = close_thin_holes(gdf, tolerance)
-
-    if mask is None:
-        mask: GeoDataFrame = close_all_holes(dissexp_by_cluster(gdf)).dissolve()
-    else:
-        try:
-            mask: GeoDataFrame = mask[["geometry"]]
-        except Exception:
-            mask: GeoDataFrame = to_geoseries(mask).to_frame("geometry")
-
-    gdf_copy = gdf.copy()
-
-    gdf.geometry = (
-        PolygonsAsRings(gdf.geometry.values)
-        .apply_numpy_func(
-            _snap_linearrings,
-            kwargs=dict(tolerance=tolerance, mask=mask, snap_to_nodes=snap_to_nodes),
-        )
-        .to_numpy()
-    )
-
-    gdf = to_single_geom_type(make_all_singlepart(clean_geoms(gdf)), geom_type)
-
-    if snap_to_nodes:
-        missing = clean_overlay(gdf_copy, gdf, how="difference")
-
-        missing, isolated = sfilter_split(missing, gdf)
-        isolated.geometry = isolated.buffer(PRECISION * 10)
-        gdf = eliminate_by_longest(
-            gdf, pd.concat([missing, isolated]), remove_isolated=False
-        )
-
-    missing = clean_overlay(mask, gdf, how="difference")
-
-    gdf = eliminate_by_longest(
-        gdf, missing.buffer(PRECISION * 10).to_frame("geometry"), remove_isolated=False
-    ).pipe(clean_clip, mask, geom_type="polygon")
-
-    gdf = update_geometries(
-        sort_small_first(close_small_holes(gdf, PRECISION)), geom_type="polygon"
-    )
-
-    return gdf
-
-
-def _snap_to_anchors(
-    points: GeoDataFrame,
-    tolerance: int | float,
-    anchors: GeoDataFrame | None = None,
-    custom_func: Callable | None = None,
-) -> GeoDataFrame:
-    if not len(points):
-        try:
-            return points, anchors[["geometry"]]
-        except TypeError:
-            return points, points[["geometry"]]
-
-    assert points.index.is_unique
-
-    tree = STRtree(points.geometry.values)
-    left, right = tree.query(
-        points.geometry.values,
-        predicate="dwithin",
-        distance=tolerance,
-    )
-    indices = pd.Series(right, index=left, name="_right_idx")
-
-    geom_idx_left = indices.index.map(dict(enumerate(points["_geom_idx"])))
-    geom_idx_right = indices.map(dict(enumerate(points["_geom_idx"])))
-
-    left_on_top = indices.loc[geom_idx_left < geom_idx_right].sort_index()
-
-    # keep only indices from left if they have not already appeared in right
-    # these shouldn't be anchors, but instead be snapped
-    new_indices = []
-    values = []
-    right_indices = set()
-    for left, right in left_on_top.items():
-        if left not in right_indices:
-            new_indices.append(left)
-            values.append(right)
-            right_indices.add(right)
-
-    snap_indices = pd.Series(values, index=new_indices)
-
-    if custom_func:
-        snap_indices = custom_func(snap_indices)
-
-    new_anchors = points.loc[
-        points.index.isin(snap_indices.index), ["geometry", "_geom_idx"]
-    ]
-    new_anchors["_cluster"] = get_cluster_mapper(new_anchors.buffer(0.1))
-
-    assert new_anchors["_geom_idx"].notna().all()
-
-    no_longer_anchors: pd.Index = new_anchors.loc[
-        lambda x: (x["_cluster"].duplicated())  # & (x["_geom_idx"] >= idx_start)
-    ].index
-    new_anchors = new_anchors.loc[lambda x: ~x.index.isin(no_longer_anchors)]
-
-    if anchors is not None:
-        anchors = pd.concat([anchors, new_anchors]).loc[
-            lambda x: ~x.geometry.duplicated()
-        ]
-    else:
-        anchors = new_anchors
-        anchors["_was_anchor"] = 0
-
-    should_be_snapped = (points.index.isin(snap_indices.values)) | (
-        points.index.isin(no_longer_anchors)
-    )
-    if anchors is not None:
-        should_be_snapped |= points.index.isin(
-            sfilter(points, anchors.buffer(tolerance)).index
-        )
-
-    to_be_snapped = points.loc[should_be_snapped]
-
-    anchors["_right_geom"] = anchors.geometry
-
-    snapped = (
-        to_be_snapped.sjoin_nearest(anchors, max_distance=tolerance)
-        .sort_values("index_right")["_right_geom"]
-        .loc[lambda x: ~x.index.duplicated()]
-    )
-
-    # explore(
-    #     anchors,
-    #     to_be_snapped,
-    #     snapped=snapped,
-    #     left_on_top=points.loc[lambda x: (~x.index.isin(left_on_top.values))],
-    #     indices=points.loc[lambda x: (~x.index.isin(indices.values))],
-    #     points_i_snap_to=points.set_crs(25833),
-    # )
-
-    points.loc[snapped.index, "geometry"] = snapped
-
-    return points, anchors[["geometry"]]
-
-
-def _snap_linearrings(
-    geoms: NDArray[LinearRing],
-    tolerance: int | float,
-    mask: GeoDataFrame | None = None,
-    snap_to_nodes: bool = True,
-    gaps=None,
-):
-    if not len(geoms):
-        return geoms
-
-    if mask is None:
-        idx_start = 0
-    else:
-        mask: GeoSeries = make_all_singlepart(mask).geometry
-        mask_nodes = GeoDataFrame(
-            {
-                "geometry": extract_unique_points(mask.geometry),
-                "_geom_idx": range(len(mask)),
-            }
-        ).explode(ignore_index=True)
-
-        idx_start = len(mask)
-
-    gdf = GeoDataFrame(
-        {"geometry": geoms, "_geom_idx": np.arange(idx_start, len(geoms) + idx_start)}
-    )
-
-    is_thin = GeoSeries(polygons(gdf.geometry)).buffer(-tolerance / 2).is_empty
-
-    gdf["_is_thin"] = is_thin
-
-    thin = is_thin[lambda x: x == True]
-    thin.loc[:] = None
-    thin.index = thin.index.map(gdf["_geom_idx"])
-
-    # points_from_thin = (
-    #     extract_unique_points(gdf.loc[is_thin, "geometry"])
-    #     .to_frame("geometry")
-    #     .explode(ignore_index=True)
-    #     .pipe(sfilter_inverse, gdf.buffer(PRECISION))
-    # )
-
-    gdf = gdf.loc[is_thin == False]
-
-    points: GeoDataFrame = gdf.assign(
-        geometry=lambda x: extract_unique_points(x.geometry.values)
-    ).explode(ignore_index=True)
-
-    # step 1: add vertices nearest to mask nodes
-
-    segments = points_to_line_segments(points.set_index("_geom_idx"))
-    segments["_geom_idx"] = segments.index
-    segments.index = points.index
-
-    mask_nodes["rgeom"] = mask_nodes.geometry
-    joined = segments.sjoin_nearest(mask_nodes, max_distance=tolerance)
-
-    midpoints = shapely.get_point(
-        shapely.shortest_line(joined.geometry.values, joined["rgeom"].values), 0
-    )
-
-    boundaries_groupby = joined.boundary.explode(index_parts=False).groupby(level=0)
-
-    with_new_midpoints = (
-        pd.concat(
-            [
-                # first point
-                GeoSeries(boundaries_groupby.nth(0)),
-                GeoSeries(midpoints, index=joined.index),
-                # last point
-                GeoSeries(boundaries_groupby.nth(-1)),
-            ]
-        )
-        .groupby(level=0)
-        .agg(lambda x: MultiPoint(x.values))
-    )
-
-    segments.loc[with_new_midpoints.index, "geometry"] = with_new_midpoints
-
-    segments.geometry = extract_unique_points(segments.geometry)
-    points = segments.explode(ignore_index=True)
-
-    # step 2: snap to mask nodes
-
-    points_by_mask_nodes = sfilter(
-        points.loc[lambda x: x["_geom_idx"] >= idx_start], mask_nodes.buffer(tolerance)
-    )
-
-    relevant_mask_nodes = sfilter(
-        mask_nodes,
-        points_by_mask_nodes.buffer(tolerance),
-        predicate="within",
-    )
-    # explore(
-    #     relevant_mask_nodes,
-    #     points_by_mask_nodes,
-    #     points=points.set_crs(25833),
-    #     mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
-    # )
-
-    # explore(
-    #     mask,
-    #     gdf,
-    #     relevant_mask_nodes,
-    #     points_by_mask_nodes,
-    #     segments,
-    #     points=points.set_crs(25833),
-    #     mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
-    # )
-
-    if len(relevant_mask_nodes):
-        mask_nodes["_right_geom"] = mask_nodes.geometry
-        snapped = points_by_mask_nodes.sjoin_nearest(mask_nodes, max_distance=tolerance)
-
-        anchors = GeoDataFrame(
-            {"geometry": snapped.drop_duplicates("index_right")["_right_geom"].values}
-        )
-
-        snapmapper = snapped["_right_geom"].loc[lambda x: ~x.index.duplicated()]
-
-        points.loc[snapmapper.index, "geometry"] = snapmapper
-    else:
-        anchors = None
-
-    if snap_to_nodes:
-        snapped, anchors = _snap_to_anchors(
-            points, tolerance, anchors=mask_nodes
-        )  # anchors)
-    else:
-        snapped = points
-
-    # remove duplicates
-    snapped = pd.concat(
-        snapped.loc[lambda x: x["_geom_idx"] == i].loc[lambda x: ~x.duplicated()]
-        for i in snapped.loc[
-            lambda x: (x["_geom_idx"] >= idx_start), "_geom_idx"
-        ].unique()
-    )
-
-    assert (snapped["_geom_idx"] >= idx_start).all()
-
-    as_rings = (
-        snapped.sort_index()
-        .set_index("_geom_idx")
-        # .pipe(_remove_legit_spikes)
-        .loc[lambda x: x.groupby(level=0).size() > 2]
-        .groupby(level=0)["geometry"]
-        .agg(LinearRing)
-    )
-
-    as_polygons = GeoDataFrame(
-        {"geometry": polygons(as_rings.values), "_geom_idx": as_rings.index}
-    )
-
-    slivers = as_polygons.loc[lambda x: x.buffer(-tolerance / 2).is_empty]
-    snapped = snapped.loc[lambda x: ~x["_geom_idx"].isin(slivers["_geom_idx"])]
-
-    as_polygons = update_geometries(sort_small_first(as_polygons))
-
-    missing_mask_nodes = sfilter_inverse(
-        mask_nodes, as_polygons.buffer(PRECISION)
-    ).pipe(sfilter, as_polygons.buffer(PRECISION + tolerance))
-
-    # explore(
-    #     mask,
-    #     gdf,
-    #     anchors,
-    #     missing_mask_nodes,
-    #     snapped,
-    #     as_polygons,
-    #     points=points.set_crs(25833),
-    #     mask=to_gdf([5.37166432, 59.00987036], 4326).to_crs(25833).buffer(100),
-    # )
-
-    if snap_to_nodes or len(missing_mask_nodes):
-        thin_gaps = get_gaps(as_polygons, include_interiors=True).loc[
-            lambda x: x.buffer(-tolerance / 2).is_empty
-        ]
-        thin_gaps.geometry = thin_gaps.buffer(-PRECISION).buffer(PRECISION)
-
-        assert snapped.index.is_unique
-        segments = points_to_line_segments(snapped.set_index("_geom_idx"))
-        segments["_geom_idx"] = segments.index
-        segments.index = snapped.index
-
-        assert segments.index.is_unique
-
-        segs_by_gaps = sfilter(
-            segments,
-            pd.concat([thin_gaps, slivers]).buffer(PRECISION),
-        )
-        # gap_nodes = pd.concat(
-        #     [
-        #         missing_mask_nodes,
-        #         extract_unique_points(thin_gaps.geometry).to_frame("geometry"),
-        #     ]
-        # )
-
-        # explore(
-        #     # missing_mask_polygons,
-        #     missing_mask_nodes,
-        #     segs_by_gaps,
-        #     thin_gaps,
-        #     as_polygons=as_polygons,
-        #     anchors=anchors.set_crs(25833),
-        # )
-
-        # segs_by_gaps = _add_midpoints_to_segments2(
-        #     segs_by_gaps, points=gap_nodes, tolerance=tolerance
-        # )
-
-        segs_by_gaps.geometry = segmentize(segs_by_gaps.geometry, tolerance)
-        segs_by_gaps.geometry = extract_unique_points(segs_by_gaps.geometry)
-        assert segs_by_gaps.index.is_unique
-
-        snapped = pd.concat(
-            [snapped.loc[lambda x: ~x.index.isin(segs_by_gaps.index)], segs_by_gaps]
-        ).sort_index()
-
-        snapped = pd.concat(
-            snapped.loc[lambda x: x["_geom_idx"] == i].loc[lambda x: ~x.duplicated()]
-            for i in snapped["_geom_idx"].unique()
-        ).explode(ignore_index=True)
-
-        snapped, _ = _snap_to_anchors(snapped, tolerance, anchors=mask_nodes)
-
-    as_rings = (
-        snapped.loc[lambda x: (x["_geom_idx"] >= idx_start)]
-        .sort_index()
-        .set_index("_geom_idx")
-        # .pipe(_remove_legit_spikes)
-        .loc[lambda x: x.groupby(level=0).size() > 2]
-        .groupby(level=0)["geometry"]
-        .agg(LinearRing)
-    )
-
-    missing = gdf.set_index("_geom_idx")["geometry"].loc[
-        lambda x: (~x.index.isin(as_rings.index)) & (x.index >= idx_start)
-    ]
-    missing.loc[:] = None
-
-    return pd.concat([as_rings, thin, missing]).sort_index()
-
-
-def _remove_legit_spikes(df):
-    """Remove points where the next and previous points are the same.
-
-    The lines these points make are as spiky as they come,
-    hence the term "legit spikes".
-    """
-    df["next"] = df.groupby(level=0)["geometry"].shift(-1)
-    df["prev"] = df.groupby(level=0)["geometry"].shift(1)
-
-    first_points = df.loc[lambda x: ~x.index.duplicated(keep="first"), "geometry"]
-    is_last_point = df["next"].isna()
-    df.loc[is_last_point, "next"] = first_points
-
-    last_points = df.loc[lambda x: ~x.index.duplicated(keep="last"), "geometry"]
-    is_first_point = df["prev"].isna()
-    df.loc[is_first_point, "prev"] = last_points
-
-    assert df["next"].notna().all()
-    assert df["prev"].notna().all()
-
-    return df.loc[lambda x: x["next"] != x["prev"]]
 
 
 def get_line_segments(lines) -> GeoDataFrame:
@@ -1188,99 +734,25 @@ def points_to_line_segments(points: GeoDataFrame) -> GeoDataFrame:
     )
 
 
-def split_spiky_polygons(
-    gdf: GeoDataFrame, tolerance: int | float, grid_sizes: tuple[None | int] = (None,)
-) -> GeoDataFrame:
-    if not len(gdf):
-        return gdf
+def explore_geosexception(e: GEOSException, *gdfs, logger=None):
+    from ..maps.maps import Explore, explore
+    from .conversion import to_gdf
 
-    gdf = to_single_geom_type(make_all_singlepart(gdf), "polygon")
+    pattern = r"(\d+\.\d+)\s+(\d+\.\d+)"
 
-    if not gdf.index.is_unique:
-        gdf = gdf.reset_index(drop=True)
-
-    # remove both inwards and outwards spikes
-    polygons_without_spikes = (
-        gdf.buffer(-tolerance / 2, join_style=2)
-        .buffer(tolerance, join_style=2)
-        .buffer(-tolerance / 2, join_style=2)
-    )
-
-    donuts_around_polygons = to_lines(
-        polygons_without_spikes.to_frame("geometry")
-    ).pipe(buff, 1e-3, copy=False)
-
-    # donuts_around_polygons["_poly_idx"] = donuts_around_polygons.index
-
-    def _remove_spikes(df):
-        df = df.to_frame("geometry")
-        # df = df.reset_index(drop=True)
-        df["_poly_idx"] = df.index
-        df["_ring_idx"] = range(len(df))
-
-        points = df.copy()
-        points.geometry = extract_unique_points(points.geometry)
-        points = points.explode(index_parts=False).explode(index_parts=False)
-        points["_idx"] = range(len(points))
-
-        # keep only matches from same polygon
-        not_spikes = points.sjoin(donuts_around_polygons).loc[
-            lambda x: x["_poly_idx"] == x["index_right"]
-        ]
-        can_be_polygons = not_spikes.iloc[
-            (not_spikes.groupby("_ring_idx").transform("size") >= 3).values
-        ]
-
-        without_spikes = (
-            can_be_polygons.sort_values("_idx")
-            .groupby("_ring_idx")["geometry"]
-            .agg(LinearRing)
-        )
-
-        missing = df.loc[
-            ~df["_ring_idx"].isin(without_spikes.index), df._geometry_column_name
-        ]
-        return pd.concat(
-            [without_spikes, missing]
-        ).sort_index()  # .to_frame("geometry")
-
-    without_spikes = GeoDataFrame(
-        {
-            "geometry": PolygonsAsRings(gdf.geometry)
-            .apply_geoseries_func(_remove_spikes)
-            .to_numpy()
-        },
-        crs=gdf.crs,
-    ).pipe(to_single_geom_type, "polygon")
-    without_spikes.index = gdf.index
-
-    is_thin = without_spikes.buffer(-tolerance / 2).is_empty
-    without_spikes = pd.concat(
-        [
-            split_by_neighbors(
-                without_spikes[is_thin], without_spikes, tolerance=tolerance
-            ),
-            without_spikes[~is_thin],
-        ]
-    )
-
-    # for _ in range(2):
-    if 1:
-        for i, grid_size in enumerate(grid_sizes):
-            try:
-                without_spikes = update_geometries(
-                    sort_small_first(without_spikes), geom_type="polygon"
-                )
-                break
-            except GEOSException as e:
-                if i == len(grid_sizes) - 1:
-                    raise e
-
-    for i, grid_size in enumerate(grid_sizes):
-        try:
-            return clean_overlay(
-                gdf, without_spikes, how="identity", grid_size=grid_size
+    matches = re.findall(pattern, str(e))
+    coords_in_error_message = [(float(match[0]), float(match[1])) for match in matches]
+    exception_point = to_gdf(coords_in_error_message, crs=gdfs[0].crs)
+    if len(exception_point):
+        exception_point["wkt"] = exception_point.to_wkt()
+        if logger:
+            logger.error(
+                e, Explore(exception_point, *gdfs, mask=exception_point.buffer(100))
             )
-        except GEOSException as e:
-            if i == len(grid_sizes) - 1:
-                raise e
+        else:
+            explore(exception_point, *gdfs, mask=exception_point.buffer(100))
+    else:
+        if logger:
+            logger.error(e, Explore(*gdfs))
+        else:
+            explore(*gdfs)
