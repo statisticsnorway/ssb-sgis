@@ -74,18 +74,25 @@ def test_args_to_kwargs():
     assert list(kwargs.values()) == [y, z], kwargs
 
 
-def not_test_starmap():
+def test_starmap():
     iterable = [(1, 2), (2, 3), (3, 4)]
 
     def add(x, y):
         return x + y
 
-    p = sg.Parallel(3, backend="loky")
+    def add2(x, y, z):
+        return x + y + z
+
+    p = sg.Parallel(1, backend="loky")
     results = p.starmap(add, iterable)
     assert results == [3, 5, 7]
 
-    def add2(x, y, z):
-        return x + y + z
+    results = p.starmap(add2, iterable, kwargs=dict(z=1))
+    assert results == [4, 6, 8]
+
+    p = sg.Parallel(3, backend="loky")
+    results = p.starmap(add, iterable)
+    assert results == [3, 5, 7]
 
     results = p.starmap(add2, iterable, kwargs=dict(z=1))
     assert results == [4, 6, 8]
@@ -93,5 +100,5 @@ def not_test_starmap():
 
 if __name__ == "__main__":
     test_args_to_kwargs()
+    test_starmap()
     not_test_map()
-    not_test_starmap()
