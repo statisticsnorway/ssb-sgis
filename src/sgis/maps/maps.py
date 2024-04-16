@@ -177,7 +177,7 @@ def explore(
     if center is not None:
         size = size or 1000
         if isinstance(center, str) and not is_wkt(center):
-            mask = address_to_gdf(center, crs=from_crs).buffer(size)
+            mask = address_to_gdf(center, crs=from_crs)
         elif isinstance(center, (GeoDataFrame, GeoSeries)):
             mask = center
         else:

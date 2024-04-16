@@ -52,6 +52,12 @@ def test_overlay(points_oslo):
         for cols, how in zip(cols_should_be, hows):
             print(how)
             print(p500.columns)
+            no_rows = p500.loc[lambda x: x.index.isin([])].pipe(
+                sg.clean_overlay, p1000.loc[lambda x: x.index.isin([])], how=how
+            )
+            assert not len(no_rows)
+            assert list(no_rows.columns) == cols, (list(no_rows.columns), cols)
+
             overlayed = (
                 sg.clean_geoms(p500)
                 .explode(ignore_index=True)
