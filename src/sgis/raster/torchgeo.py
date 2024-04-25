@@ -1,14 +1,19 @@
 import glob
 import os
+import re
+import sys
 import warnings
-from typing import Iterable
+from typing import Any, Callable, Iterable, Optional, Sequence, Union, cast
 
 import rasterio
 import rasterio.merge
+from pyproj import CRS
 from rasterio.io import DatasetReader
 from rasterio.vrt import WarpedVRT
-from torchgeo.datasets.geo import RasterDataset
+from rtree.index import Index, Property
+from torchgeo.datasets.geo import GeoDataset, RasterDataset
 from torchgeo.datasets.sentinel import Sentinel2 as TorchgeoSentinel2
+from torchgeo.datasets.utils import disambiguate_timestamp
 
 
 try:
@@ -29,16 +34,109 @@ from ..io.opener import opener
 from .bands import SENTINEL2_FILENAME_REGEX
 
 
+class PathLikeGCSFile(GCSFile, os.PathLike):
+    def __init__(self, *args, **kwargs):
+        print(args)
+        super().__init__(*args, **kwargs)
+
+    def __fspath__(self):
+        return self.full_name
+
+
 class GCSRasterDataset(RasterDataset):
     """Wrapper around torchgeo's RasterDataset that works in and outside of Dapla (stat norway)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if is_dapla():
-            [file.close() for file in self.files]
+
+    def __init__(
+        self,
+        paths: Union[str, Iterable[str]] = "data",
+        crs: Optional[CRS] = None,
+        res: Optional[float] = None,
+        bands: Optional[Sequence[str]] = None,
+        transforms: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
+        cache: bool = True,
+    ) -> None:
+        """Copied from torcgeo version 0.5.2, but readable in GCS."""
+        self.transforms = transforms
+        self.index = Index(interleaved=False, properties=Property(dimension=3))
+
+        self.paths = paths
+        self.bands = bands or self.all_bands
+        self.cache = cache
+
+        file_system = dp.FileClient.get_gcs_file_system()
+
+        # Populate the dataset index
+        i = 0
+        filename_regex = re.compile(self.filename_regex, re.VERBOSE)
+        for filepath in self.files:
+            try:
+                filepath = filepath.full_name
+            except AttributeError:
+                pass
+            match = re.match(filename_regex, os.path.basename(filepath))
+            if match is not None:
+                try:
+                    with opener(filepath, file_system=file_system) as f:
+                        with rasterio.open(f) as src:
+                            # See if file has a color map
+                            if len(self.cmap) == 0:
+                                try:
+                                    self.cmap = src.colormap(1)
+                                except ValueError:
+                                    pass
+
+                            if crs is None:
+                                crs = src.crs
+                            if res is None:
+                                res = src.res[0]
+
+                            with WarpedVRT(src, crs=crs) as vrt:
+                                minx, miny, maxx, maxy = vrt.bounds
+                except rasterio.errors.RasterioIOError:
+                    # Skip files that rasterio is unable to read
+                    continue
+                else:
+                    mint: float = 0
+                    maxt: float = sys.maxsize
+                    if "date" in match.groupdict():
+                        date = match.group("date")
+                        mint, maxt = disambiguate_timestamp(date, self.date_format)
+
+                    coords = (minx, maxx, miny, maxy, mint, maxt)
+                    self.index.insert(i, coords, filepath)
+                    i += 1
+
+        if i == 0:
+            msg = (
+                f"No {self.__class__.__name__} data was found "
+                f"in `paths={self.paths!r}'`"
+            )
+            if self.bands:
+                msg += f" with `bands={self.bands}`"
+            raise FileNotFoundError(msg)
+
+        if not self.separate_files:
+            self.band_indexes = None
+            if self.bands:
+                if self.all_bands:
+                    self.band_indexes = [
+                        self.all_bands.index(i) + 1 for i in self.bands
+                    ]
+                else:
+                    msg = (
+                        f"{self.__class__.__name__} is missing an `all_bands` "
+                        "attribute, so `bands` cannot be specified."
+                    )
+                    raise AssertionError(msg)
+
+        self._crs = cast(CRS, crs)
+        self._res = cast(float, res)
 
     @property
-    def files(self) -> set[GCSFile] | set[str]:
+    def files(self) -> set[PathLikeGCSFile] | set[str]:
         """A list of all files in the dataset.
 
         Returns:
@@ -53,13 +151,9 @@ class GCSRasterDataset(RasterDataset):
 
         if is_dapla():
             fs = dp.FileClient.get_gcs_file_system()
-            files: set[GCSFile] = {
-                fs.open(x)
-                for x in _get_gcs_paths(
-                    paths, filename_glob=self.filename_glob, file_system=fs
-                )
-            }
-            return files
+            return _get_gcs_paths(
+                paths, filename_glob=self.filename_glob, file_system=fs
+            )
 
         # Using set to remove any duplicates if directories are overlapping
         files: set[str] = set()
