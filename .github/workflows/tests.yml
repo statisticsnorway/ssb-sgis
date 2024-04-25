@@ -22,13 +22,13 @@ jobs:
       - name: Upgrade pip
         if: matrix.os != 'macos-latest'
         run: |
-          pip install --constraint=${{ github.workspace }}/.github/workflows/constraints.txt pip
+          pip install -c ${{ github.workspace }}/.github/workflows/constraints.txt pip
           pip --version
 
       - name: Upgrade pip on MacOS
         if: matrix.os == 'macos-latest'
         run: |
-          pip3 install --constraint=${{ github.workspace }}/.github/workflows/constraints.txt pip
+          pip3 install -c ${{ github.workspace }}/.github/workflows/constraints.txt pip
           pip3 --version
 
       - name: Install Poetry
