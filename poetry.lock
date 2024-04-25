@@ -5285,6 +5285,23 @@ files = [
 certifi = "*"
 
 [[package]]
+name = "pyproject-toml"
+version = "0.0.10"
+description = "Project intend to implement PEP 517, 518, 621, 631 and so on."
+optional = false
+python-versions = "*"
+files = [
+    {file = "pyproject-toml-0.0.10.tar.gz", hash = "sha256:f0ce0e9934ecb00c0e529b4a1c380edd3034c4be65516769c5f080bdb23dfcb3"},
+    {file = "pyproject_toml-0.0.10-py3-none-any.whl", hash = "sha256:257a7070617e1a0bcfd8f790817b30bd9193876023a9b9e7a6b4fc976acf4c3e"},
+]
+
+[package.dependencies]
+jsonschema = "*"
+setuptools = ">=42"
+toml = "*"
+wheel = "*"
+
+[[package]]
 name = "pytest"
 version = "8.1.1"
 description = "pytest: simple powerful testing with Python"
@@ -7491,6 +7508,20 @@ files = [
 ]
 
 [[package]]
+name = "wheel"
+version = "0.43.0"
+description = "A built-package format for Python"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "wheel-0.43.0-py3-none-any.whl", hash = "sha256:55c570405f142630c6b9f72fe09d9b67cf1477fcf543ae5b8dcb1f5b7377da81"},
+    {file = "wheel-0.43.0.tar.gz", hash = "sha256:465ef92c69fa5c5da2d1cf8ac40559a8c940886afcef87dcf14b9470862f1d85"},
+]
+
+[package.extras]
+test = ["pytest (>=6.0.0)", "setuptools (>=65)"]
+
+[[package]]
 name = "xarray"
 version = "2023.8.0"
 description = "N-D labeled arrays and datasets in Python"
@@ -7673,4 +7704,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4"
-content-hash = "905131ffbaf244675d9da4f4ed5b2866132976fbfff41412115c7533841ca433"
+content-hash = "3aee3af0a429056bfecf3149c67bcc14e6c4cbc1bcdd0cc34658d62f92ee8b13"
