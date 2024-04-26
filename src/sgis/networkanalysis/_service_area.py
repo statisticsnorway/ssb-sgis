@@ -2,8 +2,12 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
-from shapely import force_2d, reverse, unary_union
-from shapely.geometry import MultiLineString, MultiPoint, Point
+from shapely import force_2d
+from shapely import reverse
+from shapely import unary_union
+from shapely.geometry import MultiLineString
+from shapely.geometry import MultiPoint
+from shapely.geometry import Point
 from shapely.ops import nearest_points
 from shapely.wkt import loads
 

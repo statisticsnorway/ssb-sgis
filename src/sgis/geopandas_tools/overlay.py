@@ -16,28 +16,26 @@ import geopandas as gpd
 import joblib
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from pandas import DataFrame
-from shapely import (
-    Geometry,
-    STRtree,
-    box,
-    difference,
-    get_parts,
-    intersection,
-    make_valid,
-    unary_union,
-)
+from shapely import Geometry
+from shapely import STRtree
+from shapely import box
+from shapely import difference
+from shapely import get_parts
+from shapely import intersection
+from shapely import make_valid
+from shapely import unary_union
 from shapely.errors import GEOSException
 
-from .general import (
-    _determine_geom_type_args,
-    clean_geoms,
-    merge_geometries,
-    parallel_unary_union,
-)
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-
+from .general import _determine_geom_type_args
+from .general import clean_geoms
+from .general import merge_geometries
+from .general import parallel_unary_union
+from .geometry_types import get_geom_type
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
 
 DEFAULT_GRID_SIZE = None
 DEFAULT_LSUFFIX = "_1"

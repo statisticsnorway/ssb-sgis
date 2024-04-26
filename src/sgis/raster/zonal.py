@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 from shapely.geometry import Polygon
 
-from ..helpers import get_non_numpy_func_name, get_numpy_func
+from ..helpers import get_non_numpy_func_name
+from ..helpers import get_numpy_func
 
 
 def prepare_zonal(polygons: gpd.GeoDataFrame, aggfunc):

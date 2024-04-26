@@ -4,39 +4,40 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import shapely
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from geopandas.array import GeometryArray
-from shapely import (
-    STRtree,
-    area,
-    box,
-    buffer,
-    difference,
-    get_exterior_ring,
-    get_interior_ring,
-    get_num_interior_rings,
-    get_parts,
-    is_empty,
-    make_valid,
-    polygons,
-    unary_union,
-)
+from shapely import STRtree
+from shapely import area
+from shapely import box
+from shapely import buffer
+from shapely import difference
+from shapely import get_exterior_ring
+from shapely import get_interior_ring
+from shapely import get_num_interior_rings
+from shapely import get_parts
+from shapely import is_empty
+from shapely import make_valid
+from shapely import polygons
+from shapely import unary_union
 from shapely.errors import GEOSException
 
 from .duplicates import get_intersections
-from .general import (
-    _push_geom_col,
-    clean_geoms,
-    get_grouped_centroids,
-    parallel_unary_union,
-    parallel_unary_union_geoseries,
-    to_lines,
-)
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
+from .general import _push_geom_col
+from .general import clean_geoms
+from .general import get_grouped_centroids
+from .general import parallel_unary_union
+from .general import parallel_unary_union_geoseries
+from .general import to_lines
+from .geometry_types import get_geom_type
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
 from .neighbors import get_neighbor_indices
-from .overlay import _try_difference, clean_overlay
+from .overlay import _try_difference
+from .overlay import clean_overlay
 from .polygons_as_rings import PolygonsAsRings
-from .sfilter import sfilter, sfilter_inverse
+from .sfilter import sfilter
+from .sfilter import sfilter_inverse
 
 
 def get_polygon_clusters(

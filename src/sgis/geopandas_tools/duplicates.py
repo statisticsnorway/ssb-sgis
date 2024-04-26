@@ -2,20 +2,27 @@ from collections.abc import Iterable
 
 import networkx as nx
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from shapely import STRtree, difference, make_valid, simplify, unary_union
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from shapely import STRtree
+from shapely import difference
+from shapely import make_valid
+from shapely import simplify
+from shapely import unary_union
 from shapely.errors import GEOSException
 
-from .general import (
-    _determine_geom_type_args,
-    _push_geom_col,
-    clean_geoms,
-    parallel_unary_union_geoseries,
-)
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-from .overlay import _run_overlay_dask, clean_overlay, make_valid_and_keep_geom_type
-from .sfilter import sfilter_inverse, sfilter_split
-
+from .general import _determine_geom_type_args
+from .general import _push_geom_col
+from .general import clean_geoms
+from .general import parallel_unary_union_geoseries
+from .geometry_types import get_geom_type
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
+from .overlay import _run_overlay_dask
+from .overlay import clean_overlay
+from .overlay import make_valid_and_keep_geom_type
+from .sfilter import sfilter_inverse
+from .sfilter import sfilter_split
 
 PRECISION = 1e-3
 

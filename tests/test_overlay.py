@@ -8,7 +8,6 @@ import numpy as np
 from helpers import cprofile_df
 from IPython.display import display
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)

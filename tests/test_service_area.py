@@ -8,7 +8,6 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
@@ -177,7 +176,8 @@ def not_test_service_area(points_oslo, roads_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     roads_oslo = roads_oslo()
     points_oslo = points_oslo()

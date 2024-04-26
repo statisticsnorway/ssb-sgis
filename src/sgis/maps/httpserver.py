@@ -1,8 +1,10 @@
 import os
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
+from http.server import HTTPServer
 
-from IPython.display import HTML, display
+from IPython.display import HTML
+from IPython.display import display
 
 
 def run_html_server(contents: str | None = None, port: int = 3000):

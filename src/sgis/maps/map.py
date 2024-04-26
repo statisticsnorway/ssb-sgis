@@ -9,20 +9,18 @@ import matplotlib
 import matplotlib.colors as colors
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from jenkspy import jenks_breaks
 from mapclassify import classify
 from shapely import Geometry
 
 from ..geopandas_tools.conversion import to_gdf
-from ..geopandas_tools.general import (
-    clean_geoms,
-    drop_inactive_geometry_columns,
-    get_common_crs,
-    rename_geometry_if,
-)
+from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.general import drop_inactive_geometry_columns
+from ..geopandas_tools.general import get_common_crs
+from ..geopandas_tools.general import rename_geometry_if
 from ..helpers import get_object_name
-
 
 try:
     from torchgeo.datasets.geo import RasterDataset

@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)

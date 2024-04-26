@@ -11,18 +11,20 @@ import inspect
 from numbers import Number
 from typing import Any
 
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from pyproj import CRS
 from shapely import Geometry
 
 from ..geopandas_tools.conversion import to_gdf as to_gdf_func
-from ..geopandas_tools.general import clean_geoms, get_common_crs, is_wkt
+from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.general import get_common_crs
+from ..geopandas_tools.general import is_wkt
 from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
-
 
 try:
     from torchgeo.datasets.geo import RasterDataset

@@ -5,7 +5,8 @@ network, finding and removing isolated network islands and creating unique node 
 """
 
 import warnings
-from copy import copy, deepcopy
+from copy import copy
+from copy import deepcopy
 
 import numpy as np
 from geopandas import GeoDataFrame

@@ -2,7 +2,6 @@ import os
 import shutil
 import subprocess
 
-
 if "sgis" in os.listdir():
     os.chdir("docs/examples")
 elif "ssb-sgis" in os.listdir():

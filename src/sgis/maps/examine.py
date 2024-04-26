@@ -4,7 +4,9 @@ import numpy as np
 from ..geopandas_tools.bounds import get_total_bounds
 from ..helpers import unit_is_degrees
 from .map import Map
-from .maps import clipmap, explore, samplemap
+from .maps import clipmap
+from .maps import explore
+from .maps import samplemap
 
 
 class Examine:

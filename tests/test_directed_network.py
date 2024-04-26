@@ -8,7 +8,6 @@ import pandas as pd
 import pytest
 from shapely.geometry import LineString
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)

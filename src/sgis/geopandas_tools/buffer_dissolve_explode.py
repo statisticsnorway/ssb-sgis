@@ -18,11 +18,14 @@ from typing import Callable
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 
-from .general import merge_geometries, parallel_unary_union
+from .general import merge_geometries
+from .general import parallel_unary_union
 from .geometry_types import make_all_singlepart
-from .polygon_operations import get_cluster_mapper, get_grouped_centroids
+from .polygon_operations import get_cluster_mapper
+from .polygon_operations import get_grouped_centroids
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:

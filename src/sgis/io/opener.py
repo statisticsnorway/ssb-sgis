@@ -1,6 +1,5 @@
 from contextlib import contextmanager
 
-
 try:
     import dapla as dp
 except ImportError:

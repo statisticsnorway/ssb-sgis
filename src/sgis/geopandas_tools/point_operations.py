@@ -2,12 +2,16 @@
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from shapely import distance, snap, unary_union
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from shapely import distance
+from shapely import snap
+from shapely import unary_union
 from shapely.ops import nearest_points
 
 from ..geopandas_tools.general import to_lines
-from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
+from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..geopandas_tools.polygon_operations import PolygonsAsRings
 
 

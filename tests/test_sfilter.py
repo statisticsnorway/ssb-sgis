@@ -12,7 +12,6 @@ import pytest
 from helpers import create_all_geometry_types
 from shapely.geometry import Polygon
 
-
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)

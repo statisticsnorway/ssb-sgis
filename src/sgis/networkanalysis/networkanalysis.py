@@ -5,7 +5,8 @@ get_route_frequencies and service_area.
 """
 
 
-from copy import copy, deepcopy
+from copy import copy
+from copy import deepcopy
 from datetime import datetime
 from time import perf_counter
 
@@ -14,12 +15,16 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
-from pandas import DataFrame, MultiIndex
+from pandas import DataFrame
+from pandas import MultiIndex
 
 from ..geopandas_tools.general import _push_geom_col
-from ._get_route import _get_k_routes, _get_route, _get_route_frequencies
+from ._get_route import _get_k_routes
+from ._get_route import _get_route
+from ._get_route import _get_route_frequencies
 from ._od_cost_matrix import _od_cost_matrix
-from ._points import Destinations, Origins
+from ._points import Destinations
+from ._points import Origins
 from ._service_area import _service_area
 from .cutting_lines import split_lines_by_nearest_point
 from .network import Network

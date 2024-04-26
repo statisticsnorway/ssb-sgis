@@ -2,11 +2,11 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from shapely import Geometry
 
 from .conversion import to_gdf
-
 
 gdf_type_error_message = "'gdf' should be of type GeoDataFrame or GeoSeries."
 

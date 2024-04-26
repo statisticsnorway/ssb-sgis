@@ -1,4 +1,6 @@
-from xyzservices import TileProvider, Bunch, providers
+from xyzservices import Bunch
+from xyzservices import TileProvider
+from xyzservices import providers
 
 kartverket = Bunch(
     norgeskart=TileProvider(

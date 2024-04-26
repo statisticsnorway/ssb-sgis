@@ -4,7 +4,6 @@ from geopandas import GeoDataFrame
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from .networkanalysisrules import NetworkAnalysisRules
 
-
 """
 These are internal classes used in the NetworkAnalysis class. The classes used in
 NetworkAnalysis are Origins and Destinations, which are subclasses of Points. The

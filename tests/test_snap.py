@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 from shapely.geometry import Polygon
 
-
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)

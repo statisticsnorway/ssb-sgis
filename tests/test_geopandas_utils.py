@@ -11,7 +11,6 @@ import pytest
 from helpers import create_all_geometry_types
 from shapely.geometry import Polygon
 
-
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
@@ -151,7 +150,8 @@ def test_clean():
     assert list(gdf.index) == [0], list(gdf.index)
 
     print(problematic_geometries)
-    from shapely import is_valid, make_valid
+    from shapely import is_valid
+    from shapely import make_valid
 
     print(make_valid(problematic_geometries.geometry))
     problematic_geometries["geometry"] = make_valid(problematic_geometries.geometry)

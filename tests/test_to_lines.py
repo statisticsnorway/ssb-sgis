@@ -6,8 +6,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
-from shapely.geometry import LineString, Polygon
-
+from shapely.geometry import LineString
+from shapely.geometry import Polygon
 
 src = str(Path(__file__).parent.parent) + "/src"
 

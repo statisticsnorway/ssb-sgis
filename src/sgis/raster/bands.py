@@ -2,7 +2,6 @@ import numpy as np
 
 from .raster import Raster
 
-
 SENTINEL2_FILENAME_REGEX = r"""
     ^SENTINEL2X_
     (?P<date>\d{8})

@@ -2,8 +2,10 @@ import functools
 import numbers
 import re
 import warnings
-from collections.abc import Callable, Iterable
-from copy import copy, deepcopy
+from collections.abc import Callable
+from collections.abc import Iterable
+from copy import copy
+from copy import deepcopy
 from json import loads
 from pathlib import Path
 
@@ -15,7 +17,6 @@ import pyproj
 import rasterio
 import shapely
 from typing_extensions import Self  # TODO: imperter fra typing når python 3.11
-
 
 try:
     import xarray as xr
@@ -31,7 +32,8 @@ try:
 except ImportError:
     pass
 from affine import Affine
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from pandas.api.types import is_list_like
 from rasterio import features
 from rasterio.enums import MergeAlg
@@ -39,22 +41,27 @@ from rasterio.io import DatasetReader
 from rasterio.vrt import WarpedVRT
 from rasterio.warp import reproject
 from shapely import Geometry
-from shapely.geometry import Point, Polygon, shape
+from shapely.geometry import Point
+from shapely.geometry import Polygon
+from shapely.geometry import shape
 
-from ..geopandas_tools.conversion import to_bbox, to_gdf, to_shapely
-from ..geopandas_tools.general import is_bbox_like, is_wkt
+from ..geopandas_tools.conversion import to_bbox
+from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.conversion import to_shapely
+from ..geopandas_tools.general import is_bbox_like
+from ..geopandas_tools.general import is_wkt
 from ..helpers import is_property
 from ..io.opener import opener
-from .base import ALLOWED_KEYS, NESSECARY_META, get_index_mapper, memfile_from_array
+from .base import ALLOWED_KEYS
+from .base import NESSECARY_META
+from .base import get_index_mapper
+from .base import memfile_from_array
 from .gradient import get_gradient
-from .zonal import (
-    _aggregate,
-    _no_overlap_df,
-    make_geometry_iterrows,
-    prepare_zonal,
-    zonal_post,
-)
-
+from .zonal import _aggregate
+from .zonal import _no_overlap_df
+from .zonal import make_geometry_iterrows
+from .zonal import prepare_zonal
+from .zonal import zonal_post
 
 numpy_func_message = (
     "aggfunc must be functions or strings of numpy functions or methods."

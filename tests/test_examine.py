@@ -5,20 +5,18 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 import sys
-
 
 sys.path.insert(0, src)
 
 import sgis as sg
 
-
 # %%
 if __name__ == "__main__":
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     points = points_oslo()
     roads = roads_oslo()

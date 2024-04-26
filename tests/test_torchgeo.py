@@ -13,14 +13,12 @@ from IPython.display import display
 from pyproj import CRS
 from shapely import box
 
-
 src = str(Path(__file__).parent.parent) + "/src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 path_sentinel = testdata + "/sentinel2"
 

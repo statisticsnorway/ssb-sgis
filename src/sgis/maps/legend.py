@@ -15,7 +15,6 @@ from pandas import Series
 
 from ..geopandas_tools.bounds import points_in_bounds
 
-
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(
     action="ignore", category=matplotlib.MatplotlibDeprecationWarning

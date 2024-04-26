@@ -3,10 +3,11 @@ import inspect
 import itertools
 import multiprocessing
 import warnings
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import Callable
+from collections.abc import Collection
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
-
 
 try:
     import dapla as dp
@@ -16,18 +17,25 @@ except ImportError:
 import joblib
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from pandas import DataFrame
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
+from shapely.geometry import Polygon
 
-from ..geopandas_tools.general import clean_clip, clean_geoms
+from ..geopandas_tools.general import clean_clip
+from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.neighbors import get_neighbor_indices
 from ..geopandas_tools.overlay import clean_overlay
-from ..helpers import LocalFunctionError, dict_zip, dict_zip_union, in_jupyter
-
+from ..helpers import LocalFunctionError
+from ..helpers import dict_zip
+from ..helpers import dict_zip_union
+from ..helpers import in_jupyter
 
 try:
-    from ..io.dapla_functions import exists, read_geopandas, write_geopandas
+    from ..io.dapla_functions import exists
+    from ..io.dapla_functions import read_geopandas
+    from ..io.dapla_functions import write_geopandas
 
     # from ..io.write_municipality_data import write_municipality_data
 except ImportError:
@@ -35,7 +43,8 @@ except ImportError:
 
 
 try:
-    from dapla import read_pandas, write_pandas
+    from dapla import read_pandas
+    from dapla import write_pandas
 except ImportError:
     pass
 

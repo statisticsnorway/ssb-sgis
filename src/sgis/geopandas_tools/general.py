@@ -1,30 +1,34 @@
 import numbers
 import warnings
-from collections.abc import Hashable, Iterable
+from collections.abc import Hashable
+from collections.abc import Iterable
 from typing import Any
 
 import joblib
 import numpy as np
 import pandas as pd
 import pyproj
-from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryArray, GeometryDtype
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from geopandas.array import GeometryArray
+from geopandas.array import GeometryDtype
 from numpy.typing import NDArray
-from shapely import (
-    Geometry,
-    get_coordinates,
-    get_exterior_ring,
-    get_interior_ring,
-    get_num_interior_rings,
-    get_parts,
-    linestrings,
-    make_valid,
-)
+from shapely import Geometry
+from shapely import get_coordinates
+from shapely import get_exterior_ring
+from shapely import get_interior_ring
+from shapely import get_num_interior_rings
+from shapely import get_parts
+from shapely import linestrings
+from shapely import make_valid
 from shapely import points as shapely_points
 from shapely import unary_union
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
+from .geometry_types import get_geom_type
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
 
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:

@@ -8,16 +8,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 import sys
 
-
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 # set to True to not actually create the plots
 # because pytest breaks with all these plots on github

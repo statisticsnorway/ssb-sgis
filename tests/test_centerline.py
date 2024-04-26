@@ -7,13 +7,12 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import LineString, Point
-
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 import sys
-
 
 sys.path.insert(0, src)
 
@@ -24,7 +23,8 @@ import sgis as sg
 
 
 def test_get_centerline():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     circle = sg.to_gdf([0, 0]).buffer(1)
     centerline = sg.get_rough_centerlines(circle, 5)

@@ -2,7 +2,6 @@
 import sys
 from pathlib import Path
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)
@@ -45,7 +44,8 @@ def test_get_components(roads_oslo, points_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     test_get_components(roads_oslo(), points_oslo())
 

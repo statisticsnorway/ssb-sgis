@@ -16,7 +16,6 @@ import os
 import sys
 from datetime import date
 
-
 sys.path.insert(0, os.path.abspath("../src"))
 
 

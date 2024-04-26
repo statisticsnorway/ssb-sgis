@@ -6,60 +6,69 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import shapely
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from numpy.typing import NDArray
-from shapely import (
-    Geometry,
-    STRtree,
-    extract_unique_points,
-    force_2d,
-    get_coordinates,
-    get_exterior_ring,
-    get_parts,
-    linearrings,
-    linestrings,
-    make_valid,
-    multipoints,
-    polygons,
-    reverse,
-    segmentize,
-    simplify,
-    unary_union,
-)
+from shapely import Geometry
+from shapely import STRtree
+from shapely import extract_unique_points
+from shapely import force_2d
+from shapely import get_coordinates
+from shapely import get_exterior_ring
+from shapely import get_parts
+from shapely import linearrings
+from shapely import linestrings
+from shapely import make_valid
+from shapely import multipoints
+from shapely import polygons
+from shapely import reverse
+from shapely import segmentize
+from shapely import simplify
+from shapely import unary_union
 from shapely.errors import GEOSException
-from shapely.geometry import LinearRing, LineString, MultiLineString, MultiPoint, Point
+from shapely.geometry import LinearRing
+from shapely.geometry import LineString
+from shapely.geometry import MultiLineString
+from shapely.geometry import MultiPoint
+from shapely.geometry import Point
 from shapely.ops import nearest_points
 
 from ..networkanalysis.closing_network_holes import get_angle
 from ..networkanalysis.cutting_lines import split_lines_by_nearest_point
-from .buffer_dissolve_explode import buff, buffdissexp, dissexp, dissexp_by_cluster
-from .conversion import coordinate_array, to_gdf, to_geoseries
-from .duplicates import get_intersections, update_geometries
+from .buffer_dissolve_explode import buff
+from .buffer_dissolve_explode import buffdissexp
+from .buffer_dissolve_explode import dissexp
+from .buffer_dissolve_explode import dissexp_by_cluster
+from .conversion import coordinate_array
+from .conversion import to_gdf
+from .conversion import to_geoseries
+from .duplicates import get_intersections
+from .duplicates import update_geometries
 
 # from .general import sort_large_first as _sort_large_first
-from .general import (
-    clean_clip,
-    clean_geoms,
-    sort_large_first,
-    sort_long_first,
-    sort_small_first,
-    to_lines,
-)
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-from .neighbors import get_k_nearest_neighbors, get_neighbor_indices
+from .general import clean_clip
+from .general import clean_geoms
+from .general import sort_large_first
+from .general import sort_long_first
+from .general import sort_small_first
+from .general import to_lines
+from .geometry_types import get_geom_type
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
+from .neighbors import get_k_nearest_neighbors
+from .neighbors import get_neighbor_indices
 from .overlay import clean_overlay
-from .polygon_operations import (
-    close_all_holes,
-    close_small_holes,
-    close_thin_holes,
-    eliminate_by_longest,
-    get_cluster_mapper,
-    get_gaps,
-)
+from .polygon_operations import close_all_holes
+from .polygon_operations import close_small_holes
+from .polygon_operations import close_thin_holes
+from .polygon_operations import eliminate_by_longest
+from .polygon_operations import get_cluster_mapper
+from .polygon_operations import get_gaps
 from .polygons_as_rings import PolygonsAsRings
-from .sfilter import sfilter, sfilter_inverse, sfilter_split
-
+from .sfilter import sfilter
+from .sfilter import sfilter_inverse
+from .sfilter import sfilter_split
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
@@ -735,7 +744,8 @@ def points_to_line_segments(points: GeoDataFrame) -> GeoDataFrame:
 
 
 def explore_geosexception(e: GEOSException, *gdfs, logger=None):
-    from ..maps.maps import Explore, explore
+    from ..maps.maps import Explore
+    from ..maps.maps import explore
     from .conversion import to_gdf
 
     pattern = r"(\d+\.\d+)\s+(\d+\.\d+)"

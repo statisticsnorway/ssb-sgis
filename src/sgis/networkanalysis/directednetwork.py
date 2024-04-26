@@ -6,7 +6,8 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from shapely.constructive import reverse
 
-from ..helpers import return_two_vals, unit_is_meters
+from ..helpers import return_two_vals
+from ..helpers import unit_is_meters
 
 
 def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDataFrame:

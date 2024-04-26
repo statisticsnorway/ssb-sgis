@@ -17,20 +17,24 @@ import numpy as np
 import pandas as pd
 import xyzservices
 from folium import plugins
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from IPython.display import display
 from jinja2 import Template
 from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely.geometry import LineString
 
-from ..geopandas_tools.conversion import from_4326, to_gdf
-from ..geopandas_tools.general import clean_geoms, make_all_singlepart
-from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
+from ..geopandas_tools.conversion import from_4326
+from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.general import make_all_singlepart
+from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.geometry_types import to_single_geom_type
 from .httpserver import run_html_server
 from .map import Map
-from .tilesources import kartverket, xyz
-
+from .tilesources import kartverket
+from .tilesources import xyz
 
 try:
     from torchgeo.datasets.geo import RasterDataset

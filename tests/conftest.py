@@ -1,9 +1,12 @@
 from pathlib import Path
 
 import pytest
-from geopandas import GeoDataFrame, GeoSeries, read_parquet
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from geopandas import read_parquet
 
-from sgis import Raster, to_gdf
+from sgis import Raster
+from sgis import to_gdf
 
 
 @pytest.fixture(scope="module")

@@ -10,7 +10,6 @@ from rasterio.vrt import WarpedVRT
 from torchgeo.datasets.geo import RasterDataset
 from torchgeo.datasets.sentinel import Sentinel2 as TorchgeoSentinel2
 
-
 try:
     import dapla as dp
 except ImportError:

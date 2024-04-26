@@ -10,8 +10,11 @@ types.
 
 import numpy as np
 import shapely
-from geopandas import GeoDataFrame, GeoSeries
-from pandas import DataFrame, Series, concat
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from pandas import DataFrame
+from pandas import Series
+from pandas import concat
 from shapely import STRtree
 from sklearn.neighbors import NearestNeighbors
 

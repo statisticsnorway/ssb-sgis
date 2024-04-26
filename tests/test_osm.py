@@ -7,16 +7,13 @@ import numpy as np
 import pandas as pd
 import pyogrio
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 import sys
 
-
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 print(sys.executable)
 
@@ -53,7 +50,8 @@ def osm_api():
 
 
 def read_osm():
-    from pyrosm import OSM, get_data
+    from pyrosm import OSM
+    from pyrosm import get_data
 
     # Initialize reader
     osm = OSM(get_data("test_pbf"))

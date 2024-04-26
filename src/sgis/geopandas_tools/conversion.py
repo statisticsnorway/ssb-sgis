@@ -1,6 +1,9 @@
 import numbers
 import re
-from collections.abc import Collection, Iterator, Mapping, Sized
+from collections.abc import Collection
+from collections.abc import Iterator
+from collections.abc import Mapping
+from collections.abc import Sized
 from typing import Any
 
 import geopandas as gpd
@@ -10,15 +13,21 @@ import pyproj
 import rasterio
 import shapely
 from affine import Affine
-from geopandas import GeoDataFrame, GeoSeries
-from pandas.api.types import is_array_like, is_dict_like, is_list_like
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from pandas.api.types import is_array_like
+from pandas.api.types import is_dict_like
+from pandas.api.types import is_list_like
 from pyproj import CRS
 from rasterio import features
-from shapely import Geometry, box, wkb, wkt
+from shapely import Geometry
+from shapely import box
+from shapely import wkb
+from shapely import wkt
 from shapely.errors import GEOSException
-from shapely.geometry import Point, shape
+from shapely.geometry import Point
+from shapely.geometry import shape
 from shapely.ops import unary_union
-
 
 try:
     from torchgeo.datasets.geo import RasterDataset

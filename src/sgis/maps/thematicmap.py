@@ -7,9 +7,9 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 
-from .legend import ContinousLegend, Legend
+from .legend import ContinousLegend
+from .legend import Legend
 from .map import Map
-
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(

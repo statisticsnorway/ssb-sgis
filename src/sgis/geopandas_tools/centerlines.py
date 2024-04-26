@@ -4,32 +4,35 @@ import warnings
 import numpy as np
 import pandas as pd
 import shapely
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from numpy.typing import NDArray
-from shapely import (
-    STRtree,
-    distance,
-    extract_unique_points,
-    get_parts,
-    get_rings,
-    line_merge,
-    make_valid,
-    segmentize,
-    unary_union,
-    voronoi_polygons,
-)
+from shapely import STRtree
+from shapely import distance
+from shapely import extract_unique_points
+from shapely import get_parts
+from shapely import get_rings
+from shapely import line_merge
+from shapely import make_valid
+from shapely import segmentize
+from shapely import unary_union
+from shapely import voronoi_polygons
 from shapely.errors import GEOSException
 from shapely.geometry import LineString
 from shapely.ops import nearest_points
 
-from ..maps.maps import explore, explore_locals
+from ..maps.maps import explore
+from ..maps.maps import explore_locals
 from ..networkanalysis.traveling_salesman import traveling_salesman_problem
-from .conversion import to_gdf, to_geoseries
-from .general import clean_geoms, make_lines_between_points, sort_long_first
+from .conversion import to_gdf
+from .conversion import to_geoseries
+from .general import clean_geoms
+from .general import make_lines_between_points
+from .general import sort_long_first
 from .geometry_types import make_all_singlepart
-from .sfilter import sfilter_inverse, sfilter_split
-
+from .sfilter import sfilter_inverse
+from .sfilter import sfilter_split
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 

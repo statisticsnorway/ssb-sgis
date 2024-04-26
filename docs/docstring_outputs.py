@@ -11,13 +11,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-
 src = str(Path(__file__).parent.parent / "src")
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata"
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
@@ -32,7 +30,9 @@ def print_function_name(func):
     return wrapper
 
 
-from shapely.geometry import MultiPoint, Point, Polygon
+from shapely.geometry import MultiPoint
+from shapely.geometry import Point
+from shapely.geometry import Polygon
 
 
 @print_function_name
@@ -196,7 +196,8 @@ def legend_docstring():
 
 
 def split_lines_docstring():
-    from sgis import read_parquet_url, split_lines_by_nearest_point
+    from sgis import read_parquet_url
+    from sgis import split_lines_by_nearest_point
 
     roads = read_parquet_url(
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -215,9 +216,11 @@ def split_lines_docstring():
 
 
 def to_single_geom_type_docstring():
-    from shapely.geometry import LineString, Polygon
+    from shapely.geometry import LineString
+    from shapely.geometry import Polygon
 
-    from sgis import to_gdf, to_single_geom_type
+    from sgis import to_gdf
+    from sgis import to_single_geom_type
 
     gdf = to_gdf(
         [
@@ -240,7 +243,8 @@ def to_single_geom_type_docstring():
 
 @print_function_name
 def get_neighbor_indices_docstring():
-    from sgis import get_neighbor_indices, to_gdf
+    from sgis import get_neighbor_indices
+    from sgis import to_gdf
 
     points = to_gdf([(0, 0), (0.5, 0.5)])
     points["text"] = [*"ab"]
@@ -556,7 +560,8 @@ def buffdissexp_docstring(points):
 
 @print_function_name
 def get_k_neighbors_docstring():
-    from sgis import get_k_nearest_neighbors, random_points
+    from sgis import get_k_nearest_neighbors
+    from sgis import random_points
 
     points = random_points(100)
     neighbors = random_points(100)
@@ -583,7 +588,8 @@ def get_k_neighbors_docstring():
 
 @print_function_name
 def get_all_distances_docstring():
-    from sgis import get_all_distances, random_points
+    from sgis import get_all_distances
+    from sgis import random_points
 
     points = random_points(100)
     neighbors = random_points(100)
@@ -608,7 +614,8 @@ def get_all_distances_docstring():
 
 
 def get_neighbor_indices():
-    from sgis import get_neighbor_indices, to_gdf
+    from sgis import get_neighbor_indices
+    from sgis import to_gdf
 
     points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
     points

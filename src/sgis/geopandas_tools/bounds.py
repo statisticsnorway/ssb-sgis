@@ -1,20 +1,27 @@
 import functools
 import numbers
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable
+from collections.abc import Collection
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from pandas.api.types import is_dict_like
-from shapely import Geometry, box, extract_unique_points
+from shapely import Geometry
+from shapely import box
+from shapely import extract_unique_points
 from shapely.geometry import Polygon
 
 from ..parallel.parallel import Parallel
-from .conversion import to_bbox, to_gdf
-from .general import clean_clip, is_bbox_like
+from .conversion import to_bbox
+from .conversion import to_gdf
+from .general import clean_clip
+from .general import is_bbox_like
 
 
 @dataclass

@@ -2,7 +2,8 @@
 import numpy as np
 import pandas as pd
 import shapely
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from shapely import Geometry
 

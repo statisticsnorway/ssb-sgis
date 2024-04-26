@@ -6,7 +6,8 @@ to use explicitly.
 
 import geopandas as gpd
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from shapely.geometry import Point
 
 from ..geopandas_tools.general import _push_geom_col

@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
@@ -36,7 +35,10 @@ def test_random_get_intersections():
 def not_test_bug():
     import geopandas as gpd
     import networkx as nx
-    from shapely import STRtree, area, buffer, intersection
+    from shapely import STRtree
+    from shapely import area
+    from shapely import buffer
+    from shapely import intersection
     from shapely.geometry import Point
 
     # print(gpd.show_versions())

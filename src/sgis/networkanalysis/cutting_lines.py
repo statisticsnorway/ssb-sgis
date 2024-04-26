@@ -3,29 +3,28 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from pandas import DataFrame, Series
-from shapely import (
-    buffer,
-    extract_unique_points,
-    force_2d,
-    get_coordinates,
-    get_parts,
-    linestrings,
-    touches,
-    unary_union,
-)
-from shapely.geometry import LineString, Point
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from pandas import DataFrame
+from pandas import Series
+from shapely import buffer
+from shapely import extract_unique_points
+from shapely import force_2d
+from shapely import get_coordinates
+from shapely import get_parts
+from shapely import linestrings
+from shapely import touches
+from shapely import unary_union
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
 from ..geopandas_tools.buffer_dissolve_explode import buff
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
-from ..geopandas_tools.point_operations import (
-    _shapely_snap,
-    snap_all,
-    snap_within_distance,
-)
+from ..geopandas_tools.point_operations import _shapely_snap
+from ..geopandas_tools.point_operations import snap_all
+from ..geopandas_tools.point_operations import snap_within_distance
 from ..geopandas_tools.sfilter import sfilter_split
 from .nodes import make_edge_coords_cols
 
