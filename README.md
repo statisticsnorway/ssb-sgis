@@ -22,7 +22,6 @@ See documentation [here](https://statisticsnorway.github.io/ssb-sgis/reference/i
 [pypi status]: https://pypi.org/project/ssb-sgis/
 [documentation]: https://statisticsnorway.github.io/ssb-sgis
 [tests]: https://github.com/statisticsnorway/ssb-sgis/actions?workflow=Tests
-
 [sonarcov]: https://sonarcloud.io/summary/overall?id=statisticsnorway_ssb-sgis
 [sonarquality]: https://sonarcloud.io/summary/overall?id=statisticsnorway_ssb-sgis
 [pre-commit]: https://github.com/pre-commit/pre-commit

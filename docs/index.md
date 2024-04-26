@@ -9,7 +9,6 @@ relative-images:
 [license]: license
 [contributor guide]: contributing
 
-
 ```{toctree}
 ---
 hidden:
