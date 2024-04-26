@@ -255,10 +255,10 @@ def _xyz():
     assert not gdf.geometry.isna().sum()
     assert gdf.geometry.has_z.all()
 
-    zipped = zip(df.x, df.y, df.z)
+    zipped = zip(df.x, df.y, df.z, strict=False)
     gdf = sg.to_gdf(zipped)
     assert not gdf.geometry.isna().sum()
-    zipped = zip(dict_["x"], dict_["y"], dict_["z"])
+    zipped = zip(dict_["x"], dict_["y"], dict_["z"], strict=False)
     gdf = sg.to_gdf(zipped)
     assert not gdf.geometry.isna().sum()
     print(dict_)

@@ -19,7 +19,7 @@ def get_gradient(raster, degrees: bool = False, copy: bool = False):
     Returns:
         The class instance with new array values, or a copy if copy is True.
 
-    Examples
+    Examples:
     --------
     Making an array where the gradient to the center is always 10.
 

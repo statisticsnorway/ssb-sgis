@@ -14,7 +14,7 @@ for the following:
 - The buff function returns a GeoDataFrame, the geopandas method returns a GeoSeries.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -117,7 +117,7 @@ def buffdiss(
     Returns:
         A buffered GeoDataFrame where geometries are dissolved.
 
-    Examples
+    Examples:
     --------
     Create some random points.
 
@@ -510,7 +510,6 @@ def buff(
     Returns:
         A buffered GeoDataFrame.
     """
-
     if isinstance(gdf, GeoSeries):
         return gdf.buffer(distance, resolution=resolution, **buffer_kwargs).make_valid()
 

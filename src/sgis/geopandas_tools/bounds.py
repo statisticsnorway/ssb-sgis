@@ -1,8 +1,5 @@
 import functools
-import numbers
 from collections.abc import Callable
-from collections.abc import Collection
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,7 +8,6 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from pandas.api.types import is_dict_like
 from shapely import Geometry
 from shapely import box
 from shapely import extract_unique_points
@@ -39,9 +35,8 @@ class Gridlooper:
         keep_geom_type: Whether to keep only the input geometry types after clipping.
             Defaults to True.
 
-    Examples
+    Examples:
     --------
-
     Get some points and some polygons.
 
     >>> import sgis as sg
@@ -144,7 +139,9 @@ class Gridlooper:
             return out if not self.concat else pd.concat(out, ignore_index=True)
 
         results = []
-        for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid)):
+        for i, (unbuffered, buffered) in enumerate(
+            zip(grid, buffered_grid, strict=False)
+        ):
             cell_kwargs = {
                 key: _clip_if_isinstance(
                     value, buffered, self.keep_geom_type, self.clip
@@ -211,9 +208,8 @@ def gridloop(
     Returns:
         List of results with the same length as number of grid cells.
 
-    Examples
+    Examples:
     --------
-
     Get some points and some polygons.
 
     >>> import sgis as sg
@@ -308,7 +304,7 @@ def gridloop(
         return out
 
     results = []
-    for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid)):
+    for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid, strict=False)):
         cell_kwargs = {
             key: _clip_if_isinstance(value, buffered, keep_geom_type, clip)
             for key, value in kwargs.items()
@@ -594,9 +590,8 @@ def bounds_to_polygon(
     Returns:
         GeoDataFrame of box polygons with length and index of 'gdf'.
 
-    Examples
+    Examples:
     --------
-
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
                                             geometry
@@ -629,7 +624,7 @@ def bounds_to_points(
     Returns:
         GeoDataFrame of multipoints with same length and index as 'gdf'.
 
-    Examples
+    Examples:
     --------
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf

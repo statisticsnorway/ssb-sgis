@@ -49,7 +49,7 @@ class NetworkAnalysisRules:
             them. Defaults to None, meaning 0 weight is added for these edges. If set
             to 1, the weight will be equal to the straigt line distance.
 
-    Examples
+    Examples:
     --------
     Read testdata.
 

@@ -59,7 +59,7 @@ DEFAULT_SCHEME = "quantiles"
 
 
 def proper_fillna(val, fill_val):
-    """fillna doesn't always work. So doing it manually."""
+    """Fillna doesn't always work. So doing it manually."""
     try:
         if "NAType" in val.__class__.__name__:
             return fill_val
@@ -136,7 +136,7 @@ class Map:
         self._gdfs = []
         new_labels = []
         self.show = []
-        for label, gdf, show in zip(self.labels, gdfs, show_args):
+        for label, gdf, show in zip(self.labels, gdfs, show_args, strict=False):
             if not len(gdf):
                 continue
 
@@ -371,7 +371,6 @@ class Map:
 
     def _prepare_continous_map(self):
         """Create bins if not already done and adjust k if needed."""
-
         if self.scheme is None:
             return
 
@@ -528,7 +527,6 @@ class Map:
         If 'scheme' is not specified, the jenks_breaks function is used, which is
         much faster than the one from Mapclassifier.
         """
-
         if not len(gdf.loc[~self._nan_idx, column]):
             return np.array([0])
 
@@ -604,7 +602,6 @@ class Map:
 
     def _classify_from_bins(self, gdf: GeoDataFrame, bins: np.ndarray) -> np.ndarray:
         """Place the column values into groups."""
-
         # if equal lenght, convert to integer and check for equality
         if len(bins) == len(self._unique_values):
             if gdf[self._column].isna().all():

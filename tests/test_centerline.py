@@ -1,23 +1,16 @@
 # %%
 
 import sys
-import warnings
 from pathlib import Path
 
 import geopandas as gpd
-import numpy as np
-import pandas as pd
 from shapely.geometry import LineString
-from shapely.geometry import Point
 
 src = str(Path(__file__).parent).strip("tests") + "src"
 
-import sys
 
 sys.path.insert(0, src)
 
-
-from geopandas import GeoDataFrame
 
 import sgis as sg
 

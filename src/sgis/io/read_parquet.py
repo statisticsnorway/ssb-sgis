@@ -14,7 +14,7 @@ def read_parquet_url(url: str) -> GeoDataFrame:
     Returns:
         A GeoDataFrame.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url
     >>> url = "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"

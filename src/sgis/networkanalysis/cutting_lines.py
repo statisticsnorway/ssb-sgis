@@ -5,17 +5,10 @@ import warnings
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from geopandas import GeoSeries
 from pandas import DataFrame
 from pandas import Series
-from shapely import buffer
 from shapely import extract_unique_points
 from shapely import force_2d
-from shapely import get_coordinates
-from shapely import get_parts
-from shapely import linestrings
-from shapely import touches
-from shapely import unary_union
 from shapely.geometry import LineString
 from shapely.geometry import Point
 
@@ -23,7 +16,6 @@ from ..geopandas_tools.buffer_dissolve_explode import buff
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
-from ..geopandas_tools.point_operations import _shapely_snap
 from ..geopandas_tools.point_operations import snap_all
 from ..geopandas_tools.point_operations import snap_within_distance
 from ..geopandas_tools.sfilter import sfilter_split
@@ -59,7 +51,7 @@ def split_lines_by_nearest_point(
     Raises:
         ValueError: If the crs of the input data differs.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url, split_lines_by_nearest_point
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
@@ -149,7 +141,7 @@ def split_lines_by_nearest_point(
     splitted_target = to_gdf(splitted["target_coords"], crs=gdf.crs)
 
     def get_nearest(splitted, snapped) -> pd.DataFrame:
-        """find the nearest snapped point for each source and target of the lines"""
+        """Find the nearest snapped point for each source and target of the lines"""
         return get_k_nearest_neighbors(splitted, snapped, k=1).loc[
             lambda x: x["distance"] <= PRECISION * 2
         ]
@@ -195,8 +187,7 @@ def change_line_endpoint(
     pointmapper: pd.Series,
     change_what: str | int,
 ) -> GeoDataFrame:
-    """
-    Loop for each line where the source is the endpoint that was split
+    """Loop for each line where the source is the endpoint that was split
     change the first point of the line to the point it was split by
     """
     assert gdf.index.is_unique
@@ -242,7 +233,7 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
     Note:
         This method is time consuming for large networks and low 'max_length'.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url, cut_lines
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
@@ -314,7 +305,7 @@ def cut_lines_once(
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to False.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import cut_lines_once, to_gdf
     >>> import pandas as pd

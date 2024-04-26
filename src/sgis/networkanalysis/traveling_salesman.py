@@ -31,7 +31,7 @@ def traveling_salesman_problem(
     Returns:
         List of Points making up the traveling salesman's path.
 
-    Examples
+    Examples:
     --------
     >>> points = sg.to_gdf(
     ...     [

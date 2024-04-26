@@ -33,7 +33,7 @@ class Examine:
             will be iterated through from the top.
         **kwargs: Additional keyword arguments passed to sgis.clipmap.
 
-    Examples
+    Examples:
     --------
     Create the examiner.
 
@@ -89,7 +89,9 @@ class Examine:
             self.mask_gdf = mask_gdf
 
         m = Map(*gdfs, column=column, **kwargs)
-        self._gdfs: dict[str, gpd.GeoDataFrame] = dict(zip(m.labels, m.gdfs))
+        self._gdfs: dict[str, gpd.GeoDataFrame] = dict(
+            zip(m.labels, m.gdfs, strict=False)
+        )
 
         self.indices = list(range(len(self.mask_gdf)))
         self.i = 0

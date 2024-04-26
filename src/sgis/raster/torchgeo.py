@@ -1,7 +1,7 @@
 import glob
 import os
 import warnings
-from typing import Iterable
+from collections.abc import Iterable
 
 import rasterio
 import rasterio.merge

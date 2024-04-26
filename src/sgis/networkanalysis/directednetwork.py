@@ -27,7 +27,7 @@ def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDa
             network graph. Recode these rows to a non-negative values if you want
             to keep them.
 
-    Examples
+    Examples:
     --------
     2022 data for the municipalities of Oslo and Eidskog can be read directly like this:
 

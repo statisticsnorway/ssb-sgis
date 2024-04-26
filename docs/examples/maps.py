@@ -11,7 +11,6 @@
 import os
 import warnings
 
-import numpy as np
 import pandas as pd
 
 os.chdir("../../src")

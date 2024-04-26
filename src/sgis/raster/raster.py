@@ -75,9 +75,8 @@ class Raster:
     'from_gdf'.
 
 
-    Examples
+    Examples:
     --------
-
     Read tif file.
 
     >>> path = 'https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster/dtm_10.tif'
@@ -410,7 +409,6 @@ class Raster:
             path: File path to write to.
             window: Optional window to clip the image to.
         """
-
         if self.array is None:
             raise AttributeError("The image hasn't been loaded.")
 
@@ -553,7 +551,7 @@ class Raster:
         Returns:
             The class instance with new array values, or a copy if copy is True.
 
-        Examples
+        Examples:
         --------
         Making an array where the gradient to the center is always 10.
 
@@ -1217,7 +1215,9 @@ class Raster:
             warnings.filterwarnings("ignore", category=UserWarning)
             return [
                 (feature["geometry"], val)
-                for val, feature in zip(gdf[column], loads(gdf.to_json())["features"])
+                for val, feature in zip(
+                    gdf[column], loads(gdf.to_json())["features"], strict=False
+                )
             ]
 
     @staticmethod

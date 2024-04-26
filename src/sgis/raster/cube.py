@@ -7,10 +7,9 @@ from copy import copy
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
-from typing import Callable
-from typing import Iterable
-from typing import Optional
-from typing import Sequence
+from collections.abc import Callable
+from collections.abc import Iterable
+from collections.abc import Sequence
 
 import geopandas as gpd
 import numpy as np
@@ -41,15 +40,12 @@ from rtree.index import Property
 from shapely import Geometry
 from typing_extensions import Self  # TODO: imperter fra typing når python 3.11
 
-from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.bounds import make_grid
-from ..geopandas_tools.conversion import crs_to_string
 from ..geopandas_tools.conversion import is_bbox_like
 from ..geopandas_tools.conversion import to_bbox
 from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.overlay import clean_overlay
-from ..helpers import dict_zip_intersection
 from ..helpers import get_all_files
 from ..helpers import get_numpy_func
 from ..io._is_dapla import is_dapla
@@ -117,9 +113,8 @@ from .zonal import zonal_post
 class DataCube:
     """Experimental.
 
-    Examples
+    Examples:
     --------
-
     >>> cube = sg.DataCube.from_root(...)
     >>> clipped = cube.clip(mask).merge(by="date")
     >>>
@@ -142,7 +137,7 @@ class DataCube:
         res: int | None = None,
         nodata: int | None = None,
         copy: bool = False,
-        parallelizer: Optional[Parallel] = None,
+        parallelizer: Parallel | None = None,
     ) -> None:
         self._arrays = None
         self._res = res
@@ -213,7 +208,7 @@ class DataCube:
         contains: str | None = None,
         endswith: str = ".tif",
         regex: str | None = None,
-        parallelizer: Optional[Parallel] = None,
+        parallelizer: Parallel | None = None,
         file_system=None,
         **kwargs,
     ):
@@ -287,7 +282,7 @@ class DataCube:
         *,
         res: int | None = None,
         raster_type: Raster = Raster,
-        parallelizer: Optional[Parallel] = None,
+        parallelizer: Parallel | None = None,
         file_system=None,
         **kwargs,
     ):
@@ -320,17 +315,15 @@ class DataCube:
         gdf: GeoDataFrame | Iterable[GeoDataFrame],
         columns: str | Iterable[str],
         res: int,
-        parallelizer: Optional[Parallel] = None,
+        parallelizer: Parallel | None = None,
         tile_size: int | None = None,
         grid: GeoSeries | None = None,
         raster_type: Raster = Raster,
         **kwargs,
     ):
-        """
-
-        Args:
-            grid: A grid.
-            **kwargs: Keyword arguments passed to Raster.from_gdf.
+        """Args:
+        grid: A grid.
+        **kwargs: Keyword arguments passed to Raster.from_gdf.
         """
         if grid is None and tile_size is None:
             raise ValueError("Must specify either 'tile_size' or 'grid'.")
@@ -413,7 +406,7 @@ class DataCube:
         rasters: list[Raster] = [
             raster_type.from_dict(meta)
             for raster_type, (_, meta) in zip(
-                raster_types, df[NESSECARY_META].iterrows()
+                raster_types, df[NESSECARY_META].iterrows(), strict=False
             )
         ]
         return cls(rasters)
@@ -635,9 +628,14 @@ class DataCube:
         ]
 
         if self.parallelizer:
-            self.parallelizer.starmap(_write_func, zip(self, paths), kwargs=kwargs)
+            self.parallelizer.starmap(
+                _write_func, zip(self, paths, strict=False), kwargs=kwargs
+            )
         else:
-            [_write_func(raster, path, **kwargs) for raster, path in zip(self, paths)]
+            [
+                _write_func(raster, path, **kwargs)
+                for raster, path in zip(self, paths, strict=False)
+            ]
 
     def write_df(self, folder: str) -> None:
         df = pd.DataFrame(self.meta)
@@ -780,7 +778,10 @@ class DataCube:
         if not all(isinstance(arr, np.ndarray) for arr in new_arrays):
             raise ValueError("Must be list of numpy ndarrays")
 
-        self.data = [raster.update(array=arr) for raster, arr in zip(self, new_arrays)]
+        self.data = [
+            raster.update(array=arr)
+            for raster, arr in zip(self, new_arrays, strict=False)
+        ]
 
     @property
     def raster_type(self) -> Series:
@@ -925,9 +926,7 @@ class DataCube:
     def __getitem__(
         self, item: slice | int | Series | Sequence | Callable | Geometry | BoundingBox
     ) -> Self | Raster:
-        """
-
-        Examples
+        """Examples:
         --------
         >>> cube = sg.DataCube.from_root(testdata, endswith=".tif", crs=25833).load()
 

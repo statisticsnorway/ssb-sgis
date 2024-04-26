@@ -177,7 +177,7 @@ def coordinate_array(
     Returns:
         np.ndarray of np.ndarrays of coordinates.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import coordinate_array, random_points
     >>> points = random_points(5)
@@ -251,7 +251,7 @@ def to_gdf(
     Returns:
         A GeoDataFrame with one column, the geometry column.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import to_gdf
     >>> coords = (10, 60)
@@ -632,7 +632,6 @@ def find_geometry_column(obj, geometry) -> str:
 
 def _geoseries_from_xyz(obj, geometry, index) -> GeoSeries:
     """Make geoseries from the geometry column or columns (x y (z))."""
-
     if len(geometry) == 2:
         x, y = geometry
         z = None

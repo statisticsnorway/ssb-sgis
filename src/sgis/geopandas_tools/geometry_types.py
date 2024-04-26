@@ -51,7 +51,7 @@ def to_single_geom_type(
         TypeError: If incorrect gdf type.
         ValueError: If 'geom_type' is neither 'polygon', 'line' or 'point'.
 
-    Examples
+    Examples:
     --------
     First create a GeoDataFrame of mixed geometries.
 
@@ -143,7 +143,7 @@ def get_geom_type(gdf: GeoDataFrame | GeoSeries) -> str:
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame or GeoSeries.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import to_gdf, get_geom_type
     >>> gdf = to_gdf([0, 0])
@@ -191,7 +191,7 @@ def is_single_geom_type(gdf: GeoDataFrame | GeoSeries) -> bool:
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame or GeoSeries.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import to_gdf, get_geom_type
     >>> gdf = to_gdf([0, 0])

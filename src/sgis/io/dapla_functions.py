@@ -2,7 +2,6 @@
 """
 
 from pathlib import Path
-from typing import Optional
 
 import dapla as dp
 import geopandas as gpd
@@ -16,7 +15,7 @@ from pyarrow import parquet
 def read_geopandas(
     gcs_path: str | Path,
     pandas_fallback: bool = False,
-    file_system: Optional[dp.gcs.GCSFileSystem] = None,
+    file_system: dp.gcs.GCSFileSystem | None = None,
     **kwargs,
 ) -> GeoDataFrame | DataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
@@ -35,10 +34,9 @@ def read_geopandas(
         **kwargs: Additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
-     Returns:
+    Returns:
          A GeoDataFrame if it has rows. If zero rows, a pandas DataFrame is returned.
     """
-
     if not isinstance(gcs_path, str):
         try:
             gcs_path = str(gcs_path)
@@ -81,7 +79,7 @@ def write_geopandas(
     gcs_path: str | Path,
     overwrite: bool = True,
     pandas_fallback: bool = False,
-    file_system: Optional[dp.gcs.GCSFileSystem] = None,
+    file_system: dp.gcs.GCSFileSystem | None = None,
     **kwargs,
 ) -> None:
     """Writes a GeoDataFrame to the speficied format.
@@ -96,7 +94,6 @@ def write_geopandas(
         **kwargs: Additional keyword arguments passed to parquet.write_table
             (for parquet) or geopandas' to_file method (if not parquet).
     """
-
     if not isinstance(gcs_path, str):
         try:
             gcs_path = str(gcs_path)
@@ -152,7 +149,6 @@ def exists(path: str | Path) -> bool:
     Returns:
         True if the path exists, False if not.
     """
-
     file_system = dp.FileClient.get_gcs_file_system()
     return file_system.exists(path)
 

@@ -67,7 +67,7 @@ class NetworkAnalysis:
         rules: NetworkAnalysisRules instance.
         log: A DataFrame with information about each analysis run.
 
-    Examples
+    Examples:
     --------
     Read example data.
 
@@ -184,7 +184,7 @@ class NetworkAnalysis:
             GeoDataFrames. If lines is True, also returns a geometry column with
             straight lines between origin and destination.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
@@ -467,7 +467,7 @@ class NetworkAnalysis:
             ValueError: If weight_df is not a DataFrame with one or three columns
                 that contain weights and all indices of 'origins' and 'destinations'.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
@@ -677,7 +677,7 @@ class NetworkAnalysis:
             Also returns a weight column and the columns 'origin' and 'destination',
             containing the indices of the origins and destinations GeoDataFrames.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
@@ -805,7 +805,7 @@ class NetworkAnalysis:
         Raises:
             ValueError: if drop_middle_percent is not between 0 and 100.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
@@ -947,11 +947,11 @@ class NetworkAnalysis:
             a dissolved line geometry. If dissolve is False, it will return each line
             that is part of the service area.
 
-        See also:
+        See Also:
             precice_service_area: Equivelent method where lines are also cut to get
             precice results.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
@@ -1076,10 +1076,10 @@ class NetworkAnalysis:
             geometry. If dissolve is False, it will return all the columns of the
             network.gdf as well.
 
-        See also:
+        See Also:
             service_area: Faster method where lines are not cut to get precice results.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
@@ -1341,7 +1341,6 @@ class NetworkAnalysis:
         has changed. this method is run inside od_cost_matrix, get_route and
         service_area.
         """
-
         if rowwise and len(origins) != len(destinations):
             raise ValueError(
                 "'origins' and 'destinations' must have the same length when "

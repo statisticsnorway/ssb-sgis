@@ -1,17 +1,12 @@
 # %%
-import multiprocessing
 import os
 import sys
 from pathlib import Path
-from time import perf_counter
 
 import numpy as np
-import pandas as pd
 import shapely
 import xarray as xr
 from IPython.display import display
-from pyproj import CRS
-from shapely import box
 
 src = str(Path(__file__).parent.parent) + "/src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -503,7 +498,7 @@ def test_parallel():
     results_parallelized = (cube.clip(center)).map(x2).map(np.float32).explode()
 
     assert len(results) == len(results_parallelized)
-    for r1, r2 in zip(results, results_parallelized):
+    for r1, r2 in zip(results, results_parallelized, strict=False):
         assert r1.equals(r2)
     # assert results.equals(results_parallelized)
 
@@ -592,7 +587,6 @@ def test_torch():
 
 
 if __name__ == "__main__":
-    import cProfile
 
     # write_sentinel()
 

@@ -5,7 +5,6 @@ from igraph import Graph
 from shapely import force_2d
 from shapely import reverse
 from shapely import unary_union
-from shapely.geometry import MultiLineString
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
 from shapely.ops import nearest_points

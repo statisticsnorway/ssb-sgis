@@ -19,8 +19,7 @@ print(sys.executable)
 
 
 def osm_api():
-    "https://api.openstreetmap.org/"
-
+    """https://api.openstreetmap.org/"""
     import xml.etree.ElementTree as ET
 
     import osmapi

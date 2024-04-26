@@ -25,7 +25,6 @@ class Points:
         The original indices are stored in a dict and mapped back to the results in the
         end.
         """
-
         self.gdf["temp_idx"] = np.arange(start=start, stop=start + len(self.gdf))
         self.gdf["temp_idx"] = self.gdf["temp_idx"].astype(str)
 

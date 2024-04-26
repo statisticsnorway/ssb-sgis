@@ -18,13 +18,8 @@ import joblib
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from geopandas import GeoSeries
 from pandas import DataFrame
-from shapely.geometry import MultiPolygon
-from shapely.geometry import Polygon
 
-from ..geopandas_tools.general import clean_clip
-from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.neighbors import get_neighbor_indices
 from ..geopandas_tools.overlay import clean_overlay
 from ..helpers import LocalFunctionError
@@ -129,7 +124,7 @@ class Parallel:
             A list of the return values of the function, one for each item in
             'iterable'.
 
-        Examples
+        Examples:
         --------
         Multiply each list element by 2.
 
@@ -168,7 +163,6 @@ class Parallel:
         ...     print(results)
         [2, 4, 6]
         """
-
         if args:
             # start at index 1, meaning the 0th argument (the iterable) is still available
             args_as_kwargs = turn_args_into_kwargs(func, args, index_start=1)
@@ -233,7 +227,7 @@ class Parallel:
             A list of the return values of the function, one for each item in
             'iterable'.
 
-        Examples
+        Examples:
         --------
         Multiply each list element by 2.
 

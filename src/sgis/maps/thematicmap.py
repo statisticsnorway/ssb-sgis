@@ -51,7 +51,7 @@ class ThematicMap(Map):
         cmap_stop (int): End position for the color palette.
         facecolor (str): Background color.
 
-    Examples
+    Examples:
     --------
     >>> import sgis as sg
     >>> points = sg.random_points(100).pipe(sg.buff, np.random.rand(100))
@@ -146,7 +146,6 @@ class ThematicMap(Map):
 
         This method should be run after customising the map, but before saving.
         """
-
         __test = kwargs.pop("__test", False)
         include_legend = bool(kwargs.pop("legend", self.legend))
 
@@ -315,7 +314,7 @@ class ThematicMap(Map):
             self.legend = ContinousLegend(title=self._column, size=self._size, **kwargs)
 
     def _choose_cmap(self):
-        """kwargs is to catch start and stop points for the cmap in __init__."""
+        """Kwargs is to catch start and stop points for the cmap in __init__."""
         if self._black:
             self._cmap = "viridis"
             self.cmap_start = 0

@@ -5,11 +5,9 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import distance
-from shapely import snap
 from shapely import unary_union
 from shapely.ops import nearest_points
 
-from ..geopandas_tools.general import to_lines
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..geopandas_tools.polygon_operations import PolygonsAsRings
@@ -49,7 +47,7 @@ def snap_within_distance(
         'to' geometries to multipoint before snapping if the snap points should be
         vertices.
 
-    Examples
+    Examples:
     --------
     Create som points.
 
@@ -80,7 +78,6 @@ def snap_within_distance(
     0  POINT (2.00000 2.00000)      2.828427
     1  POINT (2.00000 2.00000)      1.414214
     """
-
     to = _polygons_to_rings(to)
 
     if not distance_col and not isinstance(points, GeoDataFrame):
@@ -138,7 +135,7 @@ def snap_all(
         'to' geometries to multipoint before snapping if the snap points should be
         vertices.
 
-    Examples
+    Examples:
     --------
     Create som points.
 

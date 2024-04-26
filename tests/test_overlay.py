@@ -1,5 +1,4 @@
 # %%
-import random
 import sys
 import warnings
 from pathlib import Path
@@ -48,7 +47,7 @@ def test_overlay(points_oslo):
             ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
             ["idx_1", "idx1", "idx_2", "idx2", "geometry"],
         ]
-        for cols, how in zip(cols_should_be, hows):
+        for cols, how in zip(cols_should_be, hows, strict=False):
             print(how)
             print(p500.columns)
             no_rows = p500.loc[lambda x: x.index.isin([])].pipe(

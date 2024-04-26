@@ -3,7 +3,6 @@ import sys
 import warnings
 from pathlib import Path
 
-import geopandas as gpd
 import pandas as pd
 
 src = str(Path(__file__).parent).strip("tests") + "src"

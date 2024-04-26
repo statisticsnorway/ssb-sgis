@@ -52,7 +52,7 @@ class Legend:
             'm' is the name of the ThematicMap instance. See here:
             https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
 
-    Examples
+    Examples:
     --------
     Create ten random points with a numeric column from 0 to 9.
 
@@ -138,7 +138,6 @@ class Legend:
 
     def _get_legend_sizes(self, size, kwargs):
         """Adjust fontsize and markersize to size kwarg."""
-
         if "title_fontsize" in kwargs:
             self._title_fontsize = kwargs["title_fontsize"]
             self._title_fontsize_has_been_set = True
@@ -321,7 +320,7 @@ class ContinousLegend(Legend):
             unless 'thousand_sep' is '.'. In this case, ',' (comma) will be used as
             decimal mark.
 
-    Examples
+    Examples:
     --------
     Create ten random points with a numeric column from 0 to 9.
 

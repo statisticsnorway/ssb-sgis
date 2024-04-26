@@ -161,7 +161,7 @@ def clean_geoms(
         GeoDataFrame or GeoSeries with fixed geometries and only the rows with valid,
         non-empty and not-NaN/-None geometries.
 
-    Examples
+    Examples:
     --------
     >>> import sgis as sg
     >>> import pandas as pd
@@ -246,9 +246,13 @@ def get_grouped_centroids(
     ys = grouped_centerpoints.geometry.y
 
     if as_string:
-        grouped_centerpoints["wkt"] = [f"{int(x)}_{int(y)}" for x, y in zip(xs, ys)]
+        grouped_centerpoints["wkt"] = [
+            f"{int(x)}_{int(y)}" for x, y in zip(xs, ys, strict=False)
+        ]
     else:
-        grouped_centerpoints["wkt"] = [Point(x, y) for x, y in zip(xs, ys)]
+        grouped_centerpoints["wkt"] = [
+            Point(x, y) for x, y in zip(xs, ys, strict=False)
+        ]
 
     return gdf[groupby].map(grouped_centerpoints["wkt"])
 
@@ -262,7 +266,7 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     Returns:
         A GeoDataFrame or GeoSeries sorted from large to small in area.
 
-    Examples
+    Examples:
     --------
     Create GeoDataFrame with NaN values.
 
@@ -406,7 +410,7 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     Returns:
         A GeoDataFrame of points with n rows.
 
-    Examples
+    Examples:
     --------
     >>> import sgis as sg
     >>> points = sg.random_points(10_000)
@@ -496,7 +500,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         ignored. This is because the union overlay used if multiple GeoDataFrames
         always ignores the index.
 
-    Examples
+    Examples:
     --------
     Convert single polygon to linestring.
 
@@ -529,7 +533,6 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     >>> lines["l"] = lines.length
     >>> sg.qtm(lines, "l")
     """
-
     if not all(isinstance(gdf, (GeoSeries, GeoDataFrame)) for gdf in gdfs):
         raise TypeError("gdf must be GeoDataFrame or GeoSeries")
 
@@ -538,7 +541,6 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 
     def _shapely_geometry_to_lines(geom):
         """Get all lines from the exterior and interiors of a Polygon."""
-
         # if lines (points are not allowed in this function)
         if geom.area == 0:
             return geom

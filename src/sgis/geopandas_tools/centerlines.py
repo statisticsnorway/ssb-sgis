@@ -6,12 +6,10 @@ import pandas as pd
 import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from geopandas.array import GeometryArray
 from numpy.typing import NDArray
 from shapely import STRtree
 from shapely import distance
 from shapely import extract_unique_points
-from shapely import get_parts
 from shapely import get_rings
 from shapely import line_merge
 from shapely import make_valid
@@ -23,7 +21,6 @@ from shapely.geometry import LineString
 from shapely.ops import nearest_points
 
 from ..maps.maps import explore
-from ..maps.maps import explore_locals
 from ..networkanalysis.traveling_salesman import traveling_salesman_problem
 from .conversion import to_gdf
 from .conversion import to_geoseries
@@ -41,7 +38,9 @@ def get_traveling_salesman_lines(df, return_to_start=False):
     path = traveling_salesman_problem(df, return_to_start=return_to_start)
 
     try:
-        return [LineString([p1, p2]) for p1, p2 in zip(path[:-1], path[1:])]
+        return [
+            LineString([p1, p2]) for p1, p2 in zip(path[:-1], path[1:], strict=False)
+        ]
     except IndexError as e:
         if len(path) == 1:
             return path
@@ -86,7 +85,6 @@ def get_rough_centerlines(
     complext polygons like (buffered) road networks.
 
     """
-
     PRECISION = 0.01
 
     if not len(gdf):
@@ -422,7 +420,8 @@ def multipoints_to_line_segments(
         point_df = point_df[point_df["next"].notna()]
 
     point_df["geometry"] = [
-        LineString([x1, x2]) for x1, x2 in zip(point_df["geometry"], point_df["next"])
+        LineString([x1, x2])
+        for x1, x2 in zip(point_df["geometry"], point_df["next"], strict=False)
     ]
     if isinstance(multipoints.index, pd.MultiIndex):
         point_df.index = point_df.index.droplevel(0)

@@ -10,7 +10,6 @@ version of the solution from GH 2792.
 
 import functools
 
-import dask
 import dask.array as da
 import geopandas as gpd
 import joblib
@@ -19,11 +18,9 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from pandas import DataFrame
-from shapely import Geometry
 from shapely import STRtree
 from shapely import box
 from shapely import difference
-from shapely import get_parts
 from shapely import intersection
 from shapely import make_valid
 from shapely import unary_union
@@ -31,8 +28,6 @@ from shapely.errors import GEOSException
 
 from .general import _determine_geom_type_args
 from .general import clean_geoms
-from .general import merge_geometries
-from .general import parallel_unary_union
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
@@ -190,7 +185,6 @@ def _join_and_get_no_rows(df1, df2, lsuffix, rsuffix):
 
 def _no_intersections_return(df1, df2, how, lsuffix, rsuffix):
     """Return with no overlay if no intersecting bounding box"""
-
     if how == "intersection":
         return _join_and_get_no_rows(df1, df2, lsuffix, rsuffix)
 
@@ -541,8 +535,8 @@ def _add_from_right(
 
 def _shapely_diffclip_left(pairs, df1, grid_size, geom_type, n_jobs):
     """Aggregate areas in right by unique values of left, then use those to clip
-    areas out of left"""
-
+    areas out of left
+    """
     keep_cols = list(df1.columns.difference({"_overlay_index_right"})) + ["geom_right"]
 
     agg_geoms_partial = functools.partial(agg_geoms, grid_size=grid_size)
@@ -590,7 +584,9 @@ def _shapely_diffclip_left(pairs, df1, grid_size, geom_type, n_jobs):
             {
                 i: g
                 for i, g in zip(
-                    many_hits["_overlay_index_right"], many_hits["geom_right"]
+                    many_hits["_overlay_index_right"],
+                    many_hits["geom_right"],
+                    strict=False,
                 )
             }
         )

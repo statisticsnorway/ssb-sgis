@@ -35,7 +35,6 @@ def make_node_ids(
     Note:
         The lines must be singlepart linestrings.
     """
-
     gdf = gdf.explode(index_parts=False).explode(index_parts=False)
 
     if wkt:
@@ -193,7 +192,6 @@ def _prepare_make_edge_cols_simple(
     lines: GeoDataFrame,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     """Faster version of _prepare_make_edge_cols."""
-
     endpoints = lines[lines._geometry_column_name].boundary.explode(ignore_index=True)
 
     if len(lines) and len(endpoints) / len(lines) != 2:

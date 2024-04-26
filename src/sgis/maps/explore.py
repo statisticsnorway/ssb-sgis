@@ -25,7 +25,6 @@ from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely.geometry import LineString
 
-from ..geopandas_tools.conversion import from_4326
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import make_all_singlepart
@@ -821,8 +820,7 @@ class Explore(Map):
 
 
 def _tooltip_popup(type, fields, gdf, **kwds):
-    """get tooltip or popup"""
-
+    """Get tooltip or popup"""
     # specify fields to show in the tooltip
     if fields is False or fields is None or fields == 0:
         return None
@@ -852,8 +850,7 @@ def raster_dataset_to_background_map(dataset: RasterDataset):
 
 
 def _categorical_legend(m, title, categories, colors):
-    """
-    Add categorical legend to a map
+    """Add categorical legend to a map
 
     The implementation is using the code originally written by Michel Metran
     (@michelmetran) and released on GitHub
@@ -872,7 +869,6 @@ def _categorical_legend(m, title, categories, colors):
     colors : list-like
         list of colors (in the same order as categories)
     """
-
     # Header to Add
     head = """
     {% macro header(this, kwargs) %}

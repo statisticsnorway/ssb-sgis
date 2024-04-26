@@ -34,9 +34,8 @@ def sfilter(
         A copy of 'gdf' with only the rows matching the
         spatial predicate with 'other'.
 
-    Examples
+    Examples:
     --------
-
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry
@@ -100,9 +99,8 @@ def sfilter_split(
         A tuple of GeoDataFrames, one with the rows that match the spatial predicate
         and one with the rows that do not.
 
-    Examples
+    Examples:
     --------
-
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry
@@ -171,9 +169,8 @@ def sfilter_inverse(
         A copy of 'gdf' with only the rows that do not match the
         spatial predicate with 'other'.
 
-    Examples
+    Examples:
     --------
-
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry
@@ -256,7 +253,7 @@ def _get_sfilter_indices(
     predicate : string
         Binary predicate to query.
 
-    Returns
+    Returns:
     -------
     DataFrame
         DataFrame with matching indices in

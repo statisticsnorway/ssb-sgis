@@ -14,8 +14,6 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from pandas import DataFrame
 from pandas import Series
-from pandas import concat
-from shapely import STRtree
 from sklearn.neighbors import NearestNeighbors
 
 from .conversion import coordinate_array
@@ -51,7 +49,7 @@ def get_neighbor_indices(
         ValueError: If gdf and neighbors do not have the same coordinate reference
             system.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import get_neighbor_indices, to_gdf
     >>> points = to_gdf([(0, 0), (0.5, 0.5)])
@@ -99,7 +97,6 @@ def get_neighbor_indices(
     ['a' 'a' 'b' 'b']
 
     """
-
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
@@ -155,7 +152,7 @@ def get_all_distances(
         ValueError: If the coordinate reference system of 'gdf' and 'neighbors' are
             not the same.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import get_all_distances, random_points
     >>> points = random_points(100)
@@ -251,7 +248,6 @@ def sjoin_within_distance(
     **kwargs,
 ) -> GeoDataFrame:
     """Sjoin with a buffer on the right GeoDataFrame and adds a distance column."""
-
     new_neighbor_cols = {"__left_range_idx": range(len(neighbors))}
     if distance:
         new_neighbor_cols[neighbors._geometry_column_name] = lambda x: x.buffer(
@@ -300,7 +296,7 @@ def get_k_nearest_neighbors(
         ValueError: If the coordinate reference system of 'gdf' and 'neighbors' are
             not the same.
 
-    Examples
+    Examples:
     --------
     Make some random points.
 

@@ -4,8 +4,6 @@ import timeit
 import warnings
 from pathlib import Path
 
-import geopandas as gpd
-import numpy as np
 import pandas as pd
 
 src = str(Path(__file__).parent).strip("tests") + "src"
@@ -187,7 +185,6 @@ def main():
 
 
 if __name__ == "__main__":
-    import cProfile
 
     # cProfile.run("main()", sort="cumtime")
     main()

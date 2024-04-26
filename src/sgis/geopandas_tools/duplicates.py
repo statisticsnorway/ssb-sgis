@@ -22,7 +22,6 @@ from .overlay import _run_overlay_dask
 from .overlay import clean_overlay
 from .overlay import make_valid_and_keep_geom_type
 from .sfilter import sfilter_inverse
-from .sfilter import sfilter_split
 
 PRECISION = 1e-3
 
@@ -52,7 +51,7 @@ def update_geometries(
         grid_size: Precision grid size to round the geometries. Will use the highest
             precision of the inputs by default.
 
-    Example
+    Example:
     ------
     Create two circles and get the overlap.
 
@@ -209,7 +208,7 @@ def get_intersections(
     Returns:
         A GeoDataFrame of the overlapping polygons.
 
-    Examples
+    Examples:
     --------
     Create three partially overlapping polygons.
 
@@ -383,7 +382,7 @@ def _get_duplicate_geometry_groups(
     tree = STRtree(gdf.geometry.values)
     left, right = tree.query(gdf.geometry.values, predicate="within")
 
-    edges = list(zip(left, right))
+    edges = list(zip(left, right, strict=False))
 
     graph = nx.Graph()
     graph.add_edges_from(edges)

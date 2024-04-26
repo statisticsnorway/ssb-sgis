@@ -9,8 +9,6 @@ from pandas import DataFrame
 from shapely import shortest_line
 
 from ..geopandas_tools.conversion import coordinate_array
-from ..geopandas_tools.conversion import to_geoseries
-from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.neighbors import k_nearest_neighbors
 from .nodes import make_edge_wkt_cols
 from .nodes import make_node_ids
@@ -92,7 +90,7 @@ def close_network_holes(
         The holes will have missing values in the weight column used in
         NetworkAnalysis. These values must be filled before analysis.
 
-    Examples
+    Examples:
     --------
     Read road data with small gaps.
 
@@ -139,7 +137,6 @@ def close_network_holes(
     intentional. They are road blocks where most cars aren't allowed to pass. Fill the
     holes only if it makes the travel times/routes more realistic.
     """
-
     lines, nodes = make_node_ids(gdf)
 
     # remove duplicates of lines going both directions
@@ -205,7 +202,7 @@ def close_network_holes_to_deadends(
     Returns:
         The input GeoDataFrame with new lines added.
 
-    Examples
+    Examples:
     --------
     Read road data with small gaps.
 

@@ -3,9 +3,6 @@
 import sys
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import pytest
 
 src = str(Path(__file__).parent.parent) + "/src"
 
@@ -63,7 +60,6 @@ def not_test_bug():
 
     sg.to_gdf(intersections).explore()
     sss
-    import geopandas as gpd
 
     print(gpd.show_versions())
 
@@ -78,7 +74,6 @@ def not_test_bug():
     assert len(joined) == 12
     assert list(sorted(joined.index.unique())) == [0, 1, 2, 3, 4, 5]
 
-    import networkx as nx
     from shapely import STRtree
 
     tree = STRtree(gdf.geometry.values)
@@ -88,7 +83,7 @@ def not_test_bug():
     print(right)
     print(len(right))
 
-    edges = list(zip(left, right))
+    edges = list(zip(left, right, strict=False))
     print(edges)
 
     graph = nx.Graph()
@@ -109,7 +104,6 @@ def not_test_bug():
 
 
 def not_test_bug2():
-    import geopandas as gpd
     from shapely import STRtree
 
     circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)

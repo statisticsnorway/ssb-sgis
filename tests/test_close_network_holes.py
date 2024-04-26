@@ -3,7 +3,6 @@ import sys
 import warnings
 from pathlib import Path
 
-import geopandas as gpd
 from shapely.geometry import LineString
 from shapely.geometry import MultiLineString
 

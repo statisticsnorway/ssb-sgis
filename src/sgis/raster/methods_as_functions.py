@@ -120,6 +120,6 @@ def _write_base(cube, subfolder_col, root):
         folders = [Path(root) for _ in cube]
 
     rasters = list(cube)
-    args = [item for item in zip(rasters, folders)]
+    args = [item for item in zip(rasters, folders, strict=False)]
 
     return cube, args

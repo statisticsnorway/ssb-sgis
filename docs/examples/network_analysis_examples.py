@@ -28,7 +28,6 @@ import sgis as sg
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
-import geopandas as gpd
 
 points = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"

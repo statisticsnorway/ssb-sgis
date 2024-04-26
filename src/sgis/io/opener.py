@@ -12,7 +12,7 @@ from ._is_dapla import is_dapla
 def opener(path, mode="rb", file_system=None):
     """Yields a gcs buffer if in Dapla, otherwise yields the path.
 
-    Example
+    Example:
     -------
     >>> with opener(path) as file:
     >>>     with rasterio.open(file) as src:

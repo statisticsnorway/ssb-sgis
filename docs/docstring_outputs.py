@@ -32,7 +32,6 @@ def print_function_name(func):
 
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
-from shapely.geometry import Polygon
 
 
 @print_function_name
@@ -217,7 +216,6 @@ def split_lines_docstring():
 
 def to_single_geom_type_docstring():
     from shapely.geometry import LineString
-    from shapely.geometry import Polygon
 
     from sgis import to_gdf
     from sgis import to_single_geom_type
