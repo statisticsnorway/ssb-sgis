@@ -9,6 +9,7 @@ relative-images:
 [license]: license
 [contributor guide]: contributing
 
+
 ```{toctree}
 ---
 hidden:
@@ -20,4 +21,5 @@ GitHub <https://github.com/statisticsnorway/ssb-sgis>
 contributing
 Code of Conduct <codeofconduct>
 License <license>
+Changelog <https://github.com/statisticsnorway/ssb-sgis/releases>
 ```

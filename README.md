@@ -4,25 +4,30 @@ GIS Python tools used in [Statistics Norway](https://www.ssb.no/en).
 
 See documentation [here](https://statisticsnorway.github.io/ssb-sgis/reference/index.html).
 
-[![PyPI](https://img.shields.io/pypi/v/ssb-sgis.svg)][pypi_]
-[![Status](https://img.shields.io/pypi/status/ssb-sgis.svg)][status]
-[![Python Version](https://img.shields.io/pypi/pyversions/ssb-sgis)][python version]
+[![PyPI](https://img.shields.io/pypi/v/ssb-sgis.svg)][pypi status]
+[![Status](https://img.shields.io/pypi/status/ssb-sgis.svg)][pypi status]
+[![Python Version](https://img.shields.io/pypi/pyversions/ssb-sgis)][pypi status]
 [![License](https://img.shields.io/pypi/l/ssb-sgis)][license]
 
-[![Documentation](https://img.shields.io/badge/Documentation-GitHub_Pages-green.svg)](https://statisticsnorway.github.io/ssb-sgis/index.html)
-[![Tests](https://github.com/statisticsnorway/ssb-sgis/workflows/Tests/badge.svg)][tests]
+[![Documentation](https://github.com/statisticsnorway/ssb-sgis/actions/workflows/docs.yml/badge.svg)][documentation]
+[![Tests](https://github.com/statisticsnorway/ssb-sgis/actions/workflows/tests.yml/badge.svg)][tests]
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=statisticsnorway_ssb-sgis&metric=coverage)][sonarcov]
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=statisticsnorway_ssb-sgis&metric=alert_status)][sonarquality]
 
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)][pre-commit]
 [![Black](https://img.shields.io/badge/code%20style-black-000000.svg)][black]
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)][poetry]
 
-[pypi_]: https://pypi.org/project/ssb-sgis/
-[status]: https://pypi.org/project/ssb-sgis/
-[python version]: https://pypi.org/project/ssb-sgis
-[read the docs]: https://ssb-sgis.readthedocs.io/
+[pypi status]: https://pypi.org/project/ssb-sgis/
+[documentation]: https://statisticsnorway.github.io/ssb-sgis
 [tests]: https://github.com/statisticsnorway/ssb-sgis/actions?workflow=Tests
-[coverage]: https://sonarcloud.io/component_measures?metric=coverage&id=statisticsnorway_ssb-sgis
+
+[sonarcov]: https://sonarcloud.io/summary/overall?id=statisticsnorway_ssb-sgis
+[sonarquality]: https://sonarcloud.io/summary/overall?id=statisticsnorway_ssb-sgis
 [pre-commit]: https://github.com/pre-commit/pre-commit
 [black]: https://github.com/psf/black
+[poetry]: https://python-poetry.org/
 
 sgis builds on the geopandas package and provides functions that make it easier to do GIS in python.
 Features include network analysis, functions for exploring multiple GeoDataFrames in a layered interactive map,
@@ -235,7 +240,33 @@ To check and run the docstrings examples, run this command:
 poetry run xdoctest --command=all ./src/sgis
 ```
 
+## Contributing
+
+Contributions are very welcome.
+To learn more, see the [Contributor Guide].
+
+## License
+
+Distributed under the terms of the [MIT license][license],
+_SSB sgis_ is free and open source software.
+
+## Issues
+
+If you encounter any problems,
+please [file an issue] along with a detailed description.
+
+## Credits
+
+This project was generated from [Statistics Norway]'s [SSB PyPI Template].
+
+[statistics norway]: https://www.ssb.no/en
+[pypi]: https://pypi.org/
+[ssb pypi template]: https://github.com/statisticsnorway/ssb-pypitemplate
+[file an issue]: https://github.com/statisticsnorway/ssb-sgis/issues
+[pip]: https://pip.pypa.io/
+
 <!-- github-only -->
 
 [license]: https://github.com/statisticsnorway/ssb-sgis/blob/main/LICENSE
 [contributor guide]: https://github.com/statisticsnorway/ssb-sgis/blob/main/CONTRIBUTING.md
+[reference guide]: https://statisticsnorway.github.io/ssb-sgis/reference.html
