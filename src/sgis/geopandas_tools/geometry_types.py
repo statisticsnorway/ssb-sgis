@@ -1,4 +1,5 @@
 """Check and set geometry type."""
+
 import numpy as np
 import pandas as pd
 import shapely

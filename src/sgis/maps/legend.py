@@ -4,6 +4,7 @@ The Legend class is best accessed through the 'legend' attribute of the Thematic
 class.
 
 """
+
 import warnings
 
 import matplotlib

@@ -1,4 +1,5 @@
 """Small helper functions."""
+
 import glob
 import inspect
 import os

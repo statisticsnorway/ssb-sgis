@@ -1,4 +1,5 @@
 """Method-to-function to use as mapping function."""
+
 from pathlib import Path
 
 

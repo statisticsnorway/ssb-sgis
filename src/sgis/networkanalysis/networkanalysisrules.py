@@ -3,6 +3,7 @@
 The class is to be used as the 'rules' parameter in the NetworkAnalysis
 class.
 """
+
 from copy import copy
 from copy import deepcopy
 from dataclasses import dataclass

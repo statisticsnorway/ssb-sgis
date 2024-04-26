@@ -1,4 +1,5 @@
 """Cutting and splitting line geometries."""
+
 import warnings
 
 import numpy as np
