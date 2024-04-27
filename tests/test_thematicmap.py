@@ -19,6 +19,7 @@ import sgis as sg
 __test = 1
 
 
+@pytest.mark.skip(reason="This test requires GUI")
 def test_thematicmap(points_oslo):
     points = points_oslo
 

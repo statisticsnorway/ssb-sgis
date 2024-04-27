@@ -44,6 +44,20 @@ scikit-learn = ">=1.2.1"
 shapely = ">=2.0.1"
 typing-extensions = ">=4.11.0"
 xyzservices = ">=2023.2.0"
+pyogrio = { version = ">=0.7.2", optional = true }
+xarray = { version = ">=2024.3.0", optional = true }
+rioxarray = { version = ">=0.15.5", optional = true }
+torch = { version = ">=2.3.0", optional = true }
+torchgeo = { version = ">=0.5.2", optional = true }
+dapla-toolbelt = { version = ">=2.0.12", optional = true }
+gcsfs = { version = ">=2024.3.1", optional = true }
+
+[tool.poetry.extras]
+all = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", "gcsfs"]
+bucket = ["dapla-toolbelt", "gcsfs"]
+torch = ["torch", "torchgeo"]
+xarray = ["xarray", "rioxarray"]
+test = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo"]
 
 [tool.poetry.group.dev.dependencies]
 pygments = ">=2.10.0"
@@ -67,12 +81,7 @@ deptry = ">=0.8.0"
 isort = ">=5.13.2"
 jupyter = ">=1.0.0"
 jupytext = ">=1.16.1"
-pyogrio = ">=0.7.2"
 pytest-cov = ">=5.0.0"
-rioxarray = ">=0.15.5"
-torch = ">=2.3.0"
-torchgeo = ">=0.5.2"
-xarray = ">=2024.3.0"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -177,7 +186,8 @@ skip_gitignore = true
 treat_comments_as_code = ["# %%"]
 
 [tool.deptry.per_rule_ignores]
-DEP001 = ["sgis", "nox", "nox_poetry", "dapla", "torch", "torchgeo", "xarray", "rioxarray", "gcsfs"]
+DEP001 = ["sgis", "nox", "nox_poetry"]  # packages available by default
+DEP002 = ["pyogrio"]                    # only used in tests
 
 [build-system]
 requires = ["poetry-core"]

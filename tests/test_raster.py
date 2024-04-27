@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import xarray as xr
 from IPython.display import display
 from shapely import box
@@ -40,6 +41,7 @@ def test_transform():
     assert transform1 == transform
 
 
+@pytest.mark.skip(reason="This test requires GUI")
 def test_gradient():
     arr = np.array(
         [

@@ -3,13 +3,13 @@ import itertools
 import multiprocessing
 import os
 import re
+from collections.abc import Callable
+from collections.abc import Iterable
+from collections.abc import Sequence
 from copy import copy
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
-from collections.abc import Iterable
-from collections.abc import Sequence
 
 import geopandas as gpd
 import numpy as np

@@ -2,7 +2,6 @@
 import sys
 from pathlib import Path
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 sys.path.insert(0, src)

@@ -1,7 +1,6 @@
 # %%
 from pathlib import Path
 
-
 src = str(Path(__file__).parent).strip("tests") + "src"
 
 import sys
