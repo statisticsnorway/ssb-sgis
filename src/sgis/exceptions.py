@@ -10,7 +10,7 @@ class NoPointsWithinSearchToleranceError(Exception):
         self.what = what
         self.search_tolerance = search_tolerance
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             f"No {self.what} within specified 'search_tolerance' "
             f"of {self.search_tolerance}"

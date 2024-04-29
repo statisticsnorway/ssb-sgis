@@ -75,7 +75,7 @@ def read_geopandas(
 
 
 def write_geopandas(
-    df: gpd.GeoDataFrame,
+    df: GeoDataFrame,
     gcs_path: str | Path,
     overwrite: bool = True,
     pandas_fallback: bool = False,
@@ -106,7 +106,8 @@ def write_geopandas(
     if file_system is None:
         file_system = dp.FileClient.get_gcs_file_system()
 
-    pd.io.parquet.BaseImpl.validate_dataframe(df)
+    if not isinstance(df, GeoDataFrame):
+        raise ValueError("DataFrame must be GeoDataFrame.")
 
     if not len(df):
         if pandas_fallback:
@@ -220,11 +221,8 @@ def check_files(
     return df.loc[lambda x: x.index > the_time, ["kb", "mb", "name", "child", "path"]]
 
 
-def get_files_in_subfolders(folderinfo: list[dict]) -> list[dict]:
+def get_files_in_subfolders(folderinfo: list[dict]) -> list[tuple]:
     file_system = dp.FileClient.get_gcs_file_system()
-
-    if isinstance(folderinfo, (str, Path)):
-        folderinfo = [folderinfo]
 
     fileinfo = []
 
