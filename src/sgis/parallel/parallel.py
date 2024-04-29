@@ -467,7 +467,7 @@ class Parallel:
         else:
             return out
 
-    def validate_execution(self, func):
+    def validate_execution(self, func: Callable) -> None:
         """Multiprocessing doesn't work with local variables in interactive interpreter.
 
         Raising Exception to avoid confusion.

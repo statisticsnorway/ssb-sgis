@@ -5,6 +5,7 @@ import inspect
 import os
 import warnings
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 from geopandas import GeoDataFrame
@@ -102,8 +103,8 @@ def get_all_files(root, recursive=True):
 
 
 def return_two_vals(
-    vals: tuple[str | None, str | None] | list[str] | str | int | float
-) -> tuple[str | int | float, str | int | float | None]:
+    vals: tuple[str, str] | list[str] | str | int | float
+) -> tuple[str | int | float, str | int | float]:
     """Return a two-length tuple from a str/int/float or list/tuple of length 1 or 2.
 
     Returns 'vals' as a 2-length tuple. If the input is a string, return
@@ -118,7 +119,7 @@ def return_two_vals(
     """
     if isinstance(vals, str):
         return vals, vals
-    if hasattr(vals, "__iter__"):
+    if isinstance(vals, (tuple, list)):
         if len(vals) == 2:
             return vals[0], vals[1]
         if len(vals) == 1:
@@ -157,44 +158,30 @@ def unit_is_degrees(gdf: GeoDataFrame) -> bool:
 def get_object_name(
     var: object, start: int = 2, stop: int = 7, ignore_self: bool = True
 ) -> str | None:
-    """Searches through the local variables down one level at a time."""
-    frame = inspect.currentframe()
-
-    for _ in range(start):
-        frame = frame.f_back
-
-    for _ in np.arange(start, stop):
-        names = [
-            var_name for var_name, var_val in frame.f_locals.items() if var_val is var
-        ]
-        if names and len(names) == 1:
-            if ignore_self and names[0] == "self":
-                frame = frame.f_back
-                continue
-            return names[0]
-
-        names = [name for name in names if not name.startswith("_")]
-
-        if names and len(names) == 1:
-            if ignore_self and names[0] == "self":
-                frame = frame.f_back
-                continue
-
-            return names[0]
-
-        if names and len(names) > 1:
-            if ignore_self and names[0] == "self":
-                frame = frame.f_back
-                continue
-            warnings.warn(
-                "More than one local variable matches the object. Name might be wrong."
-            )
-            return names[0]
-
-        frame = frame.f_back
-
-        if not frame:
-            return
+    frame = inspect.currentframe()  # frame can be FrameType or None
+    if frame:
+        try:
+            for _ in range(start):
+                frame = frame.f_back if frame else None
+            for _ in range(start, stop):
+                if frame:
+                    names = [
+                        var_name
+                        for var_name, var_val in frame.f_locals.items()
+                        if var_val is var and not (ignore_self and var_name == "self")
+                    ]
+                    names = [name for name in names if not name.startswith("_")]
+                    if names:
+                        if len(names) != 1:
+                            warnings.warn(
+                                "More than one local variable matches the object. Name might be wrong."
+                            )
+                        return names[0]
+                frame = frame.f_back if frame else None
+        finally:
+            if frame:
+                del frame  # Explicitly delete frame reference to assist with garbage collection
+    return None
 
 
 def make_namedict(gdfs: tuple[GeoDataFrame]) -> dict[int, str]:
@@ -229,7 +216,7 @@ def is_number(text) -> bool:
 
 
 class LocalFunctionError(ValueError):
-    def __init__(self, func: str):
+    def __init__(self, func: Callable):
         self.func = func.__name__
 
     def __str__(self):

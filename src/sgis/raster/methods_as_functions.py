@@ -40,10 +40,6 @@ def _clip_func(raster, mask, **kwargs):
     return raster.clip(mask, **kwargs)
 
 
-def _clip_func(raster, mask, **kwargs):
-    return raster.clip(mask, **kwargs)
-
-
 def _load_func(raster, **kwargs):
     return raster.load(**kwargs)
 
