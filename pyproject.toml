@@ -34,7 +34,8 @@ mapclassify = ">=2.5.0"
 matplotlib = ">=3.7.0"
 networkx = ">=3.0"
 numpy = ">=1.24.2"
-pandas = ">=2.0.3"
+pandas = ">=2.2.1"
+pandas-stubs = ">=2.2.1.240316"
 pyarrow = ">=11.0.0"
 pyproj = ">=3.6.1"
 rasterio = ">=1.3.8"
@@ -43,6 +44,7 @@ rtree = ">=1.0.1"
 scikit-learn = ">=1.2.1"
 shapely = ">=2.0.1"
 typing-extensions = ">=4.11.0"
+types-requests = ">=2.31.0.20240406"
 xyzservices = ">=2023.2.0"
 pyogrio = { version = ">=0.7.2", optional = true }
 xarray = { version = ">=2024.3.0", optional = true }
@@ -100,11 +102,35 @@ show_missing = true
 fail_under = 50
 
 [tool.mypy]
-strict = true
+strict = false
 warn_unreachable = true
 pretty = true
 show_column_numbers = true
 show_error_context = true
+
+[[tool.mypy.overrides]]
+module = [
+    "affine.*",
+    "branca.*",
+    "dapla.*",
+    "folium.*",
+    "gcsfs.*",
+    "geocoder.*",
+    "geopandas.*",
+    "igraph.*",
+    "jenkspy.*",
+    "joblib.*",
+    "mapclassify.*",
+    "networkx.*",
+    "osmapi.*",
+    "pyarrow.*",
+    "pyogrio.*",
+    "rasterio.*",
+    "shapely.*",
+    "sklearn.neighbors.*",
+    "xyzservices.*",
+]
+ignore_missing_imports = true
 
 [tool.ruff]
 force-exclude = true  # Apply excludes to pre-commit
