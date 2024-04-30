@@ -15,6 +15,7 @@ import shapely
 from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from numpy.typing import NDArray
 from pandas.api.types import is_array_like
 from pandas.api.types import is_dict_like
 from pandas.api.types import is_list_like
@@ -33,11 +34,10 @@ try:
     from torchgeo.datasets.geo import RasterDataset
 except ImportError:
 
-    class RasterDataset:
+    class RasterDataset:  # type: ignore
         """Placeholder"""
 
 
-@staticmethod
 def crs_to_string(crs):
     if crs is None:
         return "None"
@@ -114,24 +114,24 @@ def to_bbox(
         return tuple(obj.bounds)
 
     try:
-        minx = int(np.min(obj["minx"]))
-        miny = int(np.min(obj["miny"]))
-        maxx = int(np.max(obj["maxx"]))
-        maxy = int(np.max(obj["maxy"]))
+        minx = int(np.min(obj["minx"]))  # type: ignore [index]
+        miny = int(np.min(obj["miny"]))  # type: ignore [index]
+        maxx = int(np.max(obj["maxx"]))  # type: ignore [index]
+        maxy = int(np.max(obj["maxy"]))  # type: ignore [index]
         return minx, miny, maxx, maxy
     except Exception:
         try:
-            minx = int(np.min(obj.minx))
-            miny = int(np.min(obj.miny))
-            maxx = int(np.max(obj.maxx))
-            maxy = int(np.max(obj.maxy))
+            minx = int(np.min(obj.minx))  # type: ignore [union-attr]
+            miny = int(np.min(obj.miny))  # type: ignore [union-attr]
+            maxx = int(np.max(obj.maxx))  # type: ignore [union-attr]
+            maxy = int(np.max(obj.maxy))  # type: ignore [union-attr]
             return minx, miny, maxx, maxy
         except Exception:
             pass
 
     if hasattr(obj, "geometry"):
         try:
-            return tuple(GeoSeries(obj["geometry"]).total_bounds)
+            return tuple(GeoSeries(obj["geometry"]).total_bounds)  # type: ignore [index]
         except Exception:
             return tuple(GeoSeries(obj.geometry).total_bounds)
 
@@ -168,7 +168,7 @@ def to_4326(lon: float, lat: float, crs=25833):
 def coordinate_array(
     gdf: GeoDataFrame | GeoSeries,
     strict=False,
-) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
+) -> NDArray[np.float64]:
     """Creates a 2d ndarray of coordinates from point geometries.
 
     Args:
@@ -342,17 +342,25 @@ def to_gdf(
 
     if crs is None:
         try:
-            crs = obj.crs
+            crs = obj.crs  # type: ignore
         except AttributeError:
             try:
-                matches = re.search(r"SRID=(\d+);", obj)
+                matches = re.search(r"SRID=(\d+);", obj)  # type: ignore
             except TypeError:
                 try:
-                    matches = re.search(r"SRID=(\d+);", obj[0])
+                    matches = re.search(r"SRID=(\d+);", obj[0])  # type: ignore
                 except Exception:
                     pass
             try:
-                crs = CRS(int("".join(x for x in matches.group(0) if x.isnumeric())))
+                crs = CRS(
+                    int(
+                        "".join(
+                            x
+                            for x in matches.group(0)  # type:ignore
+                            if x.isnumeric()
+                        )
+                    )
+                )
             except Exception:
                 pass
 
@@ -371,13 +379,13 @@ def to_gdf(
             crs=crs,
         )
 
-    if is_array_like(geometry) and len(geometry) == len(obj):
+    if is_array_like(geometry) and len(geometry) == len(obj):  # type: ignore
         geometry = GeoSeries(
-            _make_one_shapely_geom(g) for g in geometry if g is not None
+            _make_one_shapely_geom(g) for g in geometry if g is not None  # type: ignore
         )
         return GeoDataFrame(obj, geometry=geometry, crs=crs, **kwargs)
 
-    geom_col: str = find_geometry_column(obj, geometry)
+    geom_col = find_geometry_column(obj, geometry)
     index = kwargs.pop("index", None)
 
     # get done with iterators that get consumed by 'all'
@@ -402,7 +410,7 @@ def to_gdf(
         if is_nested_geojson(obj):
             # crs = crs or get_crs_from_dict(obj)
             obj = pd.concat(
-                (GeoSeries(_from_json(g)) for g in obj if g is not None),
+                (GeoSeries(_from_json(g)) for g in obj if g is not None),  # type: ignore
                 ignore_index=True,
             )
             if index is not None:
@@ -417,7 +425,7 @@ def to_gdf(
 
     # now we have dict, Series or DataFrame
 
-    obj = obj.copy()
+    obj = obj.copy()  # type: ignore [union-attr]
 
     # preserve Series/DataFrame index
     index = obj.index if hasattr(obj, "index") and index is None else index
@@ -442,7 +450,7 @@ def to_gdf(
         obj[geom_col] = GeoSeries(make_shapely_geoms(obj[geom_col]), index=index)
         return GeoDataFrame(dict(obj), geometry=geom_col, crs=crs, **kwargs)
 
-    if geometry and all(g in obj for g in geometry):
+    if geometry and all(g in obj for g in geometry):  # type: ignore [union-attr]
         obj[geom_col] = _geoseries_from_xyz(obj, geometry, index=index)
         return GeoDataFrame(obj, geometry=geom_col, crs=crs, **kwargs)
 
@@ -575,7 +583,7 @@ def get_crs_from_dict(obj):
     return None
 
 
-def _from_json(obj: dict):
+def _from_json(obj: dict | list[dict]):
     if not isinstance(obj, dict) and isinstance(obj[0], dict):
         return [_from_json(g) for g in obj]
     if "geometry" in obj:
@@ -650,12 +658,12 @@ def _geoseries_from_xyz(obj, geometry, index) -> GeoSeries:
 
 def _is_one_geometry(obj) -> bool:
     if (
-        isinstance(obj, (str, bytes, Geometry))
+        isinstance(obj, (str, bytes, Geometry))  # type: ignore [unreachable]
         or all(isinstance(i, numbers.Number) for i in obj)
         or not hasattr(obj, "__iter__")
     ):
         return True
-    return False
+    return False  # type: ignore [unreachable]
 
 
 def _make_one_shapely_geom(obj):

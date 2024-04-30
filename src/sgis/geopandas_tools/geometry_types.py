@@ -27,7 +27,7 @@ def make_all_singlepart(
 
 
 def to_single_geom_type(
-    gdf: GeoDataFrame | GeoSeries,
+    gdf: GeoDataFrame | GeoSeries | Geometry | GeometryArray | np.ndarray,
     geom_type: str,
     ignore_index: bool = False,
 ) -> GeoDataFrame | GeoSeries:
@@ -98,7 +98,7 @@ def to_single_geom_type(
         arr = np.vectorize(_shapely_to_single_geom_type)(gdf, geom_type)
         return arr[~shapely.is_empty(arr)]
 
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):  # type: ignore [unreachable]
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
     # explode collections to single-typed geometries
