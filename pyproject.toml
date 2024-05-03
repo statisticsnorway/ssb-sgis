@@ -173,6 +173,11 @@ ignore = [
     "D104",   # Missing docstring in public package
     "RUF018", # Avoid assignment expressions in `assert` statements
     "F841",   # Local variable is assigned to but never used
+    "B019",   # Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks
+    "UP038",  # Use `X | Y` in `isinstance` call instead of `(X, Y)`
+    "B023",   # Function definition does not bind loop variable
+    "ANN001", # TODO temporary. Missing type annotation for function argument `grid_size`
+    "D103",   # TODO temporary. Missing docstring in public function
 ]
 
 [tool.ruff.lint.isort]

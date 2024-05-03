@@ -44,8 +44,8 @@ def cprofile_df(call: str) -> pd.DataFrame:
         numbers = [float(x) for x in line if is_number(x)]
         not_number = "".join([x for x in line if not is_number(x)])
         if len(numbers) + 1 == len(cols):
-            out_line = numbers + [not_number]
-            out.append(out_line)
+            numbers.append(not_number)
+            out.append(numbers)
             continue
         raise ValueError(line)
 

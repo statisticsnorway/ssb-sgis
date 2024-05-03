@@ -62,12 +62,14 @@ except ImportError:
         """Placeholder."""
 
         def __init__(self, *args, **kwargs) -> None:
+            """Placeholder."""
             raise ImportError("missing optional dependency 'torchgeo'")
 
     class RasterDataset:
         """Placeholder."""
 
         def __init__(self, *args, **kwargs) -> None:
+            """Placeholder."""
             raise ImportError("missing optional dependency 'torchgeo'")
 
 
@@ -107,6 +109,9 @@ from .zonal import _make_geometry_iterrows
 from .zonal import _prepare_zonal
 from .zonal import _zonal_func
 from .zonal import _zonal_post
+
+
+TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
 
 
 class DataCube:
@@ -227,7 +232,7 @@ class DataCube:
             regex: Regular expression to match file names.
             parallelizer: sgis.Parallel instance for concurrent file processing.
             file_system: File system to use for file operations, used in GCS environment.
-            # **kwargs: Additional keyword arguments to pass to 'from_path' method.
+            **kwargs: Additional keyword arguments to pass to 'from_path' method.
 
         Returns:
             An instance of DataCube containing the raster data from specified paths.
@@ -438,6 +443,7 @@ class DataCube:
     def to_gdf(
         self, column: str | None = None, ignore_index: bool = False, concat: bool = True
     ) -> GeoDataFrame:
+        """Convert DataCube to GeoDataFrame."""
         gdfs = self.run_raster_method("to_gdf", column=column, return_self=False)
 
         if concat:
@@ -445,6 +451,7 @@ class DataCube:
         return gdfs
 
     def to_xarray(self) -> Dataset:
+        """Convert DataCube to an xarray.Dataset."""
         return xr.Dataset({i: r.to_xarray() for i, r in enumerate(self.data)})
 
     def zonal(
@@ -455,6 +462,7 @@ class DataCube:
         by_date: bool | None = None,
         dropna: bool = True,
     ) -> GeoDataFrame:
+        """Calculate zonal statistics within polygons."""
         idx_mapper, idx_name = get_index_mapper(polygons)
         polygons, aggfunc, func_names = _prepare_zonal(polygons, aggfunc)
         poly_iter = _make_geometry_iterrows(polygons)
@@ -496,6 +504,7 @@ class DataCube:
         )
 
     def gradient(self, degrees: bool = False) -> Self:
+        """Get gradients in each image."""
         self.data = self.run_raster_method("gradient", degrees=degrees)
         return self
 
@@ -545,7 +554,8 @@ class DataCube:
 
         return cube
 
-    def intersects(self, other, copy: bool = True) -> Self:
+    def intersection(self, other: Any, copy: bool = True) -> Self:
+        """Select the images that intersect 'other'."""
         other = to_shapely(other)
         cube = self.copy() if copy else self
         cube = cube[cube.boxes.intersects(other)]
@@ -696,9 +706,10 @@ class DataCube:
         index_func: Callable,
         band_name1: str,
         band_name2: str,
-        copy=True,
+        copy: bool = True,
         **kwargs,
     ) -> Self:
+        """Calculate an index based on a function."""
         cube = self.copy() if copy else self
 
         raster_pairs: list[tuple[Raster, Raster]] = get_raster_pairs(
@@ -764,7 +775,7 @@ class DataCube:
             raise AttributeError(f"Raster has no method {method!r}.")
 
         method_as_func = functools.partial(
-            _method_as_func, method=method, *args, **kwargs
+            _method_as_func, *args, method=method, **kwargs
         )
 
         cube = self.copy() if copy else self
@@ -988,9 +999,11 @@ class DataCube:
 
     def __getitem__(
         self, item: slice | int | Series | Sequence | Callable | Geometry | BoundingBox
-    ) -> Self | Raster:
-        """Examples:
-        --------
+    ) -> Self | Raster | TORCHGEO_RETURN_TYPE:
+        """Select one or more of the Rasters based on indexing or spatial or boolean predicates.
+
+        Examples:
+        ------------
         >>> cube = sg.DataCube.from_root(testdata, endswith=".tif", crs=25833).load()
 
         List slicing:
@@ -1157,7 +1170,7 @@ def _merge_by_bounds(
     elif by is None:
         by = ["tile"]
     else:
-        by = by + ["tile"]
+        by = list(by) + ["tile"]
 
     return _merge(
         cube,
@@ -1196,9 +1209,7 @@ def numpy_to_torch(array: np.ndarray) -> torch.Tensor:
     return torch.tensor(array)
 
 
-def cube_to_torchgeo(
-    cube: DataCube, query: BoundingBox
-) -> dict[str, torch.Tensor | pyproj.CRS | BoundingBox]:
+def cube_to_torchgeo(cube: DataCube, query: BoundingBox) -> TORCHGEO_RETURN_TYPE:
     """Convert a DayaCube to the type of dict returned from torchgeo datasets __getitem__."""
     bbox = shapely.box(*to_bbox(query))
     if cube.separate_files:

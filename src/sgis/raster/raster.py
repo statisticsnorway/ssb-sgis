@@ -450,6 +450,9 @@ class Raster:
         Args:
             path: File path to write to.
             window: Optional window to clip the image to.
+            **kwargs: Keyword arguments passed to rasterio.open.
+                Thise will override the items in the Raster's profile, 
+                if overlapping.
         """
         if self.array is None:
             raise AttributeError("The image hasn't been loaded.")
@@ -699,11 +702,11 @@ class Raster:
             column = [column] * len(array_list)
 
         gdfs = []
-        for i, (column, array) in enumerate(zip(column, array_list, strict=True)):
+        for i, (col, array) in enumerate(zip(column, array_list, strict=True)):
             gdf = gpd.GeoDataFrame(
                 pd.DataFrame(
                     self._array_to_geojson(array, self.transform),
-                    columns=[column, "geometry"],
+                    columns=[col, "geometry"],
                 ),
                 geometry="geometry",
                 crs=self.crs,
@@ -1151,37 +1154,37 @@ class Raster:
         )
 
     def __mul__(self, scalar: int | float) -> "Raster":
-        """Multiply the array values with *"""
+        """Multiply the array values with *."""
         self._check_for_array()
         self.array = self.array * scalar
         return self
 
     def __add__(self, scalar: int | float) -> "Raster":
-        """Add to the array values with +"""
+        """Add to the array values with +."""
         self._check_for_array()
         self.array = self.array + scalar
         return self
 
     def __sub__(self, scalar: int | float) -> "Raster":
-        """Subtract the array values with -"""
+        """Subtract the array values with -."""
         self._check_for_array()
         self.array = self.array - scalar
         return self
 
     def __truediv__(self, scalar: int | float) -> "Raster":
-        """Divide the array values with /"""
+        """Divide the array values with /."""
         self._check_for_array()
         self.array = self.array / scalar
         return self
 
     def __floordiv__(self, scalar: int | float) -> "Raster":
-        """Floor divide the array values with //"""
+        """Floor divide the array values with //."""
         self._check_for_array()
         self.array = self.array // scalar
         return self
 
     def __pow__(self, exponent: int | float) -> "Raster":
-        """Exponentiate the array values with **"""
+        """Exponentiate the array values with **."""
         self._check_for_array()
         self.array = self.array**exponent
         return self
@@ -1504,6 +1507,7 @@ def get_gradient(raster: Raster, degrees: bool = False, copy: bool = False) -> R
     For multiband images, the calculation is done for each band.
 
     Args:
+        raster: Raster instance.
         degrees: If False (default), the returned values will be in ratios,
             where a value of 1 means 1 meter up per 1 meter forward. If True,
             the values will be in degrees from 0 to 90.

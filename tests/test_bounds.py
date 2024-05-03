@@ -310,17 +310,6 @@ def test_bounds():
 
 
 if __name__ == "__main__":
-    import cProfile
-
     test_gridloop()
     test_gridlooper_class()
     test_bounds()
-    sss
-    cProfile.run(
-        """
-test_gridloop()
-test_gridlooper_class()
-test_bounds()
-    """,
-        sort="cumtime",
-    )

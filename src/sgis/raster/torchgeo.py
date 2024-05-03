@@ -46,7 +46,7 @@ SENTINEL2_FILENAME_REGEX = r"""
 class GCSRasterDataset(RasterDataset):
     """Wrapper around torchgeo's RasterDataset that works in and outside of Dapla (stat norway)."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         """Initialiser. Args and kwargs passed to torchgeo.datasets.geo.RasterDataset."""
         super().__init__(*args, **kwargs)
         if is_dapla():
@@ -89,6 +89,7 @@ class GCSRasterDataset(RasterDataset):
                     f"Could not find any relevant files for provided path '{path}'. "
                     f"Path was ignored.",
                     UserWarning,
+                    stacklevel=1,
                 )
 
         return files

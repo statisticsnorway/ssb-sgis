@@ -1,4 +1,4 @@
-"""Benchmark network analysis"""
+"""Benchmark network analysis."""
 
 # %%
 import sys
