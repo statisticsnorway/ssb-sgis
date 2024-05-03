@@ -40,6 +40,22 @@ poetry add ssb-sgis
 pip install ssb-sgis
 ```
 
+The sgis package has the following optional dependencies:
+
+- bucket: For working with files stored in GCP buckets
+- torch: Use functionality from PyTorch and torchgeo
+- xarray: Use functionality from xarray and rioxarray
+- test: Packages needed for running pytest
+- all: All optional dependencies
+
+The optional dependencies can be installed by adding them in
+brackets when installing, like this:
+
+```shell
+poetry add ssb-sgis[all]
+pip install ssb-sgis[all]
+```
+
 ## Network analysis examples
 
 Preparing for network analysis:
@@ -168,7 +184,7 @@ at least once. You only need to run this once per user account.
 poetry and run the command below from the root directory to install the dependencies.
 
 ```shell
-poetry install --no-root
+poetry install -E test --no-root
 ```
 
 ### Tests

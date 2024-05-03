@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 
@@ -12,6 +13,7 @@ sys.path.insert(0, src)
 import sgis as sg
 
 
+@pytest.mark.skip(reason="This test requires GUI")
 def test_qtm(points_oslo):
     points = points_oslo
 

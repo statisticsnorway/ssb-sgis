@@ -147,8 +147,8 @@ def get_all_files(root: str, recursive: bool = True) -> list[str]:
 
 
 def return_two_vals(
-    vals: tuple[str | None, str | None] | list[str] | str | int | float
-) -> tuple[str | int | float, str | int | float | None]:
+    vals: tuple[str, str] | list[str] | str | int | float
+) -> tuple[str | int | float, str | int | float]:
     """Return a two-length tuple from a str/int/float or list/tuple of length 1 or 2.
 
     Returns 'vals' as a 2-length tuple. If the input is a string, return
@@ -163,7 +163,7 @@ def return_two_vals(
     """
     if isinstance(vals, str):
         return vals, vals
-    if hasattr(vals, "__iter__"):
+    if isinstance(vals, (tuple, list)):
         if len(vals) == 2:
             return vals[0], vals[1]
         if len(vals) == 1:
@@ -301,7 +301,7 @@ def is_number(text: str) -> bool:
 
 
 class LocalFunctionError(ValueError):
-    def __init__(self, func: str):
+    def __init__(self, func: Callable):
         self.func = func.__name__
 
     def __str__(self):

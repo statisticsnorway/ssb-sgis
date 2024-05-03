@@ -218,6 +218,9 @@ def gridloop(
     Returns:
         List of results with the same length as number of grid cells.
 
+    Raises:
+        TypeError: If args or kwargs has a wrong type
+
     Examples:
     --------
     Get some points and some polygons.
@@ -458,6 +461,9 @@ def make_grid(
     Returns:
         GeoDataFrame with grid polygons.
 
+    Raises:
+        ValueError: crs can only be None if obj is GeoDataFrame/GeoSeries.
+
     """
     if isinstance(obj, (GeoDataFrame | GeoSeries)):
         crs = obj.crs or crs
@@ -502,6 +508,7 @@ def make_ssb_grid(
 
     Raises:
         ValueError: If the GeoDataFrame does not have 25833 as crs.
+        TypeError: if gdf has wrong type.
     """
     if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError("gdf must be GeoDataFrame og GeoSeries.")

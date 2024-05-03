@@ -17,6 +17,7 @@ import shapely
 from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from numpy.typing import NDArray
 from pandas.api.types import is_array_like
 from pandas.api.types import is_dict_like
 from pandas.api.types import is_list_like
@@ -35,7 +36,7 @@ try:
     from torchgeo.datasets.geo import RasterDataset
 except ImportError:
 
-    class RasterDataset:
+    class RasterDataset:  # type: ignore
         """Placeholder"""
 
 
@@ -417,7 +418,7 @@ def to_gdf(
 
     # now we have dict, Series or DataFrame
 
-    obj = obj.copy()
+    obj = obj.copy()  # type: ignore [union-attr]
 
     # preserve Series/DataFrame index
     index = obj.index if hasattr(obj, "index") and index is None else index
@@ -655,12 +656,12 @@ def _geoseries_from_xyz(
 
 def _is_one_geometry(obj: Any) -> bool:
     if (
-        isinstance(obj, (str, bytes, Geometry))
+        isinstance(obj, (str, bytes, Geometry))  # type: ignore [unreachable]
         or all(isinstance(i, numbers.Number) for i in obj)
         or not hasattr(obj, "__iter__")
     ):
         return True
-    return False
+    return False  # type: ignore [unreachable]
 
 
 def _make_one_shapely_geom(obj: Any) -> Geometry:
