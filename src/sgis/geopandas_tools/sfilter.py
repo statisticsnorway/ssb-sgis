@@ -2,11 +2,11 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from shapely import Geometry
 
 from .conversion import to_gdf
-
 
 gdf_type_error_message = "'gdf' should be of type GeoDataFrame or GeoSeries."
 
@@ -34,9 +34,8 @@ def sfilter(
         A copy of 'gdf' with only the rows matching the
         spatial predicate with 'other'.
 
-    Examples
+    Examples:
     --------
-
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry
@@ -71,7 +70,7 @@ def sfilter(
     0  POINT (0.00000 0.00000)
 
     """
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+    if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError(gdf_type_error_message)
 
     other = _sfilter_checks(other, crs=gdf.crs)
@@ -100,9 +99,8 @@ def sfilter_split(
         A tuple of GeoDataFrames, one with the rows that match the spatial predicate
         and one with the rows that do not.
 
-    Examples
+    Examples:
     --------
-
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry
@@ -140,7 +138,7 @@ def sfilter_split(
     >>> not_intersecting = df1.loc[~filt]
 
     """
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+    if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError(gdf_type_error_message)
 
     other = _sfilter_checks(other, crs=gdf.crs)
@@ -171,9 +169,8 @@ def sfilter_inverse(
         A copy of 'gdf' with only the rows that do not match the
         spatial predicate with 'other'.
 
-    Examples
+    Examples:
     --------
-
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry
@@ -205,7 +202,7 @@ def sfilter_inverse(
     >>> not_intersecting = df1.loc[~df1.intersects(df2.unary_union)]
 
     """
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+    if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError(gdf_type_error_message)
 
     other = _sfilter_checks(other, crs=gdf.crs)
@@ -256,7 +253,7 @@ def _get_sfilter_indices(
     predicate : string
         Binary predicate to query.
 
-    Returns
+    Returns:
     -------
     DataFrame
         DataFrame with matching indices in

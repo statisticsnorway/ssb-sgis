@@ -1,6 +1,11 @@
 import numbers
 import re
-from collections.abc import Collection, Iterator, Mapping, Sized
+from collections.abc import Callable
+from collections.abc import Collection
+from collections.abc import Iterable
+from collections.abc import Iterator
+from collections.abc import Mapping
+from collections.abc import Sized
 from typing import Any
 
 import geopandas as gpd
@@ -10,15 +15,21 @@ import pyproj
 import rasterio
 import shapely
 from affine import Affine
-from geopandas import GeoDataFrame, GeoSeries
-from pandas.api.types import is_array_like, is_dict_like, is_list_like
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from pandas.api.types import is_array_like
+from pandas.api.types import is_dict_like
+from pandas.api.types import is_list_like
 from pyproj import CRS
 from rasterio import features
-from shapely import Geometry, box, wkb, wkt
+from shapely import Geometry
+from shapely import box
+from shapely import wkb
+from shapely import wkt
 from shapely.errors import GEOSException
-from shapely.geometry import Point, shape
+from shapely.geometry import Point
+from shapely.geometry import shape
 from shapely.ops import unary_union
-
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -28,8 +39,7 @@ except ImportError:
         """Placeholder"""
 
 
-@staticmethod
-def crs_to_string(crs):
+def crs_to_string(crs: Any) -> str:
     if crs is None:
         return "None"
     crs = pyproj.CRS(crs)
@@ -73,15 +83,13 @@ def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
     return GeoSeries(obj, index=index, crs=crs)
 
 
-def to_shapely(obj) -> Geometry:
+def to_shapely(obj: Any) -> Geometry:
     if isinstance(obj, Geometry):
         return obj
     if not hasattr(obj, "__iter__"):
         raise TypeError(type(obj))
     if hasattr(obj, "unary_union"):
         return obj.unary_union
-    # if is_bbox_like(obj):
-    #     return box(*obj)
     try:
         return Point(*obj)
     except TypeError:
@@ -140,7 +148,7 @@ def to_bbox(
     raise TypeError(f"Cannot convert type {obj.__class__.__name__}{of_length} to bbox")
 
 
-def from_4326(lon: float, lat: float, crs=25833):
+def from_4326(lon: float, lat: float, crs=25833) -> tuple[float, float]:
     """Get utm 33 N coordinates from lonlat (4326)."""
     transformer = pyproj.Transformer.from_crs(
         "EPSG:4326", f"EPSG:{crs}", always_xy=True
@@ -148,7 +156,7 @@ def from_4326(lon: float, lat: float, crs=25833):
     return transformer.transform(lon, lat)
 
 
-def to_4326(lon: float, lat: float, crs=25833):
+def to_4326(lon: float, lat: float, crs=25833) -> tuple[float, float]:
     """Get degree coordinates  33 N coordinates from lonlat (4326)."""
     transformer = pyproj.Transformer.from_crs(
         f"EPSG:{crs}", "EPSG:4326", always_xy=True
@@ -158,17 +166,21 @@ def to_4326(lon: float, lat: float, crs=25833):
 
 def coordinate_array(
     gdf: GeoDataFrame | GeoSeries,
-    strict=False,
+    strict: bool = False,
+    include_z: bool = False,
 ) -> np.ndarray[np.ndarray[float], np.ndarray[float]]:
     """Creates a 2d ndarray of coordinates from point geometries.
 
     Args:
         gdf: GeoDataFrame or GeoSeries of point geometries.
+        strict: If False (default), geometries without coordinates
+            are given the value None.
+        include_z: Whether to include z-coordinates. Defaults to False.
 
     Returns:
         np.ndarray of np.ndarrays of coordinates.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import coordinate_array, random_points
     >>> points = random_points(5)
@@ -192,13 +204,10 @@ def coordinate_array(
         [0.00965935, 0.87867915],
         [0.38045827, 0.87878816]])
     """
-    if isinstance(gdf, GeoDataFrame):
-        gdf = gdf.geometry
-    if strict:
-        return np.array([(geom.x, geom.y) for geom in gdf])
-    return np.array(
-        [(geom.x, geom.y) if hasattr(geom, "x") else (None, None) for geom in gdf]
-    )
+    try:
+        return shapely.get_coordinates(gdf.geometry.values, include_z=include_z)
+    except AttributeError:
+        return shapely.get_coordinates(gdf, include_z=include_z)
 
 
 def to_gdf(
@@ -242,7 +251,7 @@ def to_gdf(
     Returns:
         A GeoDataFrame with one column, the geometry column.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import to_gdf
     >>> coords = (10, 60)
@@ -368,7 +377,7 @@ def to_gdf(
         )
         return GeoDataFrame(obj, geometry=geometry, crs=crs, **kwargs)
 
-    geom_col: str = find_geometry_column(obj, geometry)
+    geom_col: str = _find_geometry_column(obj, geometry)
     index = kwargs.pop("index", None)
 
     # get done with iterators that get consumed by 'all'
@@ -401,7 +410,7 @@ def to_gdf(
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
         # list etc.
         else:
-            obj = GeoSeries(make_shapely_geoms(obj), index=index)
+            obj = GeoSeries(_make_shapely_geoms(obj), index=index)
             return GeoDataFrame(
                 {geom_col: obj}, geometry=geom_col, index=index, crs=crs, **kwargs
             )
@@ -417,7 +426,7 @@ def to_gdf(
         if isinstance(obj, pd.DataFrame):
             notna = obj[geom_col].notna()
             obj.loc[notna, geom_col] = list(
-                make_shapely_geoms(obj.loc[notna, geom_col])
+                _make_shapely_geoms(obj.loc[notna, geom_col])
             )
             obj[geom_col] = GeoSeries(obj[geom_col])
             return GeoDataFrame(obj, geometry=geom_col, crs=crs, **kwargs)
@@ -426,11 +435,11 @@ def to_gdf(
                 dict(obj), geometry=geom_col, crs=crs, index=[0], **kwargs
             )
         if not hasattr(obj[geom_col], "__iter__") or len(obj[geom_col]) == 1:
-            obj[geom_col] = make_shapely_geoms(obj[geom_col])
+            obj[geom_col] = _make_shapely_geoms(obj[geom_col])
             return GeoDataFrame(
                 dict(obj), geometry=geom_col, crs=crs, index=index, **kwargs
             )
-        obj[geom_col] = GeoSeries(make_shapely_geoms(obj[geom_col]), index=index)
+        obj[geom_col] = GeoSeries(_make_shapely_geoms(obj[geom_col]), index=index)
         return GeoDataFrame(dict(obj), geometry=geom_col, crs=crs, **kwargs)
 
     if geometry and all(g in obj for g in geometry):
@@ -441,12 +450,12 @@ def to_gdf(
         key = list(obj.keys())[0]
         if isinstance(obj, dict):
             geoseries = GeoSeries(
-                make_shapely_geoms(list(obj.values())[0]), index=index
+                _make_shapely_geoms(list(obj.values())[0]), index=index
             )
         elif isinstance(obj, pd.Series):
-            geoseries = GeoSeries(make_shapely_geoms(obj), index=index)
+            geoseries = GeoSeries(_make_shapely_geoms(obj), index=index)
         else:
-            geoseries = GeoSeries(make_shapely_geoms(obj.iloc[:, 0]), index=index)
+            geoseries = GeoSeries(_make_shapely_geoms(obj.iloc[:, 0]), index=index)
         return GeoDataFrame({key: geoseries}, geometry=key, crs=crs, **kwargs)
 
     if geometry and geom_col not in obj or isinstance(obj, pd.DataFrame):
@@ -471,7 +480,9 @@ def to_gdf(
     return GeoDataFrame(geometry=geoseries, crs=crs, **kwargs)
 
 
-def _array_to_geojson(array: np.ndarray, transform: Affine):
+def _array_to_geojson(
+    array: np.ndarray, transform: Affine
+) -> list[tuple[dict, Geometry]]:
     try:
         return [
             (value, shape(geom))
@@ -498,7 +509,7 @@ def get_transform_from_bounds(
     return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
 
 
-def make_shapely_geoms(obj):
+def _make_shapely_geoms(obj: Any) -> Geometry | Any:
     if _is_one_geometry(obj):
         return _make_one_shapely_geom(obj)
     if isinstance(obj, dict) and "coordinates" in obj:
@@ -506,21 +517,12 @@ def make_shapely_geoms(obj):
     return (_make_one_shapely_geom(g) for g in obj)
 
 
-"""def is_boundingbox(obj) -> bool:
-    if not hasattr(obj, "__iter__"):
-        return False
+def is_bbox_like(obj: Any) -> bool:
+    """Returns True if the object is an iterable of 4 numbers.
 
-    classname = obj.__class__.__name__.lower()
-    if "bounding" not in classname and "box" not in classname:
-        return False
-
-    if len(obj) == 4 and all(isinstance(x, numbers.Number) for x in obj):
-        return True
-
-    return False"""
-
-
-def is_bbox_like(obj) -> bool:
+    Args:
+        Any object.
+    """
     if (
         hasattr(obj, "__len__")
         and len(obj) == 4
@@ -531,13 +533,19 @@ def is_bbox_like(obj) -> bool:
     return False
 
 
-def is_nested_geojson(obj) -> bool:
+def is_nested_geojson(obj: Any) -> bool:
+    """Returns True if the object is an iterable of all dicts.
+
+    Args:
+        Any object.
+    """
     if hasattr(obj, "__iter__") and all(isinstance(g, dict) for g in obj):
         return True
     return False
 
 
-def get_crs_from_dict(obj):
+def get_crs_from_dict(obj: Any) -> CRS | None | Any:
+    """Try to extract the 'crs' attribute of the object or an object in the object."""
     if (
         not hasattr(obj, "__iter__")
         or not is_dict_like(obj)
@@ -566,7 +574,7 @@ def get_crs_from_dict(obj):
     return None
 
 
-def _from_json(obj: dict):
+def _from_json(obj: dict) -> Geometry:
     if not isinstance(obj, dict) and isinstance(obj[0], dict):
         return [_from_json(g) for g in obj]
     if "geometry" in obj:
@@ -574,7 +582,7 @@ def _from_json(obj: dict):
     if "features" in obj:
         return _from_json(obj["features"])
     coords = obj["coordinates"]
-    constructor = eval("shapely.geometry." + obj.get("type", Point))
+    constructor: Callable = eval("shapely.geometry." + obj.get("type", Point))
     try:
         return constructor(coords)
     except TypeError:
@@ -583,16 +591,18 @@ def _from_json(obj: dict):
         return constructor(coords)
 
 
-def _series_like_to_geoseries(obj, index):
+def _series_like_to_geoseries(obj: Iterable, index: Iterable) -> GeoSeries:
     if index is None:
         index = obj.keys()
     if isinstance(obj, dict):
-        return GeoSeries(make_shapely_geoms(list(obj.values())), index=index)
+        return GeoSeries(_make_shapely_geoms(list(obj.values())), index=index)
     else:
-        return GeoSeries(make_shapely_geoms(obj.values), index=index)
+        return GeoSeries(_make_shapely_geoms(obj.values), index=index)
 
 
-def _geoseries_to_gdf(obj: GeoSeries, geometry, crs, **kwargs) -> GeoDataFrame:
+def _geoseries_to_gdf(
+    obj: GeoSeries, geometry: str | GeoSeries | Iterable, crs: CRS | Any, **kwargs
+) -> GeoDataFrame:
     if not crs:
         crs = obj.crs
     else:
@@ -601,7 +611,7 @@ def _geoseries_to_gdf(obj: GeoSeries, geometry, crs, **kwargs) -> GeoDataFrame:
     return GeoDataFrame({geometry: obj}, geometry=geometry, crs=crs, **kwargs)
 
 
-def find_geometry_column(obj, geometry) -> str:
+def _find_geometry_column(obj: Any, geometry: GeoSeries | Iterable | None) -> str:
     if geometry is None:
         return "geometry"
 
@@ -621,9 +631,12 @@ def find_geometry_column(obj, geometry) -> str:
     )
 
 
-def _geoseries_from_xyz(obj, geometry, index) -> GeoSeries:
+def _geoseries_from_xyz(
+    obj: Any,
+    geometry: Iterable[float, float] | Iterable[float, float, float],
+    index: Iterable | None,
+) -> GeoSeries:
     """Make geoseries from the geometry column or columns (x y (z))."""
-
     if len(geometry) == 2:
         x, y = geometry
         z = None
@@ -640,7 +653,7 @@ def _geoseries_from_xyz(obj, geometry, index) -> GeoSeries:
     return gpd.GeoSeries.from_xy(x=obj[x], y=obj[y], z=z, index=index)
 
 
-def _is_one_geometry(obj) -> bool:
+def _is_one_geometry(obj: Any) -> bool:
     if (
         isinstance(obj, (str, bytes, Geometry))
         or all(isinstance(i, numbers.Number) for i in obj)
@@ -650,7 +663,7 @@ def _is_one_geometry(obj) -> bool:
     return False
 
 
-def _make_one_shapely_geom(obj):
+def _make_one_shapely_geom(obj: Any) -> Geometry:
     """Create shapely geometry from wkt, wkb or coordinate tuple.
 
     Works recursively if the object is a nested iterable.

@@ -4,7 +4,9 @@ import numpy as np
 from ..geopandas_tools.bounds import get_total_bounds
 from ..helpers import unit_is_degrees
 from .map import Map
-from .maps import clipmap, explore, samplemap
+from .maps import clipmap
+from .maps import explore
+from .maps import samplemap
 
 
 class Examine:
@@ -19,19 +21,7 @@ class Examine:
     first geometry in 'mask_gdf' (or the first speficied gdf). The 'next' method
     can then be repeated.
 
-    Args:
-        *gdfs: One or more GeoDataFrames. The rows of the first GeoDataFrame
-            will be used as masks, unless 'mask_gdf' is specified.
-        column: Column to use as colors.
-        mask_gdf: Optional GeoDataFrame to use as mask iterator. The geometries
-            of mask_gdf will not be shown.
-        size: Number of meters (or other crs unit) to buffer the mask geometry
-            before clipping.
-        sort_values: Optional sorting column(s) of the mask GeoDataFrame. Rows
-            will be iterated through from the top.
-        **kwargs: Additional keyword arguments passed to sgis.clipmap.
-
-    Examples
+    Examples:
     --------
     Create the examiner.
 
@@ -79,6 +69,19 @@ class Examine:
         only_show_mask: bool = True,
         **kwargs,
     ):
+        """Args:
+        *gdfs: One or more GeoDataFrames. The rows of the first GeoDataFrame
+            will be used as masks, unless 'mask_gdf' is specified.
+        column: Column to use as colors.
+        mask_gdf: Optional GeoDataFrame to use as mask iterator. The geometries
+            of mask_gdf will not be shown.
+        size: Number of meters (or other crs unit) to buffer the mask geometry
+            before clipping.
+        sort_values: Optional sorting column(s) of the mask GeoDataFrame. Rows
+            will be iterated through from the top.
+        **kwargs: Additional keyword arguments passed to sgis.clipmap.
+
+        """
         gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
         if mask_gdf is None:
@@ -87,7 +90,9 @@ class Examine:
             self.mask_gdf = mask_gdf
 
         m = Map(*gdfs, column=column, **kwargs)
-        self._gdfs: dict[str, gpd.GeoDataFrame] = dict(zip(m.labels, m.gdfs))
+        self._gdfs: dict[str, gpd.GeoDataFrame] = dict(
+            zip(m.labels, m.gdfs, strict=False)
+        )
 
         self.indices = list(range(len(self.mask_gdf)))
         self.i = 0
@@ -121,7 +126,7 @@ class Examine:
         elif not kwargs.get("show", True):
             self.kwargs["show"] = [False] * len(self._gdfs)
 
-    def next(self, i: int | None = None, **kwargs):
+    def next(self, i: int | None = None, **kwargs) -> None:
         """Displays a map of geometries within the next row of the mask gdf.
 
         Args:
@@ -151,7 +156,7 @@ class Examine:
         )
         self.i += 1
 
-    def sample(self, **kwargs):
+    def sample(self, **kwargs) -> None:
         """Takes a sample index of the mask and displays a map of this area.
 
         Args:
@@ -171,7 +176,7 @@ class Examine:
             **self.kwargs,
         )
 
-    def current(self, i: int | None = None, **kwargs):
+    def current(self, i: int | None = None, **kwargs) -> None:
         """Repeat the last shown map."""
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
@@ -190,7 +195,7 @@ class Examine:
             **self.kwargs,
         )
 
-    def explore(self, **kwargs):
+    def explore(self, **kwargs) -> None:
         """Show all rows like the function explore."""
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
@@ -202,7 +207,7 @@ class Examine:
             **self.kwargs,
         )
 
-    def clipmap(self, **kwargs):
+    def clipmap(self, **kwargs) -> None:
         """Show all rows like the function clipmap."""
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
@@ -214,7 +219,7 @@ class Examine:
             **self.kwargs,
         )
 
-    def samplemap(self, **kwargs):
+    def samplemap(self, **kwargs) -> None:
         """Show all rows like the function samplemap."""
         if kwargs:
             kwargs = self._fix_kwargs(kwargs)
@@ -241,7 +246,7 @@ class Examine:
         return gdfs
 
     @property
-    def bounds(self):
+    def bounds(self) -> tuple[float, float, float, float]:
         return get_total_bounds(*list(self.gdfs.values()))
 
     def _fix_kwargs(self, kwargs) -> dict:
@@ -252,10 +257,10 @@ class Examine:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(indices={len(self.indices)}, current={self.i}, n_gdfs={len(self._gdfs)})"
 
-    def __add__(self, scalar):
+    def __add__(self, scalar: int) -> "Examine":
         self.i += scalar
         return self
 
-    def __sub__(self, scalar):
+    def __sub__(self, scalar: int) -> "Examine":
         self.i -= scalar
         return self

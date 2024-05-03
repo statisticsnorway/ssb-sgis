@@ -2,7 +2,6 @@
 """
 
 from pathlib import Path
-from typing import Optional
 
 import dapla as dp
 import geopandas as gpd
@@ -16,7 +15,7 @@ from pyarrow import parquet
 def read_geopandas(
     gcs_path: str | Path,
     pandas_fallback: bool = False,
-    file_system: Optional[dp.gcs.GCSFileSystem] = None,
+    file_system: dp.gcs.GCSFileSystem | None = None,
     **kwargs,
 ) -> GeoDataFrame | DataFrame:
     """Reads geoparquet or other geodata from a file on GCS.
@@ -31,14 +30,14 @@ def read_geopandas(
         gcs_path: path to a file on Google Cloud Storage.
         pandas_fallback: If False (default), an exception is raised if the file can
             not be read with geopandas and the number of rows is more than 0. If True,
-            the file will be read as
+            the file will be read with pandas if geopandas fails.
+        file_system: Optional file system.
         **kwargs: Additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
-     Returns:
+    Returns:
          A GeoDataFrame if it has rows. If zero rows, a pandas DataFrame is returned.
     """
-
     if not isinstance(gcs_path, str):
         try:
             gcs_path = str(gcs_path)
@@ -81,7 +80,7 @@ def write_geopandas(
     gcs_path: str | Path,
     overwrite: bool = True,
     pandas_fallback: bool = False,
-    file_system: Optional[dp.gcs.GCSFileSystem] = None,
+    file_system: dp.gcs.GCSFileSystem | None = None,
     **kwargs,
 ) -> None:
     """Writes a GeoDataFrame to the speficied format.
@@ -93,10 +92,13 @@ def write_geopandas(
         df: The GeoDataFrame to write.
         gcs_path: The path to the file you want to write to.
         overwrite: Whether to overwrite the file if it exists. Defaults to True.
+        pandas_fallback: If False (default), an exception is raised if the file can
+            not be written with geopandas and the number of rows is more than 0. If True,
+            the file will be written without geo-metadata if >0 rows.
+        file_system: Optional file sustem.
         **kwargs: Additional keyword arguments passed to parquet.write_table
             (for parquet) or geopandas' to_file method (if not parquet).
     """
-
     if not isinstance(gcs_path, str):
         try:
             gcs_path = str(gcs_path)
@@ -152,7 +154,6 @@ def exists(path: str | Path) -> bool:
     Returns:
         True if the path exists, False if not.
     """
-
     file_system = dp.FileClient.get_gcs_file_system()
     return file_system.exists(path)
 
@@ -185,7 +186,7 @@ def check_files(
     ]
     folderinfo = [x["name"] for x in info if x["storageClass"] == "DIRECTORY"]
 
-    fileinfo += get_files_in_subfolders(folderinfo)
+    fileinfo += _get_files_in_subfolders(folderinfo)
 
     df = pd.DataFrame(fileinfo, columns=["path", "kb", "updated"])
 
@@ -224,7 +225,7 @@ def check_files(
     return df.loc[lambda x: x.index > the_time, ["kb", "mb", "name", "child", "path"]]
 
 
-def get_files_in_subfolders(folderinfo: list[dict]) -> list[dict]:
+def _get_files_in_subfolders(folderinfo: list[dict]) -> list[dict]:
     file_system = dp.FileClient.get_gcs_file_system()
 
     if isinstance(folderinfo, (str, Path)):

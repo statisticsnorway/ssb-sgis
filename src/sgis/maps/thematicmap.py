@@ -1,15 +1,18 @@
 """Make static maps with geopandas and matplotlib."""
+
 import warnings
+from typing import Any
 
 import matplotlib
+import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 
-from .legend import ContinousLegend, Legend
+from .legend import ContinousLegend
+from .legend import Legend
 from .map import Map
-
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(
@@ -23,16 +26,6 @@ class ThematicMap(Map):
 
     The class takes one or more GeoDataFrames and a column name. The class attributes
     can then be set to customise the map before plotting.
-
-    Args:
-        *gdfs: One or more GeoDataFrames.
-        column: The name of the column to plot.
-        size: Width and height of the plot in inches. Fontsize of title and legend is
-            adjusted accordingly. Defaults to 25.
-        black: If False (default), the background will be white and the text black. If
-            True, the background will be black and the text white. When True, the
-            default cmap is "viridis", and when False, the default is red to purple
-            (RdPu).
 
     Attributes:
         size (int): Width and height of the plot in inches.
@@ -50,7 +43,7 @@ class ThematicMap(Map):
         cmap_stop (int): End position for the color palette.
         facecolor (str): Background color.
 
-    Examples
+    Examples:
     --------
     >>> import sgis as sg
     >>> points = sg.random_points(100).pipe(sg.buff, np.random.rand(100))
@@ -90,7 +83,18 @@ class ThematicMap(Map):
         column: str | None = None,
         size: int = 25,
         black: bool = False,
-    ):
+    ) -> None:
+        """Args:
+        *gdfs: One or more GeoDataFrames.
+        column: The name of the column to plot.
+        size: Width and height of the plot in inches. Fontsize of title and legend is
+            adjusted accordingly. Defaults to 25.
+        black: If False (default), the background will be white and the text black. If
+            True, the background will be black and the text white. When True, the
+            default cmap is "viridis", and when False, the default is red to purple
+            (RdPu).
+
+        """
         super().__init__(*gdfs, column=column)
 
         self._size = size
@@ -106,7 +110,7 @@ class ThematicMap(Map):
 
         self._create_legend()
 
-    def change_cmap(self, cmap: str, start: int = 0, stop: int = 256):
+    def change_cmap(self, cmap: str, start: int = 0, stop: int = 256) -> "ThematicMap":
         """Change the color palette of the plot.
 
         Args:
@@ -119,7 +123,9 @@ class ThematicMap(Map):
         super().change_cmap(cmap, start, stop)
         return self
 
-    def add_background(self, gdf, color: str | None = None):
+    def add_background(
+        self, gdf: GeoDataFrame, color: str | None = None
+    ) -> "ThematicMap":
         """Add a GeoDataFrame as a background layer.
 
         Args:
@@ -145,7 +151,6 @@ class ThematicMap(Map):
 
         This method should be run after customising the map, but before saving.
         """
-
         __test = kwargs.pop("__test", False)
         include_legend = bool(kwargs.pop("legend", self.legend))
 
@@ -214,7 +219,7 @@ class ThematicMap(Map):
             with fs.open(path, "wb") as file:
                 plt.savefig(file)
 
-    def _prepare_plot(self, **kwargs):
+    def _prepare_plot(self, **kwargs) -> None:
         """Add figure and axis, title and background gdf."""
         for attr in self.__dict__.keys():
             if attr in self.kwargs:
@@ -236,7 +241,7 @@ class ThematicMap(Map):
                 self.title, fontsize=self.title_fontsize, color=self.title_color
             )
 
-    def _prepare_continous_plot(self, kwargs) -> dict:
+    def _prepare_continous_plot(self, kwargs: dict) -> dict:
         """Create bins and colors."""
         self._prepare_continous_map()
 
@@ -270,7 +275,7 @@ class ThematicMap(Map):
 
         return kwargs
 
-    def _prepare_categorical_plot(self, kwargs) -> dict:
+    def _prepare_categorical_plot(self, kwargs: dict) -> dict:
         """Map values to colors."""
         self._get_categorical_colors()
         colorarray = self._gdf["color"]
@@ -300,7 +305,7 @@ class ThematicMap(Map):
                 bin_values=self._bins_unique_values,
             )
 
-    def _create_legend(self):
+    def _create_legend(self) -> None:
         """Instantiate the Legend class."""
         kwargs = {}
         if self._black:
@@ -313,8 +318,8 @@ class ThematicMap(Map):
         else:
             self.legend = ContinousLegend(title=self._column, size=self._size, **kwargs)
 
-    def _choose_cmap(self):
-        """kwargs is to catch start and stop points for the cmap in __init__."""
+    def _choose_cmap(self) -> None:
+        """Kwargs is to catch start and stop points for the cmap in __init__."""
         if self._black:
             self._cmap = "viridis"
             self.cmap_start = 0
@@ -324,7 +329,7 @@ class ThematicMap(Map):
             self.cmap_start = 23
             self.cmap_stop = 256
 
-    def _make_bin_value_dict(self, gdf, classified) -> dict:
+    def _make_bin_value_dict(self, gdf: GeoDataFrame, classified: np.ndarray) -> dict:
         """Dict with unique values of all bins. Used in labels in ContinousLegend."""
         bins_unique_values = {
             i: list(set(gdf.loc[classified == i, self._column]))
@@ -332,18 +337,20 @@ class ThematicMap(Map):
         }
         return bins_unique_values
 
-    def _actually_add_background(self):
+    def _actually_add_background(self) -> None:
         self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
         self.ax.set_ylim([self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03])
         self._background_gdfs.plot(ax=self.ax, color=self.bg_gdf_color)
 
     @staticmethod
-    def _get_matplotlib_figure_and_axix(figsize: tuple[int, int]):
+    def _get_matplotlib_figure_and_axix(
+        figsize: tuple[int, int]
+    ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(1, 1, 1)
         return fig, ax
 
-    def _black_or_white(self):
+    def _black_or_white(self) -> None:
         if self._black:
             self.facecolor, self.title_color, self.bg_gdf_color = (
                 "#0f0f0f",
@@ -367,7 +374,7 @@ class ThematicMap(Map):
         self._create_legend()
 
     @property
-    def black(self):
+    def black(self) -> bool:
         return self._black
 
     @black.setter
@@ -376,20 +383,20 @@ class ThematicMap(Map):
         self._black_or_white()
 
     @property
-    def title_fontsize(self):
+    def title_fontsize(self) -> int:
         return self._title_fontsize
 
     @title_fontsize.setter
-    def title_fontsize(self, new_value: bool):
+    def title_fontsize(self, new_value: int) -> None:
         self._title_fontsize = new_value
         self._title_fontsize_has_been_set = True
 
     @property
-    def size(self):
+    def size(self) -> int:
         return self._size
 
     @size.setter
-    def size(self, new_value: bool):
+    def size(self, new_value: bool) -> None:
         """Adjust font and marker size if not actively set."""
         self._size = new_value
         if not hasattr(self, "_title_fontsize_has_been_set"):
@@ -403,7 +410,7 @@ class ThematicMap(Map):
         if not hasattr(self.legend, "_markersize_has_been_set"):
             self.legend._markersize = self._size
 
-    def __setattr__(self, __name: str, __value) -> None:
+    def __setattr__(self, __name: str, __value: Any) -> None:
         if "legend_" in __name:
             last_part = __name.split("legend_")[-1]
             raise AttributeError(

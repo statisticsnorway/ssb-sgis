@@ -3,61 +3,15 @@
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from pandas import DataFrame
 from shapely import shortest_line
 
-from ..geopandas_tools.conversion import coordinate_array, to_geoseries
-from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.conversion import coordinate_array
 from ..geopandas_tools.neighbors import k_nearest_neighbors
-from .nodes import make_edge_wkt_cols, make_node_ids
-
-
-def close_network_holes_to(
-    lines: GeoDataFrame | GeoSeries,
-    extend_to: GeoDataFrame | GeoSeries,
-    max_distance: int | float,
-    max_angle: int | float,
-) -> GeoDataFrame | GeoSeries:
-    if isinstance(lines, GeoSeries):
-        lines = lines.to_frame("geometry")
-        was_geoseries = True
-    else:
-        was_geoseries = False
-
-    lines, _ = make_node_ids(lines)
-
-    if isinstance(extend_to, GeoSeries):
-        extend_to = extend_to.to_frame("geometry")
-
-    if not (extend_to.geom_type == "Point").all():
-        raise ValueError("'extend_to' must be singlepart point geometries")
-
-    extend_to["wkt"] = extend_to.geometry.to_wkt()
-    extend_to = extend_to.drop_duplicates("wkt")
-    extend_to["node_id"] = range(len(extend_to))
-
-    new_lines: GeoSeries = _close_holes_all_lines(
-        lines, extend_to, max_distance=max_distance, max_angle=max_angle, idx_start=0
-    )
-
-    if was_geoseries:
-        return pd.concat([lines.geometry, new_lines])
-
-    new_lines = gpd.GeoDataFrame(
-        {"geometry": new_lines}, geometry="geometry", crs=lines.crs
-    )
-
-    return pd.concat([lines, new_lines], ignore_index=True).drop(
-        columns=[
-            "source_wkt",
-            "target_wkt",
-            "source",
-            "target",
-            "n_source",
-            "n_target",
-        ]
-    )
+from .nodes import make_edge_wkt_cols
+from .nodes import make_node_ids
 
 
 def close_network_holes(
@@ -89,7 +43,7 @@ def close_network_holes(
         The holes will have missing values in the weight column used in
         NetworkAnalysis. These values must be filled before analysis.
 
-    Examples
+    Examples:
     --------
     Read road data with small gaps.
 
@@ -136,7 +90,6 @@ def close_network_holes(
     intentional. They are road blocks where most cars aren't allowed to pass. Fill the
     holes only if it makes the travel times/routes more realistic.
     """
-
     lines, nodes = make_node_ids(gdf)
 
     # remove duplicates of lines going both directions
@@ -202,7 +155,7 @@ def close_network_holes_to_deadends(
     Returns:
         The input GeoDataFrame with new lines added.
 
-    Examples
+    Examples:
     --------
     Read road data with small gaps.
 

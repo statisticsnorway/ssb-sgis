@@ -1,59 +1,26 @@
-from typing import Any, Callable, Iterable
+from collections.abc import Callable
+from typing import Any
 
-import geopandas as gpd
-import igraph
-import networkx as nx
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from geopandas.array import GeometryArray
-from IPython.display import display
-from networkx.algorithms import approximation as approx
-from numpy import ndarray
 from numpy.typing import NDArray
-from pandas import Index
-from shapely import (
-    Geometry,
-    STRtree,
-    area,
-    box,
-    buffer,
-    centroid,
-    difference,
-    distance,
-    extract_unique_points,
-    get_coordinates,
-    get_exterior_ring,
-    get_interior_ring,
-    get_num_interior_rings,
-    get_parts,
-    intersection,
-    intersects,
-    is_empty,
-    is_ring,
-    length,
-    line_merge,
-    linearrings,
-    linestrings,
-    make_valid,
-    points,
-    polygons,
-    segmentize,
-    simplify,
-    unary_union,
-    voronoi_polygons,
-)
-from shapely.errors import GEOSException
-from shapely.geometry import (
-    LinearRing,
-    LineString,
-    MultiLineString,
-    MultiPoint,
-    Point,
-    Polygon,
-)
+from pyproj import CRS
+from shapely import get_coordinates
+from shapely import get_exterior_ring
+from shapely import get_interior_ring
+from shapely import get_num_interior_rings
+from shapely import linearrings
+from shapely import make_valid
+from shapely import polygons
+from shapely import unary_union
+from shapely.geometry import LinearRing
+from shapely.geometry import Polygon
 
-from .conversion import to_gdf, to_geoseries
+from .conversion import to_gdf
+from .conversion import to_geoseries
 
 
 class PolygonsAsRings:
@@ -62,10 +29,18 @@ class PolygonsAsRings:
     def __init__(
         self,
         polys: GeoDataFrame | GeoSeries | GeometryArray,
-        crs=None,
+        crs: CRS | Any | None = None,
         allow_multipart: bool = False,
         gridsize: int | None = None,
     ):
+        """Initialize the PolygonsAsRings object with polygons and optional CRS information.
+
+        Args:
+            polys: GeoDataFrame, GeoSeries, or GeometryArray containing polygon geometries.
+            crs: Coordinate Reference System to be used, defaults to None.
+            allow_multipart: Allow multipart polygons if True, defaults to False.
+            gridsize: Size of the grid for any grid operations, defaults to None.
+        """
         if not isinstance(polys, (pd.DataFrame, pd.Series, GeometryArray)):
             raise TypeError(type(polys))
 
@@ -125,7 +100,16 @@ class PolygonsAsRings:
 
         self.rings = pd.concat([exterior, interiors])
 
-    def get_rings(self, agg: bool = False):
+    def get_rings(self, agg: bool = False) -> GeoDataFrame | GeoSeries | np.ndarray:
+        """Retrieve rings from the polygons, optionally aggregating them.
+
+        Args:
+            agg: If True, aggregate the rings into single geometries.
+
+        Returns:
+            The rings either aggregated or separated, in the type of
+                the input polygons.
+        """
         gdf = self.gdf.copy()
         rings = self.rings.copy()
         if not len(rings):
@@ -144,9 +128,21 @@ class PolygonsAsRings:
         return self.polyclass(gdf.geometry.values)
 
     def apply_numpy_func_to_interiors(
-        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
-    ):
-        """Run an array function on only the interior rings of the polygons."""
+        self,
+        func: Callable,
+        args: tuple | None = None,
+        kwargs: dict | None = None,
+    ) -> "PolygonsAsRings":
+        """Apply a numpy function specifically to the interior rings of the polygons.
+
+        Args:
+            func: Numpy function to apply.
+            args: Tuple of positional arguments for the function.
+            kwargs: Dictionary of keyword arguments for the function.
+
+        Returns:
+            PolygonsAsRings: The instance itself after applying the function.
+        """
         kwargs = kwargs or {}
         args = args or ()
         arr: NDArray[LinearRing] = self.rings.loc[self.is_interior].values
@@ -159,9 +155,21 @@ class PolygonsAsRings:
         return self
 
     def apply_numpy_func(
-        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
-    ):
-        """Run a function that takes an array of lines/rings and returns an array of lines/rings."""
+        self,
+        func: Callable,
+        args: tuple | None = None,
+        kwargs: dict | None = None,
+    ) -> "PolygonsAsRings":
+        """Apply a numpy function to all rings of the polygons.
+
+        Args:
+            func: Numpy function to apply.
+            args: Tuple of positional arguments for the function.
+            kwargs: Dictionary of keyword arguments for the function.
+
+        Returns:
+            PolygonsAsRings: The instance itself after applying the function.
+        """
         kwargs = kwargs or {}
         args = args or ()
 
@@ -177,9 +185,21 @@ class PolygonsAsRings:
         return self
 
     def apply_geoseries_func(
-        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
-    ):
-        """Run a function that takes a GeoSeries and returns a GeoSeries."""
+        self,
+        func: Callable,
+        args: tuple | None = None,
+        kwargs: dict | None = None,
+    ) -> "PolygonsAsRings":
+        """Apply a function that operates on a GeoSeries to the rings.
+
+        Args:
+            func: Function to apply that expects a GeoSeries.
+            args: Tuple of positional arguments for the function.
+            kwargs: Dictionary of keyword arguments for the function.
+
+        Returns:
+            PolygonsAsRings: The instance itself after applying the function.
+        """
         kwargs = kwargs or {}
         args = args or ()
 
@@ -198,9 +218,21 @@ class PolygonsAsRings:
         return self
 
     def apply_gdf_func(
-        self, func: Callable, args: tuple | None = None, kwargs: dict | None = None
-    ):
-        """Run a function that takes a GeoDataFrame and returns a GeoDataFrame."""
+        self,
+        func: Callable,
+        args: tuple | None = None,
+        kwargs: dict | None = None,
+    ) -> "PolygonsAsRings":
+        """Apply a function that operates on a GeoDataFrame to the rings.
+
+        Args:
+            func: Function to apply that expects a GeoDataFrame.
+            args: Tuple of positional arguments for the function.
+            kwargs: Dictionary of keyword arguments for the function.
+
+        Returns:
+            PolygonsAsRings: The instance itself after applying the function.
+        """
         kwargs = kwargs or {}
         args = args or ()
 
@@ -223,15 +255,15 @@ class PolygonsAsRings:
         return self
 
     @property
-    def is_interior(self):
+    def is_interior(self) -> pd.Series:
         return self.rings.index.get_level_values(0) == 1
 
     @property
-    def is_exterior(self):
+    def is_exterior(self) -> pd.Series:
         return self.rings.index.get_level_values(0) == 0
 
     @property
-    def _interiors_index(self):
+    def _interiors_index(self) -> pd.MultiIndex:
         """A three-leveled MultiIndex.
 
         Used to separate interior and exterior and sort the interior in
@@ -254,7 +286,7 @@ class PolygonsAsRings:
         )
 
     @property
-    def _exterior_index(self):
+    def _exterior_index(self) -> pd.MultiIndex:
         """A three-leveled MultiIndex.
 
         Used to separate interior and exterior in the 'to_numpy' method.
@@ -274,8 +306,8 @@ class PolygonsAsRings:
         self.gdf.geometry = self.to_numpy()
         return self.gdf
 
-    def to_geoseries(self) -> GeoDataFrame:
-        """Return the GeoDataFrame with polygons."""
+    def to_geoseries(self) -> GeoSeries:
+        """Return the GeoSeries with polygons."""
         self.gdf.geometry = self.to_numpy()
         return self.gdf.geometry
 
@@ -293,7 +325,7 @@ class PolygonsAsRings:
             try:
                 return make_valid(polygons(exterior.values))
             except Exception:
-                return _geoms_to_linearrings_fallback(exterior)
+                return _geoms_to_linearrings_fallback(exterior).values
 
         empty_interiors = pd.Series(
             [None for _ in range(len(self.gdf) * self.max_rings)],
@@ -312,10 +344,18 @@ class PolygonsAsRings:
         try:
             return make_valid(polygons(exterior.values, interiors.values))
         except Exception:
-            return _geoms_to_linearrings_fallback(exterior, interiors)
+            return _geoms_to_linearrings_fallback(exterior, interiors).values
 
 
-def get_linearring_series(geoms: Any) -> pd.Series:
+def get_linearring_series(geoms: GeoDataFrame | GeoSeries) -> pd.Series:
+    """Convert geometries into a series of LinearRings.
+
+    Args:
+        geoms: GeoDataFrame or GeoSeries from which to extract LinearRings.
+
+    Returns:
+        pd.Series: A series containing LinearRings.
+    """
     geoms = to_geoseries(geoms).explode(index_parts=False)
     coords, indices = get_coordinates(geoms, return_index=True)
     return pd.Series(linearrings(coords, indices=indices), index=geoms.index)
@@ -325,6 +365,7 @@ def _geoms_to_linearrings_fallback(
     exterior: pd.Series, interiors: pd.Series | None = None
 ) -> pd.Series:
     exterior.index = exterior.index.get_level_values(1)
+    assert exterior.index.is_monotonic_increasing
 
     exterior = get_linearring_series(exterior)
 

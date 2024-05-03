@@ -7,8 +7,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
-from shapely.geometry import LineString, Point
-
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
 src = str(Path(__file__).parent.parent) + "/src"
 
@@ -255,10 +255,10 @@ def _xyz():
     assert not gdf.geometry.isna().sum()
     assert gdf.geometry.has_z.all()
 
-    zipped = zip(df.x, df.y, df.z)
+    zipped = zip(df.x, df.y, df.z, strict=False)
     gdf = sg.to_gdf(zipped)
     assert not gdf.geometry.isna().sum()
-    zipped = zip(dict_["x"], dict_["y"], dict_["z"])
+    zipped = zip(dict_["x"], dict_["y"], dict_["z"], strict=False)
     gdf = sg.to_gdf(zipped)
     assert not gdf.geometry.isna().sum()
     print(dict_)

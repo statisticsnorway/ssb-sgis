@@ -4,11 +4,7 @@ import sys
 import timeit
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
-import pandas as pd
-import pytest
-
 
 src = str(Path(__file__).parent.parent) + "/src"
 
@@ -282,7 +278,6 @@ def test_dissexp_index():
 
 
 if __name__ == "__main__":
-    import cProfile
 
     # not_test_dissexp_n_jobs()
     test_dissexp_index()

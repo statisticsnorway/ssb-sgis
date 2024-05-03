@@ -1,6 +1,7 @@
 import networkx as nx
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from networkx.utils import pairwise
 from shapely.geometry import Point
 
@@ -30,7 +31,7 @@ def traveling_salesman_problem(
     Returns:
         List of Points making up the traveling salesman's path.
 
-    Examples
+    Examples:
     --------
     >>> points = sg.to_gdf(
     ...     [

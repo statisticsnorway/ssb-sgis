@@ -2,21 +2,17 @@
 import warnings
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 
 import sys
 
-
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 path_sentinel = testdata + "/sentinel2"
 
@@ -199,14 +195,14 @@ def not_test_explore(points_oslo, roads_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     test_explore(points_oslo(), roads_oslo())
     not_test_explore(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":
-    import cProfile
 
     main()
     # cProfile.run("main()", sort="cumtime")

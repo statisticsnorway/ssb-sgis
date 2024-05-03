@@ -1,12 +1,14 @@
 """Prepare a GeoDataFrame of line geometries for directed network analysis."""
 
 import warnings
+from collections.abc import Sequence
 
 import pandas as pd
 from geopandas import GeoDataFrame
 from shapely.constructive import reverse
 
-from ..helpers import return_two_vals, unit_is_meters
+from ..helpers import return_two_vals
+from ..helpers import unit_is_meters
 
 
 def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDataFrame:
@@ -26,7 +28,7 @@ def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDa
             network graph. Recode these rows to a non-negative values if you want
             to keep them.
 
-    Examples
+    Examples:
     --------
     2022 data for the municipalities of Oslo and Eidskog can be read directly like this:
 
@@ -202,7 +204,9 @@ def make_directed_network(
     return gdf
 
 
-def _validate_minute_args(minute_cols, speed_col_kmh, flat_speed_kmh):
+def _validate_minute_args(
+    minute_cols: Sequence[str], speed_col_kmh: str, flat_speed_kmh: str
+) -> None:
     if not minute_cols and not speed_col_kmh and not flat_speed_kmh:
         warnings.warn(
             "Minute column will not be calculated when both 'minute_cols', "
@@ -217,7 +221,9 @@ def _validate_minute_args(minute_cols, speed_col_kmh, flat_speed_kmh):
         )
 
 
-def _validate_direction_args(gdf, direction_col, direction_vals_bft):
+def _validate_direction_args(
+    gdf: GeoDataFrame, direction_col: str, direction_vals_bft: Sequence[str]
+) -> None:
     if len(direction_vals_bft) != 3:
         raise ValueError(
             "'direction_vals_bft' should be tuple/list with values of directions "

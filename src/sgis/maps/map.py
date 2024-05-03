@@ -4,25 +4,24 @@ This module holds the Map class, which is the basis for the Explore class.
 """
 
 import warnings
+from typing import Any
 
 import matplotlib
 import matplotlib.colors as colors
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from jenkspy import jenks_breaks
 from mapclassify import classify
 from shapely import Geometry
 
 from ..geopandas_tools.conversion import to_gdf
-from ..geopandas_tools.general import (
-    clean_geoms,
-    drop_inactive_geometry_columns,
-    get_common_crs,
-    rename_geometry_if,
-)
+from ..geopandas_tools.general import _rename_geometry_if
+from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.general import drop_inactive_geometry_columns
+from ..geopandas_tools.general import get_common_crs
 from ..helpers import get_object_name
-
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -60,8 +59,16 @@ _CATEGORICAL_CMAP = {
 DEFAULT_SCHEME = "quantiles"
 
 
-def proper_fillna(val, fill_val):
-    """fillna doesn't always work. So doing it manually."""
+def proper_fillna(val: Any, fill_val: Any) -> Any:
+    """Manually handle missing values when fillna doesn't work as expected.
+
+    Args:
+        val: The value to check and fill.
+        fill_val: The value to fill in.
+
+    Returns:
+        The original value or the filled value if conditions are met.
+    """
     try:
         if "NAType" in val.__class__.__name__:
             return fill_val
@@ -92,7 +99,17 @@ class Map:
         scheme: str = DEFAULT_SCHEME,
         **kwargs,
     ):
-
+        """Args:
+        *gdfs: Variable length GeoDataFrame list.
+        column: The column name to work with.
+        labels: Tuple of labels for each GeoDataFrame.
+        k: Number of bins or classes for classification (default: 5).
+        bins: Predefined bins for data classification.
+        nan_label: Label for missing data.
+        nan_color: Color for missing data.
+        scheme: Classification scheme to be used.
+        **kwargs: Arbitrary keyword arguments.
+        """
         gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
 
         self._column = column
@@ -138,7 +155,7 @@ class Map:
         self._gdfs = []
         new_labels = []
         self.show = []
-        for label, gdf, show in zip(self.labels, gdfs, show_args):
+        for label, gdf, show in zip(self.labels, gdfs, show_args, strict=False):
             if not len(gdf):
                 continue
 
@@ -222,7 +239,7 @@ class Map:
         self._nan_idx = self._gdf[self._column].isna()
         self._get_unique_values()
 
-    def _get_unique_values(self):
+    def _get_unique_values(self) -> None:
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()
         else:
@@ -254,7 +271,7 @@ class Map:
 
         return np.sort(np.array(unique.loc[no_duplicates.index]))
 
-    def _array_to_large_int(self, array):
+    def _array_to_large_int(self, array: np.ndarray | pd.Series) -> pd.Series:
         """Multiply values in float array, then convert to integer."""
         if not isinstance(array, pd.Series):
             array = pd.Series(array)
@@ -266,7 +283,7 @@ class Map:
 
         return pd.concat([unique_multiplied, isna]).sort_index()
 
-    def _get_multiplier(self, array: np.ndarray):
+    def _get_multiplier(self, array: np.ndarray) -> None:
         """Find the number of zeros needed to push the max value of the array above
         +-1_000_000.
 
@@ -371,9 +388,8 @@ class Map:
 
         return gdfs, column, kwargs
 
-    def _prepare_continous_map(self):
+    def _prepare_continous_map(self) -> None:
         """Create bins if not already done and adjust k if needed."""
-
         if self.scheme is None:
             return
 
@@ -408,7 +424,9 @@ class Map:
             gdfs.append(gdf)
         self._gdfs = gdfs
 
-    def _to_common_crs_and_one_geom_col(self, gdfs: list[GeoDataFrame]):
+    def _to_common_crs_and_one_geom_col(
+        self, gdfs: list[GeoDataFrame]
+    ) -> list[GeoDataFrame]:
         """Need common crs and max one geometry column."""
         crs_list = list({gdf.crs for gdf in gdfs if gdf.crs is not None})
         if crs_list:
@@ -416,7 +434,7 @@ class Map:
         new_gdfs = []
         for gdf in gdfs:
             gdf = gdf.reset_index(drop=True)
-            gdf = drop_inactive_geometry_columns(gdf).pipe(rename_geometry_if)
+            gdf = drop_inactive_geometry_columns(gdf).pipe(_rename_geometry_if)
             if crs_list:
                 try:
                     gdf = gdf.to_crs(self.crs)
@@ -530,7 +548,6 @@ class Map:
         If 'scheme' is not specified, the jenks_breaks function is used, which is
         much faster than the one from Mapclassifier.
         """
-
         if not len(gdf.loc[~self._nan_idx, column]):
             return np.array([0])
 
@@ -577,7 +594,7 @@ class Map:
 
         return np.array(bins)
 
-    def change_cmap(self, cmap: str, start: int = 0, stop: int = 256):
+    def change_cmap(self, cmap: str, start: int = 0, stop: int = 256) -> "Map":
         """Change the color palette of the plot.
 
         Args:
@@ -606,7 +623,6 @@ class Map:
 
     def _classify_from_bins(self, gdf: GeoDataFrame, bins: np.ndarray) -> np.ndarray:
         """Place the column values into groups."""
-
         # if equal lenght, convert to integer and check for equality
         if len(bins) == len(self._unique_values):
             if gdf[self._column].isna().all():
@@ -647,11 +663,11 @@ class Map:
         return np.array([rank_dict[val] for val in classified])
 
     @property
-    def k(self):
+    def k(self) -> int:
         return self._k
 
     @k.setter
-    def k(self, new_value: bool):
+    def k(self, new_value: int) -> None:
         if not self._is_categorical and new_value > len(self._unique_values):
             raise ValueError(
                 "'k' cannot be greater than the number of unique values in the column.'"
@@ -661,54 +677,54 @@ class Map:
         self._k = int(new_value)
 
     @property
-    def cmap(self):
+    def cmap(self) -> str:
         return self._cmap
 
     @cmap.setter
-    def cmap(self, new_value: bool):
+    def cmap(self, new_value: str) -> None:
         self._cmap = new_value
         self.change_cmap(cmap=new_value, start=self.cmap_start, stop=self.cmap_stop)
 
     @property
-    def gdf(self):
+    def gdf(self) -> GeoDataFrame:
         return self._gdf
 
     @gdf.setter
-    def gdf(self, _):
+    def gdf(self, _) -> None:
         raise ValueError(
             "Cannot change 'gdf' after init. Put the GeoDataFrames into "
             "the class initialiser."
         )
 
     @property
-    def gdfs(self):
+    def gdfs(self) -> list[GeoDataFrame]:
         return self._gdfs
 
     @gdfs.setter
-    def gdfs(self, _):
+    def gdfs(self, _) -> None:
         raise ValueError(
             "Cannot change 'gdfs' after init. Put the GeoDataFrames into "
             "the class initialiser."
         )
 
     @property
-    def column(self):
+    def column(self) -> str | None:
         return self._column
 
     @column.setter
-    def column(self, _):
+    def column(self, _) -> None:
         raise ValueError(
             "Cannot change 'column' after init. Specify 'column' in the "
             "class initialiser."
         )
 
-    def __setitem__(self, item, new_item):
+    def __setitem__(self, item: Any, new_item: Any) -> None:
         return setattr(self, item, new_item)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: Any) -> Any:
         return getattr(self, item)
 
-    def get(self, key, default=None):
+    def get(self, key: Any, default: Any | None = None) -> Any:
         try:
             return self[key]
         except (KeyError, ValueError, IndexError, AttributeError):

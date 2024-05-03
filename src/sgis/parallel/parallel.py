@@ -3,10 +3,11 @@ import inspect
 import itertools
 import multiprocessing
 import warnings
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import Callable
+from collections.abc import Collection
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
-
 
 try:
     import dapla as dp
@@ -16,18 +17,20 @@ except ImportError:
 import joblib
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
 from pandas import DataFrame
-from shapely.geometry import MultiPolygon, Polygon
 
-from ..geopandas_tools.general import clean_clip, clean_geoms
 from ..geopandas_tools.neighbors import get_neighbor_indices
 from ..geopandas_tools.overlay import clean_overlay
-from ..helpers import LocalFunctionError, dict_zip, dict_zip_union, in_jupyter
-
+from ..helpers import LocalFunctionError
+from ..helpers import dict_zip
+from ..helpers import dict_zip_union
+from ..helpers import in_jupyter
 
 try:
-    from ..io.dapla_functions import exists, read_geopandas, write_geopandas
+    from ..io.dapla_functions import exists
+    from ..io.dapla_functions import read_geopandas
+    from ..io.dapla_functions import write_geopandas
 
     # from ..io.write_municipality_data import write_municipality_data
 except ImportError:
@@ -35,12 +38,13 @@ except ImportError:
 
 
 try:
-    from dapla import read_pandas, write_pandas
+    from dapla import read_pandas
+    from dapla import write_pandas
 except ImportError:
     pass
 
 
-def turn_args_into_kwargs(func: Callable, args: tuple, index_start: int):
+def _turn_args_into_kwargs(func: Callable, args: tuple, index_start: int) -> dict:
     if not isinstance(args, tuple):
         raise TypeError("args should be a tuple (it should not be unpacked with *)")
     argnames = inspect.getfullargspec(func).args[index_start:]
@@ -89,6 +93,16 @@ class Parallel:
         maxtasksperchild: int = 10,
         **kwargs,
     ):
+        """Initialize a Parallel instance with specified settings for parallel execution.
+
+        Args:
+            processes: Number of parallel processes. Set to 1 to run without parallelization.
+            backend: The backend to use for parallel execution. Defaults to 'multiprocessing'.
+            context: The context setting for multiprocessing. Defaults to 'spawn'.
+            maxtasksperchild: The maximum number of tasks a worker process can complete
+                before it is replaced. Defaults to 10.
+            **kwargs: Additional keyword arguments passed to the underlying parallel execution backend.
+        """
         self.processes = int(processes)
         self.maxtasksperchild = maxtasksperchild
         self.backend = backend
@@ -111,16 +125,17 @@ class Parallel:
             func: Function to be run.
             iterable: An iterable where each item will be passed to func as
                 0th positional argument.
-            Args: Positional arguments passed to 'func' starting from the 1st argument.
+            args: Positional arguments passed to 'func' starting from the 1st argument.
                 The 0th argument will be reserved for the values of 'iterable'.
             kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
                 not unpacked into separate keyword arguments.
+            chunksize: The size of the chunks of the iterable to distribute to workers.
 
         Returns:
             A list of the return values of the function, one for each item in
             'iterable'.
 
-        Examples
+        Examples:
         --------
         Multiply each list element by 2.
 
@@ -159,14 +174,13 @@ class Parallel:
         ...     print(results)
         [2, 4, 6]
         """
-
         if args:
             # start at index 1, meaning the 0th argument (the iterable) is still available
-            args_as_kwargs = turn_args_into_kwargs(func, args, index_start=1)
+            args_as_kwargs = _turn_args_into_kwargs(func, args, index_start=1)
         else:
             args_as_kwargs = {}
 
-        self.validate_execution(func)
+        self._validate_execution(func)
 
         kwargs = self._validate_kwargs(kwargs) | args_as_kwargs
 
@@ -215,16 +229,17 @@ class Parallel:
             func: Function to be run.
             iterable: An iterable of iterables, where each item will be
                 unpacked as positional argument to the function.
-            Args: Positional arguments passed to 'func' starting at argument position
+            args: Positional arguments passed to 'func' starting at argument position
                 n + 1, where n is the length of the iterables inside the iterable.
             kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
                 not unpacked into separate keyword arguments.
+            chunksize: The size of the chunks of the iterable to distribute to workers.
 
         Returns:
             A list of the return values of the function, one for each item in
             'iterable'.
 
-        Examples
+        Examples:
         --------
         Multiply each list element by 2.
 
@@ -262,13 +277,13 @@ class Parallel:
         if args:
             # starting the count at the length of the iterables inside the iterables
             iterable = list(iterable)
-            args_as_kwargs = turn_args_into_kwargs(
+            args_as_kwargs = _turn_args_into_kwargs(
                 func, args, index_start=len(iterable[0])
             )
         else:
             args_as_kwargs = {}
 
-        self.validate_execution(func)
+        self._validate_execution(func)
 
         kwargs = self._validate_kwargs(kwargs) | args_as_kwargs
 
@@ -306,6 +321,7 @@ class Parallel:
         concat: bool = True,
         ignore_index: bool = True,
         strict: bool = True,
+        chunksize: int = 1,
         **kwargs,
     ) -> DataFrame | list[DataFrame]:
         """Read tabular files from a list in parallel.
@@ -315,6 +331,7 @@ class Parallel:
             concat: Whether to concat the results to a DataFrame.
             ignore_index: Defaults to True.
             strict: If True (default), all files must exist.
+            chunksize: The size of the chunks of the iterable to distribute to workers.
             **kwargs: Keyword arguments passed to dapla.read_pandas.
 
         Returns:
@@ -323,7 +340,7 @@ class Parallel:
         if not strict:
             files = [file for file in files if exists(file)]
 
-        res = self.map(dp.read_pandas, files, kwargs=kwargs)
+        res = self.map(dp.read_pandas, files, kwargs=kwargs | {"chunksize": chunksize})
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 
@@ -333,6 +350,7 @@ class Parallel:
         concat: bool = True,
         ignore_index: bool = True,
         strict: bool = True,
+        chunksize: int = 1,
         **kwargs,
     ) -> GeoDataFrame | list[GeoDataFrame]:
         """Read geospatial files from a list in parallel.
@@ -349,7 +367,7 @@ class Parallel:
         """
         if not strict:
             files = [file for file in files if exists(file)]
-        res = self.map(read_geopandas, files, kwargs=kwargs)
+        res = self.map(read_geopandas, files, kwargs=kwargs | {"chunksize": chunksize})
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 
@@ -371,6 +389,9 @@ class Parallel:
         """Split multiple datasets into municipalities and write as separate files.
 
         The files will be named as the municipality number.
+        Each dataset in 'in_data' is intersected with 'municipalities'
+        in parallel. The intersections themselves can also be run in parallel
+        with the 'processes_in_clip' argument.
 
         Args:
             in_data: Dictionary with dataset names as keys and file paths or
@@ -397,7 +418,11 @@ class Parallel:
                 not have to have the same length as 'in_data'.
             write_empty: If False (default), municipalities with no data will be skipped.
                 If True, an empty parquet file will be written.
-            clip: If True (default), the data will be clipped.
+            clip: If True (default), the data will be clipped. If False, the data will
+                be spatial joined.
+            max_rows_per_chunk: Number of rows per data chunk for processing.
+            processes_in_clip: Number of parallel processes for data clipping.
+
         """
         shared_kwds = {
             "municipalities": municipalities,
@@ -464,7 +489,7 @@ class Parallel:
         else:
             return out
 
-    def validate_execution(self, func):
+    def _validate_execution(self, func: Callable) -> None:
         """Multiprocessing doesn't work with local variables in interactive interpreter.
 
         Raising Exception to avoid confusion.
@@ -478,7 +503,7 @@ class Parallel:
             raise LocalFunctionError(func)
 
     @staticmethod
-    def _validate_kwargs(kwargs) -> dict:
+    def _validate_kwargs(kwargs: dict) -> dict:
         """Make sure kwargs is a dict (not ** unpacked or None)"""
         if kwargs is None:
             kwargs = {}
@@ -487,7 +512,7 @@ class Parallel:
         return kwargs
 
     def _execute(self) -> list[Any]:
-        [self.validate_execution(func) for func in self.funcs]
+        [self._validate_execution(func) for func in self.funcs]
 
         if self.processes == 1:
             return [func() for func in self.funcs]
@@ -513,7 +538,8 @@ class Parallel:
             results = [pool.apply_async(func) for func in self.funcs]
             return [result.get() for result in results]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """String representation."""
         return (
             f"{self.__class__.__name__}(processes={self.processes}, "
             f"backend='{self.backend}', context='{self.context}')"
@@ -534,6 +560,27 @@ def write_municipality_data(
     processes_in_clip: int = 1,
     strict: bool = True,
 ) -> None:
+    """Splits and writes data into municipality-specific files.
+
+    Args:
+        data: Path to the data file or a GeoDataFrame.
+        out_folder: Path to the output directory where the municipality data
+            is written.
+        municipalities: GeoDataFrame containing municipality polygons.
+        with_neighbors: If True, include data from neighboring municipalities
+            for each municipality.
+        muni_number_col: Column name for municipality codes in 'municipalities'.
+        file_type: Format of the output file.
+        func: Function to process data before writing.
+        write_empty: If True, write empty files for municipalities without data.
+        clip: If True, clip the data to municipality boundaries. If False
+            the data is spatial joined.
+        max_rows_per_chunk: Maximum number of rows in each processed chunk.
+        processes_in_clip: Number of processes to use for clipping.
+
+    Returns:
+        None. The function writes files directly.
+    """
     write_func = (
         _write_neighbor_municipality_data
         if with_neighbors
@@ -565,7 +612,7 @@ def _validate_data(data: str | list[str]) -> str:
     return data
 
 
-def _get_out_path(out_folder, muni, file_type):
+def _get_out_path(out_folder: str | Path, muni: str, file_type: str) -> str:
     return str(Path(out_folder) / f"{muni}.{file_type.strip('.')}")
 
 
@@ -680,14 +727,14 @@ def _write_neighbor_municipality_data(
 
 
 def _fix_missing_muni_numbers(
-    gdf,
-    municipalities,
-    muni_number_col,
-    clip,
-    max_rows_per_chunk,
-    processes_in_clip,
-    strict,
-):
+    gdf: GeoDataFrame,
+    municipalities: GeoDataFrame,
+    muni_number_col: str,
+    clip: bool,
+    max_rows_per_chunk: int,
+    processes_in_clip: int,
+    strict: bool,
+) -> GeoDataFrame:
     if muni_number_col in gdf and gdf[muni_number_col].notna().all():
         if municipalities is None:
             return gdf
@@ -750,18 +797,32 @@ def _fix_missing_muni_numbers(
 def parallel_overlay(
     df1: GeoDataFrame,
     df2: GeoDataFrame,
-    # muni_number_col: str,
     processes: int,
     max_rows_per_chunk: int,
     backend: str = "loky",
     **kwargs,
 ) -> GeoDataFrame:
-    # df2 = df2[[muni_number_col, df2._geometry_column_name]]
+    """Perform spatial overlay operations on two GeoDataFrames in parallel.
 
+    This function splits the first GeoDataFrame into chunks, processes each chunk in parallel using the specified
+    overlay operation with the second GeoDataFrame, and then concatenates the results.
+
+    Note that this function is most useful if df2 has few and simple geometries.
+
+    Args:
+        df1: The first GeoDataFrame for the overlay operation.
+        df2: The second GeoDataFrame for the overlay operation.
+        how: Type of overlay operation ('intersection', 'union', etc.).
+        processes: Number of parallel processes to use.
+        max_rows_per_chunk: Maximum number of rows per chunk for processing. This helps manage memory usage.
+        backend: The parallelization backend to use ('loky', 'multiprocessing', 'threading').
+        **kwargs: Additional keyword arguments to pass to the overlay function.
+
+    Returns:
+        A GeoDataFrame containing the result of the overlay operation.
+    """
     if len(df1) < max_rows_per_chunk:
         return clean_overlay(df1, df2, **kwargs)
-
-    # df2 = df2.dissolve(by=muni_number_col, as_index=False)
 
     n_chunks = len(df1) // max_rows_per_chunk
     chunks = np.array_split(np.arange(len(df1)), n_chunks)
@@ -783,21 +844,43 @@ def parallel_overlay(
     return pd.concat(out, ignore_index=True)
 
 
-def _clean_intersection(df1, df2):
+def _clean_intersection(df1: GeoDataFrame, df2: GeoDataFrame) -> GeoDataFrame:
     print(len(df1))
     return clean_overlay(df1, df2, how="intersection")
 
 
 def chunkwise(
     func: Callable,
-    df: GeoDataFrame,
+    df: GeoDataFrame | pd.DataFrame,
     max_rows_per_chunk: int = 150_000,
     n_chunks: int = None,
     args: tuple | None = None,
     kwargs: dict | None = None,
     n_jobs: int = 1,
     backend: str = "loky",
-) -> GeoDataFrame:
+) -> GeoDataFrame | pd.DataFrame:
+    """Run a function in parallel on chunks of a DataFrame.
+
+    This method is used to process large (Geo)DataFrames in manageable pieces,
+    optionally in parallel.
+
+    Args:
+        func: The function to apply to each chunk. This function must accept a DataFrame as
+            its first argument and return a DataFrame.
+        df: The DataFrame to be chunked and processed.
+        max_rows_per_chunk: The maximum number of rows each chunk should contain.
+        n_chunks: The exact number of chunks to divide the dataframe into. If None, it will be
+            calculated based on 'max_rows_per_chunk'.
+        args: Additional positional arguments to pass to 'func'.
+        kwargs: Keyword arguments to pass to 'func'.
+        n_jobs: The number of parallel jobs to run. Defaults to 1 (no parallel execution).
+        backend: The backend to use for parallel execution (e.g., 'loky', 'multiprocessing').
+
+    Returns:
+        GeoDataFrame: A GeoDataFrame resulting from concatenating the results of applying 'func'
+            to each chunk of the original GeoDataFrame.
+
+    """
     if len(df) < max_rows_per_chunk:
         return func(df, *args, **kwargs)
 

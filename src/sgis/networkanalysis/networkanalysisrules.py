@@ -3,7 +3,9 @@
 The class is to be used as the 'rules' parameter in the NetworkAnalysis
 class.
 """
-from copy import copy, deepcopy
+
+from copy import copy
+from copy import deepcopy
 from dataclasses import dataclass
 
 from geopandas import GeoDataFrame
@@ -47,7 +49,7 @@ class NetworkAnalysisRules:
             them. Defaults to None, meaning 0 weight is added for these edges. If set
             to 1, the weight will be equal to the straigt line distance.
 
-    Examples
+    Examples:
     --------
     Read testdata.
 
@@ -59,7 +61,7 @@ class NetworkAnalysisRules:
     values.
 
     >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
-    >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+    >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
     >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
     >>> nwa
     NetworkAnalysis(
@@ -171,7 +173,7 @@ class NetworkAnalysisRules:
     nodedist_multiplier: int | float | None = None
     nodedist_kmh: int | float | None = None
 
-    def _update_rules(self):
+    def _update_rules(self) -> None:
         """Stores the rules as separate attributes.
 
         Used for checking whether the rules have changed and the graph have to be
@@ -185,7 +187,7 @@ class NetworkAnalysisRules:
         self._nodedist_multiplier = self.nodedist_multiplier
         self._nodedist_kmh = self.nodedist_kmh
 
-    def _rules_have_changed(self):
+    def _rules_have_changed(self) -> bool:
         """Checks if any of the rules have changed since the graph was last created.
 
         If no rules have changed, time can be saved by not remaking the graph
@@ -235,8 +237,8 @@ class NetworkAnalysisRules:
             self._check_for_negative_values(gdf, self.weight)
             return gdf
 
-        # at this point, the weight is wrong. Now to determine the error
-        # message
+        # at this point, the weight is wrong.
+        # Now to determine the error message
 
         if "meter" in self.weight or "metre" in self.weight:
             raise ValueError(
@@ -257,7 +259,7 @@ class NetworkAnalysisRules:
         raise KeyError(incorrect_weight_column)
 
     @staticmethod
-    def _check_for_nans(df, col):
+    def _check_for_nans(df: GeoDataFrame, col: str) -> None:
         """Remove NaNs and give warning if there are any."""
         if all(df[col].isna()):
             raise ValueError(f"All values in the {col!r} column are NaN.")
@@ -270,7 +272,7 @@ class NetworkAnalysisRules:
             )
 
     @staticmethod
-    def _check_for_negative_values(df, col):
+    def _check_for_negative_values(df: GeoDataFrame, col: str) -> None:
         """Remove negative values and give warning if there are any."""
         negative = sum(df[col] < 0)
         if negative:
@@ -280,7 +282,7 @@ class NetworkAnalysisRules:
             )
 
     @staticmethod
-    def _try_to_float(df, col):
+    def _try_to_float(df: GeoDataFrame, col: str) -> GeoDataFrame:
         """Try to convert weight column to float, raise ValueError if it fails."""
         try:
             df[col] = df[col].astype(float)
@@ -291,8 +293,8 @@ class NetworkAnalysisRules:
             ) from e
         return df
 
-    def copy(self):
+    def copy(self) -> "NetworkAnalysisRules":
         return copy(self)
 
-    def deepcopy(self):
+    def deepcopy(self) -> "NetworkAnalysisRules":
         return deepcopy(self)

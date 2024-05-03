@@ -7,7 +7,7 @@ from pandas import DataFrame
 
 
 def _get_route_frequencies(
-    graph,
+    graph: Graph,
     roads: GeoDataFrame,
     weight_df: DataFrame,
 ) -> GeoDataFrame:
@@ -60,7 +60,6 @@ def _get_route(
     od_pairs: pd.MultiIndex,
 ) -> GeoDataFrame:
     """Function used in the get_route method of NetworkAnalysis."""
-
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
     resultlist: list[DataFrame] = []

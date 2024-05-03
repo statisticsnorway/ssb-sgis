@@ -1,18 +1,12 @@
 # %%
-import multiprocessing
 import os
 import sys
 from pathlib import Path
-from time import perf_counter
 
 import numpy as np
-import pandas as pd
 import shapely
 import xarray as xr
 from IPython.display import display
-from pyproj import CRS
-from shapely import box
-
 
 src = str(Path(__file__).parent.parent) + "/src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -20,7 +14,6 @@ testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
@@ -33,9 +26,9 @@ def x2(x):
 
 
 def not_test_xdataset():
-    cube = sg.DataCube.from_root(testdata, raster_type=sg.bands.Sentinel2, res=10)[
-        lambda x: x.date.notna()
-    ].load()
+    cube = sg.DataCube.from_root(
+        testdata, regex=sg.raster.SENTINEL2_FILENAME_REGEX, res=10
+    )[lambda x: x.date.notna()].load()
 
     print(cube)
     xdataset = cube.to_xarray()
@@ -82,7 +75,11 @@ def not_test_shape():
 
 def test_copy():
     cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", res=10, crs=25833, raster_type=sg.bands.Sentinel2
+        testdata,
+        endswith=".tif",
+        res=10,
+        crs=25833,
+        regex=sg.raster.SENTINEL2_FILENAME_REGEX,
     )
 
     assert [arr is None for arr in cube.arrays]
@@ -118,7 +115,7 @@ def not_test_gradient():
 
 def test_sentinel():
     cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", raster_type=sg.bands.Sentinel2, res=10
+        testdata, endswith=".tif", regex=sg.raster.SENTINEL2_FILENAME_REGEX, res=10
     )
     assert all(r.name is not None for r in cube), [r.name for r in cube]
     assert len(cube) == 10, len(cube)
@@ -437,7 +434,7 @@ def not_test_merge_from_array():
 
 def not_test_from_gdf():
     cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", res=10, raster_type=sg.bands.Sentinel2
+        testdata, endswith=".tif", res=10, regex=sg.raster.SENTINEL2_FILENAME_REGEX
     )
     gdf = cube[0].load().to_gdf("val")
     print(gdf)
@@ -492,7 +489,7 @@ def test_parallel():
     cube = sg.DataCube.from_root(
         testdata,
         endswith=".tif",
-        raster_type=sg.bands.Sentinel2,
+        regex=sg.raster.SENTINEL2_FILENAME_REGEX,
         res=10,
         crs=25833,
     )  # [lambda x: ~x.path.str.contains("entinel")]
@@ -505,7 +502,7 @@ def test_parallel():
     results_parallelized = (cube.clip(center)).map(x2).map(np.float32).explode()
 
     assert len(results) == len(results_parallelized)
-    for r1, r2 in zip(results, results_parallelized):
+    for r1, r2 in zip(results, results_parallelized, strict=False):
         assert r1.equals(r2)
     # assert results.equals(results_parallelized)
 
@@ -525,7 +522,7 @@ def write_sentinel():
     src_path_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
 
     cube = sg.DataCube.from_root(
-        src_path_sentinel, endswith=".tif", raster_type=sg.bands.Sentinel2
+        src_path_sentinel, endswith=".tif", regex=sg.raster.SENTINEL2_FILENAME_REGEX
     )
 
     mask = sg.to_gdf(cube.unary_union.centroid.buffer(1000))
@@ -558,7 +555,10 @@ def test_torch():
 
     def cube_with_torch():
         cube = sg.DataCube.from_root(
-            path_sentinel, endswith=".tif", raster_type=sg.bands.Sentinel2, res=10
+            path_sentinel,
+            endswith=".tif",
+            regex=sg.raster.SENTINEL2_FILENAME_REGEX,
+            res=10,
         )
 
         sampler = RandomGeoSampler(cube, size=16, length=10)
@@ -594,7 +594,6 @@ def test_torch():
 
 
 if __name__ == "__main__":
-    import cProfile
 
     # write_sentinel()
 

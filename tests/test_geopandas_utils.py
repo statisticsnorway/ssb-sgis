@@ -1,6 +1,5 @@
 # %%
 
-import random
 import sys
 from pathlib import Path
 
@@ -10,7 +9,6 @@ import pandas as pd
 import pytest
 from helpers import create_all_geometry_types
 from shapely.geometry import Polygon
-
 
 src = str(Path(__file__).parent.parent) + "/src"
 
@@ -47,17 +45,17 @@ def test_drop_inactive():
     assert list(gdf.columns) == ["geometry"]
 
 
-def test_rename_geometry_if():
+def test__rename_geometry_if():
     gdf = sg.to_gdf([0, 0])
     gdf = gdf.rename_geometry("geom2")
     gdf.columns = ["geom2"]
-    gdf = sg.rename_geometry_if(gdf)
+    gdf = sg._rename_geometry_if(gdf)
     assert list(gdf.columns) == ["geometry"], gdf
 
     gdf = sg.to_gdf([0, 0])
     gdf.columns = ["geom2"]
     assert list(gdf.columns) == ["geom2"], gdf
-    gdf = sg.rename_geometry_if(gdf)
+    gdf = sg._rename_geometry_if(gdf)
     assert list(gdf.columns) == ["geometry"], gdf
 
 
@@ -151,7 +149,8 @@ def test_clean():
     assert list(gdf.index) == [0], list(gdf.index)
 
     print(problematic_geometries)
-    from shapely import is_valid, make_valid
+    from shapely import is_valid
+    from shapely import make_valid
 
     print(make_valid(problematic_geometries.geometry))
     problematic_geometries["geometry"] = make_valid(problematic_geometries.geometry)

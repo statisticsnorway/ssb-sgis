@@ -1,12 +1,6 @@
 import sys
 from pathlib import Path
 
-import geopandas as gpd
-import numpy as np
-import pandas as pd
-import pytest
-
-
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
@@ -73,11 +67,11 @@ def test_args_to_kwargs():
     y = ["xx"]
     z = {1: "a", 2: "b"}
     args = (x, y, z)
-    kwargs = sg.parallel.parallel.turn_args_into_kwargs(func, args, 0)
+    kwargs = sg.parallel.parallel._turn_args_into_kwargs(func, args, 0)
     assert list(kwargs) == ["x", "y", "z"], kwargs
     assert list(kwargs.values()) == [x, y, z], kwargs
 
-    kwargs = sg.parallel.parallel.turn_args_into_kwargs(func, (y, z), 1)
+    kwargs = sg.parallel.parallel._turn_args_into_kwargs(func, (y, z), 1)
     assert list(kwargs) == ["y", "z"], kwargs
     assert list(kwargs.values()) == [y, z], kwargs
 

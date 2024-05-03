@@ -18,20 +18,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-
 src = str(Path().resolve().parent.parent) + "/src"
 print(src)
 sys.path.insert(0, src)
 
 import sgis as sg
 
-
 # ignore some warnings to make it cleaner
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=UserWarning)
 warnings.filterwarnings(action="ignore", category=FutureWarning)
-import geopandas as gpd
-
 
 points = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
@@ -52,7 +48,6 @@ points = sg.read_parquet_url(
 #
 # %%
 import sgis as sg
-
 
 roads = sg.read_parquet_url(
     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"

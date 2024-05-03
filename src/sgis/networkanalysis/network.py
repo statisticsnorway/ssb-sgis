@@ -5,7 +5,8 @@ network, finding and removing isolated network islands and creating unique node 
 """
 
 import warnings
-from copy import copy, deepcopy
+from copy import copy
+from copy import deepcopy
 
 import numpy as np
 from geopandas import GeoDataFrame
@@ -21,8 +22,11 @@ from .nodes import make_node_ids
 class Network:
     """Class used in NetworkAnalysis."""
 
-    def __init__(self, gdf: GeoDataFrame):
+    def __init__(self, gdf: GeoDataFrame) -> None:
         """The lines are fixed, welded together rowwise and exploded. Creates node-ids.
+
+        Args:
+            gdf: GeoDataFrame of line geometries to make up the network.
 
         Raises:
             TypeError: If 'gdf' is not of type GeoDataFrame.
@@ -152,6 +156,7 @@ class Network:
         return True
 
     def get_edges(self) -> list[tuple[str, str]]:
+        """Get a list of edges in the network."""
         return [
             (str(source), str(target))
             for source, target in zip(
@@ -206,11 +211,11 @@ class Network:
         """The percentage of lines that appear in both directions."""
         return self._percent_bidirectional
 
-    def copy(self):
+    def copy(self) -> "Network":
         """Returns a shallow copy of the class instance."""
         return copy(self)
 
-    def deepcopy(self):
+    def deepcopy(self) -> "Network":
         """Returns a deep copy of the class instance."""
         return deepcopy(self)
 
@@ -224,5 +229,6 @@ class Network:
         """So the attributes can be iterated through."""
         return iter(self.__dict__.items())
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Number og rows in the GeoDataFrame."""
         return len(self.gdf)

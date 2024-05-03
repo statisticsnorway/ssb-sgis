@@ -4,22 +4,28 @@ The class has five analysis methods: od_cost_matrix, get_route, get_k_routes,
 get_route_frequencies and service_area.
 """
 
-
-from copy import copy, deepcopy
+from collections.abc import Sequence
+from copy import copy
+from copy import deepcopy
 from datetime import datetime
 from time import perf_counter
+from typing import Any
 
 import igraph
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from igraph import Graph
-from pandas import DataFrame, MultiIndex
+from pandas import DataFrame
+from pandas import MultiIndex
 
 from ..geopandas_tools.general import _push_geom_col
-from ._get_route import _get_k_routes, _get_route, _get_route_frequencies
+from ._get_route import _get_k_routes
+from ._get_route import _get_route
+from ._get_route import _get_route_frequencies
 from ._od_cost_matrix import _od_cost_matrix
-from ._points import Destinations, Origins
+from ._points import Destinations
+from ._points import Origins
 from ._service_area import _service_area
 from .cutting_lines import split_lines_by_nearest_point
 from .network import Network
@@ -46,24 +52,12 @@ class NetworkAnalysis:
     line segments that were visited with an added column for how many times the
     segments were used.
 
-    Args:
-        network: A GeoDataFrame of line geometries.
-        rules: The rules for the analysis, either as an instance of
-            NetworkAnalysisRules or a dictionary with the parameters
-            as keys.
-        log: If True (default), a DataFrame with information about each
-            analysis run will be stored in the 'log' attribute.
-        detailed_log: If True, the log DataFrame will include columns for
-            all arguments passed to the analysis method, plus standard deviation and
-            percentiles (25th, 50th, 75th) of the weight column in the results.
-            Defaults to False.
-
     Attributes:
         network: A Network instance that holds the lines and nodes (points).
         rules: NetworkAnalysisRules instance.
         log: A DataFrame with information about each analysis run.
 
-    Examples
+    Examples:
     --------
     Read example data.
 
@@ -100,7 +94,22 @@ class NetworkAnalysis:
         rules: NetworkAnalysisRules | dict,
         log: bool = True,
         detailed_log: bool = False,
-    ):
+    ) -> None:
+        """Initialise NetworkAnalysis instance.
+
+        Args:
+            network: A GeoDataFrame of line geometries.
+            rules: The rules for the analysis, either as an instance of
+                NetworkAnalysisRules or a dictionary with the parameters
+                as keys.
+            log: If True (default), a DataFrame with information about each
+                analysis run will be stored in the 'log' attribute.
+            detailed_log: If True, the log DataFrame will include columns for
+                all arguments passed to the analysis method, plus standard deviation and
+                percentiles (25th, 50th, 75th) of the weight column in the results.
+                Defaults to False.
+
+        """
         if not isinstance(rules, NetworkAnalysisRules):
             rules = NetworkAnalysisRules(**rules)
 
@@ -125,8 +134,8 @@ class NetworkAnalysis:
         self._graph_updated_count = 0
         self._k_nearest_points = 50
 
-    def _check_if_holes_are_nan(self):
-        HOLES_ARE_NAN = (
+    def _check_if_holes_are_nan(self) -> None:
+        holes_are_nan: str = (
             "Network holes have been filled by straigt lines, but the rows have "
             f"NaN values in the {self.rules.weight!r} column. Either remove NaNs "
             "or fill these values with a numeric value (e.g. 0)."
@@ -140,7 +149,7 @@ class NetworkAnalysis:
                 .all()
             )
         ):
-            raise ValueError(HOLES_ARE_NAN)
+            raise ValueError(holes_are_nan)
 
     def od_cost_matrix(
         self,
@@ -180,13 +189,13 @@ class NetworkAnalysis:
             GeoDataFrames. If lines is True, also returns a geometry column with
             straight lines between origin and destination.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -423,8 +432,8 @@ class NetworkAnalysis:
         destinations: GeoDataFrame,
         weight_df: DataFrame | None = None,
         default_weight: int | float | None = None,
-        strict: bool = False,
         rowwise: bool = False,
+        strict: bool = False,
         frequency_col: str = "frequency",
     ) -> GeoDataFrame:
         """Finds the number of times each line segment was visited in all trips.
@@ -446,6 +455,11 @@ class NetworkAnalysis:
                 index, destination index and weight. In that order) or only a weight
                 column and a MultiIndex where level 0 is origin index and level 1 is
                 destination index.
+            default_weight: If set, OD pairs not represented in 'weight_df'
+                will be given a default weight value.
+            rowwise: if False (default), it will calculate the cost from each
+                origins to each destination. If true, it will calculate the cost from
+                origin 1 to destination 1, origin 2 to destination 2 and so on.
             strict: If True, all OD pairs must be in weigth_df if specified. Defaults
                 to False.
             frequency_col: Name of column with the number of times each road was
@@ -463,14 +477,14 @@ class NetworkAnalysis:
             ValueError: If weight_df is not a DataFrame with one or three columns
                 that contain weights and all indices of 'origins' and 'destinations'.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
         >>> import pandas as pd
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -599,10 +613,13 @@ class NetworkAnalysis:
             # map to temporary ids
             ori_idx_mapper = {v: k for k, v in self.origins.idx_dict.items()}
             des_idx_mapper = {v: k for k, v in self.destinations.idx_dict.items()}
-            multiindex_mapper = lambda x: (
-                ori_idx_mapper.get(x[0]),
-                des_idx_mapper.get(x[1]),
-            )
+
+            def multiindex_mapper(x: tuple[int, int]) -> tuple[int, int]:
+                return (
+                    ori_idx_mapper.get(x[0]),
+                    des_idx_mapper.get(x[1]),
+                )
+
             weight_df.index = weight_df.index.map(multiindex_mapper)
         else:
             od_pairs = self._create_od_pairs(
@@ -673,13 +690,13 @@ class NetworkAnalysis:
             Also returns a weight column and the columns 'origin' and 'destination',
             containing the indices of the origins and destinations GeoDataFrames.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -801,13 +818,13 @@ class NetworkAnalysis:
         Raises:
             ValueError: if drop_middle_percent is not between 0 and 100.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url('https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet')
-        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -943,17 +960,17 @@ class NetworkAnalysis:
             a dissolved line geometry. If dissolve is False, it will return each line
             that is part of the service area.
 
-        See also:
+        See Also:
             precice_service_area: Equivelent method where lines are also cut to get
             precice results.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -1072,16 +1089,16 @@ class NetworkAnalysis:
             geometry. If dissolve is False, it will return all the columns of the
             network.gdf as well.
 
-        See also:
+        See Also:
             service_area: Faster method where lines are not cut to get precice results.
 
-        Examples
+        Examples:
         --------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.remove_isolated(roads).pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -1189,7 +1206,7 @@ class NetworkAnalysis:
             "the trip frequency for this origin-destination pair."
         )
 
-        if not isinstance(weight_df, (DataFrame, pd.Series)):
+        if not isinstance(weight_df, (DataFrame | pd.Series)):
             raise ValueError(error_message)
 
         if isinstance(weight_df, pd.Series):
@@ -1221,7 +1238,7 @@ class NetworkAnalysis:
     def _make_sure_index_match(
         weight_df: DataFrame,
         od_pairs: MultiIndex,
-    ):
+    ) -> None:
         """Make sure this index matches the index of origins and destinations."""
         if not od_pairs.isin(weight_df.index).all():
             if not od_pairs.isin(weight_df.index).any():
@@ -1321,7 +1338,7 @@ class NetworkAnalysis:
             for key, value in kwargs.items():
                 if isinstance(value, np.ndarray):
                     value = list(value)
-                if isinstance(value, (list, tuple)):
+                if isinstance(value, (list | tuple)):
                     value = [str(x) for x in value]
                     value = ", ".join(value)
                 df[key] = value
@@ -1329,7 +1346,10 @@ class NetworkAnalysis:
         self.log = pd.concat([self.log, df], ignore_index=True)
 
     def _prepare_network_analysis(
-        self, origins, destinations=None, rowwise: bool = False
+        self,
+        origins: GeoDataFrame,
+        destinations: GeoDataFrame | None = None,
+        rowwise: bool = False,
     ) -> None:
         """Prepares the weight column, node ids, origins, destinations and graph.
 
@@ -1337,7 +1357,6 @@ class NetworkAnalysis:
         has changed. this method is run inside od_cost_matrix, get_route and
         service_area.
         """
-
         if rowwise and len(origins) != len(destinations):
             raise ValueError(
                 "'origins' and 'destinations' must have the same length when "
@@ -1585,14 +1604,14 @@ class NetworkAnalysis:
             ]
 
     @staticmethod
-    def _sort_breaks(breaks) -> list[float | int]:
+    def _sort_breaks(breaks: str | Sequence | int | float) -> list[float | int]:
         if isinstance(breaks, str):
             breaks = float(breaks)
 
         if hasattr(breaks, "__iter__"):
             return list(sorted(list(breaks)))
 
-        if isinstance(breaks, (int, float)):
+        if isinstance(breaks, (int | float)):
             return [breaks]
 
         raise ValueError(
@@ -1628,11 +1647,11 @@ class NetworkAnalysis:
             "\n)"
         )
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str) -> Any:
         """To be able to write self['origins'] as well as self.origins."""
         return getattr(self, item)
 
-    def copy(self, deep=True):
+    def copy(self, deep: bool = True) -> "NetworkAnalysis":
         """Returns a (deep) copy of the class instance.
 
         Args:

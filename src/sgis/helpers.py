@@ -1,15 +1,27 @@
 """Small helper functions."""
+
 import glob
 import inspect
 import os
 import warnings
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from geopandas import GeoDataFrame
 
 
-def get_numpy_func(text, error_message: str | None = None) -> Callable:
+def get_numpy_func(text: str, error_message: str | None = None) -> Callable:
+    """Fetch a numpy function based on its name.
+
+    Args:
+        text: The name of the numpy function to retrieve.
+        error_message: Custom error message if the function is not found.
+
+    Returns:
+        The numpy function corresponding to the provided text.
+    """
     f = getattr(np, text, None)
     if f is not None:
         return f
@@ -19,20 +31,36 @@ def get_numpy_func(text, error_message: str | None = None) -> Callable:
     raise ValueError(error_message)
 
 
-def get_func_name(func):
+def get_func_name(func: Callable) -> str:
+    """Return the name of a function.
+
+    Args:
+        func: The function object whose name is to be retrieved.
+
+    Returns:
+        The name of the function.
+    """
     try:
         return func.__name__
     except AttributeError:
         return str(func)
 
 
-def get_non_numpy_func_name(f):
+def get_non_numpy_func_name(f: Callable) -> str:
     if callable(f):
         return f.__name__
     return str(f).replace("np.", "").replace("numpy.", "")
 
 
-def to_numpy_func(text):
+def to_numpy_func(text: str) -> Callable:
+    """Convert a text identifier into a numpy function.
+
+    Args:
+        text: Name of the numpy function.
+
+    Returns:
+        The numpy function.
+    """
     f = getattr(np, text, None)
     if f is not None:
         return f
@@ -42,7 +70,16 @@ def to_numpy_func(text):
     raise ValueError
 
 
-def is_property(obj, attribute) -> bool:
+def is_property(obj: object, attribute: str) -> bool:
+    """Determine if a class attribute is a property.
+
+    Args:
+        obj: The object to check.
+        attribute: The attribute name to check on the object.
+
+    Returns:
+        True if the attribute is a property, False otherwise.
+    """
     return hasattr(obj.__class__, attribute) and isinstance(
         getattr(obj.__class__, attribute), property
     )
@@ -81,7 +118,7 @@ def dict_zip(*dicts):
         yield key, first_val, *(other[key] for other in dicts[1:])
 
 
-def in_jupyter():
+def in_jupyter() -> bool:
     try:
         get_ipython
         return True
@@ -89,7 +126,16 @@ def in_jupyter():
         return False
 
 
-def get_all_files(root, recursive=True):
+def get_all_files(root: str, recursive: bool = True) -> list[str]:
+    """Fetch all files in a directory.
+
+    Args:
+        root: The root directory path.
+        recursive: Whether to include subdirectories.
+
+    Returns:
+        A list of file paths.
+    """
     if not recursive:
         return [path for path in glob.glob(str(Path(root)) + "/*")]
     paths = []
@@ -156,7 +202,17 @@ def unit_is_degrees(gdf: GeoDataFrame) -> bool:
 def get_object_name(
     var: object, start: int = 2, stop: int = 7, ignore_self: bool = True
 ) -> str | None:
-    """Searches through the local variables down one level at a time."""
+    """Attempts to find the variable name of an object within a range of frame depths.
+
+    Args:
+        var: The object whose name is sought.
+        start: The starting frame depth to begin searching.
+        stop: The maximum frame depth to search.
+        ignore_self: If True, ignore 'self' in search results.
+
+    Returns:
+        The name of the variable or None if not found.
+    """
     frame = inspect.currentframe()
 
     for _ in range(start):
@@ -207,7 +263,16 @@ def make_namedict(gdfs: tuple[GeoDataFrame]) -> dict[int, str]:
     return namedict
 
 
-def sort_nans_last(df, ignore_index: bool = False):
+def sort_nans_last(df: pd.DataFrame, ignore_index: bool = False) -> pd.DataFrame:
+    """Sort a DataFrame placing rows with the most NaNs last.
+
+    Args:
+        df: DataFrame to sort.
+        ignore_index: If True, the index will be reset.
+
+    Returns:
+        Sorted DataFrame with NaNs last.
+    """
     if not len(df):
         return df
     df["n_nan"] = df.isna().sum(axis=1).values
@@ -219,7 +284,15 @@ def sort_nans_last(df, ignore_index: bool = False):
     return df.reset_index(drop=True) if ignore_index else df
 
 
-def is_number(text) -> bool:
+def is_number(text: str) -> bool:
+    """Check if a string can be converted to a number.
+
+    Args:
+        text: The string to check.
+
+    Returns:
+        True if the string can be converted to a number, False otherwise.
+    """
     try:
         float(text)
         return True

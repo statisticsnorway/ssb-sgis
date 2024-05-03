@@ -5,13 +5,7 @@ import sys
 import timeit
 from pathlib import Path
 
-import geopandas as gpd
-import numpy as np
 import pandas as pd
-import pytest
-from helpers import create_all_geometry_types
-from shapely.geometry import Polygon
-
 
 src = str(Path(__file__).parent.parent) + "/src"
 

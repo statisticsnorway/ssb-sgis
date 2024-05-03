@@ -4,7 +4,6 @@ from geopandas import GeoDataFrame
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from .networkanalysisrules import NetworkAnalysisRules
 
-
 """
 These are internal classes used in the NetworkAnalysis class. The classes used in
 NetworkAnalysis are Origins and Destinations, which are subclasses of Points. The
@@ -26,7 +25,6 @@ class Points:
         The original indices are stored in a dict and mapped back to the results in the
         end.
         """
-
         self.gdf["temp_idx"] = np.arange(start=start, stop=start + len(self.gdf))
         self.gdf["temp_idx"] = self.gdf["temp_idx"].astype(str)
 
@@ -71,6 +69,7 @@ class Points:
         from_col: str,
         to_col: str,
     ):
+        """Make edges and weights between points and the nodes of a network."""
         distances = get_k_nearest_neighbors(
             gdf=self.gdf.set_index("temp_idx"),
             neighbors=nodes.set_index("node_id"),

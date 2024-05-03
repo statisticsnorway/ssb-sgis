@@ -2,10 +2,7 @@
 import sys
 from pathlib import Path
 
-import geopandas as gpd
-
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 
 sys.path.insert(0, src)
@@ -44,7 +41,8 @@ def test_network_functions(points_oslo, roads_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     test_network_functions(points_oslo(), roads_oslo())
 

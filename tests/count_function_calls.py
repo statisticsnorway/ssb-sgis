@@ -33,7 +33,8 @@ def count_function_calls(points_oslo, roads_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     count_function_calls(points_oslo, roads_oslo)
     cProfile.run("count_function_calls()", sort="cumtime")

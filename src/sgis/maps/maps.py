@@ -11,18 +11,20 @@ import inspect
 from numbers import Number
 from typing import Any
 
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from pyproj import CRS
 from shapely import Geometry
 
 from ..geopandas_tools.conversion import to_gdf as to_gdf_func
-from ..geopandas_tools.general import clean_geoms, get_common_crs, is_wkt
+from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.general import get_common_crs
+from ..geopandas_tools.general import is_wkt
 from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
-
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -113,12 +115,12 @@ def explore(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
-    See also
+    See Also:
     --------
     samplemap: same functionality, but shows only a random area of a given size.
     clipmap: same functionality, but shows only the areas clipped by a given mask.
 
-    Examples
+    Examples:
     --------
     >>> import sgis as sg
     >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
@@ -138,7 +140,6 @@ def explore(
     >>> points["meters"] = points.length
     >>> sg.explore(roads, points, column="meters", cmap="plasma", max_zoom=60, center_4326=(10.7463, 59.92, 500))
     """
-
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
@@ -270,12 +271,12 @@ def samplemap(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
-    See also
+    See Also:
     --------
     explore: Same functionality, but shows the entire area of the geometries.
     clipmap: Same functionality, but shows only the areas clipped by a given mask.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url, samplemap
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
@@ -290,7 +291,6 @@ def samplemap(
     >>> samplemap(roads, points, size=5_000, column="meters")
 
     """
-
     if gdfs and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
@@ -393,12 +393,11 @@ def clipmap(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
-    See also
+    See Also:
     --------
     explore: same functionality, but shows the entire area of the geometries.
     samplemap: same functionality, but shows only a random area of a given size.
     """
-
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     if mask is None and len(gdfs) > 1:
@@ -548,7 +547,7 @@ def qtm(
         k: Number of color groups.
         **kwargs: Additional keyword arguments taken by the geopandas plot method.
 
-    See also:
+    See Also:
         ThematicMap: Class with more options for customising the plot.
     """
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)

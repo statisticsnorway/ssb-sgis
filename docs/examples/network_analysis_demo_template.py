@@ -15,7 +15,6 @@ import pandas as pd
 
 import sgis as sg
 
-
 # ignore some (for this purpose) irrelevant warnings
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=FutureWarning)

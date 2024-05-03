@@ -1,14 +1,11 @@
 # %%
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 import sys
-
 
 sys.path.insert(0, src)
 

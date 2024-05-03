@@ -1,17 +1,17 @@
 import os
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
+from http.server import HTTPServer
 
-from IPython.display import HTML, display
+from IPython.display import HTML
+from IPython.display import display
 
 
-def run_html_server(contents: str | None = None, port: int = 3000):
+def run_html_server(contents: str | None = None, port: int = 3000) -> None:
     """Run a simple, temporary http web server for serving static HTML content."""
     if "JUPYTERHUB_SERVICE_PREFIX" in os.environ:
         # Create a link using the https://github.com/jupyterhub/jupyter-server-proxy
-        display_address = os.environ["JUPYTERHUB_SERVICE_PREFIX"] + "proxy/{}/".format(
-            port
-        )
+        display_address = os.environ["JUPYTERHUB_SERVICE_PREFIX"] + f"proxy/{port}/"
         display_content = HTML(
             f"""
         <p>Click <a href='{display_address}'>here</a> to open in browser.</p>
@@ -26,9 +26,7 @@ def run_html_server(contents: str | None = None, port: int = 3000):
         )
 
     class HTTPServerRequestHandler(BaseHTTPRequestHandler):
-        """
-        A handler of request for the server, hosting static content.
-        """
+        """A handler of request for the server, hosting static content."""
 
         allow_reuse_address = True
 

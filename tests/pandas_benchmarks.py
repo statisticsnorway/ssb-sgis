@@ -7,8 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 sys.path.insert(0, src)
 

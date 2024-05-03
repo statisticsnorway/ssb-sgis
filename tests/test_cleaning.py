@@ -4,11 +4,9 @@ import sys
 from pathlib import Path
 
 import geopandas as gpd
-import pandas as pd
-from shapely import extract_unique_points, minimum_rotated_rectangle
+from shapely import minimum_rotated_rectangle
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 
 sys.path.insert(0, src)
@@ -198,7 +196,6 @@ def main():
 
 
 if __name__ == "__main__":
-    import cProfile
 
     # cProfile.run("main()", sort="cumtime")
 

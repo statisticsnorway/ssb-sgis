@@ -1,11 +1,16 @@
 import functools
 import itertools
 import multiprocessing
-import os
 import re
-from copy import copy, deepcopy
+from collections.abc import Callable
+from collections.abc import Iterable
+from collections.abc import Iterator
+from collections.abc import Sequence
+from copy import copy
+from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Sequence
+from typing import Any
+from typing import ClassVar
 
 import geopandas as gpd
 import numpy as np
@@ -13,41 +18,40 @@ import pandas as pd
 import pyproj
 import rasterio
 import shapely
-from geopandas import GeoDataFrame, GeoSeries
-from pandas import DataFrame, Series
-from pandas.api.types import is_dict_like, is_list_like
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from pandas import DataFrame
+from pandas import Series
+from pandas.api.types import is_dict_like
+from pandas.api.types import is_list_like
 from rasterio import merge as rasterio_merge
-
 
 try:
     import xarray as xr
-    from rioxarray.merge import merge_arrays
     from xarray import Dataset
 except ImportError:
 
     class Dataset:
-        pass
+        """Placeholder."""
 
 
-from rtree.index import Index, Property
+from rtree.index import Index
+from rtree.index import Property
 from shapely import Geometry
 from typing_extensions import Self  # TODO: imperter fra typing når python 3.11
 
-from ..geopandas_tools.bounds import get_total_bounds, make_grid
-from ..geopandas_tools.conversion import (
-    crs_to_string,
-    is_bbox_like,
-    to_bbox,
-    to_shapely,
-)
+from ..geopandas_tools.bounds import make_grid
+from ..geopandas_tools.conversion import is_bbox_like
+from ..geopandas_tools.conversion import to_bbox
+from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.overlay import clean_overlay
-from ..helpers import dict_zip_intersection, get_all_files, get_numpy_func
+from ..helpers import get_all_files
+from ..helpers import get_numpy_func
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
 from ..parallel.parallel import Parallel
 from .raster import Raster
-
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -57,13 +61,13 @@ except ImportError:
     class BoundingBox:
         """Placeholder."""
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args, **kwargs) -> None:
             raise ImportError("missing optional dependency 'torchgeo'")
 
     class RasterDataset:
         """Placeholder."""
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args, **kwargs) -> None:
             raise ImportError("missing optional dependency 'torchgeo'")
 
 
@@ -76,7 +80,7 @@ except ImportError:
         """Placeholder."""
 
         class Tensor:
-            pass
+            """Placeholder to reference torch.Tensor."""
 
 
 try:
@@ -85,37 +89,40 @@ except ImportError:
     pass
 
 try:
-    from dapla import FileClient, write_pandas
+    from dapla import FileClient
+    from dapla import write_pandas
 except ImportError:
     pass
 
-from .bands import Sentinel2
-from .base import ALLOWED_KEYS, NESSECARY_META, get_index_mapper
-from .cubebase import _from_gdf_func, _method_as_func, _raster_from_path, _write_func
-from .indices import get_raster_pairs, index_calc_pair
-from .zonal import make_geometry_iterrows, prepare_zonal, zonal_func, zonal_post
+from .base import ALLOWED_KEYS
+from .base import NESSECARY_META
+from .base import get_index_mapper
+from .cubebase import _from_gdf_func
+from .cubebase import _method_as_func
+from .cubebase import _raster_from_path
+from .cubebase import _write_func
+from .indices import get_raster_pairs
+from .indices import index_calc_pair
+from .zonal import _make_geometry_iterrows
+from .zonal import _prepare_zonal
+from .zonal import _zonal_func
+from .zonal import _zonal_post
 
 
 class DataCube:
     """Experimental.
 
-    Examples
+    Examples:
     --------
-
     >>> cube = sg.DataCube.from_root(...)
     >>> clipped = cube.clip(mask).merge(by="date")
     >>>
     """
 
-    CUBE_DF_NAME = "cube_df.parquet"
+    CUBE_DF_NAME: ClassVar[str] = "cube_df.parquet"
 
-    CANON_RASTER_TYPES = {
-        "Raster": Raster,
-        "Sentinel2": Sentinel2,
-    }
-
-    separate_files = True
-    is_image = True
+    separate_files: ClassVar[bool] = True
+    is_image: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -124,8 +131,18 @@ class DataCube:
         res: int | None = None,
         nodata: int | None = None,
         copy: bool = False,
-        parallelizer: Optional[Parallel] = None,
+        parallelizer: Parallel | None = None,
     ) -> None:
+        """Initialize a DataCube instance with optional Raster data.
+
+        Args:
+            data: Iterable of Raster objects or a single DataCube to copy data from.
+            crs: Coordinate reference system to be applied to the images.
+            res: Spatial resolution of the images, applied uniformly to all Rasters.
+            nodata: Nodata value to unify across all Rasters within the cube.
+            copy: If True, makes deep copies of Rasters provided.
+            parallelizer: sgis.Parallel instance to handle concurrent operations.
+        """
         self._arrays = None
         self._res = res
         self.parallelizer = parallelizer
@@ -190,19 +207,32 @@ class DataCube:
         root: str | Path,
         *,
         res: int | None = None,
-        raster_type: Raster = Raster,
         check_for_df: bool = True,
         contains: str | None = None,
         endswith: str = ".tif",
         regex: str | None = None,
-        parallelizer: Optional[Parallel] = None,
+        parallelizer: Parallel | None = None,
         file_system=None,
         **kwargs,
-    ):
-        kwargs = {
-            "raster_type": raster_type,
-            "res": res,
-        } | kwargs
+    ) -> "DataCube":
+        """Construct a DataCube by searching for files starting from a root directory.
+
+        Args:
+            root: Root directory path to search for raster image files.
+            res: Resolution to unify the data within the cube.
+            check_for_df: Check for a parquet file in the root directory
+                that holds metadata for the files in the directory.
+            contains: Filter files containing specific substrings.
+            endswith: Filter files that end with specific substrings.
+            regex: Regular expression to match file names.
+            parallelizer: sgis.Parallel instance for concurrent file processing.
+            file_system: File system to use for file operations, used in GCS environment.
+            # **kwargs: Additional keyword arguments to pass to 'from_path' method.
+
+        Returns:
+            An instance of DataCube containing the raster data from specified paths.
+        """
+        kwargs["res"] = res
 
         if is_dapla():
             if file_system is None:
@@ -222,23 +252,14 @@ class DataCube:
         if endswith:
             paths = [path for path in paths if path.endswith(endswith)]
         if regex:
-            regex = re.compile(regex)
-            paths = [path for path in paths if re.search(regex, path)]
-        if raster_type.filename_regex is not None:
-            # regex = raster_type.filename_regex
-            # paths = [path for path in paths if re.search(regex, Path(path).name)]
-            regex = re.compile(raster_type.filename_regex, re.VERBOSE)
+            regex = re.compile(regex, re.VERBOSE)
             paths = [
-                path
-                for path in paths
-                if re.match(regex, os.path.basename(path))
-                or re.search(regex, os.path.basename(path))
-            ]
+                path for path in paths if re.search(regex, path)
+            ]  # or re.match(regex, os.path.basename(path))
 
         if not check_for_df or not len(dfs):
             return cls.from_paths(
                 paths,
-                # indexes=indexes,
                 parallelizer=parallelizer,
                 **kwargs,
             )
@@ -268,17 +289,28 @@ class DataCube:
         paths: Iterable[str | Path],
         *,
         res: int | None = None,
-        raster_type: Raster = Raster,
-        parallelizer: Optional[Parallel] = None,
+        parallelizer: Parallel | None = None,
         file_system=None,
         **kwargs,
-    ):
+    ) -> "DataCube":
+        """Create a DataCube from a list of file paths.
+
+        Args:
+            paths: Iterable of file paths to raster files.
+            res: Resolution to unify the data within the cube.
+            parallelizer: Joblib Parallel instance for concurrent file processing.
+            file_system: File system to use for file operations, used in Dapla environment.
+            **kwargs: Additional keyword arguments to pass to the raster loading function.
+
+        Returns:
+            An instance of DataCube containing the raster data from specified paths.
+        """
         crs = kwargs.pop("crs", None)
 
         if not paths:
             return cls(crs=crs, parallelizer=parallelizer, res=res)
 
-        kwargs = dict(raster_type=raster_type, res=res) | kwargs
+        kwargs["res"] = res
 
         if file_system is None and is_dapla():
             kwargs |= {"file_system": FileClient.get_gcs_file_system()}
@@ -302,17 +334,24 @@ class DataCube:
         gdf: GeoDataFrame | Iterable[GeoDataFrame],
         columns: str | Iterable[str],
         res: int,
-        parallelizer: Optional[Parallel] = None,
+        parallelizer: Parallel | None = None,
         tile_size: int | None = None,
         grid: GeoSeries | None = None,
-        raster_type: Raster = Raster,
         **kwargs,
-    ):
-        """
+    ) -> 'DataCube':
+        """Create a DataCube from a GeoDataFrame or a set of them, tiling the spatial data as specified.
 
         Args:
-            grid: A grid.
-            **kwargs: Keyword arguments passed to Raster.from_gdf.
+            gdf: GeoDataFrame or an iterable of GeoDataFrames to rasterize.
+            columns: The column(s) in the GeoDataFrame that will be used as values for the rasterization.
+            res: Spatial resolution of the output rasters.
+            parallelizer: Joblib Parallel instance for concurrent processing.
+            tile_size: Size of each tile/grid cell in the output raster.
+            grid: Predefined grid to align the rasterization.
+            **kwargs: Additional keyword arguments passed to Raster.from_gdf.
+
+        Returns:
+            An instance of DataCube containing rasterized data from the GeoDataFrame(s).
         """
         if grid is None and tile_size is None:
             raise ValueError("Must specify either 'tile_size' or 'grid'.")
@@ -335,7 +374,6 @@ class DataCube:
             _from_gdf_func,
             columns=columns,
             res=res,
-            raster_type=raster_type,
             **kwargs,
         )
 
@@ -344,16 +382,16 @@ class DataCube:
 
         rasters = []
 
-        if processes > 1:
+        if parallelizer.processes > 1:
             rasters = parallelizer.map(
                 clean_overlay, gdf, args=(grid,), kwargs=dict(keep_geom_type=True)
             )
-            with multiprocessing.get_context("spawn").Pool(processes) as p:
+            with multiprocessing.get_context("spawn").Pool(parallelizer.processes) as p:
                 for frame in gdf:
                     frame = frame.overlay(grid, keep_geom_type=True)
                     gdfs = to_gdf_list(frame)
                     rasters += p.map(partial_func, gdfs)
-        elif processes < 1:
+        elif parallelizer.processes < 1:
             raise ValueError("processes must be an integer 1 or greater.")
         else:
             for frame in gdf:
@@ -364,7 +402,16 @@ class DataCube:
         return cls(rasters, res=res)
 
     @classmethod
-    def from_cube_df(cls, df: DataFrame | str | Path, res: int | None = None):
+    def from_cube_df(cls, df: DataFrame | str | Path, res: int | None = None) -> 'DataCube':
+        """Construct a DataCube from a DataFrame or path containing metadata or paths of rasters.
+
+        Args:
+            df: DataFrame, path to a DataFrame, or string path pointing to cube data.
+            res: Optional resolution to standardize all rasters to this resolution.
+
+        Returns:
+            A DataCube instance containing the raster data described by the DataFrame.
+        """
         if isinstance(df, (str, Path)):
             df = read_geopandas(df) if is_dapla() else gpd.read_parquet(df)
 
@@ -381,22 +428,8 @@ class DataCube:
         elif not isinstance(df, DataFrame):
             raise TypeError("df must be DataFrame or file path to a parquet file.")
 
-        try:
-            raster_types = [cls.CANON_RASTER_TYPES[x] for x in df["type"]]
-        except KeyError:
-            for x in df["type"]:
-                try:
-                    cls.CANON_RASTER_TYPES[x]
-                except KeyError:
-                    raise ValueError(
-                        f"Cannot convert raster type '{x}' to a Raster instance."
-                    )
-
         rasters: list[Raster] = [
-            raster_type.from_dict(meta)
-            for raster_type, (_, meta) in zip(
-                raster_types, df[NESSECARY_META].iterrows()
-            )
+            Raster.from_dict(meta) for _, meta in (df[NESSECARY_META].iterrows())
         ]
         return cls(rasters)
 
@@ -421,15 +454,15 @@ class DataCube:
         dropna: bool = True,
     ) -> GeoDataFrame:
         idx_mapper, idx_name = get_index_mapper(polygons)
-        polygons, aggfunc, func_names = prepare_zonal(polygons, aggfunc)
-        poly_iter = make_geometry_iterrows(polygons)
+        polygons, aggfunc, func_names = _prepare_zonal(polygons, aggfunc)
+        poly_iter = _make_geometry_iterrows(polygons)
 
         if by_date is None:
             by_date: bool = all(r.date is not None for r in self)
 
         if not self.parallelizer:
             aggregated: list[DataFrame] = [
-                zonal_func(
+                _zonal_func(
                     poly,
                     cube=self,
                     array_func=array_func,
@@ -441,7 +474,7 @@ class DataCube:
             ]
         else:
             aggregated: list[DataFrame] = self.parallelizer.map(
-                zonal_func,
+                _zonal_func,
                 poly_iter,
                 kwargs=dict(
                     cube=self,
@@ -452,7 +485,7 @@ class DataCube:
                 ),
             )
 
-        return zonal_post(
+        return _zonal_post(
             aggregated,
             polygons=polygons,
             idx_mapper=idx_mapper,
@@ -500,6 +533,7 @@ class DataCube:
         return self
 
     def load(self, copy: bool = True, **kwargs) -> Self:
+        """Load all images as arrays into a DataCube copy."""
         if self.crs is None:
             self._crs = get_common_crs(self.data)
 
@@ -515,7 +549,10 @@ class DataCube:
         cube = cube[cube.boxes.intersects(other)]
         return cube
 
-    def sfilter(self, other, copy: bool = True) -> Self:
+    def sfilter(
+        self, other: GeoDataFrame | GeoSeries | Geometry | tuple, copy: bool = True
+    ) -> Self:
+        """Spatially filter images by bounding box or geometry object."""
         other = to_shapely(other)
         cube = self.copy() if copy else self
         cube.data = [raster for raster in self if raster.unary_union.intersects(other)]
@@ -524,6 +561,7 @@ class DataCube:
     def clip(
         self, mask: GeoDataFrame | GeoSeries | Geometry, copy: bool = True, **kwargs
     ) -> Self:
+        """Clip the images by bounding box or geometry object."""
         if self.crs is None:
             self._crs = get_common_crs(self.data)
 
@@ -541,16 +579,24 @@ class DataCube:
         cube.data = cube.run_raster_method("clip", mask=mask, **kwargs)
         return cube
 
-    def clipmerge(self, mask, **kwargs) -> Self:
-        return clipmerge(self, mask, **kwargs)
+    def clipmerge(self, mask: GeoDataFrame | GeoSeries | Geometry, **kwargs) -> Self:
+        """Clip the images and merge to one image."""
+        return _clipmerge(self, mask, **kwargs)
 
     def merge_by_bounds(self, by: str | list[str] | None = None, **kwargs) -> Self:
-        return merge_by_bounds(self, by=by, **kwargs)
+        """Merge images with the same bounding box."""
+        return _merge_by_bounds(self, by=by, **kwargs)
 
     def merge(self, by: str | list[str] | None = None, **kwargs) -> Self:
-        return merge(self, by=by, **kwargs)
+        """Merge all images to one."""
+        return _merge(self, by=by, **kwargs)
 
     def explode(self) -> Self:
+        """Convert from 3D to 2D arrays.
+
+        Make multi-banded arrays (3d) into multiple single-banded arrays (2d).
+        """
+
         def explode_one_raster(raster: Raster) -> list[Raster]:
             property_values = {key: getattr(raster, key) for key in raster.properties}
 
@@ -581,7 +627,8 @@ class DataCube:
         )
         return self
 
-    def dissolve_bands(self, aggfunc, copy: bool = True) -> Self:
+    def dissolve_bands(self, aggfunc: Callable | str, copy: bool = True) -> Self:
+        """Aggregate values in 3D arrays to a single value in a 2D array."""
         self._check_for_array()
         if not callable(aggfunc) and not isinstance(aggfunc, str):
             raise TypeError("Can only supply a single aggfunc")
@@ -605,6 +652,9 @@ class DataCube:
         its array values have been recalculated.
 
         Args:
+            root: Directory path where the images will be written to.
+            file_format: File extension.
+            **kwargs: Keyword arguments passed to rasterio.open.
 
         """
         self._check_for_array()
@@ -617,11 +667,17 @@ class DataCube:
         ]
 
         if self.parallelizer:
-            self.parallelizer.starmap(_write_func, zip(self, paths), kwargs=kwargs)
+            self.parallelizer.starmap(
+                _write_func, zip(self, paths, strict=False), kwargs=kwargs
+            )
         else:
-            [_write_func(raster, path, **kwargs) for raster, path in zip(self, paths)]
+            [
+                _write_func(raster, path, **kwargs)
+                for raster, path in zip(self, paths, strict=False)
+            ]
 
     def write_df(self, folder: str) -> None:
+        """Write metadata DataFrame."""
         df = pd.DataFrame(self.meta)
 
         folder = Path(folder)
@@ -658,28 +714,34 @@ class DataCube:
 
         return cube.__class__(rasters)
 
-    def reproject_match(self) -> Self:
-        pass
+    # def reproject_match(self) -> Self:
+    #     pass
 
-    def to_crs(self, crs, copy: bool = True) -> Self:
+    def to_crs(self, crs: Any, copy: bool = True) -> Self:
+        """Reproject the coordinates of each image."""
         cube = self.copy() if copy else self
         cube.data = [r.to_crs(crs) for r in cube]
         cube._warped_crs = crs
         return cube
 
-    def set_crs(self, crs, allow_override: bool = False, copy: bool = True) -> Self:
+    def set_crs(
+        self, crs: Any, allow_override: bool = False, copy: bool = True
+    ) -> Self:
+        """Set the CRS of each image."""
         cube = self.copy() if copy else self
         cube.data = [r.set_crs(crs, allow_override=allow_override) for r in cube]
         cube._warped_crs = crs
         return cube
 
     def min(self) -> Series:
+        """Get minimum array values for each image."""
         return Series(
             self.run_raster_method("min"),
             name="min",
         )
 
     def max(self) -> Series:
+        """Get maximum array values for each image."""
         return Series(
             self.run_raster_method("max"),
             name="max",
@@ -693,7 +755,7 @@ class DataCube:
         return Series(data, name=attribute)
 
     def run_raster_method(
-        self, method: str, *args, copy: bool = True, return_self=False, **kwargs
+        self, method: str, *args, copy: bool = True, return_self: bool = False, **kwargs
     ) -> Self:
         """Run a Raster method for each raster in the cube."""
         if not all(hasattr(r, method) for r in self):
@@ -709,6 +771,7 @@ class DataCube:
 
     @property
     def meta(self) -> list[dict]:
+        """Get metadata property of each raster."""
         return [raster.meta for raster in self]
 
     # @property
@@ -723,6 +786,7 @@ class DataCube:
 
     @property
     def data(self) -> list[Raster]:
+        """The Rasters as a list."""
         return self._data
 
     @data.setter
@@ -751,6 +815,7 @@ class DataCube:
 
     @property
     def arrays(self) -> list[np.ndarray]:
+        """The arrays of the images as a list."""
         return [raster.array for raster in self]
 
     @arrays.setter
@@ -762,17 +827,14 @@ class DataCube:
         if not all(isinstance(arr, np.ndarray) for arr in new_arrays):
             raise ValueError("Must be list of numpy ndarrays")
 
-        self.data = [raster.update(array=arr) for raster, arr in zip(self, new_arrays)]
-
-    @property
-    def raster_type(self) -> Series:
-        return Series(
-            [r.__class__ for r in self],
-            name="raster_type",
-        )
+        self.data = [
+            raster.update(array=arr)
+            for raster, arr in zip(self, new_arrays, strict=False)
+        ]
 
     @property
     def band(self) -> Series:
+        """Get the 'band' attribute of the rasters."""
         return Series(
             [r.band for r in self],
             name="band",
@@ -780,6 +842,7 @@ class DataCube:
 
     @property
     def dtype(self) -> Series:
+        """Get the 'dtype' attribute of the rasters."""
         return Series(
             [r.dtype for r in self],
             name="dtype",
@@ -787,22 +850,27 @@ class DataCube:
 
     @property
     def nodata(self) -> int | None:
+        """No data value."""
         return self._nodata
 
     @property
     def path(self) -> Series:
+        """Get the 'path' attribute of the rasters."""
         return self.raster_attribute("path")
 
     @property
     def name(self) -> Series:
+        """Get the 'name' attribute of the rasters."""
         return self.raster_attribute("name")
 
     @property
     def date(self) -> Series:
+        """Get the 'date' attribute of the rasters."""
         return self.raster_attribute("date")
 
     @property
     def indexes(self) -> Series:
+        """Get the 'indexes' attribute of the rasters."""
         return self.raster_attribute("indexes")
 
     # @property
@@ -811,38 +879,46 @@ class DataCube:
 
     @property
     def area(self) -> Series:
+        """Get the 'area' attribute of the rasters."""
         return self.raster_attribute("area")
 
     @property
     def length(self) -> Series:
+        """Get the 'length' attribute of the rasters."""
         return self.raster_attribute("length")
 
     @property
     def height(self) -> Series:
+        """Get the 'height' attribute of the rasters."""
         return self.raster_attribute("height")
 
     @property
     def width(self) -> Series:
+        """Get the 'width' attribute of the rasters."""
         return self.raster_attribute("width")
 
     @property
     def shape(self) -> Series:
+        """Get the 'shape' attribute of the rasters."""
         return self.raster_attribute("shape")
 
     @property
     def count(self) -> Series:
+        """Get the 'count' attribute of the rasters."""
         return self.raster_attribute("count")
 
     @property
     def res(self) -> int:
+        """Spatial resolution of the images."""
         return self._res
 
     @res.setter
-    def res(self, value):
+    def res(self, value) -> None:
         self._res = value
 
     @property
     def crs(self) -> pyproj.CRS:
+        """Coordinate reference system of the images."""
         crs = self._warped_crs if hasattr(self, "_warped_crs") else self._crs
         if crs is not None:
             return crs
@@ -853,10 +929,12 @@ class DataCube:
 
     @property
     def unary_union(self) -> Geometry:
+        """Box polygon of the combined bounds of each image."""
         return shapely.unary_union([shapely.box(*r.bounds) for r in self])
 
     @property
     def centroid(self) -> GeoSeries:
+        """Get the 'centroid' attribute of the rasters."""
         return GeoSeries(
             [r.centroid for r in self],
             name="centroid",
@@ -865,11 +943,12 @@ class DataCube:
 
     @property
     def tile(self) -> Series:
+        """Get the 'tile' attribute of the rasters."""
         return self.raster_attribute("tile")
 
     @property
     def boxes(self) -> GeoSeries:
-        """GeoSeries of each raster's bounds as polygon."""
+        """Get the 'bounds' attribute of the rasters."""
         return GeoSeries(
             [shapely.box(*r.bounds) if r.bounds is not None else None for r in self],
             name="boxes",
@@ -878,6 +957,7 @@ class DataCube:
 
     @property
     def total_bounds(self) -> tuple[float, float, float, float]:
+        """Combined minimum and maximum longitude and latitude."""
         return tuple(x for x in self.boxes.total_bounds)
 
     @property
@@ -889,7 +969,7 @@ class DataCube:
         """
         return BoundingBox(*self.index.bounds)
 
-    def copy(self, deep=True) -> Self:
+    def copy(self, deep: bool = True) -> Self:
         """Returns a (deep) copy of the class instance and its rasters.
 
         Args:
@@ -899,7 +979,7 @@ class DataCube:
         copied.data = [raster.copy() for raster in copied]
         return copied
 
-    def _check_for_array(self, text="") -> None:
+    def _check_for_array(self, text: str = "") -> None:
         mess = "Arrays are not loaded. " + text
         if all(raster.array is None for raster in self):
             raise ValueError(mess)
@@ -907,9 +987,7 @@ class DataCube:
     def __getitem__(
         self, item: slice | int | Series | Sequence | Callable | Geometry | BoundingBox
     ) -> Self | Raster:
-        """
-
-        Examples
+        """Examples:
         --------
         >>> cube = sg.DataCube.from_root(testdata, endswith=".tif", crs=25833).load()
 
@@ -937,7 +1015,7 @@ class DataCube:
         elif callable(item):
             item = item(copy)
         elif isinstance(item, BoundingBox):
-            return cube_to_torch(self, item)
+            return cube_to_torchgeo(self, item)
 
         elif isinstance(item, (GeoDataFrame, GeoSeries, Geometry)) or is_bbox_like(
             item
@@ -956,7 +1034,8 @@ class DataCube:
 
         return copy
 
-    def __setattr__(self, attr, value):
+    def __setattr__(self, attr: str, value: Any) -> None:
+        """Set an attribute of the cube."""
         if (
             attr in ["data", "_data"]
             or not is_list_like(value)
@@ -970,13 +1049,16 @@ class DataCube:
             )
         return super().__setattr__(attr, value)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Raster]:
+        """Iterate over the Rasters."""
         return iter(self.data)
 
     def __len__(self) -> int:
+        """Number of Rasters."""
         return len(self.data)
 
     def __repr__(self) -> str:
+        """String representation."""
         return f"{self.__class__.__name__}({len(self)})"
 
     # def __mul__(self, scalar) -> Self:
@@ -998,23 +1080,32 @@ class DataCube:
     #     return self.map(_pow, scalar=scalar)
 
 
-def concat_cubes(cube_list: list[DataCube], res: int | None = None) -> DataCube:
-    if not all(isinstance(cube, DataCube) for cube in cube_list):
-        raise TypeError
+def concat_cubes(cubes: Sequence[DataCube], res: int | None = None) -> DataCube:
+    """Concatenate cubes to one.
+
+    Args:
+        cubes: A sequence of DataCubes.
+        res: Spatial resolution.
+
+    Returns:
+        The cubes combined to one.
+    """
+    if not all(isinstance(cube, DataCube) for cube in cubes):
+        raise TypeError("cubes must be of type DataCube.")
 
     return DataCube(
-        list(itertools.chain.from_iterable([cube.data for cube in cube_list])), res=res
+        list(itertools.chain.from_iterable([cube.data for cube in cubes])), res=res
     )
 
 
-def clipmerge(cube: DataCube, mask, **kwargs) -> DataCube:
-    return merge(cube, bounds=mask, **kwargs)
+def _clipmerge(cube: DataCube, mask: Any, **kwargs) -> DataCube:
+    return _merge(cube, bounds=mask, **kwargs)
 
 
-def merge(
+def _merge(
     cube: DataCube,
-    by=None,
-    bounds=None,
+    by: str | Sequence[str] | None = None,
+    bounds: Any | None = None,
     **kwargs,
 ) -> DataCube:
     if not all(r.array is None for r in cube):
@@ -1053,10 +1144,10 @@ def merge(
     )
 
 
-def merge_by_bounds(
+def _merge_by_bounds(
     cube: DataCube,
-    by=None,
-    bounds=None,
+    by: str | Sequence[str] | None = None,
+    bounds: Any | None = None,
     **kwargs,
 ) -> DataCube:
     if isinstance(by, str):
@@ -1066,7 +1157,7 @@ def merge_by_bounds(
     else:
         by = by + ["tile"]
 
-    return merge(
+    return _merge(
         cube,
         by=by,
         bounds=bounds,
@@ -1074,65 +1165,26 @@ def merge_by_bounds(
     )
 
 
-def _merge(cube, **kwargs) -> DataCube:
+def _merge(cube: DataCube, **kwargs) -> DataCube:
     if cube.crs is None:
         cube._crs = get_common_crs(cube.data)
 
     indexes = cube[0].indexes_as_tuple()
 
-    datasets = [load_raster(raster.path) for raster in cube]
+    datasets = [_load_raster(raster.path) for raster in cube]
     array, transform = rasterio_merge.merge(datasets, indexes=indexes, **kwargs)
     cube.data = [Raster.from_array(array, crs=cube.crs, transform=transform)]
 
     return cube
 
-    if all(arr is None for arr in cube.arrays):
-        datasets = [load_raster(raster.path) for raster in cube]
-        array, transform = rasterio_merge.merge(datasets, indexes=indexes, **kwargs)
-        cube.data = [Raster.from_array(array, crs=cube.crs, transform=transform)]
-        return cube
 
-    bounds = kwargs.pop("bounds", None)
-
-    if bounds:
-        xarrays = [
-            r.to_xarray().transpose("y", "x")
-            for r in cube.explode()
-            if r.intersects(bounds)
-        ]
-    else:
-        xarrays = [r.to_xarray().transpose("y", "x") for r in cube.explode()]
-
-    if len(xarrays) > 1:
-        merged = merge_arrays(
-            xarrays,
-            bounds=bounds,
-            res=cube.res,
-            nodata=cube.nodata,
-            **kwargs,
-        )
-    else:
-        try:
-            merged = xarrays[0]
-        except IndexError:
-            cube.data = []
-            return cube
-
-    array = merged.to_numpy()
-
-    raster = cube[0].__class__
-    out_bounds = bounds or cube.total_bounds
-    cube.data = [raster.from_array(array, bounds=out_bounds, crs=cube.crs)]
-
-    return cube
-
-
-def load_raster(path):
+def _load_raster(path: str | Path) -> rasterio.io.DatasetReader:
     with opener(path) as file:
         return rasterio.open(file)
 
 
 def numpy_to_torch(array: np.ndarray) -> torch.Tensor:
+    """Convert numpy array to a pytorch tensor."""
     # fix numpy dtypes which are not supported by pytorch tensors
     if array.dtype == np.uint16:
         array = array.astype(np.int32)
@@ -1142,7 +1194,10 @@ def numpy_to_torch(array: np.ndarray) -> torch.Tensor:
     return torch.tensor(array)
 
 
-def cube_to_torch(cube: DataCube, query: BoundingBox):
+def cube_to_torchgeo(
+    cube: DataCube, query: BoundingBox
+) -> dict[str, torch.Tensor | pyproj.CRS | BoundingBox]:
+    """Convert a DayaCube to the type of dict returned from torchgeo datasets __getitem__."""
     bbox = shapely.box(*to_bbox(query))
     if cube.separate_files:
         cube = cube.sfilter(bbox).explode().load()

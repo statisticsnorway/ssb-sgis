@@ -1,65 +1,43 @@
 import re
 import warnings
-from typing import Callable
+from collections.abc import Callable
+from typing import Any
 
-import networkx as nx
 import numpy as np
 import pandas as pd
 import shapely
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from numpy.typing import NDArray
-from shapely import (
-    Geometry,
-    STRtree,
-    extract_unique_points,
-    force_2d,
-    get_coordinates,
-    get_exterior_ring,
-    get_parts,
-    linearrings,
-    linestrings,
-    make_valid,
-    multipoints,
-    polygons,
-    reverse,
-    segmentize,
-    simplify,
-    unary_union,
-)
+from shapely import extract_unique_points
+from shapely import get_coordinates
+from shapely import get_parts
+from shapely import linestrings
 from shapely.errors import GEOSException
-from shapely.geometry import LinearRing, LineString, MultiLineString, MultiPoint, Point
-from shapely.ops import nearest_points
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
-from ..networkanalysis.closing_network_holes import get_angle
-from ..networkanalysis.cutting_lines import split_lines_by_nearest_point
-from .buffer_dissolve_explode import buff, buffdissexp, dissexp, dissexp_by_cluster
-from .conversion import coordinate_array, to_gdf, to_geoseries
-from .duplicates import get_intersections, update_geometries
+from .buffer_dissolve_explode import buff
+from .buffer_dissolve_explode import dissexp
+from .conversion import coordinate_array
+from .conversion import to_gdf
+from .duplicates import get_intersections
+from .duplicates import update_geometries
 
 # from .general import sort_large_first as _sort_large_first
-from .general import (
-    clean_clip,
-    clean_geoms,
-    sort_large_first,
-    sort_long_first,
-    sort_small_first,
-    to_lines,
-)
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-from .neighbors import get_k_nearest_neighbors, get_neighbor_indices
+from .general import clean_geoms
+from .general import sort_large_first
+from .general import sort_small_first
+from .general import to_lines
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
 from .overlay import clean_overlay
-from .polygon_operations import (
-    close_all_holes,
-    close_small_holes,
-    close_thin_holes,
-    eliminate_by_longest,
-    get_cluster_mapper,
-    get_gaps,
-)
-from .polygons_as_rings import PolygonsAsRings
-from .sfilter import sfilter, sfilter_inverse, sfilter_split
-
+from .polygon_operations import eliminate_by_longest
+from .polygon_operations import get_cluster_mapper
+from .polygon_operations import get_gaps
+from .sfilter import sfilter_inverse
+from .sfilter import sfilter_split
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
@@ -74,8 +52,6 @@ def coverage_clean(
     tolerance: int | float,
     duplicate_action: str = "fix",
     grid_sizes: tuple[None | int] = (None,),
-    logger=None,
-    mask=None,
     n_jobs: int = 1,
 ) -> GeoDataFrame:
     """Fix thin gaps, holes, slivers and double surfaces.
@@ -110,13 +86,13 @@ def coverage_clean(
             than the tolerance. If "ignore", double surfaces are kept as is.
         grid_sizes: One or more grid_sizes used in overlay and dissolve operations that
             might raise a GEOSException. Defaults to (None,), meaning no grid_sizes.
+        n_jobs: Number of threads.
 
     Returns:
         A GeoDataFrame with cleaned polygons.
 
-    Examples
+    Examples:
     --------
-
     >>> cleaned = coverage_clean(
     ...     gdf,
     ...     0.1,
@@ -139,7 +115,6 @@ def coverage_clean(
     ... ).pipe(sg.clean_clip, your_mask, geom_type="polygon")
 
     """
-
     if not len(gdf):
         return gdf
 
@@ -153,7 +128,7 @@ def coverage_clean(
     ]
 
     try:
-        gdf = safe_simplify(gdf, PRECISION)
+        gdf = _safe_simplify(gdf, PRECISION)
     except GEOSException:
         pass
 
@@ -175,7 +150,7 @@ def coverage_clean(
                 break
             except GEOSException as e:
                 if i == len(grid_sizes) - 1:
-                    explore_geosexception(e, gdf, logger=logger)
+                    explore_geosexception(e, gdf)
                     raise e
 
     gaps["_was_gap"] = 1
@@ -262,7 +237,7 @@ def coverage_clean(
             break
         except GEOSException as e:
             if i == len(grid_sizes) - 1:
-                explore_geosexception(e, gdf, intersecting, isolated, logger=logger)
+                explore_geosexception(e, gdf, intersecting, isolated)
                 raise e
 
     not_really_isolated = isolated[["geometry", "_eliminate_idx", "_cluster"]].merge(
@@ -333,9 +308,7 @@ def coverage_clean(
             break
         except GEOSException as e:
             if i == len(grid_sizes) - 1:
-                explore_geosexception(
-                    e, gdf, without_double, isolated, really_isolated, logger=logger
-                )
+                explore_geosexception(e, gdf, without_double, isolated, really_isolated)
                 raise e
 
     cleaned = pd.concat([many_hits, one_hit], ignore_index=True)
@@ -361,7 +334,6 @@ def coverage_clean(
                     without_double,
                     isolated,
                     really_isolated,
-                    logger=logger,
                 )
                 raise e
 
@@ -388,11 +360,10 @@ def coverage_clean(
                     without_double,
                     isolated,
                     really_isolated,
-                    logger=logger,
                 )
                 raise e
 
-    # cleaned = safe_simplify(cleaned, PRECISION)
+    # cleaned = _safe_simplify(cleaned, PRECISION)
     # cleaned.geometry = shapely.make_valid(cleaned.geometry)
 
     # TODO check why polygons dissappear in rare cases. For now, just add back the missing
@@ -402,7 +373,7 @@ def coverage_clean(
     return to_single_geom_type(cleaned, "polygon")
 
 
-def safe_simplify(gdf, tolerance: float | int, **kwargs):
+def _safe_simplify(gdf: GeoDataFrame, tolerance: float | int, **kwargs) -> GeoDataFrame:
     """Simplify only if the resulting area is no more than 1 percent larger.
 
     Because simplifying can result in holes being filled.
@@ -420,7 +391,7 @@ def safe_simplify(gdf, tolerance: float | int, **kwargs):
     return copied
 
 
-def remove_interior_slivers(gdf, tolerance):
+def _remove_interior_slivers(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
     gdf, slivers = split_out_slivers(gdf, tolerance)
     slivers["_idx"] = range(len(slivers))
     without_thick = clean_overlay(
@@ -439,14 +410,29 @@ def remove_interior_slivers(gdf, tolerance):
 def remove_spikes(
     gdf: GeoDataFrame, tolerance: int | float, n_jobs: int = 1
 ) -> GeoDataFrame:
+    """Remove thin spikes from polygons.
+
+    Args:
+        gdf: A GeoDataFrame.
+        tolerance: Spike tolerance.
+        n_jobs: Number of threads.
+
+    Returns:
+        A GeoDataFrame.
+    """
     return clean_overlay(
         gdf, gdf[["geometry"]], how="intersection", grid_size=tolerance, n_jobs=n_jobs
     )
 
 
 def _properly_fix_duplicates(
-    gdf, double, slivers, thin_gaps_and_double, tolerance, n_jobs
-):
+    gdf: GeoDataFrame,
+    double: GeoDataFrame,
+    slivers: GeoDataFrame,
+    thin_gaps_and_double: GeoDataFrame,
+    tolerance: int | float,
+    n_jobs: int,
+) -> GeoDataFrame:
     gdf = _dissolve_thick_double_and_update(gdf, double, thin_gaps_and_double, n_jobs)
     gdf, more_slivers = split_out_slivers(gdf, tolerance)
     slivers = pd.concat([slivers, more_slivers], ignore_index=True)
@@ -462,7 +448,9 @@ def _properly_fix_duplicates(
     return gdf, thin_gaps_and_double, slivers
 
 
-def _dissolve_thick_double_and_update(gdf, double, thin_double, n_jobs):
+def _dissolve_thick_double_and_update(
+    gdf: GeoDataFrame, double: GeoDataFrame, thin_double: GeoDataFrame, n_jobs: int
+) -> GeoDataFrame:
     large = (
         double.loc[~double["_double_idx"].isin(thin_double["_double_idx"])].drop(
             columns="_double_idx"
@@ -479,7 +467,9 @@ def _dissolve_thick_double_and_update(gdf, double, thin_double, n_jobs):
     )
 
 
-def _cleaning_checks(gdf, tolerance, duplicate_action):  # , spike_action):
+def _cleaning_checks(
+    gdf: GeoDataFrame, tolerance: int | float, duplicate_action: bool
+) -> GeoDataFrame:  # , spike_action):
     if not len(gdf) or not tolerance:
         return gdf
     if tolerance < PRECISION:
@@ -503,11 +493,11 @@ def split_out_slivers(
 
 
 def try_for_grid_size(
-    func,
+    func: Callable,
     grid_sizes: tuple[None, float | int],
     args: tuple | None = None,
     kwargs: dict | None = None,
-):
+) -> Any:
     args = args or ()
     kwargs = kwargs or {}
     for i, grid_size in enumerate(grid_sizes):
@@ -523,7 +513,6 @@ def split_and_eliminate_by_longest(
     to_eliminate: GeoDataFrame,
     tolerance: int | float,
     grid_sizes: tuple[None | float | int] = (None,),
-    logger=None,
     n_jobs: int = 1,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
@@ -711,7 +700,8 @@ def multipoints_to_line_segments(multipoints: GeoSeries) -> GeoDataFrame:
     assert point_df["next"].notna().all()
 
     point_df["geometry"] = [
-        LineString([x1, x2]) for x1, x2 in zip(point_df["geometry"], point_df["next"])
+        LineString([x1, x2])
+        for x1, x2 in zip(point_df["geometry"], point_df["next"], strict=False)
     ]
     return GeoDataFrame(point_df.drop(columns=["next"]), geometry="geometry", crs=crs)
 
@@ -727,16 +717,27 @@ def points_to_line_segments(points: GeoDataFrame) -> GeoDataFrame:
     assert points["next"].notna().all()
 
     points["geometry"] = [
-        LineString([x1, x2]) for x1, x2 in zip(points["geometry"], points["next"])
+        LineString([x1, x2])
+        for x1, x2 in zip(points["geometry"], points["next"], strict=False)
     ]
     return GeoDataFrame(
         points.drop(columns=["next"]), geometry="geometry", crs=points.crs
     )
 
 
-def explore_geosexception(e: GEOSException, *gdfs, logger=None):
-    from ..maps.maps import Explore, explore
-    from .conversion import to_gdf
+def explore_geosexception(
+    e: GEOSException, *gdfs: GeoDataFrame, logger: Any | None = None
+) -> None:
+    """Extract the coordinates of a GEOSException and show in map.
+
+    Args:
+        e: The exception thrown by a GEOS operation, which potentially contains coordinates information.
+        *gdfs: One or more GeoDataFrames to display for context in the map.
+        logger: An optional logger to log the error with visualization. If None, uses standard output.
+
+    """
+    from ..maps.maps import Explore
+    from ..maps.maps import explore
 
     pattern = r"(\d+\.\d+)\s+(\d+\.\d+)"
 

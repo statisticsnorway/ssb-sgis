@@ -2,22 +2,17 @@
 import inspect
 from pathlib import Path
 
-import geopandas as gpd
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 import sys
-
 
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 # set to True to not actually create the plots
 # because pytest breaks with all these plots on github
@@ -75,7 +70,9 @@ def test_thematicmap(points_oslo):
 
         m = sg.ThematicMap(points, points, points, "col")
         m.bins = (99.99, 199.999, 299.99)
-        m.title = "not pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
+        m.title = "not pretty_labels, bins: " + ", ".join(
+            [str(bin_) for bin_ in m.bins]
+        )
         m.legend.title = "not pretty_labels, bins"
         m.legend.pretty_labels = False
         m.plot(__test=__test)
@@ -88,7 +85,9 @@ def test_thematicmap(points_oslo):
 
         m = sg.ThematicMap(points, points, points, "col")
         m.bins = (100, 200, 300)
-        m.title = "not pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
+        m.title = "not pretty_labels, bins: " + ", ".join(
+            [str(bin_) for bin_ in m.bins]
+        )
         m.legend.title = "not pretty_labels, bins"
         m.legend.pretty_labels = False
         m.plot(__test=__test)
@@ -102,7 +101,7 @@ def test_thematicmap(points_oslo):
 
         m = sg.ThematicMap(points, points, points, "col")
         m.bins = (99.99, 199.999, 299.99)
-        m.title = "pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
+        m.title = "pretty_labels, bins: " + ", ".join([str(bin_) for bin_ in m.bins])
         m.legend.title = "pretty_labels, bins"
         m.legend.pretty_labels = True
         m.legend.label_sep = "to"
@@ -116,7 +115,7 @@ def test_thematicmap(points_oslo):
 
         m = sg.ThematicMap(points, points, points, "col")
         m.bins = (100, 200, 300)
-        m.title = "pretty_labels, bins: " + ", ".join([str(bin) for bin in m.bins])
+        m.title = "pretty_labels, bins: " + ", ".join([str(bin_) for bin_ in m.bins])
         m.legend.title = "pretty_labels, bins"
         m.legend.pretty_labels = True
         m.plot(__test=__test)

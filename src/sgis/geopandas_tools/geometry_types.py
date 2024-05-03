@@ -1,8 +1,10 @@
 """Check and set geometry type."""
+
 import numpy as np
 import pandas as pd
 import shapely
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from shapely import Geometry
 
@@ -10,6 +12,18 @@ from shapely import Geometry
 def make_all_singlepart(
     gdf: GeoDataFrame | GeoSeries, index_parts: bool = False, ignore_index: bool = False
 ) -> GeoDataFrame | GeoSeries:
+    """Make all geometries single part.
+
+    This means doing either 0, 1 or 2 calls to the explode method.
+
+    Args:
+        gdf: GeoDataFrame
+        index_parts: Defaults to False.
+        ignore_index: Defaults to False.
+
+    Returns:
+        A GeoDataFrame of singlepart geometries.
+    """
     # only explode if nessecary
     if (
         index_parts or ignore_index
@@ -49,7 +63,7 @@ def to_single_geom_type(
         TypeError: If incorrect gdf type.
         ValueError: If 'geom_type' is neither 'polygon', 'line' or 'point'.
 
-    Examples
+    Examples:
     --------
     First create a GeoDataFrame of mixed geometries.
 
@@ -122,7 +136,7 @@ def to_single_geom_type(
     return gdf.reset_index(drop=True) if ignore_index else gdf
 
 
-def _shapely_to_single_geom_type(geom, geom_type):
+def _shapely_to_single_geom_type(geom: Geometry, geom_type: str) -> Geometry:
     parts = shapely.get_parts(geom)
     return shapely.unary_union(
         [part for part in parts if geom_type.lower() in part.geom_type.lower()]
@@ -141,7 +155,7 @@ def get_geom_type(gdf: GeoDataFrame | GeoSeries) -> str:
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame or GeoSeries.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import to_gdf, get_geom_type
     >>> gdf = to_gdf([0, 0])
@@ -189,7 +203,7 @@ def is_single_geom_type(gdf: GeoDataFrame | GeoSeries) -> bool:
     Raises:
         TypeError: If 'gdf' is not of type GeoDataFrame or GeoSeries.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import to_gdf, get_geom_type
     >>> gdf = to_gdf([0, 0])

@@ -1,31 +1,23 @@
 """Cutting and splitting line geometries."""
+
 import warnings
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from pandas import DataFrame, Series
-from shapely import (
-    buffer,
-    extract_unique_points,
-    force_2d,
-    get_coordinates,
-    get_parts,
-    linestrings,
-    touches,
-    unary_union,
-)
-from shapely.geometry import LineString, Point
+from geopandas import GeoDataFrame
+from pandas import DataFrame
+from pandas import Series
+from shapely import extract_unique_points
+from shapely import force_2d
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
 from ..geopandas_tools.buffer_dissolve_explode import buff
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
-from ..geopandas_tools.point_operations import (
-    _shapely_snap,
-    snap_all,
-    snap_within_distance,
-)
+from ..geopandas_tools.point_operations import snap_all
+from ..geopandas_tools.point_operations import snap_within_distance
 from ..geopandas_tools.sfilter import sfilter_split
 from .nodes import make_edge_coords_cols
 
@@ -59,7 +51,7 @@ def split_lines_by_nearest_point(
     Raises:
         ValueError: If the crs of the input data differs.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url, split_lines_by_nearest_point
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
@@ -148,8 +140,8 @@ def split_lines_by_nearest_point(
     splitted_source = to_gdf(splitted["source_coords"], crs=gdf.crs)
     splitted_target = to_gdf(splitted["target_coords"], crs=gdf.crs)
 
-    def get_nearest(splitted, snapped) -> pd.DataFrame:
-        """find the nearest snapped point for each source and target of the lines"""
+    def get_nearest(splitted: GeoDataFrame, snapped: GeoDataFrame) -> pd.DataFrame:
+        """Find the nearest snapped point for each source and target of the lines."""
         return get_k_nearest_neighbors(splitted, snapped, k=1).loc[
             lambda x: x["distance"] <= PRECISION * 2
         ]
@@ -166,7 +158,7 @@ def split_lines_by_nearest_point(
     # now, we can replace the source/target coordinate with the coordinates of
     # the snapped points.
 
-    splitted = change_line_endpoint(
+    splitted = _change_line_endpoint(
         splitted,
         indices=dists_source.index,
         pointmapper=pointmapper_source,
@@ -174,7 +166,7 @@ def split_lines_by_nearest_point(
     )  # i=0)
 
     # same for the lines where the target was split, but change the last coordinate
-    splitted = change_line_endpoint(
+    splitted = _change_line_endpoint(
         splitted,
         indices=dists_target.index,
         pointmapper=pointmapper_target,
@@ -189,22 +181,38 @@ def split_lines_by_nearest_point(
     )
 
 
-def change_line_endpoint(
+def _change_line_endpoint(
     gdf: GeoDataFrame,
     indices: pd.Index,
     pointmapper: pd.Series,
     change_what: str | int,
 ) -> GeoDataFrame:
-    """
-    Loop for each line where the source is the endpoint that was split
-    change the first point of the line to the point it was split by
+    """Modify the endpoints of selected lines in a GeoDataFrame based on an index mapping.
+
+    This function updates the geometry of specified line features within a GeoDataFrame,
+    changing either the first or last point of each line to new coordinates provided by a mapping.
+    It is typically used in scenarios where line endpoints need to be adjusted to new locations,
+    such as in network adjustments or data corrections.
+
+    Args:
+        gdf: A GeoDataFrame containing line geometries.
+        indices: An Index object identifying the rows in the GeoDataFrame whose endpoints will be changed.
+        pointmapper: A Series mapping from the index of lines to new point geometries.
+        change_what: Specifies which endpoint of the line to change. Accepts 'first' or 0 for the
+            starting point, and 'last' or -1 for the ending point.
+
+    Returns:
+        A GeoDataFrame with the specified line endpoints updated according to the pointmapper.
+
+    Raises:
+        ValueError: If `change_what` is not one of the accepted values ('first', 'last', 0, -1).
     """
     assert gdf.index.is_unique
 
     if change_what == "first" or change_what == 0:
-        to_be_changed = lambda x: ~x.index.duplicated(keep="first")
+        keep = "first"
     elif change_what == "last" or change_what == -1:
-        to_be_changed = lambda x: ~x.index.duplicated(keep="last")
+        keep = "last"
     else:
         raise ValueError(
             f"change_what should be 'first' or 'last' or 0 or -1. Got {change_what}"
@@ -216,8 +224,10 @@ def change_line_endpoint(
     relevant_lines.geometry = extract_unique_points(relevant_lines.geometry)
     relevant_lines = relevant_lines.explode(index_parts=False)
 
-    relevant_lines.loc[to_be_changed, "geometry"] = (
-        relevant_lines.loc[to_be_changed].index.map(pointmapper).values
+    relevant_lines.loc[lambda x: ~x.index.duplicated(keep=keep), "geometry"] = (
+        relevant_lines.loc[lambda x: ~x.index.duplicated(keep=keep)]
+        .index.map(pointmapper)
+        .values
     )
 
     relevant_lines_mapped = relevant_lines.groupby(level=0)["geometry"].agg(LineString)
@@ -227,7 +237,9 @@ def change_line_endpoint(
     return gdf
 
 
-def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoDataFrame:
+def cut_lines(
+    gdf: GeoDataFrame, max_length: int, ignore_index: bool = False
+) -> GeoDataFrame:
     """Cuts lines of a GeoDataFrame into pieces of a given length.
 
     Args:
@@ -242,7 +254,7 @@ def cut_lines(gdf: GeoDataFrame, max_length: int, ignore_index=False) -> GeoData
     Note:
         This method is time consuming for large networks and low 'max_length'.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url, cut_lines
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
@@ -314,7 +326,7 @@ def cut_lines_once(
         ignore_index: If True, the resulting axis will be labeled 0, 1, …, n - 1.
             Defaults to False.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import cut_lines_once, to_gdf
     >>> import pandas as pd
