@@ -17,7 +17,6 @@ import shapely
 from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from numpy.typing import NDArray
 from pandas.api.types import is_array_like
 from pandas.api.types import is_dict_like
 from pandas.api.types import is_list_like

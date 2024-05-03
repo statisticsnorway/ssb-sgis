@@ -1,7 +1,6 @@
 import functools
 import itertools
 import multiprocessing
-import os
 import re
 from collections.abc import Callable
 from collections.abc import Iterable
@@ -339,7 +338,7 @@ class DataCube:
         tile_size: int | None = None,
         grid: GeoSeries | None = None,
         **kwargs,
-    ) -> 'DataCube':
+    ) -> "DataCube":
         """Create a DataCube from a GeoDataFrame or a set of them, tiling the spatial data as specified.
 
         Args:
@@ -403,7 +402,9 @@ class DataCube:
         return cls(rasters, res=res)
 
     @classmethod
-    def from_cube_df(cls, df: DataFrame | str | Path, res: int | None = None) -> 'DataCube':
+    def from_cube_df(
+        cls, df: DataFrame | str | Path, res: int | None = None
+    ) -> "DataCube":
         """Construct a DataCube from a DataFrame or path containing metadata or paths of rasters.
 
         Args:
