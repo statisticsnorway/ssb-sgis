@@ -50,7 +50,7 @@ directed_roads
 # %% [markdown]
 # Norwegian road data can be made directional with a custom function:
 # %%
-directed_roads = sg.make_directed_network_norway(roads)
+directed_roads = sg.make_directed_network_norway(roads, dropnegative=True)
 directed_roads
 
 # %% [markdown]

@@ -46,5 +46,7 @@ PROFILE_ATTRS = [
 ]
 
 ALLOWED_KEYS = (
-    NESSECARY_META + PROFILE_ATTRS + ["array", "res", "transform", "name", "date"]
+    NESSECARY_META
+    + PROFILE_ATTRS
+    + ["array", "res", "transform", "name", "date", "regex"]
 )

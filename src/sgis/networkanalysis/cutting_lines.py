@@ -356,20 +356,20 @@ def cut_lines_once(
     >>> cut_lines_once(gdf, "dist")
                                                 geometry  dist
     0      LINESTRING (0.00000 0.00000, 0.70711 0.70711)     1
-    1  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...     1
-    2  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     2
-    3      LINESTRING (1.41421 1.41421, 2.00000 2.00000)     2
-    4  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     3
+    0  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...     1
+    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     2
+    0      LINESTRING (1.41421 1.41421, 2.00000 2.00000)     2
+    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     3
 
     Cut distance as list (same result as above).
 
     >>> cut_lines_once(gdf, [1, 2, 3])
                                                 geometry  dist
     0      LINESTRING (0.00000 0.00000, 0.70711 0.70711)     1
-    1  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...     1
-    2  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     2
-    3      LINESTRING (1.41421 1.41421, 2.00000 2.00000)     2
-    4  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     3
+    0  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...     1
+    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     2
+    0      LINESTRING (1.41421 1.41421, 2.00000 2.00000)     2
+    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     3
     """
 
     def _cut(line: LineString, distance: int | float) -> list[LineString]:

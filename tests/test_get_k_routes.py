@@ -34,7 +34,7 @@ def not_test_network_analysis(roads_oslo, points_oslo):
     nw = (
         sg.get_connected_components(roads_oslo)
         .query("connected == 1")
-        .pipe(sg.make_directed_network_norway)
+        .pipe(sg.make_directed_network_norway, dropnegative=True)
     )
     rules = sg.NetworkAnalysisRules(weight="minutes", split_lines=split_lines)
     nwa = sg.NetworkAnalysis(nw, rules=rules)

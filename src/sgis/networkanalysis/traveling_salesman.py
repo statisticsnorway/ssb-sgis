@@ -33,6 +33,8 @@ def traveling_salesman_problem(
 
     Examples:
     --------
+    >>> import sgis as sg
+    >>> from shapely.geometry import LineString
     >>> points = sg.to_gdf(
     ...     [
     ...         (0, 0),

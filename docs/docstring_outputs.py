@@ -345,7 +345,7 @@ def _networkanalysisrules_docstring() -> None:
     nw = (
         sg.get_connected_components(roads)
         .query("connected == 1")
-        .pipe(sg.make_directed_network_norway)
+        .pipe(sg.make_directed_network_norway, dropnegative=True)
     )
     rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
     nwa = sg.NetworkAnalysis(network=nw, rules=rules)
@@ -650,7 +650,7 @@ def _make_docstring_output() -> None:
     nw = (
         sg.get_connected_components(roads)
         .query("connected == 1")
-        .pipe(sg.make_directed_network_norway)
+        .pipe(sg.make_directed_network_norway, dropnegative=True)
     )
     rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
 

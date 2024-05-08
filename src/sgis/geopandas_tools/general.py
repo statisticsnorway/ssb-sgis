@@ -285,7 +285,15 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     Create GeoDataFrame with NaN values.
 
     >>> import sgis as sg
-    >>> df = sg.random_points(5)
+    >>> df = sg.to_gdf(
+    ...     [
+    ...         (0, 1),
+    ...         (1, 0),
+    ...         (1, 1),
+    ...         (0, 0),
+    ...         (0.5, 0.5),
+    ...     ]
+    ... )
     >>> df.geometry = df.buffer([4, 1, 2, 3, 5])
     >>> df["col"] = [None, 1, 2, None, 1]
     >>> df["col2"] = [None, 1, 2, 3, None]

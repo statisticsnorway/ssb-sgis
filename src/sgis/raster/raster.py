@@ -91,6 +91,7 @@ class Raster:
     --------
     Read tif file.
 
+    >>> import sgis as sg
     >>> path = 'https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster/dtm_10.tif'
     >>> raster = sg.Raster.from_path(path)
     >>> raster
@@ -165,13 +166,7 @@ class Raster:
 
     """
 
-    # attributes conserning file path
-    filename_regex: ClassVar[str | None] = None
-    date_format: ClassVar[str | None] = None
-    contains: ClassVar[str | None] = None
-    endswith: ClassVar[str] = ".tif"
-
-    # attributes conserning rasterio metadata
+    # attributes concerning rasterio metadata
     _profile: ClassVar[dict[str, str | None]] = {
         "driver": "GTiff",
         "compress": "LZW",
@@ -187,6 +182,7 @@ class Raster:
         data: Self | str | np.ndarray | None = None,
         *,
         file_system: GCSFileSystem | None = None,
+        filename_regex: str | None = None,
         **kwargs,
     ) -> None:
         """Note: use the classmethods from_path, from_array, from_gdf etc. instead of the initialiser.
@@ -194,9 +190,12 @@ class Raster:
         Args:
             data: A file path, an array or a Raster object.
             file_system: Optional GCSFileSystem.
+            filename_regex: Regular expression to match file name attributes (date, band, tile, resolution).
             **kwargs: Arguments concerning file metadata or
                 spatial properties of the image.
         """
+        self.filename_regex = filename_regex
+
         if isinstance(data, Raster):
             for key, value in data.__dict__.items():
                 setattr(data, key, value)
@@ -245,6 +244,7 @@ class Raster:
         path: str,
         res: int | None = None,
         file_system: GCSFileSystem | None = None,
+        filename_regex: str | None = None,
         **kwargs,
     ) -> Self:
         """Construct Raster from file path.
@@ -253,6 +253,7 @@ class Raster:
             path: Path to a raster image file.
             res: Spatial resolution when reading the image.
             file_system: Optional file system.
+            filename_regex: Regular expression with optional match groups.
             **kwargs: Arguments concerning file metadata or
                 spatial properties of the image.
 
@@ -263,6 +264,7 @@ class Raster:
             str(path),
             file_system=file_system,
             res=res,
+            filename_regex=filename_regex,
             **kwargs,
         )
 

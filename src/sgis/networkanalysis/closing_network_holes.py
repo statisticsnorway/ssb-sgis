@@ -59,10 +59,10 @@ def close_network_holes(
 
     >>> filled = sg.close_network_holes(roads, max_distance=1.1, max_angle=180)
     >>> filled.hole.value_counts()
-    Name: connected, dtype: int64
+    hole
     0    93395
     1     7102
-    Name: hole, dtype: int64
+    Name: count, dtype: int64
 
     Compare the number of isolated lines before and after.
 
@@ -82,9 +82,10 @@ def close_network_holes(
 
     >>> filled = sg.close_network_holes(roads, max_distance=1.1, max_angle=30)
     >>> filled.hole.value_counts()
+    hole
     0    93395
     1     7092
-    Name: hole, dtype: int64
+    Name: count, dtype: int64
 
     It's not always wise to fill gaps. In the case of this data, these small gaps are
     intentional. They are road blocks where most cars aren't allowed to pass. Fill the

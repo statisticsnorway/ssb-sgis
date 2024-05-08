@@ -22,7 +22,7 @@ class NetworkAnalysisRules:
     Args:
         weight: Either a column in the GeoDataFrame of the Network or
             'meters'/'metres'. A 'minutes' column can be created with the
-            'make_directed_network' method of the DirectedNetwork class.
+            'make_directed_network' or 'make_directed_network_norway' functions.
         directed: Whether the lines will be considered traversable in both directions.
         search_tolerance: distance to search for nodes in the network. Origins and
             destinations further away from the network than the search_tolerance will
@@ -61,12 +61,12 @@ class NetworkAnalysisRules:
     values.
 
     >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
-    >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
-    >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
+    >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
+    >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=True)
     >>> nwa
     NetworkAnalysis(
-        network=DirectedNetwork(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight=minutes, search_tolerance=250, search_factor=0, split_lines=False, ...),
+        network=Network(6364 km, percent_bidirectional=87),
+        rules=NetworkAnalysisRules(weight=minutes, directed=True, search_tolerance=250, search_factor=0, split_lines=True, ...),
         log=True, detailed_log=True,
     )
 

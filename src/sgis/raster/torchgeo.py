@@ -45,6 +45,23 @@ SENTINEL2_FILENAME_REGEX = r"""
     .*\..*$
 """
 
+SENTINEL_2_BANDS = [
+    # "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "B8",
+    "B8A",
+    # "B9",
+    # "B10",
+    "B11",
+    "B12",
+]
+SENTINEL_2_RBG_BANDS = ["B4", "B3", "B2"]
+
 
 class GCSRasterDataset(RasterDataset):
     """Wrapper around torchgeo's RasterDataset that works in and outside of Dapla (stat norway)."""
@@ -144,23 +161,8 @@ class Sentinel2(GCSRasterDataset):
     filename_glob: ClassVar[str] = "SENTINEL2X_*_*.*"
 
     filename_regex: ClassVar[str] = SENTINEL2_FILENAME_REGEX
-
-    all_bands: ClassVar[list[str]] = [
-        # "B1",
-        "B2",
-        "B3",
-        "B4",
-        "B5",
-        "B6",
-        "B7",
-        "B8",
-        "B8A",
-        # "B9",
-        # "B10",
-        "B11",
-        "B12",
-    ]
-    rgb_bands: ClassVar[list[str]] = ["B4", "B3", "B2"]
+    all_bands: ClassVar[list[str]] = SENTINEL_2_BANDS
+    rgb_bands: ClassVar[list[str]] = SENTINEL_2_RBG_BANDS
 
     separate_files: ClassVar[bool] = True
 

@@ -36,6 +36,7 @@ def sfilter(
 
     Examples:
     --------
+    >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry
@@ -101,6 +102,7 @@ def sfilter_split(
 
     Examples:
     --------
+    >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry
@@ -171,6 +173,7 @@ def sfilter_inverse(
 
     Examples:
     --------
+    >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
                       geometry

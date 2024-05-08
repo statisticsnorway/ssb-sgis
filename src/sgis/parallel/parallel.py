@@ -91,6 +91,7 @@ class Parallel:
         backend: str = "multiprocessing",
         context: str = "spawn",
         maxtasksperchild: int = 10,
+        chunksize: int = 1,
         **kwargs,
     ) -> None:
         """Initialize a Parallel instance with specified settings for parallel execution.
@@ -101,10 +102,12 @@ class Parallel:
             context: The context setting for multiprocessing. Defaults to 'spawn'.
             maxtasksperchild: The maximum number of tasks a worker process can complete
                 before it is replaced. Defaults to 10.
+            chunksize: The size of the chunks of the iterable to distribute to workers.
             **kwargs: Additional keyword arguments passed to the underlying parallel execution backend.
         """
         self.processes = int(processes)
         self.maxtasksperchild = maxtasksperchild
+        self.chunksize = chunksize
         self.backend = backend
         self.context = context
         self.kwargs = kwargs
@@ -117,7 +120,6 @@ class Parallel:
         iterable: Collection,
         args: tuple | None = None,
         kwargs: dict | None = None,
-        chunksize: int = 1,
     ) -> list[Any]:
         """Run functions in parallel with items of an iterable as 0th arguemnt.
 
@@ -129,7 +131,6 @@ class Parallel:
                 The 0th argument will be reserved for the values of 'iterable'.
             kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
                 not unpacked into separate keyword arguments.
-            chunksize: The size of the chunks of the iterable to distribute to workers.
 
         Returns:
             A list of the return values of the function, one for each item in
@@ -202,7 +203,9 @@ class Parallel:
                 processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
             ) as pool:
                 try:
-                    return pool.map(func_with_kwargs, iterable, chunksize=chunksize)
+                    return pool.map(
+                        func_with_kwargs, iterable, chunksize=self.chunksize
+                    )
                 except Exception as e:
                     pool.terminate()
                     raise e
@@ -218,7 +221,6 @@ class Parallel:
         iterable: Collection[Iterable[Any]],
         args: tuple | None = None,
         kwargs: dict | None = None,
-        chunksize: int = 1,
     ) -> list[Any]:
         """Run functions in parallel where items of the iterable are unpacked.
 
@@ -233,7 +235,6 @@ class Parallel:
                 n + 1, where n is the length of the iterables inside the iterable.
             kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
                 not unpacked into separate keyword arguments.
-            chunksize: The size of the chunks of the iterable to distribute to workers.
 
         Returns:
             A list of the return values of the function, one for each item in
@@ -305,7 +306,9 @@ class Parallel:
                 processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
             ) as pool:
                 try:
-                    return pool.starmap(func_with_kwargs, iterable, chunksize=chunksize)
+                    return pool.starmap(
+                        func_with_kwargs, iterable, chunksize=self.chunksize
+                    )
                 except Exception as e:
                     pool.terminate()
                     raise e
@@ -321,7 +324,6 @@ class Parallel:
         concat: bool = True,
         ignore_index: bool = True,
         strict: bool = True,
-        chunksize: int = 1,
         **kwargs,
     ) -> DataFrame | list[DataFrame]:
         """Read tabular files from a list in parallel.
@@ -331,7 +333,6 @@ class Parallel:
             concat: Whether to concat the results to a DataFrame.
             ignore_index: Defaults to True.
             strict: If True (default), all files must exist.
-            chunksize: The size of the chunks of the iterable to distribute to workers.
             **kwargs: Keyword arguments passed to dapla.read_pandas.
 
         Returns:
@@ -340,7 +341,7 @@ class Parallel:
         if not strict:
             files = [file for file in files if exists(file)]
 
-        res = self.map(dp.read_pandas, files, kwargs=kwargs | {"chunksize": chunksize})
+        res = self.map(dp.read_pandas, files, kwargs=kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 
@@ -350,7 +351,6 @@ class Parallel:
         concat: bool = True,
         ignore_index: bool = True,
         strict: bool = True,
-        chunksize: int = 1,
         **kwargs,
     ) -> GeoDataFrame | list[GeoDataFrame]:
         """Read geospatial files from a list in parallel.
@@ -368,7 +368,7 @@ class Parallel:
         """
         if not strict:
             files = [file for file in files if exists(file)]
-        res = self.map(read_geopandas, files, kwargs=kwargs | {"chunksize": chunksize})
+        res = self.map(read_geopandas, files, kwargs=kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 

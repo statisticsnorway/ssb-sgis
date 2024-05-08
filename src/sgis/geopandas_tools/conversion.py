@@ -185,8 +185,21 @@ def coordinate_array(
 
     Examples:
     --------
-    >>> from sgis import coordinate_array, random_points
-    >>> points = random_points(5)
+    >>> import sgis as sg
+    >>> points = sg.to_gdf(
+    ...     [
+    ...         (0, 1),
+    ...         (1, 0),
+    ...         (1, 1),
+    ...         (0, 0),
+    ...         (0.5, 0.5),
+    ...         (0.5, 0.25),
+    ...         (0.25, 0.25),
+    ...         (0.75, 0.75),
+    ...         (0.25, 0.75),
+    ...         (0.75, 0.25),
+    ...     ]
+    ... )
     >>> points
                     geometry
     0  POINT (0.59376 0.92577)
@@ -194,13 +207,13 @@ def coordinate_array(
     2  POINT (0.74841 0.10627)
     3  POINT (0.00966 0.87868)
     4  POINT (0.38046 0.87879)
-    >>> coordinate_array(points)
+    >>> sg.coordinate_array(points)
     array([[0.59376221, 0.92577159],
         [0.34074678, 0.91650446],
         [0.74840912, 0.10626954],
         [0.00965935, 0.87867915],
         [0.38045827, 0.87878816]])
-    >>> coordinate_array(points.geometry)
+    >>> sg.coordinate_array(points.geometry)
     array([[0.59376221, 0.92577159],
         [0.34074678, 0.91650446],
         [0.74840912, 0.10626954],
@@ -256,16 +269,16 @@ def to_gdf(
 
     Examples:
     --------
-    >>> from sgis import to_gdf
+    >>> import sgis as sg
     >>> coords = (10, 60)
-    >>> to_gdf(coords, crs=4326)
+    >>> sg.to_gdf(coords, crs=4326)
                         geometry
     0  POINT (10.00000 60.00000)
 
     From wkt.
 
     >>> wkt = "POINT (10 60)"
-    >>> to_gdf(wkt, crs=4326)
+    >>> sg.to_gdf(wkt, crs=4326)
                         geometry
     0  POINT (10.00000 60.00000)
 
@@ -276,7 +289,7 @@ def to_gdf(
         x   y
     1  10  60
     3  11  59
-    >>> gdf = to_gdf(df, geometry=["x", "y"], crs=4326)
+    >>> gdf = sg.to_gdf(df, geometry=["x", "y"], crs=4326)
     >>> gdf
         x   y                   geometry
     1  10  60  POINT (10.00000 60.00000)
@@ -290,7 +303,7 @@ def to_gdf(
        col       geometry
     0    1  point (10 60)
     1    2       (11, 59)
-    >>> gdf = to_gdf(df, crs=4326)
+    >>> gdf = sg.to_gdf(df, crs=4326)
     >>> gdf
        col                   geometry
     0    1  POINT (10.00000 60.00000)
@@ -299,7 +312,7 @@ def to_gdf(
     From Series.
 
     >>> series = Series({1: (10, 60), 3: (11, 59)})
-    >>> to_gdf(series)
+    >>> sg.to_gdf(series)
                         geometry
     1  POINT (10.00000 60.00000)
     3  POINT (11.00000 59.00000)
@@ -308,20 +321,20 @@ def to_gdf(
     is constructed beforehand.
 
     >>> coordslist = [(10, 60), (11, 59)]
-    >>> to_gdf(coordslist, crs=4326)
+    >>> sg.to_gdf(coordslist, crs=4326)
                         geometry
     0  POINT (10.00000 60.00000)
     1  POINT (11.00000 59.00000)
 
     >>> from shapely.geometry import LineString
-    >>> to_gdf(LineString(coordslist), crs=4326)
+    >>> sg.to_gdf(LineString(coordslist), crs=4326)
                                                 geometry
     0  LINESTRING (10.00000 60.00000, 11.00000 59.00000)
 
     From 2 or 3 dimensional array.
 
     >>> arr = np.random.randint(100, size=(5, 3))
-    >>> to_gdf(arr)
+    >>> sg.to_gdf(arr)
                              geometry
     0  POINT Z (82.000 88.000 82.000)
     1  POINT Z (70.000 92.000 20.000)

@@ -114,19 +114,13 @@ TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
 
 
 class DataCube:
-    """Experimental.
-
-    Examples:
-    --------
-    >>> cube = sg.DataCube.from_root(...)
-    >>> clipped = cube.clip(mask).merge(by="date")
-    >>>
-    """
+    """Experimental."""
 
     CUBE_DF_NAME: ClassVar[str] = "cube_df.parquet"
 
     separate_files: ClassVar[bool] = True
     is_image: ClassVar[bool] = True
+    date_format: ClassVar[str | None] = None
 
     def __init__(
         self,
@@ -214,7 +208,7 @@ class DataCube:
         check_for_df: bool = True,
         contains: str | None = None,
         endswith: str = ".tif",
-        regex: str | None = None,
+        filename_regex: str | None = None,
         parallelizer: Parallel | None = None,
         file_system=None,
         **kwargs,
@@ -228,7 +222,8 @@ class DataCube:
                 that holds metadata for the files in the directory.
             contains: Filter files containing specific substrings.
             endswith: Filter files that end with specific substrings.
-            regex: Regular expression to match file names.
+            filename_regex: Regular expression to match file names
+                and attributes (date, band, tile, resolution).
             parallelizer: sgis.Parallel instance for concurrent file processing.
             file_system: File system to use for file operations, used in GCS environment.
             **kwargs: Additional keyword arguments to pass to 'from_path' method.
@@ -237,6 +232,9 @@ class DataCube:
             An instance of DataCube containing the raster data from specified paths.
         """
         kwargs["res"] = res
+        kwargs["filename_regex"] = filename_regex
+        kwargs["contains"] = contains
+        kwargs["endswith"] = endswith
 
         if is_dapla():
             if file_system is None:
@@ -251,16 +249,6 @@ class DataCube:
 
         dfs = [path for path in paths if path.endswith(cls.CUBE_DF_NAME)]
 
-        if contains:
-            paths = [path for path in paths if contains in path]
-        if endswith:
-            paths = [path for path in paths if path.endswith(endswith)]
-        if regex:
-            regex = re.compile(regex, re.VERBOSE)
-            paths = [
-                path for path in paths if re.search(regex, path)
-            ]  # or re.match(regex, os.path.basename(path))
-
         if not check_for_df or not len(dfs):
             return cls.from_paths(
                 paths,
@@ -270,7 +258,7 @@ class DataCube:
 
         folders_with_df: set[Path] = {Path(path).parent for path in dfs if path}
 
-        cubes: list[DataCube] = [cls.from_cube_df(df, **kwargs) for df in dfs]
+        cubes: list[DataCube] = [cls.from_cube_df(df, res=res) for df in dfs]
 
         paths_in_folders_without_df = [
             path for path in paths if Path(path).parent not in folders_with_df
@@ -295,6 +283,9 @@ class DataCube:
         res: int | None = None,
         parallelizer: Parallel | None = None,
         file_system=None,
+        contains: str | None = None,
+        endswith: str = ".tif",
+        filename_regex: str | None = None,
         **kwargs,
     ) -> "DataCube":
         """Create a DataCube from a list of file paths.
@@ -304,6 +295,9 @@ class DataCube:
             res: Resolution to unify the data within the cube.
             parallelizer: Joblib Parallel instance for concurrent file processing.
             file_system: File system to use for file operations, used in Dapla environment.
+            contains: Filter files containing specific substrings.
+            endswith: Filter files that end with specific substrings.
+            filename_regex: Regular expression to match file names.
             **kwargs: Additional keyword arguments to pass to the raster loading function.
 
         Returns:
@@ -311,13 +305,22 @@ class DataCube:
         """
         crs = kwargs.pop("crs", None)
 
+        if contains:
+            paths = [path for path in paths if contains in path]
+        if endswith:
+            paths = [path for path in paths if path.endswith(endswith)]
+        if filename_regex:
+            compiled = re.compile(filename_regex, re.VERBOSE)
+            paths = [path for path in paths if re.search(compiled, Path(path).name)]
+
         if not paths:
             return cls(crs=crs, parallelizer=parallelizer, res=res)
 
         kwargs["res"] = res
+        kwargs["filename_regex"] = filename_regex
 
         if file_system is None and is_dapla():
-            kwargs |= {"file_system": FileClient.get_gcs_file_system()}
+            kwargs["file_system"] = FileClient.get_gcs_file_system()
 
         if parallelizer is None:
             rasters: list[Raster] = [
@@ -814,10 +817,10 @@ class DataCube:
         self._data = list(data)
 
         for i, raster in enumerate(self._data):
-            if raster.date and raster.date_format:
+            if raster.date:
                 try:
-                    mint, maxt = disambiguate_timestamp(raster.date, raster.date_format)
-                except NameError:
+                    mint, maxt = disambiguate_timestamp(raster.date, self.date_format)
+                except (NameError, TypeError):
                     mint, maxt = 0, 1
             else:
                 mint, maxt = 0, 1
@@ -1003,7 +1006,9 @@ class DataCube:
 
         Examples:
         ------------
-        >>> cube = sg.DataCube.from_root(testdata, endswith=".tif", crs=25833).load()
+        >>> import sgis as sg
+        >>> root = 'https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster'
+        >>> cube = sg.DataCube.from_root(root, filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX, crs=25833).load()
 
         List slicing:
 

@@ -73,13 +73,15 @@ class NetworkAnalysis:
     ...     direction_col="oneway",
     ...     direction_vals_bft=("B", "FT", "TF"),
     ...     minute_cols=("drivetime_fw", "drivetime_bw"),
+    ...     dropnegative=True,
+    ...     dropna=True,
     ... )
 
-    >>> rules = sg.NetworkAnalysisRules(weight="minutes")
+    >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
     >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
     >>> nwa
     NetworkAnalysis(
-        network=DirectedNetwork(6364 km, percent_bidirectional=87),
+        network=Network(6364 km, percent_bidirectional=87),
         rules=NetworkAnalysisRules(weight=minutes, directed=True, search_tolerance=250, search_factor=0, split_lines=False, ...),
         log=True, detailed_log=True,
     )
@@ -195,7 +197,7 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -484,7 +486,7 @@ class NetworkAnalysis:
         >>> import sgis as sg
         >>> import pandas as pd
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -696,7 +698,7 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -824,7 +826,7 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url('https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet')
-        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -970,7 +972,7 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -989,7 +991,6 @@ class NetworkAnalysis:
 
         Service areas of 5, 10 and 15 minutes from three origin points.
 
-        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> service_areas = nwa.service_area(
         ...         points.iloc[:2],
         ...         breaks=[5, 10, 15],
@@ -1098,7 +1099,7 @@ class NetworkAnalysis:
 
         >>> import sgis as sg
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway)
+        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
@@ -1116,7 +1117,6 @@ class NetworkAnalysis:
 
         Service areas of 5, 10 and 15 minutes from three origin points.
 
-        >>> nwa = NetworkAnalysis(network=nw, rules=rules)
         >>> sa = nwa.precice_service_area(
         ...         points.iloc[:2],
         ...         breaks=[5, 10, 15],

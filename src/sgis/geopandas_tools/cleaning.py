@@ -90,30 +90,6 @@ def coverage_clean(
 
     Returns:
         A GeoDataFrame with cleaned polygons.
-
-    Examples:
-    --------
-    >>> cleaned = coverage_clean(
-    ...     gdf,
-    ...     0.1,
-    ...     grid_sizes=[None, 1e-6, 1e-5, 1e-4, 1e-3],
-    ... )
-
-    If you have a known mask for your coverage, e.g. municipality polygons,
-    it might be a good idea to buffer the gaps, slivers and double surfaces
-    before elimination to make sure the polygons are properly dissolved.
-
-    >>> def _small_buffer(df):
-    ...     df.geometry = df.buffer(0.001)
-    ...     return df
-    ...
-    >>> cleaned = coverage_clean(
-    ...     gdf,
-    ...     0.1,
-    ...     grid_sizes=[None, 1e-6, 1e-5, 1e-4, 1e-3],
-    ...     pre_dissolve_func=_small_buffer,
-    ... ).pipe(sg.clean_clip, your_mask, geom_type="polygon")
-
     """
     if not len(gdf):
         return gdf

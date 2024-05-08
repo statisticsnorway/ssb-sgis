@@ -57,23 +57,36 @@ class Legend:
 
     Examples:
     --------
-    Create ten random points with a numeric column from 0 to 9.
+    Create ten points with a numeric column from 0 to 9.
 
     >>> import sgis as sg
-    >>> points = sg.random_points(10)
+    >>> points = sg.to_gdf(
+    ...     [
+    ...         (0, 1),
+    ...         (1, 0),
+    ...         (1, 1),
+    ...         (0, 0),
+    ...         (0.5, 0.5),
+    ...         (0.5, 0.25),
+    ...         (0.25, 0.25),
+    ...         (0.75, 0.75),
+    ...         (0.25, 0.75),
+    ...         (0.75, 0.25),
+    ...     ]
+    ... )
     >>> points["number"] = range(10)
     >>> points
-                    geometry  number
-    0  POINT (0.59780 0.50425)       0
-    1  POINT (0.07019 0.26167)       1
-    2  POINT (0.56475 0.15422)       2
-    3  POINT (0.87293 0.60316)       3
-    4  POINT (0.47373 0.20040)       4
-    5  POINT (0.98661 0.15614)       5
-    6  POINT (0.30951 0.77057)       6
-    7  POINT (0.47802 0.52824)       7
-    8  POINT (0.12215 0.96588)       8
-    9  POINT (0.02938 0.93467)       9
+                      geometry  number
+    0  POINT (0.00000 1.00000)       0
+    1  POINT (1.00000 0.00000)       1
+    2  POINT (1.00000 1.00000)       2
+    3  POINT (0.00000 0.00000)       3
+    4  POINT (0.50000 0.50000)       4
+    5  POINT (0.50000 0.25000)       5
+    6  POINT (0.25000 0.25000)       6
+    7  POINT (0.75000 0.75000)       7
+    8  POINT (0.25000 0.75000)       8
+    9  POINT (0.75000 0.25000)       9
 
     Creating the ThematicMap instance will also create the legend. Since we
     specify a numeric column, a ContinousLegend instance is created.
