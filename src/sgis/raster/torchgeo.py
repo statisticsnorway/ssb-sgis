@@ -22,7 +22,10 @@ except ImportError:
 try:
     from dapla.gcs import GCSFileSystem
 except ImportError:
-    pass
+
+    class GCSFileSystem:
+        """Placeholder."""
+
 
 try:
     from gcsfs.core import GCSFile
