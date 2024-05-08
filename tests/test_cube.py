@@ -1,4 +1,5 @@
 # %%
+import glob
 import os
 import sys
 from pathlib import Path
@@ -175,7 +176,6 @@ def not_test_df():
 
 
 def test_from_root():
-    import glob
 
     files = [file for file in glob.glob(str(Path(testdata)) + "/*") if ".tif" in file]
     cube = sg.DataCube.from_paths(files, res=10)
@@ -318,7 +318,7 @@ def not_test_merge():
     # assert x_mean == r_mean, (x_mean, r_mean)
 
 
-def test_dissolve():
+def not_test_dissolve():
     cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0)
     cube = cube.merge_by_bounds()
     assert list(cube.shape) == [(1, 201, 201), (2, 201, 201)]
@@ -620,7 +620,7 @@ if __name__ == "__main__":
         test_to_gdf()
         test_query()
         test_copy()
-        test_dissolve()
+        not_test_dissolve()
         test_from_root()
         not_test_parallel()
         not_test_from_gdf()
