@@ -5,7 +5,6 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import pyogrio
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 
@@ -19,7 +18,7 @@ print(sys.executable)
 
 
 def osm_api():
-    """https://api.openstreetmap.org/"""
+    """https://api.openstreetmap.org/."""
     import xml.etree.ElementTree as ET
 
     import osmapi
@@ -64,6 +63,8 @@ def read_osm():
 
 
 def not_test_osm():
+    import pyogrio
+
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     #    warnings.filterwarnings(action="ignore", category=UserWarning)
     pd.options.mode.chained_assignment = None

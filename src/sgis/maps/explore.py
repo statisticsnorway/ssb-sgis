@@ -42,7 +42,7 @@ try:
 except ImportError:
 
     class RasterDataset:
-        """Placeholder"""
+        """Placeholder."""
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -181,28 +181,30 @@ class Explore(Map):
         text: str | None = None,
         decimals: int = 6,
         **kwargs,
-    ):
-        """Args:
-        *gdfs: One or more GeoDataFrames.
-        mask: Optional mask to clip to.
-        column: Optional column to color the data by.
-        popup: Whether to make the data popups clickable.
-        max_zoom: Max levels of zoom.
-        smooth_factor: Float of 1 or higher, 1 meaning no smoothing
-            of lines.
-        browser: Whether to open the map in a browser tab.
-        prefer_canvas: Option.
-        measure_control: Whether to include measurement box.
-        geocoder: Whether to include search bar for addresses.
-        save: Optional file path to an html file. The map will then
-            be saved instead of displayed.
-        show: Whether to show or hide the data upon creating the map.
-            If False, the data can be toggled on later. 'show' can also be
-            a sequence of boolean values the same length as the number of
-            GeoDataFrames.
-        text: Optional text for a text box in the map.
-        decimals: Number of decimals in the coordinates.
-        **kwargs: Additional keyword arguments passed to
+    ) -> None:
+        """Initialiser.
+
+        Args:
+            *gdfs: One or more GeoDataFrames.
+            mask: Optional mask to clip to.
+            column: Optional column to color the data by.
+            popup: Whether to make the data popups clickable.
+            max_zoom: Max levels of zoom.
+            smooth_factor: Float of 1 or higher, 1 meaning no smoothing
+                of lines.
+            browser: Whether to open the map in a browser tab.
+            prefer_canvas: Option.
+            measure_control: Whether to include measurement box.
+            geocoder: Whether to include search bar for addresses.
+            save: Optional file path to an html file. The map will then
+                be saved instead of displayed.
+            show: Whether to show or hide the data upon creating the map.
+                If False, the data can be toggled on later. 'show' can also be
+                a sequence of boolean values the same length as the number of
+                GeoDataFrames.
+            text: Optional text for a text box in the map.
+            decimals: Number of decimals in the coordinates.
+            **kwargs: Additional keyword arguments passed to
         """
         self.popup = popup
         self.max_zoom = max_zoom
@@ -232,7 +234,7 @@ class Explore(Map):
         #     for x in gdfs
         #     if isinstance(x, RasterDataset)
         # )
-        self.tiles  # += self.raster_datasets
+        # self.tiles  # += self.raster_datasets
 
         super().__init__(*gdfs, column=column, show=show, **kwargs)
 
@@ -295,6 +297,7 @@ class Explore(Map):
         self.original_crs = self.gdf.crs
 
     def __repr__(self) -> str:
+        """Representation."""
         return f"{self.__class__.__name__}()"
 
     def explore(
@@ -304,8 +307,9 @@ class Explore(Map):
         size: int | None = None,
         **kwargs,
     ) -> None:
+        """Explore all the data."""
         if not any(len(gdf) for gdf in self._gdfs) and not len(self.raster_datasets):
-            warnings.warn("None of the GeoDataFrames have rows.")
+            warnings.warn("None of the GeoDataFrames have rows.", stacklevel=1)
             return
         if column:
             self._column = column
@@ -347,6 +351,7 @@ class Explore(Map):
         sample_from_first: bool = True,
         **kwargs,
     ) -> None:
+        """Explore a sample of the data."""
         if column:
             self._column = column
             self._update_column()
@@ -387,6 +392,7 @@ class Explore(Map):
         column: str | None = None,
         **kwargs,
     ) -> None:
+        """Explore the data within a mask extent."""
         if column:
             self._column = column
             self._update_column()
@@ -456,7 +462,7 @@ class Explore(Map):
 
         assert get_geom_type(gdf) != "mixed", gdf.geom_type.value_counts()
 
-        warnings.warn(mess)
+        warnings.warn(mess, stacklevel=1)
 
         return gdf
 
@@ -722,14 +728,22 @@ class Explore(Map):
         popup: bool = False,
         highlight: bool = True,
         marker_type: str | None = None,
-        marker_kwds: dict = {},
-        style_kwds: dict = {},
-        highlight_kwds: dict = {},
-        tooltip_kwds: dict = {},
-        popup_kwds: dict = {},
-        map_kwds: dict = {},
+        marker_kwds: dict | None = None,
+        style_kwds: dict | None = None,
+        highlight_kwds: dict | None = None,
+        tooltip_kwds: dict | None = None,
+        popup_kwds: dict | None = None,
+        map_kwds: dict | None = None,
         **kwargs,
     ) -> folium.GeoJson:
+
+        marker_kwds = marker_kwds or {}
+        style_kwds = style_kwds or {}
+        highlight_kwds = highlight_kwds or {}
+        tooltip_kwds = tooltip_kwds or {}
+        popup_kwds = popup_kwds or {}
+        map_kwds = map_kwds or {}
+
         gdf = df.copy()
 
         # convert LinearRing to LineString
@@ -855,7 +869,7 @@ class Explore(Map):
 def _tooltip_popup(
     type_: str, fields: Any, gdf: GeoDataFrame, **kwargs
 ) -> folium.GeoJsonTooltip | folium.GeoJsonPopup:
-    """Get tooltip or popup"""
+    """Get tooltip or popup."""
     # specify fields to show in the tooltip
     if fields is False or fields is None or fields == 0:
         return None
@@ -882,7 +896,7 @@ def _tooltip_popup(
 def _categorical_legend(
     m: folium.Map, title: str, categories: list[str], colors: list[str]
 ) -> None:
-    """Add categorical legend to a map
+    """Add categorical legend to a map.
 
     The implementation is using the code originally written by Michel Metran
     (@michelmetran) and released on GitHub

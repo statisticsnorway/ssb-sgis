@@ -36,10 +36,11 @@ try:
 except ImportError:
 
     class RasterDataset:  # type: ignore
-        """Placeholder"""
+        """Placeholder."""
 
 
 def crs_to_string(crs: Any) -> str:
+    """Extract the string of a CRS-like object."""
     if crs is None:
         return "None"
     crs = pyproj.CRS(crs)
@@ -52,6 +53,7 @@ def crs_to_string(crs: Any) -> str:
 
 
 def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
+    """Convert an object to GeoSeries."""
     if crs is None:
         try:
             crs = obj.crs
@@ -84,6 +86,7 @@ def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
 
 
 def to_shapely(obj: Any) -> Geometry:
+    """Convert a geometry object or bounding box to a shapely Geometry."""
     if isinstance(obj, Geometry):
         return obj
     if not hasattr(obj, "__iter__"):
@@ -447,10 +450,10 @@ def to_gdf(
         return GeoDataFrame(obj, geometry=geom_col, crs=crs, **kwargs)
 
     if len(obj.keys()) == 1:
-        key = list(obj.keys())[0]
+        key = next(iter(obj.keys()))
         if isinstance(obj, dict):
             geoseries = GeoSeries(
-                _make_shapely_geoms(list(obj.values())[0]), index=index
+                _make_shapely_geoms(next(iter(obj.values()))), index=index
             )
         elif isinstance(obj, pd.Series):
             geoseries = GeoSeries(_make_shapely_geoms(obj), index=index)
@@ -521,7 +524,7 @@ def is_bbox_like(obj: Any) -> bool:
     """Returns True if the object is an iterable of 4 numbers.
 
     Args:
-        Any object.
+        obj: Any object.
     """
     if (
         hasattr(obj, "__len__")
@@ -537,7 +540,7 @@ def is_nested_geojson(obj: Any) -> bool:
     """Returns True if the object is an iterable of all dicts.
 
     Args:
-        Any object.
+        obj: Any object.
     """
     if hasattr(obj, "__iter__") and all(isinstance(g, dict) for g in obj):
         return True

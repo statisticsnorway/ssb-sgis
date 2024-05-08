@@ -92,7 +92,7 @@ class Parallel:
         context: str = "spawn",
         maxtasksperchild: int = 10,
         **kwargs,
-    ):
+    ) -> None:
         """Initialize a Parallel instance with specified settings for parallel execution.
 
         Args:
@@ -360,6 +360,7 @@ class Parallel:
             concat: Whether to concat the results to a GeoDataFrame.
             ignore_index: Defaults to True.
             strict: If True (default), all files must exist.
+            chunksize: The size of the chunks of the iterable to distribute to workers.
             **kwargs: Keyword arguments passed to sgis.read_geopandas.
 
         Returns:
@@ -385,7 +386,7 @@ class Parallel:
         clip: bool = True,
         max_rows_per_chunk: int = 150_000,
         processes_in_clip: int = 1,
-    ):
+    ) -> None:
         """Split multiple datasets into municipalities and write as separate files.
 
         The files will be named as the municipality number.
@@ -465,9 +466,10 @@ class Parallel:
         args: tuple | None = None,
         kwargs: dict | None = None,
         max_rows_per_chunk: int = 150_000,
-        n_chunks: int = None,
+        n_chunks: int | None = None,
         concat: bool = False,
     ) -> GeoDataFrame:
+        """Run a function in parallel on chunks of a (Geo)DataFrame."""
         if len(df) < max_rows_per_chunk:
             return func(df, *args, **kwargs)
 
@@ -504,7 +506,7 @@ class Parallel:
 
     @staticmethod
     def _validate_kwargs(kwargs: dict) -> dict:
-        """Make sure kwargs is a dict (not ** unpacked or None)"""
+        """Make sure kwargs is a dict (not ** unpacked or None)."""
         if kwargs is None:
             kwargs = {}
         elif not isinstance(kwargs, dict):
@@ -577,6 +579,8 @@ def write_municipality_data(
             the data is spatial joined.
         max_rows_per_chunk: Maximum number of rows in each processed chunk.
         processes_in_clip: Number of processes to use for clipping.
+        strict: If True (default) and the data has a municipality column,
+            all municipality numbers in 'data' must be present in 'municipalities'.
 
     Returns:
         None. The function writes files directly.
@@ -637,8 +641,8 @@ def _write_municipality_data(
         except ValueError as e:
             try:
                 gdf = read_pandas(str(data))
-            except ValueError:
-                raise e.__class__(e, data)
+            except ValueError as e2:
+                raise e.__class__(e, data) from e2
     elif isinstance(data, DataFrame):
         gdf = data
     else:
@@ -719,7 +723,8 @@ def _write_neighbor_municipality_data(
 
         if not len(gdf_neighbor):
             if write_empty:
-                gdf_neighbor["geometry"] = gdf_neighbor["geometry"].astype(str)
+                gdf_neighbor = gdf_neighbor.drop(columns="geometry", errors="ignore")
+                gdf_neighbor["geometry"] = None
                 write_pandas(gdf_neighbor, out)
             continue
 
@@ -741,13 +746,11 @@ def _fix_missing_muni_numbers(
         if diffs := set(gdf[muni_number_col].values).difference(
             set(municipalities[muni_number_col].values)
         ):
-            message = (
-                f"Different municipality numbers: {diffs}. Set 'strict=False' to ignore"
-            )
+            message = f"Different municipality numbers: {diffs}. Set 'strict=False' to ignore."
             if strict:
                 raise ValueError(message)
             else:
-                warnings.warn(message)
+                warnings.warn(message, stacklevel=1)
         return gdf
 
     if municipalities is None:
@@ -853,7 +856,7 @@ def chunkwise(
     func: Callable,
     df: GeoDataFrame | pd.DataFrame,
     max_rows_per_chunk: int = 150_000,
-    n_chunks: int = None,
+    n_chunks: int | None = None,
     args: tuple | None = None,
     kwargs: dict | None = None,
     n_jobs: int = 1,

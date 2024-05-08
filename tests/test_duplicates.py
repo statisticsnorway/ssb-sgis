@@ -58,7 +58,6 @@ def not_test_bug():
     print(right)
 
     sg.to_gdf(intersections).explore()
-    sss
 
     print(gpd.show_versions())
 

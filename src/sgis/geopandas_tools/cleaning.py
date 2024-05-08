@@ -78,7 +78,7 @@ def coverage_clean(
             for polygons to be eliminated. Any gap, hole, sliver or double
             surface that are empty after a negative buffer of tolerance / 2
             are eliminated into the neighbor with the longest shared border.
-        duplicate action: Either "fix", "error" or "ignore".
+        duplicate_action: Either "fix", "error" or "ignore".
             If "fix" (default), double surfaces thicker than the
             tolerance will be updated from top to bottom (function update_geometries)
             and then dissolved into the neighbor polygon with the longest shared border.
@@ -322,6 +322,7 @@ def coverage_clean(
                 cleaned,
                 how="update",
                 geom_type="polygon",
+                grid_size=grid_size,
                 n_jobs=n_jobs,
             )
             break
@@ -574,7 +575,12 @@ def split_and_eliminate_by_longest(
     )
 
 
-def split_by_neighbors(df, split_by, tolerance, grid_size=None):
+def split_by_neighbors(
+    df: GeoDataFrame,
+    split_by: GeoDataFrame,
+    tolerance: int | float,
+    grid_size: float | int | None = None,
+) -> GeoDataFrame:
     if not len(df):
         return df
 
@@ -610,7 +616,7 @@ def split_by_neighbors(df, split_by, tolerance, grid_size=None):
     return clean_overlay(df, buffered, how="identity", grid_size=grid_size)
 
 
-def extend_lines(arr1, arr2, distance):
+def extend_lines(arr1, arr2, distance) -> NDArray[LineString]:
     if len(arr1) != len(arr2):
         raise ValueError
     if not len(arr1):
@@ -653,7 +659,7 @@ def make_lines_between_points(
     return linestrings(coords.values, indices=coords.index)
 
 
-def get_line_segments(lines) -> GeoDataFrame:
+def get_line_segments(lines: GeoDataFrame | GeoSeries) -> GeoDataFrame:
     assert lines.index.is_unique
     if isinstance(lines, GeoDataFrame):
         geom_col = lines._geometry_column_name

@@ -1,15 +1,21 @@
 # %%
-"""Prints outputs to paste into docstrings. Run this in the terminal:
+"""Prints outputs to paste into docstrings.
+
+Run the following in the terminal:
 
 poetry run python docs/docstring_outputs.py
 
 """
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from shapely.geometry import MultiPoint
+from shapely.geometry import Point
+from shapely.geometry import Polygon
 
 src = str(Path(__file__).parent.parent / "src")
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata"
@@ -22,17 +28,12 @@ path_two_bands = testdata + "/dtm_10_two_bands.tif"
 sg.Raster.dapla = False
 
 
-def print_function_name(func):
+def print_function_name(func: Callable) -> None:
     def wrapper(*args, **kwargs):
         print("\n\n\n", func.__name__, "\n\n\n")
         func(*args, **kwargs)
 
     return wrapper
-
-
-from shapely.geometry import MultiPoint
-from shapely.geometry import Point
-from shapely.geometry import Polygon
 
 
 @print_function_name

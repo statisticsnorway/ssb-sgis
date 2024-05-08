@@ -671,12 +671,18 @@ def bounds_to_points(
 
 
 def get_total_bounds(
-    *geometries: GeoDataFrame | GeoSeries | Geometry,
+    *geometries: GeoDataFrame | GeoSeries | Geometry, strict: bool = False
 ) -> tuple[float, float, float, float]:
     """Get a combined total bounds of multiple geometry objects."""
     xs, ys = [], []
     for obj in geometries:
-        minx, miny, maxx, maxy = to_bbox(obj)
+        try:
+            minx, miny, maxx, maxy = to_bbox(obj)
+        except Exception as e:
+            if strict:
+                raise e
+            else:
+                continue
         xs += [minx, maxx]
         ys += [miny, maxy]
     return min(xs), min(ys), max(xs), max(ys)

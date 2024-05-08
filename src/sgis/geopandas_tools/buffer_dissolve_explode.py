@@ -278,6 +278,8 @@ def diss(
         aggfunc: How to aggregate the non-geometry colums not in "by".
         as_index: Whether the 'by' columns should be returned as index. Defaults to
             True to be consistent with geopandas.
+        grid_size: Rounding of the coordinates. Defaults to None.
+        n_jobs: Number of threads to use. Defaults to 1.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -312,7 +314,7 @@ def dissexp(
     grid_size: float | int | None = None,
     n_jobs: int = 1,
     **dissolve_kwargs,
-):
+) -> GeoDataFrame:
     """Dissolves overlapping geometries.
 
     It takes a GeoDataFrame and dissolves, fixes and explodes geometries.
@@ -325,6 +327,8 @@ def dissexp(
             True to be consistent with geopandas.
         index_parts: If False (default), the index after dissolve is respected. If
             True, an integer index level is added during explode.
+        grid_size: Rounding of the coordinates. Defaults to None.
+        n_jobs: Number of threads to use. Defaults to 1.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -361,6 +365,8 @@ def dissexp_by_cluster(
 
     Args:
         gdf: the GeoDataFrame that will be dissolved and exploded.
+        predicate: Spatial predicate to use.
+        n_jobs: Number of threads to use. Defaults to 1.
         **dissolve_kwargs: Keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -386,6 +392,8 @@ def diss_by_cluster(
 
     Args:
         gdf: the GeoDataFrame that will be dissolved and exploded.
+        predicate: Spatial predicate to use.
+        n_jobs: Number of threads to use. Defaults to 1.
         **dissolve_kwargs: Keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -473,6 +481,7 @@ def buffdissexp_by_cluster(
         resolution: The number of segments used to approximate a quarter circle.
             Here defaults to 50, as opposed to the default 16 in geopandas.
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
+        n_jobs: int = 1,
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
 
     Returns:

@@ -61,6 +61,7 @@ def get_polygon_clusters(
         cluster_col: Name of the resulting cluster column.
         allow_multipart: Whether to allow mutipart geometries in the gdfs.
             Defaults to False to avoid confusing results.
+        predicate: Spatial predicate. Defaults to "intersects".
         as_string: Whether to return the cluster column values as a string with x and y
             coordinates. Convinient to always get unique ids.
             Defaults to False because of speed.
@@ -183,7 +184,9 @@ def get_polygon_clusters(
     return unconcated
 
 
-def get_cluster_mapper(gdf, predicate="intersects"):
+def get_cluster_mapper(
+    gdf: GeoDataFrame | GeoSeries, predicate: str = "intersects"
+) -> dict[int, int]:
     if not gdf.index.is_unique:
         raise ValueError("Index must be unique")
     neighbors = get_neighbor_indices(gdf, gdf, predicate=predicate)
@@ -238,7 +241,9 @@ def eliminate_by_longest(
             'gdf' are sorted first, but if 'gdf' has missing values, the resulting
             polygons might get values from the polygons to be eliminated
             (if aggfunc="first").
-        kwargs: Keyword arguments passed to the dissolve method.
+        grid_size: Rounding of the coordinates. Defaults to None.
+        n_jobs: Number of threads to use. Defaults to 1.
+        **kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
         The GeoDataFrame (gdf) with the geometries of 'to_eliminate' dissolved in.
@@ -394,6 +399,8 @@ def eliminate_by_largest(
     Args:
         gdf: GeoDataFrame with polygon geometries, or a list of GeoDataFrames.
         to_eliminate: The geometries to be eliminated by 'gdf'.
+        max_distance: Max distance to search for neighbors. Defaults to None, meaning
+            0.
         remove_isolated: If False (default), polygons in 'to_eliminate' that share
             no border with any polygon in 'gdf' will be kept. If True, the isolated
             polygons will be removed.
@@ -410,7 +417,9 @@ def eliminate_by_largest(
             polygons might get values from the polygons to be eliminated
             (if aggfunc="first").
         predicate: Binary predicate passed to sjoin. Defaults to "intersects".
-        kwargs: Keyword arguments passed to the dissolve method.
+        grid_size: Rounding of the coordinates. Defaults to None.
+        n_jobs: Number of threads to use. Defaults to 1.
+        **kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
         The GeoDataFrame (gdf) with the geometries of 'to_eliminate' dissolved in.
@@ -768,16 +777,6 @@ def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
     return PolygonsAsRings(gdf).apply_numpy_func_to_interiors(to_none_if_thin).to_gdf()
 
 
-def return_correct_geometry_object(in_obj, out_obj):
-    if isinstance(in_obj, GeoDataFrame):
-        in_obj.geometry = out_obj
-        return in_obj
-    elif isinstance(in_obj, GeoSeries):
-        return GeoSeries(out_obj, crs=in_obj.crs)
-    else:
-        return out_obj
-
-
 def close_all_holes(
     gdf: GeoDataFrame | GeoSeries,
     *,
@@ -1033,6 +1032,7 @@ def get_gaps(
         gdf: GeoDataFrame of polygons.
         include_interiors: If False (default), the holes inside individual polygons
             will not be included as gaps.
+        grid_size: Rounding of the coordinates.
 
     Note:
         See get_holes to find holes inside singlepart polygons.

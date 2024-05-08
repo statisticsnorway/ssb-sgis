@@ -32,7 +32,7 @@ class PolygonsAsRings:
         crs: CRS | Any | None = None,
         allow_multipart: bool = False,
         gridsize: int | None = None,
-    ):
+    ) -> None:
         """Initialize the PolygonsAsRings object with polygons and optional CRS information.
 
         Args:
@@ -256,10 +256,12 @@ class PolygonsAsRings:
 
     @property
     def is_interior(self) -> pd.Series:
+        """Returns a boolean Series of whether the row is an interior ring."""
         return self.rings.index.get_level_values(0) == 1
 
     @property
     def is_exterior(self) -> pd.Series:
+        """Returns a boolean Series of whether the row is an exterior ring."""
         return self.rings.index.get_level_values(0) == 0
 
     @property

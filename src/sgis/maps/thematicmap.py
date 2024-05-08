@@ -84,15 +84,17 @@ class ThematicMap(Map):
         size: int = 25,
         black: bool = False,
     ) -> None:
-        """Args:
-        *gdfs: One or more GeoDataFrames.
-        column: The name of the column to plot.
-        size: Width and height of the plot in inches. Fontsize of title and legend is
-            adjusted accordingly. Defaults to 25.
-        black: If False (default), the background will be white and the text black. If
-            True, the background will be black and the text white. When True, the
-            default cmap is "viridis", and when False, the default is red to purple
-            (RdPu).
+        """Initialiser.
+
+        Args:
+            *gdfs: One or more GeoDataFrames.
+            column: The name of the column to plot.
+            size: Width and height of the plot in inches. Fontsize of title and legend is
+                adjusted accordingly. Defaults to 25.
+            black: If False (default), the background will be white and the text black. If
+                True, the background will be black and the text white. When True, the
+                default cmap is "viridis", and when False, the default is red to purple
+                (RdPu).
 
         """
         super().__init__(*gdfs, column=column)
@@ -375,6 +377,7 @@ class ThematicMap(Map):
 
     @property
     def black(self) -> bool:
+        """Whether to use dark background and light text colors."""
         return self._black
 
     @black.setter
@@ -384,6 +387,7 @@ class ThematicMap(Map):
 
     @property
     def title_fontsize(self) -> int:
+        """Title fontsize, not to be confused with legend.title_fontsize."""
         return self._title_fontsize
 
     @title_fontsize.setter
@@ -393,6 +397,7 @@ class ThematicMap(Map):
 
     @property
     def size(self) -> int:
+        """Size of the image."""
         return self._size
 
     @size.setter
@@ -411,6 +416,7 @@ class ThematicMap(Map):
             self.legend._markersize = self._size
 
     def __setattr__(self, __name: str, __value: Any) -> None:
+        """Set an attribute with square brackets."""
         if "legend_" in __name:
             last_part = __name.split("legend_")[-1]
             raise AttributeError(

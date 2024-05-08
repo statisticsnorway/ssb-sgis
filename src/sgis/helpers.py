@@ -5,7 +5,9 @@ import inspect
 import os
 import warnings
 from collections.abc import Callable
+from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -46,7 +48,7 @@ def get_func_name(func: Callable) -> str:
         return str(func)
 
 
-def get_non_numpy_func_name(f: Callable) -> str:
+def get_non_numpy_func_name(f: Callable | str) -> str:
     if callable(f):
         return f.__name__
     return str(f).replace("np.", "").replace("numpy.", "")
@@ -85,7 +87,7 @@ def is_property(obj: object, attribute: str) -> bool:
     )
 
 
-def dict_zip_intersection(*dicts):
+def dict_zip_intersection(*dicts: dict) -> Generator[tuple[Any, ...], None, None]:
     """From mCoding (YouTube)."""
     if not dicts:
         return
@@ -95,7 +97,9 @@ def dict_zip_intersection(*dicts):
         yield key, *(d[key] for d in dicts)
 
 
-def dict_zip_union(*dicts, fillvalue=None):
+def dict_zip_union(
+    *dicts: dict, fillvalue: Any | None = None
+) -> Generator[tuple[Any, ...], None, None]:
     """From mCoding (YouTube)."""
     if not dicts:
         return
@@ -105,7 +109,7 @@ def dict_zip_union(*dicts, fillvalue=None):
         yield key, *(d.get(key, fillvalue) for d in dicts)
 
 
-def dict_zip(*dicts):
+def dict_zip(*dicts: dict) -> Generator[tuple[Any, ...], None, None]:
     """From mCoding (YouTube)."""
     if not dicts:
         return
@@ -242,7 +246,8 @@ def get_object_name(
                 frame = frame.f_back
                 continue
             warnings.warn(
-                "More than one local variable matches the object. Name might be wrong."
+                "More than one local variable matches the object. Name might be wrong.",
+                stacklevel=1,
             )
             return names[0]
 
@@ -301,10 +306,14 @@ def is_number(text: str) -> bool:
 
 
 class LocalFunctionError(ValueError):
-    def __init__(self, func: Callable):
+    """Exception for when a locally defined function is used in Jupyter, which is incompatible with multiprocessing."""
+
+    def __init__(self, func: Callable) -> None:
+        """Initialiser."""
         self.func = func.__name__
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Error message representation."""
         return (
             f"{self.func}. "
             "In Jupyter, functions to be parallelized must \n"

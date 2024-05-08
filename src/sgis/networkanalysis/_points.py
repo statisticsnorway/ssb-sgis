@@ -1,4 +1,7 @@
+from collections.abc import Sequence
+
 import numpy as np
+import pandas as pd
 from geopandas import GeoDataFrame
 
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
@@ -34,7 +37,9 @@ class Points:
         }
 
     @staticmethod
-    def _convert_distance_to_weight(distances, rules):
+    def _convert_distance_to_weight(
+        distances: Sequence, rules: NetworkAnalysisRules
+    ) -> list[float]:
         """Meters to minutes based on 'weight_to_nodes_' attribute of the rules."""
         if not rules.nodedist_multiplier and not rules.nodedist_kmh:
             return [0 for _ in distances]
@@ -58,7 +63,9 @@ class Points:
 
         return [x / (16.666667 * rules.nodedist_kmh) for x in distances]
 
-    def _make_edges(self, df, from_col, to_col):
+    def _make_edges(
+        self, df: GeoDataFrame | pd.DataFrame, from_col: str, to_col: str
+    ) -> list[tuple[int, int]]:
         return [(f, t) for f, t in zip(df[from_col], df[to_col], strict=True)]
 
     def _get_edges_and_weights(

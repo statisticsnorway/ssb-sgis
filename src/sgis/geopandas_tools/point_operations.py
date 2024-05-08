@@ -184,7 +184,7 @@ def snap_all(
     return copied
 
 
-def _polygons_to_rings(gdf):
+def _polygons_to_rings(gdf: GeoDataFrame) -> GeoDataFrame:
     if get_geom_type(gdf) == "polygon":
         return PolygonsAsRings(gdf).get_rings()
     if get_geom_type(gdf) != "mixed":

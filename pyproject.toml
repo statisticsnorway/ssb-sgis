@@ -21,7 +21,7 @@ Changelog = "https://github.com/statisticsnorway/ssb-sgis/releases"
 python = ">=3.10,<4"
 affine = ">=2.4.0"
 branca = ">=0.6.0"
-dask = ">=2024.1.1"
+dask = { version = ">=2024.1.1", optional = true }
 folium = ">=0.14.0"
 geocoder = ">=1.38.1"
 geopandas = ">=0.14.0"
@@ -46,20 +46,20 @@ shapely = ">=2.0.1"
 typing-extensions = ">=4.11.0"
 types-requests = ">=2.31.0.20240406"
 xyzservices = ">=2023.2.0"
-pyogrio = { version = ">=0.7.2", optional = true }
 xarray = { version = ">=2024.3.0", optional = true }
 rioxarray = { version = ">=0.15.5", optional = true }
-torch = { version = "==2.2.2", optional = true }  # Until this is fixed https://github.com/pytorch/pytorch/issues/124897
+torch = "2.2.0"  # Until this is fixed https://github.com/pytorch/pytorch/issues/124897
 torchgeo = { version = ">=0.5.2", optional = true }
 dapla-toolbelt = { version = ">=2.0.12", optional = true }
 gcsfs = { version = ">=2024.3.1", optional = true }
 
 [tool.poetry.extras]
-all = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", "gcsfs"]
+all = ["xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", "gcsfs"]
 bucket = ["dapla-toolbelt", "gcsfs"]
 torch = ["torch", "torchgeo"]
 xarray = ["xarray", "rioxarray"]
-test = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo"]
+dask = ["dask-geopandas", "dask"]
+test = ["xarray", "rioxarray", "torch", "torchgeo"]
 
 [tool.poetry.group.dev.dependencies]
 pygments = ">=2.10.0"
@@ -124,7 +124,6 @@ module = [
     "networkx.*",
     "osmapi.*",
     "pyarrow.*",
-    "pyogrio.*",
     "rasterio.*",
     "shapely.*",
     "sklearn.neighbors.*",
@@ -172,12 +171,14 @@ ignore = [
     "E501",   # Supress line-too-long warnings: trust black's judgement on this one.
     "D104",   # Missing docstring in public package
     "RUF018", # Avoid assignment expressions in `assert` statements
+    "RUF005", # Consider `["_cluster", *by]` instead of concatenation
     "F841",   # Local variable is assigned to but never used
     "B019",   # Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks
     "UP038",  # Use `X | Y` in `isinstance` call instead of `(X, Y)`
     "B023",   # Function definition does not bind loop variable
-    "ANN001", # TODO temporary. Missing type annotation for function argument `grid_size`
+    "ANN001", # TODO temporary. Missing type annotation for function argument ...
     "D103",   # TODO temporary. Missing docstring in public function
+    "B018",   # Found useless expression
 ]
 
 [tool.ruff.lint.isort]
@@ -224,7 +225,6 @@ treat_comments_as_code = ["# %%"]
 
 [tool.deptry.per_rule_ignores]
 DEP001 = ["sgis", "nox", "nox_poetry"]  # packages available by default
-DEP002 = ["pyogrio"]                    # only used in tests
 
 [build-system]
 requires = ["poetry-core"]

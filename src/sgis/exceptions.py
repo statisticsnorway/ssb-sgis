@@ -12,6 +12,7 @@ class NoPointsWithinSearchToleranceError(Exception):
         self.search_tolerance = search_tolerance
 
     def __str__(self) -> str:
+        """String representation."""
         return (
             f"No {self.what} within specified 'search_tolerance' "
             f"of {self.search_tolerance}"

@@ -1,5 +1,4 @@
-"""Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla.
-"""
+"""Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla."""
 
 from pathlib import Path
 
@@ -41,8 +40,8 @@ def read_geopandas(
     if not isinstance(gcs_path, str):
         try:
             gcs_path = str(gcs_path)
-        except TypeError:
-            raise TypeError(f"Unexpected type {type(gcs_path)}.")
+        except TypeError as e:
+            raise TypeError(f"Unexpected type {type(gcs_path)}.") from e
 
     if file_system is None:
         file_system = dp.FileClient.get_gcs_file_system()

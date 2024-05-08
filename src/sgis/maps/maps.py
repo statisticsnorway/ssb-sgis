@@ -15,7 +15,10 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from pyproj import CRS
 from shapely import Geometry
+from shapely import box
+from shapely.geometry import Polygon
 
+from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.conversion import to_gdf as to_gdf_func
 from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import get_common_crs
@@ -31,7 +34,7 @@ try:
 except ImportError:
 
     class RasterDataset:
-        """Placeholder"""
+        """Placeholder."""
 
 
 def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
@@ -74,7 +77,6 @@ def explore(
     *gdfs: GeoDataFrame | dict[str, GeoDataFrame],
     column: str | None = None,
     center: Any | None = None,
-    center_4326: Any | None = None,
     labels: tuple[str] | None = None,
     max_zoom: int = 40,
     browser: bool = False,
@@ -96,10 +98,9 @@ def explore(
         *gdfs: one or more GeoDataFrames.
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
-        center: Either an address string to be geocoded or a geometry like object
-            (coordinate pair (x, y), GeoDataFrame, bbox, etc.). If the geometry is a
-            point (or line), it will be buffered by 1000 (can be changed with the)
-            size parameter. If a polygon is given, it will not be buffered.
+        center: Geometry-like object to center the map on. If a three-length tuple
+            is given, the first two should be x and y coordinates and the third
+            should be a number of meters to buffer the centerpoint by.
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings with the same
             length as the number of gdfs.
@@ -163,14 +164,11 @@ def explore(
         to_crs = gdfs[0].crs
     except IndexError:
         try:
-            to_crs = [x for x in kwargs.values() if hasattr(x, "crs")][0].crs
+            to_crs = next(x for x in kwargs.values() if hasattr(x, "crs")).crs
         except IndexError:
             to_crs = None
 
-    if center_4326 is not None:
-        from_crs = 4326
-        center = center_4326
-    elif "crs" in kwargs:
+    if "crs" in kwargs:
         from_crs = kwargs.pop("crs")
     else:
         from_crs = to_crs
@@ -185,6 +183,10 @@ def explore(
             if isinstance(center, (tuple, list)) and len(center) == 3:
                 *center, size = center
             mask = to_gdf_func(center, crs=from_crs)
+
+        bounds: Polygon = box(*get_total_bounds(*gdfs, *list(kwargs.values())))
+        if not mask.intersects(bounds).any():
+            mask = mask.set_crs(4326, allow_override=True)
 
         try:
             mask = mask.to_crs(to_crs)
@@ -443,7 +445,7 @@ def clipmap(
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
-def explore_locals(*gdfs, convert: bool = True, **kwargs):
+def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
     """Displays all local variables with geometries (GeoDataFrame etc.).
 
     Local means inside a function or file/notebook.
@@ -477,15 +479,15 @@ def explore_locals(*gdfs, convert: bool = True, **kwargs):
 
             if isinstance(value, dict) or hasattr(value, "__dict__"):
                 # add dicts or classes with GeoDataFrames to kwargs
-                for key, value in as_dict(value).items():
-                    if isinstance(value, allowed_types):
-                        gdf = clean_geoms(to_gdf_func(value))
+                for key, val in as_dict(value).items():
+                    if isinstance(val, allowed_types):
+                        gdf = clean_geoms(to_gdf_func(val))
                         if len(gdf):
                             local_gdfs[key] = gdf
 
-                    elif isinstance(value, dict) or hasattr(value, "__dict__"):
+                    elif isinstance(val, dict) or hasattr(val, "__dict__"):
                         try:
-                            for k, v in value.items():
+                            for k, v in val.items():
                                 if isinstance(v, allowed_types):
                                     gdf = clean_geoms(to_gdf_func(v))
                                     if len(gdf):
@@ -542,6 +544,7 @@ def qtm(
             'viridis' when black, and 'RdPu' when white.
         size: Size of the plot. Defaults to 10.
         title_fontsize: Size of the title.
+        legend: Whether to add legend. Defaults to True.
         cmap: Color palette of the map. See:
             https://matplotlib.org/stable/tutorials/colors/colormaps.html
         k: Number of color groups.

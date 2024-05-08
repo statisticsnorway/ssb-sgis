@@ -5,6 +5,8 @@ from collections.abc import Callable
 from collections.abc import Iterable
 from typing import ClassVar
 
+"ssb-kart-data-delt-prod/satellitt_fly_data/klargjorte-data/sentinel2/p2022-07_p2022_08/FlyOgSatellittbilder_T35WNT/SENTINEL2X_20220731-095123-368_L3A_T35WNT_C_V1-3/SENTINEL2X_20220731-095123-368_L3A_T35WNT_C_V1-3_FRC_B3.tif"
+
 import rasterio
 import rasterio.merge
 from rasterio.io import DatasetReader

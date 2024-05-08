@@ -192,7 +192,7 @@ def _join_and_get_no_rows(df1, df2, lsuffix, rsuffix):
 def _no_intersections_return(
     df1: GeoDataFrame, df2: GeoDataFrame, how: str, lsuffix, rsuffix: str
 ) -> GeoDataFrame:
-    """Return with no overlay if no intersecting bounding box"""
+    """Return with no overlay if no intersecting bounding box."""
     if how == "intersection":
         return _join_and_get_no_rows(df1, df2, lsuffix, rsuffix)
 
@@ -343,7 +343,7 @@ def _run_overlay_dask(
         try:
             return func(arr1, arr2, grid_size=grid_size)
         except TypeError as e:
-            raise TypeError(e, {type(x) for x in arr1}, {type(x) for x in arr2})
+            raise TypeError(e, {type(x) for x in arr1}, {type(x) for x in arr2}) from e
     arr1 = da.from_array(arr1, chunks=len(arr1) // n_jobs)
     arr2 = da.from_array(arr2, chunks=len(arr2) // n_jobs)
     res = arr1.map_blocks(func, arr2, grid_size=grid_size, dtype=float)
@@ -361,7 +361,7 @@ def _run_overlay_joblib_threading(
         try:
             return func(arr1, arr2, grid_size=grid_size)
         except TypeError as e:
-            raise TypeError(e, {type(x) for x in arr1}, {type(x) for x in arr2})
+            raise TypeError(e, {type(x) for x in arr1}, {type(x) for x in arr2}) from e
     with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
         return parallel(
             joblib.delayed(func)(g1, g2, grid_size=grid_size)
@@ -607,9 +607,7 @@ def _shapely_diffclip_left(
     geom_type: str | None,
     n_jobs: int,
 ) -> pd.DataFrame:
-    """Aggregate areas in right by unique values of left, then use those to clip
-    areas out of left
-    """
+    """Aggregate areas in right by unique values from left, then erases those from left."""
     keep_cols = list(df1.columns.difference({"_overlay_index_right"})) + ["geom_right"]
 
     agg_geoms_partial = functools.partial(_agg_geoms, grid_size=grid_size)
@@ -803,7 +801,7 @@ def _try_difference(
                 grid_size=grid_size,
             )
         except GEOSException as e:
-            raise e.__class__(e, f"{grid_size=}", f"{left=}", f"{right=}")
+            raise e.__class__(e, f"{grid_size=}", f"{left=}", f"{right=}") from e
 
 
 def make_valid_and_keep_geom_type(

@@ -294,7 +294,9 @@ class NetworkAnalysisRules:
         return df
 
     def copy(self) -> "NetworkAnalysisRules":
+        """Return a shallow copy the instance."""
         return copy(self)
 
     def deepcopy(self) -> "NetworkAnalysisRules":
+        """Return a deep copy the instance."""
         return deepcopy(self)

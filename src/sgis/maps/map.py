@@ -28,7 +28,7 @@ try:
 except ImportError:
 
     class RasterDataset:
-        """Placeholder"""
+        """Placeholder."""
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -98,17 +98,19 @@ class Map:
         nan_color="#c2c2c2",
         scheme: str = DEFAULT_SCHEME,
         **kwargs,
-    ):
-        """Args:
-        *gdfs: Variable length GeoDataFrame list.
-        column: The column name to work with.
-        labels: Tuple of labels for each GeoDataFrame.
-        k: Number of bins or classes for classification (default: 5).
-        bins: Predefined bins for data classification.
-        nan_label: Label for missing data.
-        nan_color: Color for missing data.
-        scheme: Classification scheme to be used.
-        **kwargs: Arbitrary keyword arguments.
+    ) -> None:
+        """Initialiser.
+
+        Args:
+            *gdfs: Variable length GeoDataFrame list.
+            column: The column name to work with.
+            labels: Tuple of labels for each GeoDataFrame.
+            k: Number of bins or classes for classification (default: 5).
+            bins: Predefined bins for data classification.
+            nan_label: Label for missing data.
+            nan_color: Color for missing data.
+            scheme: Classification scheme to be used.
+            **kwargs: Arbitrary keyword arguments.
         """
         gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
 
@@ -206,7 +208,7 @@ class Map:
             )
 
         if not any(len(gdf) for gdf in self._gdfs):
-            warnings.warn("None of the GeoDataFrames have rows.")
+            warnings.warn("None of the GeoDataFrames have rows.", stacklevel=1)
             self._gdfs = None
             self._is_categorical = True
             self._unique_values = []
@@ -284,8 +286,7 @@ class Map:
         return pd.concat([unique_multiplied, isna]).sort_index()
 
     def _get_multiplier(self, array: np.ndarray) -> None:
-        """Find the number of zeros needed to push the max value of the array above
-        +-1_000_000.
+        """Find the number of zeros needed to push the max value of the array above +-1_000_000.
 
         Adding this as an attribute to use later in _classify_from_bins.
         """
@@ -310,7 +311,7 @@ class Map:
     def _add_minmax_to_bins(self, bins: list[float | int]) -> list[float | int]:
         """If values are outside the bin range, add max and/or min values of array."""
         # make sure they are lists
-        bins = [bin for bin in bins]
+        bins = [bin_ for bin_ in bins]
 
         if min(bins) > 0 and min(self._gdf.loc[~self._nan_idx, self._column]) < min(
             bins
@@ -580,7 +581,7 @@ class Map:
             bins = binning.bins
             bins = self._add_minmax_to_bins(bins)
 
-        unique_bins = list({round(bin, 5) for bin in bins})
+        unique_bins = list({round(bin_, 5) for bin_ in bins})
         unique_bins.sort()
 
         if self._k == len(self._unique_values) - 1:
@@ -664,6 +665,7 @@ class Map:
 
     @property
     def k(self) -> int:
+        """Number of bins."""
         return self._k
 
     @k.setter
@@ -678,6 +680,7 @@ class Map:
 
     @property
     def cmap(self) -> str:
+        """Colormap."""
         return self._cmap
 
     @cmap.setter
@@ -687,6 +690,7 @@ class Map:
 
     @property
     def gdf(self) -> GeoDataFrame:
+        """All GeoDataFrames concated."""
         return self._gdf
 
     @gdf.setter
@@ -698,6 +702,7 @@ class Map:
 
     @property
     def gdfs(self) -> list[GeoDataFrame]:
+        """All GeoDataFrames as a list."""
         return self._gdfs
 
     @gdfs.setter
@@ -709,6 +714,7 @@ class Map:
 
     @property
     def column(self) -> str | None:
+        """Column to use as colormap."""
         return self._column
 
     @column.setter
@@ -719,12 +725,15 @@ class Map:
         )
 
     def __setitem__(self, item: Any, new_item: Any) -> None:
+        """Set an attribute with square brackets."""
         return setattr(self, item, new_item)
 
     def __getitem__(self, item: Any) -> Any:
+        """Get an attribute with square brackets."""
         return getattr(self, item)
 
     def get(self, key: Any, default: Any | None = None) -> Any:
+        """Get an attribute with default value if not present."""
         try:
             return self[key]
         except (KeyError, ValueError, IndexError, AttributeError):

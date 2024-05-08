@@ -1,4 +1,5 @@
 import functools
+import itertools
 import warnings
 
 import numpy as np
@@ -40,9 +41,7 @@ def get_traveling_salesman_lines(
     path = traveling_salesman_problem(df, return_to_start=return_to_start)
 
     try:
-        return [
-            LineString([p1, p2]) for p1, p2 in zip(path[:-1], path[1:], strict=False)
-        ]
+        return [LineString([p1, p2]) for p1, p2 in itertools.pairwise(path)]
     except IndexError as e:
         if len(path) == 1:
             return path
@@ -389,13 +388,13 @@ def _multipoints_to_line_segments(
             for i in range(multipoints.index.nlevels)
         ]
         multipoints.index = pd.MultiIndex.from_arrays(
-            [list(range(len(multipoints)))] + index,
-            names=["range_idx"] + multipoints.index.names,
+            [list(range(len(multipoints))), *index],
+            names=["range_idx", *multipoints.index.names],
         )
     else:
         multipoints.index = pd.MultiIndex.from_arrays(
             [np.arange(0, len(multipoints)), multipoints.index],
-            names=["range_idx"] + [multipoints.index.name],
+            names=["range_idx", multipoints.index.name],
         )
 
     try:
@@ -407,15 +406,17 @@ def _multipoints_to_line_segments(
 
     if to_next:
         shift = -1
-        filt = lambda x: ~x.index.get_level_values(0).duplicated(keep="first")
+        keep = "first"
     else:
         shift = 1
-        filt = lambda x: ~x.index.get_level_values(0).duplicated(keep="last")
+        keep = "last"
 
     point_df["next"] = point_df.groupby(level=0)["geometry"].shift(shift)
 
     if cycle:
-        first_points = point_df.loc[filt, "geometry"]
+        first_points: GeoSeries = point_df.loc[
+            lambda x: ~x.index.get_level_values(0).duplicated(keep=keep), "geometry"
+        ]
         is_last_point = point_df["next"].isna()
 
         point_df.loc[is_last_point, "next"] = first_points

@@ -85,7 +85,8 @@ def _get_route(
     if not resultlist:
         warnings.warn(
             "No paths were found. Try larger search_tolerance or search_factor. "
-            "Or close_network_holes() or remove_isolated()."
+            "Or close_network_holes() or remove_isolated().",
+            stacklevel=1,
         )
         return pd.DataFrame(columns=["origin", "destination", weight, "geometry"])
 
@@ -120,7 +121,8 @@ def _get_k_routes(
     if not resultlist:
         warnings.warn(
             "No paths were found. Try larger search_tolerance or search_factor. "
-            "Or close_network_holes() or remove_isolated()."
+            "Or close_network_holes() or remove_isolated().",
+            stacklevel=1,
         )
         return pd.DataFrame(columns=["origin", "destination", weight, "geometry"])
 

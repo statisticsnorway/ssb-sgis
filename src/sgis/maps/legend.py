@@ -5,6 +5,7 @@ class.
 
 """
 
+import itertools
 import warnings
 from typing import Any
 
@@ -116,25 +117,27 @@ class Legend:
         edgecolor: str = "#0f0f0f",
         **kwargs,
     ) -> None:
-        """Args:
-        title: Legend title. Defaults to the column name if used in the
-            ThematicMap class.
-        labels: Labels of the categories.
-        position: The legend's x and y position in the plot, specified as a tuple of
-            x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
-            in the bottom right corner, (0.2, 0.8) for the upper left corner.
-        fontsize: Text size of the legend labels. Defaults to the size of
-            the ThematicMap class.
-        title_fontsize: Text size of the legend title. Defaults to the
-            size * 1.2 of the ThematicMap class.
-        markersize: Size of the color circles in the legend. Defaults to the size of
-            the ThematicMap class.
-        framealpha: Transparency of the legend background.
-        edgecolor: Color of the legend border. Defaults to #0f0f0f (almost black).
-        kwargs: Stores additional keyword arguments taken by the matplotlib legend
-            method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
-            'm' is the name of the ThematicMap instance. See here:
-            https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
+        """Initialiser.
+
+        Args:
+            title: Legend title. Defaults to the column name if used in the
+                ThematicMap class.
+            labels: Labels of the categories.
+            position: The legend's x and y position in the plot, specified as a tuple of
+                x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
+                in the bottom right corner, (0.2, 0.8) for the upper left corner.
+            fontsize: Text size of the legend labels. Defaults to the size of
+                the ThematicMap class.
+            title_fontsize: Text size of the legend title. Defaults to the
+                size * 1.2 of the ThematicMap class.
+            markersize: Size of the color circles in the legend. Defaults to the size of
+                the ThematicMap class.
+            framealpha: Transparency of the legend background.
+            edgecolor: Color of the legend border. Defaults to #0f0f0f (almost black).
+            kwargs: Stores additional keyword arguments taken by the matplotlib legend
+                method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
+                'm' is the name of the ThematicMap instance. See here:
+                https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
 
         """
         self.title = title
@@ -270,12 +273,15 @@ class Legend:
         return bestx_01, besty_01
 
     def __getitem__(self, item: str) -> Any:
+        """Get attribute with square brackets."""
         return getattr(self, item)
 
     def __setitem__(self, key: str, value: Any) -> None:
+        """Set attribute with square brackets."""
         setattr(self, key, value)
 
     def get(self, key: Any, default: Any = None) -> Any:
+        """Get value of an attribute of the Legend."""
         try:
             return self[key]
         except (KeyError, ValueError, IndexError, AttributeError):
@@ -283,6 +289,7 @@ class Legend:
 
     @property
     def position(self) -> tuple[float, float]:
+        """Legend position in x, y."""
         return self._position
 
     @position.setter
@@ -292,6 +299,7 @@ class Legend:
 
     @property
     def title_fontsize(self) -> int:
+        """Legend title fontsize."""
         return self._title_fontsize
 
     @title_fontsize.setter
@@ -301,6 +309,7 @@ class Legend:
 
     @property
     def fontsize(self) -> int:
+        """Legend fontsize."""
         return self._fontsize
 
     @fontsize.setter
@@ -310,6 +319,7 @@ class Legend:
 
     @property
     def markersize(self) -> int:
+        """Legend markersize."""
         return self._markersize
 
     @markersize.setter
@@ -412,32 +422,34 @@ class ContinousLegend(Legend):
         thousand_sep: str | None = None,
         decimal_mark: str | None = None,
         **kwargs,
-    ):
-        """Args:
-        labels: To manually set labels. If set, all other labeling attributes are
-            ignored. Should be given as a list of strings with the same length as
-            the number of color groups.
-        pretty_labels: If False (default), the minimum and maximum values of each
-            color group will be used as legend labels. If True, the labels will end
-            with the maximum value, but start at 1 + the maximum value of the previous
-            group. The labels will be correct but inaccurate.
-        label_suffix: The text to put after each number in the legend labels.
-            Defaults to None.
-        label_sep: Text to put in between the two numbers in each color group in
-            the legend. Defaults to '-'.
-        rounding: Number of decimals in the labels. By default, the rounding
-            depends on the column's maximum value and standard deviation.
-            OBS: The bins will not be rounded, meaning the labels might be wrong
-            if not bins are set manually.
-        thousand_sep: Separator between each thousand for large numbers. Defaults to
-            None, meaning no separator.
-        decimal_mark: Text to use as decimal point. Defaults to None, meaning '.' (dot)
-            unless 'thousand_sep' is '.'. In this case, ',' (comma) will be used as
-            decimal mark.
-        kwargs: Stores additional keyword arguments taken by the matplotlib legend
-            method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
-            'm' is the name of the ThematicMap instance. See here:
-            https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
+    ) -> None:
+        """Initialiser.
+
+        Args:
+            labels: To manually set labels. If set, all other labeling attributes are
+                ignored. Should be given as a list of strings with the same length as
+                the number of color groups.
+            pretty_labels: If False (default), the minimum and maximum values of each
+                color group will be used as legend labels. If True, the labels will end
+                with the maximum value, but start at 1 + the maximum value of the previous
+                group. The labels will be correct but inaccurate.
+            label_suffix: The text to put after each number in the legend labels.
+                Defaults to None.
+            label_sep: Text to put in between the two numbers in each color group in
+                the legend. Defaults to '-'.
+            rounding: Number of decimals in the labels. By default, the rounding
+                depends on the column's maximum value and standard deviation.
+                OBS: The bins will not be rounded, meaning the labels might be wrong
+                if not bins are set manually.
+            thousand_sep: Separator between each thousand for large numbers. Defaults to
+                None, meaning no separator.
+            decimal_mark: Text to use as decimal point. Defaults to None, meaning '.' (dot)
+                unless 'thousand_sep' is '.'. In this case, ',' (comma) will be used as
+                decimal mark.
+            kwargs: Stores additional keyword arguments taken by the matplotlib legend
+                method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
+                'm' is the name of the ThematicMap instance. See here:
+                https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
 
         """
         super().__init__(**kwargs)
@@ -478,9 +490,9 @@ class ContinousLegend(Legend):
     @staticmethod
     def _set_rounding(bins, rounding: int | float) -> list[int | float]:
         if rounding == 0:
-            return [int(round(bin, 0)) for bin in bins]
+            return [int(round(bin_, 0)) for bin_ in bins]
         else:
-            return [round(bin, rounding) for bin in bins]
+            return [round(bin_, rounding) for bin_ in bins]
 
     def _remove_max_legend_value(self) -> None:
         if not self._legend:
@@ -544,7 +556,7 @@ class ContinousLegend(Legend):
                     )
 
         else:
-            for i, (cat1, cat2) in enumerate(zip(bins[:-1], bins[1:], strict=True)):
+            for i, (cat1, cat2) in enumerate(itertools.pairwise(bins)):
                 if nan_label in str(cat1) or nan_label in str(cat2):
                     self._categories.append(nan_label)
                     continue
@@ -615,6 +627,7 @@ class ContinousLegend(Legend):
 
     @property
     def rounding(self) -> int:
+        """Number rounding."""
         return self._rounding
 
     @rounding.setter

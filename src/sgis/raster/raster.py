@@ -4,7 +4,8 @@ import os
 import re
 import warnings
 from collections.abc import Callable
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
+from collections.abc import Iterator
 from copy import copy
 from copy import deepcopy
 from json import loads
@@ -69,8 +70,8 @@ from .base import NESSECARY_META
 from .base import get_index_mapper
 from .base import memfile_from_array
 from .zonal import _aggregate
-from .zonal import _no_overlap_df
 from .zonal import _make_geometry_iterrows
+from .zonal import _no_overlap_df
 from .zonal import _prepare_zonal
 from .zonal import _zonal_post
 
@@ -451,7 +452,7 @@ class Raster:
             path: File path to write to.
             window: Optional window to clip the image to.
             **kwargs: Keyword arguments passed to rasterio.open.
-                Thise will override the items in the Raster's profile, 
+                Thise will override the items in the Raster's profile,
                 if overlapping.
         """
         if self.array is None:

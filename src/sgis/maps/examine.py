@@ -68,18 +68,22 @@ class Examine:
         size: int | float = 1000,
         only_show_mask: bool = True,
         **kwargs,
-    ):
-        """Args:
-        *gdfs: One or more GeoDataFrames. The rows of the first GeoDataFrame
-            will be used as masks, unless 'mask_gdf' is specified.
-        column: Column to use as colors.
-        mask_gdf: Optional GeoDataFrame to use as mask iterator. The geometries
-            of mask_gdf will not be shown.
-        size: Number of meters (or other crs unit) to buffer the mask geometry
-            before clipping.
-        sort_values: Optional sorting column(s) of the mask GeoDataFrame. Rows
-            will be iterated through from the top.
-        **kwargs: Additional keyword arguments passed to sgis.clipmap.
+    ) -> None:
+        """Initialiser.
+
+        Args:
+            *gdfs: One or more GeoDataFrames. The rows of the first GeoDataFrame
+                will be used as masks, unless 'mask_gdf' is specified.
+            column: Column to use as colors.
+            mask_gdf: Optional GeoDataFrame to use as mask iterator. The geometries
+                of mask_gdf will not be shown.
+            size: Number of meters (or other crs unit) to buffer the mask geometry
+                before clipping.
+            sort_values: Optional sorting column(s) of the mask GeoDataFrame. Rows
+                will be iterated through from the top.
+            only_show_mask: If True (default), show only the mask GeoDataFrame by default.
+                The other layers can be toggled on.
+            **kwargs: Additional keyword arguments passed to sgis.clipmap.
 
         """
         gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
@@ -247,20 +251,24 @@ class Examine:
 
     @property
     def bounds(self) -> tuple[float, float, float, float]:
+        """Total bounds of all GeoDataFrames."""
         return get_total_bounds(*list(self.gdfs.values()))
 
-    def _fix_kwargs(self, kwargs) -> dict:
+    def _fix_kwargs(self, kwargs: dict) -> dict:
         self.size = kwargs.pop("size", self.size)
         self.column = kwargs.pop("column", self.column)
         return kwargs
 
     def __repr__(self) -> str:
+        """Representation."""
         return f"{self.__class__.__name__}(indices={len(self.indices)}, current={self.i}, n_gdfs={len(self._gdfs)})"
 
     def __add__(self, scalar: int) -> "Examine":
+        """Add a number to the index."""
         self.i += scalar
         return self
 
     def __sub__(self, scalar: int) -> "Examine":
+        """Subtract a number from the index."""
         self.i -= scalar
         return self

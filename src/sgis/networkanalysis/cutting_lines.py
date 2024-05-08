@@ -373,7 +373,7 @@ def cut_lines_once(
     """
 
     def _cut(line: LineString, distance: int | float) -> list[LineString]:
-        """From the shapely docs"""
+        """From the shapely docs."""
         if distance <= 0.0 or distance >= line.length:
             return line
         coords = list(line.coords)

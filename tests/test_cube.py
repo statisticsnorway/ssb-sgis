@@ -313,10 +313,10 @@ def not_test_merge():
 def test_dissolve():
     cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0)
     cube = cube.merge_by_bounds()
-    list(cube.shape) == [(1, 201, 201), (2, 201, 201)]
+    assert list(cube.shape) == [(1, 201, 201), (2, 201, 201)]
     print(cube)
     cube = cube.dissolve_bands("mean")
-    list(cube.shape) == [(201, 201), (201, 201)]
+    assert list(cube.shape) == [(201, 201), (201, 201)]
     print(cube)
 
 
@@ -599,7 +599,6 @@ if __name__ == "__main__":
 
     def test_cube():
         test_torch()
-        sss
         test_sentinel()
         not_test_gradient()
         test_explode()

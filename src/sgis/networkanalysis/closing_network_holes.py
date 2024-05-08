@@ -19,7 +19,7 @@ def close_network_holes(
     max_distance: int | float,
     max_angle: int,
     hole_col: str | None = "hole",
-):
+) -> GeoDataFrame:
     """Fills network gaps with straigt lines.
 
     Fills holes in the network by connecting deadends with the nodes that are
@@ -127,7 +127,7 @@ def close_network_holes(
     return pd.concat([lines, new_lines], ignore_index=True)
 
 
-def get_angle(array_a, array_b):
+def get_angle(array_a: np.ndarray, array_b: np.ndarray) -> np.ndarray:
     dx = array_b[:, 0] - array_a[:, 0]
     dy = array_b[:, 1] - array_a[:, 1]
 
@@ -140,7 +140,7 @@ def close_network_holes_to_deadends(
     gdf: GeoDataFrame,
     max_distance: int | float,
     hole_col: str | None = "hole",
-):
+) -> GeoDataFrame:
     """Fills gaps between two deadends if the distance is less than 'max_distance'.
 
     Fills holes between deadends in the network with straight lines if the distance is
@@ -199,7 +199,7 @@ def close_network_holes_to_deadends(
     new_lines = make_edge_wkt_cols(new_lines)
 
     wkt_id_dict = {
-        wkt: id for wkt, id in zip(nodes["wkt"], nodes["node_id"], strict=True)
+        wkt: id_ for wkt, id_ in zip(nodes["wkt"], nodes["node_id"], strict=True)
     }
     new_lines["source"] = new_lines["source_wkt"].map(wkt_id_dict)
     new_lines["target"] = new_lines["target_wkt"].map(wkt_id_dict)
@@ -212,7 +212,11 @@ def close_network_holes_to_deadends(
 
 
 def _close_holes_all_lines(
-    lines, nodes, max_distance, max_angle, idx_start: int
+    lines: GeoDataFrame,
+    nodes: GeoDataFrame,
+    max_distance: int | None,
+    max_angle: int | None,
+    idx_start: int,
 ) -> GeoSeries:
     k = min(len(nodes), 50)
 

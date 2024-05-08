@@ -329,7 +329,7 @@ rules.search_tolerance
 # %% [markdown]
 # The search_tolerance unit is meters if the units of the crs is meters, which it is in this case:
 # %%
-nw.gdf.crs.axis_info[0].unit_name
+nwa.gdf.crs.axis_info[0].unit_name
 # %% [markdown]
 # Let's check how the search_tolerance influences the number of missing values:
 

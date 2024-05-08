@@ -110,7 +110,6 @@ from .zonal import _prepare_zonal
 from .zonal import _zonal_func
 from .zonal import _zonal_post
 
-
 TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
 
 

@@ -1,4 +1,6 @@
+from collections.abc import Generator
 from contextlib import contextmanager
+from typing import Any
 
 try:
     from dapla import FileClient
@@ -6,14 +8,16 @@ try:
 except ImportError:
 
     class GCSFileSystem:
-        pass
+        """Placeholder."""
 
 
 from ._is_dapla import is_dapla
 
 
 @contextmanager
-def opener(path, mode: str = "rb", file_system: GCSFileSystem | None = None):
+def opener(
+    path, mode: str = "rb", file_system: GCSFileSystem | None = None
+) -> Generator[str | Any, None, None]:
     """Yields a gcs buffer if in Dapla, otherwise yields the path.
 
     Example:

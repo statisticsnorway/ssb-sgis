@@ -4,6 +4,7 @@ from collections.abc import Hashable
 from collections.abc import Iterable
 from typing import Any
 
+import dask_geopandas
 import joblib
 import numpy as np
 import pandas as pd
@@ -83,7 +84,7 @@ def get_common_crs(
             actually_different.add(x)
 
         if len(actually_different) == 1:
-            return list(actually_different)[0]
+            return next(iter(actually_different))
         raise ValueError("'crs' mismatch.", truthy_crs)
 
     return pyproj.CRS(truthy_crs[0])
@@ -780,7 +781,7 @@ def _parallel_unary_union_geoseries(
 
         dissolved = pd.Series(
             parallel(delayed_operations),
-            index=is_one_hit[lambda x: x == False].index.unique(),
+            index=is_one_hit[lambda x: x is False].index.unique(),
         )
 
     return pd.concat([dissolved, one_hit]).sort_index().values
