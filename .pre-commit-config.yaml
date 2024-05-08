@@ -83,9 +83,8 @@ repos:
         name: black
         entry: black
         language: system
-        types: [text]
-        stages: [commit, push, manual]
+        types_or: [python, jupyter]
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v2.6.0
+    rev: v3.1.0
     hooks:
       - id: prettier

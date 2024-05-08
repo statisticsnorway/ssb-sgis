@@ -1,10 +1,11 @@
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
+from collections.abc import Sequence
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import Polygon
 from shapely import Geometry
+from shapely.geometry import Polygon
 
 from ..helpers import get_non_numpy_func_name
 from ..helpers import get_numpy_func
