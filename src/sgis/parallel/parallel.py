@@ -606,13 +606,19 @@ def write_municipality_data(
     )
 
 
-def _validate_data(data: str | list[str]) -> str:
-    if isinstance(data, (str, Path)):
-        return data
+def _validate_data(
+    data: str | list[str] | DataFrame | GeoDataFrame,
+) -> DataFrame | GeoDataFrame:
     if hasattr(data, "__iter__") and len(data) == 1:
-        return data[0]
-    elif not isinstance(data, GeoDataFrame):
-        raise TypeError("'data' Must be a file path or a GeoDataFrame. Got", type(data))
+        data = data[0]
+    if isinstance(data, (str, Path)):
+        try:
+            return read_geopandas(str(data))
+        except ValueError as e:
+            try:
+                return read_pandas(str(data))
+            except ValueError as e2:
+                raise e.__class__(e, data) from e2
     return data
 
 
@@ -633,20 +639,7 @@ def _write_municipality_data(
     processes_in_clip: int = 1,
     strict: bool = True,
 ) -> None:
-    data = _validate_data(data)
-
-    if isinstance(data, (str, Path)):
-        try:
-            gdf = read_geopandas(str(data))
-        except ValueError as e:
-            try:
-                gdf = read_pandas(str(data))
-            except ValueError as e2:
-                raise e.__class__(e, data) from e2
-    elif isinstance(data, DataFrame):
-        gdf = data
-    else:
-        raise TypeError(type(data))
+    gdf = _validate_data(data)
 
     if func is not None:
         gdf = func(gdf)
@@ -662,7 +655,6 @@ def _write_municipality_data(
     )
 
     for muni in municipalities[muni_number_col]:
-        print(muni)
         out = _get_out_path(out_folder, muni, file_type)
 
         gdf_muni = gdf.loc[gdf[muni_number_col] == muni]
@@ -690,10 +682,7 @@ def _write_neighbor_municipality_data(
     processes_in_clip: int = 1,
     strict: bool = True,
 ) -> None:
-    data = _validate_data(data)
-
-    if isinstance(data, (str, Path)):
-        gdf = read_geopandas(str(data))
+    gdf = _validate_data(data)
 
     if func is not None:
         gdf = func(gdf)
