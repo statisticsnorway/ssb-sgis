@@ -59,6 +59,45 @@ def test_map():
         assert results == [1, 3, 5, 7, 9, 11], results
 
 
+def test_chunkwise():
+    df = sg.random_points(100).pipe(sg.buff, 0.1)
+    df2 = df.pipe(sg.buff, 0.1)
+    df2["_range_idx"] = range(len(df2))
+    df["_range_idx_right"] = range(len(df))
+    overlayed = sg.clean_overlay(df2, df).sort_values("_range_idx")
+    assert len(overlayed)
+    for backend in ["loky", "multiprocessing", "threading"]:
+        print(backend)
+
+        res = (
+            sg.Parallel(2, backend=backend)
+            .chunkwise(sg.clean_overlay, df2, args=(df,))
+            .sort_values("_range_idx")
+        )
+        assert res.equals(overlayed), (overlayed, res)
+
+        res = (
+            sg.Parallel(2, backend=backend)
+            .chunkwise(sg.clean_overlay, df2, kwargs=dict(df2=df))
+            .sort_values("_range_idx")
+        )
+        assert res.equals(overlayed), (overlayed, res)
+
+        res = (
+            sg.Parallel(2, backend=backend)
+            .chunkwise(sg.clean_overlay, df2, args=(df,), n_chunks=10)
+            .sort_values("_range_idx")
+        )
+        assert res.equals(overlayed), (overlayed, res)
+
+        res = (
+            sg.Parallel(2, backend=backend)
+            .chunkwise(sg.clean_overlay, df2, args=(df,), max_rows_per_chunk=10)
+            .sort_values("_range_idx")
+        )
+        assert res.equals(overlayed), (overlayed, res)
+
+
 def test_args_to_kwargs():
     def func(x, y, z):
         pass
@@ -104,6 +143,7 @@ def test_starmap():
 
 
 if __name__ == "__main__":
+    test_chunkwise()
     test_args_to_kwargs()
     test_starmap()
     test_map()

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import dapla as dp
 import geopandas as gpd
+import joblib
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas.io.arrow import _geopandas_to_arrow
@@ -12,7 +13,7 @@ from pyarrow import parquet
 
 
 def read_geopandas(
-    gcs_path: str | Path,
+    gcs_path: str | Path | list[str | Path],
     pandas_fallback: bool = False,
     file_system: dp.gcs.GCSFileSystem | None = None,
     **kwargs,
@@ -26,7 +27,8 @@ def read_geopandas(
         Does not currently read shapefiles or filegeodatabases.
 
     Args:
-        gcs_path: path to a file on Google Cloud Storage.
+        gcs_path: path to one or more files on Google Cloud Storage.
+            Multiple paths are read with threading.
         pandas_fallback: If False (default), an exception is raised if the file can
             not be read with geopandas and the number of rows is more than 0. If True,
             the file will be read with pandas if geopandas fails.
@@ -37,14 +39,23 @@ def read_geopandas(
     Returns:
          A GeoDataFrame if it has rows. If zero rows, a pandas DataFrame is returned.
     """
+    if file_system is None:
+        file_system = dp.FileClient.get_gcs_file_system()
+
+    if isinstance(gcs_path, (list, tuple)):
+        kwargs |= {"file_system": file_system, "pandas_fallback": pandas_fallback}
+        # recursive read with threads
+        with joblib.Parallel(n_jobs=len(gcs_path), backend="threading") as parallel:
+            dfs: list[GeoDataFrame] = parallel(
+                joblib.delayed(read_geopandas)(x, **kwargs) for x in gcs_path
+            )
+        return pd.concat(dfs)
+
     if not isinstance(gcs_path, str):
         try:
             gcs_path = str(gcs_path)
         except TypeError as e:
             raise TypeError(f"Unexpected type {type(gcs_path)}.") from e
-
-    if file_system is None:
-        file_system = dp.FileClient.get_gcs_file_system()
 
     if "parquet" in gcs_path or "prqt" in gcs_path:
         with file_system.open(gcs_path, mode="rb") as file:

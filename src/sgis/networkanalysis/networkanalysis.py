@@ -4,7 +4,6 @@ The class has five analysis methods: od_cost_matrix, get_route, get_k_routes,
 get_route_frequencies and service_area.
 """
 
-from collections.abc import Sequence
 from copy import copy
 from copy import deepcopy
 from datetime import datetime
@@ -1604,7 +1603,7 @@ class NetworkAnalysis:
             ]
 
     @staticmethod
-    def _sort_breaks(breaks: str | Sequence | int | float) -> list[float | int]:
+    def _sort_breaks(breaks: str | list | tuple | int | float) -> list[float | int]:
         if isinstance(breaks, str):
             breaks = float(breaks)
 

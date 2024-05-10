@@ -5,7 +5,6 @@ import re
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
-from collections.abc import Sequence
 from copy import copy
 from copy import deepcopy
 from pathlib import Path
@@ -1000,7 +999,8 @@ class DataCube:
             raise ValueError(mess)
 
     def __getitem__(
-        self, item: slice | int | Series | Sequence | Callable | Geometry | BoundingBox
+        self,
+        item: slice | int | Series | list | tuple | Callable | Geometry | BoundingBox,
     ) -> Self | Raster | TORCHGEO_RETURN_TYPE:
         """Select one or more of the Rasters based on indexing or spatial or boolean predicates.
 
@@ -1099,7 +1099,7 @@ class DataCube:
     #     return self.map(_pow, scalar=scalar)
 
 
-def concat_cubes(cubes: Sequence[DataCube], res: int | None = None) -> DataCube:
+def concat_cubes(cubes: list[DataCube], res: int | None = None) -> DataCube:
     """Concatenate cubes to one.
 
     Args:
@@ -1123,7 +1123,7 @@ def _clipmerge(cube: DataCube, mask: Any, **kwargs) -> DataCube:
 
 def _merge(
     cube: DataCube,
-    by: str | Sequence[str] | None = None,
+    by: str | list[str] | None = None,
     bounds: Any | None = None,
     **kwargs,
 ) -> DataCube:
@@ -1165,7 +1165,7 @@ def _merge(
 
 def _merge_by_bounds(
     cube: DataCube,
-    by: str | Sequence[str] | None = None,
+    by: str | list[str] | None = None,
     bounds: Any | None = None,
     **kwargs,
 ) -> DataCube:

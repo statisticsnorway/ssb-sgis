@@ -19,16 +19,15 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from pandas import DataFrame
+from pandas import Series
 
 from ..geopandas_tools.neighbors import get_neighbor_indices
 from ..geopandas_tools.overlay import clean_overlay
 from ..helpers import LocalFunctionError
-from ..helpers import dict_zip
 from ..helpers import dict_zip_union
 from ..helpers import in_jupyter
 
 try:
-    from ..io.dapla_functions import exists
     from ..io.dapla_functions import read_geopandas
     from ..io.dapla_functions import write_geopandas
 
@@ -40,15 +39,11 @@ except ImportError:
 try:
     from dapla import read_pandas
     from dapla import write_pandas
+    from dapla.gcs import GCSFileSystem
 except ImportError:
-    pass
 
-
-def _turn_args_into_kwargs(func: Callable, args: tuple, index_start: int) -> dict:
-    if not isinstance(args, tuple):
-        raise TypeError("args should be a tuple (it should not be unpacked with *)")
-    argnames = inspect.getfullargspec(func).args[index_start:]
-    return {name: value for value, name in zip(args, argnames, strict=False)}
+    class GCSFileSystem:
+        """Placeholder."""
 
 
 class Parallel:
@@ -338,10 +333,10 @@ class Parallel:
         Returns:
             A DataFrame, or a list of DataFrames if concat is False.
         """
-        if not strict:
-            files = [file for file in files if exists(file)]
-
-        res = self.map(dp.read_pandas, files, kwargs=kwargs)
+        if strict:
+            res = self.map(read_pandas, files, kwargs=kwargs)
+        else:
+            res = self.map(_try_to_read_pandas, files, kwargs=kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 
@@ -366,9 +361,13 @@ class Parallel:
         Returns:
             A GeoDataFrame, or a list of GeoDataFrames if concat is False.
         """
-        if not strict:
-            files = [file for file in files if exists(file)]
-        res = self.map(read_geopandas, files, kwargs=kwargs)
+        if "file_system" not in kwargs:
+            kwargs["file_system"] = dp.FileClient.get_gcs_file_system()
+
+        if strict:
+            res = self.map(read_geopandas, files, kwargs=kwargs)
+        else:
+            res = self.map(_try_to_read_geopandas, files, kwargs=kwargs)
 
         return pd.concat(res, ignore_index=ignore_index) if concat else res
 
@@ -386,6 +385,7 @@ class Parallel:
         clip: bool = True,
         max_rows_per_chunk: int = 150_000,
         processes_in_clip: int = 1,
+        verbose: bool = True,
     ) -> None:
         """Split multiple datasets into municipalities and write as separate files.
 
@@ -423,6 +423,7 @@ class Parallel:
                 be spatial joined.
             max_rows_per_chunk: Number of rows per data chunk for processing.
             processes_in_clip: Number of parallel processes for data clipping.
+            verbose: Whether to print during execution.
 
         """
         shared_kwds = {
@@ -435,6 +436,7 @@ class Parallel:
             "max_rows_per_chunk": max_rows_per_chunk,
             "processes_in_clip": processes_in_clip,
             "strict": strict,
+            "verbose": verbose,
         }
 
         if isinstance(out_data, (str, Path)):
@@ -443,10 +445,12 @@ class Parallel:
         if funcdict is None:
             funcdict = {}
 
-        zip_func = dict_zip if strict else dict_zip_union
+        fs = dp.FileClient.get_gcs_file_system()
 
-        for _, data, folder, postfunc in zip_func(in_data, out_data, funcdict):
-            if data is None:
+        for _, data, folder, postfunc in dict_zip_union(in_data, out_data, funcdict):
+            if data is None or (
+                not strict and isinstance(data, (str | Path)) and not fs.exists(data)
+            ):
                 continue
 
             kwds = shared_kwds | {
@@ -465,16 +469,33 @@ class Parallel:
         df: GeoDataFrame,
         args: tuple | None = None,
         kwargs: dict | None = None,
-        max_rows_per_chunk: int = 150_000,
         n_chunks: int | None = None,
-        concat: bool = False,
+        max_rows_per_chunk: int | None = None,
+        concat: bool = True,
     ) -> GeoDataFrame:
-        """Run a function in parallel on chunks of a (Geo)DataFrame."""
-        if len(df) < max_rows_per_chunk:
-            return func(df, *args, **kwargs)
+        """Run a function in parallel on chunks of a (Geo)DataFrame.
 
-        if n_chunks is None:
-            n_chunks = len(df) // max_rows_per_chunk
+        Args:
+            func: Function to run chunkwise. It should take
+                a (Geo)DataFrame as first argument.
+            df: (Geo)DataFrame to split in n_chunks and passed
+                as first argument to 'func'.
+            args: Positional arguments in 'func' after the DataFrame.
+            kwargs: Additional keyword arguments in 'func'.
+            n_chunks: Optionally set number of chunks to split
+                'df' into. Defaults to the 'processes' attribute
+                of the Parallel instance.
+            max_rows_per_chunk: Alternatively decide number of chunks
+                by a maximum number of rows per chunk.
+            concat: Whether to use pd.concat on the results.
+                Defaults to True.
+        """
+        if max_rows_per_chunk is None and n_chunks is None:
+            n_chunks: int = self.processes
+        elif n_chunks is None:
+            n_chunks: int = len(df) // max_rows_per_chunk
+        elif max_rows_per_chunk is not None and len(df) < max_rows_per_chunk:
+            return func(df, *args, **kwargs)
 
         chunks = np.array_split(np.arange(len(df)), n_chunks)
 
@@ -551,7 +572,7 @@ class Parallel:
 def write_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
-    municipalities: GeoDataFrame,
+    municipalities: GeoDataFrame | list[str] | None = None,
     with_neighbors: bool = False,
     muni_number_col: str = "KOMMUNENR",
     file_type: str = "parquet",
@@ -561,6 +582,7 @@ def write_municipality_data(
     max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
     strict: bool = True,
+    verbose: bool = True,
 ) -> None:
     """Splits and writes data into municipality-specific files.
 
@@ -568,7 +590,9 @@ def write_municipality_data(
         data: Path to the data file or a GeoDataFrame.
         out_folder: Path to the output directory where the municipality data
             is written.
-        municipalities: GeoDataFrame containing municipality polygons.
+        municipalities: Either a sequence of municipality numbers or a GeoDataFrame
+            of municipality polygons and municipality numbers in the column 'muni_number_col'.
+            Defaults to None.
         with_neighbors: If True, include data from neighboring municipalities
             for each municipality.
         muni_number_col: Column name for municipality codes in 'municipalities'.
@@ -581,6 +605,7 @@ def write_municipality_data(
         processes_in_clip: Number of processes to use for clipping.
         strict: If True (default) and the data has a municipality column,
             all municipality numbers in 'data' must be present in 'municipalities'.
+        verbose: Whether to print during execution.
 
     Returns:
         None. The function writes files directly.
@@ -590,7 +615,6 @@ def write_municipality_data(
         if with_neighbors
         else _write_municipality_data
     )
-
     return write_func(
         data=data,
         out_folder=out_folder,
@@ -603,6 +627,7 @@ def write_municipality_data(
         max_rows_per_chunk=max_rows_per_chunk,
         processes_in_clip=processes_in_clip,
         strict=strict,
+        verbose=verbose,
     )
 
 
@@ -629,7 +654,7 @@ def _get_out_path(out_folder: str | Path, muni: str, file_type: str) -> str:
 def _write_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
-    municipalities: GeoDataFrame,
+    municipalities: GeoDataFrame | list[str] | None = None,
     muni_number_col: str = "KOMMUNENR",
     file_type: str = "parquet",
     func: Callable | None = None,
@@ -638,7 +663,14 @@ def _write_municipality_data(
     max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
     strict: bool = True,
+    verbose: bool = True,
 ) -> None:
+    if verbose:
+        to_print = out_folder
+        print(to_print)
+    else:
+        to_print = None
+
     gdf = _validate_data(data)
 
     if func is not None:
@@ -652,21 +684,29 @@ def _write_municipality_data(
         max_rows_per_chunk,
         processes_in_clip=processes_in_clip,
         strict=strict,
+        to_print=to_print,
     )
 
-    for muni in municipalities[muni_number_col]:
-        out = _get_out_path(out_folder, muni, file_type)
+    if municipalities is None:
+        muni_numbers = gdf[muni_number_col]
+    elif not isinstance(municipalities, DataFrame):
+        muni_numbers = municipalities
+    else:
+        muni_numbers = municipalities[muni_number_col]
 
-        gdf_muni = gdf.loc[gdf[muni_number_col] == muni]
-
-        if not len(gdf_muni):
-            if write_empty:
-                gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
-                gdf_muni["geometry"] = None
-                write_pandas(gdf_muni, out)
-            continue
-
-        write_geopandas(gdf_muni, out)
+    # hardcode this to threading for efficiency in io bound task
+    Parallel(processes_in_clip, backend="threading").map(
+        _write_one_muni,
+        muni_numbers,
+        kwargs=dict(
+            gdf=gdf,
+            out_folder=out_folder,
+            muni_number_col=muni_number_col,
+            file_type=file_type,
+            write_empty=write_empty,
+            to_print=to_print,
+        ),
+    )
 
 
 def _write_neighbor_municipality_data(
@@ -681,7 +721,14 @@ def _write_neighbor_municipality_data(
     max_rows_per_chunk: int = 150_000,
     processes_in_clip: int = 1,
     strict: bool = True,
+    verbose: bool = True,
 ) -> None:
+    if verbose:
+        to_print = out_folder
+        print("out_folder:", to_print)
+    else:
+        to_print = None
+
     gdf = _validate_data(data)
 
     if func is not None:
@@ -695,6 +742,7 @@ def _write_neighbor_municipality_data(
         max_rows_per_chunk,
         processes_in_clip,
         strict=strict,
+        to_print=to_print,
     )
 
     if municipalities.index.name != muni_number_col:
@@ -704,20 +752,74 @@ def _write_neighbor_municipality_data(
         municipalities, municipalities, max_distance=1
     )
 
-    for muni in municipalities.index:
-        out = _get_out_path(out_folder, muni, file_type)
+    # hardcode this to threading for efficiency in io bound task
+    Parallel(processes_in_clip, backend="threading").map(
+        _write_one_muni_with_neighbors,
+        municipalities[muni_number_col],
+        kwargs=dict(
+            gdf=gdf,
+            neighbor_munis=neighbor_munis,
+            out_folder=out_folder,
+            muni_number_col=muni_number_col,
+            file_type=file_type,
+            write_empty=write_empty,
+            to_print=to_print,
+        ),
+    )
 
-        muni_and_neighbors = neighbor_munis.loc[[muni]]
-        gdf_neighbor = gdf.loc[gdf[muni_number_col].isin(muni_and_neighbors)]
 
-        if not len(gdf_neighbor):
-            if write_empty:
-                gdf_neighbor = gdf_neighbor.drop(columns="geometry", errors="ignore")
-                gdf_neighbor["geometry"] = None
-                write_pandas(gdf_neighbor, out)
-            continue
+def _write_one_muni(
+    muni_number: Any,
+    gdf: GeoDataFrame | DataFrame,
+    out_folder: str | Path,
+    muni_number_col: str,
+    file_type: str,
+    write_empty: bool,
+    to_print: str | None = None,
+) -> None:
+    out = _get_out_path(out_folder, muni_number, file_type)
 
-        write_geopandas(gdf_neighbor, out)
+    if to_print:
+        print("writing:", out)
+
+    gdf_muni = gdf.loc[gdf[muni_number_col] == muni_number]
+
+    if not len(gdf_muni):
+        if write_empty:
+            gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
+            gdf_muni["geometry"] = None
+            write_pandas(gdf_muni, out)
+        return
+
+    write_geopandas(gdf_muni, out)
+
+
+def _write_one_muni_with_neighbors(
+    muni_number: Any,
+    gdf: GeoDataFrame | DataFrame,
+    neighbor_munis: Series,
+    out_folder: str | Path,
+    muni_number_col: str,
+    file_type: str,
+    write_empty: bool,
+    to_print: str | None = None,
+) -> None:
+    out = _get_out_path(out_folder, muni_number, file_type)
+
+    if to_print:
+        print("writing:", out)
+
+    muni_and_neighbors: Series = neighbor_munis.loc[[muni_number]]
+    gdf_neighbor = gdf.loc[gdf[muni_number_col].isin(muni_and_neighbors)]
+
+    if not len(gdf_neighbor):
+        if write_empty:
+            gdf_neighbor = gdf_neighbor.drop(columns="geometry", errors="ignore")
+            gdf_neighbor["geometry"] = None
+            write_pandas(gdf_neighbor, out)
+        return
+
+    write_geopandas(gdf_neighbor, out)
 
 
 def _fix_missing_muni_numbers(
@@ -728,6 +830,7 @@ def _fix_missing_muni_numbers(
     max_rows_per_chunk: int,
     processes_in_clip: int,
     strict: bool,
+    to_print: str,
 ) -> GeoDataFrame:
     if muni_number_col in gdf and gdf[muni_number_col].notna().all():
         if municipalities is None:
@@ -756,7 +859,10 @@ def _fix_missing_muni_numbers(
             "GeoDataFrame to clip the geometries by."
         )
 
-    municipalities = municipalities[[muni_number_col, "geometry"]].to_crs(gdf.crs)
+    try:
+        municipalities = municipalities[[muni_number_col, "geometry"]].to_crs(gdf.crs)
+    except Exception as e:
+        raise e.__class__(e, to_print) from e
 
     if muni_number_col in gdf and gdf[muni_number_col].isna().any():
         notna = gdf[gdf[muni_number_col].notna()]
@@ -771,6 +877,7 @@ def _fix_missing_muni_numbers(
                 municipalities[[muni_number_col, municipalities._geometry_column_name]],
                 processes=processes_in_clip,
                 max_rows_per_chunk=max_rows_per_chunk,
+                to_print=to_print,
             )
 
         return pd.concat([notna, notna_anymore], ignore_index=True)
@@ -783,6 +890,7 @@ def _fix_missing_muni_numbers(
             municipalities[[muni_number_col, municipalities._geometry_column_name]],
             processes=processes_in_clip,
             max_rows_per_chunk=max_rows_per_chunk,
+            to_print=to_print,
         )
 
 
@@ -792,6 +900,7 @@ def parallel_overlay(
     processes: int,
     max_rows_per_chunk: int,
     backend: str = "loky",
+    to_print: str | None = None,
     **kwargs,
 ) -> GeoDataFrame:
     """Perform spatial overlay operations on two GeoDataFrames in parallel.
@@ -808,6 +917,7 @@ def parallel_overlay(
         processes: Number of parallel processes to use.
         max_rows_per_chunk: Maximum number of rows per chunk for processing. This helps manage memory usage.
         backend: The parallelization backend to use ('loky', 'multiprocessing', 'threading').
+        to_print: Optional text to print to see progression.
         **kwargs: Additional keyword arguments to pass to the overlay function.
 
     Returns:
@@ -831,13 +941,15 @@ def parallel_overlay(
     out = Parallel(processes, backend=backend).map(
         _clean_intersection,
         df1_chunked,
-        args=(df2,),
+        args=(df2, to_print) if to_print else (df2,),
     )
     return pd.concat(out, ignore_index=True)
 
 
-def _clean_intersection(df1: GeoDataFrame, df2: GeoDataFrame) -> GeoDataFrame:
-    print(len(df1))
+def _clean_intersection(
+    df1: GeoDataFrame, df2: GeoDataFrame, to_print: str | None = None
+) -> GeoDataFrame:
+    print(to_print, "- intersection chunk len:", len(df1))
     return clean_overlay(df1, df2, how="intersection")
 
 
@@ -890,3 +1002,26 @@ def chunkwise(
         kwargs=kwargs,
     )
     return pd.concat(out, ignore_index=True)
+
+
+def _turn_args_into_kwargs(func: Callable, args: tuple, index_start: int) -> dict:
+    if not isinstance(args, tuple):
+        raise TypeError("args should be a tuple (it should not be unpacked with *)")
+    argnames = inspect.getfullargspec(func).args[index_start:]
+    return {name: value for value, name in zip(args, argnames, strict=False)}
+
+
+def _try_to_read_geopandas(path: str, **kwargs) -> GeoDataFrame | DataFrame | None:
+    """Read with try/except because it's faster than checking exists first."""
+    try:
+        return read_geopandas(path, **kwargs)
+    except FileNotFoundError:
+        return None
+
+
+def _try_to_read_pandas(path: str, **kwargs) -> DataFrame | None:
+    """Read with try/except because it's faster than checking exists first."""
+    try:
+        return read_pandas(path, **kwargs)
+    except FileNotFoundError:
+        return None
