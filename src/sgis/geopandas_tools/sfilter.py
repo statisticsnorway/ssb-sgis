@@ -149,7 +149,7 @@ def sfilter_split(
 
     return (
         gdf.iloc[indices],
-        gdf.iloc[pd.Index(range(len(gdf))).difference(indices)],
+        gdf.iloc[pd.Index(range(len(gdf))).difference(pd.Index(indices))],
     )
 
 
@@ -212,7 +212,7 @@ def sfilter_inverse(
 
     indices = _get_sfilter_indices(gdf, other, predicate)
 
-    return gdf.iloc[pd.Index(range(len(gdf))).difference(indices)]
+    return gdf.iloc[pd.Index(range(len(gdf))).difference(pd.Index(indices))]
 
 
 def _sfilter_checks(other, crs):
