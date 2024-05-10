@@ -7,7 +7,7 @@ try:
     from dapla.gcs import GCSFileSystem
 except ImportError:
 
-    class GCSFileSystem:
+    class GCSFileSystem:  # type: ignore[no-redef]
         """Placeholder."""
 
 

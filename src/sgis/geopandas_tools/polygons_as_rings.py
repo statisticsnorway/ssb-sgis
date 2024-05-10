@@ -180,7 +180,7 @@ class PolygonsAsRings:
                 f"Different length of results. Got {len(results)} and {len(self.rings)} original rings"
             )
 
-        self.rings.loc[:] = results
+        self.rings.loc[:] = results  # type: ignore [call-overload]
 
         return self
 
@@ -203,7 +203,7 @@ class PolygonsAsRings:
         kwargs = kwargs or {}
         args = args or ()
 
-        self.rings.loc[:] = np.array(
+        self.rings.loc[:] = np.array(  # type: ignore [call-overload]
             func(
                 GeoSeries(
                     self.rings.values,
@@ -246,7 +246,7 @@ class PolygonsAsRings:
 
         gdf.index = self.rings.index
 
-        self.rings.loc[:] = func(
+        self.rings.loc[:] = func(  # type: ignore [call-overload]
             gdf,
             *args,
             **kwargs,
@@ -255,12 +255,12 @@ class PolygonsAsRings:
         return self
 
     @property
-    def is_interior(self) -> pd.Series:
+    def is_interior(self) -> bool:
         """Returns a boolean Series of whether the row is an interior ring."""
         return self.rings.index.get_level_values(0) == 1
 
     @property
-    def is_exterior(self) -> pd.Series:
+    def is_exterior(self) -> bool:
         """Returns a boolean Series of whether the row is an exterior ring."""
         return self.rings.index.get_level_values(0) == 0
 

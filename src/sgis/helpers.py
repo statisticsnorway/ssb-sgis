@@ -124,7 +124,7 @@ def dict_zip(*dicts: dict) -> Generator[tuple[Any, ...], None, None]:
 
 def in_jupyter() -> bool:
     try:
-        get_ipython
+        get_ipython  # type: ignore[name-defined]
         return True
     except NameError:
         return False
@@ -206,55 +206,31 @@ def unit_is_degrees(gdf: GeoDataFrame) -> bool:
 def get_object_name(
     var: object, start: int = 2, stop: int = 7, ignore_self: bool = True
 ) -> str | None:
-    """Attempts to find the variable name of an object within a range of frame depths.
-
-    Args:
-        var: The object whose name is sought.
-        start: The starting frame depth to begin searching.
-        stop: The maximum frame depth to search.
-        ignore_self: If True, ignore 'self' in search results.
-
-    Returns:
-        The name of the variable or None if not found.
-    """
-    frame = inspect.currentframe()
-
-    for _ in range(start):
-        frame = frame.f_back
-
-    for _ in np.arange(start, stop):
-        names = [
-            var_name for var_name, var_val in frame.f_locals.items() if var_val is var
-        ]
-        if names and len(names) == 1:
-            if ignore_self and names[0] == "self":
-                frame = frame.f_back
-                continue
-            return names[0]
-
-        names = [name for name in names if not name.startswith("_")]
-
-        if names and len(names) == 1:
-            if ignore_self and names[0] == "self":
-                frame = frame.f_back
-                continue
-
-            return names[0]
-
-        if names and len(names) > 1:
-            if ignore_self and names[0] == "self":
-                frame = frame.f_back
-                continue
-            warnings.warn(
-                "More than one local variable matches the object. Name might be wrong.",
-                stacklevel=1,
-            )
-            return names[0]
-
-        frame = frame.f_back
-
-        if not frame:
-            return
+    frame = inspect.currentframe()  # frame can be FrameType or None
+    if frame:
+        try:
+            for _ in range(start):
+                frame = frame.f_back if frame else None
+            for _ in range(start, stop):
+                if frame:
+                    names = [
+                        var_name
+                        for var_name, var_val in frame.f_locals.items()
+                        if var_val is var and not (ignore_self and var_name == "self")
+                    ]
+                    names = [name for name in names if not name.startswith("_")]
+                    if names:
+                        if len(names) != 1:
+                            warnings.warn(
+                                "More than one local variable matches the object. Name might be wrong.",
+                                stacklevel=2,
+                            )
+                        return names[0]
+                frame = frame.f_back if frame else None
+        finally:
+            if frame:
+                del frame  # Explicitly delete frame reference to assist with garbage collection
+    return None
 
 
 def make_namedict(gdfs: tuple[GeoDataFrame]) -> dict[int, str]:
