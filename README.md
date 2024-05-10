@@ -211,6 +211,14 @@ For VS Code there are extensions for opening a python script as Jupyter Notebook
 for example:
 [Jupytext for Notebooks](https://marketplace.visualstudio.com/items?itemName=donjayamanne.vscode-jupytext).
 
+### Code quality
+
+Run 'ruff' on all files with safe fixes:
+
+```shell
+poetry run ruff check --fix .
+```
+
 ### Formatting
 
 Format the code with `black` and `isort` by running the following command from the
