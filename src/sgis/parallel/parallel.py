@@ -755,7 +755,7 @@ def _write_neighbor_municipality_data(
     # hardcode this to threading for efficiency in io bound task
     Parallel(processes_in_clip, backend="threading").map(
         _write_one_muni_with_neighbors,
-        municipalities[muni_number_col],
+        municipalities.index,
         kwargs=dict(
             gdf=gdf,
             neighbor_munis=neighbor_munis,
