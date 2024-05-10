@@ -6,10 +6,51 @@ import dapla as dp
 import geopandas as gpd
 import joblib
 import pandas as pd
+import pyarrow as pa
 from geopandas import GeoDataFrame
+from geopandas.io.arrow import _arrow_to_geopandas
 from geopandas.io.arrow import _geopandas_to_arrow
 from pandas import DataFrame
 from pyarrow import parquet
+
+
+def _write_with_partitions(
+    df, path, partition_cols, file_system, schema_version=None, compression="snappy"
+):
+    assert ".parquet" in path
+    for x in file_system.glob(path + "/**"):
+        try:
+            file_system.rm_file(x)
+        except FileNotFoundError:
+            pass
+
+    table = _geopandas_to_arrow(df, index=None, schema_version=schema_version)
+    pa.parquet.write_to_dataset(
+        table,
+        path,
+        filesystem=file_system,
+        compression=compression,
+        partition_cols=partition_cols,
+    )
+
+
+def _read_with_partions(path, file_system, **kwargs):
+    for x in file_system.glob(path + "/**"):
+        if not file_system.isfile(x):
+            continue
+        with file_system.open(x) as f:
+            meta = pa.parquet.read_metadata(f)
+            metadata: bytes = meta.schema.to_arrow_schema().metadata
+            break
+
+    table = parquet.read_table(
+        path,
+        use_pandas_metadata=True,
+        **kwargs,
+        filesystem=file_system,
+    )
+
+    return _arrow_to_geopandas(table, metadata)
 
 
 def read_geopandas(
@@ -61,6 +102,8 @@ def read_geopandas(
         with file_system.open(gcs_path, mode="rb") as file:
             try:
                 return gpd.read_parquet(file, **kwargs)
+            except pa.lib.ArrowInvalid:
+                return _read_with_partions(gcs_path, file_system=file_system, **kwargs)
             except ValueError as e:
                 if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
                     raise e
