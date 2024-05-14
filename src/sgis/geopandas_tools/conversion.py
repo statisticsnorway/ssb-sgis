@@ -95,7 +95,19 @@ def to_shapely(obj: Any) -> Geometry:
     try:
         return Point(*obj)
     except TypeError:
+        pass
+    try:
         return box(*to_bbox(obj))
+    except TypeError:
+        pass
+    try:
+        return shapely.wkt.loads(obj)
+    except TypeError:
+        pass
+    try:
+        return shapely.wkb.loads(obj)
+    except TypeError:
+        pass
 
 
 def to_bbox(
