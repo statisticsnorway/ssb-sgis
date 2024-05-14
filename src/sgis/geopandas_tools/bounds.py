@@ -1,20 +1,24 @@
 import functools
-import numbers
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from pandas.api.types import is_dict_like
-from shapely import Geometry, box, extract_unique_points
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from pyproj import CRS
+from shapely import Geometry
+from shapely import box
+from shapely import extract_unique_points
 from shapely.geometry import Polygon
 
 from ..parallel.parallel import Parallel
-from .conversion import to_bbox, to_gdf
-from .general import clean_clip, is_bbox_like
+from .conversion import to_bbox
+from .conversion import to_gdf
+from .general import clean_clip
+from .general import is_bbox_like
 
 
 @dataclass
@@ -32,9 +36,8 @@ class Gridlooper:
         keep_geom_type: Whether to keep only the input geometry types after clipping.
             Defaults to True.
 
-    Examples
+    Examples:
     --------
-
     Get some points and some polygons.
 
     >>> import sgis as sg
@@ -46,7 +49,7 @@ class Gridlooper:
     0      0  POLYGON ((263222.700 6651184.900, 263222.651 6...
     1      1  POLYGON ((272556.100 6653369.500, 272556.051 6...
     2      2  POLYGON ((270182.300 6653032.700, 270182.251 6...
-    3      3  POLYGON ((259904.800 6650339.700, 259904.751 6...
+        3      3  POLYGON ((259904.800 6650339.700, 259904.751 6...
     4      4  POLYGON ((272976.200 6652889.100, 272976.151 6...
     ..   ...                                                ...
     995  995  POLYGON ((266901.700 6647844.500, 266901.651 6...
@@ -95,16 +98,24 @@ class Gridlooper:
     keep_geom_type: bool = True
     verbose: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Fix types."""
         if not isinstance(self.mask, GeoDataFrame):
             self.mask = to_gdf(self.mask)
 
-    def run(self, func: Callable, *args, **kwargs):
-        def intersects_mask(df):
+    def run(self, func: Callable, *args, **kwargs) -> Any | list[Any]:
+        """Run a function for each grid cell in a loop.
+
+        Returns a list of the return values from the function,
+        or a (Geo)DataFrame if self.concat is True.
+
+        """
+
+        def _intersects_mask(df: GeoDataFrame) -> pd.Series:
             return df.index.isin(df.sjoin(self.mask).index)
 
         grid: GeoSeries = (
-            make_grid(self.mask, gridsize=self.gridsize).loc[intersects_mask].geometry
+            make_grid(self.mask, gridsize=self.gridsize).loc[_intersects_mask].geometry
         )
 
         n = len(grid)
@@ -137,7 +148,9 @@ class Gridlooper:
             return out if not self.concat else pd.concat(out, ignore_index=True)
 
         results = []
-        for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid)):
+        for i, (unbuffered, buffered) in enumerate(
+            zip(grid, buffered_grid, strict=False)
+        ):
             cell_kwargs = {
                 key: _clip_if_isinstance(
                     value, buffered, self.keep_geom_type, self.clip
@@ -200,13 +213,16 @@ def gridloop(
         kwargs: Keyword arguments to pass to the function. Arguments
             of type GeoDataFrame or GeoSeries will be clipped by the grid cells in
             a loop.
+        parallelizer: Optional instance of sgis.Parallel, to run the function in parallel.
 
     Returns:
         List of results with the same length as number of grid cells.
 
-    Examples
-    --------
+    Raises:
+        TypeError: If args or kwargs has a wrong type
 
+    Examples:
+    --------
     Get some points and some polygons.
 
     >>> import sgis as sg
@@ -274,8 +290,10 @@ def gridloop(
     if not isinstance(mask, GeoDataFrame):
         mask = to_gdf(mask)
 
-    intersects_mask = lambda df: df.index.isin(df.sjoin(mask).index)
-    grid: GeoSeries = make_grid(mask, gridsize=gridsize).loc[intersects_mask].geometry
+    def _intersects_mask(df: GeoDataFrame) -> pd.Series:
+        return df.index.isin(df.sjoin(mask).index)
+
+    grid: GeoSeries = make_grid(mask, gridsize=gridsize).loc[_intersects_mask].geometry
 
     n = len(grid)
 
@@ -301,7 +319,7 @@ def gridloop(
         return out
 
     results = []
-    for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid)):
+    for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid, strict=False)):
         cell_kwargs = {
             key: _clip_if_isinstance(value, buffered, keep_geom_type, clip)
             for key, value in kwargs.items()
@@ -333,7 +351,7 @@ def _clip_and_run_func(
     kwargs: dict,
     keep_geom_type: bool,
     clip: bool,
-):
+) -> Any:
     cell_args = tuple(
         _clip_if_isinstance(value, grid_cell, keep_geom_type, clip) for value in args
     )
@@ -345,11 +363,13 @@ def _clip_and_run_func(
     return func(*cell_args, **cell_kwargs)
 
 
-def _clip_if_isinstance(value, cell, keep_geom_type, clip: bool):
-    if not isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry)):
+def _clip_if_isinstance(
+    value: Any, cell: Geometry, keep_geom_type: bool, clip: bool
+) -> Any:
+    if not isinstance(value, (gpd.GeoDataFrame | gpd.GeoSeries | Geometry)):
         return value
 
-    if isinstance(value, (gpd.GeoDataFrame, gpd.GeoSeries)):
+    if isinstance(value, (gpd.GeoDataFrame | gpd.GeoSeries)):
         if clip:
             return clean_clip(value, cell, keep_geom_type=keep_geom_type)
         return value.loc[value.intersects(cell)]
@@ -357,10 +377,12 @@ def _clip_if_isinstance(value, cell, keep_geom_type, clip: bool):
     return value.intersection(cell).make_valid()
 
 
-def _clip_back_to_unbuffered_grid(results, mask, keep_geom_type):
-    if isinstance(results, (gpd.GeoDataFrame, gpd.GeoSeries, Geometry)):
+def _clip_back_to_unbuffered_grid(
+    results: Any, mask: GeoDataFrame, keep_geom_type: bool
+) -> Any:
+    if isinstance(results, (gpd.GeoDataFrame | gpd.GeoSeries | Geometry)):
         return _clip_if_isinstance(results, mask, keep_geom_type, clip=True)
-    elif isinstance(results, (pd.DataFrame, pd.Series, np.ndarray)):
+    elif isinstance(results, (pd.DataFrame | pd.Series | np.ndarray)):
         return results
     try:
         for key, value in results.items():
@@ -383,7 +405,7 @@ def make_grid_from_bbox(
     maxy: int | float,
     *_,
     gridsize: int | float,
-    crs,
+    crs: CRS | int | str,
 ) -> GeoDataFrame:
     """Creates a polygon grid from a bounding box.
 
@@ -420,7 +442,7 @@ def make_grid(
     obj: GeoDataFrame | GeoSeries | Geometry | tuple,
     gridsize: int | float,
     *,
-    crs=None,
+    crs: CRS = None,
     clip_to_bounds: bool = False,
 ) -> GeoDataFrame:
     """Create a polygon grid around geometries.
@@ -439,8 +461,11 @@ def make_grid(
     Returns:
         GeoDataFrame with grid polygons.
 
+    Raises:
+        ValueError: crs can only be None if obj is GeoDataFrame/GeoSeries.
+
     """
-    if isinstance(obj, (GeoDataFrame, GeoSeries)):
+    if isinstance(obj, (GeoDataFrame | GeoSeries)):
         crs = obj.crs or crs
     elif not crs:
         raise ValueError(
@@ -475,14 +500,17 @@ def make_ssb_grid(
     Args:
         gdf: A GeoDataFrame.
         gridsize: Size of the grid in meters.
+        add: Number of grid cells to add on each side,
+            to make sure all data is covered by the grid.
 
     Returns:
         GeoDataFrame with grid geometries and a column 'SSBID'.
 
     Raises:
         ValueError: If the GeoDataFrame does not have 25833 as crs.
+        TypeError: if gdf has wrong type.
     """
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
+    if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError("gdf must be GeoDataFrame og GeoSeries.")
 
     if not gdf.crs.equals(25833):
@@ -551,6 +579,7 @@ def add_grid_id(
     Args:
         gdf: A GeoDataFrame.
         gridsize: Size of the grid in meters.
+        out_column: Name of column for the grid id.
 
     Returns:
         The input GeoDataFrame with a new grid id column.
@@ -587,9 +616,9 @@ def bounds_to_polygon(
     Returns:
         GeoDataFrame of box polygons with length and index of 'gdf'.
 
-    Examples
+    Examples:
     --------
-
+    >>> import sgis as sg
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
                                             geometry
@@ -622,8 +651,9 @@ def bounds_to_points(
     Returns:
         GeoDataFrame of multipoints with same length and index as 'gdf'.
 
-    Examples
+    Examples:
     --------
+    >>> import sgis as sg
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
                                             geometry
@@ -643,19 +673,26 @@ def bounds_to_points(
 
 
 def get_total_bounds(
-    *geometries: GeoDataFrame | GeoSeries | Geometry,
+    *geometries: GeoDataFrame | GeoSeries | Geometry, strict: bool = False
 ) -> tuple[float, float, float, float]:
     """Get a combined total bounds of multiple geometry objects."""
     xs, ys = [], []
     for obj in geometries:
-        minx, miny, maxx, maxy = to_bbox(obj)
+        try:
+            minx, miny, maxx, maxy = to_bbox(obj)
+        except Exception as e:
+            if strict:
+                raise e
+            else:
+                continue
         xs += [minx, maxx]
         ys += [miny, maxy]
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int):
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)) and is_bbox_like(gdf):
+def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int) -> GeoDataFrame:
+    """Get a GeoDataFrame of points within the bounds of the GeoDataFrame."""
+    if not isinstance(gdf, (GeoDataFrame | GeoSeries)) and is_bbox_like(gdf):
         minx, miny, maxx, maxy = gdf
     else:
         minx, miny, maxx, maxy = gdf.total_bounds

@@ -5,13 +5,7 @@ import sys
 import timeit
 from pathlib import Path
 
-import geopandas as gpd
-import numpy as np
 import pandas as pd
-import pytest
-from helpers import create_all_geometry_types
-from shapely.geometry import Polygon
-
 
 src = str(Path(__file__).parent.parent) + "/src"
 
@@ -104,7 +98,7 @@ def benchmark_within_vs_intersects():
     print(s2)
     assert s.equals(s2)
 
-    l = []
+    results = []
     for rows in [2000]:
         for div in [50, 25, 10, 6, 4, 2, 1, 0.5]:
             for buffdiv in [50, 25, 10, 5, 2, 1, 0.5]:
@@ -122,9 +116,9 @@ def benchmark_within_vs_intersects():
 
                     print(rows, div, buffdiv, round(tid_intersects / tid_begge, 1))
 
-                    l.append((rows, div, buffdiv, tid_intersects / tid_begge))
+                    results.append((rows, div, buffdiv, tid_intersects / tid_begge))
 
-    df = pd.DataFrame(l, columns=("rows", "div", "buffdiv", "ratio"))
+    df = pd.DataFrame(results, columns=("rows", "div", "buffdiv", "ratio"))
     print(df)
     print(df.groupby("rows")["ratio"].mean())
     print(df.groupby("div")["ratio"].mean())

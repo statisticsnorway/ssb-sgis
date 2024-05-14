@@ -5,7 +5,8 @@ network, finding and removing isolated network islands and creating unique node 
 """
 
 import warnings
-from copy import copy, deepcopy
+from copy import copy
+from copy import deepcopy
 
 import numpy as np
 from geopandas import GeoDataFrame
@@ -21,8 +22,11 @@ from .nodes import make_node_ids
 class Network:
     """Class used in NetworkAnalysis."""
 
-    def __init__(self, gdf: GeoDataFrame):
+    def __init__(self, gdf: GeoDataFrame) -> None:
         """The lines are fixed, welded together rowwise and exploded. Creates node-ids.
+
+        Args:
+            gdf: GeoDataFrame of line geometries to make up the network.
 
         Raises:
             TypeError: If 'gdf' is not of type GeoDataFrame.
@@ -152,6 +156,7 @@ class Network:
         return True
 
     def get_edges(self) -> list[tuple[str, str]]:
+        """Get a list of edges in the network."""
         return [
             (str(source), str(target))
             for source, target in zip(
@@ -166,12 +171,12 @@ class Network:
         """Edge identifiers represented with source and target ids and the weight."""
         return [f"{s}_{t}_{w}" for (s, t), w in zip(edges, weights, strict=True)]
 
-    def _update_nodes_if(self):
+    def _update_nodes_if(self) -> None:
         if not self._nodes_are_up_to_date():
             self._make_node_ids()
 
     @property
-    def nodes(self):
+    def nodes(self) -> GeoDataFrame:
         """GeoDataFrame with the network nodes (line endpoints).
 
         Upon instantiation of the class, a GeoDataFrame of points is created from the
@@ -182,7 +187,7 @@ class Network:
         """
         return self._nodes
 
-    def _warn_if_undirected(self):
+    def _warn_if_undirected(self) -> None:
         """Road data often have to be duplicated and flipped to make it directed."""
         if self.percent_bidirectional > 5:
             return
@@ -202,15 +207,15 @@ class Network:
         warnings.warn(mess, stacklevel=2)
 
     @property
-    def percent_bidirectional(self):
+    def percent_bidirectional(self) -> float:
         """The percentage of lines that appear in both directions."""
         return self._percent_bidirectional
 
-    def copy(self):
+    def copy(self) -> "Network":
         """Returns a shallow copy of the class instance."""
         return copy(self)
 
-    def deepcopy(self):
+    def deepcopy(self) -> "Network":
         """Returns a deep copy of the class instance."""
         return deepcopy(self)
 
@@ -220,9 +225,6 @@ class Network:
         km = int(sum(self.gdf.length) / 1000)
         return f"{cl}({km} km, percent_bidirectional={self._percent_bidirectional})"
 
-    def __iter__(self):
-        """So the attributes can be iterated through."""
-        return iter(self.__dict__.items())
-
-    def __len__(self):
+    def __len__(self) -> int:
+        """Number og rows in the GeoDataFrame."""
         return len(self.gdf)

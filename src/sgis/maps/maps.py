@@ -11,25 +11,30 @@ import inspect
 from numbers import Number
 from typing import Any
 
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from pyproj import CRS
 from shapely import Geometry
+from shapely import box
+from shapely.geometry import Polygon
 
+from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.conversion import to_gdf as to_gdf_func
-from ..geopandas_tools.general import clean_geoms, get_common_crs, is_wkt
+from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.general import get_common_crs
+from ..geopandas_tools.general import is_wkt
 from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
 
-
 try:
     from torchgeo.datasets.geo import RasterDataset
 except ImportError:
 
     class RasterDataset:
-        """Placeholder"""
+        """Placeholder."""
 
 
 def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
@@ -72,7 +77,6 @@ def explore(
     *gdfs: GeoDataFrame | dict[str, GeoDataFrame],
     column: str | None = None,
     center: Any | None = None,
-    center_4326: Any | None = None,
     labels: tuple[str] | None = None,
     max_zoom: int = 40,
     browser: bool = False,
@@ -94,10 +98,9 @@ def explore(
         *gdfs: one or more GeoDataFrames.
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
-        center: Either an address string to be geocoded or a geometry like object
-            (coordinate pair (x, y), GeoDataFrame, bbox, etc.). If the geometry is a
-            point (or line), it will be buffered by 1000 (can be changed with the)
-            size parameter. If a polygon is given, it will not be buffered.
+        center: Geometry-like object to center the map on. If a three-length tuple
+            is given, the first two should be x and y coordinates and the third
+            should be a number of meters to buffer the centerpoint by.
         labels: By default, the GeoDataFrames will be labeled by their object names.
             Alternatively, labels can be specified as a tuple of strings with the same
             length as the number of gdfs.
@@ -113,12 +116,12 @@ def explore(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
-    See also
+    See Also:
     --------
     samplemap: same functionality, but shows only a random area of a given size.
     clipmap: same functionality, but shows only the areas clipped by a given mask.
 
-    Examples
+    Examples:
     --------
     >>> import sgis as sg
     >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
@@ -138,7 +141,6 @@ def explore(
     >>> points["meters"] = points.length
     >>> sg.explore(roads, points, column="meters", cmap="plasma", max_zoom=60, center_4326=(10.7463, 59.92, 500))
     """
-
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
@@ -162,14 +164,11 @@ def explore(
         to_crs = gdfs[0].crs
     except IndexError:
         try:
-            to_crs = [x for x in kwargs.values() if hasattr(x, "crs")][0].crs
+            to_crs = next(x for x in kwargs.values() if hasattr(x, "crs")).crs
         except IndexError:
             to_crs = None
 
-    if center_4326 is not None:
-        from_crs = 4326
-        center = center_4326
-    elif "crs" in kwargs:
+    if "crs" in kwargs:
         from_crs = kwargs.pop("crs")
     else:
         from_crs = to_crs
@@ -184,6 +183,10 @@ def explore(
             if isinstance(center, (tuple, list)) and len(center) == 3:
                 *center, size = center
             mask = to_gdf_func(center, crs=from_crs)
+
+        bounds: Polygon = box(*get_total_bounds(*gdfs, *list(kwargs.values())))
+        if not mask.intersects(bounds).any():
+            mask = mask.set_crs(4326, allow_override=True)
 
         try:
             mask = mask.to_crs(to_crs)
@@ -270,12 +273,12 @@ def samplemap(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
-    See also
+    See Also:
     --------
     explore: Same functionality, but shows the entire area of the geometries.
     clipmap: Same functionality, but shows only the areas clipped by a given mask.
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url, samplemap
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
@@ -290,7 +293,6 @@ def samplemap(
     >>> samplemap(roads, points, size=5_000, column="meters")
 
     """
-
     if gdfs and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
@@ -393,12 +395,11 @@ def clipmap(
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
-    See also
+    See Also:
     --------
     explore: same functionality, but shows the entire area of the geometries.
     samplemap: same functionality, but shows only a random area of a given size.
     """
-
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     if mask is None and len(gdfs) > 1:
@@ -444,7 +445,7 @@ def clipmap(
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
-def explore_locals(*gdfs, convert: bool = True, **kwargs):
+def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
     """Displays all local variables with geometries (GeoDataFrame etc.).
 
     Local means inside a function or file/notebook.
@@ -478,15 +479,15 @@ def explore_locals(*gdfs, convert: bool = True, **kwargs):
 
             if isinstance(value, dict) or hasattr(value, "__dict__"):
                 # add dicts or classes with GeoDataFrames to kwargs
-                for key, value in as_dict(value).items():
-                    if isinstance(value, allowed_types):
-                        gdf = clean_geoms(to_gdf_func(value))
+                for key, val in as_dict(value).items():
+                    if isinstance(val, allowed_types):
+                        gdf = clean_geoms(to_gdf_func(val))
                         if len(gdf):
                             local_gdfs[key] = gdf
 
-                    elif isinstance(value, dict) or hasattr(value, "__dict__"):
+                    elif isinstance(val, dict) or hasattr(val, "__dict__"):
                         try:
-                            for k, v in value.items():
+                            for k, v in val.items():
                                 if isinstance(v, allowed_types):
                                     gdf = clean_geoms(to_gdf_func(v))
                                     if len(gdf):
@@ -543,12 +544,13 @@ def qtm(
             'viridis' when black, and 'RdPu' when white.
         size: Size of the plot. Defaults to 10.
         title_fontsize: Size of the title.
+        legend: Whether to add legend. Defaults to True.
         cmap: Color palette of the map. See:
             https://matplotlib.org/stable/tutorials/colors/colormaps.html
         k: Number of color groups.
         **kwargs: Additional keyword arguments taken by the geopandas plot method.
 
-    See also:
+    See Also:
         ThematicMap: Class with more options for customising the plot.
     """
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)

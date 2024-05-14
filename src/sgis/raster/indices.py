@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -18,10 +18,6 @@ def water(green: np.ndarray, nir: np.ndarray) -> np.ndarray:
     return np.where((green + nir) == 0, 0, (green - nir) / (green + nir))
 
 
-def water(swir: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    return np.where((swir + nir) == 0, 0, (nir - swir) / (nir + swir))
-
-
 def builtup(swir: np.ndarray, nir: np.ndarray) -> np.ndarray:
     return np.where((swir + nir) == 0, 0, (swir - nir) / (swir + nir))
 
@@ -34,13 +30,13 @@ def get_raster_pairs(
     cube,
     band_name1: str,
     band_name2: str,
-):
+) -> list[tuple[Raster, Raster]]:
     unique = pd.DataFrame({"tile": cube.tile, "date": cube.date}).drop_duplicates(
         ["tile", "date"]
     )
 
     raster_pairs = []
-    for tile, date in zip(unique["tile"], unique["date"]):
+    for tile, date in zip(unique["tile"], unique["date"], strict=False):
         query = (cube.tile == tile) & (cube.date == date)
         band1 = cube.copy()[query & (cube.band == band_name1)]
         band2 = cube.copy()[query & (cube.band == band_name2)]

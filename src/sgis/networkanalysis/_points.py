@@ -1,9 +1,11 @@
+from collections.abc import Sequence
+
 import numpy as np
+import pandas as pd
 from geopandas import GeoDataFrame
 
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from .networkanalysisrules import NetworkAnalysisRules
-
 
 """
 These are internal classes used in the NetworkAnalysis class. The classes used in
@@ -26,7 +28,6 @@ class Points:
         The original indices are stored in a dict and mapped back to the results in the
         end.
         """
-
         self.gdf["temp_idx"] = np.arange(start=start, stop=start + len(self.gdf))
         self.gdf["temp_idx"] = self.gdf["temp_idx"].astype(str)
 
@@ -36,7 +37,9 @@ class Points:
         }
 
     @staticmethod
-    def _convert_distance_to_weight(distances, rules):
+    def _convert_distance_to_weight(
+        distances: Sequence, rules: NetworkAnalysisRules
+    ) -> list[float]:
         """Meters to minutes based on 'weight_to_nodes_' attribute of the rules."""
         if not rules.nodedist_multiplier and not rules.nodedist_kmh:
             return [0 for _ in distances]
@@ -60,7 +63,9 @@ class Points:
 
         return [x / (16.666667 * rules.nodedist_kmh) for x in distances]
 
-    def _make_edges(self, df, from_col, to_col):
+    def _make_edges(
+        self, df: GeoDataFrame | pd.DataFrame, from_col: str, to_col: str
+    ) -> list[tuple[int, int]]:
         return [(f, t) for f, t in zip(df[from_col], df[to_col], strict=True)]
 
     def _get_edges_and_weights(
@@ -71,6 +76,7 @@ class Points:
         from_col: str,
         to_col: str,
     ):
+        """Make edges and weights between points and the nodes of a network."""
         distances = get_k_nearest_neighbors(
             gdf=self.gdf.set_index("temp_idx"),
             neighbors=nodes.set_index("node_id"),

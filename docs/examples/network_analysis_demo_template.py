@@ -15,7 +15,6 @@ import pandas as pd
 
 import sgis as sg
 
-
 # ignore some (for this purpose) irrelevant warnings
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action="ignore", category=FutureWarning)
@@ -51,7 +50,7 @@ directed_roads
 # %% [markdown]
 # Norwegian road data can be made directional with a custom function:
 # %%
-directed_roads = sg.make_directed_network_norway(roads)
+directed_roads = sg.make_directed_network_norway(roads, dropnegative=True)
 directed_roads
 
 # %% [markdown]
@@ -330,7 +329,7 @@ rules.search_tolerance
 # %% [markdown]
 # The search_tolerance unit is meters if the units of the crs is meters, which it is in this case:
 # %%
-nw.gdf.crs.axis_info[0].unit_name
+nwa.gdf.crs.axis_info[0].unit_name
 # %% [markdown]
 # Let's check how the search_tolerance influences the number of missing values:
 

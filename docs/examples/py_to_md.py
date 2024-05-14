@@ -2,7 +2,6 @@ import os
 import shutil
 import subprocess
 
-
 if "sgis" in os.listdir():
     os.chdir("docs/examples")
 elif "ssb-sgis" in os.listdir():
@@ -20,7 +19,7 @@ else:
 def py_to_md(
     file: str, png_folder_suffix: str = "_files", move_n_folders_up: int = 0
 ) -> None:
-    """Converts .py to .ipynb, runs the notebook, saves to markdown, deletes ipynb
+    """Converts .py to .ipynb, runs the notebook, saves to markdown, deletes ipynb.
 
     Optionally moves the markdown file and the pictures up n folders.
     """
@@ -55,7 +54,6 @@ def py_to_md(
 
 file = "network_analysis_demo_template"
 py_to_md(file, move_n_folders_up=0)
-sss
 
 file = "network_analysis_examples"
 py_to_md(file, move_n_folders_up=0)

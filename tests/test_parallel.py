@@ -1,12 +1,6 @@
 import sys
 from pathlib import Path
 
-import geopandas as gpd
-import numpy as np
-import pandas as pd
-import pytest
-
-
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
@@ -65,6 +59,45 @@ def test_map():
         assert results == [1, 3, 5, 7, 9, 11], results
 
 
+def test_chunkwise():
+    df = sg.random_points(100).pipe(sg.buff, 0.1)
+    df2 = df.pipe(sg.buff, 0.1)
+    df2["_range_idx"] = range(len(df2))
+    df["_range_idx_right"] = range(len(df))
+    overlayed = sg.clean_overlay(df2, df).sort_values("_range_idx")
+    assert len(overlayed)
+    for backend in ["loky", "multiprocessing", "threading"]:
+        print(backend)
+
+        res = (
+            sg.Parallel(2, backend=backend)
+            .chunkwise(sg.clean_overlay, df2, args=(df,))
+            .sort_values("_range_idx")
+        )
+        assert res.equals(overlayed), (overlayed, res)
+
+        res = (
+            sg.Parallel(2, backend=backend)
+            .chunkwise(sg.clean_overlay, df2, kwargs=dict(df2=df))
+            .sort_values("_range_idx")
+        )
+        assert res.equals(overlayed), (overlayed, res)
+
+        res = (
+            sg.Parallel(2, backend=backend)
+            .chunkwise(sg.clean_overlay, df2, args=(df,), n_chunks=10)
+            .sort_values("_range_idx")
+        )
+        assert res.equals(overlayed), (overlayed, res)
+
+        res = (
+            sg.Parallel(2, backend=backend)
+            .chunkwise(sg.clean_overlay, df2, args=(df,), max_rows_per_chunk=10)
+            .sort_values("_range_idx")
+        )
+        assert res.equals(overlayed), (overlayed, res)
+
+
 def test_args_to_kwargs():
     def func(x, y, z):
         pass
@@ -73,11 +106,11 @@ def test_args_to_kwargs():
     y = ["xx"]
     z = {1: "a", 2: "b"}
     args = (x, y, z)
-    kwargs = sg.parallel.parallel.turn_args_into_kwargs(func, args, 0)
+    kwargs = sg.parallel.parallel._turn_args_into_kwargs(func, args, 0)
     assert list(kwargs) == ["x", "y", "z"], kwargs
     assert list(kwargs.values()) == [x, y, z], kwargs
 
-    kwargs = sg.parallel.parallel.turn_args_into_kwargs(func, (y, z), 1)
+    kwargs = sg.parallel.parallel._turn_args_into_kwargs(func, (y, z), 1)
     assert list(kwargs) == ["y", "z"], kwargs
     assert list(kwargs.values()) == [y, z], kwargs
 
@@ -110,6 +143,7 @@ def test_starmap():
 
 
 if __name__ == "__main__":
+    test_chunkwise()
     test_args_to_kwargs()
     test_starmap()
     test_map()

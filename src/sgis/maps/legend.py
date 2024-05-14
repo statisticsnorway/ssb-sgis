@@ -4,17 +4,20 @@ The Legend class is best accessed through the 'legend' attribute of the Thematic
 class.
 
 """
+
+import itertools
 import warnings
+from typing import Any
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from geopandas import GeoDataFrame
 from matplotlib.lines import Line2D
 from pandas import Series
 
 from ..geopandas_tools.bounds import points_in_bounds
-
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(
@@ -52,25 +55,38 @@ class Legend:
             'm' is the name of the ThematicMap instance. See here:
             https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
 
-    Examples
+    Examples:
     --------
-    Create ten random points with a numeric column from 0 to 9.
+    Create ten points with a numeric column from 0 to 9.
 
     >>> import sgis as sg
-    >>> points = sg.random_points(10)
+    >>> points = sg.to_gdf(
+    ...     [
+    ...         (0, 1),
+    ...         (1, 0),
+    ...         (1, 1),
+    ...         (0, 0),
+    ...         (0.5, 0.5),
+    ...         (0.5, 0.25),
+    ...         (0.25, 0.25),
+    ...         (0.75, 0.75),
+    ...         (0.25, 0.75),
+    ...         (0.75, 0.25),
+    ...     ]
+    ... )
     >>> points["number"] = range(10)
     >>> points
-                    geometry  number
-    0  POINT (0.59780 0.50425)       0
-    1  POINT (0.07019 0.26167)       1
-    2  POINT (0.56475 0.15422)       2
-    3  POINT (0.87293 0.60316)       3
-    4  POINT (0.47373 0.20040)       4
-    5  POINT (0.98661 0.15614)       5
-    6  POINT (0.30951 0.77057)       6
-    7  POINT (0.47802 0.52824)       7
-    8  POINT (0.12215 0.96588)       8
-    9  POINT (0.02938 0.93467)       9
+                      geometry  number
+    0  POINT (0.00000 1.00000)       0
+    1  POINT (1.00000 0.00000)       1
+    2  POINT (1.00000 1.00000)       2
+    3  POINT (0.00000 0.00000)       3
+    4  POINT (0.50000 0.50000)       4
+    5  POINT (0.50000 0.25000)       5
+    6  POINT (0.25000 0.25000)       6
+    7  POINT (0.75000 0.75000)       7
+    8  POINT (0.25000 0.75000)       8
+    9  POINT (0.75000 0.25000)       9
 
     Creating the ThematicMap instance will also create the legend. Since we
     specify a numeric column, a ContinousLegend instance is created.
@@ -113,7 +129,30 @@ class Legend:
         framealpha: float = 1.0,
         edgecolor: str = "#0f0f0f",
         **kwargs,
-    ):
+    ) -> None:
+        """Initialiser.
+
+        Args:
+            title: Legend title. Defaults to the column name if used in the
+                ThematicMap class.
+            labels: Labels of the categories.
+            position: The legend's x and y position in the plot, specified as a tuple of
+                x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
+                in the bottom right corner, (0.2, 0.8) for the upper left corner.
+            fontsize: Text size of the legend labels. Defaults to the size of
+                the ThematicMap class.
+            title_fontsize: Text size of the legend title. Defaults to the
+                size * 1.2 of the ThematicMap class.
+            markersize: Size of the color circles in the legend. Defaults to the size of
+                the ThematicMap class.
+            framealpha: Transparency of the legend background.
+            edgecolor: Color of the legend border. Defaults to #0f0f0f (almost black).
+            kwargs: Stores additional keyword arguments taken by the matplotlib legend
+                method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
+                'm' is the name of the ThematicMap instance. See here:
+                https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
+
+        """
         self.title = title
 
         if "size" in kwargs:
@@ -136,9 +175,8 @@ class Legend:
         self.kwargs = kwargs
         self._position_has_been_set = True if position else False
 
-    def _get_legend_sizes(self, size, kwargs):
+    def _get_legend_sizes(self, size: int | float, kwargs: dict) -> None:
         """Adjust fontsize and markersize to size kwarg."""
-
         if "title_fontsize" in kwargs:
             self._title_fontsize = kwargs["title_fontsize"]
             self._title_fontsize_has_been_set = True
@@ -157,7 +195,9 @@ class Legend:
         else:
             self._markersize = size
 
-    def _prepare_categorical_legend(self, categories_colors: dict, nan_label: str):
+    def _prepare_categorical_legend(
+        self, categories_colors: dict, nan_label: str
+    ) -> None:
         for attr in self.__dict__.keys():
             if attr in self.kwargs:
                 self[attr] = self.kwargs.pop(attr)
@@ -195,7 +235,7 @@ class Legend:
                 )
             )
 
-    def _actually_add_legend(self, ax):
+    def _actually_add_legend(self, ax: matplotlib.axes.Axes) -> matplotlib.axes.Axes:
         legend = ax.legend(
             self._patches,
             self._categories,
@@ -215,7 +255,9 @@ class Legend:
 
         return ax
 
-    def _get_best_legend_position(self, gdf, k: int):
+    def _get_best_legend_position(
+        self, gdf: GeoDataFrame, k: int
+    ) -> tuple[float, float]:
         minx, miny, maxx, maxy = gdf.total_bounds
         diffx = maxx - minx
         diffy = maxy - miny
@@ -243,51 +285,58 @@ class Legend:
 
         return bestx_01, besty_01
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str) -> Any:
+        """Get attribute with square brackets."""
         return getattr(self, item)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Set attribute with square brackets."""
         setattr(self, key, value)
 
-    def get(self, key, default=None):
+    def get(self, key: Any, default: Any = None) -> Any:
+        """Get value of an attribute of the Legend."""
         try:
             return self[key]
         except (KeyError, ValueError, IndexError, AttributeError):
             return default
 
     @property
-    def position(self):
+    def position(self) -> tuple[float, float]:
+        """Legend position in x, y."""
         return self._position
 
     @position.setter
-    def position(self, new_value: bool):
+    def position(self, new_value: tuple[float, float]) -> None:
         self._position = new_value
         self._position_has_been_set = True
 
     @property
-    def title_fontsize(self):
+    def title_fontsize(self) -> int:
+        """Legend title fontsize."""
         return self._title_fontsize
 
     @title_fontsize.setter
-    def title_fontsize(self, new_value: bool):
+    def title_fontsize(self, new_value: int) -> None:
         self._title_fontsize = new_value
         self._title_fontsize_has_been_set = True
 
     @property
-    def fontsize(self):
+    def fontsize(self) -> int:
+        """Legend fontsize."""
         return self._fontsize
 
     @fontsize.setter
-    def fontsize(self, new_value: bool):
+    def fontsize(self, new_value: int) -> None:
         self._fontsize = new_value
         self._fontsize_has_been_set = True
 
     @property
-    def markersize(self):
+    def markersize(self) -> int:
+        """Legend markersize."""
         return self._markersize
 
     @markersize.setter
-    def markersize(self, new_value: bool):
+    def markersize(self, new_value: int) -> None:
         self._markersize = new_value
         self._markersize_has_been_set = True
 
@@ -321,7 +370,7 @@ class ContinousLegend(Legend):
             unless 'thousand_sep' is '.'. In this case, ',' (comma) will be used as
             decimal mark.
 
-    Examples
+    Examples:
     --------
     Create ten random points with a numeric column from 0 to 9.
 
@@ -386,7 +435,36 @@ class ContinousLegend(Legend):
         thousand_sep: str | None = None,
         decimal_mark: str | None = None,
         **kwargs,
-    ):
+    ) -> None:
+        """Initialiser.
+
+        Args:
+            labels: To manually set labels. If set, all other labeling attributes are
+                ignored. Should be given as a list of strings with the same length as
+                the number of color groups.
+            pretty_labels: If False (default), the minimum and maximum values of each
+                color group will be used as legend labels. If True, the labels will end
+                with the maximum value, but start at 1 + the maximum value of the previous
+                group. The labels will be correct but inaccurate.
+            label_suffix: The text to put after each number in the legend labels.
+                Defaults to None.
+            label_sep: Text to put in between the two numbers in each color group in
+                the legend. Defaults to '-'.
+            rounding: Number of decimals in the labels. By default, the rounding
+                depends on the column's maximum value and standard deviation.
+                OBS: The bins will not be rounded, meaning the labels might be wrong
+                if not bins are set manually.
+            thousand_sep: Separator between each thousand for large numbers. Defaults to
+                None, meaning no separator.
+            decimal_mark: Text to use as decimal point. Defaults to None, meaning '.' (dot)
+                unless 'thousand_sep' is '.'. In this case, ',' (comma) will be used as
+                decimal mark.
+            kwargs: Stores additional keyword arguments taken by the matplotlib legend
+                method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
+                'm' is the name of the ThematicMap instance. See here:
+                https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
+
+        """
         super().__init__(**kwargs)
 
         self.pretty_labels = pretty_labels
@@ -423,13 +501,13 @@ class ContinousLegend(Legend):
         return int(abs(np.log10(std_))) + 1
 
     @staticmethod
-    def _set_rounding(bins, rounding: int | float):
+    def _set_rounding(bins, rounding: int | float) -> list[int | float]:
         if rounding == 0:
-            return [int(round(bin, 0)) for bin in bins]
+            return [int(round(bin_, 0)) for bin_ in bins]
         else:
-            return [round(bin, rounding) for bin in bins]
+            return [round(bin_, rounding) for bin_ in bins]
 
-    def _remove_max_legend_value(self):
+    def _remove_max_legend_value(self) -> None:
         if not self._legend:
             raise ValueError("Cannot modify legend before it is created.")
 
@@ -439,7 +517,7 @@ class ContinousLegend(Legend):
         colors: list[str],
         nan_label: str,
         bin_values: dict,
-    ):
+    ) -> None:
         # TODO: clean up this messy method
 
         for attr in self.__dict__.keys():
@@ -491,7 +569,7 @@ class ContinousLegend(Legend):
                     )
 
         else:
-            for i, (cat1, cat2) in enumerate(zip(bins[:-1], bins[1:], strict=True)):
+            for i, (cat1, cat2) in enumerate(itertools.pairwise(bins)):
                 if nan_label in str(cat1) or nan_label in str(cat2):
                     self._categories.append(nan_label)
                     continue
@@ -527,36 +605,16 @@ class ContinousLegend(Legend):
                     label = self._two_value_label(min_rounded, max_rounded)
                     self._categories.append(label)
 
-    def _actually_add_legend(self, ax):
-        legend = ax.legend(
-            self._patches,
-            self._categories,
-            fontsize=self._fontsize,
-            title=self.title,
-            title_fontsize=self._title_fontsize,
-            bbox_to_anchor=self._position + (self.width, self.height),
-            fancybox=False,
-            framealpha=self.framealpha,
-            edgecolor=self.edgecolor,
-            labelspacing=self.labelspacing,
-            **self.kwargs,
-        )
-
-        if self.title_color:
-            plt.setp(legend.get_title(), color=self.title_color)
-
-        return ax
-
-    def _two_value_label(self, value1, value2):
+    def _two_value_label(self, value1: int | float, value2: int | float) -> str:
         return (
             f"{value1} {self.label_suffix} {self.label_sep} "
             f"{value2} {self.label_suffix}"
         )
 
-    def _one_value_label(self, value1):
+    def _one_value_label(self, value1: int | float) -> str:
         return f"{value1} {self.label_suffix}"
 
-    def _format_number(self, number):
+    def _format_number(self, number: int | float) -> int | float:
         if not self.thousand_sep and not self.decimal_mark:
             return number
 
@@ -581,10 +639,11 @@ class ContinousLegend(Legend):
         return number
 
     @property
-    def rounding(self):
+    def rounding(self) -> int:
+        """Number rounding."""
         return self._rounding
 
     @rounding.setter
-    def rounding(self, new_value: bool):
+    def rounding(self, new_value: int) -> None:
         self._rounding = new_value
         self._rounding_has_been_set = True

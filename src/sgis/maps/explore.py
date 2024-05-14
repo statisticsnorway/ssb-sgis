@@ -9,6 +9,8 @@ import warnings
 from collections.abc import Iterable
 from numbers import Number
 from statistics import mean
+from typing import Any
+from typing import ClassVar
 
 import branca as bc
 import folium
@@ -17,27 +19,30 @@ import numpy as np
 import pandas as pd
 import xyzservices
 from folium import plugins
-from geopandas import GeoDataFrame, GeoSeries
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from IPython.display import display
 from jinja2 import Template
 from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely.geometry import LineString
 
-from ..geopandas_tools.conversion import from_4326, to_gdf
-from ..geopandas_tools.general import clean_geoms, make_all_singlepart
-from ..geopandas_tools.geometry_types import get_geom_type, to_single_geom_type
+from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.general import clean_geoms
+from ..geopandas_tools.general import make_all_singlepart
+from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.geometry_types import to_single_geom_type
 from .httpserver import run_html_server
 from .map import Map
-from .tilesources import kartverket, xyz
-
+from .tilesources import kartverket
+from .tilesources import xyz
 
 try:
     from torchgeo.datasets.geo import RasterDataset
 except ImportError:
 
     class RasterDataset:
-        """Placeholder"""
+        """Placeholder."""
 
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -96,7 +101,10 @@ class MeasureControlFix(plugins.MeasureControl):
     """
     )
 
-    def __init__(self, active_color="red", completed_color="red", **kwargs):
+    def __init__(
+        self, active_color: str = "red", completed_color: str = "red", **kwargs
+    ) -> None:
+        """Run super __init__ after the new _template class attribute is made."""
         super().__init__(
             active_color=active_color, completed_color=completed_color, **kwargs
         )
@@ -146,8 +154,10 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 
 
 class Explore(Map):
+    """Class for displaying and saving html maps of multiple GeoDataFrames."""
+
     # class attribute that can be overridden locally
-    tiles = (
+    tiles: ClassVar[tuple[str]] = (
         "grunnkart",
         "norge_i_bilder",
         "dark",
@@ -161,17 +171,41 @@ class Explore(Map):
         column: str | None = None,
         popup: bool = True,
         max_zoom: int = 40,
-        smooth_factor: float = 1.5,
+        smooth_factor: float = 1.1,
         browser: bool = False,
         prefer_canvas: bool = True,
         measure_control: bool = True,
         geocoder: bool = False,
-        save=None,
+        save: str | None = None,
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
         decimals: int = 6,
         **kwargs,
-    ):
+    ) -> None:
+        """Initialiser.
+
+        Args:
+            *gdfs: One or more GeoDataFrames.
+            mask: Optional mask to clip to.
+            column: Optional column to color the data by.
+            popup: Whether to make the data popups clickable.
+            max_zoom: Max levels of zoom.
+            smooth_factor: Float of 1 or higher, 1 meaning no smoothing
+                of lines.
+            browser: Whether to open the map in a browser tab.
+            prefer_canvas: Option.
+            measure_control: Whether to include measurement box.
+            geocoder: Whether to include search bar for addresses.
+            save: Optional file path to an html file. The map will then
+                be saved instead of displayed.
+            show: Whether to show or hide the data upon creating the map.
+                If False, the data can be toggled on later. 'show' can also be
+                a sequence of boolean values the same length as the number of
+                GeoDataFrames.
+            text: Optional text for a text box in the map.
+            decimals: Number of decimals in the coordinates.
+            **kwargs: Additional keyword arguments passed to
+        """
         self.popup = popup
         self.max_zoom = max_zoom
         self.smooth_factor = smooth_factor
@@ -195,12 +229,12 @@ class Explore(Map):
         else:
             show_was_none = False
 
-        self.raster_datasets = tuple(
-            raster_dataset_to_background_map(x)
-            for x in gdfs
-            if isinstance(x, RasterDataset)
-        )
-        self.tiles  # += self.raster_datasets
+        self.raster_datasets = []  # tuple(
+        #     raster_dataset_to_background_map(x)
+        #     for x in gdfs
+        #     if isinstance(x, RasterDataset)
+        # )
+        # self.tiles  # += self.raster_datasets
 
         super().__init__(*gdfs, column=column, show=show, **kwargs)
 
@@ -262,14 +296,20 @@ class Explore(Map):
 
         self.original_crs = self.gdf.crs
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """Representation."""
         return f"{self.__class__.__name__}()"
 
     def explore(
-        self, column: str | None = None, center=None, size=None, **kwargs
+        self,
+        column: str | None = None,
+        center: Any | None = None,
+        size: int | None = None,
+        **kwargs,
     ) -> None:
+        """Explore all the data."""
         if not any(len(gdf) for gdf in self._gdfs) and not len(self.raster_datasets):
-            warnings.warn("None of the GeoDataFrames have rows.")
+            warnings.warn("None of the GeoDataFrames have rows.", stacklevel=1)
             return
         if column:
             self._column = column
@@ -311,6 +351,7 @@ class Explore(Map):
         sample_from_first: bool = True,
         **kwargs,
     ) -> None:
+        """Explore a sample of the data."""
         if column:
             self._column = column
             self._update_column()
@@ -347,10 +388,11 @@ class Explore(Map):
 
     def clipmap(
         self,
-        mask,
+        mask: Any,
         column: str | None = None,
         **kwargs,
     ) -> None:
+        """Explore the data within a mask extent."""
         if column:
             self._column = column
             self._update_column()
@@ -368,7 +410,7 @@ class Explore(Map):
         self._gdf = pd.concat(gdfs, ignore_index=True)
         self._explore(**kwargs)
 
-    def _explore(self, **kwargs):
+    def _explore(self, **kwargs) -> None:
         self.kwargs = self.kwargs | kwargs
 
         if self._is_categorical:
@@ -384,7 +426,7 @@ class Explore(Map):
         else:
             display(self.map)
 
-    def _split_categories(self):
+    def _split_categories(self) -> None:
         new_gdfs, new_labels, new_shows = [], [], []
         for cat in self._unique_values:
             gdf = self.gdf.loc[self.gdf[self.column] == cat]
@@ -396,7 +438,7 @@ class Explore(Map):
         self.labels = new_labels
         self.show = new_shows
 
-    def _to_single_geom_type(self, gdf) -> GeoDataFrame:
+    def _to_single_geom_type(self, gdf: GeoDataFrame) -> GeoDataFrame:
         gdf = clean_geoms(gdf)
 
         if get_geom_type(gdf) != "mixed":
@@ -420,16 +462,16 @@ class Explore(Map):
 
         assert get_geom_type(gdf) != "mixed", gdf.geom_type.value_counts()
 
-        warnings.warn(mess)
+        warnings.warn(mess, stacklevel=1)
 
         return gdf
 
-    def _update_column(self):
+    def _update_column(self) -> None:
         self._is_categorical = self._check_if_categorical()
         self._fillna_if_col_is_missing()
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
-    def _create_categorical_map(self):
+    def _create_categorical_map(self) -> None:
         self._get_categorical_colors()
 
         gdf = self._prepare_gdf_for_map(self._gdf)
@@ -478,7 +520,7 @@ class Explore(Map):
 
     def _add_tiles(
         self, mapobj: folium.Map, tiles: list[str, xyzservices.TileProvider]
-    ):
+    ) -> None:
         for tile in tiles:
             to_tile(tile, max_zoom=self.max_zoom).add_to(mapobj)
 
@@ -549,7 +591,7 @@ class Explore(Map):
         return [col for col in gdf.columns if col not in COLS_TO_DROP]
 
     @staticmethod
-    def _prepare_gdf_for_map(gdf):
+    def _prepare_gdf_for_map(gdf: GeoDataFrame) -> GeoDataFrame:
         if isinstance(gdf, GeoSeries):
             gdf = gdf.to_frame("geometry")
 
@@ -567,13 +609,13 @@ class Explore(Map):
 
     def _make_folium_map(
         self,
-        bounds,
-        attr=None,
-        tiles=None,
-        width="100%",
-        height="100%",
-        control_scale=True,
-        map_kwds=None,
+        bounds: tuple[float, float, float, float],
+        attr: Any = None,
+        tiles: Any = None,
+        width: str = "100%",
+        height: str = "100%",
+        control_scale: bool = True,
+        map_kwds: dict | None = None,
         **kwargs,
     ):
         if not map_kwds:
@@ -679,21 +721,29 @@ class Explore(Map):
 
     def _make_geojson(
         self,
-        df,
+        df: GeoDataFrame,
         show: bool,
-        color=None,
-        tooltip=True,
-        popup=False,
-        highlight=True,
-        marker_type=None,
-        marker_kwds={},
-        style_kwds={},
-        highlight_kwds={},
-        tooltip_kwds={},
-        popup_kwds={},
-        map_kwds={},
+        color: str | None = None,
+        tooltip: bool = True,
+        popup: bool = False,
+        highlight: bool = True,
+        marker_type: str | None = None,
+        marker_kwds: dict | None = None,
+        style_kwds: dict | None = None,
+        highlight_kwds: dict | None = None,
+        tooltip_kwds: dict | None = None,
+        popup_kwds: dict | None = None,
+        map_kwds: dict | None = None,
         **kwargs,
-    ):
+    ) -> folium.GeoJson:
+
+        marker_kwds = marker_kwds or {}
+        style_kwds = style_kwds or {}
+        highlight_kwds = highlight_kwds or {}
+        tooltip_kwds = tooltip_kwds or {}
+        popup_kwds = popup_kwds or {}
+        map_kwds = map_kwds or {}
+
         gdf = df.copy()
 
         # convert LinearRing to LineString
@@ -816,9 +866,10 @@ class Explore(Map):
         )
 
 
-def _tooltip_popup(type, fields, gdf, **kwds):
-    """get tooltip or popup"""
-
+def _tooltip_popup(
+    type_: str, fields: Any, gdf: GeoDataFrame, **kwargs
+) -> folium.GeoJsonTooltip | folium.GeoJsonPopup:
+    """Get tooltip or popup."""
     # specify fields to show in the tooltip
     if fields is False or fields is None or fields == 0:
         return None
@@ -836,20 +887,16 @@ def _tooltip_popup(type, fields, gdf, **kwds):
 
     # Cast fields to str
     fields = list(map(str, fields))
-    if type == "tooltip":
-        return folium.GeoJsonTooltip(fields, **kwds)
-    elif type == "popup":
-        return folium.GeoJsonPopup(fields, **kwds)
+    if type_ == "tooltip":
+        return folium.GeoJsonTooltip(fields, **kwargs)
+    elif type_ == "popup":
+        return folium.GeoJsonPopup(fields, **kwargs)
 
 
-def raster_dataset_to_background_map(dataset: RasterDataset):
-    crs = dataset.crs
-    bbox = dataset.bounds
-
-
-def _categorical_legend(m, title, categories, colors):
-    """
-    Add categorical legend to a map
+def _categorical_legend(
+    m: folium.Map, title: str, categories: list[str], colors: list[str]
+) -> None:
+    """Add categorical legend to a map.
 
     The implementation is using the code originally written by Michel Metran
     (@michelmetran) and released on GitHub
@@ -868,7 +915,6 @@ def _categorical_legend(m, title, categories, colors):
     colors : list-like
         list of colors (in the same order as categories)
     """
-
     # Header to Add
     head = """
     {% macro header(this, kwargs) %}

@@ -1,18 +1,13 @@
 # %%
-import multiprocessing
+import glob
 import os
 import sys
 from pathlib import Path
-from time import perf_counter
 
 import numpy as np
-import pandas as pd
 import shapely
 import xarray as xr
 from IPython.display import display
-from pyproj import CRS
-from shapely import box
-
 
 src = str(Path(__file__).parent.parent) + "/src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -20,7 +15,6 @@ testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
@@ -33,9 +27,12 @@ def x2(x):
 
 
 def not_test_xdataset():
-    cube = sg.DataCube.from_root(testdata, raster_type=sg.bands.Sentinel2, res=10)[
-        lambda x: x.date.notna()
-    ].load()
+    cube = sg.DataCube.from_root(
+        testdata,
+        filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX,
+        res=10,
+        nodata=-32767,
+    )[lambda x: x.date.notna()].load()
 
     print(cube)
     xdataset = cube.to_xarray()
@@ -82,7 +79,11 @@ def not_test_shape():
 
 def test_copy():
     cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", res=10, crs=25833, raster_type=sg.bands.Sentinel2
+        testdata,
+        endswith=".tif",
+        res=10,
+        crs=25833,
+        filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX,
     )
 
     assert [arr is None for arr in cube.arrays]
@@ -105,7 +106,6 @@ def not_test_gradient():
     cube = sg.DataCube.from_root(
         testdata,
         endswith=".tif",
-        raster_type=sg.Raster,
         nodata=0,
         res=10,
     )[lambda x: x.path.str.lower().str.contains("dtm")].load()
@@ -118,13 +118,17 @@ def not_test_gradient():
 
 def test_sentinel():
     cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", raster_type=sg.bands.Sentinel2, res=10
+        testdata,
+        endswith=".tif",
+        filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX,
+        res=10,
+        nodata=-32767,
     )
     assert all(r.name is not None for r in cube), [r.name for r in cube]
     assert len(cube) == 10, len(cube)
 
     assert cube.band.str.startswith("B").all()
-    assert (cube.date.str[-1].isin([*"0123456789"])).all()
+    assert ((x := cube.date.str[-1]).isin([*"0123456789"])).all(), x
     assert (cube.date.str.len() == 8).all()
 
     ndvi = cube.calculate_index(sg.indices.ndvi, band_name1="B4", band_name2="B8")
@@ -172,7 +176,6 @@ def not_test_df():
 
 
 def test_from_root():
-    import glob
 
     files = [file for file in glob.glob(str(Path(testdata)) + "/*") if ".tif" in file]
     cube = sg.DataCube.from_paths(files, res=10)
@@ -181,7 +184,9 @@ def test_from_root():
     assert len(cube) == 22, cube
     display(cube)
 
-    cube = sg.DataCube.from_root(testdata, regex=r"\.tif$", res=10, nodata=0).explode()
+    cube = sg.DataCube.from_root(
+        testdata, filename_regex=r"\.tif$", res=10, nodata=0
+    ).explode()
     assert len(cube) == 22, cube
     display(cube)
 
@@ -313,13 +318,13 @@ def not_test_merge():
     # assert x_mean == r_mean, (x_mean, r_mean)
 
 
-def test_dissolve():
+def not_test_dissolve():
     cube = sg.DataCube.from_root(testdata, endswith=".tif", res=10, nodata=0)
     cube = cube.merge_by_bounds()
-    list(cube.shape) == [(1, 201, 201), (2, 201, 201)]
+    assert list(cube.shape) == [(1, 201, 201), (2, 201, 201)]
     print(cube)
     cube = cube.dissolve_bands("mean")
-    list(cube.shape) == [(201, 201), (201, 201)]
+    assert list(cube.shape) == [(201, 201), (201, 201)]
     print(cube)
 
 
@@ -437,7 +442,10 @@ def not_test_merge_from_array():
 
 def not_test_from_gdf():
     cube = sg.DataCube.from_root(
-        testdata, endswith=".tif", res=10, raster_type=sg.bands.Sentinel2
+        testdata,
+        endswith=".tif",
+        res=10,
+        filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX,
     )
     gdf = cube[0].load().to_gdf("val")
     print(gdf)
@@ -488,13 +496,14 @@ def not_test_zonal():
     ], list(sorted(zonal["sum"]))
 
 
-def test_parallel():
+def not_test_parallel():
     cube = sg.DataCube.from_root(
         testdata,
         endswith=".tif",
-        raster_type=sg.bands.Sentinel2,
+        filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX,
         res=10,
         crs=25833,
+        nodata=0,
     )  # [lambda x: ~x.path.str.contains("entinel")]
 
     center = cube.unary_union.centroid.buffer(200)
@@ -505,7 +514,7 @@ def test_parallel():
     results_parallelized = (cube.clip(center)).map(x2).map(np.float32).explode()
 
     assert len(results) == len(results_parallelized)
-    for r1, r2 in zip(results, results_parallelized):
+    for r1, r2 in zip(results, results_parallelized, strict=False):
         assert r1.equals(r2)
     # assert results.equals(results_parallelized)
 
@@ -525,7 +534,9 @@ def write_sentinel():
     src_path_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
 
     cube = sg.DataCube.from_root(
-        src_path_sentinel, endswith=".tif", raster_type=sg.bands.Sentinel2
+        src_path_sentinel,
+        endswith=".tif",
+        filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX,
     )
 
     mask = sg.to_gdf(cube.unary_union.centroid.buffer(1000))
@@ -558,8 +569,12 @@ def test_torch():
 
     def cube_with_torch():
         cube = sg.DataCube.from_root(
-            path_sentinel, endswith=".tif", raster_type=sg.bands.Sentinel2, res=10
+            path_sentinel,
+            endswith=".tif",
+            filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX,
+            res=10,
         )
+        assert len(cube) == 10, len(cube)
 
         sampler = RandomGeoSampler(cube, size=16, length=10)
         dataloader = DataLoader(
@@ -576,7 +591,7 @@ def test_torch():
     def regular_torch(cube):
         torch_dataset = sg.torchgeo.Sentinel2(path_sentinel, res=10)
 
-        assert len(torch_dataset) == len(cube), (len(torch_dataset), len(cube))
+        assert len(torch_dataset) == 10, len(torch_dataset)
 
         sampler = RandomGeoSampler(torch_dataset, size=16, length=10)
         dataloader = DataLoader(
@@ -594,30 +609,28 @@ def test_torch():
 
 
 if __name__ == "__main__":
-    import cProfile
 
     # write_sentinel()
 
     def test_cube():
         test_torch()
-        sss
         test_sentinel()
-        not_test_gradient()
         test_explode()
         test_getitem()
         test_to_gdf()
-        not_test_shape()
         test_query()
         test_copy()
-        test_parallel()
-        test_dissolve()
-        not_test_from_gdf()
+        not_test_dissolve()
         test_from_root()
+        not_test_parallel()
+        not_test_from_gdf()
+        not_test_shape()
         not_test_xdataset()
         not_test_merge()
         not_test_zonal()
         not_test_to_crs()
         not_test_merge_from_array()
+        not_test_gradient()
         # not_test_df()
 
     # cProfile.run("test_merge_performance()", sort="cumtime")

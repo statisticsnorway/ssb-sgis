@@ -5,8 +5,9 @@ from pathlib import Path
 import pandas as pd
 import shapely
 from helpers import create_all_geometry_types
-from shapely.geometry import LineString, MultiPoint, Point
-
+from shapely.geometry import LineString
+from shapely.geometry import MultiPoint
+from shapely.geometry import Point
 
 src = str(Path(__file__).parent.parent) + "/src"
 

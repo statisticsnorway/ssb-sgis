@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from geopandas import GeoDataFrame, read_parquet
+from geopandas import GeoDataFrame
+from geopandas import read_parquet
 
 
 def points_oslo() -> GeoDataFrame:

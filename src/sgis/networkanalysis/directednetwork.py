@@ -1,12 +1,14 @@
 """Prepare a GeoDataFrame of line geometries for directed network analysis."""
 
 import warnings
+from collections.abc import Sequence
 
 import pandas as pd
 from geopandas import GeoDataFrame
 from shapely.constructive import reverse
 
-from ..helpers import return_two_vals, unit_is_meters
+from ..helpers import return_two_vals
+from ..helpers import unit_is_meters
 
 
 def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDataFrame:
@@ -26,7 +28,7 @@ def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDa
             network graph. Recode these rows to a non-negative values if you want
             to keep them.
 
-    Examples
+    Examples:
     --------
     2022 data for the municipalities of Oslo and Eidskog can be read directly like this:
 
@@ -47,11 +49,12 @@ def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDa
     1944398      B      0.068239      0.068239  MULTILINESTRING Z ((258292.600 6648313.440 18....
     1944409      B      0.023629      0.023629  MULTILINESTRING Z ((258291.452 6648289.258 19....
     1944415      B      0.175876      0.175876  MULTILINESTRING Z ((260762.830 6650240.620 43....
-    [93395 rows x 46 columns]
+    <BLANKLINE>
+    [93395 rows x 4 columns]
 
     And converted to a directed network like this:
 
-    >>> roads_directed = sg.make_directed_network_norway(roads)
+    >>> roads_directed = sg.make_directed_network_norway(roads, dropnegative=True)
     >>> roads_directed[["minutes", "geometry"]]
              minutes                                           geometry
     0       0.216611  MULTILINESTRING Z ((258028.440 6674249.890 413...
@@ -65,7 +68,8 @@ def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDa
     175622  0.036810  MULTILINESTRING Z ((268681.757 6651886.457 110...
     175623  0.003019  MULTILINESTRING Z ((268682.748 6651886.162 110...
     175624  0.036975  MULTILINESTRING Z ((268694.594 6651881.688 111...
-    [175541 rows x 45 columns]
+    <BLANKLINE>
+    [175541 rows x 2 columns]
     """
     if gdf["drivetime_fw"].isna().any():
         raise ValueError("Missing values in the columns 'drivetime_fw'")
@@ -202,7 +206,9 @@ def make_directed_network(
     return gdf
 
 
-def _validate_minute_args(minute_cols, speed_col_kmh, flat_speed_kmh):
+def _validate_minute_args(
+    minute_cols: Sequence[str], speed_col_kmh: str, flat_speed_kmh: str
+) -> None:
     if not minute_cols and not speed_col_kmh and not flat_speed_kmh:
         warnings.warn(
             "Minute column will not be calculated when both 'minute_cols', "
@@ -217,7 +223,9 @@ def _validate_minute_args(minute_cols, speed_col_kmh, flat_speed_kmh):
         )
 
 
-def _validate_direction_args(gdf, direction_col, direction_vals_bft):
+def _validate_direction_args(
+    gdf: GeoDataFrame, direction_col: str, direction_vals_bft: Sequence[str]
+) -> None:
     if len(direction_vals_bft) != 3:
         raise ValueError(
             "'direction_vals_bft' should be tuple/list with values of directions "

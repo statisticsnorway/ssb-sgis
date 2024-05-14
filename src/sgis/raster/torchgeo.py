@@ -1,7 +1,9 @@
 import glob
 import os
 import warnings
-from typing import Iterable
+from collections.abc import Callable
+from collections.abc import Iterable
+from typing import ClassVar
 
 import rasterio
 import rasterio.merge
@@ -10,29 +12,62 @@ from rasterio.vrt import WarpedVRT
 from torchgeo.datasets.geo import RasterDataset
 from torchgeo.datasets.sentinel import Sentinel2 as TorchgeoSentinel2
 
-
 try:
     import dapla as dp
 except ImportError:
     pass
 
 try:
+    from dapla.gcs import GCSFileSystem
+except ImportError:
+
+    class GCSFileSystem:
+        """Placeholder."""
+
+
+try:
     from gcsfs.core import GCSFile
 except ImportError:
 
     class GCSFile:
-        pass
+        """Placeholder."""
 
 
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
-from .bands import SENTINEL2_FILENAME_REGEX
+
+SENTINEL2_FILENAME_REGEX = r"""
+    ^SENTINEL2X_
+    (?P<date>\d{8})
+    .*T(?P<tile>\d{2}[A-Z]{3})
+    .*(?:_(?P<resolution>{}m))?
+    .*(?P<band>B\d{1,2}A|B\d{1,2})
+    .*\..*$
+"""
+
+SENTINEL_2_BANDS = [
+    # "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "B8",
+    "B8A",
+    # "B9",
+    # "B10",
+    "B11",
+    "B12",
+]
+SENTINEL_2_RBG_BANDS = ["B4", "B3", "B2"]
 
 
 class GCSRasterDataset(RasterDataset):
     """Wrapper around torchgeo's RasterDataset that works in and outside of Dapla (stat norway)."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
+        """Initialiser. Args and kwargs passed to torchgeo.datasets.geo.RasterDataset."""
         super().__init__(*args, **kwargs)
         if is_dapla():
             [file.close() for file in self.files]
@@ -43,8 +78,6 @@ class GCSRasterDataset(RasterDataset):
 
         Returns:
             All files in the dataset.
-
-        .. versionadded:: 0.5
         """
         if isinstance(self.paths, str):
             paths: list[str] = [self.paths]
@@ -76,6 +109,7 @@ class GCSRasterDataset(RasterDataset):
                     f"Could not find any relevant files for provided path '{path}'. "
                     f"Path was ignored.",
                     UserWarning,
+                    stacklevel=1,
                 )
 
         return files
@@ -84,10 +118,10 @@ class GCSRasterDataset(RasterDataset):
         """Load and warp a file to the correct CRS and resolution.
 
         Args:
-            filepath: file to load and warp
+            filepath: file to load and warp.
 
         Returns:
-            file handle of warped VRT
+            file handle of warped VRT.
         """
         with opener(filepath) as f:
             src = rasterio.open(f)
@@ -102,7 +136,9 @@ class GCSRasterDataset(RasterDataset):
 
 
 def _get_gcs_paths(
-    paths: str | Iterable[str], filename_glob: str, file_system=None
+    paths: str | Iterable[str],
+    filename_glob: str,
+    file_system: GCSFileSystem | None = None,
 ) -> set[str]:
     if file_system is None:
         file_system = dp.FileClient.get_gcs_file_system()
@@ -121,30 +157,15 @@ def _get_gcs_paths(
 class Sentinel2(GCSRasterDataset):
     """Works like torchgeo's Sentinel2, with custom regexes."""
 
-    date_format: str = "%Y%m%d"
-    filename_glob = "SENTINEL2X_*_*.*"
+    date_format: ClassVar[str] = "%Y%m%d"
+    filename_glob: ClassVar[str] = "SENTINEL2X_*_*.*"
 
-    filename_regex = SENTINEL2_FILENAME_REGEX
+    filename_regex: ClassVar[str] = SENTINEL2_FILENAME_REGEX
+    all_bands: ClassVar[list[str]] = SENTINEL_2_BANDS
+    rgb_bands: ClassVar[list[str]] = SENTINEL_2_RBG_BANDS
 
-    all_bands = [
-        # "B1",
-        "B2",
-        "B3",
-        "B4",
-        "B5",
-        "B6",
-        "B7",
-        "B8",
-        "B8A",
-        # "B9",
-        # "B10",
-        "B11",
-        "B12",
-    ]
-    rgb_bands = ["B4", "B3", "B2"]
+    separate_files: ClassVar[bool] = True
 
-    separate_files = True
+    cmap: ClassVar[dict[int, tuple[int, int, int, int]]] = {}
 
-    cmap: dict[int, tuple[int, int, int, int]] = {}
-
-    plot = TorchgeoSentinel2.plot
+    plot: Callable = TorchgeoSentinel2.plot

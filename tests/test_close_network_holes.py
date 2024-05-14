@@ -3,11 +3,10 @@ import sys
 import warnings
 from pathlib import Path
 
-import geopandas as gpd
-from shapely.geometry import LineString, MultiLineString
+from shapely.geometry import LineString
+from shapely.geometry import MultiLineString
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 
 sys.path.insert(0, src)
@@ -223,7 +222,8 @@ def test_close_network_holes(roads_oslo, points_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     test_line_angle_0()
     test_line_angle_90()

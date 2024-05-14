@@ -1,0 +1,22 @@
+{
+  "_copy_without_render": [
+    "*.rst_t"
+  ],
+  "_jinja2_env_vars": {
+    "lstrip_blocks": true,
+    "trim_blocks": true
+  },
+  "_template": "https://github.com/statisticsnorway/ssb-pypitemplate.git",
+  "author": "Morten Letnes",
+  "code_quality_level": "Medium",
+  "copyright_owner": "Statistics Norway",
+  "copyright_year": "2024",
+  "development_status": "Development Status :: 5 - Production/Stable",
+  "email": "morten.letnes@ssb.no",
+  "friendly_name": "SSB sgis",
+  "github_organization": "statisticsnorway",
+  "license": "MIT",
+  "package_name": "sgis",
+  "project_name": "ssb-sgis",
+  "version": "1.0.1"
+}

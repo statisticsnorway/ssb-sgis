@@ -1,30 +1,35 @@
 import numbers
 import warnings
-from collections.abc import Hashable, Iterable
+from collections.abc import Hashable
+from collections.abc import Iterable
 from typing import Any
 
+import dask_geopandas
 import joblib
 import numpy as np
 import pandas as pd
 import pyproj
-from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryArray, GeometryDtype
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from geopandas.array import GeometryArray
+from geopandas.array import GeometryDtype
 from numpy.typing import NDArray
-from shapely import (
-    Geometry,
-    get_coordinates,
-    get_exterior_ring,
-    get_interior_ring,
-    get_num_interior_rings,
-    get_parts,
-    linestrings,
-    make_valid,
-)
+from shapely import Geometry
+from shapely import get_coordinates
+from shapely import get_exterior_ring
+from shapely import get_interior_ring
+from shapely import get_num_interior_rings
+from shapely import get_parts
+from shapely import linestrings
+from shapely import make_valid
 from shapely import points as shapely_points
 from shapely import unary_union
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
+from .geometry_types import get_geom_type
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
 
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
@@ -79,13 +84,13 @@ def get_common_crs(
             actually_different.add(x)
 
         if len(actually_different) == 1:
-            return list(actually_different)[0]
+            return next(iter(actually_different))
         raise ValueError("'crs' mismatch.", truthy_crs)
 
     return pyproj.CRS(truthy_crs[0])
 
 
-def is_bbox_like(obj) -> bool:
+def is_bbox_like(obj: Any) -> bool:
     if (
         hasattr(obj, "__iter__")
         and len(obj) == 4
@@ -114,6 +119,7 @@ def _push_geom_col(gdf: GeoDataFrame) -> GeoDataFrame:
 
 
 def drop_inactive_geometry_columns(gdf: GeoDataFrame) -> GeoDataFrame:
+    """Removes geometry columns in a GeoDataFrame if they are not active."""
     for col in gdf.columns:
         if (
             isinstance(gdf[col].dtype, GeometryDtype)
@@ -123,7 +129,7 @@ def drop_inactive_geometry_columns(gdf: GeoDataFrame) -> GeoDataFrame:
     return gdf
 
 
-def rename_geometry_if(gdf: GeoDataFrame) -> GeoDataFrame:
+def _rename_geometry_if(gdf: GeoDataFrame) -> GeoDataFrame:
     geom_col = gdf._geometry_column_name
     if geom_col == "geometry" and geom_col in gdf.columns:
         return gdf
@@ -157,7 +163,7 @@ def clean_geoms(
         GeoDataFrame or GeoSeries with fixed geometries and only the rows with valid,
         non-empty and not-NaN/-None geometries.
 
-    Examples
+    Examples:
     --------
     >>> import sgis as sg
     >>> import pandas as pd
@@ -231,8 +237,20 @@ def clean_geoms(
 
 
 def get_grouped_centroids(
-    gdf: GeoDataFrame, groupby: str, as_string: bool = True
+    gdf: GeoDataFrame, groupby: str | list[str], as_string: bool = True
 ) -> pd.Series:
+    """Get the centerpoint of the geometries within a group.
+
+    Args:
+        gdf: GeoDataFrame.
+        groupby: column to group by.
+        as_string: If True (default), coordinates are returned in
+            the format "{x}_{y}". If False, coordinates are returned
+            as Points.
+
+    Returns:
+        A pandas.Series of grouped centroids with the index of 'gdf'.
+    """
     centerpoints = gdf.assign(geometry=lambda x: x.centroid)
 
     grouped_centerpoints = centerpoints.dissolve(by=groupby).assign(
@@ -242,9 +260,13 @@ def get_grouped_centroids(
     ys = grouped_centerpoints.geometry.y
 
     if as_string:
-        grouped_centerpoints["wkt"] = [f"{int(x)}_{int(y)}" for x, y in zip(xs, ys)]
+        grouped_centerpoints["wkt"] = [
+            f"{int(x)}_{int(y)}" for x, y in zip(xs, ys, strict=False)
+        ]
     else:
-        grouped_centerpoints["wkt"] = [Point(x, y) for x, y in zip(xs, ys)]
+        grouped_centerpoints["wkt"] = [
+            Point(x, y) for x, y in zip(xs, ys, strict=False)
+        ]
 
     return gdf[groupby].map(grouped_centerpoints["wkt"])
 
@@ -258,12 +280,20 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     Returns:
         A GeoDataFrame or GeoSeries sorted from large to small in area.
 
-    Examples
+    Examples:
     --------
     Create GeoDataFrame with NaN values.
 
     >>> import sgis as sg
-    >>> df = sg.random_points(5)
+    >>> df = sg.to_gdf(
+    ...     [
+    ...         (0, 1),
+    ...         (1, 0),
+    ...         (1, 1),
+    ...         (0, 0),
+    ...         (0.5, 0.5),
+    ...     ]
+    ... )
     >>> df.geometry = df.buffer([4, 1, 2, 3, 5])
     >>> df["col"] = [None, 1, 2, None, 1]
     >>> df["col2"] = [None, 1, 2, 3, None]
@@ -297,16 +327,6 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     area_mapper = dict(enumerate(gdf.area.values))
     sorted_areas = dict(reversed(sorted(area_mapper.items(), key=lambda item: item[1])))
     return gdf.iloc[list(sorted_areas)]
-
-
-def sort_df(
-    df: pd.DataFrame | GeoDataFrame, sort_col: pd.Series
-) -> pd.DataFrame | GeoDataFrame:
-    value_mapper: dict[int, Any] = dict(enumerate(sort_col.values))
-    sorted_indices = dict(
-        reversed(sorted(value_mapper.items(), key=lambda item: item[1]))
-    )
-    return df.iloc[list(sorted_indices)]
 
 
 def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
@@ -402,7 +422,7 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     Returns:
         A GeoDataFrame of points with n rows.
 
-    Examples
+    Examples:
     --------
     >>> import sgis as sg
     >>> points = sg.random_points(10_000)
@@ -451,6 +471,16 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
 
 
 def random_points_in_polygons(gdf: GeoDataFrame, n: int, seed=None) -> GeoDataFrame:
+    """Creates a GeoDataFrame with n random points within the geometries of 'gdf'.
+
+    Args:
+        gdf: A GeoDataFrame.
+        n: Number of points/rows to create.
+        seed: Optional random seet.
+
+    Returns:
+        A GeoDataFrame of points with n rows.
+    """
     all_points = []
 
     rng = np.random.default_rng(seed)
@@ -492,7 +522,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         ignored. This is because the union overlay used if multiple GeoDataFrames
         always ignores the index.
 
-    Examples
+    Examples:
     --------
     Convert single polygon to linestring.
 
@@ -525,7 +555,6 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     >>> lines["l"] = lines.length
     >>> sg.qtm(lines, "l")
     """
-
     if not all(isinstance(gdf, (GeoSeries, GeoDataFrame)) for gdf in gdfs):
         raise TypeError("gdf must be GeoDataFrame or GeoSeries")
 
@@ -534,7 +563,6 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 
     def _shapely_geometry_to_lines(geom):
         """Get all lines from the exterior and interiors of a Polygon."""
-
         # if lines (points are not allowed in this function)
         if geom.area == 0:
             return geom
@@ -664,11 +692,11 @@ def _determine_geom_type_args(
     return gdf, geom_type, keep_geom_type
 
 
-def merge_geometries(geoms: GeoSeries, grid_size=None) -> Geometry:
+def _merge_geometries(geoms: GeoSeries, grid_size=None) -> Geometry:
     return make_valid(unary_union(geoms, grid_size=grid_size))
 
 
-def parallel_unary_union(
+def _parallel_unary_union(
     gdf: GeoDataFrame, n_jobs: int = 1, by=None, grid_size=None, **kwargs
 ) -> list[Geometry]:
     try:
@@ -702,7 +730,7 @@ def parallel_unary_union(
     return dissolved.geometry
 
 
-def parallel_unary_union_geoseries(
+def _parallel_unary_union_geoseries(
     ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
 ) -> list[Geometry]:
     if ser.crs is None:
@@ -725,7 +753,7 @@ def parallel_unary_union_geoseries(
     return dissolved.geometry
 
 
-def parallel_unary_union(
+def _parallel_unary_union(
     gdf: GeoDataFrame, n_jobs: int = 1, by=None, grid_size=None, **kwargs
 ) -> list[Geometry]:
     try:
@@ -737,13 +765,13 @@ def parallel_unary_union(
         delayed_operations = []
         for _, geoms in gdf.groupby(by, **kwargs)[geom_col]:
             delayed_operations.append(
-                joblib.delayed(merge_geometries)(geoms, grid_size=grid_size)
+                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
             )
 
         return parallel(delayed_operations)
 
 
-def parallel_unary_union_geoseries(
+def _parallel_unary_union_geoseries(
     ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
 ) -> list[Geometry]:
 
@@ -756,18 +784,18 @@ def parallel_unary_union_geoseries(
         delayed_operations = []
         for _, geoms in many_hits.groupby(**kwargs):
             delayed_operations.append(
-                joblib.delayed(merge_geometries)(geoms, grid_size=grid_size)
+                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
             )
 
         dissolved = pd.Series(
             parallel(delayed_operations),
-            index=is_one_hit[lambda x: x == False].index.unique(),
+            index=is_one_hit[lambda x: x is False].index.unique(),
         )
 
     return pd.concat([dissolved, one_hit]).sort_index().values
 
 
-def parallel_unary_union_geoseries(
+def _parallel_unary_union_geoseries(
     ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
 ) -> list[Geometry]:
 
@@ -775,7 +803,7 @@ def parallel_unary_union_geoseries(
         delayed_operations = []
         for _, geoms in ser.groupby(**kwargs):
             delayed_operations.append(
-                joblib.delayed(merge_geometries)(geoms, grid_size=grid_size)
+                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
             )
 
         return parallel(delayed_operations)

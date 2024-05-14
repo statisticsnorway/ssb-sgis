@@ -22,7 +22,7 @@ def get_connected_components(gdf: GeoDataFrame) -> GeoDataFrame:
     Returns:
         The GeoDataFrame with a new column "connected".
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url, get_connected_components
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
@@ -75,19 +75,20 @@ def get_component_size(gdf: GeoDataFrame) -> GeoDataFrame:
     Returns:
         A GeoDataFrame with a new column "component_size".
 
-    Examples
+    Examples:
     --------
     >>> from sgis import read_parquet_url, get_component_size
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
 
     >>> roads = get_component_size(roads)
     >>> roads.component_size.value_counts().head()
+    component_size
     79180    85638
     2         1601
     4          688
     6          406
     3          346
-    Name: component_size, dtype: int64
+    Name: count, dtype: int64
     """
     gdf, _ = make_node_ids(gdf)
 

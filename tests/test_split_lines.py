@@ -3,12 +3,9 @@ import sys
 import warnings
 from pathlib import Path
 
-import geopandas as gpd
-import numpy as np
 import pandas as pd
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 sys.path.insert(0, src)
 
@@ -65,13 +62,13 @@ def test_split_lines(points_oslo, roads_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     test_split_lines(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":
-    import cProfile
 
     # cProfile.run("main()", sort="cumtime")
     main()

@@ -11,14 +11,11 @@
 import os
 import warnings
 
-import numpy as np
 import pandas as pd
-
 
 os.chdir("../../src")
 
 import sgis as sg
-
 
 # ignore some warnings
 pd.options.mode.chained_assignment = None

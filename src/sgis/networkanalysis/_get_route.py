@@ -7,7 +7,7 @@ from pandas import DataFrame
 
 
 def _get_route_frequencies(
-    graph,
+    graph: Graph,
     roads: GeoDataFrame,
     weight_df: DataFrame,
 ) -> GeoDataFrame:
@@ -60,7 +60,6 @@ def _get_route(
     od_pairs: pd.MultiIndex,
 ) -> GeoDataFrame:
     """Function used in the get_route method of NetworkAnalysis."""
-
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
     resultlist: list[DataFrame] = []
@@ -86,7 +85,8 @@ def _get_route(
     if not resultlist:
         warnings.warn(
             "No paths were found. Try larger search_tolerance or search_factor. "
-            "Or close_network_holes() or remove_isolated()."
+            "Or close_network_holes() or remove_isolated().",
+            stacklevel=1,
         )
         return pd.DataFrame(columns=["origin", "destination", weight, "geometry"])
 
@@ -121,7 +121,8 @@ def _get_k_routes(
     if not resultlist:
         warnings.warn(
             "No paths were found. Try larger search_tolerance or search_factor. "
-            "Or close_network_holes() or remove_isolated()."
+            "Or close_network_holes() or remove_isolated().",
+            stacklevel=1,
         )
         return pd.DataFrame(columns=["origin", "destination", weight, "geometry"])
 

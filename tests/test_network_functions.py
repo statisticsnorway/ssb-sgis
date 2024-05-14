@@ -2,10 +2,7 @@
 import sys
 from pathlib import Path
 
-import geopandas as gpd
-
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 
 sys.path.insert(0, src)
@@ -25,8 +22,8 @@ def test_network_functions(points_oslo, roads_oslo):
 
     r2 = sg.close_network_holes(r2, 1.1, max_angle=90).pipe(sg.cut_lines, 250)
 
-    if (l := max(r2.length)) > 250 + 1:
-        raise ValueError(f"cut_lines did not cut lines. max line length: {l}")
+    if (max_length := max(r2.length)) > 250 + 1:
+        raise ValueError(f"cut_lines did not cut lines. max line length: {max_length}")
 
     r2 = r2.loc[r2.connected == 1]
     if __name__ == "__main__":
@@ -44,7 +41,8 @@ def test_network_functions(points_oslo, roads_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     test_network_functions(points_oslo(), roads_oslo())
 

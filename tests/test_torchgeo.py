@@ -1,18 +1,6 @@
 # %%
-import multiprocessing
-import os
 import sys
 from pathlib import Path
-from time import perf_counter
-
-import numpy as np
-import pandas as pd
-import shapely
-import xarray as xr
-from IPython.display import display
-from pyproj import CRS
-from shapely import box
-
 
 src = str(Path(__file__).parent.parent) + "/src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -20,7 +8,6 @@ testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 path_sentinel = testdata + "/sentinel2"
 

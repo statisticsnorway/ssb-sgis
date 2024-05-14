@@ -2,20 +2,26 @@ from collections.abc import Iterable
 
 import networkx as nx
 import pandas as pd
-from geopandas import GeoDataFrame, GeoSeries
-from shapely import STRtree, difference, make_valid, simplify, unary_union
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from shapely import STRtree
+from shapely import difference
+from shapely import make_valid
+from shapely import simplify
+from shapely import unary_union
 from shapely.errors import GEOSException
 
-from .general import (
-    _determine_geom_type_args,
-    _push_geom_col,
-    clean_geoms,
-    parallel_unary_union_geoseries,
-)
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
-from .overlay import _run_overlay_dask, clean_overlay, make_valid_and_keep_geom_type
-from .sfilter import sfilter_inverse, sfilter_split
-
+from .general import _determine_geom_type_args
+from .general import _parallel_unary_union_geoseries
+from .general import _push_geom_col
+from .general import clean_geoms
+from .geometry_types import get_geom_type
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
+from .overlay import _run_overlay_dask
+from .overlay import clean_overlay
+from .overlay import make_valid_and_keep_geom_type
+from .sfilter import sfilter_inverse
 
 PRECISION = 1e-3
 
@@ -44,8 +50,10 @@ def update_geometries(
             "line" or "point".
         grid_size: Precision grid size to round the geometries. Will use the highest
             precision of the inputs by default.
+        n_jobs: Number of threads.
+        predicate: Spatial predicate for the spatial tree.
 
-    Example
+    Example:
     ------
     Create two circles and get the overlap.
 
@@ -107,7 +115,7 @@ def update_geometries(
     # select geometries from 'right', index from 'left', dissolve by 'left'
     erasers = pd.Series(copied.geometry.loc[indices.values].values, index=indices.index)
     if n_jobs > 1:
-        erasers = parallel_unary_union_geoseries(
+        erasers = _parallel_unary_union_geoseries(
             erasers,
             level=0,
             n_jobs=n_jobs,
@@ -198,11 +206,13 @@ def get_intersections(
         keep_geom_type: Whether to keep the original geometry type.
             If mixed geometry types and keep_geom_type=True,
             an exception is raised.
+        n_jobs: Number of threads.
+        predicate: Spatial predicate for the spatial tree.
 
     Returns:
         A GeoDataFrame of the overlapping polygons.
 
-    Examples
+    Examples:
     --------
     Create three partially overlapping polygons.
 
@@ -284,7 +294,11 @@ def get_intersections(
 
 
 def _get_intersecting_geometries(
-    gdf: GeoDataFrame, geom_type, keep_geom_type, n_jobs, predicate
+    gdf: GeoDataFrame,
+    geom_type: str | None,
+    keep_geom_type: bool,
+    n_jobs: int,
+    predicate: str | None,
 ) -> GeoDataFrame:
     right = gdf[[gdf._geometry_column_name]]
     right["idx_right"] = right.index
@@ -376,7 +390,7 @@ def _get_duplicate_geometry_groups(
     tree = STRtree(gdf.geometry.values)
     left, right = tree.query(gdf.geometry.values, predicate="within")
 
-    edges = list(zip(left, right))
+    edges = list(zip(left, right, strict=False))
 
     graph = nx.Graph()
     graph.add_edges_from(edges)

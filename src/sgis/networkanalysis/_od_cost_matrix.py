@@ -47,7 +47,9 @@ def _od_cost_matrix(
     return results.reset_index(drop=True)
 
 
-def _get_od_df(graph, origins, destinations, weight_col):
+def _get_od_df(
+    graph: Graph, origins: GeoDataFrame, destinations: GeoDataFrame, weight_col: str
+) -> pd.DataFrame:
     distances: list[list[float]] = graph.distances(
         weights="weight",
         source=origins,
@@ -68,3 +70,44 @@ def _get_od_df(graph, origins, destinations, weight_col):
         .replace([np.inf, -np.inf], np.nan)
         .reset_index(drop=True)
     )
+
+
+def _get_one_od_df(
+    graph: Graph, origins: GeoDataFrame, destinations: GeoDataFrame, weight_col: str
+) -> pd.DataFrame:
+    distances: list[list[float]] = graph.distances(
+        weights="weight",
+        source=origins,
+        target=destinations,
+    )
+
+    ori_idx, des_idx, costs = [], [], []
+    for i, f_idx in enumerate(origins):
+        for j, t_idx in enumerate(destinations):
+            ori_idx.append(f_idx)
+            des_idx.append(t_idx)
+            costs.append(distances[i][j])
+
+    return (
+        pd.DataFrame(
+            data={"origin": ori_idx, "destination": des_idx, weight_col: costs}
+        )
+        .replace([np.inf, -np.inf], np.nan)
+        .reset_index(drop=True)
+    )
+
+
+# def _get_od_df(
+#     graph: Graph,
+#     origins: GeoDataFrame,
+#     destinations: GeoDataFrame,
+#     weight_col: str,
+# ) -> pd.DataFrame:
+#     from ..parallel.parallel import Parallel
+
+#     results: list[pd.DataFrame] = Parallel(40, backend="loky").map(
+#         _get_one_od_df,
+#         [origins[origins.index == i] for i in origins.index.unique()],
+#         kwargs=dict(graph=graph, destinations=destinations, weight_col=weight_col),
+#     )
+#     return pd.concat(results, ignore_index=True)

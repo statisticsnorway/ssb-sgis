@@ -1,16 +1,21 @@
 # %%
-"""Prints outputs to paste into docstrings. Run this in the terminal:
+"""Prints outputs to paste into docstrings.
+
+Run the following in the terminal:
 
 poetry run python docs/docstring_outputs.py
 
 """
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
+from shapely.geometry import MultiPoint
+from shapely.geometry import Point
+from shapely.geometry import Polygon
 
 src = str(Path(__file__).parent.parent / "src")
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata"
@@ -18,13 +23,12 @@ sys.path.insert(0, src)
 
 import sgis as sg
 
-
 path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
 sg.Raster.dapla = False
 
 
-def print_function_name(func):
+def print_function_name(func: Callable) -> None:
     def wrapper(*args, **kwargs):
         print("\n\n\n", func.__name__, "\n\n\n")
         func(*args, **kwargs)
@@ -32,11 +36,8 @@ def print_function_name(func):
     return wrapper
 
 
-from shapely.geometry import MultiPoint, Point, Polygon
-
-
 @print_function_name
-def raster():
+def _raster() -> None:
     r = sg.Raster.from_path(path_singleband)
     print(r)
 
@@ -63,14 +64,13 @@ def raster():
     r.array[r.array < 0] = 0
     zonal = r.zonal(gdf, aggfunc=["sum", np.mean])
     print(zonal)
-    ss
 
 
-raster()
+_raster()
 
 
 @print_function_name
-def gridloop():
+def _gridloop() -> None:
     def overlay_func(df1, df2):
         return df1.overlay(df2)
 
@@ -84,22 +84,22 @@ def gridloop():
     results = pd.concat(results, ignore_index=True)
 
 
-gridloop()
+_gridloop()
 
 
 @print_function_name
-def bounds():
+def _bounds() -> None:
     gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     print(gdf)
     print(sg.bounds_to_points(gdf))
     print(sg.bounds_to_polygon(gdf))
 
 
-bounds()
+_bounds()
 
 
 @print_function_name
-def polygon_clusters_docstring():
+def _polygon_clusters_docstring() -> None:
     import sgis as sg
 
     gdf = sg.to_gdf(
@@ -129,11 +129,11 @@ def polygon_clusters_docstring():
     print(dissolved2.area.sum())
 
 
-polygon_clusters_docstring()
+_polygon_clusters_docstring()
 
 
 @print_function_name
-def legend_docstring():
+def _legend_docstring() -> None:
     import sgis as sg
 
     points = sg.random_points(10)
@@ -195,8 +195,9 @@ def legend_docstring():
     m.plot()
 
 
-def split_lines_docstring():
-    from sgis import read_parquet_url, split_lines_by_nearest_point
+def _split_lines_docstring() -> None:
+    from sgis import read_parquet_url
+    from sgis import split_lines_by_nearest_point
 
     roads = read_parquet_url(
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -214,10 +215,11 @@ def split_lines_docstring():
     print("number of lines that were split:", len(roads) - rows)
 
 
-def to_single_geom_type_docstring():
-    from shapely.geometry import LineString, Polygon
+def _to_single_geom_type_docstring() -> None:
+    from shapely.geometry import LineString
 
-    from sgis import to_gdf, to_single_geom_type
+    from sgis import to_gdf
+    from sgis import to_single_geom_type
 
     gdf = to_gdf(
         [
@@ -239,8 +241,9 @@ def to_single_geom_type_docstring():
 
 
 @print_function_name
-def get_neighbor_indices_docstring():
-    from sgis import get_neighbor_indices, to_gdf
+def _get_neighbor_indices_docstring() -> None:
+    from sgis import get_neighbor_indices
+    from sgis import to_gdf
 
     points = to_gdf([(0, 0), (0.5, 0.5)])
     points["text"] = [*"ab"]
@@ -255,11 +258,11 @@ def get_neighbor_indices_docstring():
     print(neighbor_indices.index)
 
 
-get_neighbor_indices_docstring()
+_get_neighbor_indices_docstring()
 
 
 @print_function_name
-def networkanalysis_doctring(nwa, points):
+def _networkanalysis_doctring(nwa, points):
     origins = points.loc[:99, ["geometry"]]
     print(origins)
     destinations = points.loc[100:199, ["geometry"]]
@@ -296,7 +299,6 @@ def networkanalysis_doctring(nwa, points):
     routes = nwa.get_route(points.iloc[[0]], points)
     print(routes)
     print("\n")
-    ss
 
     origins = points.iloc[:25]
     destinations = points.iloc[25:50]
@@ -330,7 +332,7 @@ def networkanalysis_doctring(nwa, points):
 
 
 @print_function_name
-def networkanalysisrules_docstring():
+def _networkanalysisrules_docstring() -> None:
     import sgis as sg
 
     roads = sg.read_parquet_url(
@@ -343,7 +345,7 @@ def networkanalysisrules_docstring():
     nw = (
         sg.get_connected_components(roads)
         .query("connected == 1")
-        .pipe(sg.make_directed_network_norway)
+        .pipe(sg.make_directed_network_norway, dropnegative=True)
     )
     rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
     nwa = sg.NetworkAnalysis(network=nw, rules=rules)
@@ -399,7 +401,7 @@ def networkanalysisrules_docstring():
 
 
 @print_function_name
-def get_k_routes_docstring(nwa, points):
+def _get_k_routes_docstring(nwa, points):
     p1, p2 = points.iloc[[0]], points.iloc[[1]]
     k_routes = nwa.get_k_routes(p1, p2, k=10, drop_middle_percent=1)
     print(k_routes)
@@ -415,14 +417,14 @@ def get_k_routes_docstring(nwa, points):
 
 
 @print_function_name
-def get_route_docstring(nwa, points):
+def _get_route_docstring(nwa, points):
     routes = nwa.get_route(points.iloc[[0]], points)
     print(routes)
     print("\n")
 
 
 @print_function_name
-def get_route_frequencies_docstring(nwa, points):
+def _get_route_frequencies_docstring(nwa, points):
     origins = points.iloc[:25]
     destinations = points.iloc[25:50]
     frequencies = nwa.get_route_frequencies(origins, destinations)
@@ -447,7 +449,7 @@ def get_route_frequencies_docstring(nwa, points):
 
 
 @print_function_name
-def service_area_docstring(nwa, points):
+def _service_area_docstring(nwa, points):
     service_areas = nwa.service_area(
         points.loc[:2],
         breaks=10,
@@ -464,7 +466,7 @@ def service_area_docstring(nwa, points):
 
 
 @print_function_name
-def od_cost_matrix_docstring(nwa, points):
+def _od_cost_matrix_docstring(nwa, points):
     origins = points.loc[:99, ["geometry"]]
     print(origins)
     print("\n")
@@ -511,7 +513,7 @@ def od_cost_matrix_docstring(nwa, points):
 
 
 @print_function_name
-def buffdiss_docstring(points):
+def _buffdiss_docstring(points):
     points = points[["geometry"]]
     points["group"] = np.random.choice([*"abd"], len(points))
     points["number"] = np.random.random(size=len(points))
@@ -539,7 +541,7 @@ def buffdiss_docstring(points):
 
 
 @print_function_name
-def buffdissexp_docstring(points):
+def _buffdissexp_docstring(points):
     points = points[["geometry"]]
     points["group"] = np.random.choice([*"abd"], len(points))
     points["number"] = np.random.random(size=len(points))
@@ -555,8 +557,9 @@ def buffdissexp_docstring(points):
 
 
 @print_function_name
-def get_k_neighbors_docstring():
-    from sgis import get_k_nearest_neighbors, random_points
+def _get_k_neighbors_docstring() -> None:
+    from sgis import get_k_nearest_neighbors
+    from sgis import random_points
 
     points = random_points(100)
     neighbors = random_points(100)
@@ -582,8 +585,9 @@ def get_k_neighbors_docstring():
 
 
 @print_function_name
-def get_all_distances_docstring():
-    from sgis import get_all_distances, random_points
+def _get_all_distances_docstring() -> None:
+    from sgis import get_all_distances
+    from sgis import random_points
 
     points = random_points(100)
     neighbors = random_points(100)
@@ -607,8 +611,9 @@ def get_all_distances_docstring():
     print("\n")
 
 
-def get_neighbor_indices():
-    from sgis import get_neighbor_indices, to_gdf
+def _get_neighbor_indices() -> None:
+    from sgis import get_neighbor_indices
+    from sgis import to_gdf
 
     points = to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
     points
@@ -624,19 +629,19 @@ def get_neighbor_indices():
     print(get_neighbor_indices(p1, points.set_index("text"), max_distance=3))
 
 
-def make_docstring_output():
-    get_neighbor_indices()
+def _make_docstring_output() -> None:
+    _get_neighbor_indices()
 
-    get_k_neighbors_docstring()
+    _get_k_neighbors_docstring()
 
-    get_all_distances_docstring()
+    _get_all_distances_docstring()
 
     points = sg.read_parquet_url(
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
     )
 
-    buffdiss_docstring(points)
-    buffdissexp_docstring(points)
+    _buffdiss_docstring(points)
+    _buffdissexp_docstring(points)
 
     roads = sg.read_parquet_url(
         "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet"
@@ -645,7 +650,7 @@ def make_docstring_output():
     nw = (
         sg.get_connected_components(roads)
         .query("connected == 1")
-        .pipe(sg.make_directed_network_norway)
+        .pipe(sg.make_directed_network_norway, dropnegative=True)
     )
     rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
 
@@ -653,17 +658,16 @@ def make_docstring_output():
 
     directed_isolated_dropped = NetworkAnalysis(network=nw, rules=rules)
 
-    networkanalysis_doctring(directed_isolated_dropped, points)
-    sss
+    _networkanalysis_doctring(directed_isolated_dropped, points)
 
-    networkanalysisrules_docstring()
+    _networkanalysisrules_docstring()
 
-    od_cost_matrix_docstring(directed_isolated_dropped, points)
-    get_k_routes_docstring(directed_isolated_dropped, points)
-    service_area_docstring(directed_isolated_dropped, points)
-    get_route_frequencies_docstring(directed_isolated_dropped, points)
-    get_route_docstring(directed_isolated_dropped, points)
+    _od_cost_matrix_docstring(directed_isolated_dropped, points)
+    _get_k_routes_docstring(directed_isolated_dropped, points)
+    _service_area_docstring(directed_isolated_dropped, points)
+    _get_route_frequencies_docstring(directed_isolated_dropped, points)
+    _get_route_docstring(directed_isolated_dropped, points)
 
 
 if __name__ == "__main__":
-    make_docstring_output()
+    _make_docstring_output()

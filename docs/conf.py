@@ -1,3 +1,5 @@
+"""Sphinx configuration."""
+
 # Configuration file for the Sphinx documentation builder.
 #
 # This file only contains a selection of the most common options. For a full
@@ -14,7 +16,6 @@ import os
 import sys
 from datetime import date
 
-
 sys.path.insert(0, os.path.abspath("../src"))
 
 
@@ -24,12 +25,7 @@ project = "ssb-sgis"
 copyright = f"{date.today().year}, Statistics Norway"
 author = "Statistics Norway"
 
-# The full version, including alpha/beta/rc tags
-# release = "0.1.0"
-
-
 # -- General configuration ---------------------------------------------------
-
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
@@ -63,7 +59,7 @@ html_theme = "furo"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-# html_static_path = []
+# html_static_path = ["_static"]
 
 
 # -- Other configuration ---------------------------------------------------

@@ -3,40 +3,38 @@
 import networkx as nx
 import numpy as np
 import pandas as pd
-import shapely
-from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryArray
-from shapely import (
-    STRtree,
-    area,
-    box,
-    buffer,
-    difference,
-    get_exterior_ring,
-    get_interior_ring,
-    get_num_interior_rings,
-    get_parts,
-    is_empty,
-    make_valid,
-    polygons,
-    unary_union,
-)
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from shapely import STRtree
+from shapely import area
+from shapely import box
+from shapely import buffer
+from shapely import difference
+from shapely import get_exterior_ring
+from shapely import get_interior_ring
+from shapely import get_num_interior_rings
+from shapely import get_parts
+from shapely import is_empty
+from shapely import make_valid
+from shapely import polygons
+from shapely import unary_union
 from shapely.errors import GEOSException
 
-from .duplicates import get_intersections
-from .general import (
-    _push_geom_col,
-    clean_geoms,
-    get_grouped_centroids,
-    parallel_unary_union,
-    parallel_unary_union_geoseries,
-    to_lines,
-)
-from .geometry_types import get_geom_type, make_all_singlepart, to_single_geom_type
+from .general import _parallel_unary_union
+from .general import _parallel_unary_union_geoseries
+from .general import _push_geom_col
+from .general import clean_geoms
+from .general import get_grouped_centroids
+from .general import to_lines
+from .geometry_types import get_geom_type
+from .geometry_types import make_all_singlepart
+from .geometry_types import to_single_geom_type
 from .neighbors import get_neighbor_indices
-from .overlay import _try_difference, clean_overlay
+from .overlay import _try_difference
+from .overlay import clean_overlay
 from .polygons_as_rings import PolygonsAsRings
-from .sfilter import sfilter, sfilter_inverse
+from .sfilter import sfilter
+from .sfilter import sfilter_inverse
 
 
 def get_polygon_clusters(
@@ -63,6 +61,7 @@ def get_polygon_clusters(
         cluster_col: Name of the resulting cluster column.
         allow_multipart: Whether to allow mutipart geometries in the gdfs.
             Defaults to False to avoid confusing results.
+        predicate: Spatial predicate. Defaults to "intersects".
         as_string: Whether to return the cluster column values as a string with x and y
             coordinates. Convinient to always get unique ids.
             Defaults to False because of speed.
@@ -70,9 +69,8 @@ def get_polygon_clusters(
     Returns:
         One or more GeoDataFrames (same amount as was given) with a new cluster column.
 
-    Examples
+    Examples:
     --------
-
     Create geometries with three clusters of overlapping polygons.
 
     >>> import sgis as sg
@@ -186,7 +184,9 @@ def get_polygon_clusters(
     return unconcated
 
 
-def get_cluster_mapper(gdf, predicate="intersects"):
+def get_cluster_mapper(
+    gdf: GeoDataFrame | GeoSeries, predicate: str = "intersects"
+) -> dict[int, int]:
     if not gdf.index.is_unique:
         raise ValueError("Index must be unique")
     neighbors = get_neighbor_indices(gdf, gdf, predicate=predicate)
@@ -241,15 +241,16 @@ def eliminate_by_longest(
             'gdf' are sorted first, but if 'gdf' has missing values, the resulting
             polygons might get values from the polygons to be eliminated
             (if aggfunc="first").
-        kwargs: Keyword arguments passed to the dissolve method.
+        grid_size: Rounding of the coordinates. Defaults to None.
+        n_jobs: Number of threads to use. Defaults to 1.
+        **kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
         The GeoDataFrame (gdf) with the geometries of 'to_eliminate' dissolved in.
         If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
 
-    Examples
+    Examples:
     --------
-
     Create two polygons with a sliver in between:
 
     >>> sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)]))
@@ -398,6 +399,8 @@ def eliminate_by_largest(
     Args:
         gdf: GeoDataFrame with polygon geometries, or a list of GeoDataFrames.
         to_eliminate: The geometries to be eliminated by 'gdf'.
+        max_distance: Max distance to search for neighbors. Defaults to None, meaning
+            0.
         remove_isolated: If False (default), polygons in 'to_eliminate' that share
             no border with any polygon in 'gdf' will be kept. If True, the isolated
             polygons will be removed.
@@ -414,15 +417,16 @@ def eliminate_by_largest(
             polygons might get values from the polygons to be eliminated
             (if aggfunc="first").
         predicate: Binary predicate passed to sjoin. Defaults to "intersects".
-        kwargs: Keyword arguments passed to the dissolve method.
+        grid_size: Rounding of the coordinates. Defaults to None.
+        n_jobs: Number of threads to use. Defaults to 1.
+        **kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
         The GeoDataFrame (gdf) with the geometries of 'to_eliminate' dissolved in.
         If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
 
-    Examples
+    Examples:
     --------
-
     Create two polygons with a sliver in between:
 
     >>> sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)]))
@@ -700,7 +704,7 @@ def _eliminate(
 
         if n_jobs > 1:
             eliminated["geometry"] = GeoSeries(
-                parallel_unary_union_geoseries(
+                _parallel_unary_union_geoseries(
                     pd.concat([eliminators, soon_erased, missing]),
                     level=0,
                     grid_size=grid_size,
@@ -721,7 +725,7 @@ def _eliminate(
 
     else:
         if n_jobs > 1:
-            eliminated["geometry"] = parallel_unary_union(
+            eliminated["geometry"] = _parallel_unary_union(
                 many_hits, by="_dissolve_idx", grid_size=grid_size, n_jobs=n_jobs
             )
         else:
@@ -773,16 +777,6 @@ def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
     return PolygonsAsRings(gdf).apply_numpy_func_to_interiors(to_none_if_thin).to_gdf()
 
 
-def return_correct_geometry_object(in_obj, out_obj):
-    if isinstance(in_obj, GeoDataFrame):
-        in_obj.geometry = out_obj
-        return in_obj
-    elif isinstance(in_obj, GeoSeries):
-        return GeoSeries(out_obj, crs=in_obj.crs)
-    else:
-        return out_obj
-
-
 def close_all_holes(
     gdf: GeoDataFrame | GeoSeries,
     *,
@@ -808,7 +802,7 @@ def close_all_holes(
         A GeoDataFrame or GeoSeries of polygons with closed holes in the geometry
         column.
 
-    Examples
+    Examples:
     --------
     Let's create a circle with a hole in it.
 
@@ -897,9 +891,8 @@ def close_small_holes(
             meter units.
         ValueError: If both 'max_m2' and 'max_km2' is given.
 
-    Examples
+    Examples:
     --------
-
     Let's create a circle with a hole in it.
 
     >>> point = sg.to_gdf([260000, 6650000], crs=25833)
@@ -984,7 +977,6 @@ def close_small_holes(
 
 def _close_small_holes_no_islands(poly, max_area, all_geoms):
     """Closes small holes within one shapely geometry of polygons."""
-
     # start with a list containing the polygon,
     # then append all holes smaller than 'max_km2' to the list.
     holes_closed = [poly]
@@ -1010,7 +1002,6 @@ def _close_small_holes_no_islands(poly, max_area, all_geoms):
 
 def _close_all_holes_no_islands(poly, all_geoms):
     """Closes all holes within one shapely geometry of polygons."""
-
     # start with a list containing the polygon,
     # then append all holes smaller than 'max_km2' to the list.
     holes_closed = [poly]
@@ -1041,6 +1032,7 @@ def get_gaps(
         gdf: GeoDataFrame of polygons.
         include_interiors: If False (default), the holes inside individual polygons
             will not be included as gaps.
+        grid_size: Rounding of the coordinates.
 
     Note:
         See get_holes to find holes inside singlepart polygons.

@@ -5,25 +5,20 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import pyogrio
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 import sys
-
 
 sys.path.insert(0, src)
 
 import sgis as sg
 
-
 print(sys.executable)
 
 
 def osm_api():
-    "https://api.openstreetmap.org/"
-
+    """https://api.openstreetmap.org/."""
     import xml.etree.ElementTree as ET
 
     import osmapi
@@ -53,7 +48,8 @@ def osm_api():
 
 
 def read_osm():
-    from pyrosm import OSM, get_data
+    from pyrosm import OSM
+    from pyrosm import get_data
 
     # Initialize reader
     osm = OSM(get_data("test_pbf"))
@@ -67,6 +63,8 @@ def read_osm():
 
 
 def not_test_osm():
+    import pyogrio
+
     warnings.filterwarnings(action="ignore", category=FutureWarning)
     #    warnings.filterwarnings(action="ignore", category=UserWarning)
     pd.options.mode.chained_assignment = None

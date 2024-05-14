@@ -2,8 +2,8 @@
 import sys
 from pathlib import Path
 
-from shapely.geometry import LineString, Point
-
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
 src = str(Path(__file__).parent.parent) + "/src"
 

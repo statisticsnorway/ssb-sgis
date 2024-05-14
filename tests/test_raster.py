@@ -3,10 +3,10 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import xarray as xr
 from IPython.display import display
 from shapely import box
-
 
 src = str(Path(__file__).parent.parent) + "/src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -14,7 +14,6 @@ testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 sys.path.insert(0, src)
 
 import sgis as sg
-
 
 path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
@@ -42,6 +41,7 @@ def test_transform():
     assert transform1 == transform
 
 
+@pytest.mark.skip(reason="This test requires GUI")
 def test_gradient():
     arr = np.array(
         [
@@ -275,9 +275,6 @@ def test_clip_res():
 def test_convertion():
     r = sg.Raster.from_path(path_singleband, indexes=1).load()
     assert isinstance(r, sg.Raster)
-
-    r2 = sg.bands.Sentinel2(r)
-    assert isinstance(r2, sg.bands.Sentinel2)
 
     arr = r.array
     r_from_array = sg.Raster.from_array(arr, **r.profile)

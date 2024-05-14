@@ -1,20 +1,19 @@
 # %%
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
+import pytest
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 import sys
-
 
 sys.path.insert(0, src)
 
 import sgis as sg
 
 
+@pytest.mark.skip(reason="This test requires GUI")
 def test_qtm(points_oslo):
     points = points_oslo
 

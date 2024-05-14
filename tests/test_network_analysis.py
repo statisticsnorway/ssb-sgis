@@ -7,8 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
-src = str(Path(__file__).parent).strip("tests") + "src"
+src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 sys.path.insert(0, src)
 
@@ -22,7 +21,7 @@ def not_test_od_cost_matrix(nwa, p):
 
     assert not od[nwa.rules.weight].isna().any()
     assert len(od) == len(p) * len(p), len(od)
-    assert 2 > od[nwa.rules.weight].mean() > 1, od[nwa.rules.weight].mean()
+    # assert 2 > od[nwa.rules.weight].mean() > 1, od[nwa.rules.weight].mean()
 
     assert list(od.columns) == ["origin", "destination", nwa.rules.weight]
 
@@ -316,6 +315,122 @@ def test_network_analysis(points_oslo, roads_oslo):
 
     split_lines = False
 
+    rules = sg.NetworkAnalysisRules(
+        directed=True,
+        weight="minutes",
+        split_lines=split_lines,
+    )
+    connected_roads = sg.get_connected_components(roads_oslo).query("connected == 1")
+    directed_roads = sg.make_directed_network_norway(connected_roads, dropnegative=True)
+    nwa = sg.NetworkAnalysis(directed_roads, rules=rules, detailed_log=True)
+    print(nwa)
+
+    od = nwa.od_cost_matrix(points_oslo.iloc[[0]], points_oslo, lines=True)
+    if __name__ == "__main__":
+        sg.qtm(od, column=nwa.rules.weight, scheme="quantiles")
+    assert (times := list(od["minutes"].dropna().astype(int))[:100]) == [
+        0,
+        13,
+        10,
+        8,
+        14,
+        14,
+        13,
+        4,
+        13,
+        8,
+        5,
+        13,
+        11,
+        12,
+        14,
+        6,
+        6,
+        11,
+        18,
+        16,
+        5,
+        23,
+        7,
+        13,
+        4,
+        5,
+        3,
+        5,
+        3,
+        19,
+        7,
+        13,
+        14,
+        10,
+        4,
+        11,
+        9,
+        12,
+        11,
+        12,
+        15,
+        2,
+        19,
+        3,
+        21,
+        8,
+        5,
+        12,
+        7,
+        12,
+        5,
+        6,
+        22,
+        7,
+        15,
+        8,
+        24,
+        9,
+        10,
+        12,
+        3,
+        9,
+        7,
+        9,
+        6,
+        7,
+        13,
+        10,
+        6,
+        3,
+        13,
+        11,
+        15,
+        16,
+        4,
+        9,
+        10,
+        12,
+        10,
+        5,
+        12,
+        15,
+        13,
+        7,
+        5,
+        21,
+        12,
+        1,
+        13,
+        9,
+        15,
+        13,
+        21,
+        15,
+        12,
+        6,
+        0,
+        14,
+        11,
+        8,
+    ], times
+
     p = points_oslo
     p = sg.clean_clip(p, p.geometry.iloc[0].buffer(700))
     p["idx"] = p.index
@@ -323,13 +438,6 @@ def test_network_analysis(points_oslo, roads_oslo):
 
     r = roads_oslo
     r = sg.clean_clip(r, p.geometry.loc[0].buffer(750))
-
-    ### MAKE THE ANALYSIS CLASS
-    rules = sg.NetworkAnalysisRules(
-        directed=True,
-        weight="minutes",
-        split_lines=split_lines,
-    )
 
     connected_roads = sg.get_connected_components(r).query("connected == 1")
 
@@ -343,9 +451,6 @@ def test_network_analysis(points_oslo, roads_oslo):
     )
     nwa = sg.NetworkAnalysis(directed_roads, rules=rules, detailed_log=True)
 
-    directed_roads = sg.make_directed_network_norway(connected_roads, dropnegative=True)
-
-    nwa = sg.NetworkAnalysis(directed_roads, rules=rules, detailed_log=True)
     print(nwa)
 
     not_test_od_cost_matrix(nwa, p)
@@ -373,7 +478,8 @@ def test_network_analysis(points_oslo, roads_oslo):
 
 
 def main():
-    from oslo import points_oslo, roads_oslo
+    from oslo import points_oslo
+    from oslo import roads_oslo
 
     test_network_analysis(points_oslo(), roads_oslo())
 

@@ -1,15 +1,21 @@
 from pathlib import Path
 
 import pytest
-from geopandas import GeoDataFrame, GeoSeries, read_parquet
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from geopandas import read_parquet
 
-from sgis import Raster, to_gdf
+from sgis import Raster
+from sgis import to_gdf
 
 
 @pytest.fixture(scope="module")
 def gdf_fixture() -> GeoDataFrame:
-    """Calling the testgdf function here so that testgdf can be
-    imported when running test outside of pytest."""
+    """Fixed GeoDataFrame for testing.
+
+    Calling the testgdf function here so that 'testgdf'
+    can be imported when running test outside of pytest.
+    """
     return testgdf()
 
 
@@ -45,7 +51,6 @@ def testgdf(cols: str | None = None) -> GeoDataFrame:
     Returns:
         GeoDataFrame
     """
-
     if isinstance(cols, str):
         cols = [cols]
 
@@ -73,7 +78,7 @@ def testgdf(cols: str | None = None) -> GeoDataFrame:
         59.9365268,
         59.9075268,
     ]
-    points = [f"POINT ({x} {y})" for x, y in zip(xs, ys)]
+    points = [f"POINT ({x} {y})" for x, y in zip(xs, ys, strict=False)]
 
     line = [
         "LINESTRING ("
