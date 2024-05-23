@@ -544,6 +544,19 @@ class DataCube:
         self.data = data
         return self
 
+    def sample(self, n: int, copy: bool = True, **kwargs) -> Self:
+        """Take n samples of the cube."""
+        if self.crs is None:
+            self._crs = get_common_crs(self.data)
+
+        cube = self.copy() if copy else self
+
+        cube.data = list(pd.Series(cube.data).sample(n))
+
+        cube.data = cube.run_raster_method("load", **kwargs)
+
+        return cube
+
     def load(self, copy: bool = True, **kwargs) -> Self:
         """Load all images as arrays into a DataCube copy."""
         if self.crs is None:
@@ -620,7 +633,7 @@ class DataCube:
                 ).items()
                 if key in ALLOWED_KEYS and key not in ["array", "indexes"]
             }
-            if raster.array is None:
+            if raster.values is None:
                 return [
                     raster.__class__.from_dict({"indexes": i} | all_meta)
                     for i in raster.indexes_as_tuple()
@@ -830,7 +843,7 @@ class DataCube:
     @property
     def arrays(self) -> list[np.ndarray]:
         """The arrays of the images as a list."""
-        return [raster.array for raster in self]
+        return [raster.values for raster in self]
 
     @arrays.setter
     def arrays(self, new_arrays: list[np.ndarray]):
@@ -995,7 +1008,7 @@ class DataCube:
 
     def _check_for_array(self, text: str = "") -> None:
         mess = "Arrays are not loaded. " + text
-        if all(raster.array is None for raster in self):
+        if all(raster.values is None for raster in self):
             raise ValueError(mess)
 
     def __getitem__(
@@ -1127,7 +1140,7 @@ def _merge(
     bounds: Any | None = None,
     **kwargs,
 ) -> DataCube:
-    if not all(r.array is None for r in cube):
+    if not all(r.values is None for r in cube):
         raise ValueError("Arrays can't be loaded when calling merge.")
 
     bounds = to_bbox(bounds) if bounds is not None else bounds

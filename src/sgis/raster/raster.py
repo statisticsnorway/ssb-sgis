@@ -102,8 +102,8 @@ class Raster:
     The array is stored in the array attribute.
 
     >>> raster.load()
-    >>> raster.array[raster.array < 0] = 0
-    >>> raster.array
+    >>> raster.values[raster.values < 0] = 0
+    >>> raster.values
     [[[  0.    0.    0.  ... 158.4 155.6 152.6]
     [  0.    0.    0.  ... 158.  154.8 151.9]
     [  0.    0.    0.  ... 158.5 155.1 152.3]
@@ -208,9 +208,9 @@ class Raster:
             self.path = None
 
         if isinstance(data, (np.ndarray)):
-            self.array = data
+            self.values = data
         else:
-            self.array = None
+            self.values = None
 
         if self.path is None and not any(
             [kwargs.get("transform"), kwargs.get("bounds")]
@@ -457,7 +457,7 @@ class Raster:
                 Thise will override the items in the Raster's profile,
                 if overlapping.
         """
-        if self.array is None:
+        if self.values is None:
             raise AttributeError("The image hasn't been loaded.")
 
         profile = self.profile | kwargs
@@ -575,10 +575,12 @@ class Raster:
         aggregated = []
         for i, poly in poly_iter:
             clipped = self.clip(poly)
-            if not np.size(clipped.array):
+            if not np.size(clipped.values):
                 aggregated.append(_no_overlap_df(func_names, i, date=self.date))
             aggregated.append(
-                _aggregate(clipped.array, array_func, aggfunc, func_names, self.date, i)
+                _aggregate(
+                    clipped.values, array_func, aggfunc, func_names, self.date, i
+                )
             )
 
         return _zonal_post(
@@ -631,7 +633,7 @@ class Raster:
         The calculation is by default done in place to save memory.
 
         >>> r.gradient()
-        >>> r.array
+        >>> r.values
         array([[0., 1., 1., 1., 0.],
             [1., 1., 1., 1., 1.],
             [1., 1., 0., 1., 1.],
@@ -645,18 +647,18 @@ class Raster:
         self._check_for_array()
         self.name = self.name or self.__class__.__name__.lower()
         coords = _generate_spatial_coords(self.transform, self.width, self.height)
-        if len(self.array.shape) == 2:
+        if len(self.values.shape) == 2:
             dims = ["y", "x"]
             # dims = ["band", "y", "x"]
-            # array = np.array([self.array])
+            # array = np.array([self.values])
             # assert len(array.shape) == 3
-        elif len(self.array.shape) == 3:
+        elif len(self.values.shape) == 3:
             dims = ["band", "y", "x"]
-            # array = self.array
+            # array = self.values
         else:
             raise ValueError("Array must be 2 or 3 dimensional.")
         return xr.DataArray(
-            self.array,
+            self.values,
             coords=coords,
             dims=dims,
             name=self.name,
@@ -690,7 +692,7 @@ class Raster:
         """
         self._check_for_array()
 
-        array_list = self.array_list()
+        array_list = self.values_list()
 
         if is_list_like(column) and len(column) != len(array_list):
             raise ValueError(
@@ -728,7 +730,7 @@ class Raster:
         if not allow_override and self.crs is not None:
             raise ValueError("Cannot overwrite crs when allow_override is False.")
 
-        if self.array is None:
+        if self.values is None:
             raise ValueError("array must be loaded/clipped before set_crs")
 
         self._crs = pyproj.CRS(crs)
@@ -750,7 +752,7 @@ class Raster:
         # ):
         #     return self
 
-        if self.array is None:
+        if self.values is None:
             project = pyproj.Transformer.from_crs(
                 pyproj.CRS(self._prev_crs), pyproj.CRS(crs), always_xy=True
             ).transform
@@ -782,16 +784,16 @@ class Raster:
             # self._bounds = shapely.transform(old_box, project)
         else:
             was_2d = len(self.shape) == 2
-            self.array, transform = reproject(
-                source=self.array,
+            self.values, transform = reproject(
+                source=self.values,
                 src_crs=self._prev_crs,
                 src_transform=self.transform,
                 dst_crs=pyproj.CRS(crs),
                 **kwargs,
             )
-            if was_2d and len(self.array.shape) == 3:
-                assert self.array.shape[0] == 1
-                self.array = self.array[0]
+            if was_2d and len(self.values.shape) == 3:
+                assert self.values.shape[0] == 1
+                self.values = self.values[0]
 
             self._bounds = rasterio.transform.array_bounds(
                 self.height, self.width, transform
@@ -811,9 +813,9 @@ class Raster:
             raster = self
 
         if len(raster.shape) == 2:
-            array = np.array([raster.array])
+            array = np.array([raster.values])
         else:
-            array = raster.array
+            array = raster.values
 
         for arr in array:
             ax = plt.axes()
@@ -824,31 +826,31 @@ class Raster:
 
     def astype(self, dtype: type) -> Self:
         """Convert the datatype of the array."""
-        if self.array is None:
+        if self.values is None:
             raise ValueError("Array is not loaded.")
-        if not rasterio.dtypes.can_cast_dtype(self.array, dtype):
-            min_dtype = rasterio.dtypes.get_minimum_dtype(self.array)
+        if not rasterio.dtypes.can_cast_dtype(self.values, dtype):
+            min_dtype = rasterio.dtypes.get_minimum_dtype(self.values)
             raise ValueError(f"Cannot cast to dtype. Minimum dtype is {min_dtype}")
-        self.array = self.array.astype(dtype)
+        self.values = self.values.astype(dtype)
         self._dtype = dtype
         return self
 
     def as_minimum_dtype(self) -> Self:
         """Convert the array to the minimum dtype without overflow."""
-        min_dtype = rasterio.dtypes.get_minimum_dtype(self.array)
-        self.array = self.array.astype(min_dtype)
+        min_dtype = rasterio.dtypes.get_minimum_dtype(self.values)
+        self.values = self.values.astype(min_dtype)
         return self
 
     def min(self) -> int | None:
         """Minimum value in the array."""
-        if np.size(self.array):
-            return np.min(self.array)
+        if np.size(self.values):
+            return np.min(self.values)
         return None
 
     def max(self) -> int | None:
         """Maximum value in the array."""
-        if np.size(self.array):
-            return np.max(self.array)
+        if np.size(self.values):
+            return np.max(self.values)
         return None
 
     def _add_meta(self) -> Self:
@@ -867,10 +869,10 @@ class Raster:
     def array_list(self) -> list[np.ndarray]:
         """Get a list of 2D arrays."""
         self._check_for_array()
-        if len(self.array.shape) == 2:
-            return [self.array]
-        elif len(self.array.shape) == 3:
-            return list(self.array)
+        if len(self.values.shape) == 2:
+            return [self.values]
+        elif len(self.values.shape) == 3:
+            return list(self.values)
         else:
             raise ValueError
 
@@ -916,7 +918,7 @@ class Raster:
     def dtype(self) -> Any:
         """Data type of the array."""
         try:
-            return self.array.dtype
+            return self.values.dtype
         except AttributeError:
             try:
                 return self._dtype
@@ -925,7 +927,7 @@ class Raster:
 
     @dtype.setter
     def dtype(self, new_dtype: Any) -> None:
-        self.array = self.array.astype(new_dtype)
+        self.values = self.values.astype(new_dtype)
 
     @property
     def nodata(self) -> int | None:
@@ -992,18 +994,18 @@ class Raster:
     @property
     def height(self) -> int | None:
         """Get the height of the image as number of pixels."""
-        if self.array is None:
+        if self.values is None:
             try:
                 return self._height
             except AttributeError:
                 return None
-        i = 1 if len(self.array.shape) == 3 else 0
-        return self.array.shape[i]
+        i = 1 if len(self.values.shape) == 3 else 0
+        return self.values.shape[i]
 
     @property
     def width(self) -> int | None:
         """Get the width of the image as number of pixels."""
-        if self.array is None:
+        if self.values is None:
             try:
                 return self._width
             except AttributeError:
@@ -1014,16 +1016,16 @@ class Raster:
                     return self._width
                 except Exception:
                     return None
-        i = 2 if len(self.array.shape) == 3 else 1
-        return self.array.shape[i]
+        i = 2 if len(self.values.shape) == 3 else 1
+        return self.values.shape[i]
 
     @property
     def count(self) -> int:
         """Get the number of bands in the image."""
-        if self.array is not None:
-            if len(self.array.shape) == 3:
-                return self.array.shape[0]
-            if len(self.array.shape) == 2:
+        if self.values is not None:
+            if len(self.values.shape) == 3:
+                return self.values.shape[0]
+            if len(self.values.shape) == 2:
                 return 1
         if not hasattr(self._indexes, "__iter__"):
             return 1
@@ -1032,8 +1034,8 @@ class Raster:
     @property
     def shape(self) -> tuple[int]:
         """Shape that is consistent with the array, whether it is loaded or not."""
-        if self.array is not None:
-            return self.array.shape
+        if self.values is not None:
+            return self.values.shape
         if hasattr(self._indexes, "__iter__"):
             return self.count, self.width, self.height
         return self.width, self.height
@@ -1123,9 +1125,9 @@ class Raster:
             raise NotImplementedError("other must be of type Raster")
         if type(other) != type(self):
             return False
-        if self.array is None and other.array is not None:
+        if self.values is None and other.values is not None:
             return False
-        if self.array is not None and other.array is None:
+        if self.values is not None and other.values is None:
             return False
 
         for method in dir(self):
@@ -1134,7 +1136,7 @@ class Raster:
             if getattr(self, method) != getattr(other, method):
                 return False
 
-        return np.array_equal(self.array, other.array)
+        return np.array_equal(self.values, other.values)
 
     def __repr__(self) -> str:
         """The print representation."""
@@ -1148,48 +1150,48 @@ class Raster:
 
     def __iter__(self) -> Iterator[np.ndarray]:
         """Iterate over the arrays."""
-        if len(self.array.shape) == 2:
-            return iter([self.array])
-        if len(self.array.shape) == 3:
-            return iter(self.array)
+        if len(self.values.shape) == 2:
+            return iter([self.values])
+        if len(self.values.shape) == 3:
+            return iter(self.values)
         raise ValueError(
-            f"Array should have shape length 2 or 3. Got {len(self.array.shape)}"
+            f"Array should have shape length 2 or 3. Got {len(self.values.shape)}"
         )
 
     def __mul__(self, scalar: int | float) -> "Raster":
         """Multiply the array values with *."""
         self._check_for_array()
-        self.array = self.array * scalar
+        self.values = self.values * scalar
         return self
 
     def __add__(self, scalar: int | float) -> "Raster":
         """Add to the array values with +."""
         self._check_for_array()
-        self.array = self.array + scalar
+        self.values = self.values + scalar
         return self
 
     def __sub__(self, scalar: int | float) -> "Raster":
         """Subtract the array values with -."""
         self._check_for_array()
-        self.array = self.array - scalar
+        self.values = self.values - scalar
         return self
 
     def __truediv__(self, scalar: int | float) -> "Raster":
         """Divide the array values with /."""
         self._check_for_array()
-        self.array = self.array / scalar
+        self.values = self.values / scalar
         return self
 
     def __floordiv__(self, scalar: int | float) -> "Raster":
         """Floor divide the array values with //."""
         self._check_for_array()
-        self.array = self.array // scalar
+        self.values = self.values // scalar
         return self
 
     def __pow__(self, exponent: int | float) -> "Raster":
         """Exponentiate the array values with **."""
         self._check_for_array()
-        self.array = self.array**exponent
+        self.values = self.values**exponent
         return self
 
     def _has_nessecary_attrs(self, dict_like: dict) -> bool:
@@ -1204,11 +1206,11 @@ class Raster:
 
     def _return_self_or_copy(self, array: np.ndarray, copy: bool) -> "Raster":
         if not copy:
-            self.array = array
+            self.values = array
             return self
         else:
             copy = self.copy()
-            copy.array = array
+            copy.values = array
             return copy
 
     @classmethod
@@ -1251,35 +1253,35 @@ class Raster:
     def _write(
         self, dst: rasterio.io.DatasetReader, window: rasterio.windows.Window
     ) -> None:
-        if np.ma.is_masked(self.array):
-            if len(self.array.shape) == 2:
+        if np.ma.is_masked(self.values):
+            if len(self.values.shape) == 2:
                 return dst.write(
-                    self.array.filled(self.nodata), indexes=1, window=window
+                    self.values.filled(self.nodata), indexes=1, window=window
                 )
 
             for i in range(len(self.indexes_as_tuple())):
                 dst.write(
-                    self.array[i].filled(self.nodata),
+                    self.values[i].filled(self.nodata),
                     indexes=i + 1,
                     window=window,
                 )
 
         else:
-            if len(self.array.shape) == 2:
-                return dst.write(self.array, indexes=1, window=window)
+            if len(self.values.shape) == 2:
+                return dst.write(self.values, indexes=1, window=window)
 
             for i, idx in enumerate(self.indexes_as_tuple()):
-                dst.write(self.array[i], indexes=idx, window=window)
+                dst.write(self.values[i], indexes=idx, window=window)
 
     def _get_indexes(self, indexes: int | tuple[int] | None) -> int | tuple[int] | None:
         if isinstance(indexes, numbers.Number):
             return int(indexes)
         if indexes is None:
-            if self.array is not None and len(self.array.shape) == 3:
-                return tuple(i + 1 for i in range(self.array.shape[0]))
-            elif self.array is not None and len(self.array.shape) == 2:
+            if self.values is not None and len(self.values.shape) == 3:
+                return tuple(i + 1 for i in range(self.values.shape[0]))
+            elif self.values is not None and len(self.values.shape) == 2:
                 return 1
-            elif self.array is not None:
+            elif self.values is not None:
                 raise ValueError("Array must be 2 or 3 dimensional.")
             else:
                 return None
@@ -1335,9 +1337,9 @@ class Raster:
     def _add_indexes_from_array(self, indexes: int | tuple[int]) -> int | tuple[int]:
         if indexes is not None:
             return indexes
-        elif len(self.array.shape) == 3:
-            return tuple(x + 1 for x in range(len(self.array)))
-        elif len(self.array.shape) == 2:
+        elif len(self.values.shape) == 3:
+            return tuple(x + 1 for x in range(len(self.values)))
+        elif len(self.values.shape) == 2:
             return 1
         else:
             raise ValueError
@@ -1407,7 +1409,7 @@ class Raster:
                 if hasattr(self, "_warped_crs"):
                     src = WarpedVRT(src, crs=self.crs)
 
-                self.array = src.read(
+                self.values = src.read(
                     out_shape=out_shape,
                     **(self.read_kwargs | kwargs),
                 )
@@ -1439,11 +1441,11 @@ class Raster:
             if hasattr(self, "_warped_crs"):
                 src = WarpedVRT(src, crs=self.crs)
 
-            self.array = src.read(out_shape=out_shape, **kwargs)
+            self.values = src.read(out_shape=out_shape, **kwargs)
 
             if not masked:
-                self.array[self.array.mask] = self.nodata
-                self.array = self.array.data
+                self.values[self.values.mask] = self.nodata
+                self.values = self.values.data
 
             if boundless:
                 self._bounds = src.window_bounds(window=window)
@@ -1454,7 +1456,7 @@ class Raster:
                 else:
                     self._bounds = intersected.bounds
 
-            if not np.size(self.array):
+            if not np.size(self.values):
                 return
 
             if self._dtype:
@@ -1462,8 +1464,8 @@ class Raster:
             else:
                 self = self.as_minimum_dtype()
 
-        if self.array is not None:
-            with memfile_from_array(self.array, **self.profile) as src:
+        if self.values is not None:
+            with memfile_from_array(self.values, **self.profile) as src:
                 _read(self, src, **kwargs)
         else:
             with opener(self.path, file_system=self.file_system) as file:
@@ -1471,7 +1473,7 @@ class Raster:
                     _read(self, src, **kwargs)
 
     def _check_for_array(self, text=""):
-        if self.array is None:
+        if self.values is None:
             raise ValueError("Arrays are not loaded. " + text)
 
 
@@ -1544,7 +1546,7 @@ def get_gradient(raster: Raster, degrees: bool = False, copy: bool = False) -> R
     The calculation is by default done in place to save memory.
 
     >>> r.gradient()
-    >>> r.array
+    >>> r.values
     array([[0., 1., 1., 1., 0.],
         [1., 1., 1., 1., 1.],
         [1., 1., 0., 1., 1.],

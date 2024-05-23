@@ -4,7 +4,6 @@ from collections.abc import Hashable
 from collections.abc import Iterable
 from typing import Any
 
-import dask_geopandas
 import joblib
 import numpy as np
 import pandas as pd
@@ -26,6 +25,11 @@ from shapely import points as shapely_points
 from shapely import unary_union
 from shapely.geometry import LineString
 from shapely.geometry import Point
+
+try:
+    import dask_geopandas
+except ImportError:
+    pass
 
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart

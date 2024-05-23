@@ -2,6 +2,7 @@ import functools
 import inspect
 import itertools
 import multiprocessing
+import pickle
 import warnings
 from collections.abc import Callable
 from collections.abc import Collection
@@ -183,7 +184,7 @@ class Parallel:
         func_with_kwargs = functools.partial(func, **kwargs)
 
         if self.processes == 1:
-            return list(map(func_with_kwargs, iterable))
+            return [func_with_kwargs(item) for item in iterable]
 
         iterable = list(iterable)
 
@@ -192,23 +193,42 @@ class Parallel:
 
         if not processes:
             return []
+        elif processes == 1:
+            return [func_with_kwargs(item) for item in iterable]
 
-        if self.backend == "multiprocessing":
-            with multiprocessing.get_context(self.context).Pool(
-                processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
-            ) as pool:
+        try:
+            if self.backend == "multiprocessing":
+                with multiprocessing.get_context(self.context).Pool(
+                    processes, maxtasksperchild=self.maxtasksperchild, **self.kwargs
+                ) as pool:
+                    try:
+                        return pool.map(
+                            func_with_kwargs, iterable, chunksize=self.chunksize
+                        )
+                    except Exception as e:
+                        pool.terminate()
+                        raise e
+
+            with joblib.Parallel(
+                n_jobs=processes, backend=self.backend, **self.kwargs
+            ) as parallel:
+                return parallel(
+                    joblib.delayed(func)(item, **kwargs) for item in iterable
+                )
+        except pickle.PickleError as e:
+            unpicklable = []
+            for k, v in locals().items():
                 try:
-                    return pool.map(
-                        func_with_kwargs, iterable, chunksize=self.chunksize
-                    )
-                except Exception as e:
-                    pool.terminate()
-                    raise e
-
-        with joblib.Parallel(
-            n_jobs=processes, backend=self.backend, **self.kwargs
-        ) as parallel:
-            return parallel(joblib.delayed(func)(item, **kwargs) for item in iterable)
+                    pickle.dumps(v)
+                except pickle.PickleError:
+                    unpicklable.append(k)
+                except TypeError:
+                    pass
+            if unpicklable:
+                raise pickle.PickleError(
+                    f"Cannot unpickle objects: {unpicklable}"
+                ) from e
+            raise e
 
     def starmap(
         self,

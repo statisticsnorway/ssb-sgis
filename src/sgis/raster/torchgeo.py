@@ -66,8 +66,9 @@ SENTINEL_2_RBG_BANDS = ["B4", "B3", "B2"]
 class GCSRasterDataset(RasterDataset):
     """Wrapper around torchgeo's RasterDataset that works in and outside of Dapla (stat norway)."""
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, product_level: str | None = None, **kwargs) -> None:
         """Initialiser. Args and kwargs passed to torchgeo.datasets.geo.RasterDataset."""
+        self.product_level = product_level
         super().__init__(*args, **kwargs)
         if is_dapla():
             [file.close() for file in self.files]
@@ -89,7 +90,10 @@ class GCSRasterDataset(RasterDataset):
             files: set[GCSFile] = {
                 fs.open(x)
                 for x in _get_gcs_paths(
-                    paths, filename_glob=self.filename_glob, file_system=fs
+                    paths,
+                    filename_glob=self.filename_glob,
+                    file_system=fs,
+                    product_level=self.product_level,
                 )
             }
             return files
@@ -111,6 +115,9 @@ class GCSRasterDataset(RasterDataset):
                     UserWarning,
                     stacklevel=1,
                 )
+
+            if self.product_level:
+                files = {path for path in files if self.product_level in path}
 
         return files
 
@@ -138,6 +145,7 @@ class GCSRasterDataset(RasterDataset):
 def _get_gcs_paths(
     paths: str | Iterable[str],
     filename_glob: str,
+    product_level: str | None = None,
     file_system: GCSFileSystem | None = None,
 ) -> set[str]:
     if file_system is None:
@@ -147,18 +155,17 @@ def _get_gcs_paths(
     out_paths: set[str] = set()
     for path in paths:
         pathname = os.path.join(path, "**", filename_glob)
-        if is_dapla():
-            out_paths |= {
-                x for x in file_system.glob(pathname, recursive=True) if "." in x
-            }
-    return out_paths
+        out_paths |= {x for x in file_system.glob(pathname, recursive=True) if "." in x}
+    if not product_level:
+        return out_paths
+    return {path for path in out_paths if product_level in path}
 
 
 class Sentinel2(GCSRasterDataset):
     """Works like torchgeo's Sentinel2, with custom regexes."""
 
     date_format: ClassVar[str] = "%Y%m%d"
-    filename_glob: ClassVar[str] = "SENTINEL2X_*_*.*"
+    filename_glob = "T*_*_{}*.*"
 
     filename_regex: ClassVar[str] = SENTINEL2_FILENAME_REGEX
     all_bands: ClassVar[list[str]] = SENTINEL_2_BANDS
