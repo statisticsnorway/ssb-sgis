@@ -967,7 +967,7 @@ def parallel_overlay(
 
 
 def _clean_intersection(
-    df1: GeoDataFrame, df2: GeoDataFrame, to_print: str | None = None
+    df1: GeoDataFrame, df2: GeoDataFrame, to_print: str = ""
 ) -> GeoDataFrame:
     print(to_print, "- intersection chunk len:", len(df1))
     return clean_overlay(df1, df2, how="intersection")

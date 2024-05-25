@@ -13,7 +13,7 @@ from typing import Any
 
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from pyproj import CRS
+import pyproj
 from shapely import Geometry
 from shapely import box
 from shapely.geometry import Polygon
@@ -40,10 +40,10 @@ except ImportError:
 def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
     try:
         crs = get_common_crs(gdfs)
-    except IndexError:
+    except (IndexError, pyproj.exceptions.CRSError):
         for x in kwargs.values():
             try:
-                crs = CRS(x.crs) if hasattr(x, "crs") else CRS(x["crs"])
+                crs = pyproj.CRS(x.crs) if hasattr(x, "crs") else pyproj.CRS(x["crs"])
                 break
             except Exception:
                 crs = None
@@ -77,7 +77,6 @@ def explore(
     *gdfs: GeoDataFrame | dict[str, GeoDataFrame],
     column: str | None = None,
     center: Any | None = None,
-    labels: tuple[str] | None = None,
     max_zoom: int = 40,
     browser: bool = False,
     smooth_factor: int | float = 1.5,
@@ -101,9 +100,6 @@ def explore(
         center: Geometry-like object to center the map on. If a three-length tuple
             is given, the first two should be x and y coordinates and the third
             should be a number of meters to buffer the centerpoint by.
-        labels: By default, the GeoDataFrames will be labeled by their object names.
-            Alternatively, labels can be specified as a tuple of strings with the same
-            length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         browser: If False (default), the maps will be shown in Jupyter.
@@ -154,7 +150,6 @@ def explore(
             *gdfs,
             column=column,
             mask=mask,
-            labels=labels,
             browser=browser,
             max_zoom=max_zoom,
             **kwargs,
@@ -162,10 +157,10 @@ def explore(
 
     try:
         to_crs = gdfs[0].crs
-    except IndexError:
+    except (IndexError, AttributeError):
         try:
             to_crs = next(x for x in kwargs.values() if hasattr(x, "crs")).crs
-        except IndexError:
+        except (IndexError, StopIteration):
             to_crs = None
 
     if "crs" in kwargs:
@@ -200,7 +195,6 @@ def explore(
             *gdfs,
             column=column,
             mask=mask,
-            labels=labels,
             browser=browser,
             max_zoom=max_zoom,
             **kwargs,
@@ -209,14 +203,13 @@ def explore(
     m = Explore(
         *gdfs,
         column=column,
-        labels=labels,
         browser=browser,
         max_zoom=max_zoom,
         smooth_factor=smooth_factor,
         **kwargs,
     )
 
-    if m.gdfs is None and not len(m.raster_datasets):
+    if m.gdfs is None and not len(m.rasters):
         return
 
     if not kwargs.pop("explore", True):
@@ -230,7 +223,6 @@ def samplemap(
     column: str | None = None,
     size: int = 1000,
     sample_from_first: bool = True,
-    labels: tuple[str] | None = None,
     max_zoom: int = 40,
     smooth_factor: int = 1.5,
     explore: bool = True,
@@ -258,9 +250,6 @@ def samplemap(
             Defaults to 1000 (meters).
         sample_from_first: If True (default), the sample point is taken form the
             first specified GeoDataFrame. If False, all GeoDataFrames are considered.
-        labels: By default, the GeoDataFrames will be labeled by their object names.
-            Alternatively, labels can be specified as a tuple of strings the same
-            length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         smooth_factor: How much to simplify the geometries. 1 is the minimum,
@@ -305,13 +294,12 @@ def samplemap(
         m = Explore(
             *gdfs,
             column=column,
-            labels=labels,
             browser=browser,
             max_zoom=max_zoom,
             smooth_factor=smooth_factor,
             **kwargs,
         )
-        if m.gdfs is None and not len(m.raster_datasets):
+        if m.gdfs is None and not len(m.rasters):
             return
         if mask is not None:
             m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
@@ -325,7 +313,6 @@ def samplemap(
         m = Map(
             *gdfs,
             column=column,
-            labels=labels,
             **kwargs,
         )
 
@@ -357,7 +344,6 @@ def clipmap(
     *gdfs: GeoDataFrame,
     column: str | None = None,
     mask: GeoDataFrame | GeoSeries | Geometry = None,
-    labels: tuple[str] | None = None,
     explore: bool = True,
     max_zoom: int = 40,
     smooth_factor: int | float = 1.5,
@@ -380,9 +366,6 @@ def clipmap(
         mask: the geometry to clip the data by.
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
-        labels: By default, the GeoDataFrames will be labeled by their object names.
-            Alternatively, labels can be specified as a tuple of strings the same
-            length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         smooth_factor: How much to simplify the geometries. 1 is the minimum,
@@ -413,13 +396,14 @@ def clipmap(
         m = Explore(
             *gdfs,
             column=column,
-            labels=labels,
             browser=browser,
             max_zoom=max_zoom,
             smooth_factor=smooth_factor,
             **kwargs,
         )
-        if m.gdfs is None and not len(m.raster_datasets):
+        m.mask = mask
+
+        if m.gdfs is None and not len(m.rasters):
             return
 
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
@@ -431,7 +415,6 @@ def clipmap(
         m = Map(
             *gdfs,
             column=column,
-            labels=labels,
             **kwargs,
         )
         if m.gdfs is None:

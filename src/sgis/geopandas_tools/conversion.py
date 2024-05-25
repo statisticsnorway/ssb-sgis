@@ -122,9 +122,15 @@ def to_bbox(
             "xmin", "ymin", "xmax", "ymax".
     """
     if isinstance(obj, (GeoDataFrame, GeoSeries)):
-        return tuple(obj.total_bounds)
-    if isinstance(obj, Geometry):
-        return tuple(obj.bounds)
+        bounds = tuple(obj.total_bounds)
+        assert isinstance(bounds, tuple)
+        return bounds
+    try:
+        bounds = tuple(obj.bounds)
+        assert isinstance(bounds, tuple)
+        return bounds
+    except Exception:
+        pass
 
     try:
         minx = int(np.min(obj["minx"]))  # type: ignore [index]

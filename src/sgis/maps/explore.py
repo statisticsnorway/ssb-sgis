@@ -4,6 +4,7 @@ This module holds the Explore class, which is the basis for the explore, samplem
 clipmap functions from the 'maps' module.
 """
 
+from pathlib import Path
 import os
 import warnings
 from collections.abc import Iterable
@@ -14,6 +15,7 @@ from typing import ClassVar
 
 import branca as bc
 import folium
+import geopandas as gpd
 import matplotlib
 import numpy as np
 import pandas as pd
@@ -25,13 +27,21 @@ from IPython.display import display
 from jinja2 import Template
 from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
+from shapely import box
+from shapely import unary_union
 from shapely.geometry import LineString
+from shapely.geometry import Polygon
+from ..helpers import get_object_name
 
+from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
+from ..raster.image_collection import Image
+from ..raster.image_collection import ImageCollection
+from ..raster.image_collection import ImageTile
 from .httpserver import run_html_server
 from .map import Map
 from .tilesources import kartverket
@@ -153,6 +163,65 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
     return folium.TileLayer(provider, name=name, attr=attr, max_zoom=max_zoom)
 
 
+def image_collection_to_background_map(
+    image_collection: ImageCollection | Image | ImageTile,
+    mask: Any | None,
+    rbg_bands: list[str] = ["B02", "B03", "B04"],
+):
+    red, blue, green = rbg_bands
+    if isinstance(image_collection, (ImageCollection | ImageTile)):
+        images = image_collection.get_images()
+    elif isinstance(image_collection, Image):
+        images = [image_collection]
+    else:
+        raise TypeError(type(image_collection))
+
+    out_images = []
+    raster_bounds = []
+    raster_names = []
+    for image in images:
+        red_image = image[red]
+        blue_image = image[blue]
+        green_image = image[green]
+
+        if mask is None:
+            red_image = red_image.load(indexes=1)
+            blue_image = blue_image.load(indexes=1)
+            green_image = green_image.load(indexes=1)
+        else:
+            red_image = red_image.clip(mask, indexes=1)
+            blue_image = blue_image.clip(mask, indexes=1)
+            green_image = green_image.clip(mask, indexes=1)
+
+        if len(red_image.values.shape) == 3:
+            red_image.values = red_image.values[0]
+        if len(blue_image.values.shape) == 3:
+            blue_image.values = blue_image.values[0]
+        if len(green_image.values.shape) == 3:
+            green_image.values = green_image.values[0]
+
+        crs = red_image.crs
+        bounds: tuple = (
+            gpd.GeoSeries(box(*red_image.bounds), crs=crs)
+            .to_crs(4326)
+            .unary_union.bounds
+        )
+
+        # to 3d array in shape (x, y, 3)
+        rbg_image = np.stack(
+            [red_image.values, blue_image.values, green_image.values], axis=2
+        )
+
+        out_images.append(rbg_image)
+        raster_bounds.append(bounds)
+        if image.tile and image.date:
+            raster_names.append(f"{image.tile}_{image.date}")
+        else:
+            raster_names.append(image.name)
+
+    return out_images, raster_bounds, raster_names
+
+
 class Explore(Map):
     """Class for displaying and saving html maps of multiple GeoDataFrames."""
 
@@ -204,7 +273,8 @@ class Explore(Map):
                 GeoDataFrames.
             text: Optional text for a text box in the map.
             decimals: Number of decimals in the coordinates.
-            **kwargs: Additional keyword arguments passed to
+            **kwargs: Additional keyword arguments. Can also be geometry-like objects
+                where the key is the label.
         """
         self.popup = popup
         self.max_zoom = max_zoom
@@ -229,14 +299,39 @@ class Explore(Map):
         else:
             show_was_none = False
 
-        self.raster_datasets = []  # tuple(
-        #     raster_dataset_to_background_map(x)
-        #     for x in gdfs
-        #     if isinstance(x, RasterDataset)
-        # )
-        # self.tiles  # += self.raster_datasets
+        new_gdfs = {}
+        for gdf in gdfs:
+            try:
+                new_gdfs[get_object_name(gdf)] = to_gdf(gdf)
+            except Exception:
+                pass
 
-        super().__init__(*gdfs, column=column, show=show, **kwargs)
+        self.rasters = {}
+        for value in gdfs:
+            if isinstance(value, (ImageCollection | Image, ImageTile)):
+                self.rasters[get_object_name(value)] = value
+
+        new_kwargs = {}
+        for key, value in kwargs.items():
+            if isinstance(value, (ImageCollection | Image, ImageTile)):
+                self.rasters[key] = value
+            else:
+                new_kwargs[key] = value
+
+            # if isinstance(value, dict) or hasattr(value, "__dict__"):
+            #             try:
+            #                 for k, v in val.items():
+            #                     if isinstance(v, allowed_types):
+            #                         gdf = clean_geoms(to_gdf_func(v))
+            #                         if len(gdf):
+            #                             local_gdfs[k] = gdf
+
+            # elif hasattr(value, "__iter__"):
+            #     for x in value:
+            #         if isinstance(x, (ImageCollection | Image, ImageTile)):
+            #             self.rasters.append(value)
+
+        super().__init__(new_gdfs, column=column, show=show, **new_kwargs, **new_gdfs)
 
         if self.gdfs is None:
             return
@@ -276,7 +371,10 @@ class Explore(Map):
             new_gdfs.append(gdf)
             show_new.append(show)
         self._gdfs = new_gdfs
-        self._gdf = pd.concat(new_gdfs, ignore_index=True)
+        if self._gdfs:
+            self._gdf = pd.concat(new_gdfs, ignore_index=True)
+        else:
+            self._gdf = GeoDataFrame({"geometry": [], self._column: []})
         self.show = show_new
 
         if show_was_none and len(self._gdfs) > 6:
@@ -288,11 +386,11 @@ class Explore(Map):
         else:
             if not self._cmap:
                 self._cmap = "viridis"
-            self.cmap_start = kwargs.pop("cmap_start", 0)
-            self.cmap_stop = kwargs.pop("cmap_stop", 256)
+            self.cmap_start = self.kwargs.pop("cmap_start", 0)
+            self.cmap_stop = self.kwargs.pop("cmap_stop", 256)
 
-        if self._gdf.crs is None:
-            self.kwargs["crs"] = "Simple"
+        # if self._gdf.crs is None:
+        #     self.kwargs["crs"] = "Simple"
 
         self.original_crs = self.gdf.crs
 
@@ -308,7 +406,11 @@ class Explore(Map):
         **kwargs,
     ) -> None:
         """Explore all the data."""
-        if not any(len(gdf) for gdf in self._gdfs) and not len(self.raster_datasets):
+        if (
+            self._gdfs
+            and not any(len(gdf) for gdf in self._gdfs)
+            and not len(self.rasters)
+        ):
             warnings.warn("None of the GeoDataFrames have rows.", stacklevel=1)
             return
         if column:
@@ -384,6 +486,7 @@ class Explore(Map):
         self._gdf = pd.concat(gdfs, ignore_index=True)
 
         self._get_unique_values()
+
         self._explore(**kwargs)
 
     def clipmap(
@@ -393,6 +496,7 @@ class Explore(Map):
         **kwargs,
     ) -> None:
         """Explore the data within a mask extent."""
+        self.mask = mask
         if column:
             self._column = column
             self._update_column()
@@ -400,15 +504,45 @@ class Explore(Map):
 
         gdfs: tuple[GeoDataFrame] = ()
         for gdf in self._gdfs:
-            gdf = gdf.clip(mask)
+            gdf = gdf.clip(self.mask)
             collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
             if len(collections):
                 collections = make_all_singlepart(collections)
                 gdf = pd.concat([gdf, collections], ignore_index=False)
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
-        self._gdf = pd.concat(gdfs, ignore_index=True)
+        if self._gdfs:
+            self._gdf = pd.concat(self._gdfs, ignore_index=True)
+        else:
+            self._gdf = GeoDataFrame({"geometry": [], self._column: []})
+
         self._explore(**kwargs)
+
+    def _load_rasters_as_images(self):
+        self.raster_bounds = []
+        self.raster_names = []
+        self.raster_arrays = []
+        for _, value in self.rasters.items():
+            arrays, boundslist, nameslist = image_collection_to_background_map(
+                value, self.mask
+            )
+            self.raster_arrays += arrays
+            self.raster_bounds += boundslist
+            self.raster_names += nameslist
+
+    def _rasters_to_background_maps(self):
+        for label, img, bounds in zip(
+            self.raster_names, self.raster_arrays, self.raster_bounds, strict=True
+        ):
+            # f = folium.FeatureGroup(name=label)
+            minx, miny, maxx, maxy = bounds
+            image_overlay = folium.raster_layers.ImageOverlay(
+                img, bounds=[[miny, minx], [maxy, maxx]]
+            )
+            image_overlay.layer_name = Path(label).stem
+
+            # f.add_child(image_overlay)
+            image_overlay.add_to(self.map)
 
     def _explore(self, **kwargs) -> None:
         self.kwargs = self.kwargs | kwargs
@@ -471,12 +605,23 @@ class Explore(Map):
         self._fillna_if_col_is_missing()
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
-    def _create_categorical_map(self) -> None:
-        self._get_categorical_colors()
+    def _get_bounds(self, gdf: GeoDataFrame) -> tuple[float, float, float, float]:
+        if not len(gdf) or all(x is None for x in gdf.total_bounds):
+            return get_total_bounds(self.raster_bounds)
+        return gdf.total_bounds
 
-        gdf = self._prepare_gdf_for_map(self._gdf)
+    def _create_categorical_map(self) -> None:
+        self._make_categories_colors_dict()
+        if self._gdf is not None and len(self._gdf):
+            self._fix_nans()
+            gdf = self._prepare_gdf_for_map(self._gdf)
+        else:
+            gdf = GeoDataFrame({"geometry": [], self._column: []})
+
+        self._load_rasters_as_images()
+
         self.map = self._make_folium_map(
-            bounds=gdf.total_bounds,
+            bounds=self._get_bounds(gdf),
             max_zoom=self.max_zoom,
             popup=self.popup,
             prefer_canvas=self.prefer_canvas,
@@ -509,6 +654,8 @@ class Explore(Map):
             gjs.add_to(f)
             gjs.add_to(self.map)
 
+        self._rasters_to_background_maps()
+
         _categorical_legend(
             self.map,
             self._column,
@@ -532,9 +679,11 @@ class Explore(Map):
             n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
             unique_colors = self._get_continous_colors(n=n_colors)
 
+        self._load_rasters_as_images()
+
         gdf = self._prepare_gdf_for_map(self._gdf)
         self.map = self._make_folium_map(
-            bounds=gdf.total_bounds,
+            bounds=self._get_bounds(gdf),
             max_zoom=self.max_zoom,
             popup=self.popup,
             prefer_canvas=self.prefer_canvas,
@@ -580,6 +729,8 @@ class Explore(Map):
 
             f.add_child(gjs)
             self.map.add_child(f)
+
+        self._rasters_to_background_maps()
 
         self.map.add_child(colorbar)
         self.map.add_child(folium.LayerControl())
@@ -754,7 +905,8 @@ class Explore(Map):
             )
 
         if gdf.crs is None:
-            kwargs["crs"] = "Simple"
+            pass
+            # kwargs["crs"] = "Simple"
         elif not gdf.crs.equals(4326):
             gdf = gdf.to_crs(4326)
 

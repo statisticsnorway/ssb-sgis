@@ -1,4 +1,3 @@
-import glob
 import os
 import warnings
 from collections.abc import Callable
@@ -33,6 +32,7 @@ except ImportError:
         """Placeholder."""
 
 
+from ..helpers import get_all_files
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
 
@@ -45,22 +45,24 @@ SENTINEL2_FILENAME_REGEX = r"""
     .*\..*$
 """
 
+
 SENTINEL_2_BANDS = [
-    # "B1",
-    "B2",
-    "B3",
-    "B4",
-    "B5",
-    "B6",
-    "B7",
-    "B8",
+    "B01",
+    "B02",
+    "B03",
+    "B04",
+    "B05",
+    "B06",
+    "B07",
+    "B08",
     "B8A",
-    # "B9",
+    "B09",
     # "B10",
     "B11",
     "B12",
 ]
 SENTINEL_2_RBG_BANDS = ["B4", "B3", "B2"]
+SENTINEL_2_NDVI_BANDS = ["B08", "B04"]
 
 
 class GCSRasterDataset(RasterDataset):
@@ -102,10 +104,11 @@ class GCSRasterDataset(RasterDataset):
         files: set[str] = set()
         for path in paths:
             if os.path.isdir(path):
-                pathname = os.path.join(path, "**", self.filename_glob)
-                files |= {
-                    x for x in glob.iglob(pathname, recursive=True) if os.path.isfile(x)
-                }
+                files |= {x for x in get_all_files(path, recursive=True)}
+                # pathname = os.path.join(path, "**", self.filename_glob)
+                # files |= {
+                #     x for x in glob.iglob(pathname, recursive=True) if os.path.isfile(x)
+                # }
             elif os.path.isfile(path):
                 files.add(path)
             else:
@@ -170,6 +173,7 @@ class Sentinel2(GCSRasterDataset):
     filename_regex: ClassVar[str] = SENTINEL2_FILENAME_REGEX
     all_bands: ClassVar[list[str]] = SENTINEL_2_BANDS
     rgb_bands: ClassVar[list[str]] = SENTINEL_2_RBG_BANDS
+    ndvi_bands: ClassVar[list[str]] = SENTINEL_2_RBG_BANDS
 
     separate_files: ClassVar[bool] = True
 

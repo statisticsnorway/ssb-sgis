@@ -680,13 +680,19 @@ def get_total_bounds(
     for obj in geometries:
         try:
             minx, miny, maxx, maxy = to_bbox(obj)
+            xs += [minx, maxx]
+            ys += [miny, maxy]
         except Exception as e:
-            if strict:
-                raise e
-            else:
-                continue
-        xs += [minx, maxx]
-        ys += [miny, maxy]
+            try:
+                for x in obj:
+                    minx, miny, maxx, maxy = to_bbox(x)
+                    xs += [minx, maxx]
+                    ys += [miny, maxy]
+            except Exception:
+                if strict:
+                    raise e
+                else:
+                    continue
     return min(xs), min(ys), max(xs), max(ys)
 
 

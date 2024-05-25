@@ -57,49 +57,49 @@ def test_gradient():
     # creating a simple Raster with a resolution of 10 (50 / width or height).
     r = sg.Raster.from_array(arr, crs=None, bounds=(0, 0, 50, 50))
     gradient = r.gradient(copy=True)
-    assert np.max(gradient.array) == 1, gradient.array
+    assert np.max(gradient.values) == 1, gradient.values
 
     degrees = r.gradient(degrees=True, copy=True)
 
-    assert np.max(degrees.array) == 45, np.max(degrees.array)
+    assert np.max(degrees.values) == 45, np.max(degrees.values)
 
     r = sg.Raster.from_path(path_singleband, indexes=1, nodata=0).load()
     # sg.explore(r.to_gdf(), "value")
-    assert int(np.min(r.array)) == 0, np.min(r.array)
+    assert int(np.min(r.values)) == 0, np.min(r.values)
     degrees = r.gradient(degrees=True, copy=True)
-    assert int(np.max(degrees.array)) == 75, np.max(degrees.array)
+    assert int(np.max(degrees.values)) == 75, np.max(degrees.values)
     gradient = r.gradient(copy=True)
-    assert int(np.max(gradient.array)) == 3, np.max(gradient.array)
+    assert int(np.max(gradient.values)) == 3, np.max(gradient.values)
 
     r = sg.Raster.from_path(path_two_bands, indexes=1, nodata=0).load()
     # sg.explore(r.to_gdf(), "value")
     assert r.shape == (101, 101), r.shape
     gradient = r.gradient(copy=True)
-    assert int(np.max(gradient.array)) == 3, np.max(gradient.array)
+    assert int(np.max(gradient.values)) == 3, np.max(gradient.values)
 
     degrees = r.gradient(degrees=True, copy=True)
-    assert int(np.max(degrees.array)) == 75, np.max(degrees.array)
+    assert int(np.max(degrees.values)) == 75, np.max(degrees.values)
 
     r = sg.Raster.from_path(path_two_bands, indexes=(1, 2))
     assert r.shape == (2, 101, 101), r.shape
 
     degrees = r.load().gradient(degrees=True)
 
-    assert int(np.nanmax(degrees.array)) == 75, int(np.nanmax(degrees.array))
+    assert int(np.nanmax(degrees.values)) == 75, int(np.nanmax(degrees.values))
     print(degrees.shape)
-    print(degrees.array.shape)
+    print(degrees.values.shape)
     assert len(degrees.shape) == 3
     gdf = degrees.to_gdf()
     if __name__ == "__main__":
         sg.explore(gdf[gdf["indexes"] == 1], "value")
         sg.explore(gdf[gdf["indexes"] == 2], "value")
 
-    max_ = int(np.nanmax(r.array))
+    max_ = int(np.nanmax(r.values))
     gradient = r.gradient(copy=True)
     gradient.plot()
-    assert max_ == int(np.nanmax(r.array))
-    assert int(np.nanmax(gradient.array)) == 6, int(np.nanmax(gradient.array))
-    print(np.nanmax(gradient.array))
+    assert max_ == int(np.nanmax(r.values))
+    assert int(np.nanmax(gradient.values)) == 6, int(np.nanmax(gradient.values))
+    print(np.nanmax(gradient.values))
 
 
 def test_zonal():
@@ -119,15 +119,15 @@ def test_zonal():
 def test_resize():
     r = sg.Raster.from_path(path_singleband, nodata=0).load()
     assert r.min() == 0
-    assert r.shape == (1, 201, 201), r.shape
+    assert r.shape == (201, 201), r.shape
     assert r.res == 10, r.res
 
     r = sg.Raster.from_path(path_singleband, res=20).load()
     assert int(r.res) == 20, r.res
-    assert r.shape == (1, 100, 100), r.shape
+    assert r.shape == (100, 100), r.shape
 
     r = sg.Raster.from_path(path_singleband, res=30).load()
-    assert r.shape == (1, 67, 67), r.shape
+    assert r.shape == (67, 67), r.shape
     assert r.res == 30, r.res
 
     r = sg.Raster.from_path(path_singleband, indexes=1, nodata=0, res=20).load()
@@ -135,16 +135,16 @@ def test_resize():
     assert r.min() == 0, r.min()
 
     r = sg.Raster.from_path(path_singleband, nodata=0, res=10).clip(r.bounds)
-    print(type(r.array))
-    print(r.array)
+    print(type(r.values))
+    print(r.values)
     assert r.res == 10, r.res
     assert r.nodata == 0, r.nodata
-    assert r.shape == (1, 201, 201), r.shape
+    assert r.shape == (201, 201), r.shape
     assert r.min() == 0, r.min()
 
     r = sg.Raster.from_path(path_singleband, res=20).clip(r.bounds)
     assert int(r.res) == 20, r.res
-    assert r.shape == (1, 100, 100), r.shape
+    assert r.shape == (100, 100), r.shape
     assert r.nodata == -32767, r.nodata
     assert r.min() == 0, r.min()
 
@@ -165,7 +165,7 @@ def test_clip():
 
     out_of_bounds = sg.to_gdf([0, 0, 1, 1], crs=r.crs)
     clipped = r.copy().clip(out_of_bounds)
-    assert not np.size(clipped.array), clipped.array
+    assert not np.size(clipped.values), clipped.values
 
     circle = r.unary_union.centroid.buffer(100)
 
@@ -173,7 +173,7 @@ def test_clip():
     assert clipped_from_path.shape == (1, 20, 20), clipped_from_path.shape
 
     clipped_memoryfile = r.copy().load().clip(circle)
-    assert np.array_equal(clipped_memoryfile.array, clipped_from_path.array)
+    assert np.array_equal(clipped_memoryfile.values, clipped_from_path.values)
     assert clipped_memoryfile.equals(clipped_from_path)
 
 
@@ -190,15 +190,15 @@ def test_clip_res():
     southeast_corner = sg.to_gdf(r.bounds[:2], crs=r.crs)
     square_in_corner = sg.to_gdf(southeast_corner.buffer(400).total_bounds, crs=r.crs)
 
-    assert r.array is None
+    assert r.values is None
 
     def general_assertions(raster, masked: bool):
         if not masked:
-            assert raster.array.min() == -999, raster.array.min()
+            assert raster.values.min() == -999, raster.values.min()
         else:
-            assert raster.array.min() == 132, raster.array.min()
+            assert raster.values.min() == 132, raster.values.min()
 
-        assert int(raster.array.max()) == 190, raster.array.max()
+        assert int(raster.values.max()) == 190, raster.values.max()
 
         # has correct res
         assert int(area := raster.to_gdf().area.median()) == res * res, area**0.5
@@ -276,7 +276,7 @@ def test_convertion():
     r = sg.Raster.from_path(path_singleband, indexes=1).load()
     assert isinstance(r, sg.Raster)
 
-    arr = r.array
+    arr = r.values
     r_from_array = sg.Raster.from_array(arr, **r.profile)
     assert (shape := r_from_array.shape) == (201, 201), shape
 
@@ -294,7 +294,7 @@ def test_convertion():
 
     # # putting three 2-dimensional array on top of each other
     # r3 = sg.Raster.from_array(
-    #     np.array([r.array, r_from_array.array, r_from_gdf.array]), **r.profile
+    #     np.array([r.values, r_from_array.values, r_from_gdf.values]), **r.profile
     # )
     # assert r3.count == 3, r3.count
     # assert r3.shape == (3, 201, 201), r3.shape
@@ -376,10 +376,10 @@ def save_two_band_image():
 
     mask = sg.to_gdf(r.unary_union, crs=r.crs).buffer(-500)
     r = r.clip(mask)
-    r.array[r.array < 0] = 0
+    r.values[r.values < 0] = 0
 
     r2 = r * -1
-    r2.array = np.array([r.array, r2.array])
+    r2.values = np.array([r.values, r2.values])
     assert len(r2.shape) == 3, r2.shape
     assert r2.shape[0] == 2, r2.shape
     r2.plot()
@@ -398,17 +398,17 @@ def not_test_write():
 
     mask = sg.to_gdf(r.unary_union, crs=r.crs).buffer(-500)
     r = r.clip(mask)
-    r.array[r.array < 0] = 0
+    r.values[r.values < 0] = 0
 
     r2 = r * -1
-    r2.array = np.array([r.array, r2.array])
+    r2.values = np.array([r.values, r2.values])
     assert len(r2.shape) == 3, r2.shape
     assert r2.shape[0] == 2, r2.shape
     r2.write(f"{testdata}/test.tif")
 
     r3 = sg.Raster.from_path(f"{testdata}/test.tif", indexes=(1, 2)).load()
     assert r3.shape == r2.shape
-    assert int(np.mean(r3.array)) == int(np.mean(r2.array))
+    assert int(np.mean(r3.values)) == int(np.mean(r2.values))
 
 
 if __name__ == "__main__":
@@ -420,10 +420,10 @@ if __name__ == "__main__":
         raster.plot()
         raster
 
+    test_resize()
     test_clip()
     test_clip_res()
     test_zonal()
-    test_resize()
     test_to_crs()
     # test_res()
 

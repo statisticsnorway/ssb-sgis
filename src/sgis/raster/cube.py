@@ -207,6 +207,7 @@ class DataCube:
         check_for_df: bool = True,
         contains: str | None = None,
         endswith: str = ".tif",
+        bands: str | list[str] | None = None,
         filename_regex: str | None = None,
         parallelizer: Parallel | None = None,
         file_system=None,
@@ -233,6 +234,7 @@ class DataCube:
         kwargs["res"] = res
         kwargs["filename_regex"] = filename_regex
         kwargs["contains"] = contains
+        kwargs["bands"] = bands
         kwargs["endswith"] = endswith
 
         if is_dapla():
@@ -283,6 +285,7 @@ class DataCube:
         parallelizer: Parallel | None = None,
         file_system=None,
         contains: str | None = None,
+        bands: str | list[str] | None = None,
         endswith: str = ".tif",
         filename_regex: str | None = None,
         **kwargs,
@@ -311,6 +314,10 @@ class DataCube:
         if filename_regex:
             compiled = re.compile(filename_regex, re.VERBOSE)
             paths = [path for path in paths if re.search(compiled, Path(path).name)]
+        if bands:
+            if isinstance(bands, str):
+                bands = [bands]
+            paths = [path for path in paths if any(band in str(path) for band in bands)]
 
         if not paths:
             return cls(crs=crs, parallelizer=parallelizer, res=res)
@@ -1013,7 +1020,17 @@ class DataCube:
 
     def __getitem__(
         self,
-        item: slice | int | Series | list | tuple | Callable | Geometry | BoundingBox,
+        item: (
+            str
+            | slice
+            | int
+            | Series
+            | list
+            | tuple
+            | Callable
+            | Geometry
+            | BoundingBox
+        ),
     ) -> Self | Raster | TORCHGEO_RETURN_TYPE:
         """Select one or more of the Rasters based on indexing or spatial or boolean predicates.
 
@@ -1039,6 +1056,14 @@ class DataCube:
 
         """
         copy = self.copy()
+        if isinstance(item, str) and copy.path is not None:
+            copy.data = [raster for raster in copy if item in raster.path]
+            if len(copy) == 1:
+                return copy[0]
+            elif not len(copy):
+                return Raster()
+            return copy
+
         if isinstance(item, slice):
             copy.data = copy.data[item]
             return copy

@@ -195,6 +195,10 @@ class Raster:
                 spatial properties of the image.
         """
         self.filename_regex = filename_regex
+        if filename_regex:
+            self.filename_pattern = re.compile(self.filename_regex, re.VERBOSE)
+        else:
+            self.filename_pattern = None
 
         if isinstance(data, Raster):
             for key, value in data.__dict__.items():
@@ -462,13 +466,13 @@ class Raster:
 
         profile = self.profile | kwargs
 
-        with opener(path, file_system=self.file_system) as file:
+        with opener(path, "wb", file_system=self.file_system) as file:
             with rasterio.open(file, "w", **profile) as dst:
                 self._write(dst, window)
 
         self.path = str(path)
 
-    def load(self, **kwargs) -> Self:
+    def load(self, reload: bool = False, **kwargs) -> Self:
         """Load the entire image as an np.array.
 
         The array is stored in the 'array' attribute
@@ -483,7 +487,8 @@ class Raster:
         if "window" in kwargs:
             raise ValueError("Got an unexpected keyword argument 'window'")
 
-        self._read_tif(**kwargs)
+        if reload or self.values is None:
+            self._read_tif(**kwargs)
 
         return self
 
@@ -692,7 +697,7 @@ class Raster:
         """
         self._check_for_array()
 
-        array_list = self.values_list()
+        array_list = self.array_list()
 
         if is_list_like(column) and len(column) != len(array_list):
             raise ValueError(
@@ -900,8 +905,7 @@ class Raster:
     def date(self) -> str | None:
         """Date in the image file name, if filename_regex is present."""
         try:
-            pattern = re.compile(self.filename_regex, re.VERBOSE)
-            return re.match(pattern, Path(self.path).name).group("date")
+            return re.match(self.filename_pattern, Path(self.path).name).group("date")
         except (AttributeError, TypeError):
             return None
 
@@ -909,8 +913,7 @@ class Raster:
     def band(self) -> str | None:
         """Band name of the image file name, if filename_regex is present."""
         try:
-            pattern = re.compile(self.filename_regex, re.VERBOSE)
-            return re.match(pattern, Path(self.path).name).group("band")
+            return re.match(self.filename_pattern, Path(self.path).name).group("band")
         except (AttributeError, TypeError):
             return None
 
@@ -939,10 +942,11 @@ class Raster:
 
     @property
     def tile(self) -> str | None:
-        """The lower left corner (minx, miny) of the image as a string."""
-        if self.bounds is None:
+        """Tile name from regex."""
+        try:
+            return re.match(self.filename_pattern, Path(self.path).name).group("tile")
+        except (AttributeError, TypeError):
             return None
-        return f"{int(self.bounds[0])}_{int(self.bounds[1])}"
 
     @property
     def meta(self) -> dict:
@@ -978,7 +982,7 @@ class Raster:
         return {
             "indexes": self.indexes,
             "fill_value": self.nodata,
-            "masked": True,
+            "masked": False,
         }
 
     @property
@@ -1146,7 +1150,7 @@ class Raster:
             res = int(self.res)
         except TypeError:
             res = None
-        return f"{self.__class__.__name__}(shape=({shp}), res={res}, name={self.name}, path={self.path})"
+        return f"{self.__class__.__name__}(shape=({shp}), res={res}, band={self.band})"
 
     def __iter__(self) -> Iterator[np.ndarray]:
         """Iterate over the arrays."""
@@ -1322,16 +1326,22 @@ class Raster:
 
     @staticmethod
     def _array_to_geojson(array: np.ndarray, transform: Affine) -> list[tuple]:
+        if np.ma.is_masked(array):
+            array = array.data
         try:
             return [
                 (value, shape(geom))
-                for geom, value in features.shapes(array, transform=transform)
+                for geom, value in features.shapes(
+                    array, transform=transform, mask=None
+                )
             ]
         except ValueError:
             array = array.astype(np.float32)
             return [
                 (value, shape(geom))
-                for geom, value in features.shapes(array, transform=transform)
+                for geom, value in features.shapes(
+                    array, transform=transform, mask=None
+                )
             ]
 
     def _add_indexes_from_array(self, indexes: int | tuple[int]) -> int | tuple[int]:
@@ -1366,10 +1376,15 @@ class Raster:
         #     except AttributeError:
         #         pass
 
-        for attr in ["_indexes", "_nodata"]:
-            if not hasattr(self, attr) or getattr(self, attr) is None:
-                new_value = getattr(src, attr.replace("_", ""))
-                setattr(self, attr, new_value)
+        if not hasattr(self, "_indexes") or getattr(self, "_indexes") is None:
+            new_value = getattr(src, "indexes")
+            if new_value == 1 or new_value == (1,):
+                new_value = 1
+            self._indexes = new_value
+
+        if not hasattr(self, "_nodata") or getattr(self, "_nodata") is None:
+            new_value = getattr(src, "nodata")
+            self._nodata = new_value
 
         # if not hasattr(self, "_indexes") or self._indexes is None:
         #     self._indexes = src.indexes
@@ -1444,8 +1459,14 @@ class Raster:
             self.values = src.read(out_shape=out_shape, **kwargs)
 
             if not masked:
-                self.values[self.values.mask] = self.nodata
-                self.values = self.values.data
+                try:
+                    self.values[self.values.mask] = self.nodata
+                    self.values = self.values.data
+                except AttributeError:
+                    pass
+                    # self.values = np.ma.masked_array(self.values, mask=mask)
+                    # self.values[self.values.mask] = self.nodata
+                    # self.values = self.values.data
 
             if boundless:
                 self._bounds = src.window_bounds(window=window)

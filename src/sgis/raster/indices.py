@@ -70,13 +70,13 @@ def index_calc_pair(
     assert isinstance(r1, Raster), r1
     assert isinstance(r2, Raster), r2
 
-    if r1.array is None:
+    if r1.values is None:
         r1 = r1.load()
-    if r2.array is None:
+    if r2.values is None:
         r2 = r2.load()
 
-    r1_arr: np.ndarray = r1.array.astype(np.float16)
-    r2_arr: np.ndarray = r2.array.astype(np.float16)
+    r1_arr: np.ndarray = r1.values.astype(np.float16)
+    r2_arr: np.ndarray = r2.values.astype(np.float16)
 
     out_array = index_formula(r1_arr, r2_arr)
 

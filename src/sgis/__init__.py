@@ -115,6 +115,8 @@ from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
 from .parallel.parallel import parallel_overlay
 from .raster.cube import DataCube
+from .raster.cube import concat_cubes
+from .raster.image_collection import ImageCollection, Sentinel2, ImageTile, Image
 
 try:
     import sgis.raster.torchgeo as torchgeo

@@ -18,11 +18,144 @@ import sgis as sg
 path_sentinel = testdata + "/sentinel2"
 
 
+if 0:
+    for p in [
+        "S2B_MSIL2A_20230606T103629_N0509_R008_T32VNM_20230606T121204.SAFE",
+        "S2A_MSIL2A_20180630T105031_N0500_R051_T32VNM_20230723T212608.SAFE",
+    ]:
+        paths = sg.helpers.get_all_files(
+            f"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/sentinel2/{p}"
+        )
+        for path in paths:
+            if "tif" not in path:
+                continue
+            raster = sg.Raster.from_path(path)
+            try:
+                centroid
+            except NameError:
+                centroid = raster.centroid
+            out = (
+                Path(r"C:\Users\ort\git\ssb-sgis\tests\testdata\raster\sentinel2")
+                / f"{p}"
+            ) / (Path(raster.name).stem + "_clipped.tif")
+            print(out)
+            import os
+
+            os.makedirs(out.parent, exist_ok=True)
+            raster = raster.load().clip(centroid.buffer(1250))
+            raster.write(out)
+            # print(raster)
+            # sg.explore(raster.to_gdf(), "value")
+
+if 0:
+    SENTINEL2_FILENAME_REGEX = r"""
+        ^(?P<tile>T\d{2}[A-Z]{3})
+        _(?P<date>\d{8}T\d{6})
+        _(?P<band>B[018][\dA])
+        (?:_(?P<resolution>\d+)m)?
+        .*
+        \..*$
+    """
+    path_sentinel = r"C:\Users\ort\git\ssb-sgis\tests\testdata\raster\sentinel2\S2A_MSIL2A_20230601T104021_N0509_R008_T32VNM_20230601T215503.SAFE"
+
+    cube = sg.DataCube.from_root(
+        path_sentinel, res=10, filename_regex=SENTINEL2_FILENAME_REGEX
+    )
+
+    band2 = cube["B02"].load(indexes=1)
+    band3 = cube["B03"].load(indexes=1)
+    band4 = cube["B04"].load(indexes=1)
+
+    sg.torchgeo.Sentinel2.filename_regex = SENTINEL2_FILENAME_REGEX
+    ds = sg.torchgeo.Sentinel2(path_sentinel)
+    ds.plot(ds[ds.bounds])
+
+    print(band2.values.shape)
+    print(band3.values.shape)
+    print(band4.values.shape)
+    # sg.explore(band2.to_gdf(), "value")
+
+    arr = np.array([band2.values, band3.values, band4.values])
+    arr = arr.reshape(arr.shape[1], arr.shape[2], arr.shape[0])
+
+    print(arr.shape)
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+
+    import torch
+
+    image = torch.clamp(torch.tensor(arr) / 10000, min=0, max=1)
+
+    print(image)
+
+    ax.imshow(image)
+    ax.axis("off")
+
+    # Use bilinear interpolation (or it is displayed as bicubic by default).
+    # plt.imshow(arr, interpolation="nearest")
+    plt.show()
+
+    import folium
+
+    folium.raster_layers.ImageOverlay(arr, bounds=raster.bounds)
+
+
 def test_torch():
 
     torch_dataset = sg.torchgeo.Sentinel2(path_sentinel, res=10)
 
     sg.explore(torch_dataset, "value")
+
+
+def test_image_collection():
+
+    collection = sg.raster.image_collection.Sentinel2(path_sentinel)
+
+    # selecting one random image
+    img = collection.get_images()[0]["B04"]
+    msk = sg.to_gdf(img.bounds, crs=img.crs).centroid.buffer(150)
+
+    print("sample change")
+    sg.explore(collection.sample_change(size=150))
+    sg.explore(collection.sample_change(size=150))
+    sg.explore(collection.sample_change())
+    sg.explore(collection.sample_change())
+    print("sample change done")
+
+    for tile in collection.get_tiles():
+
+        e = sg.Explore(tile)
+        e.explore()
+        assert len(e.rasters), e.rasters
+        for image in tile:
+
+            print("sample image")
+            e = sg.Explore(image.sample(1))
+            e.explore()
+            assert len(e.rasters), e.rasters
+
+            e = sg.Explore(image)
+            e.explore()
+            assert len(e.rasters), e.rasters
+
+    sg.explore(collection.sample_images(2))
+
+    sg.explore(collection.sample_images(2))
+
+    sg.explore(collection.sample_tiles(1))
+    sg.explore(collection)
+    sg.explore(collection, mask=msk)
+
+    e = sg.Explore(msk, collection)
+
+    e.explore()
+    assert len(e.rasters), e.rasters
+
+    e = sg.Explore(collection)
+    e.explore()
+    assert len(e.rasters), e.rasters
 
 
 def not_test_center(r300, r200, r100, p):
@@ -69,7 +202,7 @@ def test_explore(points_oslo, roads_oslo):
 
     sg.explore(r300, "meters", r100, bygdoy=7000)
 
-    sg.explore(r300, r100, center_4326=(10.75966535, 59.92945927, 1000))
+    # sg.explore(r300, r100, center_4326=(10.75966535, 59.92945927, 1000))
     sg.explore(r300, r100, center=(10.75966535, 59.92945927, 1000))
     sg.explore(r300, r100, center=(10.75966535, 59.92945927, 1000), crs=4326)
 
@@ -145,7 +278,6 @@ def test_explore(points_oslo, roads_oslo):
         r200,
         r100,
         "meters",
-        labels=("r30000", "r20000", "r10000"),
         cmap="plasma",
         show_in_browser=False,
     )
@@ -197,14 +329,15 @@ def not_test_explore(points_oslo, roads_oslo):
 
 
 def main():
+
     from oslo import points_oslo
     from oslo import roads_oslo
 
+    test_image_collection()
+    # test_torch()
     test_explore(points_oslo(), roads_oslo())
     not_test_explore(points_oslo(), roads_oslo())
 
-
-# %%
 
 if __name__ == "__main__":
 
