@@ -20,8 +20,9 @@ path_sentinel = testdata + "/sentinel2"
 
 if 0:
     for p in [
-        "S2B_MSIL2A_20230606T103629_N0509_R008_T32VNM_20230606T121204.SAFE",
-        "S2A_MSIL2A_20180630T105031_N0500_R051_T32VNM_20230723T212608.SAFE",
+        # "S2A_MSIL2A_20230624T104621_N0509_R051_T32VPM_20230624T170454.SAFE",
+        # "S2B_MSIL2A_20170826T104019_N0208_R008_T32VNM_20221207T150454.SAFE",
+        # "S2B_MSIL2A_20230606T103629_N0509_R008_T32VNM_20230606T121204.SAFE",
     ]:
         paths = sg.helpers.get_all_files(
             f"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/sentinel2/{p}"

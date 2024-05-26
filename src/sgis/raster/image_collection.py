@@ -15,7 +15,9 @@ from shapely.geometry import Point, Polygon
 import torch
 import pyproj
 from geopandas import GeoSeries
-
+import joblib
+import glob
+import rasterio
 
 try:
     from torchgeo.datasets.utils import BoundingBox
@@ -29,20 +31,30 @@ except ImportError:
             raise ImportError("missing optional dependency 'torchgeo'")
 
 
-from ..io._is_dapla import is_dapla
 from . import sentinel_config as config
+from ..io._is_dapla import is_dapla
+from ..io.opener import opener
 from ..geopandas_tools.bounds import to_bbox, get_total_bounds
 from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.conversion import to_gdf
 from .raster import Raster
 from ..helpers import get_all_files
+from ..parallel.parallel import Parallel
 
 if is_dapla():
     ls_func = lambda *args, **kwargs: dp.FileClient.get_gcs_file_system().ls(
         *args, **kwargs
     )
+    glob_func = lambda *args, **kwargs: dp.FileClient.get_gcs_file_system().glob(
+        *args, **kwargs
+    )
+    open_func = lambda *args, **kwargs: dp.FileClient.get_gcs_file_system().open(
+        *args, **kwargs
+    )
 else:
     ls_func = functools.partial(get_all_files, recursive=False)
+    open_func = open
+    glob_func = glob.glob
 
 TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
 
@@ -50,166 +62,109 @@ TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
 class ImageBase:
     def get_images(
         self,
-        level: str | None = None,
         bands: str | list[str] | None = None,
         date_range: tuple[str, str] | None = None,
         bbox: Any | None = None,
     ) -> list["Image"]:
         return get_images(
             self.image_paths,
-            level=level,
+            level=self.level,
             bands=bands,
+            paths=self.filepaths,
             date_range=date_range,
             bbox=bbox,
-            filename_regex=self.filename_regex,
             image_regex=self.image_regex,
+            processes=self.processes,
+            image_type=self.image_type,
         )
 
     def sample_images(self, n: int) -> "ImageBase":
-        images = self.get_images()
-        if n > len(images):
+        paths = self.image_paths
+        if n > len(paths):
             raise ValueError(
-                f"n ({n}) is higher than number of images in collection ({len(images)})"
+                f"n ({n}) is higher than number of images in collection ({len(paths)})"
             )
         sample = []
         for _ in range(n):
-            random.shuffle(images)
-            tile = images.pop()
+            random.shuffle(paths)
+            tile = paths.pop()
             sample.append(tile)
 
-        return sample
-
-
-class ImageCollection(ImageBase):
-    image_regex: ClassVar[str]
-    filename_regex: ClassVar[str]
-
-    def __init__(
-        self,
-        path: str | Path,
-        file_system: dp.gcs.GCSFileSystem | None = None,
-    ) -> None:
-        self.path = str(path)
-        self.file_system = file_system
-
-        if self.filename_regex:
-            self.filename_pattern = re.compile(self.filename_regex, flags=re.VERBOSE)
-        else:
-            self.filename_pattern = None
-        if self.image_regex:
-            self.image_pattern = re.compile(self.image_regex, flags=re.VERBOSE)
-            self.image_paths = [
-                path
-                for path in ls_func(self.path)
-                if re.search(self.image_pattern, Path(path).name)
-            ]
-        else:
-            self.image_pattern = None
-            self.image_paths = [path for path in ls_func(self.path)]
-
-        tile_ids = set()
-        for path in self.image_paths:
-            try:
-                tile_ids.add(
-                    re.match(self.image_pattern, Path(path).name).group("tile")
-                )
-            except AttributeError:
-                continue
-
-        self._tiles = [
-            ImageTile(
-                tile_id,
-                paths=self.image_paths,
-                filename_regex=self.filename_regex,
-                root=self.path,
-                file_system=self.file_system,
-            )
-            for tile_id in tile_ids
+        return [
+            self.image_type(path, paths=paths, file_system=self.file_system)
+            for path in sample
         ]
-
-    def get_tiles(self) -> list:
-        return self._tiles
-
-    def sample_tiles(self, n: int) -> "ImageCollection":
-        if n > len(self._tiles):
-            raise ValueError(
-                f"n ({n}) is higher than number of tiles in collection ({len(self._tiles)})"
-            )
-        sample = []
-        tiles_copy = [x for x in self._tiles]
-        for _ in range(n):
-            random.shuffle(tiles_copy)
-            tile = tiles_copy.pop()
-            sample.append(tile)
-        return sample
-
-    def sample_change(self, size: int = 1000) -> "list[Image, Image]":
-        oldest_and_newest_image = self.sample_tiles(1)[0][[0, -1]]
-        bounds = GeoSeries(oldest_and_newest_image[0].unary_union)
-        sample_area = bounds.sample_points(1).buffer(size / 2).clip(bounds)
-        return [image.clip(sample_area) for image in oldest_and_newest_image]
-
-    @property
-    def name(self) -> str:
-        return Path(self.path).name
-
-    def __getitem__(self, bbox: BoundingBox) -> TORCHGEO_RETURN_TYPE:
-        images = self.get_images(bbox=bbox)
-
-        crs = get_common_crs(images)
-
-        data: torch.Tensor = torch.cat(
-            [numpy_to_torch(image.load(indexes=1).values) for image in images]
-        )
-
-        key = "image"  # if self.is_image else "mask"
-        sample = {key: data, "crs": crs, "bbox": bbox}
-
-        return sample
-
-    def __repr__(self) -> str:
-        if len(self.get_tiles()) > 6:
-            tiles = (
-                [str(tile) for tile in self.get_tiles()[:3]]
-                + ["..."]
-                + [str(tile) for tile in self.get_tiles()[-3:]]
-            )
-        else:
-            tiles = [str(tile) for tile in self.get_tiles()]
-        return f"{self.__class__.__name__}(tiles={tiles}, n_image_paths={len(self.image_paths)})"
-
-
-class Sentinel2(ImageCollection):
-    image_regex: ClassVar[str] = config.SENTINEL2_IMAGE_REGEX
-    filename_regex: ClassVar[str] = config.SENTINEL2_FILENAME_REGEX
 
 
 class Image:
+    filename_regex: ClassVar[str | None] = None
+    image_regex: ClassVar[str | None] = None
+    cloud_cover_regexes: ClassVar[tuple[str] | None] = None
+    crs_regexes: ClassVar[tuple[str] | None] = None
+    bounds_regexes: ClassVar[tuple[dict[str, str]] | None] = None
+
     def __init__(
         self,
         path: str | Path,
         paths: list[str] | None = None,
         bands: str | list[str] | None = None,
         res: int | None = None,
-        filename_regex: str = config.SENTINEL2_FILENAME_REGEX,
-        image_regex: str = config.SENTINEL2_IMAGE_REGEX,
         file_system: dp.gcs.GCSFileSystem | None = None,
     ) -> None:
         self.path = str(path)
-        self.filename_regex = filename_regex
-        self.filename_pattern = re.compile(filename_regex, flags=re.VERBOSE)
-        self.image_regex = image_regex
-        self.image_pattern = re.compile(image_regex, flags=re.VERBOSE)
-        assert self.level, (self.path, filename_regex)
+        if self.filename_regex:
+            self.filename_pattern = re.compile(self.filename_regex, flags=re.VERBOSE)
+        else:
+            self.filename_pattern = None
+        if self.image_regex:
+            self.image_pattern = re.compile(self.image_regex, flags=re.VERBOSE)
+        else:
+            self.image_pattern = None
 
         self.file_system = file_system
 
         if paths is None:
-            self.filepaths = ls_func(self.path)
+            self.filepaths = list(sorted(ls_func(self.path)))
         else:
-            self.filepaths = paths
+            path_fixed = _fix_path(self.path)
+            self.filepaths = list(
+                sorted(path for path in paths if path_fixed in _fix_path(path))
+            )
 
-        if filename_regex:
+        if self.cloud_cover_regexes:
+            try:
+                self.cloud_cover_percentage = float(
+                    get_cloud_percentage_in_local_dir(
+                        self.filepaths, regexes=self.cloud_cover_regexes
+                    )
+                )
+            except Exception:
+                self.cloud_cover_percentage = None
+        else:
+            self.cloud_cover_percentage = None
+
+        # if self.crs_regexes:
+        #     self._crs = get_cloud_percentage_in_local_dir(
+        #         self.filepaths, regexes=self.crs_regexes
+        #     )
+        #     self._crs = pyproj.CRS(self._crs)
+        # else:
+        #     self._crs = None
+
+        # if self.bounds_regexes:
+        #     corner = get_cloud_percentage_in_local_dir(
+        #         self.filepaths, regexes=self.bounds_regexes
+        #     )
+        #     maxy = int(corner["maxy"])
+        #     minx = int(corner["minx"])
+        #     miny = maxy - 110_000
+        #     maxx = minx + 110_000
+        #     self._bounds = (minx, miny, maxx, maxy)
+
+        # else:
+        #     self._bounds = None
+
+        if self.filename_regex:
             self.filepaths = [
                 path
                 for path in self.filepaths
@@ -221,35 +176,43 @@ class Image:
             self.filepaths = [
                 file for file in self.filepaths if any(band in file for band in bands)
             ]
-        if res is not None:
-            self.data = [
-                Raster.from_path(
-                    path,
-                    res=res,
-                    file_system=self.file_system,
-                    filename_regex=self.filename_regex,
-                )
-                for path in self.filepaths
-            ]
-        else:
-            self.data = [
-                Raster.from_path(
-                    path,
-                    res=res,
-                    file_system=self.file_system,
-                    filename_regex=self.filename_regex,
-                )
-                for path, res in zip(
-                    self.filepaths, self.resolutions.values(), strict=False
-                )
-            ]
+        # if res is not None:
+        #     self.data = [
+        #         Raster.from_path(
+        #             path,
+        #             res=res,
+        #             file_system=self.file_system,
+        #             filename_regex=self.filename_regex,
+        #         )
+        #         for path in self.filepaths
+        #     ]
+        # else:
+        #     self.data = [
+        #         Raster.from_path(
+        #             path,
+        #             res=res,
+        #             file_system=self.file_system,
+        #             filename_regex=self.filename_regex,
+        #         )
+        #         for path, res in zip(
+        #             self.filepaths, self.resolutions.values(), strict=False
+        #         )
+        #     ]
+
+        for path in self.filepaths:
+            with opener(path, self.file_system) as file:
+                with rasterio.open(file) as src:
+                    self._bounds = src.bounds
+                    self._crs = src.crs
+            break
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(data={self.data})"
+        return f"{self.__class__.__name__}(bands={self.bands})"
 
     def load(self, **kwargs) -> "Image":
-        for raster in self:
-            raster.load(**kwargs)
+        with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
+            parallel(joblib.delayed(_raster_load)(raster**kwargs) for raster in self)
+
         return self
 
     def clip(self, mask, **kwargs) -> "Image":
@@ -268,7 +231,6 @@ class Image:
             points = GeoSeries(self.unary_union).sample_points(n)
         buffered = points.buffer(size / 2).clip(self.unary_union)
         boxes = to_gdf([box(*arr) for arr in buffered.bounds.values], crs=self.crs)
-        print(self.__dict__)
         return self.clip(boxes, **kwargs)
 
     def copy(self, deep: bool = True) -> "Image":
@@ -281,36 +243,34 @@ class Image:
         copied.data = [raster.copy() for raster in copied]
         return copied
 
-    def __getitem__(self, band: str) -> Raster:
-        simple_string_match = [
-            raster for raster in self.data if str(band) in raster.path
+    def __getitem__(self, band: str) -> str:
+        return self.get_band(band)
+
+    def get_bands(self, res: int | None = None) -> list[Raster]:
+        return [
+            Raster.from_path(
+                path,
+                res=res,
+                file_system=self.file_system,
+                filename_regex=self.filename_regex,
+            )
+            for path in self.filepaths
         ]
-        if len(simple_string_match) == 1:
-            return simple_string_match[0]
 
-        regex_matches = []
-        for raster in self.data:
-            match_ = re.search(self.filename_pattern, Path(raster.path).name)
-            if match_ and str(band) == match_.group("band"):
-                regex_matches.append(raster)
-
-        if len(regex_matches) == 1:
-            return regex_matches[0]
-
-        if len(regex_matches) > 1:
-            prefix = "Multiple"
-        elif not regex_matches:
-            prefix = "No"
-
-        raise ValueError(
-            f"{prefix} matches for band {band} among paths {[Path(x).name for x in self.filepaths]}"
+    def get_band(self, band: str, res: int | None = None) -> Raster:
+        path = self.get_path(band)
+        return Raster.from_path(
+            path,
+            res=res,
+            file_system=self.file_system,
+            filename_regex=self.filename_regex,
         )
 
-    def __iter__(self):
-        return iter(self.data)
+    # def __iter__(self):
+    #     return iter(self.data)
 
     def __len__(self) -> int:
-        return len(self.data)
+        return len(self.filepaths)
 
     @property
     def centroid(self) -> str:
@@ -320,10 +280,12 @@ class Image:
 
     @property
     def crs(self) -> str:
+        return self._crs
         return get_common_crs(self.data)
 
     @property
     def bounds(self) -> tuple[float, float, float, float]:
+        return self._bounds
         return get_total_bounds(self.data)
 
     @property
@@ -365,25 +327,21 @@ class Image:
         elif not regex_matches:
             prefix = "No"
 
-        raise ValueError(
+        raise KeyError(
             f"{prefix} matches for band {band} among paths {[Path(x).name for x in self.filepaths]}"
         )
 
     @property
     def level(self) -> str:
-        if "L1C" in self.path:
-            return "L1C"
-        elif "L2A" in self.path:
-            return "L2A"
-        raise ValueError(self.path)
+        raise NotImplemented()
 
     @property
     def bands(self) -> list[str]:
-        return get_bands_for_image(self.path)
+        raise NotImplementedError()
 
     @property
     def resolutions(self) -> dict[str, int]:
-        return get_band_resolutions_for_image(self.path)
+        raise NotImplementedError()
 
 
 class ImageTile(ImageBase):
@@ -391,25 +349,34 @@ class ImageTile(ImageBase):
     def __init__(
         self,
         tile_id: str,
-        paths: list[str] | None = None,
-        root: str | None = None,
-        filename_regex: str = config.SENTINEL2_FILENAME_REGEX,
-        image_regex: str = config.SENTINEL2_IMAGE_REGEX,
+        filename_regex: str,
+        image_regex: str,
+        image_paths: list[str],
+        filepaths: list[str],
+        level: str | None = None,
         file_system: dp.gcs.GCSFileSystem | None = None,
+        image_type: Image = Image,
+        processes: int = 1,
     ) -> None:
         self.tile_id = str(tile_id)
+        self.level = level
         self.file_system = file_system
+        self.processes = processes
+        self.image_type = image_type
         self.filename_regex = filename_regex
         self.image_regex = image_regex
-        if not paths and not root:
-            raise ValueError("Must specify either 'paths' or 'root'")
-        if not paths:
-            self.image_paths = [path for path in ls_func(root) if self.tile_id in path]
-        else:
-            self.image_paths = [path for path in paths if self.tile_id in path]
 
-        self.image_regex = image_regex
-        self.filename_regex = filename_regex
+        self.image_paths = [
+            path
+            for path in image_paths
+            if self.tile_id in path and (self.level or "") in path
+        ]
+        self.filepaths = [
+            path
+            for path in filepaths
+            if self.tile_id in path and (self.level or "") in path
+        ]
+
         self.image_pattern = re.compile(self.image_regex, flags=re.VERBOSE)
         self.filename_pattern = re.compile(self.filename_regex, flags=re.VERBOSE)
 
@@ -436,23 +403,26 @@ class ImageTile(ImageBase):
 
     def __getitem__(self, item: int | slice | list[int]) -> Image | Sequence[Image]:
         if isinstance(item, int):
-            return Image(
+            return self.image_type(
                 self.image_paths[item],
                 file_system=self.file_system,
+                paths=self.filepaths,
             )
         elif isinstance(item, slice):
             return [
-                Image(
+                self.image_type(
                     path,
                     file_system=self.file_system,
+                    paths=self.filepaths,
                 )
                 for path in self.image_paths[item]
             ]
         elif isinstance(item, Sequence) and not isinstance(item, str):
             return [
-                Image(
+                self.image_type(
                     self.image_paths[i],
                     file_system=self.file_system,
+                    paths=self.filepaths,
                 )
                 for i in item
             ]
@@ -468,33 +438,253 @@ class ImageTile(ImageBase):
             )
         else:
             image_paths = [str(tile) for tile in self.image_paths]
-        return f"{self.__class__.__name__}(tile_id={self.tile_id}, paths={image_paths})"
+        return f"{self.__class__.__name__}(tile_id={self.tile_id}, image_paths={image_paths})"
+
+
+class ImageCollection(ImageBase):
+    image_regex: ClassVar[str]
+    filename_regex: ClassVar[str]
+    image_type: ClassVar[Image] = Image
+
+    def __init__(
+        self,
+        path: str | Path,
+        level: str | None = None,
+        processes: int = 1,
+        file_system: dp.gcs.GCSFileSystem | None = None,
+    ) -> None:
+        self.path = str(path)
+        self.level = level
+        self.file_system = file_system
+        self.processes = processes
+
+        if self.filename_regex:
+            self.filename_pattern = re.compile(self.filename_regex, flags=re.VERBOSE)
+        else:
+            self.filename_pattern = None
+        if self.image_regex:
+            self.image_pattern = re.compile(self.image_regex, flags=re.VERBOSE)
+            self.image_paths = [
+                path
+                for path in ls_func(self.path)
+                if re.search(self.image_pattern, Path(path).name)
+                and (self.level or "") in path
+            ]
+        else:
+            self.image_pattern = None
+            self.image_paths = [
+                path for path in ls_func(self.path) and (self.level or "") in path
+            ]
+
+        self.filepaths = set(
+            glob_func(self.path + "/**/**")
+            + glob_func(self.path + "/**/**/**")
+            + glob_func(self.path + "/**/**/**/**")
+            + glob_func(self.path + "/**/**/**/**/**")
+        )
+
+        tile_ids = set()
+        for path in self.image_paths:
+            try:
+                tile_ids.add(
+                    re.match(self.image_pattern, Path(path).name).group("tile")
+                )
+            except AttributeError:
+                continue
+
+        self._tiles = [
+            ImageTile(
+                tile_id,
+                level=self.level,
+                image_paths=self.image_paths,
+                filename_regex=self.filename_regex,
+                image_regex=self.image_regex,
+                file_system=self.file_system,
+                image_type=self.image_type,
+                processes=self.processes,
+                filepaths=self.filepaths,
+            )
+            for tile_id in sorted(tile_ids)
+        ]
+
+    def get_images(
+        self,
+        bands: str | list[str] | None = None,
+        date_range: tuple[str, str] | None = None,
+        bbox: Any | None = None,
+    ) -> list["Image"]:
+        if bbox is not None:
+            with joblib.Parallel(
+                n_jobs=self.processes, backend="threading"
+            ) as parallel:
+                image_paths = parallel(
+                    tile.image_paths
+                    for tile in self.get_tiles()
+                    if joblib.delayed(_intesects)(tile, bbox)
+                )
+        else:
+            image_paths = self.image_paths
+
+        return get_images(
+            image_paths,
+            level=self.level,
+            bands=bands,
+            paths=self.filepaths,
+            date_range=date_range,
+            bbox=bbox,
+            image_regex=self.image_regex,
+            processes=self.processes,
+            image_type=self.image_type,
+        )
+
+    def get_tiles(self) -> list:
+        return self._tiles
+
+    def get_tile(self, tile_id: str) -> ImageTile:
+        matches = [tile for tile in self.get_tiles() if tile_id == tile.tile_id]
+        if len(matches) == 1:
+            return matches[0]
+        elif len(matches) > 1:
+            prefix = "Multiple"
+        else:
+            prefix = "No"
+
+        raise KeyError(
+            f"{prefix} matches for tile_id {tile_id} among tile_ids {[tile.tile_id for tile in self.get_tiles()]}"
+        )
+
+    def sample_tiles(self, n: int) -> "ImageCollection":
+        if n > len(self._tiles):
+            raise ValueError(
+                f"n ({n}) is higher than number of tiles in collection ({len(self._tiles)})"
+            )
+        sample = []
+        tiles_copy = [x for x in self._tiles]
+        for _ in range(n):
+            random.shuffle(tiles_copy)
+            tile = tiles_copy.pop()
+            sample.append(tile)
+        return sample
+
+    def sample_yearly(self):
+        pass
+
+    def sample_change(
+        self,
+        size: int,
+        cloud_band: str,
+        cloud_values: tuple[int],
+        max_cloud_cover: int = 50,
+    ) -> "list[Image, Image]":
+        tile: ImageTile = self.sample_tiles(1)[0]
+        n_images = len(tile.image_paths)
+
+        i, j = 1, -1
+        while True:
+            if i > n_images / 2:
+                raise ValueError(
+                    f"Not enough cloud free images for tile {tile.tile_id}"
+                )
+            first_img = tile[i]
+            last_img = tile[j]
+            mask = GeoSeries(first_img.unary_union).sample_points(1).buffer(size / 2)
+            try:
+                first_scl = first_img[cloud_band].clip(mask)
+            except KeyError:
+                return first_img, last_img
+
+            cloud_percentage_first = np.mean(
+                np.where(np.isin(first_scl, cloud_values), 1, 0)
+            )
+            if cloud_percentage_first > max_cloud_cover:
+                i += 1
+                j -= 1
+                continue
+
+            last_scl = last_img[cloud_band].clip(mask)
+            cloud_percentage_last = np.mean(
+                np.where(np.isin(last_scl, cloud_values), 1, 0)
+            )
+            if cloud_percentage_last > max_cloud_cover:
+                i += 1
+                j -= 1
+                continue
+
+            return first_img, last_img
+
+        oldest_and_newest_image = self.sample_tiles(1)[0][[0, -1]]
+        bounds = GeoSeries(oldest_and_newest_image[0].unary_union)
+        sample_area = bounds.sample_points(1).buffer(size / 2).clip(bounds)
+        return [image.clip(sample_area) for image in oldest_and_newest_image]
+
+    @property
+    def name(self) -> str:
+        return Path(self.path).name
+
+    def __getitem__(self, bbox: BoundingBox) -> TORCHGEO_RETURN_TYPE:
+        images = self.get_images(bbox=bbox)
+
+        crs = get_common_crs(images)
+
+        data: torch.Tensor = torch.cat(
+            [numpy_to_torch(image.load(indexes=1).values) for image in images]
+        )
+
+        key = "image"  # if self.is_image else "mask"
+        sample = {key: data, "crs": crs, "bbox": bbox}
+
+        return sample
+
+    def __repr__(self) -> str:
+        if len(self.get_tiles()) > 6:
+            tiles = (
+                [str(tile) for tile in self.get_tiles()[:3]]
+                + ["..."]
+                + [str(tile) for tile in self.get_tiles()[-3:]]
+            )
+        else:
+            tiles = [str(tile) for tile in self.get_tiles()]
+        return f"{self.__class__.__name__}(tiles={tiles}, n_image_paths={len(self.image_paths)})"
 
 
 def get_images(
     image_paths: list[str],
     *,
-    filename_regex: str | None = None,
+    paths: list[str],
+    max_cloud_cover: int | None = None,
     image_regex: str | None = None,
     level: str | None = None,
     bands: str | list[str] | None = None,
     date_range: tuple[str, str] | None = None,
     bbox: Any | None = None,
+    processes: int = 1,
+    image_type: Image = Image,
 ) -> list[Image]:
 
     if image_regex:
         image_regex = re.compile(image_regex, flags=re.VERBOSE)
-        images = [
-            Image(path, bands=bands, filename_regex=filename_regex)
-            for path in image_paths
-            if (level or "") in path and re.search(image_regex, Path(path).name)
-        ]
-    else:
-        images = [
-            Image(path, bands=bands, filename_regex=filename_regex)
+
+    with joblib.Parallel(n_jobs=processes, backend="threading") as parallel:
+        images = parallel(
+            joblib.delayed(image_type)(path, bands=bands, paths=paths)
             for path in image_paths
             if (level or "") in path
-        ]
+            and (re.search(image_regex, Path(path).name) if image_regex else 1)
+        )
+        # images = [
+        #     image_type(path, bands=bands, filename_regex=filename_regex)
+        #     for path in image_paths
+        #     if (level or "") in path and re.search(image_regex, Path(path).name)
+        # ]
+    # else:
+    #     images = [
+    #         image_type(path, bands=bands, filename_regex=filename_regex)
+    #         for path in image_paths
+    #         if (level or "") in path
+    #     ]
+
+    if max_cloud_cover is not None:
+        images = [image for image in images if image.cloud_cover < max_cloud_cover]
 
     if bbox is not None:
         if isinstance(bbox, BoundingBox):
@@ -553,3 +743,110 @@ def numpy_to_torch(array: np.ndarray) -> torch.Tensor:
         array = array.astype(np.int64)
 
     return torch.tensor(array)
+
+
+def _raster_load(raster, **kwargs):
+    return raster.load(**kwargs)
+
+
+def get_cloud_percentage_in_local_dir(
+    paths: list[str], regexes: str | tuple[str]
+) -> str | dict[str, str]:
+    for i, path in enumerate(paths):
+        if ".xml" not in path:
+            continue
+        with open_func(path, "rb") as file:
+            filebytes: bytes = file.read()
+            try:
+                return _get_cloud_percentage(filebytes.decode("utf-8"), regexes)
+            except RegexError as e:
+                if i == len(paths) - 1:
+                    raise e
+
+
+class RegexError(ValueError):
+    pass
+
+
+def _get_cloud_percentage(xml_file: str, regexes: tuple[str]) -> str | dict[str, str]:
+    for regex in regexes:
+        if isinstance(regex, dict):
+            out = {}
+            for key, value in regex.items():
+                try:
+                    out[key] = re.search(value, xml_file).group(1)
+                except (TypeError, AttributeError):
+                    continue
+            if len(out) != len(regex):
+                raise RegexError()
+            return out
+        try:
+            return re.search(regex, xml_file).group(1)
+        except (TypeError, AttributeError):
+            continue
+    raise RegexError()
+
+
+def _fix_path(path: str) -> str:
+    return (
+        str(path).replace("\\", "/").replace(r"\"", "/").replace("//", "/").rstrip("/")
+    )
+
+
+def _intesects(x, other) -> bool:
+    return box(*x.bounds).intersects(box(*to_bbox(other)))
+
+
+class Sentinel2Image(Image):
+    image_regex: ClassVar[str] = config.SENTINEL2_IMAGE_REGEX
+    filename_regex: ClassVar[str] = config.SENTINEL2_FILENAME_REGEX
+    cloud_cover_regexes: ClassVar[tuple[str]] = config.CLOUD_COVERAGE_REGEXES
+    crs_regexes: ClassVar[tuple[str]] = config.CRS_REGEX
+    bounds_regexes: ClassVar[tuple[dict[str, str]]] = config.BOUNDS_REGEX
+
+    @property
+    def bands(self) -> list[str]:
+        return get_bands_for_image(self.path)
+
+    @property
+    def resolutions(self) -> dict[str, int]:
+        return get_band_resolutions_for_image(self.path)
+
+    @property
+    def level(self) -> str:
+        if "L1C" in self.path:
+            return "L1C"
+        elif "L2A" in self.path:
+            return "L2A"
+        raise ValueError(self.path)
+
+
+class Sentinel2(ImageCollection):
+    image_regex: ClassVar[str] = config.SENTINEL2_IMAGE_REGEX
+    filename_regex: ClassVar[str] = config.SENTINEL2_FILENAME_REGEX
+    image_type: ClassVar[Image] = Sentinel2Image
+
+    def sample_change(
+        self,
+        size: int = 1000,
+        cloud_band: str = "SCL",
+        cloud_values: tuple[int] = (8, 7, 6),
+        max_cloud_cover: int = 50,
+    ) -> "list[Image, Image]":
+        return super().sample_change(
+            size=size,
+            max_cloud_cover=max_cloud_cover,
+            cloud_band=cloud_band,
+            cloud_values=cloud_values,
+        )
+
+
+class NamedList:
+    def __init__(self, *values):
+        self.values = values
+
+    def __getitem__(self, item):
+        try:
+            return self.values[item]
+        except TypeError:
+            return self.values[self.values.index(item)]

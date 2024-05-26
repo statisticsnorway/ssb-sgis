@@ -67,3 +67,13 @@ SENTINEL2_SCL_CLASSES = {
 SENTINEL2_BANDS = SENTINEL2_L1C_BANDS | SENTINEL2_CLOUD_BANDS
 SENTINEL2_RBG_BANDS = ["B02", "B03", "B04"]
 SENTINEL2_NDVI_BANDS = ["B04", "B08"]
+
+# multiple regex searches because there are different xml files with same info, but different naming
+CLOUD_COVERAGE_REGEXES: tuple[str] = (
+    r"<Cloud_Coverage_Assessment>([\d.]+)</Cloud_Coverage_Assessment>",
+    r"<CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>([\d.]+)</CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>",
+)
+
+CRS_REGEX: tuple[str] = (r"<HORIZONTAL_CS_CODE>EPSG:(\d+)</HORIZONTAL_CS_CODE>",)
+
+BOUNDS_REGEX: tuple[str] = ({"minx": r"<ULX>(\d+)</ULX>", "maxy": r"<ULY>(\d+)</ULY>"},)

@@ -215,7 +215,7 @@ def image_collection_to_background_map(
         out_images.append(rbg_image)
         raster_bounds.append(bounds)
         if image.tile and image.date:
-            raster_names.append(f"{image.tile}_{image.date}")
+            raster_names.append(f"{image.tile}_{image.date[:8]}")
         else:
             raster_names.append(image.name)
 
@@ -302,7 +302,7 @@ class Explore(Map):
         new_gdfs = {}
         for gdf in gdfs:
             try:
-                new_gdfs[get_object_name(gdf)] = to_gdf(gdf)
+                new_gdfs[str(get_object_name(gdf))] = to_gdf(gdf)
             except Exception:
                 pass
 
