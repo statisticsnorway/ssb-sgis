@@ -40,8 +40,7 @@ from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..raster.image_collection import Image
-from ..raster.image_collection import TileCollection
-from ..raster.image_collection import Tile
+from ..raster.image_collection import ImageCollection
 from .httpserver import run_html_server
 from .map import Map
 from .tilesources import kartverket
@@ -164,12 +163,12 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 
 
 def image_collection_to_background_map(
-    image_collection: TileCollection | Image | Tile,
+    image_collection: ImageCollection | Image,
     mask: Any | None,
     rbg_bands: list[str] = ["B02", "B03", "B04"],
 ):
     red, blue, green = rbg_bands
-    if isinstance(image_collection, (TileCollection | Tile)):
+    if isinstance(image_collection, (ImageCollection)):
         images = image_collection.get_images()
     elif isinstance(image_collection, Image):
         images = [image_collection]
@@ -314,12 +313,12 @@ class Explore(Map):
 
         self.rasters = {}
         for value in gdfs:
-            if isinstance(value, (TileCollection | Image, Tile)):
+            if isinstance(value, (ImageCollection | Image)):
                 self.rasters[get_object_name(value)] = value
 
         new_kwargs = {}
         for key, value in kwargs.items():
-            if isinstance(value, (TileCollection | Image, Tile)):
+            if isinstance(value, (ImageCollection | Image)):
                 self.rasters[key] = value
             else:
                 new_kwargs[key] = value
@@ -334,7 +333,7 @@ class Explore(Map):
 
             # elif hasattr(value, "__iter__"):
             #     for x in value:
-            #         if isinstance(x, (TileCollection | Image, Tile)):
+            #         if isinstance(x, (ImageCollection | Image)):
             #             self.rasters.append(value)
 
         super().__init__(new_gdfs, column=column, show=show, **new_kwargs, **new_gdfs)

@@ -119,10 +119,9 @@ from .raster.cube import concat_cubes
 from .raster.image_collection import (
     Sentinel2Collection,
     Sentinel2Image,
-    Sentinel2Tile,
-    TileCollection,
-    Tile,
+    ImageCollection,
     Image,
+    Band,
 )
 
 try:
