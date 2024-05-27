@@ -40,8 +40,8 @@ from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..raster.image_collection import Image
-from ..raster.image_collection import ImageCollection
-from ..raster.image_collection import ImageTile
+from ..raster.image_collection import TileCollection
+from ..raster.image_collection import Tile
 from .httpserver import run_html_server
 from .map import Map
 from .tilesources import kartverket
@@ -164,18 +164,24 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 
 
 def image_collection_to_background_map(
-    image_collection: ImageCollection | Image | ImageTile,
+    image_collection: TileCollection | Image | Tile,
     mask: Any | None,
     rbg_bands: list[str] = ["B02", "B03", "B04"],
 ):
     red, blue, green = rbg_bands
-    if isinstance(image_collection, (ImageCollection | ImageTile)):
+    if isinstance(image_collection, (TileCollection | Tile)):
         images = image_collection.get_images()
     elif isinstance(image_collection, Image):
         images = [image_collection]
     else:
         raise TypeError(type(image_collection))
 
+    if len(images) > 30:
+        raise ValueError(
+            "You are trying to show {len(images)} images in a map, "
+            "which would likely kill your coputer. "
+            "Take a sample with the sample_images method."
+        )
     out_images = []
     raster_bounds = []
     raster_names = []
@@ -308,12 +314,12 @@ class Explore(Map):
 
         self.rasters = {}
         for value in gdfs:
-            if isinstance(value, (ImageCollection | Image, ImageTile)):
+            if isinstance(value, (TileCollection | Image, Tile)):
                 self.rasters[get_object_name(value)] = value
 
         new_kwargs = {}
         for key, value in kwargs.items():
-            if isinstance(value, (ImageCollection | Image, ImageTile)):
+            if isinstance(value, (TileCollection | Image, Tile)):
                 self.rasters[key] = value
             else:
                 new_kwargs[key] = value
@@ -328,7 +334,7 @@ class Explore(Map):
 
             # elif hasattr(value, "__iter__"):
             #     for x in value:
-            #         if isinstance(x, (ImageCollection | Image, ImageTile)):
+            #         if isinstance(x, (TileCollection | Image, Tile)):
             #             self.rasters.append(value)
 
         super().__init__(new_gdfs, column=column, show=show, **new_kwargs, **new_gdfs)

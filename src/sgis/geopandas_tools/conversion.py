@@ -90,8 +90,10 @@ def to_shapely(obj: Any) -> Geometry:
         return obj
     if not hasattr(obj, "__iter__"):
         raise TypeError(type(obj))
-    if hasattr(obj, "unary_union"):
+    try:
         return obj.unary_union
+    except AttributeError:
+        pass
     try:
         return Point(*obj)
     except TypeError:
@@ -108,6 +110,7 @@ def to_shapely(obj: Any) -> Geometry:
         return shapely.wkb.loads(obj)
     except TypeError:
         pass
+    raise TypeError(type(obj))
 
 
 def to_bbox(

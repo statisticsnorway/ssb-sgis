@@ -24,8 +24,8 @@ from ..geopandas_tools.general import drop_inactive_geometry_columns
 from ..geopandas_tools.general import get_common_crs
 from ..helpers import get_object_name
 from ..raster.image_collection import Image
-from ..raster.image_collection import ImageCollection
-from ..raster.image_collection import ImageTile
+from ..raster.image_collection import TileCollection
+from ..raster.image_collection import Tile
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -335,8 +335,8 @@ class Map:
             GeoSeries,
             Geometry,
             RasterDataset,
-            ImageCollection,
-            ImageTile,
+            TileCollection,
+            Tile,
             Image,
         )
 
