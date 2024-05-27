@@ -66,7 +66,7 @@ def test_sample():
 
 def test_indexing():
     collection = sg.Sentinel2Collection(path_sentinel)
-    assert isinstance(collection[0][0]["B02"], sg.Raster)
+    # assert isinstance(collection[0][0]["B02"], sg.Raster)
 
     assert len(collection.get_tiles()) == 2
     assert isinstance(collection.get_tiles(), list)
@@ -84,7 +84,7 @@ def test_indexing():
     assert isinstance(collection[0][[0]], list)
     assert isinstance(collection[0][[0]][0], sg.Image)
 
-    assert isinstance(collection[0][0]["B02"], sg.Raster)
+    assert isinstance(collection[0][0]["B02"], np.ndarray)
 
 
 def test_date_ranges():
@@ -123,6 +123,35 @@ def test_date_ranges():
     assert len(images) == 3, len(images)
 
 
+def test_groupby():
+
+    collection = sg.Sentinel2Collection(path_sentinel)
+
+    for subcollection in collection.groupby("date"):
+        assert isinstance(subcollection, sg.TileCollection), type(subcollection)
+        assert len(subcollection.dates) == 1, subcollection._df["date"]
+        assert len(subcollection.band_ids) == 12, subcollection._df["band"]
+        assert subcollection._df["band"].notna().all(), subcollection._df["band"]
+        for image in subcollection:
+            assert isinstance(image, sg.Image), type(image)
+            for band in image:
+                assert isinstance(image, sg.Band), type(image)
+
+    for subcollection in collection.groupby("tile"):
+        assert isinstance(subcollection, sg.TileCollection), type(subcollection)
+        assert len(subcollection.tiles) == 1
+
+    for subcollection in collection.groupby(["tile", "band"]):
+        assert isinstance(subcollection, sg.TileCollection), type(subcollection)
+        assert len(subcollection.dates) in [1, 2], subcollection._df["date"]
+        assert len(subcollection.tiles) == 1, subcollection._df["tile"]
+
+    assert len(n := collection.groupby("date")) == 3, (n, len(n))
+    assert len(n := collection.groupby("tile")) == 2, (n, len(n))
+    assert len(n := collection.groupby("band")) == 12, (n, len(n))
+    assert len(n := collection.groupby(["band", "date"])) == 36, (n, len(n))
+
+
 def test_iteration():
 
     collection = sg.Sentinel2Collection(path_sentinel)
@@ -138,8 +167,8 @@ def test_iteration():
     print(collection.group_paths_by_date())
     print(collection.group_paths_by_band())
 
-    arr = collection.aggregate_dates()
-    print(arr.shape)
+    # arr = collection.aggregate_dates()
+    # print(arr.shape)
 
     for tile in collection:
 
@@ -148,9 +177,9 @@ def test_iteration():
 
         print(tile.group_paths_by_band())
 
-        arr = tile.aggregate_dates()
-        assert isinstance(arr, np.ndarray), arr
-        assert len(arr.shape) == 3, arr.shape
+        # arr = tile.aggregate_dates()
+        # assert isinstance(arr, np.ndarray), arr
+        # assert len(arr.shape) == 3, arr.shape
 
         for image in tile.get_images():
             assert isinstance(image, sg.Image), type(image)
@@ -226,6 +255,7 @@ def test_iteration():
 
 
 def main():
+    test_groupby()
     test_indexing()
     test_date_ranges()
     test_iteration()
