@@ -52,6 +52,9 @@ def test_indexing():
     image = collection[0]
     assert isinstance(image, sg.Image)
     assert image.date.startswith("2017"), image.date
+    assert "B02" in image
+    assert "B00" not in image
+    assert ["B02", "B03", "B04"] in image
 
     image = collection[1]
     assert isinstance(image, sg.Image)
@@ -394,15 +397,15 @@ def test_iteration():
 
 
 def main():
-    test_groupby()
-    test_bbox()
     test_indexing()
+    test_aggregate()
+    test_bbox()
     test_iteration()
+    test_groupby()
     test_regexes()
     test_cloud()
     test_date_ranges()
     test_sample()
-    test_aggregate()
 
 
 if __name__ == "__main__":

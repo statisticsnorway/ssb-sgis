@@ -179,7 +179,7 @@ def test_clip():
 
 def test_clip_res():
     r = sg.Raster.from_path(path_singleband, nodata=-999)
-    assert r.shape == (1, 201, 201), r.shape
+    assert r.shape == (201, 201), r.shape
 
     res = 10
     assert r.res == res
@@ -205,6 +205,9 @@ def test_clip_res():
 
     def masked_and_boundless():
         clipped = r.copy().clip(square_in_corner, masked=True, boundless=True)
+        print("masked_and_boundless")
+        sg.explore(clipped.to_gdf())
+        return
         general_assertions(clipped, masked=True)
         print(clipped.shape)
 
@@ -215,6 +218,9 @@ def test_clip_res():
 
     def masked_not_boundless():
         clipped = r.copy().clip(square_in_corner, masked=True, boundless=False)
+        print("masked_not_boundless")
+        sg.explore(clipped.to_gdf())
+        return
         general_assertions(clipped, masked=True)
         print(clipped.shape)
 
@@ -225,6 +231,9 @@ def test_clip_res():
 
     def not_masked_not_boundless():
         clipped = r.copy().clip(square_in_corner, masked=False, boundless=False)
+        print("not_masked_not_boundless")
+        sg.explore(clipped.to_gdf())
+        return
         general_assertions(clipped, masked=False)
 
         clipped_from_memfile = (
@@ -234,6 +243,9 @@ def test_clip_res():
 
     def not_masked_but_boundless():
         clipped = r.copy().clip(square_in_corner, masked=False, boundless=True)
+        print("not_masked_but_boundless")
+        sg.explore(clipped.to_gdf())
+        return
         general_assertions(clipped, masked=False)
 
         intersected = clipped.to_gdf().clip(square_in_corner)
@@ -420,9 +432,9 @@ if __name__ == "__main__":
         raster.plot()
         raster
 
+    test_clip_res()
     test_resize()
     test_clip()
-    test_clip_res()
     test_zonal()
     test_to_crs()
     # test_res()

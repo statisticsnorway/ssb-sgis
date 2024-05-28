@@ -1,3 +1,4 @@
+import numbers
 import abc
 import functools
 from copy import deepcopy, copy
@@ -82,7 +83,7 @@ class Band:
         """Makes Bands sortable by band_id."""
         return self.band_id < other.band_id
 
-    def load(self, bounds=None, indexes=1, **kwargs) -> np.ndarray:
+    def load(self, bounds=None, boundless=False, indexes=1, **kwargs) -> np.ndarray:
         bounds = to_bbox(bounds) if bounds is not None else self._mask
 
         if isinstance(indexes, int):
@@ -92,10 +93,39 @@ class Band:
 
         with opener(self.path, file_system=self.file_system) as f:
             with rasterio.open(f) as src:
-                # if bounds is None:
-                #     self.transform = src.transform
-                #     arr = src.read(indexes=indexes, **kwargs)
-                #     return arr
+                if bounds is None:
+                    out_shape = _get_shape_from_res(
+                        to_bbox(src.bounds), self.res, indexes
+                    )
+                    self.transform = src.transform
+                    arr = src.read(indexes=indexes, out_shape=out_shape, **kwargs)
+                    if isinstance(indexes, int) and len(arr.shape) == 3:
+                        return arr[0]
+                    return arr
+                else:
+                    window = rasterio.windows.from_bounds(
+                        bounds, transform=src.transform
+                    )
+                    out_shape = _get_shape_from_bounds(bounds, self.res)
+
+                    arr = src.read(
+                        indexes=_indexes,
+                        out_shape=out_shape,
+                        window=window,
+                        boundless=boundless,
+                        **kwargs,
+                    )
+                    if isinstance(indexes, int):
+                        arr = arr[0]
+                        height, width = arr.shape
+                    else:
+                        height, width = arr.shape[1:]
+
+                    self.transform = rasterio.transform.from_bounds(
+                        *bounds, width, height
+                    )
+                    return arr
+
                 arr, transform = rasterio.merge.merge(
                     [src],
                     res=self.res,
@@ -153,7 +183,7 @@ class ImageBase(abc.ABC):
             return
 
         if self.filename_patterns:
-            df, match_cols_filename = get_regexes_matches_for_df(
+            df, match_cols_filename = _get_regexes_matches_for_df(
                 df, "filename", self.filename_patterns, suffix=FILENAME_COL_SUFFIX
             )
 
@@ -180,7 +210,7 @@ class ImageBase(abc.ABC):
         )
 
         if self.image_patterns and len(grouped):
-            grouped, _ = get_regexes_matches_for_df(
+            grouped, _ = _get_regexes_matches_for_df(
                 grouped, "imagename", self.image_patterns, suffix=""
             )
             if not len(grouped):
@@ -249,7 +279,7 @@ class Image(ImageBase):
             try:
                 file_paths = [path for path in all_file_paths if self.name in path]
                 self.cloud_cover_percentage = float(
-                    get_cloud_percentage_in_local_dir(
+                    _get_regex_match_from_xml_in_local_dir(
                         file_paths, regexes=self.cloud_cover_regexes
                     )
                 )
@@ -355,8 +385,16 @@ class Image(ImageBase):
         try:
             copied._bands = [copied._get_band(x) for x in band]
         except TypeError as e:
-            raise TypeError("Image indices should be string or list of string.") from e
+            raise TypeError(
+                f"{self.__class__.__name__} indices should be string or list of string. "
+                f"Got {band}"
+            ) from e
         return copied
+
+    def __contains__(self, item: str | Sequence[str]) -> bool:
+        if isinstance(item, str):
+            return item in self.band_ids
+        return all(x in self.band_ids for x in item)
 
     def __lt__(self, other: "Image") -> bool:
         """Makes Images sortable by date."""
@@ -490,6 +528,10 @@ class Image(ImageBase):
         raise ValueError(f"Couldn't find {group} in image_regexes")
 
 
+def src_read(src, indexes, out_shape, **kwargs):
+    return src.read(indexes=indexes, out_shape=out_shape, **kwargs)
+
+
 class ImageCollection(ImageBase):
     image_regexes: ClassVar[str | None] = None
     filename_regexes: ClassVar[str | None] = None
@@ -528,26 +570,31 @@ class ImageCollection(ImageBase):
                 )
             )
 
-        self._all_filepaths = [path for path in self._all_filepaths if level in path]
+        if self.level:
+            self._all_filepaths = [
+                path for path in self._all_filepaths if self.level in path
+            ]
 
         if df is not None:
             self._df = df
         else:
             self._add_metadata_to_df(self._all_filepaths)
 
-    def groupby(self, by, **kwargs) -> tuple[tuple[Any], "ImageCollection"]:
+    def groupby(self, by, **kwargs) -> list[tuple[Any], "ImageCollection"]:
         if isinstance(by, str):
             by = (by,)
         by = [col if col in self.df else f"{col}{FILENAME_COL_SUFFIX}" for col in by]
 
-        return tuple(
-            sorted(
-                (i, self._copy_and_add_df(group))
-                for i, group in self.df.explode(
-                    ["file_path", *self._match_cols_filename]
-                ).groupby(by, **kwargs)
+        df_long = self.df.explode(["file_path", *self._match_cols_filename])
+        with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
+            return list(
+                sorted(
+                    parallel(
+                        joblib.delayed(_copy_and_add_df_parallel)(i, group, self)
+                        for i, group in df_long.groupby(by, **kwargs)
+                    )
+                )
             )
-        )
 
     def aggregate_dates(
         self,
@@ -558,6 +605,8 @@ class ImageCollection(ImageBase):
             _method = "sum"
 
         bounds = to_bbox(bounds) if bounds is not None else self._mask
+
+        transform = None
 
         arrs = []
         for (band_id,), band_collection in self.groupby("band"):
@@ -613,15 +662,9 @@ class ImageCollection(ImageBase):
         if bands is not None:
             if isinstance(bands, str):
                 bands = [bands]
-            copied._band_ids = list(bands)
-            # print()
-            # print()
-            # print([img.__len__() for img in copied.images])
-            # print([img[bands].__len__() for img in copied.images])
-
-            copied._images = [img[bands] for img in copied.images]
-
-        copied.images = list(sorted(copied._images))
+            bands = set(bands)
+            copied._band_ids = bands
+            copied.images = [img[bands] for img in copied.images if bands in img]
 
         return copied
 
@@ -646,7 +689,7 @@ class ImageCollection(ImageBase):
 
         copied.df = copied.df.loc[
             lambda x: x["image_path"].apply(
-                lambda y: date_is_within(y, date_ranges, copied.image_patterns)
+                lambda y: _date_is_within(y, date_ranges, copied.image_patterns)
             )
         ]
 
@@ -697,10 +740,15 @@ class ImageCollection(ImageBase):
         return len(self.images)
 
     def __getitem__(
-        self, item: int | Sequence[int] | BoundingBox
+        self, item: int | slice | Sequence[int] | BoundingBox
     ) -> Image | TORCHGEO_RETURN_TYPE:
         if isinstance(item, int):
             return self.images[item]
+
+        if isinstance(item, slice):
+            copied = self.copy()
+            copied.images = copied.images[item]
+            return copied
 
         if not isinstance(item, BoundingBox):
             try:
@@ -771,7 +819,7 @@ class ImageCollection(ImageBase):
         try:
             return self._images
         except AttributeError:
-            # only fetch images when needed
+            # only fetch images when they are needed
             self._images = list(
                 sorted(
                     get_images(
@@ -801,6 +849,8 @@ class ImageCollection(ImageBase):
                     True if band_id in self._band_ids else False for band_id in x
                 ]
             )
+            if all(x is True for matches in are_matching for x in matches):
+                return
 
             for col in ["file_path", *self._match_cols_filename]:
                 # keeping only list elements that match the band_id in the boolean mask are_matching
@@ -854,22 +904,6 @@ def get_images(
         )
 
 
-def get_bands_for_image(image_path: str | Path) -> list[str]:
-    if "L1C" in str(image_path):
-        return list(config.SENTINEL2_L1C_BANDS)
-    elif "L2A" in str(image_path):
-        return list(config.SENTINEL2_L2A_BANDS)
-    raise ValueError(image_path)
-
-
-def get_band_resolutions_for_image(image_path: str | Path) -> dict[str, int]:
-    if "L1C" in str(image_path):
-        return config.SENTINEL2_L1C_BANDS
-    elif "L2A" in str(image_path):
-        return config.SENTINEL2_L2A_BANDS
-    raise ValueError(image_path)
-
-
 def numpy_to_torch(array: np.ndarray) -> torch.Tensor:
     """Convert numpy array to a pytorch tensor."""
     # fix numpy dtypes which are not supported by pytorch tensors
@@ -881,7 +915,7 @@ def numpy_to_torch(array: np.ndarray) -> torch.Tensor:
     return torch.tensor(array)
 
 
-def get_cloud_percentage_in_local_dir(
+def _get_regex_match_from_xml_in_local_dir(
     paths: list[str], regexes: str | tuple[str]
 ) -> str | dict[str, str]:
     for i, path in enumerate(paths):
@@ -891,12 +925,12 @@ def get_cloud_percentage_in_local_dir(
             filebytes: bytes = file.read()
             try:
                 return _get_cloud_percentage(filebytes.decode("utf-8"), regexes)
-            except RegexError as e:
+            except _RegexError as e:
                 if i == len(paths) - 1:
                     raise e
 
 
-class RegexError(ValueError):
+class _RegexError(ValueError):
     pass
 
 
@@ -910,13 +944,13 @@ def _get_cloud_percentage(xml_file: str, regexes: tuple[str]) -> str | dict[str,
                 except (TypeError, AttributeError):
                     continue
             if len(out) != len(regexes):
-                raise RegexError()
+                raise _RegexError()
             return out
         try:
             return re.search(regexes, xml_file).group(1)
         except (TypeError, AttributeError):
             continue
-    raise RegexError()
+    raise _RegexError()
 
 
 def _fix_path(path: str) -> str:
@@ -925,11 +959,7 @@ def _fix_path(path: str) -> str:
     )
 
 
-def _intesects(x, other) -> bool:
-    return box(*x.bounds).intersects(other)
-
-
-def get_regexes_matches_for_df(
+def _get_regexes_matches_for_df(
     df, match_col: str, patterns: Sequence[re.Pattern], suffix: str = ""
 ) -> tuple[pd.DataFrame, list[str]]:
     if not len(df):
@@ -948,7 +978,7 @@ def get_regexes_matches_for_df(
     return df.loc[~df[match_cols].isna().all(axis=1)], match_cols
 
 
-def date_is_within(
+def _date_is_within(
     path,
     date_ranges: (
         tuple[str | None, str | None] | tuple[tuple[str | None, str | None], ...] | None
@@ -992,6 +1022,43 @@ def date_is_within(
     return False
 
 
+def _get_shape_from_bounds(
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple, res: int
+) -> tuple[int, int]:
+    resx, resy = (res, res) if isinstance(res, numbers.Number) else res
+
+    minx, miny, maxx, maxy = to_bbox(obj)
+    diffx = maxx - minx
+    diffy = maxy - miny
+    width = int(diffx / resx)
+    heigth = int(diffy / resy)
+    return heigth, width
+
+
+def _get_shape_from_res(
+    bounds: tuple[float], res: int, indexes: int | tuple[int]
+) -> tuple[int] | None:
+    if res is None:
+        return None
+    if hasattr(res, "__iter__") and len(res) == 2:
+        res = res[0]
+    diffx = bounds[2] - bounds[0]
+    diffy = bounds[3] - bounds[1]
+    width = int(diffx / res)
+    height = int(diffy / res)
+    if not isinstance(indexes, int):
+        return len(indexes), width, height
+    return width, height
+
+
+def _intesects(x, other) -> bool:
+    return box(*x.bounds).intersects(other)
+
+
+def _copy_and_add_df_parallel(i, group, self):
+    return (i, self._copy_and_add_df(group))
+
+
 def _open_raster(path: str | Path) -> rasterio.io.DatasetReader:
     with opener(path) as file:
         return rasterio.open(file)
@@ -1004,6 +1071,7 @@ class Sentinel2Config:
         config.SENTINEL2_CLOUD_FILENAME_REGEX,
     )
     rbg_bands: ClassVar[list[str]] = ["B02", "B03", "B04"]
+    ndvi_bands: ClassVar[list[str]] = ["B04", "B08"]
     cloud_band: ClassVar[str] = "SCL"
     cloud_values: ClassVar[tuple[int]] = (3, 8, 9, 10, 11)
     l2a_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L2A_BANDS

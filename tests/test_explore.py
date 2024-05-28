@@ -112,7 +112,7 @@ def test_torch():
 
 def test_image_collection():
 
-    collection = sg.raster.image_collection.Sentinel2(path_sentinel)
+    collection = sg.Sentinel2Collection(path_sentinel)
 
     # selecting one random image
     img = collection.get_images()[0]["B04"]
