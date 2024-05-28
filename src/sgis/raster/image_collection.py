@@ -9,18 +9,23 @@ from typing import ClassVar, Callable
 import random
 from dataclasses import dataclass
 
+from affine import Affine
 import numpy as np
 import dapla as dp
 import pandas as pd
 from shapely import box
 from shapely.geometry import Point, Polygon, MultiPolygon
-import torch
 import pyproj
 from geopandas import GeoSeries, GeoDataFrame
 import joblib
 import glob
 import rasterio
 from shapely import Geometry
+
+try:
+    import torch
+except ImportError:
+    pass
 
 try:
     from torchgeo.datasets.utils import BoundingBox
@@ -60,6 +65,7 @@ else:
     glob_func = glob.glob
 
 TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
+FILENAME_COL_SUFFIX = "_filename"
 
 
 @dataclass
@@ -70,13 +76,14 @@ class Band:
     cloud_cover_percentage: float
     res: int | None
     file_system: dp.gcs.GCSFileSystem | None
+    _mask: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None
 
     def __lt__(self, other: "Band") -> bool:
         """Makes Bands sortable by band_id."""
         return self.band_id < other.band_id
 
     def load(self, bounds=None, indexes=1, **kwargs) -> np.ndarray:
-        bounds = to_bbox(bounds) if bounds is not None else None
+        bounds = to_bbox(bounds) if bounds is not None else self._mask
 
         if isinstance(indexes, int):
             _indexes = (indexes,)
@@ -86,7 +93,6 @@ class Band:
         with opener(self.path, file_system=self.file_system) as f:
             with rasterio.open(f) as src:
                 # if bounds is None:
-                #     # TODO consider removing to avi
                 #     self.transform = src.transform
                 #     arr = src.read(indexes=indexes, **kwargs)
                 #     return arr
@@ -104,79 +110,88 @@ class Band:
 
 
 class ImageBase(abc.ABC):
-    image_regex: ClassVar[str | None]
-    filename_regex: ClassVar[str | None]
+    image_regexes: ClassVar[str | None]
+    filename_regexes: ClassVar[str | None]
 
     def __init__(self) -> None:
 
-        if self.filename_regex:
-            self.filename_pattern = re.compile(self.filename_regex, flags=re.VERBOSE)
+        if self.filename_regexes:
+            if isinstance(self.filename_regexes, str):
+                self.filename_regexes = (self.filename_regexes,)
+            self.filename_patterns = [
+                re.compile(regexes, flags=re.VERBOSE)
+                for regexes in self.filename_regexes
+            ]
         else:
-            self.filename_pattern = None
+            self.filename_patterns = None
 
-        if self.image_regex:
-            self.image_pattern = re.compile(self.image_regex, flags=re.VERBOSE)
+        if self.image_regexes:
+            if isinstance(self.image_regexes, str):
+                self.image_regexes = (self.image_regexes,)
+            self.image_patterns = [
+                re.compile(regexes, flags=re.VERBOSE) for regexes in self.image_regexes
+            ]
         else:
-            self.image_pattern = None
+            self.image_patterns = None
 
     def _add_metadata_to_df(self, file_paths: list[str]) -> None:
         df = pd.DataFrame({"file_path": file_paths})
-        # for col in ["band", "tile", "date", "resolution"]:
-        #     df[col] = None
+        for col in [
+            f"band{FILENAME_COL_SUFFIX}",
+            f"tile{FILENAME_COL_SUFFIX}",
+            f"date{FILENAME_COL_SUFFIX}",
+        ]:
+            df[col] = None
+
         df["filename"] = df["file_path"].apply(lambda x: _fix_path(Path(x).name))
-
-        if self.filename_pattern:
-            matches: pd.DataFrame = df["filename"].str.extract(self.filename_pattern)
-            match_cols_filename = [f"{col}_filename" for col in matches.columns]
-            df[match_cols_filename] = matches
-            df = df.loc[df[match_cols_filename].notna().all(axis=1)]
-
         df["image_path"] = df["file_path"].apply(
             lambda x: _fix_path(str(Path(x).parent))
         )
 
-        grouped = (
-            df.drop(columns=match_cols_filename)
-            .drop_duplicates("image_path")
-            .set_index("image_path")
-        )
-        for col in ["file_path", *match_cols_filename]:
-            grouped[f"{col}"] = df.groupby("image_path")[col].apply(list)
+        if not len(df):
+            self._df = df
+            return
 
-        grouped = grouped.reset_index()
+        if self.filename_patterns:
+            df, match_cols_filename = get_regexes_matches_for_df(
+                df, "filename", self.filename_patterns, suffix=FILENAME_COL_SUFFIX
+            )
+
+            if not len(df):
+                self._df = df
+                return
+
+            self._match_cols_filename = match_cols_filename
+            grouped = (
+                df.drop(columns=match_cols_filename)
+                .drop_duplicates("image_path")
+                .set_index("image_path")
+            )
+            for col in ["file_path", *match_cols_filename]:
+                assert isinstance(df[col].iloc[0], str)
+                grouped[col] = df.groupby("image_path")[col].apply(tuple)
+
+            grouped = grouped.reset_index()
+        else:
+            grouped = df.drop_duplicates("image_path")
 
         grouped["imagename"] = grouped["image_path"].apply(
             lambda x: _fix_path(Path(x).name)
         )
 
-        if self.image_pattern:
-            matches: pd.DataFrame = grouped["imagename"].str.extract(self.image_pattern)
-            match_cols_imagename = [f"{col}_imagename" for col in matches.columns]
-            grouped[match_cols_imagename] = matches
-            grouped = grouped.loc[grouped[match_cols_imagename].notna().all(axis=1)]
+        if self.image_patterns and len(grouped):
+            grouped, _ = get_regexes_matches_for_df(
+                grouped, "imagename", self.image_patterns, suffix=""
+            )
+            if not len(grouped):
+                self._df = grouped
+                return
 
-        # to_pandas_na = {value: pd.NA for value in [" ", "", None, np.nan]}
-        # for col in df:
-        #     df[col] = df[col].replace(to_pandas_na).fillna(pd.NA)
-
-        self._df = grouped.sort_values("date_imagename")
-        # self._df = self._df.drop_duplicates("image_path").drop(
-        #     columns=["filename", "file_path"] + match_cols_filename
-        # )
+        self._df = grouped.sort_values("date")
 
     @property
     def df(self):
         return self._df
-
-    @property
-    def band_ids(self) -> list[str]:
-        return list(self.df["band_filename"].explode())
-        return list(sorted(self.df["band"].dropna().unique()))
-
-    @property
-    def file_paths(self) -> list[str]:
-        return list(self.df["file_path"].explode())
-        return list(self.df["file_path"].dropna())
 
     def copy(self) -> "ImageBase":
         copied = deepcopy(self)
@@ -189,8 +204,8 @@ class ImageBase(abc.ABC):
 
 
 class Image(ImageBase):
-    filename_regex: ClassVar[str | None] = None
-    image_regex: ClassVar[str | None] = None
+    filename_regexes: ClassVar[str | None] = None
+    image_regexes: ClassVar[str | None] = None
     cloud_cover_regexes: ClassVar[tuple[str] | None] = None
 
     def __init__(
@@ -198,10 +213,10 @@ class Image(ImageBase):
         path: str | Path,
         res: int | None = None,
         # crs: Any | None = None,
-        # bands: str | list[str] | None = None,
         file_system: dp.gcs.GCSFileSystem | None = None,
         df: pd.DataFrame | None = None,
         all_file_paths: list[str] | None = None,
+        _mask: GeoDataFrame | GeoSeries | Geometry | tuple | None = None,
     ) -> None:
         super().__init__()
 
@@ -209,6 +224,7 @@ class Image(ImageBase):
         self.res = res
         # self._crs = crs
         self.file_system = file_system
+        self._mask = _mask
 
         if df is None:
             file_paths = ls_func(self.path)
@@ -216,23 +232,25 @@ class Image(ImageBase):
         else:
             self._df = df
 
-        self._df = self._df.loc[
-            lambda x: (x["image_path"].str.contains(_fix_path(self.path)))
-            & (x["band_filename"].notna())
-        ].sort_values("band_filename")
-
-        # if bands is not None:
-        #     if isinstance(bands, str):
-        #         bands = [bands]
-        #     self.df = self.df.loc[lambda x: x["band"].isin(bands)]
+        self._df = (
+            self._df.explode(
+                ["file_path", *[x for x in self._df if FILENAME_COL_SUFFIX in x]]
+            )
+            .loc[
+                lambda x: (x["image_path"].str.contains(_fix_path(self.path)))
+                & (x[f"band{FILENAME_COL_SUFFIX}"].notna())
+            ]
+            .sort_values(f"band{FILENAME_COL_SUFFIX}")
+        )
 
         if self.cloud_cover_regexes:
             if all_file_paths is None:
-                all_file_paths = ls_func(self.path)
+                file_paths = ls_func(self.path)
             try:
+                file_paths = [path for path in all_file_paths if self.name in path]
                 self.cloud_cover_percentage = float(
                     get_cloud_percentage_in_local_dir(
-                        all_file_paths, regexes=self.cloud_cover_regexes
+                        file_paths, regexes=self.cloud_cover_regexes
                     )
                 )
             except Exception:
@@ -249,15 +267,24 @@ class Image(ImageBase):
                     cloud_cover_percentage=self.cloud_cover_percentage,
                     res=res,
                     file_system=self.file_system,
+                    _mask=self._mask,
                 )
                 for path, band_id, date in zip(
-                    self.df["file_path"].explode(),
-                    self.df["band_filename"].explode(),
-                    self.df["date_filename"].explode(),
+                    self.df["file_path"],
+                    self.df[f"band{FILENAME_COL_SUFFIX}"],
+                    self.df[f"date{FILENAME_COL_SUFFIX}"],
                     strict=True,
                 )
             )
         )
+
+    @property
+    def band_ids(self) -> list[str]:
+        return list(self.df[f"band{FILENAME_COL_SUFFIX}"].unique())
+
+    @property
+    def file_paths(self) -> list[str]:
+        return list(self.df["file_path"])
 
     @property
     def bands(self):
@@ -269,15 +296,15 @@ class Image(ImageBase):
 
     @property
     def tile(self) -> str:
-        return re.match(self.image_pattern, self.name).group("tile")
+        return self._image_regex_searcher("tile")
 
     @property
     def date(self) -> str:
-        return re.match(self.image_pattern, self.name).group("date")
+        return self._image_regex_searcher("date")
 
     @property
     def level(self) -> str:
-        return re.match(self.image_pattern, self.name).group("level")
+        return self._image_regex_searcher("level")
 
     def load(self, bounds=None, indexes=1, **kwargs) -> np.ndarray:
         """Return 3 dimensional numpy.ndarray of shape (n bands, width, height)."""
@@ -302,43 +329,26 @@ class Image(ImageBase):
         if len(simple_string_match) == 1:
             return simple_string_match[0]
 
-        regex_matches = []
+        regexes_matches = []
         for path in self.file_paths:
-            match_ = re.search(self.filename_pattern, Path(path).name)
-            if match_ and str(band) == match_.group("band"):
-                regex_matches.append(path)
+            for pat in self.filename_patterns:
+                match_ = re.search(pat, Path(path).name)
+                if match_ and str(band) == match_.group("band"):
+                    regexes_matches.append(path)
 
-        if len(regex_matches) == 1:
-            return regex_matches[0]
+        if len(regexes_matches) == 1:
+            return regexes_matches[0]
 
-        if len(regex_matches) > 1:
+        if len(regexes_matches) > 1:
             prefix = "Multiple"
-        elif not regex_matches:
+        elif not regexes_matches:
             prefix = "No"
 
         raise KeyError(
             f"{prefix} matches for band {band} among paths {[Path(x).name for x in self.file_paths]}"
         )
 
-    def _get_band(self, band: str) -> Band:
-        bands = [x for x in self.bands if x.band_id == band]
-        if len(bands) == 1:
-            return bands[0]
-
-        more_bands = [x for x in self.bands if x.path == band]
-        if len(more_bands) == 1:
-            return more_bands[0]
-
-        if len(bands) > 1:
-            prefix = "Multiple"
-        elif not bands:
-            prefix = "No"
-
-        raise KeyError(
-            f"{prefix} matches for band {band} among paths {[Path(band.path).name for band in self.bands]}"
-        )
-
-    def __getitem__(self, band: str | list[str]) -> "Band | Image":
+    def __getitem__(self, band: str | Sequence[str]) -> "Band | Image":
         if isinstance(band, str):
             return self._get_band(band)
         copied = self.copy()
@@ -362,17 +372,16 @@ class Image(ImageBase):
         return f"{self.__class__.__name__}(bands={self.bands})"
 
     def get_cloud_array(self) -> np.ndarray:
-        scl = self[self.cloud_band]
+        scl = self[self.cloud_band].load()
         return np.where(np.isin(scl, self.cloud_values), 1, 0)
 
-    def get_cloud_polygons(self) -> MultiPolygon:
+    def get_cloud_polygons(self) -> GeoSeries:
         clouds = self.get_cloud_array()
-        clouds[clouds == 0] = np.nan
-        # clouds[clouds.mask] = np.nan
         return (
             Raster.from_array(clouds, crs=self.crs, bounds=self.bounds, copy=False)
             .to_gdf()
-            .unary_union
+            .loc[lambda x: x["value"] != 0]
+            .geometry
         )
 
     def intersects(self, other: GeoDataFrame | GeoSeries | Geometry) -> bool:
@@ -391,7 +400,7 @@ class Image(ImageBase):
                 return None
             with opener(self.file_paths[0], file_system=self.file_system) as file:
                 with rasterio.open(file) as src:
-                    self._bounds = src.bounds
+                    self._bounds = to_bbox(src.bounds)
                     self._crs = src.crs
                     return self._crs
 
@@ -404,9 +413,36 @@ class Image(ImageBase):
                 return None
             with opener(self.file_paths[0], file_system=self.file_system) as file:
                 with rasterio.open(file) as src:
-                    self._bounds = src.bounds
+                    self._bounds = to_bbox(src.bounds)
                     self._crs = src.crs
                     return self._bounds
+
+    # @property
+    # def transform(self) -> Affine | None:
+    #     """Get the Affine transform of the image."""
+    #     try:
+    #         return rasterio.transform.from_bounds(*self.bounds, self.width, self.height)
+    #     except (ZeroDivisionError, TypeError):
+    #         if not self.width or not self.height:
+    #             return None
+
+    # @property
+    # def shape(self) -> tuple[int]:
+    #     return self._shape
+
+    # @property
+    # def height(self) -> int:
+    #     i = 1 if len(self.shape) == 3 else 0
+    #     return self.shape[i]
+
+    # @property
+    # def width(self) -> int:
+    #     i = 2 if len(self.shape) == 3 else 1
+    #     return self.shape[i]
+
+    # @transform.setter
+    # def transform(self, value: Affine) -> None:
+    #     self._bounds = rasterio.transform.array_bounds(self.height, self.width, value)
 
     @property
     def centroid(self) -> str:
@@ -422,10 +458,41 @@ class Image(ImageBase):
     def bbox(self) -> BoundingBox:
         return BoundingBox(*self._bounds, mint=self.date, maxt=self.date)
 
+    def _get_band(self, band: str) -> Band:
+        if not isinstance(band, str):
+            raise TypeError(f"band must be string. Got {type(band)}")
+
+        bands = [x for x in self.bands if x.band_id == band]
+        if len(bands) == 1:
+            return bands[0]
+
+        more_bands = [x for x in self.bands if x.path == band]
+        if len(more_bands) == 1:
+            return more_bands[0]
+
+        if len(bands) > 1:
+            prefix = "Multiple"
+        elif not bands:
+            prefix = "No"
+
+        raise KeyError(
+            f"{prefix} matches for band {band} among paths {[Path(band.path).name for band in self.bands]}"
+        )
+
+    def _image_regex_searcher(self, group: str) -> str | None:
+        if not self.image_patterns:
+            return None
+        for pat in self.image_patterns:
+            try:
+                return re.match(pat, self.name).group(group)
+            except AttributeError:
+                pass
+        raise ValueError(f"Couldn't find {group} in image_regexes")
+
 
 class ImageCollection(ImageBase):
-    image_regex: ClassVar[str | None] = None
-    filename_regex: ClassVar[str | None] = None
+    image_regexes: ClassVar[str | None] = None
+    filename_regexes: ClassVar[str | None] = None
     image_class: ClassVar[Image] = Image
 
     def __init__(
@@ -444,19 +511,8 @@ class ImageCollection(ImageBase):
         self.processes = processes
         self.file_system = file_system
         self.res = res
-
-        # if self.image_regex:
-        #     self._image_paths = [
-        #         path
-        #         for path in ls_func(self.path)
-        #         if re.search(self.image_pattern, Path(path).name)
-        #         and (self.level or "") in path
-        #     ]
-        #     self._images
-        # else:
-        #     self._image_paths = [
-        #         path for path in ls_func(self.path) and (self.level or "") in path
-        #     ]
+        self._mask = None
+        self._band_ids = None
 
         if is_dapla():
             self._all_filepaths = list(sorted(set(glob_func(self.path + "/**"))))
@@ -472,15 +528,25 @@ class ImageCollection(ImageBase):
                 )
             )
 
+        self._all_filepaths = [path for path in self._all_filepaths if level in path]
+
         if df is not None:
             self._df = df
         else:
             self._add_metadata_to_df(self._all_filepaths)
 
-    def groupby(self, by, **kwargs) -> tuple[Any, "ImageCollection"]:
+    def groupby(self, by, **kwargs) -> tuple[tuple[Any], "ImageCollection"]:
+        if isinstance(by, str):
+            by = (by,)
+        by = [col if col in self.df else f"{col}{FILENAME_COL_SUFFIX}" for col in by]
+
         return tuple(
-            (i, self._copy_and_add_df(group))
-            for i, group in self.df.groupby(by, **kwargs)
+            sorted(
+                (i, self._copy_and_add_df(group))
+                for i, group in self.df.explode(
+                    ["file_path", *self._match_cols_filename]
+                ).groupby(by, **kwargs)
+            )
         )
 
     def aggregate_dates(
@@ -488,16 +554,13 @@ class ImageCollection(ImageBase):
         bounds=None,
         method: str = "mean",
     ):
-        if self.res is None:
-            raise ValueError("")
-
         if method == "mean":
             _method = "sum"
 
-        bounds = to_bbox(bounds) if bounds is not None else bounds
+        bounds = to_bbox(bounds) if bounds is not None else self._mask
 
         arrs = []
-        for band_collection in self.groupby("band"):
+        for (band_id,), band_collection in self.groupby("band"):
             datasets = [_open_raster(path) for path in band_collection.file_paths]
             arr, transform = rasterio.merge.merge(
                 datasets, res=self.res, indexes=(1,), method=_method
@@ -505,52 +568,64 @@ class ImageCollection(ImageBase):
             arr = arr[0]
             arrs.append(arr)
         arrs = np.array(arrs)
-        print("hei", arrs.shape)
 
         if method == "mean":
-            arr = arr / len(self.file_paths)
+            arrs = arrs / len(self.file_paths)
 
         self.transform = transform
 
-        return arr
+        return arrs
+
+    def set_mask(
+        self, mask: GeoDataFrame | GeoSeries | Geometry | tuple[float]
+    ) -> "ImageCollection":
+        """Set the mask to be used to clip the images to."""
+        self._mask = to_shapely(mask)
+        return self
 
     def filter(
         self,
-        # bands: str | list[str] | None = None,
+        bands: str | list[str] | None = None,
         date_ranges: (
             tuple[str | None, str | None]
             | tuple[tuple[str | None, str | None], ...]
             | None
         ) = None,
-        bbox: Any | None = None,
+        bbox: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
         max_cloud_cover: int | None = None,
         copy: bool = True,
     ) -> "ImageCollection":
         copied = self.copy() if copy else self
 
         if date_ranges:
-            self = self.filter_dates(date_ranges, copy=False)
+            copied = copied._filter_dates(date_ranges, copy=False)
 
         if max_cloud_cover is not None:
-            self.images = [
+            copied.images = [
                 image
-                for image in self.images
+                for image in copied.images
                 if image.cloud_cover_percentage < max_cloud_cover
             ]
 
         if bbox is not None:
-            copied = copied.filter_bounds(bbox, copy=False)
+            copied = copied._filter_bounds(bbox, copy=False)
 
-        # if bands is not None:
-        #     if isinstance(bands, str):
-        #         bands = [bands]
-        #     self.df = self.df.loc[lambda x: x["band"].isin(bands)]
+        if bands is not None:
+            if isinstance(bands, str):
+                bands = [bands]
+            copied._band_ids = list(bands)
+            # print()
+            # print()
+            # print([img.__len__() for img in copied.images])
+            # print([img[bands].__len__() for img in copied.images])
 
-        copied.images = list(sorted(copied.images))
+            copied._images = [img[bands] for img in copied.images]
+
+        copied.images = list(sorted(copied._images))
 
         return copied
 
-    def filter_dates(
+    def _filter_dates(
         self,
         date_ranges: (
             tuple[str | None, str | None] | tuple[tuple[str | None, str | None], ...]
@@ -562,33 +637,42 @@ class ImageCollection(ImageBase):
                 "date_ranges should be a 2-length tuple of strings or None, "
                 "or a tuple of tuples for multiple date ranges"
             )
-        if self.image_pattern is None:
+        if self.image_patterns is None:
             raise ValueError(
-                "Cannot set date_ranges when the class's image_regex attribute is None"
+                "Cannot set date_ranges when the class's image_regexes attribute is None"
             )
 
         copied = self.copy() if copy else self
 
         copied.df = copied.df.loc[
             lambda x: x["image_path"].apply(
-                lambda y: date_is_within(y, date_ranges, copied.image_pattern)
+                lambda y: date_is_within(y, date_ranges, copied.image_patterns)
             )
         ]
 
         return copied
 
-    def filter_bounds(
+    def _filter_bounds(
         self, other: GeoDataFrame | GeoSeries | Geometry | tuple, copy: bool = True
     ) -> "ImageCollection":
         copied = self.copy() if copy else self
+
+        other = box(*to_bbox(other))
 
         with joblib.Parallel(n_jobs=copied.processes, backend="threading") as parallel:
             intersects_list: list[bool] = parallel(
                 joblib.delayed(_intesects)(image, other) for image in copied
             )
-        copied.image = [
+        copied.images = [
             image for image, intersects in zip(copied, intersects_list) if intersects
         ]
+        return copied
+
+    def sample_tiles(self, n: int) -> "ImageCollection":
+        copied = self.copy()
+        sampled_tiles = set(self.df["tile"].drop_duplicates().sample(n))
+
+        copied.images = [image for image in self if image.tile in sampled_tiles]
         return copied
 
     def sample_images(self, n: int) -> "ImageCollection":
@@ -613,25 +697,28 @@ class ImageCollection(ImageBase):
         return len(self.images)
 
     def __getitem__(
-        self, item: int | str | BoundingBox
+        self, item: int | Sequence[int] | BoundingBox
     ) -> Image | TORCHGEO_RETURN_TYPE:
         if isinstance(item, int):
             return self.images[item]
-        if isinstance(item, str):
-            return self.images[self.images.index(item)]
 
         if not isinstance(item, BoundingBox):
-            raise TypeError(
-                "ImageCollection indices must be int or BoundingBox. "
-                f"Got {type(item)}"
-            )
+            try:
+                copied = self.copy()
+                copied.images = [copied.images[i] for i in item]
+                return copied
+            except Exception:
+                raise TypeError(
+                    "ImageCollection indices must be int or BoundingBox. "
+                    f"Got {type(item)}"
+                )
 
-        images = self.filter(bbox=item)
+        images = self.filter(bbox=item).set_mask(item)
 
         crs = get_common_crs(images)
 
         data: torch.Tensor = torch.cat(
-            [numpy_to_torch(image.load(indexes=1).values) for image in images]
+            [numpy_to_torch(image.load()) for image in images]
         )
 
         key = "image"  # if self.is_image else "mask"
@@ -641,12 +728,39 @@ class ImageCollection(ImageBase):
 
     def _copy_and_add_df(self, new_df: pd.DataFrame) -> "ImageCollection":
         copied = self.copy()
-        copied.df = new_df
+        grouped = (
+            new_df.drop(columns=self._match_cols_filename)
+            .drop_duplicates("image_path")
+            .set_index("image_path")
+        )
+        for col in ["file_path", *self._match_cols_filename]:
+            assert isinstance(new_df[col].iloc[0], str), new_df[col]
+            grouped[col] = new_df.groupby("image_path")[col].apply(tuple)
+
+        grouped = grouped.reset_index()
+
+        copied.df = grouped
         return copied
 
     @property
+    def band_ids(self) -> list[str]:
+        return list(self.df[f"band{FILENAME_COL_SUFFIX}"].explode().unique())
+
+        if self._band_ids is not None:
+            return self._band_ids
+        else:
+            return list(self.df[f"band{FILENAME_COL_SUFFIX}"].explode().unique())
+
+    @property
+    def file_paths(self) -> list[str]:
+        return list(self.df["file_path"].explode())
+
+    @property
     def dates(self) -> list[str]:
-        return list(self.df["date_imagename"])
+        return list(self.df["date"])
+
+    def dates_as_int(self) -> list[int]:
+        return [int(date[:8]) for date in self.dates]
 
     @property
     def image_paths(self) -> list[str]:
@@ -657,13 +771,19 @@ class ImageCollection(ImageBase):
         try:
             return self._images
         except AttributeError:
-            self._images = get_images(
-                self.image_paths,
-                all_file_paths=self._all_filepaths,
-                df=self.df,
-                res=self.res,
-                processes=self.processes,
-                image_class=self.image_class,
+            # only fetch images when needed
+            self._images = list(
+                sorted(
+                    get_images(
+                        self.image_paths,
+                        all_file_paths=self._all_filepaths,
+                        df=self.df,
+                        res=self.res,
+                        processes=self.processes,
+                        image_class=self.image_class,
+                        _mask=self._mask,
+                    )
+                )
             )
             return self._images
 
@@ -675,6 +795,25 @@ class ImageCollection(ImageBase):
         self._df = self._df.loc[
             lambda x: x["image_path"].isin({x.path for x in self._images})
         ]
+        if self._band_ids is not None:
+            are_matching = self._df[f"band{FILENAME_COL_SUFFIX}"].apply(
+                lambda x: [
+                    True if band_id in self._band_ids else False for band_id in x
+                ]
+            )
+
+            for col in ["file_path", *self._match_cols_filename]:
+                # keeping only list elements that match the band_id in the boolean mask are_matching
+                self._df[col] = [
+                    tuple(
+                        value
+                        for value, matches in zip(row_list, match_row, strict=True)
+                        if matches
+                    )
+                    for row_list, match_row in zip(
+                        self._df[col], are_matching, strict=True
+                    )
+                ]
 
     @property
     def df(self):
@@ -700,6 +839,7 @@ def get_images(
     df: pd.DataFrame,
     processes: int,
     image_class: Image,
+    _mask: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None,
 ) -> list[Image]:
     with joblib.Parallel(n_jobs=processes, backend="threading") as parallel:
         return parallel(
@@ -708,6 +848,7 @@ def get_images(
                 df=df,
                 res=res,
                 all_file_paths=all_file_paths,
+                _mask=_mask,
             )
             for path in image_paths
         )
@@ -760,19 +901,19 @@ class RegexError(ValueError):
 
 
 def _get_cloud_percentage(xml_file: str, regexes: tuple[str]) -> str | dict[str, str]:
-    for regex in regexes:
-        if isinstance(regex, dict):
+    for regexes in regexes:
+        if isinstance(regexes, dict):
             out = {}
-            for key, value in regex.items():
+            for key, value in regexes.items():
                 try:
                     out[key] = re.search(value, xml_file).group(1)
                 except (TypeError, AttributeError):
                     continue
-            if len(out) != len(regex):
+            if len(out) != len(regexes):
                 raise RegexError()
             return out
         try:
-            return re.search(regex, xml_file).group(1)
+            return re.search(regexes, xml_file).group(1)
         except (TypeError, AttributeError):
             continue
     raise RegexError()
@@ -785,7 +926,26 @@ def _fix_path(path: str) -> str:
 
 
 def _intesects(x, other) -> bool:
-    return box(*x.bounds).intersects(box(*to_bbox(other)))
+    return box(*x.bounds).intersects(other)
+
+
+def get_regexes_matches_for_df(
+    df, match_col: str, patterns: Sequence[re.Pattern], suffix: str = ""
+) -> tuple[pd.DataFrame, list[str]]:
+    if not len(df):
+        return df, []
+    assert df.index.is_unique
+    matches: list[pd.DataFrame] = []
+    for pat in patterns:
+        try:
+            matches.append(df[match_col].str.extract(pat))
+        except ValueError:
+            pass
+    matches = pd.concat(matches).groupby(level=0, dropna=True).first()
+
+    match_cols = [f"{col}{suffix}" for col in matches.columns]
+    df[match_cols] = matches
+    return df.loc[~df[match_cols].isna().all(axis=1)], match_cols
 
 
 def date_is_within(
@@ -793,13 +953,19 @@ def date_is_within(
     date_ranges: (
         tuple[str | None, str | None] | tuple[tuple[str | None, str | None], ...] | None
     ),
-    image_pattern: re.Pattern,
+    image_patterns: Sequence[re.Pattern],
 ) -> bool:
-    try:
-        date = re.match(image_pattern, Path(path).name).group("date")
-        date = date[:8]
-    except AttributeError:
+    for pat in image_patterns:
+        try:
+            date = re.match(pat, Path(path).name).group("date")
+            break
+        except AttributeError:
+            date = None
+
+    if date is None:
         return False
+
+    date = date[:8]
 
     if date_ranges is None:
         return True
@@ -831,20 +997,24 @@ def _open_raster(path: str | Path) -> rasterio.io.DatasetReader:
         return rasterio.open(file)
 
 
-class Sentinel2Image(Image):
-    image_regex: ClassVar[str] = config.SENTINEL2_IMAGE_REGEX
-    filename_regex: ClassVar[str] = config.SENTINEL2_FILENAME_REGEX
-    cloud_cover_regexes: ClassVar[tuple[str]] = config.CLOUD_COVERAGE_REGEXES
+class Sentinel2Config:
+    image_regexes: ClassVar[str] = (config.SENTINEL2_IMAGE_REGEX,)
+    filename_regexes: ClassVar[str] = (
+        config.SENTINEL2_FILENAME_REGEX,
+        config.SENTINEL2_CLOUD_FILENAME_REGEX,
+    )
     rbg_bands: ClassVar[list[str]] = ["B02", "B03", "B04"]
     cloud_band: ClassVar[str] = "SCL"
     cloud_values: ClassVar[tuple[int]] = (3, 8, 9, 10, 11)
+    l2a_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L2A_BANDS
+    l1c_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L1C_BANDS
 
 
-class Sentinel2Collection(ImageCollection):
-    image_regex: ClassVar[str] = config.SENTINEL2_IMAGE_REGEX
-    filename_regex: ClassVar[str] = config.SENTINEL2_FILENAME_REGEX
+class Sentinel2Image(Sentinel2Config, Image):
     cloud_cover_regexes: ClassVar[tuple[str]] = config.CLOUD_COVERAGE_REGEXES
+
+
+class Sentinel2Collection(Sentinel2Config, ImageCollection):
+    """ImageCollection with Sentinel2 specific name variables and regexes."""
+
     image_class: ClassVar[Sentinel2Image] = Sentinel2Image
-    rbg_bands: ClassVar[list[str]] = ["B02", "B03", "B04"]
-    cloud_band: ClassVar[str] = "SCL"
-    cloud_values: ClassVar[tuple[int]] = (3, 8, 9, 10, 11)

@@ -24,7 +24,7 @@ SENTINEL2_IMAGE_REGEX = r"""
     _(?P<baseline>N\d{4})
     _(?P<orbit>R\d{3})
     _(?P<tile>T\d{2}[A-Z]{3})
-    _(\d{8}T\d{6})
+    _\d{8}T\d{6}
     .*
     .*$
 """

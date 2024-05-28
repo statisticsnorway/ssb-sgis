@@ -610,9 +610,14 @@ class Explore(Map):
         self._fillna_if_col_is_missing()
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
-    def _get_bounds(self, gdf: GeoDataFrame) -> tuple[float, float, float, float]:
+    def _get_bounds(
+        self, gdf: GeoDataFrame
+    ) -> tuple[float, float, float, float] | None:
         if not len(gdf) or all(x is None for x in gdf.total_bounds):
-            return get_total_bounds(self.raster_bounds)
+            try:
+                return get_total_bounds(self.raster_bounds)
+            except Exception:
+                return None
         return gdf.total_bounds
 
     def _create_categorical_map(self) -> None:
@@ -625,8 +630,12 @@ class Explore(Map):
 
         self._load_rasters_as_images()
 
+        bounds = self._get_bounds(gdf)
+        if bounds is None:
+            self.map = None
+            return
         self.map = self._make_folium_map(
-            bounds=self._get_bounds(gdf),
+            bounds=bounds,
             max_zoom=self.max_zoom,
             popup=self.popup,
             prefer_canvas=self.prefer_canvas,
@@ -687,8 +696,12 @@ class Explore(Map):
         self._load_rasters_as_images()
 
         gdf = self._prepare_gdf_for_map(self._gdf)
+        bounds = self._get_bounds(gdf)
+        if bounds is None:
+            self.map = None
+            return
         self.map = self._make_folium_map(
-            bounds=self._get_bounds(gdf),
+            bounds=bounds,
             max_zoom=self.max_zoom,
             popup=self.popup,
             prefer_canvas=self.prefer_canvas,

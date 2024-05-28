@@ -165,6 +165,8 @@ class Map:
         i = 0
         for key, value in kwargs.items():
             try:
+                if not len(value):
+                    continue
                 self._gdfs.append(to_gdf(value))
                 self.labels.append(key)
                 try:
