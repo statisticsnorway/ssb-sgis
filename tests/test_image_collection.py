@@ -1,4 +1,5 @@
 # %%
+from typing import Iterable
 import numpy as np
 from pathlib import Path
 from shapely import box
@@ -18,7 +19,7 @@ path_sentinel = testdata + "/sentinel2"
 
 
 def test_bbox():
-    collection = sg.Sentinel2Collection(path_sentinel, processes=1)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, processes=2)
 
     no_images = collection.filter_bounds(Point(0, 0)).get_images()  # bbox=Point(0, 0))
     assert not len(no_images), no_images
@@ -29,7 +30,7 @@ def test_bbox():
 
 
 def test_sample():
-    collection = sg.Sentinel2Collection(path_sentinel)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     # x: list[sg.Tile] = collection.sample_tiles(2)
     # x: sg.Tile = collection.sample_tile()
@@ -65,7 +66,7 @@ def test_sample():
 
 
 def test_indexing():
-    collection = sg.Sentinel2Collection(path_sentinel)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     largest_date = ""
     for image in collection:
@@ -76,7 +77,7 @@ def test_indexing():
     assert isinstance(image, sg.Image)
     assert image.date.startswith("2017"), image.date
 
-    band = collection[0].get_band("B02")
+    band = collection[0]["B02"]
     assert isinstance(band, sg.Band)
     assert band.date.startswith("2023"), band.date
 
@@ -91,14 +92,14 @@ def test_indexing():
 
 
 def test_sorting():
-    collection = sg.Sentinel2Collection(path_sentinel)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     assert list(collection.image_paths) == list(sorted(collection.image_paths))
 
     assert isinstance(image, sg.Image)
     assert image.date.startswith("2017"), image.date
 
-    band = collection[0].get_band("B02")
+    band = collection[0]["B02"]
     assert isinstance(band, sg.Band)
     assert band.date.startswith("2023"), band.date
 
@@ -116,7 +117,8 @@ def test_aggregate():
     collection = sg.Sentinel2Collection(path_sentinel, res=10)
 
     rbg = collection.filter(bands=[collection.rbg_bands])
-    for tile in rbg.groupby("tile"):
+    for tile_id, tile in rbg.groupby("tile"):
+        assert tile_id.startswith("T"), tile_id
         for img in tile:
             print(img.load())
 
@@ -127,7 +129,7 @@ def test_aggregate():
 
 
 def test_date_ranges():
-    collection = sg.Sentinel2Collection(path_sentinel)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     assert len(collection) == 3
 
@@ -163,11 +165,14 @@ def test_date_ranges():
 
 def test_groupby():
 
-    collection = sg.Sentinel2Collection(path_sentinel)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
-    for subcollection in collection.groupby("date"):
+    assert isinstance(collection, Iterable)
+
+    for date, subcollection in collection.groupby("date"):
+        assert isinstance(date, str)
+        assert date.startswith("20")
         assert isinstance(subcollection, sg.ImageCollection), type(subcollection)
-        assert len(subcollection.dates) == 1, subcollection._df["date"]
         assert len(subcollection.band_ids) == 12, subcollection._df["band"]
         assert subcollection._df["band"].notna().all(), subcollection._df["band"]
         for image in subcollection:
@@ -177,16 +182,19 @@ def test_groupby():
             for band_id in image.band_ids:
                 assert isinstance(band_id, str), type(band_id)
                 arr = image[band_id]
-                assert isinstance(arr, np.ndarray), type(arr)
+                assert isinstance(arr, sg.Band), type(arr)
 
-    for subcollection in collection.groupby("tile"):
+    for tile, subcollection in collection.groupby("tile"):
+        assert isinstance(tile, str)
+        assert tile.startswith("T")
         assert isinstance(subcollection, sg.ImageCollection), type(subcollection)
-        assert len(subcollection.tile_ids) == 1
 
-    for subcollection in collection.groupby(["tile", "band"]):
+    for (tile, band), subcollection in collection.groupby(["tile", "band"]):
+        assert isinstance(tile, str)
+        assert tile.startswith("T")
+        assert isinstance(band, str)
+        assert band.startswith("B")
         assert isinstance(subcollection, sg.ImageCollection), type(subcollection)
-        assert len(subcollection.dates) in [1, 2], subcollection._df["date"]
-        assert len(subcollection.tile_ids) == 1, subcollection._df["tile"]
 
     assert len(n := collection.groupby("date")) == 3, (n, len(n))
     assert len(n := collection.groupby("tile")) == 2, (n, len(n))
@@ -196,110 +204,86 @@ def test_groupby():
 
 def test_iteration():
 
-    collection = sg.Sentinel2Collection(path_sentinel)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     assert isinstance(collection, sg.ImageCollection), type(collection)
-    assert len(collection.file_paths) == 41, len(collection.file_paths)
-    # assert len(collection) == 2, collection
-    assert (n := len(collection.image_paths)) == 3, n
 
-    for image in collection.get_images():
+    assert len(collection.images) == 3, len(collection.images)
+    assert len(collection.file_paths) == 36, len(collection.file_paths)
+    assert len(collection._df) == 3, len(collection._df)
+    assert len(collection._df.explode("band_filename")) == 36
+    assert len(collection) == 3, len(collection)
 
-        assert isinstance(image, sg.Image)
+    collection.df = collection.df.iloc[[0]]
+    assert len(collection) == 1, len(collection)
+    assert len(collection.images) == 1, len(collection.images)
 
-    # arr = collection.aggregate_dates()
-    # print(arr.shape)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
-    for tile in collection:
+    for image in collection:
+        assert len(image._df) == 1, len(image._df)
+        assert len(image._df.explode("band_filename")) == 12, image._df.explode(
+            "band_filename"
+        )
+        assert isinstance(image, sg.Image), type(image)
+        # assert (n := len(image.data)) == 12, n
+        assert image.band_ids, image.band_ids
+        assert all(x is not None for x in image.band_ids), image.band_ids
+        assert image.bands, image.bands
+        assert all(isinstance(x, sg.Band) for x in image.bands), image.bands
+        assert all(isinstance(x, sg.Band) for x in image), image.__iter__()
+        assert image.name, image.name
+        assert image.tile, image.tile
+        assert image.date, image.date
+        assert image.level, image.level
 
-        assert isinstance(tile, sg.Tile), type(tile)
-        assert (n := len(tile.image_paths)) in [1, 2], n
+        assert image.file_paths, image.file_paths
+        assert image.date.startswith("20"), image.date
+        assert image.tile.startswith("T"), image.tile
+        assert image.name.startswith("S2"), image.name
+        assert isinstance(image.bounds, tuple)
+        assert all(x for x in image.bounds)
+        assert image.cloud_cover_percentage, image.cloud_cover_percentage
+        assert image.crs
+        assert image.centroid
+        assert image.level == "L2A"
+        assert list(sorted(image.band_ids)) == list(
+            sorted(sg.raster.sentinel_config.SENTINEL2_L2A_BANDS)
+        ), image.band_ids
 
-        print(tile.group_paths_by_band())
+        arr = image.load()
+        assert isinstance(arr, np.ndarray), arr
+        assert (arr.shape) == (12, 250, 250), arr.shape
 
-        # arr = tile.aggregate_dates()
-        # assert isinstance(arr, np.ndarray), arr
-        # assert len(arr.shape) == 3, arr.shape
+        arr = image["B02"].load()
+        assert isinstance(arr, np.ndarray), arr
+        assert (arr.shape) == (250, 250), arr.shape
 
-        for image in tile.get_images():
-            assert isinstance(image, sg.Image), type(image)
-            # assert (n := len(image.data)) == 12, n
-            assert image.date.startswith("20"), image.date
-            assert image.tile.startswith("T"), image.tile
-            assert image.name.startswith("S2"), image.name
-            assert isinstance(image.bounds, tuple)
-            assert all(x for x in image.bounds)
-            assert image.cloud_cover_percentage, image.cloud_cover_percentage
-            assert image.crs
-            assert image.centroid
-            assert image.level == "L2A"
-            assert list(sorted(image.band_ids)) == list(
-                sorted(sg.raster.sentinel_config.SENTINEL2_L2A_BANDS)
-            ), image.band_ids
+        arr = image[["B02", "B03", "B04"]].load()
+        assert isinstance(arr, np.ndarray), arr
+        assert (arr.shape) == (3, 250, 250), arr.shape
 
-            arr = image.load()
-            assert isinstance(arr, np.ndarray), arr
-            assert (arr.shape) == (12, 250, 250), arr.shape
-
-            arr = image["B02"].load()
+        for band in image:
+            assert isinstance(band, sg.Band), band
+            arr = band.load()
             assert isinstance(arr, np.ndarray), arr
             assert (arr.shape) == (250, 250), arr.shape
 
-            # arr = image.load(bands=["B02", "B03", "B04"])
-            # assert isinstance(arr, np.ndarray), arr
-            # assert (arr.shape) == (3, 250, 250), arr.shape
-
-            arr = image[["B02", "B03", "B04"]].load()
-            assert isinstance(arr, np.ndarray), arr
-            assert (arr.shape) == (3, 250, 250), arr.shape
-
-            arr = image.load(bands=["B02", "B03", "B04"])
-            assert isinstance(arr, np.ndarray), arr
-            assert (arr.shape) == (3, 250, 250), arr.shape
-
-            # assert image.resolutions == (
-            #     sg.raster.sentinel_config.SENTINEL2_L2A_BANDS
-            # ), image.resolutions
-
-            for band in image:
-                arr = band.load()
-                assert isinstance(arr, np.ndarray), arr
-                assert len(arr.shape) == 2, arr.shape
-
-            for band_id, file_path in image.items():
-                assert isinstance(band_id, str), type(band_id)
-                assert isinstance(file_path, str), type(file_path)
-                raster = image[band_id]
-                assert raster.band is not None, raster.band
-                assert raster.indexes == 1, raster.indexes
-                assert len(raster.shape) == 2, raster.shape
-                raster = image[file_path]
-                assert raster.band is not None, raster.band
-                assert raster.indexes == 1, raster.indexes
-                assert len(raster.shape) == 2, raster.shape
-
-            for raster in image.get_bands():
-                assert isinstance(raster, sg.raster.raster.Raster), type(raster)
-                assert raster.band is not None, raster.band
-                assert raster.indexes == 1, raster.indexes
-                assert len(raster.shape) == 2, raster.shape
-
-    for image in collection.get_images():
-        assert isinstance(image, sg.Image), type(image)
-        # assert (n := len(image.data)) == 12, n
-        for raster in image.get_bands():
-            assert isinstance(raster, sg.raster.raster.Raster), type(raster)
-            assert raster.band is not None, raster.band
-            assert raster.indexes == 1, raster.indexes
-            assert len(raster.shape) == 2, raster.shape
+        for band_id, file_path in zip(image.band_ids, image.file_paths, strict=True):
+            assert isinstance(band_id, str), type(band_id)
+            assert isinstance(file_path, str), type(file_path)
+            raster = image[band_id]
+            assert raster.band_id is not None, raster.band_id
+            raster = image[file_path]
+            assert raster.band_id is not None, raster.band_id
 
 
 def main():
+    test_iteration()
     test_groupby()
-    test_aggregate()
     test_date_ranges()
     test_indexing()
-    test_iteration()
     test_bbox()
+    test_aggregate()
     test_sample()
 
 
