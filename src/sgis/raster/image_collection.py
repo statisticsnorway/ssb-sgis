@@ -1,30 +1,38 @@
-import numbers
 import abc
 import functools
-from copy import deepcopy, copy
+import glob
+import numbers
+import random
 import re
+from collections.abc import Sequence
+from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from typing import Sequence, Iterable
-from typing import ClassVar, Callable
-import random
-from dataclasses import dataclass
+from typing import ClassVar
 
-from affine import Affine
-import numpy as np
 import dapla as dp
-import pandas as pd
-from shapely import box
-from shapely.geometry import Point, Polygon, MultiPolygon
-import pyproj
-from geopandas import GeoSeries, GeoDataFrame
 import joblib
-import glob
+import numpy as np
+import pandas as pd
+import pyproj
 import rasterio
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
+from rtree.index import Index
+from rtree.index import Property
 from shapely import Geometry
+from shapely import box
+from shapely.geometry import Point
+from shapely.geometry import Polygon
 
 try:
     import torch
+except ImportError:
+    pass
+
+try:
+    from torchgeo.datasets.utils import disambiguate_timestamp
 except ImportError:
     pass
 
@@ -40,15 +48,15 @@ except ImportError:
             raise ImportError("missing optional dependency 'torchgeo'")
 
 
-from . import sentinel_config as config
+from ..geopandas_tools.bounds import to_bbox
+from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.conversion import to_shapely
+from ..geopandas_tools.general import get_common_crs
+from ..helpers import get_all_files
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
-from ..geopandas_tools.bounds import to_bbox, get_total_bounds
-from ..geopandas_tools.general import get_common_crs
-from ..geopandas_tools.conversion import to_gdf, to_shapely
+from . import sentinel_config as config
 from .raster import Raster
-from ..helpers import get_all_files, get_numpy_func
-from ..parallel.parallel import Parallel
 
 if is_dapla():
     ls_func = lambda *args, **kwargs: dp.FileClient.get_gcs_file_system().ls(
@@ -86,11 +94,6 @@ class Band:
     def load(self, bounds=None, boundless=False, indexes=1, **kwargs) -> np.ndarray:
         bounds = to_bbox(bounds) if bounds is not None else self._mask
 
-        if isinstance(indexes, int):
-            _indexes = (indexes,)
-        else:
-            _indexes = indexes
-
         with opener(self.path, file_system=self.file_system) as f:
             with rasterio.open(f) as src:
                 if bounds is None:
@@ -99,8 +102,8 @@ class Band:
                     )
                     self.transform = src.transform
                     arr = src.read(indexes=indexes, out_shape=out_shape, **kwargs)
-                    if isinstance(indexes, int) and len(arr.shape) == 3:
-                        return arr[0]
+                    # if isinstance(indexes, int) and len(arr.shape) == 3:
+                    #     return arr[0]
                     return arr
                 else:
                     window = rasterio.windows.from_bounds(
@@ -109,14 +112,14 @@ class Band:
                     out_shape = _get_shape_from_bounds(bounds, self.res)
 
                     arr = src.read(
-                        indexes=_indexes,
+                        indexes=indexes,
                         out_shape=out_shape,
                         window=window,
                         boundless=boundless,
                         **kwargs,
                     )
                     if isinstance(indexes, int):
-                        arr = arr[0]
+                        # arr = arr[0]
                         height, width = arr.shape
                     else:
                         height, width = arr.shape[1:]
@@ -125,6 +128,11 @@ class Band:
                         *bounds, width, height
                     )
                     return arr
+
+                    if isinstance(indexes, int):
+                        _indexes = (indexes,)
+                    else:
+                        _indexes = indexes
 
                 arr, transform = rasterio.merge.merge(
                     [src],
@@ -707,7 +715,9 @@ class ImageCollection(ImageBase):
                 joblib.delayed(_intesects)(image, other) for image in copied
             )
         copied.images = [
-            image for image, intersects in zip(copied, intersects_list) if intersects
+            image
+            for image, intersects in zip(copied, intersects_list, strict=False)
+            if intersects
         ]
         return copied
 
@@ -745,14 +755,14 @@ class ImageCollection(ImageBase):
         if isinstance(item, int):
             return self.images[item]
 
+        copied = self.copy()
+
         if isinstance(item, slice):
-            copied = self.copy()
             copied.images = copied.images[item]
             return copied
 
         if not isinstance(item, BoundingBox):
             try:
-                copied = self.copy()
                 copied.images = [copied.images[i] for i in item]
                 return copied
             except Exception:
@@ -761,7 +771,7 @@ class ImageCollection(ImageBase):
                     f"Got {type(item)}"
                 )
 
-        images = self.filter(bbox=item).set_mask(item)
+        images = copied.filter(bbox=item).set_mask(item)
 
         crs = get_common_crs(images)
 
@@ -864,6 +874,27 @@ class ImageCollection(ImageBase):
                         self._df[col], are_matching, strict=True
                     )
                 ]
+
+    @property
+    def index(self) -> Index:
+        try:
+            if len(self) == len(self._index):
+                return self._index
+        except AttributeError:
+            self._index = Index(interleaved=False, properties=Property(dimension=3))
+
+            for i, img in enumerate(self.images):
+                if img.date:
+                    try:
+                        mint, maxt = disambiguate_timestamp(img.date, self.date_format)
+                    except (NameError, TypeError):
+                        mint, maxt = 0, 1
+                else:
+                    mint, maxt = 0, 1
+                # important: torchgeo has a different order of the bbox than shapely and geopandas
+                minx, miny, maxx, maxy = img.bounds
+                self._index.insert(i, (minx, maxx, miny, maxy, mint, maxt))
+            return self._index
 
     @property
     def df(self):
@@ -1076,6 +1107,7 @@ class Sentinel2Config:
     cloud_values: ClassVar[tuple[int]] = (3, 8, 9, 10, 11)
     l2a_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L2A_BANDS
     l1c_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L1C_BANDS
+    date_format: ClassVar[str] = "%Y%m%dT%H%M%S"
 
 
 class Sentinel2Image(Sentinel2Config, Image):

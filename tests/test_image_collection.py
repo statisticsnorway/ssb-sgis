@@ -1,10 +1,11 @@
 # %%
-from typing import Iterable
-import numpy as np
+
 from pathlib import Path
-from shapely import box
-from shapely.geometry import Point, MultiPolygon
+from collections.abc import Iterable
+
+import numpy as np
 from geopandas import GeoSeries
+from shapely.geometry import Point
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -185,7 +186,7 @@ def test_groupby():
     ]
 
     for should_be, ((band_id,), subcollection) in zip(
-        bands_should_be, collection.groupby("band")
+        bands_should_be, collection.groupby("band"), strict=False
     ):
         assert isinstance(band_id, str), band_id
         assert band_id.startswith("B") or band_id.startswith("S"), band_id
@@ -201,7 +202,7 @@ def test_groupby():
 
     # band_ids should appear twice in a row since there are two tiles
     for should_be, ((band_id, tile), subcollection) in zip(
-        bands_should_be2, collection.groupby(["band", "tile"])
+        bands_should_be2, collection.groupby(["band", "tile"]), strict=False
     ):
         assert isinstance(tile, str)
         assert tile.startswith("T")
@@ -294,7 +295,7 @@ def test_cloud():
     assert len(collection4) == 1, len(collection4)
 
     cloud_cover_should_be = [36, 0, 25]
-    for cloud_cover, image in zip(cloud_cover_should_be, collection):
+    for cloud_cover, image in zip(cloud_cover_should_be, collection, strict=False):
         assert cloud_cover == int(image.cloud_cover_percentage), (
             cloud_cover,
             int(image.cloud_cover_percentage),
@@ -332,7 +333,7 @@ def test_iteration():
 
     # one of the images has no SCL band
     n_bands = [13, 12, 13]
-    for i, (n, image) in enumerate(zip(n_bands, collection)):
+    for i, (n, image) in enumerate(zip(n_bands, collection, strict=False)):
         assert len(image._df["band_filename"]) == n, (
             i,
             n,
@@ -396,6 +397,50 @@ def test_iteration():
             assert raster.band_id is not None, raster.band_id
 
 
+def test_torch():
+
+    from lightning.pytorch import Trainer
+    from torch.utils.data import DataLoader
+    from torchgeo.datamodules import InriaAerialImageLabelingDataModule
+    from torchgeo.datasets import stack_samples
+    from torchgeo.samplers import RandomGeoSampler
+    from torchgeo.trainers import SemanticSegmentationTask
+
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+
+    sampler = RandomGeoSampler(collection, size=16, length=10)
+    dataloader = DataLoader(
+        collection, batch_size=2, sampler=sampler, collate_fn=stack_samples
+    )
+
+    # Training loop
+    for batch in dataloader:
+        images = batch["image"]  # list of images
+        boxes = batch["boxes"]  # list of boxes
+        labels = batch["labels"]  # list of labels
+        masks = batch["masks"]  # list of masks
+
+    datamodule = InriaAerialImageLabelingDataModule(
+        # root=path_sentinel,
+        batch_size=64,
+        num_workers=6,
+    )
+    task = SemanticSegmentationTask(
+        model="unet",
+        backbone="resnet50",
+        weights=True,
+        in_channels=3,
+        num_classes=2,
+        loss="ce",
+        ignore_index=None,
+        lr=0.1,
+        patience=6,
+    )
+    trainer = Trainer(default_root_dir=path_sentinel)
+
+    trainer.fit(model=task, datamodule=datamodule)
+
+
 def main():
     test_indexing()
     test_aggregate()
@@ -406,6 +451,7 @@ def main():
     test_cloud()
     test_date_ranges()
     test_sample()
+    test_torch()
 
 
 if __name__ == "__main__":
