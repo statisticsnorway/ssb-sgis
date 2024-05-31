@@ -25,6 +25,7 @@ from ..geopandas_tools.general import get_common_crs
 from ..helpers import get_object_name
 from ..raster.image_collection import Image
 from ..raster.image_collection import ImageCollection
+from ..raster.image_collection import Band
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -338,6 +339,7 @@ class Map:
             RasterDataset,
             ImageCollection,
             Image,
+            Band,
         )
 
         gdfs = ()

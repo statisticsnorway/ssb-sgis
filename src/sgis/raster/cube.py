@@ -10,6 +10,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from typing import ClassVar
+import warnings
 
 import geopandas as gpd
 import numpy as np
@@ -140,6 +141,8 @@ class DataCube:
             copy: If True, makes deep copies of Rasters provided.
             parallelizer: sgis.Parallel instance to handle concurrent operations.
         """
+        warnings.warn("This class is deprecated in favor of ImageCollection")
+
         self._arrays = None
         self._res = res
         self.parallelizer = parallelizer

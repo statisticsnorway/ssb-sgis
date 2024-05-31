@@ -122,6 +122,8 @@ from .raster.image_collection import (
     ImageCollection,
     Image,
     Band,
+    Sentinel2Band,
+    concat_image_collections,
 )
 
 try:

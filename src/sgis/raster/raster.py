@@ -194,6 +194,7 @@ class Raster:
             **kwargs: Arguments concerning file metadata or
                 spatial properties of the image.
         """
+        warnings.warn("This class is deprecated in favor of Band")
         self.filename_regex = filename_regex
         if filename_regex:
             self.filename_pattern = re.compile(self.filename_regex, re.VERBOSE)

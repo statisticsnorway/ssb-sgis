@@ -17,17 +17,62 @@ import sgis as sg
 
 path_sentinel = testdata + "/sentinel2"
 
+# np.set_printoptions(linewidth=400)
 
 if 0:
-    for p in [
-        # "S2A_MSIL2A_20230624T104621_N0509_R051_T32VPM_20230624T170454.SAFE",
-        # "S2B_MSIL2A_20170826T104019_N0208_R008_T32VNM_20221207T150454.SAFE",
-        # "S2B_MSIL2A_20230606T103629_N0509_R008_T32VNM_20230606T121204.SAFE",
-    ]:
+    for p, bbox in zip(
+        [
+            # "S2A_MSIL2A_20230624T104621_N0509_R051_T32VPM_20230624T170454.SAFE",
+            "S2B_MSIL2A_20170826T104019_N0208_R008_T32VNM_20221207T150454.SAFE",
+            "S2B_MSIL2A_20230606T103629_N0509_R008_T32VNM_20230606T121204.SAFE",
+        ],
+        [
+            # (sg.to_gdf([11.0771105, 59.9483914], crs=4326).to_crs(25833).buffer(1500)),
+            (
+                sg.to_gdf([10.28173443, 60.16616654], crs=4326)
+                .to_crs(25833)
+                .buffer(1500)
+            ),
+            (
+                sg.to_gdf([10.28173443, 60.16616654], crs=4326)
+                .to_crs(25833)
+                .buffer(1500)
+            ),
+        ],
+    ):
         paths = sg.helpers.get_all_files(
             f"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/sentinel2/{p}"
         )
+        img = sg.Sentinel2Image(
+            f"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/sentinel2/{p}",
+        )
+        # sg.explore(sg.to_gdf(img.unary_union, img.crs))
+
+        # bbox = bbox.to_crs(img.crs)
+        # sg.explore(
+        #     img,
+        #     boiu=sg.to_gdf(img.unary_union, img.crs),
+        #     msk=sg.to_gdf(bbox.buffer(1000), crs=bbox.crs),
+        #     mask=bbox.buffer(8000),
+        # )
+        # sss
+        # for band in img:
+        #     print(band)
+        #     raster = sg.Raster.from_path(band.path, bounds=bbox, crs=img.crs)
+
+        #     arr = band.load(bounds=bbox)
+        #     # print(arr)
+        #     print(arr.shape)
+        #     sg.explore(sg.to_gdf(bbox, img.crs))
+        #     sg.explore(sg.to_gdf(img.unary_union, img.crs))
+        #     raster = sg.Raster.from_array(arr, bounds=sg.to_bbox(bbox), crs=img.crs)
+        #     sg.explore(raster.to_gdf())
+        #     sg.explore(img, mask=raster.to_gdf())
+
+        # sss
+
         for path in paths:
+
             if "tif" not in path:
                 continue
             raster = sg.Raster.from_path(path)
@@ -39,15 +84,26 @@ if 0:
                 Path(r"C:\Users\ort\git\ssb-sgis\tests\testdata\raster\sentinel2")
                 / f"{p}"
             ) / (Path(raster.name).stem + "_clipped.tif")
+            print(path)
             print(out)
             import os
 
             os.makedirs(out.parent, exist_ok=True)
-            raster = raster.load().clip(centroid.buffer(1250))
+
+            print(bbox)
+            raster = raster.load().clip(
+                bbox,  # boundless=False, masked=False
+            )
+            print(raster.bounds)
+            print(raster.values)
+            print(raster.values.shape)
+            print(np.sum(np.where(raster.values != 0, 1, 0)))
+
+            # sg.explore(raster.to_gdf())
             raster.write(out)
+            print(raster.shape)
             # print(raster)
             # sg.explore(raster.to_gdf(), "value")
-
 if 0:
     SENTINEL2_FILENAME_REGEX = r"""
         ^(?P<tile>T\d{2}[A-Z]{3})
@@ -112,32 +168,20 @@ def test_torch():
 
 def test_image_collection():
 
-    collection = sg.Sentinel2Collection(path_sentinel)
+    collection = sg.Sentinel2Collection(path_sentinel, res=10, level="L2A")
+    e = sg.Explore(collection)
+    e.explore()
 
     # selecting one random image
-    img = collection.get_images()[0]["B04"]
+    img = collection[0]  # ["B04"]
     msk = sg.to_gdf(img.bounds, crs=img.crs).centroid.buffer(150)
 
-    print("sample change")
-    sg.explore(collection.sample_change(size=150))
-    sg.explore(collection.sample_change(size=150))
-    sg.explore(collection.sample_change())
-    sg.explore(collection.sample_change())
-    print("sample change done")
-
-    for tile in collection.get_tiles():
-
-        e = sg.Explore(tile)
+    for image in collection:
+        e = sg.Explore(image)
         e.explore()
         assert len(e.rasters), e.rasters
-        for image in tile:
-
-            print("sample image")
-            e = sg.Explore(image.sample(1))
-            e.explore()
-            assert len(e.rasters), e.rasters
-
-            e = sg.Explore(image)
+        for band in image:
+            e = sg.Explore(band)
             e.explore()
             assert len(e.rasters), e.rasters
 

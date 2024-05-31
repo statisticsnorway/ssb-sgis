@@ -141,7 +141,7 @@ def get_all_files(root: str, recursive: bool = True) -> list[str]:
         A list of file paths.
     """
     if not recursive:
-        return [path for path in glob.glob(str(Path(root)) + "/*")]
+        return [path for path in glob.glob(str(Path(root)) + "/**")]
     paths = []
     for root_dir, _, files in os.walk(root):
         for file in files:
@@ -205,7 +205,7 @@ def unit_is_degrees(gdf: GeoDataFrame) -> bool:
 
 def get_object_name(
     var: object, start: int = 2, stop: int = 7, ignore_self: bool = True
-) -> str | None:
+) -> str:
     frame = inspect.currentframe()  # frame can be FrameType or None
     if frame:
         try:
@@ -230,7 +230,7 @@ def get_object_name(
         finally:
             if frame:
                 del frame  # Explicitly delete frame reference to assist with garbage collection
-    return None
+    raise ValueError(f"Couldn't find name for {var}")
 
 
 def make_namedict(gdfs: tuple[GeoDataFrame]) -> dict[int, str]:

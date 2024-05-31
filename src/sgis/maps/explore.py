@@ -4,6 +4,7 @@ This module holds the Explore class, which is the basis for the explore, samplem
 clipmap functions from the 'maps' module.
 """
 
+import re
 from pathlib import Path
 import os
 import warnings
@@ -13,6 +14,7 @@ from statistics import mean
 from typing import Any
 from typing import ClassVar
 
+import matplotlib.pyplot as plt
 import branca as bc
 import folium
 import geopandas as gpd
@@ -41,6 +43,7 @@ from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..raster.image_collection import Image
 from ..raster.image_collection import ImageCollection
+from ..raster.image_collection import Band
 from .httpserver import run_html_server
 from .map import Map
 from .tilesources import kartverket
@@ -162,16 +165,60 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
     return folium.TileLayer(provider, name=name, attr=attr, max_zoom=max_zoom)
 
 
-def image_collection_to_background_map(
-    image_collection: ImageCollection | Image,
+def _single_band_to_arr(band, mask, name, raster_data_dict):
+    try:
+        arr = band.values
+    except AttributeError:
+        arr = band.load(indexes=1, bounds=mask).values
+    bounds: tuple = (
+        gpd.GeoSeries(box(*band.bounds), crs=band.crs).to_crs(4326).unary_union.bounds
+    )
+    # if np.max(arr) > 0:
+    #     arr = arr / 255
+    raster_data_dict["cmap"] = plt.get_cmap(band.cmap) if band.cmap else None
+    raster_data_dict["arr"] = arr
+    raster_data_dict["bounds"] = bounds
+    raster_data_dict["label"] = name
+
+
+def _image_collection_to_background_map(
+    image_collection: ImageCollection | Image | Band,
     mask: Any | None,
+    name: str,
     rbg_bands: list[str] = ["B02", "B03", "B04"],
-):
+) -> list[dict]:
+    out = []
+
     red, blue, green = rbg_bands
-    if isinstance(image_collection, (ImageCollection)):
-        images = image_collection.get_images()
+    if isinstance(image_collection, ImageCollection):
+        images = image_collection.images
+        name = None
     elif isinstance(image_collection, Image):
-        images = [image_collection]
+        img = image_collection
+
+        if len(img) == 1:
+            band = list(img)[0]
+            raster_data_dict = {}
+            out.append(raster_data_dict)
+            name = _determine_label(band, name)
+            _single_band_to_arr(band, mask, name, raster_data_dict)
+            return out
+        elif len(img) < 3:
+            raster_data_dict = {}
+            out.append(raster_data_dict)
+            for band in img:
+                name = _determine_label(band, None)
+                _single_band_to_arr(band, mask, name, raster_data_dict)
+            return out
+        else:
+            images = [image_collection]
+
+    elif isinstance(image_collection, Band):
+        raster_data_dict = {}
+        out.append(raster_data_dict)
+        _single_band_to_arr(image_collection, mask, name, raster_data_dict)
+        return out
+
     else:
         raise TypeError(type(image_collection))
 
@@ -181,50 +228,29 @@ def image_collection_to_background_map(
             "which would likely kill your coputer. "
             "Take a sample with the sample_images method."
         )
-    out_images = []
-    raster_bounds = []
-    raster_names = []
+
     for image in images:
-        red_image = image[red]
-        blue_image = image[blue]
-        green_image = image[green]
+        raster_data_dict = {}
+        out.append(raster_data_dict)
 
-        if mask is None:
-            red_image = red_image.load(indexes=1)
-            blue_image = blue_image.load(indexes=1)
-            green_image = green_image.load(indexes=1)
-        else:
-            red_image = red_image.clip(mask, indexes=1)
-            blue_image = blue_image.clip(mask, indexes=1)
-            green_image = green_image.clip(mask, indexes=1)
+        red_image = image[red].load(indexes=1, bounds=mask).values
+        blue_image = image[blue].load(indexes=1, bounds=mask).values
+        green_image = image[green].load(indexes=1, bounds=mask).values
 
-        if len(red_image.values.shape) == 3:
-            red_image.values = red_image.values[0]
-        if len(blue_image.values.shape) == 3:
-            blue_image.values = blue_image.values[0]
-        if len(green_image.values.shape) == 3:
-            green_image.values = green_image.values[0]
-
-        crs = red_image.crs
+        crs = image.crs
         bounds: tuple = (
-            gpd.GeoSeries(box(*red_image.bounds), crs=crs)
-            .to_crs(4326)
-            .unary_union.bounds
+            gpd.GeoSeries(box(*image.bounds), crs=crs).to_crs(4326).unary_union.bounds
         )
 
         # to 3d array in shape (x, y, 3)
-        rbg_image = np.stack(
-            [red_image.values, blue_image.values, green_image.values], axis=2
-        )
+        rbg_image = np.stack([red_image, blue_image, green_image], axis=2)
 
-        out_images.append(rbg_image)
-        raster_bounds.append(bounds)
-        if image.tile and image.date:
-            raster_names.append(f"{image.tile}_{image.date[:8]}")
-        else:
-            raster_names.append(image.name)
+        raster_data_dict["arr"] = rbg_image
+        raster_data_dict["bounds"] = bounds
+        raster_data_dict["cmap"] = None
+        raster_data_dict["label"] = _determine_label(image, name)
 
-    return out_images, raster_bounds, raster_names
+    return out
 
 
 class Explore(Map):
@@ -305,20 +331,44 @@ class Explore(Map):
             show_was_none = False
 
         new_gdfs = {}
-        for gdf in gdfs:
-            try:
-                new_gdfs[str(get_object_name(gdf))] = to_gdf(gdf)
-            except Exception:
-                pass
-
         self.rasters = {}
-        for value in gdfs:
-            if isinstance(value, (ImageCollection | Image)):
-                self.rasters[get_object_name(value)] = value
+        for i, gdf in enumerate(gdfs):
+            try:
+                name = get_object_name(gdf)
+            except ValueError:
+                if isinstance(gdf, GeoSeries):
+                    name = gdf.name
+                elif (
+                    isinstance(gdf, GeoDataFrame)
+                    and len(gdf.columns) == 2
+                    and not column
+                ):
+                    series = gdf.drop(columns=gdf._geometry_column_name).iloc[:, 0]
+                    if (
+                        len(series.unique()) == 1
+                        and mean(isinstance(x, str) for x in series) > 0.5
+                    ):
+                        name = list(series)[0]
+                    else:
+                        name = series.name
+                else:
+                    # generic label e.g. Image(1)
+                    name = f"{gdf.__class__.__name__}({i})"
+
+            if name in new_gdfs or name in self.rasters:
+                name += str(i)
+
+            if isinstance(gdf, (ImageCollection | Image | Band)):
+                self.rasters[name] = gdf
+                continue
+            try:
+                new_gdfs[name] = to_gdf(gdf)
+            except Exception:
+                continue
 
         new_kwargs = {}
         for key, value in kwargs.items():
-            if isinstance(value, (ImageCollection | Image)):
+            if isinstance(value, (ImageCollection | Image | Band)):
                 self.rasters[key] = value
             else:
                 new_kwargs[key] = value
@@ -524,25 +574,25 @@ class Explore(Map):
         self._explore(**kwargs)
 
     def _load_rasters_as_images(self):
-        self.raster_bounds = []
-        self.raster_names = []
-        self.raster_arrays = []
-        for _, value in self.rasters.items():
-            arrays, boundslist, nameslist = image_collection_to_background_map(
-                value, self.mask
+        self.raster_data = []
+        for name, value in self.rasters.items():
+            self.raster_data += _image_collection_to_background_map(
+                value, self.mask, name
             )
-            self.raster_arrays += arrays
-            self.raster_bounds += boundslist
-            self.raster_names += nameslist
 
     def _rasters_to_background_maps(self):
-        for label, img, bounds in zip(
-            self.raster_names, self.raster_arrays, self.raster_bounds, strict=True
-        ):
+        for raster_data_dict in self.raster_data:
             # f = folium.FeatureGroup(name=label)
+            arr = raster_data_dict["arr"]
+            label = raster_data_dict["label"]
+            bounds = raster_data_dict["bounds"]
+            if raster_data_dict["cmap"] is not None:
+                kwargs = {"colormap": raster_data_dict["cmap"]}
+            else:
+                kwargs = {}
             minx, miny, maxx, maxy = bounds
             image_overlay = folium.raster_layers.ImageOverlay(
-                img, bounds=[[miny, minx], [maxy, maxx]]
+                arr, bounds=[[miny, minx], [maxy, maxx]], **kwargs
             )
             image_overlay.layer_name = Path(label).stem
 
@@ -615,7 +665,7 @@ class Explore(Map):
     ) -> tuple[float, float, float, float] | None:
         if not len(gdf) or all(x is None for x in gdf.total_bounds):
             try:
-                return get_total_bounds(self.raster_bounds)
+                return get_total_bounds([x["bounds"] for x in self.raster_data])
             except Exception:
                 return None
         return gdf.total_bounds
@@ -1061,6 +1111,26 @@ def _tooltip_popup(
         return folium.GeoJsonTooltip(fields, **kwargs)
     elif type_ == "popup":
         return folium.GeoJsonPopup(fields, **kwargs)
+
+
+def _determine_label(obj: Image | Band | ImageCollection, obj_name: str | None) -> str:
+    """Prefer the obj"""
+    # Prefer the object's name
+    if obj_name:
+        # Avoid the generic label e.g. Image(1)
+        does_not_have_generic_name = (
+            re.sub("(\d+)", "", obj_name) != f"{obj.__class__.__name__}()"
+        )
+        if does_not_have_generic_name:
+            return obj_name
+    if obj.tile and obj.date:
+        return f"{obj.tile}_{obj.date[:8]}"
+    else:
+        try:
+            # Images/Bands/Collections constructed from arrays have no path stems
+            return obj.stem
+        except AttributeError:
+            return str(obj)[:23]
 
 
 def _categorical_legend(

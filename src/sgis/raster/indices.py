@@ -7,7 +7,16 @@ from .raster import Raster
 
 
 def ndvi(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    return np.where((red + nir) == 0, 0, (nir - red) / (nir + red))
+    # normalize red and nir arrays to 0-1 scale if needed
+    if red.max() > 1 and nir.max() > 1:
+        red = red / 255
+        nir = nir / 255
+    elif red.max() > 1 or nir.max() > 1:
+        raise ValueError()
+
+    ndvi_values = np.where((red + nir) == 0, 0, (nir - red) / (nir + red))
+
+    return ndvi_values
 
 
 def gndvi(green: np.ndarray, nir: np.ndarray) -> np.ndarray:

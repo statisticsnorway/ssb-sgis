@@ -222,6 +222,7 @@ def samplemap(
     *gdfs: GeoDataFrame,
     column: str | None = None,
     size: int = 1000,
+    n: int = 1,
     sample_from_first: bool = True,
     max_zoom: int = 40,
     smooth_factor: int = 1.5,
@@ -248,6 +249,7 @@ def samplemap(
             each GeoDataFrame will get a unique color.
         size: the radius to buffer the sample point by before clipping with the data.
             Defaults to 1000 (meters).
+        n: Number of sample maps to display.
         sample_from_first: If True (default), the sample point is taken form the
             first specified GeoDataFrame. If False, all GeoDataFrames are considered.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
@@ -291,6 +293,7 @@ def samplemap(
     kwargs.pop("size")
 
     if explore:
+
         m = Explore(
             *gdfs,
             column=column,
@@ -306,8 +309,6 @@ def samplemap(
             m._gdf = m._gdf.clip(mask)
             m._nan_idx = m._gdf[m._column].isna()
             m._get_unique_values()
-
-        m.samplemap(size, sample_from_first=sample_from_first)
 
     else:
         m = Map(
