@@ -531,7 +531,7 @@ def not_test_parallel():
 
 
 def write_sentinel():
-    src_path_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data\SENTINEL2X_20230415-230437-251_L3A_T32VLL_C_V1-3"
+    src_path_sentinel = r"C:\Users\ort\OneDrive - Statistisk sentralbyrå\data"
 
     cube = sg.DataCube.from_root(
         src_path_sentinel,

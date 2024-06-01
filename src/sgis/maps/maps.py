@@ -8,12 +8,13 @@ The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 
 import inspect
+import random
 from numbers import Number
 from typing import Any
 
+import pyproj
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-import pyproj
 from shapely import Geometry
 from shapely import box
 from shapely.geometry import Polygon
@@ -81,6 +82,8 @@ def explore(
     browser: bool = False,
     smooth_factor: int | float = 1.5,
     size: int | None = None,
+    max_images: int = 30,
+    return_explorer: bool = False,
     **kwargs,
 ) -> None:
     """Interactive map of GeoDataFrames with layers that can be toggled on/off.
@@ -108,6 +111,8 @@ def explore(
             5 is quite a lot of simplification.
         size: The buffer distance. Only used when center is given. It then defaults to
             1000.
+        return_explorer: If True (not default), the function returns the Explore instance
+            with all attributes.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -152,6 +157,7 @@ def explore(
             mask=mask,
             browser=browser,
             max_zoom=max_zoom,
+            return_explorer=return_explorer,
             **kwargs,
         )
 
@@ -197,6 +203,7 @@ def explore(
             mask=mask,
             browser=browser,
             max_zoom=max_zoom,
+            return_explorer=return_explorer,
             **kwargs,
         )
 
@@ -206,28 +213,32 @@ def explore(
         browser=browser,
         max_zoom=max_zoom,
         smooth_factor=smooth_factor,
+        max_images=max_images,
         **kwargs,
     )
 
     if m.gdfs is None and not len(m.rasters):
-        return
+        return m if return_explorer else None
 
     if not kwargs.pop("explore", True):
         return qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
     m.explore()
 
+    return m if return_explorer else None
+
 
 def samplemap(
     *gdfs: GeoDataFrame,
     column: str | None = None,
     size: int = 1000,
-    n: int = 1,
     sample_from_first: bool = True,
     max_zoom: int = 40,
     smooth_factor: int = 1.5,
     explore: bool = True,
     browser: bool = False,
+    return_explorer: bool = False,
+    max_images: int = 30,
     **kwargs,
 ) -> None:
     """Shows an interactive map of a random area of GeoDataFrames.
@@ -249,7 +260,6 @@ def samplemap(
             each GeoDataFrame will get a unique color.
         size: the radius to buffer the sample point by before clipping with the data.
             Defaults to 1000 (meters).
-        n: Number of sample maps to display.
         sample_from_first: If True (default), the sample point is taken form the
             first specified GeoDataFrame. If False, all GeoDataFrames are considered.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
@@ -260,6 +270,8 @@ def samplemap(
             or not in Jupyter, a static plot will be shown.
         browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
+        return_explorer: If True (not default), the function returns the Explore instance
+            with all attributes.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -287,6 +299,12 @@ def samplemap(
     if gdfs and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
+    i = 0 if sample_from_first else random.choice(list(range(len(gdfs))))
+    try:
+        sample = gdfs[i]
+    except IndexError:
+        sample = list(kwargs.values())[i]
+
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
@@ -300,15 +318,20 @@ def samplemap(
             browser=browser,
             max_zoom=max_zoom,
             smooth_factor=smooth_factor,
+            max_images=max_images,
             **kwargs,
         )
         if m.gdfs is None and not len(m.rasters):
-            return
+            return m if return_explorer else None
+
         if mask is not None:
             m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
             m._gdf = m._gdf.clip(mask)
             m._nan_idx = m._gdf[m._column].isna()
             m._get_unique_values()
+
+        m.samplemap(size, sample=sample)
+        return m if return_explorer else None
 
     else:
         m = Map(
@@ -316,11 +339,6 @@ def samplemap(
             column=column,
             **kwargs,
         )
-
-        if sample_from_first:
-            sample = m._gdfs[0].sample(1)
-        else:
-            sample = m._gdf.sample(1)
 
         # convert lines to polygons
         if get_geom_type(sample) == "line":
@@ -349,6 +367,8 @@ def clipmap(
     max_zoom: int = 40,
     smooth_factor: int | float = 1.5,
     browser: bool = False,
+    max_images: int = 30,
+    return_explorer: bool = False,
     **kwargs,
 ) -> None:
     """Shows an interactive map of a of GeoDataFrames clipped to the mask extent.
@@ -375,6 +395,8 @@ def clipmap(
             or not in Jupyter, a static plot will be shown.
         browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
+        return_explorer: If True (not default), the function returns the Explore instance
+            with all attributes.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -400,18 +422,20 @@ def clipmap(
             browser=browser,
             max_zoom=max_zoom,
             smooth_factor=smooth_factor,
+            max_images=max_images,
             **kwargs,
         )
         m.mask = mask
 
         if m.gdfs is None and not len(m.rasters):
-            return
+            return m if return_explorer else None
 
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
         m._gdf = m._gdf.clip(mask)
         m._nan_idx = m._gdf[m._column].isna()
         m._get_unique_values()
         m.explore(center=center, size=size)
+        return m if return_explorer else None
     else:
         m = Map(
             *gdfs,
@@ -429,7 +453,9 @@ def clipmap(
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
 
-def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
+def explore_locals(
+    *gdfs: GeoDataFrame, convert: bool = True, return_explorer: bool = False, **kwargs
+) -> None:
     """Displays all local variables with geometries (GeoDataFrame etc.).
 
     Local means inside a function or file/notebook.
@@ -497,7 +523,7 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
         if not frame:
             break
 
-    explore(*gdfs, **local_gdfs, **kwargs)
+    return explore(*gdfs, **local_gdfs, return_explorer=return_explorer, **kwargs)
 
 
 def qtm(
@@ -546,9 +572,6 @@ def qtm(
             gdfs += (value,)
         else:
             new_kwargs[key] = value
-
-            # self.labels.append(key)
-            # self.show.append(last_show)
 
     m = ThematicMap(*gdfs, column=column, size=size, black=black)
 

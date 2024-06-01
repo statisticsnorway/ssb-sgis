@@ -116,15 +116,15 @@ from .parallel.parallel import Parallel
 from .parallel.parallel import parallel_overlay
 from .raster.cube import DataCube
 from .raster.cube import concat_cubes
-from .raster.image_collection import (
-    Sentinel2Collection,
-    Sentinel2Image,
-    ImageCollection,
-    Image,
-    Band,
-    Sentinel2Band,
-    concat_image_collections,
-)
+from .raster.image_collection import Band
+from .raster.image_collection import Image
+from .raster.image_collection import ImageCollection
+from .raster.image_collection import Sentinel2Band
+from .raster.image_collection import Sentinel2CloudlessCollection
+from .raster.image_collection import Sentinel2CloudlessImage
+from .raster.image_collection import Sentinel2Collection
+from .raster.image_collection import Sentinel2Image
+from .raster.image_collection import concat_image_collections
 
 try:
     import sgis.raster.torchgeo as torchgeo

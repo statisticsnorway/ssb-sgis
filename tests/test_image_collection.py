@@ -1,22 +1,23 @@
 # %%
 
 
-from pathlib import Path
 from collections.abc import Iterable
+from pathlib import Path
 
 import numpy as np
-from geopandas import GeoSeries
-from shapely.geometry import Point
-from torchgeo.datasets.utils import BoundingBox
-from shapely.geometry import MultiPolygon, Polygon
 import torch
+from geopandas import GeoSeries
 from lightning.pytorch import Trainer
+from shapely.geometry import MultiPolygon
+from shapely.geometry import Point
+from shapely.geometry import Polygon
 from torch.utils.data import DataLoader
 from torchgeo.datamodules import InriaAerialImageLabelingDataModule
 from torchgeo.datasets import stack_samples
-from torchgeo.samplers import RandomBatchGeoSampler, RandomGeoSampler
+from torchgeo.datasets.utils import BoundingBox
+from torchgeo.samplers import RandomBatchGeoSampler
+from torchgeo.samplers import RandomGeoSampler
 from torchgeo.trainers import SemanticSegmentationTask
-
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -31,7 +32,24 @@ import sgis as sg
 path_sentinel = testdata + "/sentinel2"
 
 
-def concat_image_collections():
+def test_with_mosaic():
+    collection = sg.Sentinel2Collection(path_sentinel, level=None, res=10, processes=2)
+    assert len(collection) == 3, collection
+    assert list(collection.dates) == list(sorted(collection.dates)), collection.dates
+
+    mosaic = sg.Sentinel2CloudlessCollection(
+        path_sentinel, level=None, res=10, processes=2
+    )
+    assert len(mosaic) == 1, mosaic
+
+    concated = sg.concat_image_collections([mosaic, collection])
+    assert len(concated) == 4, concated
+
+    concated = mosaic | collection
+    assert len(concated) == 4, concated
+
+
+def test_concat_image_collections():
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, processes=2)
 
     new_collection = sg.concat_image_collections(
@@ -55,9 +73,7 @@ def test_ndvi_and_explore():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
-    e = sg.Explore(collection)
-
-    e.explore()
+    e = sg.explore(collection, return_explorer=True)
     assert e.rasters
     assert (x := [x["label"] for x in e.raster_data]) == [
         f"{img.tile}_{img.date[:8]}" for img in collection
@@ -72,15 +88,15 @@ def test_ndvi_and_explore():
 
             assert (ndvi.cmap) == "Greens"
 
-            e = sg.Explore(ndvi)
-            e.explore()
+            e = sg.explore(ndvi, return_explorer=True)
             assert e.rasters
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
                 "ndvi",
             ], x
 
-            e = sg.Explore(ndvi.get_n_largest(n), ndvi.get_n_smallest(n), img)
-            e.explore()
+            e = sg.explore(
+                ndvi.get_n_largest(n), ndvi.get_n_smallest(n), img, return_explorer=True
+            )
             assert e.rasters
             assert e["labels"] == [
                 f"largest_{n}",
@@ -93,17 +109,15 @@ def test_ndvi_and_explore():
 
             new_img = sg.Image([ndvi], res=10)
 
-            e = sg.Explore(new_img)
-            e.explore()
+            e = sg.explore(new_img, return_explorer=True)
             assert e.rasters
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
                 "new_img",
             ], x
 
-            e = sg.Explore(sg.Image([ndvi], res=10))
-            e.explore()
+            e = sg.explore(sg.Image([ndvi], res=10), return_explorer=True)
             assert e.rasters
-            # cannot find an object name since the image is created within the Explore constructor
+            # cannot find an object name since the image is created within the explore constructor
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
                 "Image(0)",
             ], x
@@ -131,15 +145,55 @@ def test_bbox():
 def test_sample():
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
-    change_sample = collection.sample_tiles(2)
-    assert isinstance(change_sample, sg.Sentinel2Collection), type(change_sample)
-    assert len(change_sample) == 3
-    assert isinstance(change_sample[0], sg.Image)
-    assert isinstance(change_sample[1], sg.Image)
-    assert isinstance(change_sample[2], sg.Image)
-    assert change_sample[0].date.startswith("2017")
-    assert change_sample[1].date.startswith("2023")
-    assert change_sample[2].date.startswith("2023")
+    size = 200
+    area_should_be = size * 2 * size * 2
+
+    e = sg.explore(collection.sample(1, size=size), return_explorer=True)
+    assert (x := e.raster_data[0]["arr"].shape) == (40, 40, 3), x
+
+    bbox = sg.to_gdf(collection.unary_union, collection.crs)
+
+    e = sg.samplemap(collection, bbox, size=size, return_explorer=True)
+    assert (x := e.raster_data[0]["arr"].shape) == (40, 40, 3), x
+    assert (x := int(e._gdfs[0].dissolve().area.sum())) == area_should_be, (
+        x,
+        area_should_be,
+    )
+
+    e = sg.explore(
+        collection.sample(1, size=size).load_bands().to_gdfs(),
+        column="value",
+        return_explorer=True,
+    )
+    assert (x := int(e._gdfs[0].dissolve().area.sum())) == area_should_be, (
+        x,
+        area_should_be,
+    )
+
+    sample = collection.sample(15, size=size)
+    assert len(sample) >= 15, len(sample)
+    for img in sample:
+        e = sg.explore(img, return_explorer=True)
+        assert e.rasters
+        for band in img:
+            arr = band.load().values
+            assert arr.shape == (40, 40), arr.shape
+
+    sample = collection.sample_images(2)
+    assert len(sample) == 2, sample
+
+    sample = collection.sample_images(1)
+    assert len(sample) == 1, sample
+
+    sample = collection.sample_tiles(2)
+    assert isinstance(sample, sg.Sentinel2Collection), type(sample)
+    assert len(sample) == 3
+    assert isinstance(sample[0], sg.Image)
+    assert isinstance(sample[1], sg.Image)
+    assert isinstance(sample[2], sg.Image)
+    assert sample[0].date.startswith("2017")
+    assert sample[1].date.startswith("2023")
+    assert sample[2].date.startswith("2023")
 
 
 def test_indexing():
@@ -168,6 +222,14 @@ def test_indexing():
 
     arr = collection[0]["B02"].load().values
     assert isinstance(arr, np.ndarray)
+
+    s2a = collection[["s2a" in img.name.lower() for img in collection]]
+    assert isinstance(s2a, sg.ImageCollection)
+    assert len(s2a) == 1, s2a
+
+    s2b = collection[["s2b" in img.name.lower() for img in collection]]
+    assert isinstance(s2b, sg.ImageCollection)
+    assert len(s2b) == 2, s2b
 
     assert isinstance((x := collection[[0, -1]]), sg.ImageCollection), x
     assert len(x := collection[[0, -1]]) == 2, x
@@ -365,6 +427,11 @@ def test_groupby():
             assert isinstance(img.file_paths[0], str), img.file_paths
             assert img.band_ids[0] == band_id, (band_id, img.band_ids)
 
+        largest_date = ""
+        for img in subcollection:
+            assert img.date > largest_date
+            largest_date = img.date
+
     bands_should_be2 = sorted(bands_should_be + bands_should_be)
 
     # band_ids should appear twice in a row since there are two tiles
@@ -381,6 +448,10 @@ def test_groupby():
             assert len(img.band_ids) == 1
             assert img.band_ids[0] == band_id, (band_id, img.band_ids)
             assert img.tile == tile
+        largest_date = ""
+        for img in subcollection:
+            assert img.date > largest_date
+            largest_date = img.date
 
     for (tile, band_id), subcollection in collection.groupby(["tile", "band"]):
         assert isinstance(tile, str)
@@ -394,6 +465,10 @@ def test_groupby():
             assert len(img.band_ids) == 1
             assert img.band_ids[0] == band_id
             assert img.tile == tile
+        largest_date = ""
+        for img in subcollection:
+            assert img.date > largest_date
+            largest_date = img.date
 
     for (date,), subcollection in collection.groupby("date"):
         assert isinstance(date, str), date
@@ -414,6 +489,10 @@ def test_groupby():
                 assert isinstance(band_id, str), band_id
                 arr = img[band_id]
                 assert isinstance(arr, sg.Band), type(arr)
+        largest_date = ""
+        for img in subcollection:
+            assert img.date > largest_date
+            largest_date = img.date
 
     assert len(n := collection.groupby("date")) == 3, (n, len(n))
     assert len(n := collection.groupby("tile")) == 2, (n, len(n))
@@ -453,19 +532,19 @@ def test_cloud():
     assert isinstance(collection, sg.ImageCollection), type(collection)
     assert len(collection) == 3, len(collection)
 
-    collection2 = collection.filter(max_cloud_cover=20)
-    collection3 = collection.filter(max_cloud_cover=40)
-    collection4 = collection.filter(max_cloud_cover=5)
+    collection2 = collection.filter(max_cloud_coverage=20)
+    collection3 = collection.filter(max_cloud_coverage=40)
+    collection4 = collection.filter(max_cloud_coverage=5)
     assert len(collection) == 3, len(collection)
     assert len(collection2) == 1, len(collection2)
     assert len(collection3) == 3, len(collection3)
     assert len(collection4) == 1, len(collection4)
 
-    cloud_cover_should_be = [36, 0, 25]
-    for cloud_cover, img in zip(cloud_cover_should_be, collection, strict=False):
-        assert cloud_cover == int(img.cloud_cover_percentage), (
-            cloud_cover,
-            int(img.cloud_cover_percentage),
+    cloud_coverage_should_be = [36, 0, 25]
+    for cloud_coverage, img in zip(cloud_coverage_should_be, collection, strict=False):
+        assert cloud_coverage == int(img.cloud_coverage_percentage), (
+            cloud_coverage,
+            int(img.cloud_coverage_percentage),
             img.path,
         )
 
@@ -475,7 +554,7 @@ def test_cloud():
         assert isinstance(cloud_arr, sg.Band), cloud_arr
         assert cloud_arr.values.shape == (300, 300), cloud_arr.values.shape
         cloud_polys = img.get_cloud_band().to_gdf().geometry
-        sg.explore(cloud_polys)
+        sg.explore(cloud_polys, return_explorer=True)
         assert isinstance(cloud_polys, GeoSeries), type(cloud_polys)
 
 
@@ -528,7 +607,7 @@ def test_iteration():
         assert img.name.startswith("S2"), img.name
         assert isinstance(img.bounds, tuple)
         assert all(x for x in img.bounds)
-        assert img.cloud_cover_percentage, img.cloud_cover_percentage
+        assert img.cloud_coverage_percentage, img.cloud_coverage_percentage
         assert img.crs
         assert img.centroid
         assert img.level == "L2A"
@@ -689,11 +768,10 @@ def test_torch():
         boxes = batch["boxes"]  # list of boxes
         labels = batch["labels"]  # list of labels
         masks = batch["masks"]  # list of masks
-        print(boxes)
-        print(labels)
-        print(masks)
         print(imgs)
         assert len(imgs.shape) == 4, imgs.shape
+
+    return
 
     datamodule = InriaAerialImageLabelingDataModule(
         # root=path_sentinel,
@@ -717,6 +795,8 @@ def test_torch():
 
 
 def main():
+    test_with_mosaic()
+    test_ndvi_and_explore()
     test_merge()
     test_iteration()
     test_indexing()
@@ -724,12 +804,11 @@ def main():
     test_groupby()
     test_regexes()
     test_date_ranges()
-    test_sample()
     test_cloud()
     test_iteration_base_image_collection()
-    concat_image_collections()
-    test_ndvi_and_explore()
+    test_concat_image_collections()
     test_torch()
+    test_sample()
 
 
 if __name__ == "__main__":

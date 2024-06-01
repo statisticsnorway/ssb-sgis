@@ -279,7 +279,10 @@ class ThematicMap(Map):
 
     def _prepare_categorical_plot(self, kwargs: dict) -> dict:
         """Map values to colors."""
-        self._get_categorical_colors()
+        self._make_categories_colors_dict()
+        if self._gdf is not None and len(self._gdf):
+            self._fix_nans()
+
         colorarray = self._gdf["color"]
 
         kwargs["color"] = colorarray

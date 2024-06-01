@@ -39,6 +39,7 @@ if 0:
                 .buffer(1500)
             ),
         ],
+        strict=False,
     ):
         paths = sg.helpers.get_all_files(
             f"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/sentinel2/{p}"
@@ -46,31 +47,6 @@ if 0:
         img = sg.Sentinel2Image(
             f"C:/Users/ort/OneDrive - Statistisk sentralbyrå/data/sentinel2/{p}",
         )
-        # sg.explore(sg.to_gdf(img.unary_union, img.crs))
-
-        # bbox = bbox.to_crs(img.crs)
-        # sg.explore(
-        #     img,
-        #     boiu=sg.to_gdf(img.unary_union, img.crs),
-        #     msk=sg.to_gdf(bbox.buffer(1000), crs=bbox.crs),
-        #     mask=bbox.buffer(8000),
-        # )
-        # sss
-        # for band in img:
-        #     print(band)
-        #     raster = sg.Raster.from_path(band.path, bounds=bbox, crs=img.crs)
-
-        #     arr = band.load(bounds=bbox)
-        #     # print(arr)
-        #     print(arr.shape)
-        #     sg.explore(sg.to_gdf(bbox, img.crs))
-        #     sg.explore(sg.to_gdf(img.unary_union, img.crs))
-        #     raster = sg.Raster.from_array(arr, bounds=sg.to_bbox(bbox), crs=img.crs)
-        #     sg.explore(raster.to_gdf())
-        #     sg.explore(img, mask=raster.to_gdf())
-
-        # sss
-
         for path in paths:
 
             if "tif" not in path:
@@ -381,7 +357,7 @@ def main():
     test_image_collection()
     # test_torch()
     test_explore(points_oslo(), roads_oslo())
-    not_test_explore(points_oslo(), roads_oslo())
+    # not_test_explore(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":

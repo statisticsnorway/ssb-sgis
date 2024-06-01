@@ -4,8 +4,9 @@ This module holds the Map class, which is the basis for the Explore class.
 """
 
 import warnings
+from statistics import mean
 from typing import Any
-from typing import Sequence
+from collections.abc import Sequence
 
 import matplotlib
 import matplotlib.colors as colors
@@ -23,9 +24,9 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import drop_inactive_geometry_columns
 from ..geopandas_tools.general import get_common_crs
 from ..helpers import get_object_name
+from ..raster.image_collection import Band
 from ..raster.image_collection import Image
 from ..raster.image_collection import ImageCollection
-from ..raster.image_collection import Band
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -130,7 +131,9 @@ class Map:
         # not setting, labels. So the original gdfs don't get the label column.
         self.labels = labels
         if not self.labels:
-            self._get_labels(gdfs)
+            self.labels: list[str] = [
+                _determine_best_name(gdf, column, i) for i, gdf in enumerate(gdfs)
+            ]
 
         show = kwargs.pop("show", True)
         if isinstance(show, (int, bool)):
@@ -156,7 +159,7 @@ class Map:
             if not len(gdf):
                 continue
 
-            self._gdfs.append(gdf)
+            self._gdfs.append(to_gdf(gdf))
             new_labels.append(label)
             self.show.append(show)
         self.labels = new_labels
@@ -378,10 +381,7 @@ class Map:
                 # add dicts or classes with GeoDataFrames to kwargs
                 for value in arg:
                     if isinstance(value, allowed_types):
-                        name = get_object_name(arg)
-                        if name is None:
-                            name = f"x00{i}"
-                            i += 1
+                        name = _determine_best_name(value, column, i)
                         more_gdfs[name] = value
                     elif isinstance(value, dict) or hasattr(value, "__dict__"):
                         try:
@@ -398,11 +398,9 @@ class Map:
                         for x in value:
                             if not isinstance(x, allowed_types):
                                 continue
-                            name = get_object_name(arg)
-                            if name is None:
-                                name = f"x00{i}"
-                                i += 1
+                            name = _determine_best_name(value, column, i)
                             more_gdfs[name] = x
+                    i += 1
 
         kwargs |= more_gdfs
 
@@ -424,14 +422,6 @@ class Map:
         else:
             self._unique_values = self.nan_label
             self._k = 1
-
-    def _get_labels(self, gdfs: tuple[GeoDataFrame]) -> None:
-        """Putting the labels/names in a list before copying the gdfs."""
-        self.labels: list[str] = []
-        for i, gdf in enumerate(gdfs):
-            name = get_object_name(gdf)
-            name = name or str(i)
-            self.labels.append(name)
 
     def _set_labels(self) -> None:
         """Setting the labels after copying the gdfs."""
@@ -755,3 +745,24 @@ class Map:
             return self[key]
         except (KeyError, ValueError, IndexError, AttributeError):
             return default
+
+
+def _determine_best_name(obj: Any, column: str | None, i: int) -> str:
+    try:
+        # Frame 3: actual object name Frame 2: maps.py:explore(). Frame 1: __init__. Frame 0: this function.
+        return get_object_name(obj, start=3)
+    except ValueError:
+        if isinstance(obj, GeoSeries):
+            return obj.name
+        elif isinstance(obj, GeoDataFrame) and len(obj.columns) == 2 and not column:
+            series = obj.drop(columns=obj._geometry_column_name).iloc[:, 0]
+            if (
+                len(series.unique()) == 1
+                and mean(isinstance(x, str) for x in series) > 0.5
+            ):
+                return list(series)[0]
+            else:
+                return series.name
+        else:
+            # generic label e.g. Image(1)
+            return f"{obj.__class__.__name__}({i})"

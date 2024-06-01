@@ -4,21 +4,22 @@ This module holds the Explore class, which is the basis for the explore, samplem
 clipmap functions from the 'maps' module.
 """
 
-import re
-from pathlib import Path
 import os
+import random
+import re
 import warnings
 from collections.abc import Iterable
 from numbers import Number
+from pathlib import Path
 from statistics import mean
 from typing import Any
 from typing import ClassVar
 
-import matplotlib.pyplot as plt
 import branca as bc
 import folium
 import geopandas as gpd
 import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xyzservices
@@ -30,22 +31,22 @@ from jinja2 import Template
 from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely import box
-from shapely import unary_union
 from shapely.geometry import LineString
-from shapely.geometry import Polygon
-from ..helpers import get_object_name
 
 from ..geopandas_tools.bounds import get_total_bounds
+from ..geopandas_tools.conversion import to_bbox
 from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
+from ..raster.image_collection import Band
 from ..raster.image_collection import Image
 from ..raster.image_collection import ImageCollection
-from ..raster.image_collection import Band
 from .httpserver import run_html_server
 from .map import Map
+from .map import _determine_best_name
 from .tilesources import kartverket
 from .tilesources import xyz
 
@@ -171,7 +172,11 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     except AttributeError:
         arr = band.load(indexes=1, bounds=mask).values
     bounds: tuple = (
-        gpd.GeoSeries(box(*band.bounds), crs=band.crs).to_crs(4326).unary_union.bounds
+        _any_to_bbox_crs4326(mask)
+        if mask is not None
+        else gpd.GeoSeries(box(*band.bounds), crs=band.crs)
+        .to_crs(4326)
+        .unary_union.bounds
     )
     # if np.max(arr) > 0:
     #     arr = arr / 255
@@ -181,10 +186,18 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     raster_data_dict["label"] = name
 
 
+def _any_to_bbox_crs4326(obj):
+    try:
+        return to_bbox(to_gdf(obj).to_crs(4326))
+    except ValueError:
+        return to_bbox(to_gdf(obj).set_crs(4326))
+
+
 def _image_collection_to_background_map(
     image_collection: ImageCollection | Image | Band,
     mask: Any | None,
     name: str,
+    max_images: int,
     rbg_bands: list[str] = ["B02", "B03", "B04"],
 ) -> list[dict]:
     out = []
@@ -222,16 +235,19 @@ def _image_collection_to_background_map(
     else:
         raise TypeError(type(image_collection))
 
-    if len(images) > 30:
-        raise ValueError(
-            "You are trying to show {len(images)} images in a map, "
-            "which would likely kill your coputer. "
-            "Take a sample with the sample_images method."
-        )
+    if len(images) > max_images:
+        warnings.warn(f"Showing only a sample of {max_images}. Set 'max_images.")
+        random.shuffle(images)
 
     for image in images:
         raster_data_dict = {}
         out.append(raster_data_dict)
+
+        if len(image) < 3:
+            for band in image:
+                name = _determine_label(band, None)
+                _single_band_to_arr(band, mask, name, raster_data_dict)
+            continue
 
         red_image = image[red].load(indexes=1, bounds=mask).values
         blue_image = image[blue].load(indexes=1, bounds=mask).values
@@ -239,7 +255,13 @@ def _image_collection_to_background_map(
 
         crs = image.crs
         bounds: tuple = (
-            gpd.GeoSeries(box(*image.bounds), crs=crs).to_crs(4326).unary_union.bounds
+            _any_to_bbox_crs4326(mask)
+            if mask is not None
+            else (
+                gpd.GeoSeries(box(*image.bounds), crs=crs)
+                .to_crs(4326)
+                .unary_union.bounds
+            )
         )
 
         # to 3d array in shape (x, y, 3)
@@ -280,6 +302,7 @@ class Explore(Map):
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
         decimals: int = 6,
+        max_images: int = 30,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -317,6 +340,7 @@ class Explore(Map):
         self.mask = mask
         self.text = text
         self.decimals = decimals
+        self.max_images = max_images
 
         self.browser = browser
         if not self.browser and "show_in_browser" in kwargs:
@@ -333,27 +357,7 @@ class Explore(Map):
         new_gdfs = {}
         self.rasters = {}
         for i, gdf in enumerate(gdfs):
-            try:
-                name = get_object_name(gdf)
-            except ValueError:
-                if isinstance(gdf, GeoSeries):
-                    name = gdf.name
-                elif (
-                    isinstance(gdf, GeoDataFrame)
-                    and len(gdf.columns) == 2
-                    and not column
-                ):
-                    series = gdf.drop(columns=gdf._geometry_column_name).iloc[:, 0]
-                    if (
-                        len(series.unique()) == 1
-                        and mean(isinstance(x, str) for x in series) > 0.5
-                    ):
-                        name = list(series)[0]
-                    else:
-                        name = series.name
-                else:
-                    # generic label e.g. Image(1)
-                    name = f"{gdf.__class__.__name__}({i})"
+            name = _determine_best_name(gdf, column, i)
 
             if name in new_gdfs or name in self.rasters:
                 name += str(i)
@@ -373,20 +377,7 @@ class Explore(Map):
             else:
                 new_kwargs[key] = value
 
-            # if isinstance(value, dict) or hasattr(value, "__dict__"):
-            #             try:
-            #                 for k, v in val.items():
-            #                     if isinstance(v, allowed_types):
-            #                         gdf = clean_geoms(to_gdf_func(v))
-            #                         if len(gdf):
-            #                             local_gdfs[k] = gdf
-
-            # elif hasattr(value, "__iter__"):
-            #     for x in value:
-            #         if isinstance(x, (ImageCollection | Image)):
-            #             self.rasters.append(value)
-
-        super().__init__(new_gdfs, column=column, show=show, **new_kwargs, **new_gdfs)
+        super().__init__(column=column, show=show, **new_kwargs, **new_gdfs)
 
         if self.gdfs is None:
             return
@@ -423,7 +414,7 @@ class Explore(Map):
                 gdf.index = gdf.index.astype(str)
             except Exception:
                 pass
-            new_gdfs.append(gdf)
+            new_gdfs.append(to_gdf(gdf))
             show_new.append(show)
         self._gdfs = new_gdfs
         if self._gdfs:
@@ -503,9 +494,9 @@ class Explore(Map):
 
     def samplemap(
         self,
-        size: int = 1000,
+        size: int,
+        sample: Any,
         column: str | None = None,
-        sample_from_first: bool = True,
         **kwargs,
     ) -> None:
         """Explore a sample of the data."""
@@ -514,28 +505,28 @@ class Explore(Map):
             self._update_column()
             kwargs.pop("column", None)
 
-        if sample_from_first:
-            sample = self._gdfs[0].sample(1)
-        else:
-            sample = self._gdf.sample(1)
+        try:
+            sample = sample.sample(1)
+        except Exception:
+            pass
 
-        # convert lines to polygons
-        if get_geom_type(sample) == "line":
-            sample["geometry"] = sample.buffer(1)
+        try:
+            sample = to_gdf(to_shapely(sample)).explode(ignore_index=True)
+        except Exception:
+            sample = to_gdf(to_shapely(to_bbox(sample))).explode(ignore_index=True)
 
-        if get_geom_type(sample) == "polygon":
-            random_point = sample.sample_points(size=1)
-
-        # if point or mixed geometries
-        else:
-            random_point = sample.centroid
+        random_point = sample.sample_points(size=1)
 
         self.center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
         print(f"center={self.center}, size={size}")
 
+        mask = random_point.buffer(size)
+
+        return self.clipmap(mask, column, **kwargs)
+
         gdfs: tuple[GeoDataFrame] = ()
         for gdf in self._gdfs:
-            gdf = gdf.clip(random_point.buffer(size))
+            gdf = gdf.clip(self.mask)
             gdfs = gdfs + (gdf,)
         self._gdfs = gdfs
         self._gdf = pd.concat(gdfs, ignore_index=True)
@@ -577,12 +568,11 @@ class Explore(Map):
         self.raster_data = []
         for name, value in self.rasters.items():
             self.raster_data += _image_collection_to_background_map(
-                value, self.mask, name
+                value, self.mask, name, max_images=self.max_images
             )
 
     def _rasters_to_background_maps(self):
         for raster_data_dict in self.raster_data:
-            # f = folium.FeatureGroup(name=label)
             arr = raster_data_dict["arr"]
             label = raster_data_dict["label"]
             bounds = raster_data_dict["bounds"]
@@ -595,8 +585,6 @@ class Explore(Map):
                 arr, bounds=[[miny, minx], [maxy, maxx]], **kwargs
             )
             image_overlay.layer_name = Path(label).stem
-
-            # f.add_child(image_overlay)
             image_overlay.add_to(self.map)
 
     def _explore(self, **kwargs) -> None:
@@ -668,6 +656,7 @@ class Explore(Map):
                 return get_total_bounds([x["bounds"] for x in self.raster_data])
             except Exception:
                 return None
+
         return gdf.total_bounds
 
     def _create_categorical_map(self) -> None:
@@ -681,6 +670,7 @@ class Explore(Map):
         self._load_rasters_as_images()
 
         bounds = self._get_bounds(gdf)
+
         if bounds is None:
             self.map = None
             return

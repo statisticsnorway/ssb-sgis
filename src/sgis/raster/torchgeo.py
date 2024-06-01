@@ -32,6 +32,14 @@ except ImportError:
         """Placeholder."""
 
 
+try:
+    from .image_collection import Sentinel2Config
+except ImportError:
+
+    class Sentinel2Config:
+        """Placeholder."""
+
+
 from ..helpers import get_all_files
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
@@ -170,10 +178,10 @@ class Sentinel2(GCSRasterDataset):
     date_format: ClassVar[str] = "%Y%m%d"
     filename_glob = "T*_*_{}*.*"
 
-    filename_regex: ClassVar[str] = SENTINEL2_FILENAME_REGEX
-    all_bands: ClassVar[list[str]] = SENTINEL_2_BANDS
-    rgb_bands: ClassVar[list[str]] = SENTINEL_2_RBG_BANDS
-    ndvi_bands: ClassVar[list[str]] = SENTINEL_2_RBG_BANDS
+    filename_regex: ClassVar[str] = Sentinel2Config.filename_regexes
+    all_bands: ClassVar[list[str]] = Sentinel2Config.all_bands
+    rgb_bands: ClassVar[list[str]] = Sentinel2Config.ndvi_bands
+    ndvi_bands: ClassVar[list[str]] = Sentinel2Config.ndvi_bands
 
     separate_files: ClassVar[bool] = True
 
