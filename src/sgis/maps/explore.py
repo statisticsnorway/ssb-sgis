@@ -172,7 +172,7 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     except AttributeError:
         arr = band.load(indexes=1, bounds=mask).values
     bounds: tuple = (
-        _any_to_bbox_crs4326(mask)
+        _any_to_bbox_crs4326(mask, band.crs)
         if mask is not None
         else gpd.GeoSeries(box(*band.bounds), crs=band.crs)
         .to_crs(4326)
@@ -186,11 +186,8 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     raster_data_dict["label"] = name
 
 
-def _any_to_bbox_crs4326(obj):
-    try:
-        return to_bbox(to_gdf(obj).to_crs(4326))
-    except ValueError:
-        return to_bbox(to_gdf(obj).set_crs(4326))
+def _any_to_bbox_crs4326(obj, crs):
+    return to_bbox(to_gdf(obj, crs).to_crs(4326))
 
 
 def _image_collection_to_background_map(
@@ -198,16 +195,21 @@ def _image_collection_to_background_map(
     mask: Any | None,
     name: str,
     max_images: int,
-    rbg_bands: list[str] = ["B02", "B03", "B04"],
+    rbg_bands: list[str] = (["B02", "B03", "B04"], ["B2", "B3", "B4"]),
 ) -> list[dict]:
     out = []
 
-    red, blue, green = rbg_bands
+    if all(isinstance(x, str) for x in rbg_bands):
+        rbg_bands = (rbg_bands,)
+
+    # red, blue, green = rbg_bands
     if isinstance(image_collection, ImageCollection):
         images = image_collection.images
         name = None
     elif isinstance(image_collection, Image):
         img = image_collection
+        if mask is not None and not to_shapely(mask).intersects(to_shapely(img.bounds)):
+            return out
 
         if len(img) == 1:
             band = list(img)[0]
@@ -227,9 +229,16 @@ def _image_collection_to_background_map(
             images = [image_collection]
 
     elif isinstance(image_collection, Band):
+        band = image_collection
+
+        if mask is not None and not to_shapely(mask).intersects(
+            to_shapely(band.bounds)
+        ):
+            return out
+
         raster_data_dict = {}
         out.append(raster_data_dict)
-        _single_band_to_arr(image_collection, mask, name, raster_data_dict)
+        _single_band_to_arr(band, mask, name, raster_data_dict)
         return out
 
     else:
@@ -240,6 +249,11 @@ def _image_collection_to_background_map(
         random.shuffle(images)
 
     for image in images:
+        if mask is not None and not to_shapely(mask).intersects(
+            to_shapely(image.bounds)
+        ):
+            continue
+
         raster_data_dict = {}
         out.append(raster_data_dict)
 
@@ -249,13 +263,24 @@ def _image_collection_to_background_map(
                 _single_band_to_arr(band, mask, name, raster_data_dict)
             continue
 
-        red_image = image[red].load(indexes=1, bounds=mask).values
-        blue_image = image[blue].load(indexes=1, bounds=mask).values
-        green_image = image[green].load(indexes=1, bounds=mask).values
+        for red, blue, green in rbg_bands:
+            try:
+                red_band = image[red].load(indexes=1, bounds=mask).values
+            except KeyError:
+                continue
+            try:
+                blue_band = image[blue].load(indexes=1, bounds=mask).values
+            except KeyError:
+                continue
+            try:
+                green_band = image[green].load(indexes=1, bounds=mask).values
+            except KeyError:
+                continue
+            break
 
         crs = image.crs
         bounds: tuple = (
-            _any_to_bbox_crs4326(mask)
+            _any_to_bbox_crs4326(mask, crs)
             if mask is not None
             else (
                 gpd.GeoSeries(box(*image.bounds), crs=crs)
@@ -265,7 +290,7 @@ def _image_collection_to_background_map(
         )
 
         # to 3d array in shape (x, y, 3)
-        rbg_image = np.stack([red_image, blue_image, green_image], axis=2)
+        rbg_image = np.stack([red_band, blue_band, green_band], axis=2)
 
         raster_data_dict["arr"] = rbg_image
         raster_data_dict["bounds"] = bounds
@@ -302,7 +327,7 @@ class Explore(Map):
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
         decimals: int = 6,
-        max_images: int = 30,
+        max_images: int = 15,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -686,8 +711,6 @@ class Explore(Map):
             if not len(gdf):
                 continue
 
-            f = folium.FeatureGroup(name=label)
-
             gdf = self._to_single_geom_type(gdf)
             gdf = self._prepare_gdf_for_map(gdf)
 
@@ -705,7 +728,6 @@ class Explore(Map):
             )
             gjs.layer_name = label
 
-            gjs.add_to(f)
             gjs.add_to(self.map)
 
         self._rasters_to_background_maps()
@@ -759,7 +781,6 @@ class Explore(Map):
         for gdf, label, show in zip(self._gdfs, self.labels, self.show, strict=True):
             if not len(gdf):
                 continue
-            f = folium.FeatureGroup(name=label)
 
             gdf = self._to_single_geom_type(gdf)
             gdf = self._prepare_gdf_for_map(gdf)
@@ -785,8 +806,9 @@ class Explore(Map):
                 },
             )
 
-            f.add_child(gjs)
-            self.map.add_child(f)
+            gjs.layer_name = label
+
+            gjs.add_to(self.map)
 
         self._rasters_to_background_maps()
 

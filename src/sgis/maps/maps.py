@@ -20,7 +20,9 @@ from shapely import box
 from shapely.geometry import Polygon
 
 from ..geopandas_tools.bounds import get_total_bounds
-from ..geopandas_tools.conversion import to_gdf as to_gdf_func
+from ..geopandas_tools.conversion import to_bbox
+from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.general import is_wkt
@@ -68,7 +70,7 @@ def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
             kwargs.pop(key)
             if isinstance(value, Number) and value > 1:
                 size = value
-            the_mask = to_gdf_func([mask], crs=4326).to_crs(crs).buffer(size)
+            the_mask = to_gdf([mask], crs=4326).to_crs(crs).buffer(size)
             return the_mask, kwargs
 
     return None, kwargs
@@ -82,7 +84,7 @@ def explore(
     browser: bool = False,
     smooth_factor: int | float = 1.5,
     size: int | None = None,
-    max_images: int = 30,
+    max_images: int = 15,
     return_explorer: bool = False,
     **kwargs,
 ) -> None:
@@ -183,7 +185,7 @@ def explore(
         else:
             if isinstance(center, (tuple, list)) and len(center) == 3:
                 *center, size = center
-            mask = to_gdf_func(center, crs=from_crs)
+            mask = to_gdf(center, crs=from_crs)
 
         bounds: Polygon = box(*get_total_bounds(*gdfs, *list(kwargs.values())))
         if not mask.intersects(bounds).any():
@@ -238,7 +240,7 @@ def samplemap(
     explore: bool = True,
     browser: bool = False,
     return_explorer: bool = False,
-    max_images: int = 30,
+    max_images: int = 15,
     **kwargs,
 ) -> None:
     """Shows an interactive map of a random area of GeoDataFrames.
@@ -299,64 +301,54 @@ def samplemap(
     if gdfs and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
+    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
+
+    loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
+    kwargs.pop("size")
+    mask = kwargs.pop("mask", loc_mask)
+
     i = 0 if sample_from_first else random.choice(list(range(len(gdfs))))
     try:
         sample = gdfs[i]
     except IndexError:
         sample = list(kwargs.values())[i]
 
-    gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
-
-    mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
-    kwargs.pop("size")
-
-    if explore:
-
-        m = Explore(
-            *gdfs,
-            column=column,
-            browser=browser,
-            max_zoom=max_zoom,
-            smooth_factor=smooth_factor,
-            max_images=max_images,
-            **kwargs,
-        )
-        if m.gdfs is None and not len(m.rasters):
-            return m if return_explorer else None
-
-        if mask is not None:
-            m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
-            m._gdf = m._gdf.clip(mask)
-            m._nan_idx = m._gdf[m._column].isna()
-            m._get_unique_values()
-
-        m.samplemap(size, sample=sample)
-        return m if return_explorer else None
-
+    if mask is None:
+        try:
+            sample = sample.sample(1)
+        except Exception:
+            pass
+        try:
+            sample = to_gdf(to_shapely(sample)).explode(ignore_index=True)
+        except Exception:
+            sample = to_gdf(to_shapely(to_bbox(sample))).explode(ignore_index=True)
     else:
-        m = Map(
-            *gdfs,
-            column=column,
-            **kwargs,
-        )
+        try:
+            sample = to_gdf(to_shapely(sample)).explode(ignore_index=True)
+        except Exception:
+            sample = to_gdf(to_shapely(to_bbox(sample))).explode(ignore_index=True)
 
-        # convert lines to polygons
-        if get_geom_type(sample) == "line":
-            sample["geometry"] = sample.buffer(1)
+        sample = sample.clip(mask).sample(1)
 
-        if get_geom_type(sample) == "polygon":
-            random_point = sample.sample_points(size=1)
+    random_point = sample.sample_points(size=1)
 
-        # if point or mixed geometries
-        else:
-            random_point = sample.centroid
+    center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
+    print(f"center={center}, size={size}")
 
-        center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
-        print(f"center={center}, size={size}")
+    mask = random_point.buffer(size)
 
-        m._gdf = m._gdf.clip(random_point.buffer(size))
-
-        qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
+    return clipmap(
+        *gdfs,
+        column=column,
+        mask=mask,
+        browser=browser,
+        max_zoom=max_zoom,
+        return_explorer=return_explorer,
+        explore=explore,
+        smooth_factor=smooth_factor,
+        max_images=max_images,
+        **kwargs,
+    )
 
 
 def clipmap(
@@ -367,7 +359,7 @@ def clipmap(
     max_zoom: int = 40,
     smooth_factor: int | float = 1.5,
     browser: bool = False,
-    max_images: int = 30,
+    max_images: int = 15,
     return_explorer: bool = False,
     **kwargs,
 ) -> None:
@@ -491,7 +483,7 @@ def explore_locals(
                 # add dicts or classes with GeoDataFrames to kwargs
                 for key, val in as_dict(value).items():
                     if isinstance(val, allowed_types):
-                        gdf = clean_geoms(to_gdf_func(val))
+                        gdf = clean_geoms(to_gdf(val))
                         if len(gdf):
                             local_gdfs[key] = gdf
 
@@ -499,7 +491,7 @@ def explore_locals(
                         try:
                             for k, v in val.items():
                                 if isinstance(v, allowed_types):
-                                    gdf = clean_geoms(to_gdf_func(v))
+                                    gdf = clean_geoms(to_gdf(v))
                                     if len(gdf):
                                         local_gdfs[k] = gdf
                         except Exception:
@@ -508,7 +500,7 @@ def explore_locals(
 
                 continue
             try:
-                gdf = clean_geoms(to_gdf_func(value))
+                gdf = clean_geoms(to_gdf(value))
                 if len(gdf):
                     local_gdfs[name] = gdf
                 continue

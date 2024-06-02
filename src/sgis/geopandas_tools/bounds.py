@@ -442,7 +442,7 @@ def make_grid(
     obj: GeoDataFrame | GeoSeries | Geometry | tuple,
     gridsize: int | float,
     *,
-    crs: CRS = None,
+    crs: CRS | None = None,
     clip_to_bounds: bool = False,
 ) -> GeoDataFrame:
     """Create a polygon grid around geometries.
@@ -467,10 +467,6 @@ def make_grid(
     """
     if isinstance(obj, (GeoDataFrame | GeoSeries)):
         crs = obj.crs or crs
-    elif not crs:
-        raise ValueError(
-            "'crs' cannot be None when 'obj' is not GeoDataFrame/GeoSeries."
-        )
     if hasattr(obj, "__len__") and not len(obj):
         return GeoDataFrame({"geometry": []}, crs=crs)
 

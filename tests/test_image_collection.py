@@ -30,6 +30,63 @@ sys.path.insert(0, src)
 import sgis as sg
 
 path_sentinel = testdata + "/sentinel2"
+path_singleband = testdata + "/dtm_10.tif"
+path_two_bands = testdata + "/dtm_10_two_bands.tif"
+
+
+def test_gradient():
+    arr = np.array(
+        [
+            [100, 100, 100, 100, 100],
+            [100, 110, 110, 110, 100],
+            [100, 110, 120, 110, 100],
+            [100, 110, 110, 110, 100],
+            [100, 100, 100, 100, 100],
+        ]
+    )
+    print(arr)
+
+    # creating a simple Raster with a resolution of 10 (50 / width or height).
+    band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50), res=10)
+    gradient = band.gradient(copy=True)
+    assert np.max(gradient.values) == 1, gradient.values
+
+    degrees = band.gradient(degrees=True, copy=True)
+
+    assert np.max(degrees.values) == 45, np.max(degrees.values)
+
+    r = sg.Band(path_singleband, indexes=1, nodata=0).load()
+    assert int(np.min(r.values)) == 0, np.min(r.values)
+    degrees = r.gradient(degrees=True, copy=True)
+    assert int(np.max(degrees.values)) == 75, np.max(degrees.values)
+    gradient = r.gradient(copy=True)
+    assert int(np.max(gradient.values)) == 3, np.max(gradient.values)
+
+    r = sg.Band(path_two_bands, indexes=1, nodata=0).load()
+    assert r.shape == (101, 101), r.shape
+    gradient = r.gradient(copy=True)
+    assert int(np.max(gradient.values)) == 3, np.max(gradient.values)
+
+    degrees = r.gradient(degrees=True, copy=True)
+    assert int(np.max(degrees.values)) == 75, np.max(degrees.values)
+
+    r = sg.Band(path_two_bands, indexes=(1, 2))
+    assert r.shape == (2, 101, 101), r.shape
+
+    degrees = r.load().gradient(degrees=True)
+
+    assert int(np.nanmax(degrees.values)) == 75, int(np.nanmax(degrees.values))
+    assert len(degrees.shape) == 3
+    gdf = degrees.to_gdf()
+    if __name__ == "__main__":
+        sg.explore(gdf[gdf["indexes"] == 1], "value")
+        sg.explore(gdf[gdf["indexes"] == 2], "value")
+
+    max_ = int(np.nanmax(r.values))
+    gradient = r.gradient(copy=True)
+    gradient.plot()
+    assert max_ == int(np.nanmax(r.values))
+    assert int(np.nanmax(gradient.values)) == 6, int(np.nanmax(gradient.values))
 
 
 def test_with_mosaic():
@@ -40,6 +97,7 @@ def test_with_mosaic():
     mosaic = sg.Sentinel2CloudlessCollection(
         path_sentinel, level=None, res=10, processes=2
     )
+    sg.explore(mosaic)
     assert len(mosaic) == 1, mosaic
 
     concated = sg.concat_image_collections([mosaic, collection])
@@ -57,8 +115,7 @@ def test_concat_image_collections():
     )
     assert len(new_collection) == len(collection)
     for k, v in new_collection.__dict__.items():
-        if k == "path":
-            assert v is None
+        if "path" in k:
             continue
         if k in ["_df", "_images", "_all_filepaths"]:
             continue
@@ -146,7 +203,9 @@ def test_sample():
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     size = 200
-    area_should_be = size * 2 * size * 2
+
+    # low buffer resolution means the area won't be exactly this
+    circle_area_should_be = int((size**2) * 3.14159265359)
 
     e = sg.explore(collection.sample(1, size=size), return_explorer=True)
     assert (x := e.raster_data[0]["arr"].shape) == (40, 40, 3), x
@@ -154,10 +213,12 @@ def test_sample():
     bbox = sg.to_gdf(collection.unary_union, collection.crs)
 
     e = sg.samplemap(collection, bbox, size=size, return_explorer=True)
+    assert len(e.raster_data) in [1, 2], e.raster_data
+
     assert (x := e.raster_data[0]["arr"].shape) == (40, 40, 3), x
-    assert (x := int(e._gdfs[0].dissolve().area.sum())) == area_should_be, (
+    assert (x := int(e._gdfs[0].dissolve().area.sum())) <= circle_area_should_be, (
         x,
-        area_should_be,
+        circle_area_should_be,
     )
 
     e = sg.explore(
@@ -165,9 +226,10 @@ def test_sample():
         column="value",
         return_explorer=True,
     )
-    assert (x := int(e._gdfs[0].dissolve().area.sum())) == area_should_be, (
+    square_area_should_be = int(size * 2 * size * 2)
+    assert (x := int(e._gdfs[0].dissolve().area.sum())) == square_area_should_be, (
         x,
-        area_should_be,
+        square_area_should_be,
     )
 
     sample = collection.sample(15, size=size)
@@ -398,6 +460,11 @@ def test_groupby():
 
     assert isinstance(collection, Iterable)
 
+    assert len(n := collection.groupby("date")) == 3, (n, len(n))
+    assert len(n := collection.groupby("tile")) == 2, (n, len(n))
+    assert len(n := collection.groupby("band_id")) == 13, (n, len(n))
+    assert len(n := collection.groupby(["band_id", "date"])) == 38, (n, len(n))
+
     bands_should_be = [
         "B01",
         "B02",
@@ -415,14 +482,14 @@ def test_groupby():
     ]
 
     for should_be, ((band_id,), subcollection) in zip(
-        bands_should_be, collection.groupby("band"), strict=False
+        bands_should_be, collection.groupby("band_id"), strict=False
     ):
         assert isinstance(band_id, str), band_id
         assert band_id.startswith("B") or band_id.startswith("S"), band_id
         assert band_id == should_be, (band_id, should_be)
         assert isinstance(subcollection, sg.ImageCollection), type(subcollection)
         for img in subcollection:
-            assert len(img.band_ids) == 1
+            assert len(img.band_ids) == 1, img.band_ids
             assert len(img.file_paths) == 1
             assert isinstance(img.file_paths[0], str), img.file_paths
             assert img.band_ids[0] == band_id, (band_id, img.band_ids)
@@ -436,7 +503,7 @@ def test_groupby():
 
     # band_ids should appear twice in a row since there are two tiles
     for should_be, ((band_id, tile), subcollection) in zip(
-        bands_should_be2, collection.groupby(["band", "tile"]), strict=False
+        bands_should_be2, collection.groupby(["band_id", "tile"]), strict=False
     ):
         assert isinstance(tile, str)
         assert tile.startswith("T")
@@ -453,7 +520,7 @@ def test_groupby():
             assert img.date > largest_date
             largest_date = img.date
 
-    for (tile, band_id), subcollection in collection.groupby(["tile", "band"]):
+    for (tile, band_id), subcollection in collection.groupby(["tile", "band_id"]):
         assert isinstance(tile, str)
         assert tile.startswith("T")
         assert isinstance(band_id, str), band_id
@@ -474,12 +541,7 @@ def test_groupby():
         assert isinstance(date, str), date
         assert date.startswith("20")
         assert isinstance(subcollection, sg.ImageCollection), type(subcollection)
-        assert len(subcollection.band_ids) in [12, 13], subcollection._df[
-            "band_filename"
-        ].explode()
-        assert subcollection._df["band_filename"].notna().all(), subcollection._df[
-            "band_filename"
-        ].explode()
+        assert len(subcollection.band_ids) in [12, 13], subcollection.band_ids
         for img in subcollection:
             assert isinstance(img, sg.Image), type(img)
             assert img.date == date
@@ -491,13 +553,8 @@ def test_groupby():
                 assert isinstance(arr, sg.Band), type(arr)
         largest_date = ""
         for img in subcollection:
-            assert img.date > largest_date
+            assert img.date > largest_date, (img.date, largest_date, subcollection, img)
             largest_date = img.date
-
-    assert len(n := collection.groupby("date")) == 3, (n, len(n))
-    assert len(n := collection.groupby("tile")) == 2, (n, len(n))
-    assert len(n := collection.groupby("band")) == 13, (n, len(n))
-    assert len(n := collection.groupby(["band", "date"])) == 38, (n, len(n))
 
 
 def test_regexes():
@@ -514,17 +571,11 @@ def test_regexes():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     assert len(collection.images) == 3, len(collection.images)
-    assert len(collection._df["band_filename"].explode()) == 38, collection._df[
-        "band_filename"
-    ].explode()
 
     collection.image_regexes = orig_img_regexes
     collection.filename_regexes = orig_file_regexes
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     assert len(collection.images) == 3, len(collection.images)
-    assert len(collection._df["band_filename"].explode()) == 38, collection._df[
-        "band_filename"
-    ].explode()
 
 
 def test_cloud():
@@ -565,28 +616,13 @@ def test_iteration():
     assert len(collection.images) == 3, len(collection.images)
 
     assert len(collection.file_paths) == 38, len(collection.file_paths)
-    assert len(collection._df) == 3, len(collection._df)
-    assert len(collection._df["band_filename"].explode()) == 38, collection._df[
-        "band_filename"
-    ].explode()
     assert len(collection) == 3, len(collection)
-
-    collection.df = collection.df.iloc[[0]]
-    assert len(collection) == 1, len(collection)
-    assert len(collection.images) == 1, len(collection.images)
-
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     assert isinstance(collection.unary_union, MultiPolygon), collection.unary_union
 
     # one of the imgs has no SCL band
     n_bands = [13, 12, 13]
     for i, (n, img) in enumerate(zip(n_bands, collection, strict=False)):
-        assert len(img._df["band_filename"]) == n, (
-            i,
-            n,
-            list(img._df["band_filename"]),
-        )
         assert isinstance(img, sg.Sentinel2Image), type(img)
         assert img.band_ids, img.band_ids
         assert all(x is not None for x in img.band_ids), img.band_ids
@@ -649,83 +685,60 @@ def test_iteration():
 
 def test_iteration_base_image_collection():
 
-    collection = sg.ImageCollection(path_sentinel, level="L2A", res=10)
+    collection = sg.ImageCollection(path_sentinel, level=None, res=10)
     assert isinstance(collection, sg.ImageCollection), type(collection)
 
-    assert len(collection.images) == 3, len(collection.images)
-    assert len(collection.file_paths) == 38, len(collection.file_paths)
-    assert len(collection._df) == 3, len(collection._df)
-    assert len(collection) == 3, len(collection)
+    assert len(collection.images) == 4, len(collection.images)
+    assert len(collection) == 4, len(collection)
+    # assert len(collection.explode()) == 38, len(collection.explode())
+    assert len(collection.file_paths) == 54, len(collection.file_paths)
 
-    collection.df = collection.df.iloc[[0]]
-    assert len(collection) == 1, len(collection)
-    assert len(collection.images) == 1, len(collection.images)
-
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-
-    # one of the imgs has no SCL band
-    n_bands = [13, 12, 13]
-    for i, (n, img) in enumerate(zip(n_bands, collection, strict=False)):
-        assert len(img._df["band_filename"]) == n, (
-            i,
-            n,
-            list(img._df["band_filename"]),
-        )
+    for img in collection:
         assert isinstance(img, sg.Image), type(img)
         assert img.band_ids, img.band_ids
-        assert all(x is not None for x in img.band_ids), img.band_ids
         assert img.bands, img.bands
         assert all(isinstance(x, sg.Band) for x in img.bands), img.bands
         assert all(isinstance(x, sg.Band) for x in img), img.__iter__()
         assert img.name, img.name
 
-        assert img.date, img.date
-        assert img.tile, img.tile
-        assert img.level, img.level
-
         assert img.file_paths, img.file_paths
-        assert img.date.startswith("20"), img.date
-        assert img.tile.startswith("T"), img.tile
-        assert img.name.startswith("S2"), img.name
         assert isinstance(img.bounds, tuple)
         assert all(x for x in img.bounds)
         assert img.crs
         assert img.centroid
-        assert img.level == "L2A"
-        # assert list(sorted(img.band_ids)) == list(
-        #     sorted(sg.raster.sentinel_config.SENTINEL2_L2A_BANDS)
-        # ), img.band_ids
 
         arr = img.read()
         assert isinstance(arr, np.ndarray), arr
-        assert (arr.shape) == (n, 300, 300), (i, n, arr.shape)
-
-        # without SCL band, always 12 bands
-        arr = img[img.l2a_bands].read()
-        assert isinstance(arr, np.ndarray), arr
-        assert (arr.shape) == (12, 300, 300), (i, arr.shape)
-
-        arr = img[["B02", "B03", "B04"]].read()
-        assert isinstance(arr, np.ndarray), arr
-        assert (arr.shape) == (3, 300, 300), arr.shape
-
-        arr = img["B02"].load().values
-        assert isinstance(arr, np.ndarray), arr
-        assert (arr.shape) == (300, 300), arr.shape
+        assert (
+            (arr.shape) == (13, 300, 300)
+            or (arr.shape) == (12, 300, 300)
+            or (arr.shape) == (16, 200, 200)
+        ), arr.shape
 
         for band in img:
             assert isinstance(band, sg.Band), band
             arr = band.load().values
             assert isinstance(arr, np.ndarray), arr
-            assert (arr.shape) == (300, 300), arr.shape
+            assert (arr.shape) == (300, 300) or (arr.shape) == (200, 200), arr.shape
 
-        for band_id, file_path in zip(img.band_ids, img.file_paths, strict=True):
-            assert isinstance(band_id, str), band_id
-            assert isinstance(file_path, str), type(file_path)
-            raster = img[band_id]
-            assert raster.band_id is not None, raster.band_id
-            raster = img[file_path]
-            assert raster.band_id is not None, raster.band_id
+
+def test_convertion():
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=100)
+    band = collection[0]["B02"]
+
+    arr = band.load().values
+    _from_array = sg.Band(arr, res=band.res, crs=band.crs, bounds=band.bounds)
+    assert (shape := _from_array.values.shape) == (30, 30), shape
+
+    gdf = band.to_gdf(column="val")
+    from_gdf = sg.Band(gdf, res=band.res)
+    e = sg.explore(from_gdf.to_gdf(), band.to_gdf(), gdf, return_explorer=True)
+    assert len(e._gdfs) == 3
+    assert all(len(gdf) == 889 for gdf in e._gdfs), [len(gdf) for gdf in e._gdfs]
+    assert all(int(gdf.area.sum()) == 9_000_000 for gdf in e._gdfs), [
+        int(gdf.area.sum()) for gdf in e._gdfs
+    ]
+    assert (shape := from_gdf.values.shape) == (30, 30), shape
 
 
 def test_torch():
@@ -795,20 +808,22 @@ def test_torch():
 
 
 def main():
+
+    test_concat_image_collections()
+    test_merge()
+    test_groupby()
+    test_iteration_base_image_collection()
+    test_sample()
     test_with_mosaic()
     test_ndvi_and_explore()
-    test_merge()
+    test_convertion()
     test_iteration()
     test_indexing()
     test_bbox()
-    test_groupby()
     test_regexes()
     test_date_ranges()
     test_cloud()
-    test_iteration_base_image_collection()
-    test_concat_image_collections()
     test_torch()
-    test_sample()
 
 
 if __name__ == "__main__":

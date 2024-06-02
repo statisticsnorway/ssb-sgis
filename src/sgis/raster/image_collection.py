@@ -6,12 +6,14 @@ import numbers
 import os
 import random
 import re
+import warnings
+from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Sequence
 from copy import deepcopy
+from json import loads
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 from typing import ClassVar
 
 import dapla as dp
@@ -106,7 +108,7 @@ DEFAULT_FILENAME_REGEX = r".*\.(?:tif|tiff|jp2)$"
 class ImageBase(abc.ABC):
     image_regexes: ClassVar[str | None] = None
     filename_regexes: ClassVar[str | tuple[str]] = (DEFAULT_FILENAME_REGEX,)
-    date_format: ClassVar[str] = "%Y%m%dT%H%M%S"
+    date_format: ClassVar[str] = "%Y%m%d"  # T%H%M%S"
 
     def __init__(self) -> None:
 
@@ -129,6 +131,16 @@ class ImageBase(abc.ABC):
         else:
             self.image_patterns = None
 
+    @property
+    def path(self) -> str:
+        try:
+            return self._path
+        except AttributeError as e:
+            raise AttributeError(
+                f"{self.__class__.__name__} instances from arrays or "
+                "GeoDataFrames have no 'path' until they are written to file."
+            ) from e
+
     def _name_regex_searcher(
         self, group: str, patterns: tuple[re.Pattern]
     ) -> str | None:
@@ -145,12 +157,6 @@ class ImageBase(abc.ABC):
 
     def _create_metadata_df(self, file_paths: list[str]) -> None:
         df = pd.DataFrame({"file_path": file_paths})
-        for col in [
-            f"band{FILENAME_COL_SUFFIX}",
-            f"tile{FILENAME_COL_SUFFIX}",
-            f"date{FILENAME_COL_SUFFIX}",
-        ]:
-            df[col] = None
 
         df["filename"] = df["file_path"].apply(lambda x: _fix_path(Path(x).name))
         if not self.single_banded:
@@ -161,8 +167,7 @@ class ImageBase(abc.ABC):
             df["image_path"] = df["file_path"]
 
         if not len(df):
-            self._df = df
-            return
+            return df
 
         if self.filename_patterns:
             df, match_cols_filename = _get_regexes_matches_for_df(
@@ -170,20 +175,22 @@ class ImageBase(abc.ABC):
             )
 
             if not len(df):
-                self._df = df
-                return
+                return df
 
             self._match_cols_filename = match_cols_filename
             grouped = (
-                df.drop(columns=match_cols_filename)
+                df.drop(columns=match_cols_filename, errors="ignore")
                 .drop_duplicates("image_path")
                 .set_index("image_path")
             )
-            for col in ["file_path", *match_cols_filename]:
-                grouped[col] = df.groupby("image_path")[col].apply(tuple)
+            for col in ["file_path", "filename", *match_cols_filename]:
+                if col in df:
+                    grouped[col] = df.groupby("image_path")[col].apply(tuple)
 
             grouped = grouped.reset_index()
         else:
+            df["file_path"] = df.groupby("image_path")["file_path"].apply(tuple)
+            df["filename"] = df.groupby("image_path")["filename"].apply(tuple)
             grouped = df.drop_duplicates("image_path")
 
         grouped["imagename"] = grouped["image_path"].apply(
@@ -195,13 +202,12 @@ class ImageBase(abc.ABC):
                 grouped, "imagename", self.image_patterns, suffix=""
             )
             if not len(grouped):
-                self._df = grouped
-                return
+                return grouped
 
         if "date" in grouped:
-            self._df = grouped.sort_values("date")
+            return grouped.sort_values("date")
         else:
-            self._df = grouped
+            return grouped
 
     def copy(self) -> "ImageBase":
         copied = deepcopy(self)
@@ -228,13 +234,19 @@ class Band(ImageBase):
         name: str | None = None,
         file_system: dp.gcs.GCSFileSystem | None = None,
         _mask: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
+        **kwargs,
     ) -> None:
+        if isinstance(data, (GeoDataFrame | GeoSeries)):
+            if res is None:
+                raise ValueError("Must specify res when data is vector geometries.")
+            bounds = to_bbox(bounds) if bounds is not None else data.total_bounds
+            crs = crs if crs else data.crs
+            data: np.ndarray = _arr_from_gdf(data, res=res, **kwargs)
+
         if isinstance(data, np.ndarray):
             self._values = data
             if bounds is None:
                 raise ValueError("Must specify bounds when data is an array.")
-            if crs is None:
-                raise ValueError("Must specify crs when data is an array.")
             self._bounds = to_bbox(bounds)
             self._crs = crs
             self.transform = _get_transform_from_bounds(
@@ -243,7 +255,7 @@ class Band(ImageBase):
         elif not isinstance(data, (str | Path | os.PathLike)):
             raise TypeError("'data' must be string, Path-like or numpy.ndarray.")
         else:
-            self.path = str(data)
+            self._path = str(data)
         self._res = res
         if cmap is not None:
             self.cmap = cmap
@@ -327,7 +339,7 @@ class Band(ImageBase):
                 with rasterio.open(file) as src:
                     self._bounds = to_bbox(src.bounds)
                     self._crs = src.crs
-                    return self._bounds
+                    return tuple(int(x) for x in self._bounds)
         except TypeError:
             return None
 
@@ -433,6 +445,9 @@ class Band(ImageBase):
                 "Can only write image band from Band constructed from array."
             )
 
+        if self.crs is None:
+            raise ValueError("Cannot write None crs to image.")
+
         profile = {
             # "driver": self.driver,
             # "compress": self.compress,
@@ -458,7 +473,10 @@ class Band(ImageBase):
                 for i in range(self.values.shape[0]):
                     dst.write(self.values[i], indexes=i + 1)
 
-        self.path = path
+        self._path = path
+
+    def gradient(self, degrees: bool = False, copy: bool = True) -> "Band":
+        return get_gradient(self, degrees=degrees, copy=copy)
 
     def to_gdf(self, column: str = "value") -> GeoDataFrame:
         """Create a GeoDataFrame from the image Band.
@@ -482,91 +500,6 @@ class Band(ImageBase):
             geometry="geometry",
             crs=self.crs,
         )
-
-    @classmethod
-    def from_gdf(
-        cls,
-        gdf: GeoDataFrame,
-        columns: str | Iterable[str],
-        res: int,
-        fill: int = 0,
-        all_touched: bool = False,
-        merge_alg: Callable = MergeAlg.replace,
-        default_value: int = 1,
-        dtype: Any | None = None,
-        file_system: dp.gcs.GCSFileSystem | None = None,
-        **kwargs,
-    ) -> "Band":
-        """Construct Raster from a GeoDataFrame.
-
-        Args:
-            gdf: The GeoDataFrame to rasterize.
-            columns: Column(s) in the GeoDataFrame whose values are used to populate the raster.
-                This can be a single column name or a list of column names.
-            res: Resolution of the raster in units of the GeoDataFrame's coordinate reference system.
-            fill: Fill value for areas outside of input geometries (default is 0).
-            all_touched: Whether to consider all pixels touched by geometries,
-                not just those whose center is within the polygon (default is False).
-            merge_alg: Merge algorithm to use when combining geometries
-                (default is 'MergeAlg.replace').
-            default_value: Default value to use for the rasterized pixels
-                (default is 1).
-            dtype: Data type of the output array. If None, it will be
-                determined automatically.
-            **kwargs: Additional keyword arguments passed to the raster
-                creation process, e.g., custom CRS or transform settings.
-
-        Returns:
-            A Raster instance based on the specified GeoDataFrame and parameters.
-
-        Raises:
-            TypeError: If 'transform' is provided in kwargs, as this is
-            computed based on the GeoDataFrame bounds and resolution.
-        """
-        if not isinstance(gdf, GeoDataFrame):
-            gdf = to_gdf(gdf)
-
-        if "transform" in kwargs:
-            raise TypeError("Unexpected argument 'transform'")
-
-        kwargs["crs"] = gdf.crs or kwargs.get("crs")
-
-        if kwargs["crs"] is None:
-            raise TypeError("Must specify crs if the object doesn't have crs.")
-
-        shape = _get_shape_from_bounds(gdf.total_bounds, res=res)
-        transform = _get_transform_from_bounds(gdf.total_bounds, shape)
-        kwargs["transform"] = transform
-
-        def _rasterize(gdf, col):
-            return features.rasterize(
-                cls._gdf_to_geojson_with_col(gdf, col),
-                out_shape=shape,
-                transform=transform,
-                fill=fill,
-                all_touched=all_touched,
-                merge_alg=merge_alg,
-                default_value=default_value,
-                dtype=dtype,
-            )
-
-        # make 2d array
-        if isinstance(columns, str):
-            array = _rasterize(gdf, columns)
-            assert len(array.shape) == 2
-            name = kwargs.get("name", columns)
-
-        # 3d array even if single column in list/tuple
-        elif hasattr(columns, "__iter__"):
-            array = []
-            for col in columns:
-                arr = _rasterize(gdf, col)
-                array.append(arr)
-            array = np.array(array)
-            assert len(array.shape) == 3
-            name = kwargs.get("name", None)
-
-        return cls(array, res=res, file_system=file_system, name=name, **kwargs)
 
     def to_xarray(self) -> DataArray:
         """Convert the raster to  an xarray.DataArray."""
@@ -597,6 +530,17 @@ class Band(ImageBase):
             path = None
         return (
             f"{self.__class__.__name__}(band_id={band_id}, res={self.res}, path={path})"
+        )
+
+    def __hash__(self) -> int:
+        try:
+            path = self.path
+        except AttributeError:
+            path = None
+        return hash(
+            f"{path}{self.__class__.__name__}{self.image_regexes}{self.filename_regexes}"
+            f"{self.date_format}"
+            f"{self.bounds}{self.crs}"
         )
 
 
@@ -631,21 +575,25 @@ class Image(ImageBase):
             self._bands = list(data)
             self._bounds = get_total_bounds(self._bands)
             self._crs = get_common_crs(self._bands)
-            self._df = pd.DataFrame(
-                {
-                    "file_path": [None for _ in self._bands],
-                    f"band{FILENAME_COL_SUFFIX}": [
-                        band.band_id for band in self._bands
-                    ],
-                    "tile": [band.tile for band in self._bands],
-                }
-            )
+            # self._df = pd.DataFrame(
+            #     {
+            #         "file_path": [
+            #             band._path if hasattr(band, "_path") else None
+            #             for band in self._bands
+            #         ],
+            #         # "_id": [hash(band) for band in self._bands],
+            #         # f"band{FILENAME_COL_SUFFIX}": [
+            #         #     band.band_id for band in self._bands
+            #         # ],
+            #         # "tile": [band.tile for band in self._bands],
+            #     }
+            # )
             return
 
         if not isinstance(data, (str | Path | os.PathLike)):
             raise TypeError("'data' must be string, Path-like or a sequence of Band.")
 
-        self.path = str(data)
+        self._path = str(data)
 
         if df is None:
             if is_dapla():
@@ -661,31 +609,28 @@ class Image(ImageBase):
                         )
                     )
                 )
-            self._create_metadata_df(file_paths)
+            df = self._create_metadata_df(file_paths)
         else:
-            self._df = df
+            df = df
 
-        self._df["image_path"] = self._df["image_path"].astype(str)
+        df["image_path"] = df["image_path"].astype(str)
 
         cols_to_explode = [
             "file_path",
-            *[x for x in self._df if FILENAME_COL_SUFFIX in x],
+            "filename",
+            *[x for x in df if FILENAME_COL_SUFFIX in x],
         ]
         try:
-            self._df = self._df.explode(cols_to_explode, ignore_index=True)
+            df = df.explode(cols_to_explode, ignore_index=True)
         except ValueError:
             for col in cols_to_explode:
-                self._df = self._df.explode(col)
-            self._df = self._df.loc[lambda x: ~x["filename"].duplicated()].reset_index(
-                drop=True
-            )
+                df = df.explode(col)
+            df = df.loc[lambda x: ~x["filename"].duplicated()].reset_index(drop=True)
 
-        self._df = self._df.loc[
-            lambda x: x["image_path"].str.contains(_fix_path(self.path))
-        ]
+        df = df.loc[lambda x: x["image_path"].str.contains(_fix_path(self.path))]
 
         if self.filename_patterns and any(pat.groups for pat in self.filename_patterns):
-            self._df = self._df.loc[
+            df = df.loc[
                 lambda x: (x[f"band{FILENAME_COL_SUFFIX}"].notna())
             ].sort_values(f"band{FILENAME_COL_SUFFIX}")
 
@@ -709,19 +654,20 @@ class Image(ImageBase):
                 file_system=self.file_system,
                 _mask=self._mask,
             )
-            for path in (self.df["file_path"])
+            for path in (df["file_path"])
         ]
-        for band in self._bands:
-            try:
-                print(band.band_id, band.name)
-            except Exception as e:
-                print()
-                print()
-                print(band)
-                print(band.name)
-                print(band.__dict__)
-                print(self.__dict__)
-                raise e
+        # for band in self._bands:
+        #     try:
+        #         print(band.band_id, band.name)
+        #     except Exception as e:
+        #         print()
+        #         print()
+        #         print("heihiheihe")
+        #         print(band.name)
+        #         print(band)
+        #         for col in self._df:
+        #             print(self._df[col])
+        #         raise e
         if self.filename_patterns and any(pat.groups for pat in self.filename_patterns):
             self._bands = list(sorted(self._bands))
 
@@ -922,7 +868,7 @@ class Image(ImageBase):
                 with rasterio.open(file) as src:
                     self._bounds = to_bbox(src.bounds)
                     self._crs = src.crs
-                    return self._bounds
+                    return tuple(int(x) for x in self._bounds)
         except TypeError:
             return None
 
@@ -1027,17 +973,17 @@ class ImageCollection(ImageBase):
         self.single_banded = single_banded
 
         if hasattr(data, "__iter__") and all(isinstance(x, Image) for x in data):
-            self.path = None
-            self._df = pd.concat(
-                [x._df for x in data], ignore_index=True
-            ).drop_duplicates()
+            self._path = None
+            # self._df = pd.concat(
+            #     [x._df for x in data], ignore_index=True
+            # ).drop_duplicates()
             self.images = data
             return
 
         if not isinstance(data, (str | Path | os.PathLike)):
             raise TypeError("'data' must be string, Path-like or a sequence of Image.")
 
-        self.path = str(data)
+        self._path = str(data)
 
         if is_dapla():
             self._all_filepaths = list(sorted(set(glob_func(self.path + "/**"))))
@@ -1061,18 +1007,41 @@ class ImageCollection(ImageBase):
         if df is not None:
             self._df = df
         else:
-            self._create_metadata_df(self._all_filepaths)
+            self._df = self._create_metadata_df(self._all_filepaths)
 
-    def groupby(self, by, **kwargs) -> list[tuple[Any], "ImageCollection"]:
+    def groupby(
+        self, by: str | list[str], **kwargs
+    ) -> list[tuple[Any], "ImageCollection"]:
+        df = pd.DataFrame(
+            [(i, img) for i, img in enumerate(self) for _ in img],
+            columns=["_image_idx", "_image_instance"],
+        )
+
         if isinstance(by, str):
-            by = (by,)
+            by = [by]
 
-        if "bounds" in by:
-            self._df["bounds"] = [img.bounds for img in self]
+        for attr in by:
+            try:
+                df[attr] = [getattr(band, attr) for img in self for band in img]
+            except AttributeError:
+                df[attr] = [getattr(img, attr) for img in self for _ in img]
 
-        by = [col if col in self.df else f"{col}{FILENAME_COL_SUFFIX}" for col in by]
+        with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
+            return list(
+                sorted(
+                    parallel(
+                        joblib.delayed(_copy_and_add_df_parallel)(i, group, self)
+                        for i, group in df.groupby(by, **kwargs)
+                    )
+                )
+            )
 
-        df_long = self.df.explode(["file_path", *self._match_cols_filename])
+        # for attr in by:
+        #     if attr not in df and f"{attr}{FILENAME_COL_SUFFIX}" not in df:
+        #         df[attr] = [getattr(img, attr) for img in self]
+
+        by = [col if col in self._df else f"{col}{FILENAME_COL_SUFFIX}" for col in by]
+
         with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
             return list(
                 sorted(
@@ -1083,44 +1052,22 @@ class ImageCollection(ImageBase):
                 )
             )
 
-    def _merge_with_numpy_func(
-        self, method: str | Callable, bounds=None, indexes=None, **kwargs
-    ) -> np.ndarray:
-        arrs = []
-        numpy_func = get_numpy_func(method) if not callable(method) else method
-        for (_bounds,), collection in self.groupby("bounds"):
-            arr = np.array(
-                [
-                    band.load(indexes=indexes).values
-                    for img in collection
-                    for band in img
-                ]
+    def explode(self, copy: bool = True) -> "ImageCollection":
+        copied = self.copy() if copy else self
+        copied.images = [
+            self.image_class(
+                [band],
+                res=img.res,
+                single_banded=True,
+                file_system=self.file_system,
+                df=self._df,
+                all_file_paths=self._all_filepaths,
+                _mask=self._mask,
             )
-            arr = numpy_func(arr, axis=0)
-            if len(arr.shape) == 2:
-                height, width = arr.shape
-            else:
-                height, width = arr.shape[1:]
-
-            transform = rasterio.transform.from_bounds(*_bounds, width, height)
-            coords = _generate_spatial_coords(transform, width, height)
-
-            arrs.append(
-                xr.DataArray(
-                    arr,
-                    coords=coords,
-                    dims=["y", "x"],
-                    name=str(_bounds),
-                    attrs={"crs": self.crs},
-                )
-            )
-
-        if bounds is None:
-            bounds = self.bounds
-
-        merged = merge_arrays(arrs, bounds=bounds, res=self.res, **kwargs)
-
-        return merged.to_numpy()
+            for img in self
+            for band in img
+        ]
+        return copied
 
     def merge(self, method="median", bounds=None, indexes=None, **kwargs) -> Band:
         bounds = to_bbox(bounds) if bounds is not None else self._mask
@@ -1188,7 +1135,7 @@ class ImageCollection(ImageBase):
             _method = method
 
         arrs = []
-        for (band_id,), band_collection in self.groupby("band"):
+        for (band_id,), band_collection in self.groupby("band_id"):
             if method not in list(rasterio.merge.MERGE_METHODS) + ["mean"]:
                 arr = band_collection._merge_with_numpy_func(
                     method=method,
@@ -1221,6 +1168,47 @@ class ImageCollection(ImageBase):
         return self.band_class(
             arr, res=self.res, bounds=bounds, crs=crs, file_system=self.file_system
         )
+
+    def _merge_with_numpy_func(
+        self, method: str | Callable, bounds=None, indexes=None, **kwargs
+    ) -> np.ndarray:
+        arrs = []
+        numpy_func = get_numpy_func(method) if not callable(method) else method
+        for (_bounds,), collection in self.groupby("bounds"):
+            arr = np.array(
+                [
+                    band.load(indexes=indexes).values
+                    for img in collection
+                    for band in img
+                ]
+            )
+            arr = numpy_func(arr, axis=0)
+            if len(arr.shape) == 2:
+                height, width = arr.shape
+            elif len(arr.shape) == 3:
+                height, width = arr.shape[1:]
+            else:
+                raise ValueError(arr.shape)
+
+            transform = rasterio.transform.from_bounds(*_bounds, width, height)
+            coords = _generate_spatial_coords(transform, width, height)
+
+            arrs.append(
+                xr.DataArray(
+                    arr,
+                    coords=coords,
+                    dims=["y", "x"],
+                    name=str(_bounds),
+                    attrs={"crs": self.crs},
+                )
+            )
+
+        if bounds is None:
+            bounds = self.bounds
+
+        merged = merge_arrays(arrs, bounds=bounds, res=self.res, **kwargs)
+
+        return merged.to_numpy()
 
     def load_bands(self, bounds=None, indexes=None, **kwargs) -> "ImageCollection":
         for img in self:
@@ -1302,6 +1290,15 @@ class ImageCollection(ImageBase):
 
         copied = self.copy() if copy else self
 
+        copied.images = [
+            img
+            for img in self
+            if _date_is_within(
+                img.path, date_ranges, copied.image_patterns, copied.date_format
+            )
+        ]
+        return copied
+
         copied.df = copied.df.loc[
             lambda x: x["image_path"].apply(
                 lambda y: _date_is_within(
@@ -1359,7 +1356,9 @@ class ImageCollection(ImageBase):
 
     def sample_tiles(self, n: int) -> "ImageCollection":
         copied = self.copy()
-        sampled_tiles = set(self.df["tile"].drop_duplicates().sample(n))
+        sampled_tiles = list({img.tile for img in self})
+        random.shuffle(sampled_tiles)
+        sampled_tiles = sampled_tiles[:n]
 
         copied.images = [image for image in self if image.tile in sampled_tiles]
         return copied
@@ -1450,21 +1449,37 @@ class ImageCollection(ImageBase):
 
         return sample
 
-    def _copy_and_add_df(self, new_df: pd.DataFrame) -> "ImageCollection":
-        copied = self.copy()
-        grouped = (
-            new_df.drop(columns=self._match_cols_filename)
-            .drop_duplicates("image_path")
-            .set_index("image_path")
-        )
-        for col in ["file_path", *self._match_cols_filename]:
-            assert isinstance(new_df[col].iloc[0], str), new_df[col]
-            grouped[col] = new_df.groupby("image_path")[col].apply(tuple)
+    # def _copy_and_add_df(self, new_df: pd.DataFrame) -> "ImageCollection":
+    #     copied = self.copy()
+    #     grouped = new_df.set_index("_id")
+    #     for col in ["file_path", *self._match_cols_filename]:
+    #         if not isinstance(new_df[col].iloc[0], str):
+    #             for x in new_df:
+    #                 print(new_df[x])
+    #             raise ValueError(new_df[col].iloc[0])
+    #         grouped[col] = new_df.groupby("image_path")[col].apply(tuple)
 
-        grouped = grouped.reset_index()
+    #     grouped = grouped.reset_index()
 
-        copied.df = grouped
-        return copied
+    #     copied.df = grouped
+    #     return copied
+    #     copied = self.copy()
+    #     grouped = (
+    #         new_df.drop(columns=self._match_cols_filename, errors="ignore")
+    #         .drop_duplicates("image_path")
+    #         .set_index("image_path")
+    #     )
+    #     for col in ["file_path", *self._match_cols_filename]:
+    #         if not isinstance(new_df[col].iloc[0], str):
+    #             for x in new_df:
+    #                 print(new_df[x])
+    #             raise ValueError(new_df[col].iloc[0])
+    #         grouped[col] = new_df.groupby("image_path")[col].apply(tuple)
+
+    #     grouped = grouped.reset_index()
+
+    #     copied.df = grouped
+    #     return copied
 
     # def dates_as_float(self) -> list[tuple[float, float]]:
     #     return [disambiguate_timestamp(date, self.date_format) for date in self.dates]
@@ -1481,9 +1496,9 @@ class ImageCollection(ImageBase):
     def band_ids(self) -> list[str]:
         return list(sorted({band.band_id for img in self for band in img}))
 
-    # @property
-    # def file_paths(self) -> list[str]:
-    #     return list(sorted({band.path for img in self for band in img}))
+    @property
+    def file_paths(self) -> list[str]:
+        return list(sorted({band.path for img in self for band in img}))
 
     @property
     def dates(self) -> list[str]:
@@ -1503,9 +1518,9 @@ class ImageCollection(ImageBase):
         except AttributeError:
             # only fetch images when they are needed
             self._images = _get_images(
-                self.image_paths,
+                list(self._df["image_path"]),
                 all_file_paths=self._all_filepaths,
-                df=self.df,
+                df=self._df,
                 res=self.res,
                 processes=self.processes,
                 image_class=self.image_class,
@@ -1523,6 +1538,7 @@ class ImageCollection(ImageBase):
             self._images = list(new_value)
         if not all(isinstance(x, Image) for x in self._images):
             raise TypeError("images should be a sequence of Image.")
+        return
         self._df = self._df.loc[
             lambda x: x["image_path"].isin({x.path for x in self._images})
         ]
@@ -1570,17 +1586,17 @@ class ImageCollection(ImageBase):
                 self._index.insert(i, (minx, maxx, miny, maxy, mint, maxt))
             return self._index
 
-    @property
-    def df(self):
-        return self._df
+    # @property
+    # def df(self):
+    #     return self._df
 
-    @df.setter
-    def df(self, new_value: pd.DataFrame) -> None:
-        if not isinstance(new_value, pd.DataFrame):
-            raise TypeError("df should be a pandas.DataFrame.")
-        self._df = new_value
-        new_image_paths = set(self._df["image_path"])
-        self._images = [image for image in self.images if image.path in new_image_paths]
+    # @df.setter
+    # def df(self, new_value: pd.DataFrame) -> None:
+    #     if not isinstance(new_value, pd.DataFrame):
+    #         raise TypeError("df should be a pandas.DataFrame.")
+    #     self._df = new_value
+    #     new_image_paths = set(self._df["image_path"])
+    #     self._images = [image for image in self.images if image.path in new_image_paths]
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({len(self)})"
@@ -1624,6 +1640,81 @@ def concat_image_collections(collections: Sequence[ImageCollection]) -> ImageCol
         )
     )
     return out_collection
+
+
+def get_gradient(band: Band, degrees: bool = False, copy: bool = True) -> Band:
+    """Get the slope of an elevation band.
+
+    Calculates the absolute slope between the grid cells
+    based on the image resolution.
+
+    For multi-band images, the calculation is done for each band.
+
+    Args:
+        band: band instance.
+        degrees: If False (default), the returned values will be in ratios,
+            where a value of 1 means 1 meter up per 1 meter forward. If True,
+            the values will be in degrees from 0 to 90.
+        copy: Whether to copy or overwrite the original Raster.
+            Defaults to True.
+
+    Returns:
+        The class instance with new array values, or a copy if copy is True.
+
+    Examples:
+    --------
+    Making an array where the gradient to the center is always 10.
+
+    >>> import sgis as sg
+    >>> import numpy as np
+    >>> arr = np.array(
+    ...         [
+    ...             [100, 100, 100, 100, 100],
+    ...             [100, 110, 110, 110, 100],
+    ...             [100, 110, 120, 110, 100],
+    ...             [100, 110, 110, 110, 100],
+    ...             [100, 100, 100, 100, 100],
+    ...         ]
+    ...     )
+
+    Now let's create a Raster from this array with a resolution of 10.
+
+    >>> band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50), res=10)
+
+    The gradient will be 1 (1 meter up for every meter forward).
+    The calculation is by default done in place to save memory.
+
+    >>> band.gradient()
+    >>> band.values
+    array([[0., 1., 1., 1., 0.],
+        [1., 1., 1., 1., 1.],
+        [1., 1., 0., 1., 1.],
+        [1., 1., 1., 1., 1.],
+        [0., 1., 1., 1., 0.]])
+    """
+    copied = band.copy() if copy else band
+    if len(copied.values.shape) == 2:
+        return np.array(
+            [_slope_2d(arr, copied.res, degrees=degrees) for arr in copied.values]
+        )
+    else:
+        return _slope_2d(copied.values, copied.res, degrees=degrees)
+
+
+def _slope_2d(array: np.ndarray, res: int, degrees: int) -> np.ndarray:
+    gradient_x, gradient_y = np.gradient(array, res, res)
+
+    gradient = abs(gradient_x) + abs(gradient_y)
+
+    if not degrees:
+        return gradient
+
+    radians = np.arctan(gradient)
+    degrees = np.degrees(radians)
+
+    assert np.max(degrees) <= 90
+
+    return degrees
 
 
 def _get_images(
@@ -1722,7 +1813,9 @@ def _get_regexes_matches_for_df(
             except ValueError:
                 continue
         else:
-            matches.append(df[match_col].loc[df[match_col].str.match(pat)])
+            match_ = df[match_col].loc[df[match_col].str.match(pat)]
+            if len(match_):
+                matches.append(match_)
 
     matches = pd.concat(matches).groupby(level=0, dropna=True).first()
 
@@ -1731,7 +1824,90 @@ def _get_regexes_matches_for_df(
 
     match_cols = [f"{col}{suffix}" for col in matches.columns]
     df[match_cols] = matches
-    return df.loc[~df[match_cols].isna().all(axis=1)], match_cols
+    return (
+        df.loc[~df[match_cols].isna().all(axis=1)].drop(
+            columns=f"{match_col}{suffix}", errors="ignore"
+        ),
+        match_cols,
+    )
+
+
+def _arr_from_gdf(
+    gdf: GeoDataFrame,
+    res: int,
+    fill: int = 0,
+    all_touched: bool = False,
+    merge_alg: Callable = MergeAlg.replace,
+    default_value: int = 1,
+    dtype: Any | None = None,
+) -> np.ndarray:
+    """Construct Raster from a GeoDataFrame or GeoSeries.
+
+    The GeoDataFrame should have
+
+    Args:
+        gdf: The GeoDataFrame to rasterize.
+        res: Resolution of the raster in units of the GeoDataFrame's coordinate reference system.
+        fill: Fill value for areas outside of input geometries (default is 0).
+        all_touched: Whether to consider all pixels touched by geometries,
+            not just those whose center is within the polygon (default is False).
+        merge_alg: Merge algorithm to use when combining geometries
+            (default is 'MergeAlg.replace').
+        default_value: Default value to use for the rasterized pixels
+            (default is 1).
+        dtype: Data type of the output array. If None, it will be
+            determined automatically.
+
+    Returns:
+        A Raster instance based on the specified GeoDataFrame and parameters.
+
+    Raises:
+        TypeError: If 'transform' is provided in kwargs, as this is
+        computed based on the GeoDataFrame bounds and resolution.
+    """
+    if isinstance(gdf, GeoSeries):
+        values = gdf.index
+        gdf = gdf.to_frame("geometry")
+    elif isinstance(gdf, GeoDataFrame):
+        if len(gdf.columns) > 2:
+            raise ValueError(
+                "gdf should have only a geometry column and one numeric column to "
+                "use as array values. "
+                "Alternatively only a geometry column and a numeric index."
+            )
+        elif len(gdf.columns) == 1:
+            values = gdf.index
+        else:
+            col: str = [col for col in gdf if col != gdf._geometry_column_name][0]
+            values = gdf[col]
+
+    if isinstance(values, pd.MultiIndex):
+        raise ValueError("Index cannot be MultiIndex.")
+
+    shape = _get_shape_from_bounds(gdf.total_bounds, res=res)
+    transform = _get_transform_from_bounds(gdf.total_bounds, shape)
+
+    return features.rasterize(
+        _gdf_to_geojson_with_col(gdf, values),
+        out_shape=shape,
+        transform=transform,
+        fill=fill,
+        all_touched=all_touched,
+        merge_alg=merge_alg,
+        default_value=default_value,
+        dtype=dtype,
+    )
+
+
+def _gdf_to_geojson_with_col(gdf: GeoDataFrame, values: np.ndarray) -> list[dict]:
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        return [
+            (feature["geometry"], val)
+            for val, feature in zip(
+                values, loads(gdf.to_json())["features"], strict=False
+            )
+        ]
 
 
 def _date_is_within(
@@ -1851,7 +2027,31 @@ def _intesects(x, other) -> bool:
     return box(*x.bounds).intersects(other)
 
 
-def _copy_and_add_df_parallel(i, group, self):
+def _copy_and_add_df_parallel(
+    i: tuple[Any, ...], group: pd.DataFrame, self: ImageCollection
+) -> ImageCollection:
+    copied = self.copy()
+    copied.images = [
+        img.copy() for img in group.drop_duplicates("_image_idx")["_image_instance"]
+    ]
+    for col in group.columns.difference({"_image_instance", "_image_idx"}):
+        if not all(
+            col in dir(band) or col in band.__dict__ for img in copied for band in img
+        ):
+            continue
+        values = set(group[col].values)
+        for img in copied.images:
+            img._bands = [band for band in img if getattr(band, col) in values]
+
+    # if "band_id" in group:
+    #     band_ids = set(group["band_id"].values)
+    #     print()
+    #     print(i)
+    #     print(band_ids)
+    #     for img in copied.images:
+    #         img._bands = [band for band in img if band.band_id in band_ids]
+
+    return (i, copied)
     return (i, self._copy_and_add_df(group))
 
 
