@@ -87,7 +87,6 @@ def _clip_and_aggregate(
     if not len(cube):
         return _no_overlap_df(func_names, i, date)
     clipped = cube.clipmerge(polygon)
-    print(list(clipped))
     if not len(clipped) or [arr is None for arr in clipped.arrays]:
         return _no_overlap_df(func_names, i, date)
     assert len(clipped) == 1

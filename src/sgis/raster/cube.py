@@ -1226,6 +1226,7 @@ def _merge_by_bounds(
 
 
 def _merge(cube: DataCube, **kwargs) -> DataCube:
+    by = kwargs.pop("by")
     if cube.crs is None:
         cube._crs = get_common_crs(cube.data)
 

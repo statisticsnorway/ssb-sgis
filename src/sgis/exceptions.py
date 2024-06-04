@@ -1,7 +1,7 @@
 """Some small exception classes."""
 
 
-class NoPointsWithinSearchToleranceError(Exception):
+class NoPointsWithinSearchToleranceError(ValueError):
     """Exception for when the points are too far away from the network."""
 
     def __init__(
@@ -19,5 +19,5 @@ class NoPointsWithinSearchToleranceError(Exception):
         )
 
 
-class ZeroLinesError(Exception):
+class ZeroLinesError(ValueError):
     """DataFrame has 0 rows."""

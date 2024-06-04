@@ -752,7 +752,7 @@ def _determine_best_name(obj: Any, column: str | None, i: int) -> str:
         # Frame 3: actual object name Frame 2: maps.py:explore(). Frame 1: __init__. Frame 0: this function.
         return get_object_name(obj, start=3)
     except ValueError:
-        if isinstance(obj, GeoSeries):
+        if isinstance(obj, GeoSeries) and obj.name:
             return obj.name
         elif isinstance(obj, GeoDataFrame) and len(obj.columns) == 2 and not column:
             series = obj.drop(columns=obj._geometry_column_name).iloc[:, 0]
@@ -761,7 +761,7 @@ def _determine_best_name(obj: Any, column: str | None, i: int) -> str:
                 and mean(isinstance(x, str) for x in series) > 0.5
             ):
                 return list(series)[0]
-            else:
+            elif series.name:
                 return series.name
         else:
             # generic label e.g. Image(1)

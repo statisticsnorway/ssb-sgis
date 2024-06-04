@@ -404,6 +404,12 @@ def clipmap(
         mask = gdfs[-1]
         gdfs = gdfs[:-1]
 
+    if not isinstance(mask, (GeoDataFrame|GeoSeries|Geometry|tuple)):
+        try:
+            mask = to_gdf(mask)
+        except Exception:
+            mask = to_shapely(to_bbox(mask))
+    
     center = kwargs.pop("center", None)
     size = kwargs.pop("size", None)
 

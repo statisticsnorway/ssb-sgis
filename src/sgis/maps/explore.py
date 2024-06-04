@@ -169,7 +169,7 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 def _single_band_to_arr(band, mask, name, raster_data_dict):
     try:
         arr = band.values
-    except AttributeError:
+    except (ValueError, AttributeError):
         arr = band.load(indexes=1, bounds=mask).values
     bounds: tuple = (
         _any_to_bbox_crs4326(mask, band.crs)
@@ -195,6 +195,7 @@ def _image_collection_to_background_map(
     mask: Any | None,
     name: str,
     max_images: int,
+    n_added_images: int,
     rbg_bands: list[str] = (["B02", "B03", "B04"], ["B2", "B3", "B4"]),
 ) -> list[dict]:
     out = []
@@ -215,14 +216,14 @@ def _image_collection_to_background_map(
             band = list(img)[0]
             raster_data_dict = {}
             out.append(raster_data_dict)
-            name = _determine_label(band, name)
+            name = _determine_label(band, name, out, 0)
             _single_band_to_arr(band, mask, name, raster_data_dict)
             return out
         elif len(img) < 3:
             raster_data_dict = {}
             out.append(raster_data_dict)
-            for band in img:
-                name = _determine_label(band, None)
+            for i, band in enumerate(img):
+                name = _determine_label(band, None, out, i)
                 _single_band_to_arr(band, mask, name, raster_data_dict)
             return out
         else:
@@ -244,11 +245,14 @@ def _image_collection_to_background_map(
     else:
         raise TypeError(type(image_collection))
 
-    if len(images) > max_images:
+    if len(images) + n_added_images > max_images:
         warnings.warn(f"Showing only a sample of {max_images}. Set 'max_images.")
         random.shuffle(images)
+        images = images[: (max_images - n_added_images)]
 
+    i = -1
     for image in images:
+        i += 1
         if mask is not None and not to_shapely(mask).intersects(
             to_shapely(image.bounds)
         ):
@@ -259,8 +263,9 @@ def _image_collection_to_background_map(
 
         if len(image) < 3:
             for band in image:
-                name = _determine_label(band, None)
+                name = _determine_label(band, None, out, i)
                 _single_band_to_arr(band, mask, name, raster_data_dict)
+                i += 1
             continue
 
         for red, blue, green in rbg_bands:
@@ -277,6 +282,13 @@ def _image_collection_to_background_map(
             except KeyError:
                 continue
             break
+
+        if red_band.shape[0] == 0:
+            continue
+        if blue_band.shape[0] == 0:
+            continue
+        if green_band.shape[0] == 0:
+            continue
 
         crs = image.crs
         bounds: tuple = (
@@ -295,7 +307,7 @@ def _image_collection_to_background_map(
         raster_data_dict["arr"] = rbg_image
         raster_data_dict["bounds"] = bounds
         raster_data_dict["cmap"] = None
-        raster_data_dict["label"] = _determine_label(image, name)
+        raster_data_dict["label"] = _determine_label(image, name, out, i)
 
     return out
 
@@ -388,7 +400,7 @@ class Explore(Map):
                 name += str(i)
 
             if isinstance(gdf, (ImageCollection | Image | Band)):
-                self.rasters[name] = gdf
+                self.rasters[name] = gdf.copy()
                 continue
             try:
                 new_gdfs[name] = to_gdf(gdf)
@@ -591,10 +603,13 @@ class Explore(Map):
 
     def _load_rasters_as_images(self):
         self.raster_data = []
+        n_added_images = 0
         for name, value in self.rasters.items():
-            self.raster_data += _image_collection_to_background_map(
-                value, self.mask, name, max_images=self.max_images
+            data = _image_collection_to_background_map(
+                value, self.mask, name, max_images=self.max_images, n_added_images=n_added_images
             )
+            n_added_images += len(data)
+            self.raster_data += data
 
     def _rasters_to_background_maps(self):
         for raster_data_dict in self.raster_data:
@@ -1125,7 +1140,9 @@ def _tooltip_popup(
         return folium.GeoJsonPopup(fields, **kwargs)
 
 
-def _determine_label(obj: Image | Band | ImageCollection, obj_name: str | None) -> str:
+def _determine_label(
+    obj: Image | Band | ImageCollection, obj_name: str | None, out: list[dict], i: int
+) -> str:
     """Prefer the obj"""
     # Prefer the object's name
     if obj_name:
@@ -1134,15 +1151,25 @@ def _determine_label(obj: Image | Band | ImageCollection, obj_name: str | None) 
             re.sub("(\d+)", "", obj_name) != f"{obj.__class__.__name__}()"
         )
         if does_not_have_generic_name:
-            return obj_name
-    if obj.tile and obj.date:
-        return f"{obj.tile}_{obj.date[:8]}"
-    else:
-        try:
-            # Images/Bands/Collections constructed from arrays have no path stems
-            return obj.stem
-        except AttributeError:
-            return str(obj)[:23]
+            name = obj_name
+    try:
+        if obj.tile and obj.date:
+            name = f"{obj.tile}_{obj.date[:8]}"
+    except (ValueError, AttributeError):
+        pass
+    try:
+        # Images/Bands/Collections constructed from arrays have no path stems
+        if obj.stem:
+            name = obj.stem
+        else:
+            name = str(obj)[:23]
+    except (AttributeError, ValueError):
+        name = str(obj)[:23]
+
+    if name in [x["label"] for x in out if "label" in x]:
+        name += f"_{i}"
+
+    return name
 
 
 def _categorical_legend(
