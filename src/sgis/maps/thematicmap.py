@@ -20,6 +20,35 @@ warnings.filterwarnings(
 )
 pd.options.mode.chained_assignment = None
 
+MAP_KWARGS = [
+    "bins",
+    "title",
+    "title_fontsize",
+    "size",
+    "cmap",
+    "cmap_start",
+    "cmap_stop",
+    "scheme",
+    "k",
+    "column",
+]
+LEGEND_KWARGS = [
+    "title",
+    "size",
+    "position",
+    "fontsize",
+    "title_fontsize",
+    "markersize",
+    "framealpha",
+    "edgecolor",
+    "kwargs",
+    "labelspacing",
+    "title_color",
+    "width",
+    "height",
+    "labels",
+]
+
 
 class ThematicMap(Map):
     """Class for creating static maps with geopandas and matplotlib.
@@ -82,7 +111,9 @@ class ThematicMap(Map):
         *gdfs: GeoDataFrame,
         column: str | None = None,
         size: int = 25,
-        black: bool = False,
+        dark: bool = False,
+        legend_kwargs: dict | None = None,
+        **kwargs,
     ) -> None:
         """Initialiser.
 
@@ -91,7 +122,7 @@ class ThematicMap(Map):
             column: The name of the column to plot.
             size: Width and height of the plot in inches. Fontsize of title and legend is
                 adjusted accordingly. Defaults to 25.
-            black: If False (default), the background will be white and the text black. If
+            dark: If False (default), the background will be white and the text black. If
                 True, the background will be black and the text white. When True, the
                 default cmap is "viridis", and when False, the default is red to purple
                 (RdPu).
@@ -100,17 +131,40 @@ class ThematicMap(Map):
         super().__init__(*gdfs, column=column)
 
         self._size = size
-        self._black = black
+        self._dark = dark
         self.background_gdfs = []
 
         self._title_fontsize = self._size * 2
 
-        self.black = black
+        black = kwargs.pop("black", None)
+        self._dark = self._dark or black
 
         if not self._is_categorical:
             self._choose_cmap()
 
+        self._dark_or_light()
         self._create_legend()
+
+        for key, value in kwargs.items():
+            if key not in MAP_KWARGS:
+                raise TypeError(
+                    f"{self.__class__.__name__} got an unexpected keyword argument {key}"
+                )
+            try:
+                setattr(self, key, value)
+            except Exception:
+                setattr(self, f"_{key}", value)
+
+        if legend_kwargs:
+            for key, value in legend_kwargs.items():
+                if key not in LEGEND_KWARGS:
+                    raise TypeError(
+                        f"{self.__class__.__name__} legend_kwargs got an unexpected key {key}"
+                    )
+                try:
+                    setattr(self.legend, key, value)
+                except Exception:
+                    setattr(self.legend, f"_{key}", value)
 
     def change_cmap(self, cmap: str, start: int = 0, stop: int = 256) -> "ThematicMap":
         """Change the color palette of the plot.
@@ -313,7 +367,7 @@ class ThematicMap(Map):
     def _create_legend(self) -> None:
         """Instantiate the Legend class."""
         kwargs = {}
-        if self._black:
+        if self._dark:
             kwargs["facecolor"] = "#0f0f0f"
             kwargs["labelcolor"] = "#fefefe"
             kwargs["title_color"] = "#fefefe"
@@ -325,7 +379,7 @@ class ThematicMap(Map):
 
     def _choose_cmap(self) -> None:
         """Kwargs is to catch start and stop points for the cmap in __init__."""
-        if self._black:
+        if self._dark:
             self._cmap = "viridis"
             self.cmap_start = 0
             self.cmap_stop = 256
@@ -355,8 +409,8 @@ class ThematicMap(Map):
         ax = fig.add_subplot(1, 1, 1)
         return fig, ax
 
-    def _black_or_white(self) -> None:
-        if self._black:
+    def _dark_or_light(self) -> None:
+        if self._dark:
             self.facecolor, self.title_color, self.bg_gdf_color = (
                 "#0f0f0f",
                 "#fefefe",
@@ -370,7 +424,7 @@ class ThematicMap(Map):
             self.facecolor, self.title_color, self.bg_gdf_color = (
                 "#fefefe",
                 "#0f0f0f",
-                "#ebebeb",
+                "#dbdbdb",
             )
             self.nan_color = "#c2c2c2"
             if not self._is_categorical:
@@ -379,14 +433,14 @@ class ThematicMap(Map):
         self._create_legend()
 
     @property
-    def black(self) -> bool:
+    def dark(self) -> bool:
         """Whether to use dark background and light text colors."""
-        return self._black
+        return self._dark
 
-    @black.setter
-    def black(self, new_value: bool):
-        self._black = new_value
-        self._black_or_white()
+    @dark.setter
+    def dark(self, new_value: bool):
+        self._dark = new_value
+        self._dark_or_light()
 
     @property
     def title_fontsize(self) -> int:

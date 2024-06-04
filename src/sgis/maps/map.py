@@ -693,7 +693,8 @@ class Map:
     @cmap.setter
     def cmap(self, new_value: str) -> None:
         self._cmap = new_value
-        self.change_cmap(cmap=new_value, start=self.cmap_start, stop=self.cmap_stop)
+        if not self._is_categorical():
+            self.change_cmap(cmap=new_value, start=self.cmap_start, stop=self.cmap_stop)
 
     @property
     def gdf(self) -> GeoDataFrame:

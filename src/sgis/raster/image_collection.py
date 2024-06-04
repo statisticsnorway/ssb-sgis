@@ -142,13 +142,14 @@ class ImageCollectionGroupBy:
             indexes=indexes,
             **kwargs,
         )
+        print("hihihih")
         for img, (group_values, _) in zip(images, self.data, strict=True):
             for attr, group_value in zip(self.by, group_values, strict=True):
+                print(attr, group_value)
                 try:
                     setattr(img, attr, group_value)
                 except AttributeError:
-                    if hasattr(img, f"_{attr}"):
-                        setattr(img, f"_{attr}", group_value)
+                    setattr(img, f"_{attr}", group_value)
 
         collection = ImageCollection(
             images,
@@ -661,7 +662,7 @@ class Band(ImageBase):
         copied = copied.load(bounds=buffered.total_bounds, **kwargs)
         return copied
 
-    def gradient(self, degrees: bool = False, copy: bool = True) -> "Band":
+    def get_gradient(self, degrees: bool = False, copy: bool = True) -> "Band":
         copied = self.copy() if copy else self
         copied._values = get_gradient(copied, degrees=degrees, copy=copy)
         return copied
@@ -761,7 +762,7 @@ class Band(ImageBase):
 
     def __repr__(self) -> str:
         try:
-            band_id = f"'{self.band_id}'"
+            band_id = f"'{self.band_id}'" if self.band_id else None
         except (ValueError, AttributeError):
             band_id = None
         try:
@@ -1346,10 +1347,9 @@ class ImageCollection(ImageBase):
             crs=crs,
             **self.common_init_kwargs,
         )
-    
+
         band._merged = True
         return band
-
 
     def merge_by_band(
         self,
@@ -1423,7 +1423,7 @@ class ImageCollection(ImageBase):
 
         image._merged = True
         return image
-    
+
     def _merge_with_numpy_func(
         self,
         method: str | Callable,
@@ -2353,6 +2353,7 @@ def _load_band(band: Band, **kwargs) -> None:
 
 
 def _merge_by_band(collection: ImageCollection, **kwargs) -> Image:
+    print("_merge_by_band", collection.dates)
     return collection.merge_by_band(**kwargs)
 
 

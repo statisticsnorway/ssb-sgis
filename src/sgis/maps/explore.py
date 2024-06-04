@@ -283,6 +283,13 @@ def _image_collection_to_background_map(
                 continue
             break
 
+        if mask is not None:
+            print(mask)
+            print(to_gdf(mask).area.sum())
+            print(to_gdf(image.bounds).area.sum())
+            print(red_band.shape)
+            print(image.bounds)
+
         if red_band.shape[0] == 0:
             continue
         if blue_band.shape[0] == 0:
@@ -300,6 +307,8 @@ def _image_collection_to_background_map(
                 .unary_union.bounds
             )
         )
+        print(bounds)
+        print(to_gdf(bounds).area.sum())
 
         # to 3d array in shape (x, y, 3)
         rbg_image = np.stack([red_band, blue_band, green_band], axis=2)
@@ -486,9 +495,11 @@ class Explore(Map):
         column: str | None = None,
         center: Any | None = None,
         size: int | None = None,
+        mask: Any | None = None,
         **kwargs,
     ) -> None:
         """Explore all the data."""
+        self.mask = mask if mask is not None else self.mask
         if (
             self._gdfs
             and not any(len(gdf) for gdf in self._gdfs)
@@ -606,7 +617,11 @@ class Explore(Map):
         n_added_images = 0
         for name, value in self.rasters.items():
             data = _image_collection_to_background_map(
-                value, self.mask, name, max_images=self.max_images, n_added_images=n_added_images
+                value,
+                self.mask,
+                name,
+                max_images=self.max_images,
+                n_added_images=n_added_images,
             )
             n_added_images += len(data)
             self.raster_data += data
@@ -1151,12 +1166,13 @@ def _determine_label(
             re.sub("(\d+)", "", obj_name) != f"{obj.__class__.__name__}()"
         )
         if does_not_have_generic_name:
-            name = obj_name
-    try:
-        if obj.tile and obj.date:
-            name = f"{obj.tile}_{obj.date[:8]}"
-    except (ValueError, AttributeError):
-        pass
+            return obj_name
+    # try:
+    #     if obj.tile and obj.date:
+    #         name = f"{obj.tile}_{obj.date[:8]}"
+    # except (ValueError, AttributeError):
+    #     name = None
+
     try:
         # Images/Bands/Collections constructed from arrays have no path stems
         if obj.stem:

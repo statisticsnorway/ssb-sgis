@@ -61,32 +61,32 @@ def test_gradient():
 
     # creating a simple Band with a resolution of 10 (50 / width or height).
     band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50), res=10)
-    gradient = band.gradient(copy=True)
+    gradient = band.get_gradient(copy=True)
     assert np.max(gradient.values) == 1, gradient.values
 
-    degrees = band.gradient(degrees=True, copy=True)
+    degrees = band.get_gradient(degrees=True, copy=True)
 
     assert np.max(degrees.values) == 45, np.max(degrees.values)
 
     # r = sg.Band(path_singleband, indexes=1, res=None).load(nodata=0)
     # assert int(np.min(r.values)) == 0, np.min(r.values)
-    # degrees = r.gradient(degrees=True, copy=True)
+    # degrees = r.get_gradient(degrees=True, copy=True)
     # assert int(np.max(degrees.values)) == 75, np.max(degrees.values)
-    # gradient = r.gradient(copy=True)
+    # gradient = r.get_gradient(copy=True)
     # assert int(np.max(gradient.values)) == 3, np.max(gradient.values)
 
     # r = sg.Band(path_two_bands, indexes=1).load(nodata=0)
     # assert r.shape == (101, 101), r.shape
-    # gradient = r.gradient(copy=True)
+    # gradient = r.get_gradient(copy=True)
     # assert int(np.max(gradient.values)) == 3, np.max(gradient.values)
 
-    # degrees = r.gradient(degrees=True, copy=True)
+    # degrees = r.get_gradient(degrees=True, copy=True)
     # assert int(np.max(degrees.values)) == 75, np.max(degrees.values)
 
     # r = sg.Band(path_two_bands, indexes=(1, 2))
     # assert r.shape == (2, 101, 101), r.shape
 
-    # degrees = r.load().gradient(degrees=True)
+    # degrees = r.load().get_gradient(degrees=True)
 
     # assert int(np.nanmax(degrees.values)) == 75, int(np.nanmax(degrees.values))
     # assert len(degrees.shape) == 3
@@ -96,7 +96,7 @@ def test_gradient():
     #     sg.explore(gdf[gdf["indexes"] == 2], "value")
 
     # max_ = int(np.nanmax(r.values))
-    # gradient = r.gradient(copy=True)
+    # gradient = r.get_gradient(copy=True)
     # gradient.plot()
     # assert max_ == int(np.nanmax(r.values))
     # assert int(np.nanmax(gradient.values)) == 6, int(np.nanmax(gradient.values))
@@ -381,6 +381,7 @@ def test_merge():
         collection.groupby(["tile", "date"]), collection, strict=True
     ):
         assert date == img.date
+        assert tile == img.tile
         assert len(date_group) == 1
 
         # get 2d array with mean/median values of all bands in the image
@@ -892,6 +893,7 @@ def test_torch():
 
 def main():
 
+    test_merge()
     test_zonal()
     test_gradient()
     test_groupby()
@@ -908,7 +910,6 @@ def main():
     test_cloud()
     test_torch()
     test_ndvi_and_explore()
-    test_merge()
 
 
 if __name__ == "__main__":
