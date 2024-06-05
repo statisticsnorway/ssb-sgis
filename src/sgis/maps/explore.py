@@ -847,7 +847,7 @@ class Explore(Map):
                 **{
                     key: value
                     for key, value in self.kwargs.items()
-                    if key not in ["title"]
+                    if key not in ["title", "tiles"]
                 },
             )
 

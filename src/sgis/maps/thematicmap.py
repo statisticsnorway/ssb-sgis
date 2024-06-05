@@ -35,6 +35,24 @@ MAP_KWARGS = {
 }
 
 
+def prettify_number(x: int | float, rounding: int) -> int:
+    if abs(x) < abs(rounding):
+        return int(x)
+    return int(x // abs(rounding) * abs(rounding))
+
+
+def prettify_bins(bins: list[int | float], rounding: int) -> list[int]:
+    return [
+        (
+            prettify_number(x, rounding)
+            if i != len(bins) - 1
+            else x
+            # else prettify_number(x, rounding) + abs(rounding)
+        )
+        for i, x in enumerate(bins)
+    ]
+
+
 class ThematicMap(Map):
     """Class for creating static maps with geopandas and matplotlib.
 
@@ -299,6 +317,12 @@ class ThematicMap(Map):
             return kwargs
 
         else:
+
+            if self.legend.rounding and self.legend.rounding < 0:
+                self.bins = prettify_bins(self.bins, self.legend.rounding)
+                self.legend.rounding = None
+                self.legend._rounding_has_been_set = True
+
             classified = self._classify_from_bins(self._gdf, bins=self.bins)
             classified_sequential = self._push_classification(classified)
             n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
@@ -309,7 +333,9 @@ class ThematicMap(Map):
             colorarray = self._unique_colors[classified_sequential]
             kwargs["color"] = colorarray
 
-        if self.legend and not self.legend._rounding_has_been_set:
+        if (
+            self.legend and self.legend.rounding
+        ):  # not self.legend._rounding_has_been_set:
             self.bins = self.legend._set_rounding(
                 bins=self.bins, rounding=self.legend._rounding
             )

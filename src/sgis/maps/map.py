@@ -298,26 +298,35 @@ class Map:
         if min(bins) > 0 and min(
             self._gdf.loc[list(~self._nan_idx), self._column]
         ) < min(bins):
-            bins = [min(self._gdf.loc[list(~self._nan_idx), self._column])] + bins
+            num = min(self._gdf.loc[list(~self._nan_idx), self._column])
+            if isinstance(num, float):
+                num -= 0.001
+            bins = [num] + bins
 
         if min(bins) < 0 and min(
             self._gdf.loc[list(~self._nan_idx), self._column]
         ) < min(bins):
-            bins = [min(self._gdf.loc[list(~self._nan_idx), self._column])] + bins
+            num = min(self._gdf.loc[list(~self._nan_idx), self._column])
+            if isinstance(num, float):
+                num -= 0.001
+            bins = [num] + bins
 
         if max(bins) > 0 and max(
             self._gdf.loc[self._gdf[self._column].notna(), self._column]
         ) > max(bins):
-            bins = bins + [
-                max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
-            ]
+            num = max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
+            if isinstance(num, float):
+                num += 0.001
+            bins = bins + [num]
 
         if max(bins) < 0 and max(
             self._gdf.loc[self._gdf[self._column].notna(), self._column]
         ) < max(bins):
-            bins = bins + [
-                max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
-            ]
+            num = max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
+            if isinstance(num, float):
+                num += 0.001
+
+            bins = bins + [num]
 
         return bins
 
@@ -412,7 +421,7 @@ class Map:
         if self.scheme is None:
             return
 
-        if not self.bins:
+        if self.bins is None:
             self.bins = self._create_bins(self._gdf, self._column)
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
                 self._k = len(self.bins)

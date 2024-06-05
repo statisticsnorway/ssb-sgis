@@ -557,63 +557,10 @@ def write_sentinel():
         _save_raster(file, src_path_sentinel + "/MASKS")
 
 
-def test_torch():
-
-    # from lightning.pytorch import Trainer
-    from torch.utils.data import DataLoader
-    from torchgeo.datasets import stack_samples
-    from torchgeo.samplers import RandomGeoSampler
-
-    # from torchgeo.datamodules import InriaAerialImageLabelingDataModule
-    # from torchgeo.trainers import SemanticSegmentationTask
-
-    def cube_with_torch():
-        cube = sg.DataCube.from_root(
-            path_sentinel,
-            endswith=".tif",
-            filename_regex=sg.raster.SENTINEL2_FILENAME_REGEX,
-            res=10,
-        )
-        assert len(cube) == 10, len(cube)
-
-        sampler = RandomGeoSampler(cube, size=16, length=10)
-        dataloader = DataLoader(
-            cube, batch_size=2, sampler=sampler, collate_fn=stack_samples
-        )
-
-        for batch in dataloader:
-            image = batch["image"]
-            mask = batch["mask"]
-            # train a model, or make predictions using a pre-trained model
-
-        return cube
-
-    def regular_torch(cube):
-        torch_dataset = sg.torchgeo.Sentinel2(path_sentinel, res=10)
-
-        assert len(torch_dataset) == 10, len(torch_dataset)
-
-        sampler = RandomGeoSampler(torch_dataset, size=16, length=10)
-        dataloader = DataLoader(
-            torch_dataset, batch_size=2, sampler=sampler, collate_fn=stack_samples
-        )
-
-        for batch in dataloader:
-            image = batch["image"]
-            mask = batch["mask"]
-            print(image)
-            # train a model, or make predictions using a pre-trained model
-
-    cube = cube_with_torch()
-    regular_torch(cube)
-
-
 if __name__ == "__main__":
-
     # write_sentinel()
 
     def test_cube():
-        test_torch()
         test_sentinel()
         test_explode()
         test_getitem()
@@ -635,5 +582,6 @@ if __name__ == "__main__":
 
     # cProfile.run("test_merge_performance()", sort="cumtime")
     test_cube()
+
 
 # %%

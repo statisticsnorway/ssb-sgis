@@ -42,6 +42,11 @@ LEGEND_KWARGS = {
     "height",
     "labels",
     "pretty_labels",
+    "thousand_sep",
+    "decimal_mark",
+    "label_sep",
+    "label_suffix",
+    "rounding",
 }
 
 LOWERCASE_WORDS = {
@@ -211,7 +216,7 @@ class Legend:
             self._fontsize = fontsize
             self._markersize = markersize
 
-        self.pretty_labels = pretty_labels  # to activate the setter
+        self.pretty_labels = pretty_labels
         self.framealpha = framealpha
         self.edgecolor = edgecolor
         self.width = kwargs.pop("width", 0.1)
@@ -490,7 +495,7 @@ class ContinousLegend(Legend):
     def __init__(
         self,
         labels: list[str] | None = None,
-        pretty_labels: bool = False,
+        pretty_labels: bool = True,
         label_suffix: str | None = None,
         label_sep: str = "-",
         rounding: int | None = None,
@@ -564,7 +569,7 @@ class ContinousLegend(Legend):
 
     @staticmethod
     def _set_rounding(bins, rounding: int | float) -> list[int | float]:
-        if rounding == 0:
+        if not rounding:
             return [int(round(bin_, 0)) for bin_ in bins]
         else:
             return [round(bin_, rounding) for bin_ in bins]
@@ -606,9 +611,10 @@ class ContinousLegend(Legend):
             if len(self.labels) != len(colors):
                 raise ValueError(
                     "Label list must be same length as the number of groups. "
-                    f"Got k={len(colors)} and labels={len(colors)}."
+                    f"Got k={len(colors)} and labels={len(self.labels)}."
                     f"labels: {', '.join(self.labels)}"
                     f"colors: {', '.join(colors)}"
+                    f"bins: {bins}"
                 )
             self._categories = self.labels
 
@@ -641,39 +647,55 @@ class ContinousLegend(Legend):
                 min_rounded = self._set_rounding([min_], self._rounding)[0]
                 max_rounded = self._set_rounding([max_], self._rounding)[0]
                 if self.pretty_labels:
-                    if i != 0 and self._rounding == 0:
-                        cat1 = int(cat1 + 1)
+                    if (self._rounding or 0) <= 0:
+                        # if (
+                        #     self._rounding is None or self._rounding or self._rounding == 0
+                        # ):  # <= 0:
+                        cat1 = int(cat1)
+                        cat2 = int(cat2 - 1)
+                    # elif i != 0 and (self._rounding or 0) <= 0:
+                    # # if (
+                    # #     self._rounding is None or self._rounding or self._rounding == 0
+                    # # ):  # <= 0:
+                    #     cat2 = int(cat2 - 1)
+                    #     cat1 = int(cat1 - 1)
                     elif i != 0:
-                        cat1 = cat1 + float(f"1e-{self._rounding}")
+                        cat1 = round(
+                            cat1 - float(f"1e-{self._rounding}"), self._rounding
+                        )
+                        cat2 = round(cat2, self._rounding)
+                    else:
+                        cat1 = round(cat1, self._rounding)
+                        cat2 = round(cat2, self._rounding)
 
                     cat1 = self._format_number(cat1)
                     cat2 = self._format_number(cat2)
 
                     if min_ == max_:
-                        label = self._two_value_label(cat1, cat2)
+                        label = self._get_two_value_label(cat1, cat2)
                         self._categories.append(label)
                         continue
 
-                    label = self._two_value_label(cat1, cat2)
+                    label = self._get_two_value_label(cat1, cat2)
                     self._categories.append(label)
 
                 elif min_ == max_:
                     min_rounded = self._format_number(min_rounded)
-                    label = self._one_value_label(min_rounded)
+                    label = self._get_one_value_label(min_rounded)
                     self._categories.append(label)
                 else:
                     min_rounded = self._format_number(min_rounded)
                     max_rounded = self._format_number(max_rounded)
-                    label = self._two_value_label(min_rounded, max_rounded)
+                    label = self._get_two_value_label(min_rounded, max_rounded)
                     self._categories.append(label)
 
-    def _two_value_label(self, value1: int | float, value2: int | float) -> str:
+    def _get_two_value_label(self, value1: int | float, value2: int | float) -> str:
         return (
             f"{value1} {self.label_suffix} {self.label_sep} "
             f"{value2} {self.label_suffix}"
         )
 
-    def _one_value_label(self, value1: int | float) -> str:
+    def _get_one_value_label(self, value1: int | float) -> str:
         return f"{value1} {self.label_suffix}"
 
     def _format_number(self, number: int | float) -> int | float:

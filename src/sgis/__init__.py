@@ -127,12 +127,6 @@ from .raster.image_collection import Sentinel2Image
 from .raster.image_collection import concat_image_collections
 
 try:
-    import sgis.raster.torchgeo as torchgeo
-except ImportError:
-    pass
-
-
-try:
     from .io.dapla_functions import check_files
     from .io.dapla_functions import read_geopandas
     from .io.dapla_functions import write_geopandas
