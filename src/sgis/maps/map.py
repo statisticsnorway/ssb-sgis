@@ -4,9 +4,9 @@ This module holds the Map class, which is the basis for the Explore class.
 """
 
 import warnings
+from collections.abc import Sequence
 from statistics import mean
 from typing import Any
-from collections.abc import Sequence
 
 import matplotlib
 import matplotlib.colors as colors
@@ -761,7 +761,7 @@ def _determine_best_name(obj: Any, column: str | None, i: int) -> str:
                 len(series.unique()) == 1
                 and mean(isinstance(x, str) for x in series) > 0.5
             ):
-                return list(series)[0]
+                return next(iter(series))
             elif series.name:
                 return series.name
         else:

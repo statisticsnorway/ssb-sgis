@@ -126,6 +126,8 @@ class ThematicMap(Map):
                 True, the background will be black and the text white. When True, the
                 default cmap is "viridis", and when False, the default is red to purple
                 (RdPu).
+            legend_kwargs: Attributes for the legend.
+            **kwargs: Additional attributes for the map.
 
         """
         super().__init__(*gdfs, column=column)

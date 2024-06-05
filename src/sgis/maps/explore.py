@@ -213,7 +213,7 @@ def _image_collection_to_background_map(
             return out
 
         if len(img) == 1:
-            band = list(img)[0]
+            band = next(iter(img))
             raster_data_dict = {}
             out.append(raster_data_dict)
             name = _determine_label(band, name, out, 0)
@@ -246,7 +246,9 @@ def _image_collection_to_background_map(
         raise TypeError(type(image_collection))
 
     if len(images) + n_added_images > max_images:
-        warnings.warn(f"Showing only a sample of {max_images}. Set 'max_images.")
+        warnings.warn(
+            f"Showing only a sample of {max_images}. Set 'max_images.", stacklevel=1
+        )
         random.shuffle(images)
         images = images[: (max_images - n_added_images)]
 
@@ -371,6 +373,8 @@ class Explore(Map):
                 If False, the data can be toggled on later. 'show' can also be
                 a sequence of boolean values the same length as the number of
                 GeoDataFrames.
+            max_images: Maximum number of images (from .tif files etc) to show per
+                map. Defaults to 15.
             text: Optional text for a text box in the map.
             decimals: Number of decimals in the coordinates.
             **kwargs: Additional keyword arguments. Can also be geometry-like objects
@@ -1158,7 +1162,6 @@ def _tooltip_popup(
 def _determine_label(
     obj: Image | Band | ImageCollection, obj_name: str | None, out: list[dict], i: int
 ) -> str:
-    """Prefer the obj"""
     # Prefer the object's name
     if obj_name:
         # Avoid the generic label e.g. Image(1)

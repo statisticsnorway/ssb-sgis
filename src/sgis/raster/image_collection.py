@@ -38,9 +38,9 @@ from shapely.geometry import Polygon
 from shapely.geometry import shape
 
 try:
+    from rioxarray.exceptions import NoDataInBounds
     from rioxarray.merge import merge_arrays
     from rioxarray.rioxarray import _generate_spatial_coords
-    from rioxarray.exceptions import NoDataInBounds
 except ImportError:
     pass
 try:
@@ -90,8 +90,8 @@ from ..helpers import get_numpy_func
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
 from . import sentinel_config as config
-from .indices import ndvi
 from .base import get_index_mapper
+from .indices import ndvi
 from .zonal import _aggregate
 from .zonal import _make_geometry_iterrows
 from .zonal import _no_overlap_df
@@ -99,15 +99,16 @@ from .zonal import _prepare_zonal
 from .zonal import _zonal_post
 
 if is_dapla():
-    ls_func = lambda *args, **kwargs: dp.FileClient.get_gcs_file_system().ls(
-        *args, **kwargs
-    )
-    glob_func = lambda *args, **kwargs: dp.FileClient.get_gcs_file_system().glob(
-        *args, **kwargs
-    )
-    open_func = lambda *args, **kwargs: dp.FileClient.get_gcs_file_system().open(
-        *args, **kwargs
-    )
+
+    def ls_func(*args, **kwargs):
+        return dp.FileClient.get_gcs_file_system().ls(*args, **kwargs)
+
+    def glob_func(*args, **kwargs):
+        return dp.FileClient.get_gcs_file_system().glob(*args, **kwargs)
+
+    def open_func(*args, **kwargs):
+        return dp.FileClient.get_gcs_file_system().open(*args, **kwargs)
+
 else:
     ls_func = functools.partial(get_all_files, recursive=False)
     open_func = open
@@ -119,21 +120,34 @@ DEFAULT_FILENAME_REGEX = r".*\.(?:tif|tiff|jp2)$"
 
 
 class ImageCollectionGroupBy:
+    """Iterator and merger class returned from groupby.
+
+    Can be iterated through like pandas.DataFrameGroupBy.
+    Or use the methods merge_by_band or merge.
+    """
+
     def __init__(
         self,
         data: Iterable[tuple[Any], "ImageCollection"],
         by: list[str],
         collection: "ImageCollection",
-        image_class: type,
     ) -> None:
+        """Initialiser.
+
+        Args:
+            data: Iterable of group values and ImageCollection groups.
+            by: list of group attributes.
+            collection: ImageCollection instance. Used to pass attributes.
+        """
         self.data = list(data)
         self.by = by
         self.collection = collection
-        self.image_class = image_class
 
     def merge_by_band(
         self, bounds=None, method="median", as_int: bool = True, indexes=None, **kwargs
     ) -> "ImageCollection":
+        """Merge each group into separate Bands per band_id, returned as an ImageCollection."""
+
         images = self._run_func_for_collection_groups(
             _merge_by_band,
             method=method,
@@ -154,7 +168,7 @@ class ImageCollectionGroupBy:
         collection = ImageCollection(
             images,
             level=self.collection.level,
-            **self.collection.common_init_kwargs,
+            **self.collection._common_init_kwargs,
         )
         collection._merged = True
         return collection
@@ -185,7 +199,7 @@ class ImageCollectionGroupBy:
 
         image = Image(
             bands,
-            **self.collection.common_init_kwargs,
+            **self.collection._common_init_kwargs,
         )
         image._merged = True
         return image
@@ -202,16 +216,19 @@ class ImageCollectionGroupBy:
             return parallel(joblib.delayed(func)(group, **kwargs) for _, group in self)
 
     def __iter__(self):
+        """Iterate over the group values and the ImageCollection groups themselves."""
         return iter(self.data)
 
     def __len__(self) -> int:
+        """Number of ImageCollection groups."""
         return len(self.data)
 
     def __repr__(self) -> str:
+        """String representation."""
         return f"{self.__class__.__name__}({len(self)})"
 
 
-class ImageBase(abc.ABC):
+class _ImageBase(abc.ABC):
     image_regexes: ClassVar[str | None] = None
     filename_regexes: ClassVar[str | tuple[str]] = (DEFAULT_FILENAME_REGEX,)
     date_format: ClassVar[str] = "%Y%m%d"  # T%H%M%S"
@@ -242,7 +259,7 @@ class ImageBase(abc.ABC):
             self.image_patterns = None
 
     @property
-    def common_init_kwargs(self) -> dict:
+    def _common_init_kwargs(self) -> dict:
         return {
             "file_system": self.file_system,
             "processes": self.processes,
@@ -256,10 +273,15 @@ class ImageBase(abc.ABC):
             return self._path
         except AttributeError as e:
             raise PathlessImageError(self.__class__.__name__) from e
-            #     f"{self.__class__.__name__} instances from arrays or "
-            #     "GeoDataFrames, or that have been merged, "
-            #     "have no 'path' until they are written to file."
-            # ) from e
+
+    @property
+    def res(self) -> int:
+        """Pixel resolution."""
+        return self._res
+
+    @property
+    def centroid(self) -> Point:
+        return self.unary_union.centroid
 
     def _name_regex_searcher(
         self, group: str, patterns: tuple[re.Pattern]
@@ -327,7 +349,8 @@ class ImageBase(abc.ABC):
         else:
             return grouped
 
-    def copy(self) -> "ImageBase":
+    def copy(self) -> "_ImageBase":
+        """Copy the instance and its attributes."""
         copied = deepcopy(self)
         for key, value in copied.__dict__.items():
             try:
@@ -339,7 +362,72 @@ class ImageBase(abc.ABC):
         return copied
 
 
-class Band(ImageBase):
+class _ImageBandBase(_ImageBase):
+
+    @property
+    def year(self) -> str:
+        return self.date[:4]
+
+    @property
+    def month(self) -> str:
+        return "".join(self.date.split("-"))[:6]
+
+    @property
+    def yyyymmd(self) -> str:
+        return "".join(self.date.split("-"))[:7]
+
+    @property
+    def name(self) -> str | None:
+        if hasattr(self, "_name") and self._name is not None:
+            return self._name
+        try:
+            return Path(self.path).name
+        except (ValueError, AttributeError):
+            return None
+
+    @name.setter
+    def name(self, value) -> None:
+        self._name = value
+
+    @property
+    def stem(self) -> str | None:
+        try:
+            return Path(self.path).stem
+        except (AttributeError, ValueError):
+            return None
+
+    @property
+    def level(self) -> str:
+        return self._name_regex_searcher("level", self.image_patterns)
+
+    @property
+    def mint(self) -> float:
+        return disambiguate_timestamp(self.date, self.date_format)[0]
+
+    @property
+    def maxt(self) -> float:
+        return disambiguate_timestamp(self.date, self.date_format)[1]
+
+    @property
+    def unary_union(self) -> Polygon:
+        return box(*self.bounds)
+
+    @property
+    def bbox(self) -> BoundingBox:
+        bounds = GeoSeries([self.unary_union]).bounds
+        return BoundingBox(
+            minx=bounds.minx[0],
+            miny=bounds.miny[0],
+            maxx=bounds.maxx[0],
+            maxy=bounds.maxy[0],
+            mint=self.mint,
+            maxt=self.maxt,
+        )
+
+
+class Band(_ImageBandBase):
+    """Single image Band."""
+
     cmap: ClassVar[str | None] = None
 
     def __init__(
@@ -351,9 +439,9 @@ class Band(ImageBase):
         cmap: str | None = None,
         name: str | None = None,
         file_system: dp.gcs.GCSFileSystem | None = None,
-        _mask: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
         band_id: str | None = None,
         processes: int = 1,
+        _mask: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
         **kwargs,
     ) -> None:
         if isinstance(data, (GeoDataFrame | GeoSeries)):
@@ -407,6 +495,7 @@ class Band(ImageBase):
 
     @property
     def values(self) -> np.ndarray:
+        """The numpy array, if loaded."""
         try:
             return self._values
         except AttributeError as e:
@@ -419,53 +508,42 @@ class Band(ImageBase):
         self._values = new_val
 
     @property
-    def res(self) -> int:
-        return self._res
-
-    @property
-    def tile(self) -> str:
-        return self._name_regex_searcher("tile", self.filename_patterns)
-
-    @property
-    def date(self) -> str:
-        return self._name_regex_searcher("date", self.filename_patterns)
-
-    @property
-    def year(self) -> str:
-        return self.date[:4]
-
-    @property
-    def month(self) -> str:
-        return "".join(self.date.split("-"))[:6]
-
-    @property
     def band_id(self) -> str:
+        """Band id."""
         if self._band_id is not None:
             return self._band_id
         return self._name_regex_searcher("band", self.filename_patterns)
 
     @property
-    def name(self) -> str | None:
-        if self._name is not None:
-            return self._name
-        try:
-            return Path(self.path).name
-        except (ValueError, AttributeError):
-            return None
-
-    @name.setter
-    def name(self, value) -> None:
-        self._name = value
+    def height(self) -> int:
+        """Pixel heigth of the image band."""
+        i = 1 if len(self.values.shape) == 3 else 0
+        return self.values.shape[i]
 
     @property
-    def stem(self) -> str | None:
-        try:
-            return Path(self.path).stem
-        except (AttributeError, ValueError):
-            return None
+    def width(self) -> int:
+        """Pixel width of the image band."""
+        i = 2 if len(self.values.shape) == 3 else 1
+        return self.values.shape[i]
+
+    @property
+    def tile(self) -> str:
+        """Tile name from filename_regex."""
+        if hasattr(self, "_tile") and self._tile:
+            return self._tile
+        return self._name_regex_searcher("tile", self.filename_patterns)
+
+    @property
+    def date(self) -> str:
+        """Tile name from filename_regex."""
+        if hasattr(self, "_date") and self._date:
+            return self._date
+
+        return self._name_regex_searcher("date", self.filename_patterns)
 
     @property
     def crs(self) -> str | None:
+        """Coordinate reference system."""
         try:
             return self._crs
         except AttributeError:
@@ -477,34 +555,23 @@ class Band(ImageBase):
 
     @property
     def bounds(self) -> tuple[int, int, int, int] | None:
+        """Bounds as tuple (minx, miny, maxx, maxy)."""
         try:
             return self._bounds
-        except TypeError:
-            return None
         except AttributeError:
             with opener(self.path, file_system=self.file_system) as file:
                 with rasterio.open(file) as src:
                     self._bounds = to_bbox(src.bounds)
                     self._crs = src.crs
                     return self._bounds
-
-    @property
-    def height(self) -> int:
-        i = 1 if len(self.values.shape) == 3 else 0
-        return self.values.shape[i]
-
-    @property
-    def width(self) -> int:
-        i = 2 if len(self.values.shape) == 3 else 1
-        return self.values.shape[i]
-
-    @property
-    def unary_union(self) -> Polygon:
-        return box(*self.bounds)
+        except TypeError:
+            return None
 
     def get_n_largest(
         self, n: int, precision: float = 0.000001, column: str = "value"
     ) -> GeoDataFrame:
+        """Get the largest values of the array as polygons in a GeoDataFrame."""
+
         copied = self.copy()
         value_must_be_at_least = np.sort(np.ravel(copied.values))[-n] - (precision or 0)
         copied._values = np.where(copied.values >= value_must_be_at_least, 1, 0)
@@ -515,6 +582,7 @@ class Band(ImageBase):
     def get_n_smallest(
         self, n: int, precision: float = 0.000001, column: str = "value"
     ) -> GeoDataFrame:
+        """Get the lowest values of the array as polygons in a GeoDataFrame."""
         copied = self.copy()
         value_must_be_at_least = np.sort(np.ravel(copied.values))[n] - (precision or 0)
         copied._values = np.where(copied.values <= value_must_be_at_least, 1, 0)
@@ -523,6 +591,10 @@ class Band(ImageBase):
         return df
 
     def load(self, bounds=None, indexes=None, **kwargs) -> "Band":
+        """Load and potentially clip the array.
+
+        The array is stored in the 'values' property.
+        """
         bounds = to_bbox(bounds) if bounds is not None else self._mask
 
         try:
@@ -616,6 +688,7 @@ class Band(ImageBase):
         return self
 
     def write(self, path: str | Path, **kwargs) -> None:
+        """Write the array as an image file."""
         if not hasattr(self, "_values"):
             raise ValueError(
                 "Can only write image band from Band constructed from array."
@@ -663,8 +736,58 @@ class Band(ImageBase):
         return copied
 
     def get_gradient(self, degrees: bool = False, copy: bool = True) -> "Band":
+        """Get the slope of an elevation band.
+
+        Calculates the absolute slope between the grid cells
+        based on the image resolution.
+
+        For multi-band images, the calculation is done for each band.
+
+        Args:
+            band: band instance.
+            degrees: If False (default), the returned values will be in ratios,
+                where a value of 1 means 1 meter up per 1 meter forward. If True,
+                the values will be in degrees from 0 to 90.
+            copy: Whether to copy or overwrite the original Raster.
+                Defaults to True.
+
+        Returns:
+            The class instance with new array values, or a copy if copy is True.
+
+        Examples:
+        --------
+        Making an array where the gradient to the center is always 10.
+
+        >>> import sgis as sg
+        >>> import numpy as np
+        >>> arr = np.array(
+        ...         [
+        ...             [100, 100, 100, 100, 100],
+        ...             [100, 110, 110, 110, 100],
+        ...             [100, 110, 120, 110, 100],
+        ...             [100, 110, 110, 110, 100],
+        ...             [100, 100, 100, 100, 100],
+        ...         ]
+        ...     )
+
+        Now let's create a Raster from this array with a resolution of 10.
+
+        >>> band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50), res=10)
+
+        The gradient will be 1 (1 meter up for every meter forward).
+        The calculation is by default done in place to save memory.
+
+        >>> band.gradient()
+        >>> band.values
+        array([[0., 1., 1., 1., 0.],
+            [1., 1., 1., 1., 1.],
+            [1., 1., 0., 1., 1.],
+            [1., 1., 1., 1., 1.],
+            [0., 1., 1., 1., 0.]])
+        """
+
         copied = self.copy() if copy else self
-        copied._values = get_gradient(copied, degrees=degrees, copy=copy)
+        copied._values = _get_gradient(copied, degrees=degrees, copy=copy)
         return copied
 
     def zonal(
@@ -761,6 +884,7 @@ class Band(ImageBase):
         )  # .transpose("y", "x")
 
     def __repr__(self) -> str:
+        """String representation."""
         try:
             band_id = f"'{self.band_id}'" if self.band_id else None
         except (ValueError, AttributeError):
@@ -778,7 +902,7 @@ class NDVIBand(Band):
     cmap: str = "Greens"
 
 
-class Image(ImageBase):
+class Image(_ImageBandBase):
     cloud_cover_regexes: ClassVar[tuple[str] | None] = None
     band_class: ClassVar[Band] = Band
 
@@ -796,7 +920,7 @@ class Image(ImageBase):
     ) -> None:
         super().__init__()
 
-        self.res = res
+        self._res = res
         # self._crs = crs
         self.file_system = file_system
         self._mask = _mask
@@ -809,7 +933,7 @@ class Image(ImageBase):
             self._crs = get_common_crs(self._bands)
             res = list({band.res for band in self._bands})
             if len(res) == 1:
-                self.res = res[0]
+                self._res = res[0]
             else:
                 raise ValueError(f"Different resolutions for the bands: {res}")
             return
@@ -872,7 +996,7 @@ class Image(ImageBase):
         self._bands = [
             self.band_class(
                 path,
-                **self.common_init_kwargs,
+                **self._common_init_kwargs,
             )
             for path in (df["file_path"])
         ]
@@ -891,7 +1015,7 @@ class Image(ImageBase):
             arr,
             bounds=self.bounds,
             crs=self.crs,
-            **self.common_init_kwargs,
+            **self._common_init_kwargs,
         )
 
     def get_brightness(self, bounds=None, rbg_bands: list[str] | None = None) -> Band:
@@ -917,7 +1041,7 @@ class Image(ImageBase):
             brightness,
             bounds=red.bounds,
             crs=self.crs,
-            **self.common_init_kwargs,
+            **self._common_init_kwargs,
         )
 
     @property
@@ -933,40 +1057,55 @@ class Image(ImageBase):
         return self._bands
 
     @property
-    def name(self) -> str:
-        return Path(self.path).name
-
-    @property
-    def stem(self) -> str:
-        return Path(self.path).stem
-
-    @property
-    def level(self) -> str:
-        return self._name_regex_searcher("level", self.image_patterns)
-
-    @property
     def tile(self) -> str:
+        """Tile name from filename_regex."""
+        if hasattr(self, "_tile") and self._tile:
+            return self._tile
         return self._name_regex_searcher("tile", self.image_patterns)
 
     @property
     def date(self) -> str:
+        """Tile name from filename_regex."""
+        if hasattr(self, "_date") and self._date:
+            return self._date
+
         return self._name_regex_searcher("date", self.image_patterns)
 
     @property
-    def year(self) -> str:
-        return self.date[:4]
+    def crs(self) -> str | None:
+        try:
+            return self._crs
+        except AttributeError:
+            if not len(self):
+                return None
+            with opener(self.file_paths[0], file_system=self.file_system) as file:
+                with rasterio.open(file) as src:
+                    self._bounds = to_bbox(src.bounds)
+                    self._crs = src.crs
+                    return self._crs
 
     @property
-    def month(self) -> str:
-        return "".join(self.date.split("-"))[:6]
+    def bounds(self) -> tuple[int, int, int, int] | None:
+        try:
+            return self._bounds
+        except AttributeError:
+            if not len(self):
+                return None
+            with opener(self.file_paths[0], file_system=self.file_system) as file:
+                with rasterio.open(file) as src:
+                    self._bounds = to_bbox(src.bounds)
+                    self._crs = src.crs
+                    return self._bounds
+        except TypeError:
+            return None
 
-    @property
-    def mint(self) -> float:
-        return disambiguate_timestamp(self.date, self.date_format)[0]
+    # @property
+    # def year(self) -> str:
+    #     return self.date[:4]
 
-    @property
-    def maxt(self) -> float:
-        return disambiguate_timestamp(self.date, self.date_format)[1]
+    # @property
+    # def month(self) -> str:
+    #     return "".join(self.date.split("-"))[:6]
 
     # def write(self, image_path: str | Path, file_type: str = "tif", **kwargs) -> None:
     #     _test = kwargs.pop("_test")
@@ -1061,6 +1200,7 @@ class Image(ImageBase):
         return len(self.bands)
 
     def __repr__(self) -> str:
+        """String representation."""
         return f"{self.__class__.__name__}(bands={self.bands})"
 
     def get_cloud_band(self) -> Band:
@@ -1074,34 +1214,6 @@ class Image(ImageBase):
         ):
             raise ValueError(f"crs mismatch: {self.crs} and {other.crs}")
         return self.unary_union(to_shapely(other))
-
-    @property
-    def crs(self) -> str | None:
-        try:
-            return self._crs
-        except AttributeError:
-            if not len(self):
-                return None
-            with opener(self.file_paths[0], file_system=self.file_system) as file:
-                with rasterio.open(file) as src:
-                    self._bounds = to_bbox(src.bounds)
-                    self._crs = src.crs
-                    return self._crs
-
-    @property
-    def bounds(self) -> tuple[int, int, int, int] | None:
-        try:
-            return self._bounds
-        except AttributeError:
-            if not len(self):
-                return None
-            with opener(self.file_paths[0], file_system=self.file_system) as file:
-                with rasterio.open(file) as src:
-                    self._bounds = to_bbox(src.bounds)
-                    self._crs = src.crs
-                    return self._bounds
-        except TypeError:
-            return None
 
     # @property
     # def transform(self) -> Affine | None:
@@ -1129,29 +1241,6 @@ class Image(ImageBase):
     # @transform.setter
     # def transform(self, value: Affine) -> None:
     #     self._bounds = rasterio.transform.array_bounds(self.height, self.width, value)
-
-    @property
-    def centroid(self) -> Point:
-        return self.unary_union.centroid
-        # x = (self.bounds[0] + self.bounds[2]) / 2
-        # y = (self.bounds[1] + self.bounds[3]) / 2
-        # return Point(x, y)
-
-    @property
-    def unary_union(self) -> Polygon:
-        return box(*self.bounds)
-
-    @property
-    def bbox(self) -> BoundingBox:
-        bounds = GeoSeries([self.unary_union]).bounds
-        return BoundingBox(
-            minx=bounds.minx[0],
-            miny=bounds.miny[0],
-            maxx=bounds.maxx[0],
-            maxy=bounds.maxy[0],
-            mint=self.mint,
-            maxt=self.maxt,
-        )
 
     def _get_band(self, band: str) -> Band:
         if not isinstance(band, str):
@@ -1183,7 +1272,9 @@ class Image(ImageBase):
         )
 
 
-class ImageCollection(ImageBase):
+class ImageCollection(_ImageBase):
+    """Collection of Images."""
+
     image_class: ClassVar[Image] = Image
     band_class: ClassVar[Band] = Band
 
@@ -1198,12 +1289,13 @@ class ImageCollection(ImageBase):
         df: pd.DataFrame | None = None,
         _mask: Any | None = None,
     ) -> None:
+        """Initialiser."""
         super().__init__()
 
         self.level = level
         self.processes = processes
         self.file_system = file_system
-        self.res = res
+        self._res = res
         self._mask = _mask
         self._band_ids = None
         self.single_banded = single_banded
@@ -1243,6 +1335,7 @@ class ImageCollection(ImageBase):
             self._df = self._create_metadata_df(self._all_filepaths)
 
     def groupby(self, by: str | list[str], **kwargs) -> ImageCollectionGroupBy:
+        """Group the Collection by Image or Band attribute(s)."""
         df = pd.DataFrame(
             [(i, img) for i, img in enumerate(self) for _ in img],
             columns=["_image_idx", "_image_instance"],
@@ -1274,16 +1367,16 @@ class ImageCollection(ImageBase):
                 ),
                 by=by,
                 collection=self,
-                image_class=self.image_class,
             )
 
     def explode(self, copy: bool = True) -> "ImageCollection":
+        """Make all Images single-banded."""
         copied = self.copy() if copy else self
         copied.images = [
             self.image_class(
                 [band],
                 single_banded=True,
-                **self.common_init_kwargs,
+                **self._common_init_kwargs,
                 df=self._df,
                 all_file_paths=self._all_filepaths,
             )
@@ -1295,6 +1388,7 @@ class ImageCollection(ImageBase):
     def merge(
         self, bounds=None, method="median", as_int: bool = True, indexes=None, **kwargs
     ) -> Band:
+        """Merge all areas and all bands to a single Band."""
         bounds = to_bbox(bounds) if bounds is not None else self._mask
         crs = self.crs
 
@@ -1345,7 +1439,7 @@ class ImageCollection(ImageBase):
             arr,
             bounds=bounds,
             crs=crs,
-            **self.common_init_kwargs,
+            **self._common_init_kwargs,
         )
 
         band._merged = True
@@ -1359,6 +1453,7 @@ class ImageCollection(ImageBase):
         indexes: int | tuple[int] | None = None,
         **kwargs,
     ) -> Image:
+        """Merge all areas to a single tile, one band per band_id."""
         bounds = to_bbox(bounds) if bounds is not None else self._mask
         bounds = self.bounds if bounds is None else bounds
         out_bounds = self.bounds if bounds is None else bounds
@@ -1411,14 +1506,14 @@ class ImageCollection(ImageBase):
                     bounds=out_bounds,
                     crs=crs,
                     band_id=band_id,
-                    **self.common_init_kwargs,
+                    **self._common_init_kwargs,
                 )
             )
 
         # return self.image_class(
         image = Image(
             bands,
-            **self.common_init_kwargs,
+            **self._common_init_kwargs,
         )
 
         image._merged = True
@@ -1488,6 +1583,7 @@ class ImageCollection(ImageBase):
     #             band.write(band_path, **kwargs)
 
     def load_bands(self, bounds=None, indexes=None, **kwargs) -> "ImageCollection":
+        """Load all image Bands with threading."""
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             parallel(
                 joblib.delayed(_load_band)(
@@ -1526,6 +1622,7 @@ class ImageCollection(ImageBase):
         max_cloud_coverage: int | None = None,
         copy: bool = True,
     ) -> "ImageCollection":
+        """Filter images and bands in the collection."""
         copied = self.copy() if copy else self
 
         if isinstance(bounds, BoundingBox):
@@ -1611,6 +1708,7 @@ class ImageCollection(ImageBase):
         return copied
 
     def to_gdfs(self, column: str = "value") -> dict[str, GeoDataFrame]:
+        """Convert each band in each Image to a GeoDataFrame."""
         out = {}
         i = 0
         for img in self:
@@ -1628,6 +1726,7 @@ class ImageCollection(ImageBase):
         return out
 
     def sample(self, n: int = 1, size: int = 500) -> "ImageCollection":
+        """Sample one or more areas of a given size and set this as mask for the images."""
         images = []
         bbox = to_gdf(self.unary_union).geometry.buffer(-size / 2)
         copied = self.copy()
@@ -1638,6 +1737,7 @@ class ImageCollection(ImageBase):
         return copied
 
     def sample_tiles(self, n: int) -> "ImageCollection":
+        """Sample one or more tiles in a copy of the ImageCollection."""
         copied = self.copy()
         sampled_tiles = list({img.tile for img in self})
         random.shuffle(sampled_tiles)
@@ -1647,6 +1747,7 @@ class ImageCollection(ImageBase):
         return copied
 
     def sample_images(self, n: int) -> "ImageCollection":
+        """Sample one or more images in a copy of the ImageCollection."""
         copied = self.copy()
         images = copied.images
         if n > len(images):
@@ -1663,19 +1764,23 @@ class ImageCollection(ImageBase):
 
         return copied
 
-    def __or__(self, collection) -> "ImageCollection":
+    def __or__(self, collection: "ImageCollection") -> "ImageCollection":
+        """Concatenate the collection with another collection."""
         return concat_image_collections([self, collection])
 
     def __iter__(self):
+        """Iterate over the images."""
         return iter(self.images)
 
     def __len__(self) -> int:
+        """Number of images."""
         return len(self.images)
 
     def __getitem__(
         self,
         item: int | slice | Sequence[int | bool] | BoundingBox | Sequence[BoundingBox],
     ) -> Image | TORCHGEO_RETURN_TYPE:
+        """Select one Image by integer index, or multiple Images by slice, list of int or torchgeo.BoundingBox."""
         if isinstance(item, int):
             return self.images[item]
 
@@ -1747,33 +1852,41 @@ class ImageCollection(ImageBase):
 
     @property
     def mint(self) -> float:
+        """ "Min timestamp of the images combined."""
         return min(img.mint for img in self)
 
     @property
     def maxt(self) -> float:
+        """ "Max timestamp of the images combined."""
         return max(img.maxt for img in self)
 
     @property
     def band_ids(self) -> list[str]:
+        """Sorted list of unique band_ids."""
         return list(sorted({band.band_id for img in self for band in img}))
 
     @property
     def file_paths(self) -> list[str]:
+        """Sorted list of all file paths, meaning all band paths."""
         return list(sorted({band.path for img in self for band in img}))
 
     @property
     def dates(self) -> list[str]:
+        """List of image dates."""
         return [img.date for img in self]
 
     def dates_as_int(self) -> list[int]:
+        """List of image dates as 8-length integers."""
         return [int(img.date[:8]) for img in self]
 
     @property
     def image_paths(self) -> list[str]:
+        """List of image paths."""
         return [img.path for img in self]
 
     @property
     def images(self) -> list["Image"]:
+        """List of images in the Collection."""
         try:
             return self._images
         except AttributeError:
@@ -1823,26 +1936,30 @@ class ImageCollection(ImageBase):
             return self._index
 
     def __repr__(self) -> str:
+        """String representation."""
         return f"{self.__class__.__name__}({len(self)})"
 
     @property
-    def centroid(self) -> Point:
-        return self.unary_union.centroid
-
-    @property
     def unary_union(self) -> Polygon | MultiPolygon:
+        """(Multi)Polygon representing the union of all image bounds."""
         return unary_union([img.unary_union for img in self])
 
     @property
     def bounds(self) -> tuple[int, int, int, int]:
+        """Total bounds for all Images combined."""
         return get_total_bounds([img.bounds for img in self])
 
     @property
     def crs(self) -> Any:
+        """Common coordinate reference system of the Images."""
         return get_common_crs([img.crs for img in self])
 
 
 def concat_image_collections(collections: Sequence[ImageCollection]) -> ImageCollection:
+    """Union multiple ImageCollections together.
+
+    Same as using the union operator |.
+    """
     resolutions = {x.res for x in collections}
     if len(resolutions) > 1:
         raise ValueError(f"resoultion mismatch. {resolutions}")
@@ -1854,7 +1971,7 @@ def concat_image_collections(collections: Sequence[ImageCollection]) -> ImageCol
     out_collection = first_collection.__class__(
         images,
         level=level,
-        **first_collection.common_init_kwargs,
+        **first_collection._common_init_kwargs,
         # res=list(resolutions)[0],
     )
     out_collection._all_filepaths = list(
@@ -1865,56 +1982,7 @@ def concat_image_collections(collections: Sequence[ImageCollection]) -> ImageCol
     return out_collection
 
 
-def get_gradient(band: Band, degrees: bool = False, copy: bool = True) -> Band:
-    """Get the slope of an elevation band.
-
-    Calculates the absolute slope between the grid cells
-    based on the image resolution.
-
-    For multi-band images, the calculation is done for each band.
-
-    Args:
-        band: band instance.
-        degrees: If False (default), the returned values will be in ratios,
-            where a value of 1 means 1 meter up per 1 meter forward. If True,
-            the values will be in degrees from 0 to 90.
-        copy: Whether to copy or overwrite the original Raster.
-            Defaults to True.
-
-    Returns:
-        The class instance with new array values, or a copy if copy is True.
-
-    Examples:
-    --------
-    Making an array where the gradient to the center is always 10.
-
-    >>> import sgis as sg
-    >>> import numpy as np
-    >>> arr = np.array(
-    ...         [
-    ...             [100, 100, 100, 100, 100],
-    ...             [100, 110, 110, 110, 100],
-    ...             [100, 110, 120, 110, 100],
-    ...             [100, 110, 110, 110, 100],
-    ...             [100, 100, 100, 100, 100],
-    ...         ]
-    ...     )
-
-    Now let's create a Raster from this array with a resolution of 10.
-
-    >>> band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50), res=10)
-
-    The gradient will be 1 (1 meter up for every meter forward).
-    The calculation is by default done in place to save memory.
-
-    >>> band.gradient()
-    >>> band.values
-    array([[0., 1., 1., 1., 0.],
-        [1., 1., 1., 1., 1.],
-        [1., 1., 0., 1., 1.],
-        [1., 1., 1., 1., 1.],
-        [0., 1., 1., 1., 0.]])
-    """
+def _get_gradient(band: Band, degrees: bool = False, copy: bool = True) -> Band:
     copied = band.copy() if copy else band
     if len(copied.values.shape) == 3:
         return np.array(
@@ -2007,7 +2075,7 @@ class _RegexError(ValueError):
 class PathlessImageError(ValueError):
     """Exception for when Images, Bands or ImageCollections have no path."""
 
-    def __init__(self, instance: ImageBase) -> None:
+    def __init__(self, instance: _ImageBase) -> None:
         """Initialise error class."""
         self.instance = instance
 
@@ -2369,6 +2437,8 @@ def _zonal_one_pair(i: int, poly: Polygon, band: Band, aggfunc, array_func, func
 
 
 class Sentinel2Config:
+    """Holder of Sentinel 2 regexes, band_ids etc."""
+
     image_regexes: ClassVar[str] = (
         config.SENTINEL2_IMAGE_REGEX,
     )  # config.SENTINEL2_MOSAIC_IMAGE_REGEX,)
@@ -2388,6 +2458,8 @@ class Sentinel2Config:
 
 
 class Sentinel2CloudlessConfig(Sentinel2Config):
+    """Holder of regexes, band_ids etc. for Sentinel 2 cloudless mosaic."""
+
     image_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_IMAGE_REGEX,)
     filename_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_FILENAME_REGEX,)
     cloud_band: ClassVar[None] = None
@@ -2400,6 +2472,8 @@ class Sentinel2Band(Sentinel2Config, Band):
 
 
 class Sentinel2Image(Sentinel2Config, Image):
+    """Image with Sentinel2 specific name variables and regexes."""
+
     cloud_cover_regexes: ClassVar[tuple[str]] = config.CLOUD_COVERAGE_REGEXES
     band_class: ClassVar[Sentinel2Band] = Sentinel2Band
 
