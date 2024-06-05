@@ -26,7 +26,7 @@ class Examine:
     can then be repeated.
 
     Examples:
-    --------
+    ---------
     Create the examiner.
 
     >>> import sgis as sg

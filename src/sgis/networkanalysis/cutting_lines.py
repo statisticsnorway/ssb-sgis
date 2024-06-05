@@ -52,7 +52,7 @@ def split_lines_by_nearest_point(
         ValueError: If the crs of the input data differs.
 
     Examples:
-    --------
+    ---------
     >>> from sgis import read_parquet_url, split_lines_by_nearest_point
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
     >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
@@ -255,7 +255,7 @@ def cut_lines(
         This method is time consuming for large networks and low 'max_length'.
 
     Examples:
-    --------
+    ---------
     >>> from sgis import read_parquet_url, cut_lines
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
     >>> roads.length.describe().round(1)
@@ -327,7 +327,7 @@ def cut_lines_once(
             Defaults to False.
 
     Examples:
-    --------
+    ---------
     >>> from sgis import cut_lines_once, to_gdf
     >>> import pandas as pd
     >>> from shapely.geometry import LineString

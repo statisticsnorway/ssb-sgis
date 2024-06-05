@@ -88,7 +88,7 @@ class Raster:
 
 
     Examples:
-    --------
+    ---------
     Read tif file.
 
     >>> import sgis as sg
@@ -617,7 +617,7 @@ class Raster:
             The class instance with new array values, or a copy if copy is True.
 
         Examples:
-        --------
+        ---------
         Making an array where the gradient to the center is always 10.
 
         >>> import sgis as sg
@@ -1546,7 +1546,7 @@ def get_gradient(raster: Raster, degrees: bool = False, copy: bool = False) -> R
         The class instance with new array values, or a copy if copy is True.
 
     Examples:
-    --------
+    ---------
     Making an array where the gradient to the center is always 10.
 
     >>> import sgis as sg

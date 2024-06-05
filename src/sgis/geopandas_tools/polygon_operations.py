@@ -70,7 +70,7 @@ def get_polygon_clusters(
         One or more GeoDataFrames (same amount as was given) with a new cluster column.
 
     Examples:
-    --------
+    ---------
     Create geometries with three clusters of overlapping polygons.
 
     >>> import sgis as sg
@@ -250,7 +250,7 @@ def eliminate_by_longest(
         If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
 
     Examples:
-    --------
+    ---------
     Create two polygons with a sliver in between:
 
     >>> sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)]))
@@ -426,7 +426,7 @@ def eliminate_by_largest(
         If multiple GeoDataFrame are passed as 'gdf', they are returned as a tuple.
 
     Examples:
-    --------
+    ---------
     Create two polygons with a sliver in between:
 
     >>> sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)]))
@@ -803,7 +803,7 @@ def close_all_holes(
         column.
 
     Examples:
-    --------
+    ---------
     Let's create a circle with a hole in it.
 
     >>> point = sg.to_gdf([260000, 6650000], crs=25833)
@@ -892,7 +892,7 @@ def close_small_holes(
         ValueError: If both 'max_m2' and 'max_km2' is given.
 
     Examples:
-    --------
+    ---------
     Let's create a circle with a hole in it.
 
     >>> point = sg.to_gdf([260000, 6650000], crs=25833)

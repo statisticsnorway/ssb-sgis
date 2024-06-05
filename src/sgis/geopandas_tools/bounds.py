@@ -37,7 +37,7 @@ class Gridlooper:
             Defaults to True.
 
     Examples:
-    --------
+    ---------
     Get some points and some polygons.
 
     >>> import sgis as sg
@@ -222,7 +222,7 @@ def gridloop(
         TypeError: If args or kwargs has a wrong type
 
     Examples:
-    --------
+    ---------
     Get some points and some polygons.
 
     >>> import sgis as sg
@@ -613,7 +613,7 @@ def bounds_to_polygon(
         GeoDataFrame of box polygons with length and index of 'gdf'.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
@@ -648,7 +648,7 @@ def bounds_to_points(
         GeoDataFrame of multipoints with same length and index as 'gdf'.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf

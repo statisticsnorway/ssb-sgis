@@ -204,7 +204,7 @@ def coordinate_array(
         np.ndarray of np.ndarrays of coordinates.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> points = sg.to_gdf(
     ...     [
@@ -288,7 +288,7 @@ def to_gdf(
         A GeoDataFrame with one column, the geometry column.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> coords = (10, 60)
     >>> sg.to_gdf(coords, crs=4326)

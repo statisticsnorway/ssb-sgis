@@ -47,6 +47,8 @@ LEGEND_KWARGS = {
     "label_sep",
     "label_suffix",
     "rounding",
+    "facecolor",
+    "labelcolor",
 }
 
 LOWERCASE_WORDS = {
@@ -86,27 +88,8 @@ class Legend:
     If a numeric column is used, additional attributes can be found in the
     ContinousLegend class.
 
-    Attributes:
-        title: Legend title. Defaults to the column name if used in the
-            ThematicMap class.
-        position: The legend's x and y position in the plot, specified as a tuple of
-            x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
-            in the bottom right corner, (0.2, 0.8) for the upper left corner.
-        fontsize: Text size of the legend labels. Defaults to the size of
-            the ThematicMap class.
-        title_fontsize: Text size of the legend title. Defaults to the
-            size * 1.2 of the ThematicMap class.
-        markersize: Size of the color circles in the legend. Defaults to the size of
-            the ThematicMap class.
-        framealpha: Transparency of the legend background.
-        edgecolor: Color of the legend border. Defaults to #0f0f0f (almost black).
-        kwargs: Stores additional keyword arguments taken by the matplotlib legend
-            method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
-            'm' is the name of the ThematicMap instance. See here:
-            https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
-
     Examples:
-    --------
+    ---------
     Create ten points with a numeric column from 0 to 9.
 
     >>> import sgis as sg
@@ -237,6 +220,11 @@ class Legend:
                     setattr(self, key, value)
                 except Exception:
                     setattr(self, f"_{key}", value)
+
+    @property
+    def valid_keywords(self) -> set[str]:
+        """List all valid keywords for the class initialiser."""
+        return LEGEND_KWARGS
 
     def _get_legend_sizes(self, size: int | float, kwargs: dict) -> None:
         """Adjust fontsize and markersize to size kwarg."""
@@ -427,10 +415,6 @@ class ContinousLegend(Legend):
             Defaults to None.
         label_sep: Text to put in between the two numbers in each color group in
             the legend. Defaults to '-'.
-        rounding: Number of decimals in the labels. By default, the rounding
-            depends on the column's maximum value and standard deviation.
-            OBS: The bins will not be rounded, meaning the labels might be wrong
-            if not bins are set manually.
         thousand_sep: Separator between each thousand for large numbers. Defaults to
             None, meaning no separator.
         decimal_mark: Text to use as decimal point. Defaults to None, meaning '.' (dot)
@@ -438,7 +422,7 @@ class ContinousLegend(Legend):
             decimal mark.
 
     Examples:
-    --------
+    ---------
     Create ten random points with a numeric column from 0 to 9.
 
     >>> import sgis as sg
@@ -724,7 +708,13 @@ class ContinousLegend(Legend):
 
     @property
     def rounding(self) -> int:
-        """Number rounding."""
+        """Number of decimals in the labels.
+
+        By default, the rounding
+        depends on the column's maximum value and standard deviation.
+        OBS: The bins will not be rounded, meaning the labels might be wrong
+        if not bins are set manually.
+        """
         return self._rounding
 
     @rounding.setter

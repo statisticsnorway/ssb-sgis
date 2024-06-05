@@ -119,12 +119,12 @@ def explore(
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See Also:
-    --------
+    ---------
     samplemap: same functionality, but shows only a random area of a given size.
     clipmap: same functionality, but shows only the areas clipped by a given mask.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
@@ -275,12 +275,12 @@ def samplemap(
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See Also:
-    --------
+    ---------
     explore: Same functionality, but shows the entire area of the geometries.
     clipmap: Same functionality, but shows only the areas clipped by a given mask.
 
     Examples:
-    --------
+    ---------
     >>> from sgis import read_parquet_url, samplemap
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
     >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
@@ -391,7 +391,7 @@ def clipmap(
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See Also:
-    --------
+    ---------
     explore: same functionality, but shows the entire area of the geometries.
     samplemap: same functionality, but shows only a random area of a given size.
     """

@@ -32,7 +32,7 @@ def traveling_salesman_problem(
         List of Points making up the traveling salesman's path.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> from shapely.geometry import LineString
     >>> points = sg.to_gdf(

@@ -48,7 +48,7 @@ def snap_within_distance(
         vertices.
 
     Examples:
-    --------
+    ---------
     Create som points.
 
     >>> from sgis import snap_within_distance, to_gdf
@@ -136,7 +136,7 @@ def snap_all(
         vertices.
 
     Examples:
-    --------
+    ---------
     Create som points.
 
     >>> from sgis import snap_all, to_gdf

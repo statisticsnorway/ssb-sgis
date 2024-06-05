@@ -776,7 +776,7 @@ class Band(_ImageBandBase):
             The class instance with new array values, or a copy if copy is True.
 
         Examples:
-        --------
+        ---------
         Making an array where the gradient to the center is always 10.
 
         >>> import sgis as sg

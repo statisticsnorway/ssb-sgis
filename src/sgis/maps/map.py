@@ -103,6 +103,7 @@ class Map:
         nan_label: str = "Missing",
         nan_color="#c2c2c2",
         scheme: str = DEFAULT_SCHEME,
+        cmap: str | None = None,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -116,6 +117,8 @@ class Map:
             nan_label: Label for missing data.
             nan_color: Color for missing data.
             scheme: Classification scheme to be used.
+            cmap (str): Colormap of the plot. See:
+                https://matplotlib.org/stable/tutorials/colors/colormaps.html
             **kwargs: Arbitrary keyword arguments.
         """
         gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
@@ -125,7 +128,7 @@ class Map:
         self._k = k
         self.nan_label = nan_label
         self.nan_color = nan_color
-        self._cmap = kwargs.pop("cmap", None)
+        self._cmap = cmap
         self.scheme = scheme
 
         # need to get the object names of the gdfs before copying. Only getting,

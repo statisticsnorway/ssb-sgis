@@ -133,7 +133,7 @@ class Parallel:
             'iterable'.
 
         Examples:
-        --------
+        ---------
         Multiply each list element by 2.
 
         >>> iterable = [1, 2, 3]
@@ -256,7 +256,7 @@ class Parallel:
             'iterable'.
 
         Examples:
-        --------
+        ---------
         Multiply each list element by 2.
 
         >>> iterable = [(1, 2), (2, 3), (3, 4)]

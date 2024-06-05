@@ -127,7 +127,7 @@ def buffdiss(
         A buffered GeoDataFrame where geometries are dissolved.
 
     Examples:
-    --------
+    ---------
     Create some random points.
 
     >>> import sgis as sg

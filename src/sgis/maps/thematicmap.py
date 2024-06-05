@@ -32,13 +32,17 @@ MAP_KWARGS = {
     "scheme",
     "k",
     "column",
+    "title_color",
+    "facecolor",
+    "labelcolor",
+    "nan_color",
+    "bg_gdf_color",
 }
 
 
 def prettify_number(x: int | float, rounding: int) -> int:
-    if abs(x) < abs(rounding):
-        return int(x)
-    return int(x // abs(rounding) * abs(rounding))
+    rounding = int(float(f"1e+{abs(rounding)}"))
+    return int(x // rounding * rounding)
 
 
 def prettify_bins(bins: list[int | float], rounding: int) -> list[int]:
@@ -46,7 +50,7 @@ def prettify_bins(bins: list[int | float], rounding: int) -> list[int]:
         (
             prettify_number(x, rounding)
             if i != len(bins) - 1
-            else x
+            else int(x)
             # else prettify_number(x, rounding) + abs(rounding)
         )
         for i, x in enumerate(bins)
@@ -54,39 +58,104 @@ def prettify_bins(bins: list[int | float], rounding: int) -> list[int]:
 
 
 class ThematicMap(Map):
-    """Class for creating static maps with geopandas and matplotlib.
+    """Class for making static maps.
+
+    Args:
+        *gdfs: One or more GeoDataFrames.
+        column: The name of the column to plot.
+        title: Title of the plot.
+        size: Width and height of the plot in inches. Fontsize of title and legend is
+            adjusted accordingly. Defaults to 25.
+        dark: If False (default), the background will be white and the text black. If
+            True, the background will be black and the text white. When True, the
+            default cmap is "viridis", and when False, the default is red to purple
+            (RdPu).
+        cmap: Colormap of the plot. See:
+            https://matplotlib.org/stable/tutorials/colors/colormaps.html
+        scheme: How to devide numeric values into categories. Defaults to
+            "naturalbreaks".
+        k: Number of color groups.
+        bins: For numeric columns. List of numbers that define the
+            maximum value for the color groups.
+        nan_label: Label for missing data.
+        legend_kwargs: Attributes for the legend. E.g.:
+            title: Legend title. Defaults to the column name.
+            rounding: If positive number, it will round floats to n decimals.
+                If negative, eg. -2, the number 3429 is rounded to 3400.
+                By default, the rounding depends on the column's maximum value
+                and standard deviation.
+            position: The legend's x and y position in the plot. By default, it's
+                decided dynamically by finding the space with most distance to
+                the geometries. To be specified as a tuple of
+                x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
+                in the bottom right corner, (0.2, 0.8) for the upper left corner.
+            pretty_labels: Whether to capitalize words in text categories.
+            label_suffix: For numeric columns. The text to put after each number
+                in the legend labels. Defaults to None.
+            label_sep: For numeric columns. Text to put in between the two numbers
+                in each color group in the legend. Defaults to '-'.
+            thousand_sep: For numeric columns. Separator between each thousand for
+                large numbers. Defaults to None, meaning no separator.
+            decimal_mark: For numeric columns. Text to use as decimal point.
+                Defaults to None, meaning '.' (dot) unless 'thousand_sep' is
+                '.'. In this case, ',' (comma) will be used as decimal mark.
+        **kwargs: Additional attributes for the map. E.g.:
+            title_color (str): Color of the title font.
+            title_fontsize (int): Color of the title font.
+            cmap_start (int): Start position for the color palette.
+            cmap_stop (int): End position for the color palette.
+            facecolor (str): Background color.
+            labelcolor (str): Background color.
+            nan_color: Color for missing data.
 
     Examples:
     --------
     >>> import sgis as sg
-    >>> points = sg.random_points(100).pipe(sg.buff, np.random.rand(100))
-    >>> points2 = sg.random_points(100).pipe(sg.buff, np.random.rand(100))
+    >>> points = sg.random_points(100, loc=1000).pipe(sg.buff, np.random.rand(100) * 100)
+    >>> points2 = sg.random_points(100, loc=1000).pipe(sg.buff, np.random.rand(100) * 100)
+
 
     Simple plot with legend and title.
 
-    >>> m = sg.ThematicMap(points, points2, "area")
-    >>> m.title = "Area of random circles"
+    >>> m = sg.ThematicMap(points, points2, column="area", title="Area of random circles")
     >>> m.plot()
 
-    Plot with custom legend units (label_suffix) and separator (label_sep).
+    Plot with custom legend units (label_suffix) and thousand separator.
+    And with rounding set to -2, meaning e.g. 3429 is rounded to 3400.
+    If rounding was set to positive 2, 3429 would be rounded to 3429.00.
 
-    >>> m = sg.ThematicMap(points, points2, "area")
-    >>> m.title = "Area of random circles"
-    >>> m.legend.label_suffix = "m2"
-    >>> m.legend.label_sep = "to"
+    >>> m = sg.ThematicMap(
+    ...     points,
+    ...     points2,
+    ...     column="area",
+    ...     title = "Area of random circles",
+    ...     legend_kwargs=dict(
+    ...         rounding=-2,
+    ...         thousand_sep=" ",
+    ...         label_sep="to",
+    ...     ),
+    ... )
     >>> m.plot()
 
-    With custom bins and legend labels.
+    With custom bins for the categories, and other customizations.
 
-    >>> m = sg.ThematicMap(points, points2, "area")
-    >>> m.title = "Area of random circles"
-    >>> m.bins = [1, 2, 3]
-    >>> m.legend.labels = [
-    ...     f"{int(round(min(points.length),0))} to 1",
-    ...     "1 to 2",
-    ...     "2 to 3",
-    ...     f"3 to {int(round(max(points.length),0))}",
-    ... ]
+    >>> m = sg.ThematicMap(
+    ...     points,
+    ...     points2,
+    ...     column="area",
+    ...     cmap="Greens",
+    ...     cmap_start=50,
+    ...     cmap_stop=255,
+    ...     nan_label="Missing",
+    ...     title = "Area of random circles",
+    ...     bins = [5000, 10000, 15000, 20000],
+    ...     legend_kwargs=dict(
+    ...         thousand_sep=" ",
+    ...         label_sep="to",
+    ...         decimal_mark=".",
+    ...         label_suffix="m2",
+    ...     ),
+    ... )
     >>> m.plot()
     """
 
@@ -94,41 +163,29 @@ class ThematicMap(Map):
         self,
         *gdfs: GeoDataFrame,
         column: str | None = None,
+        title: str | None = None,
         size: int = 25,
         dark: bool = False,
+        cmap: str | None = None,
+        scheme: str = "naturalbreaks",
+        k: int = 5,
+        bins: tuple[float] | None = None,
+        nan_label: str = "Missing",
         legend_kwargs: dict | None = None,
         **kwargs,
     ) -> None:
-        """Initialiser.
+        """Initialiser."""
+        super().__init__(
+            *gdfs,
+            column=column,
+            title=title,
+            scheme=scheme,
+            k=k,
+            bins=bins,
+            nan_label=nan_label,
+        )
 
-        Args:
-            *gdfs: One or more GeoDataFrames.
-            column: The name of the column to plot.
-            size: Width and height of the plot in inches. Fontsize of title and legend is
-                adjusted accordingly. Defaults to 25.
-            dark: If False (default), the background will be white and the text black. If
-                True, the background will be black and the text white. When True, the
-                default cmap is "viridis", and when False, the default is red to purple
-                (RdPu).
-            legend_kwargs: Attributes for the legend.
-            **kwargs: Additional attributes for the map. E.g.:
-                size (int): Width and height of the plot in inches.
-                k (int): Number of color groups.
-                legend (Legend): The legend object of the map. The legend holds its own set of
-                    attributes. See the Legend class for details.
-                title (str): Title of the plot.
-                title_color (str): Color of the title font.
-                title_fontsize (int): Color of the title font.
-                bins (list[int | float]): For numeric columns. List of numbers that define the
-                    maximum value for the color groups.
-                cmap (str): Colormap of the plot. See:
-                    https://matplotlib.org/stable/tutorials/colors/colormaps.html
-                cmap_start (int): Start position for the color palette.
-                cmap_stop (int): End position for the color palette.
-                facecolor (str): Background color.
-        """
-        super().__init__(*gdfs, column=column)
-
+        self._cmap = cmap
         self._size = size
         self._dark = dark
         self.background_gdfs = []
@@ -140,7 +197,7 @@ class ThematicMap(Map):
         black = kwargs.pop("black", None)
         self._dark = self._dark or black
 
-        if not self._is_categorical:
+        if not self.cmap and not self._is_categorical:
             self._choose_cmap()
 
         self._dark_or_light()
@@ -165,6 +222,11 @@ class ThematicMap(Map):
                 setattr(self.legend, key, value)
             except Exception:
                 setattr(self.legend, f"_{key}", value)
+
+    @property
+    def valid_keywords(self) -> set[str]:
+        """List all valid keywords for the class initialiser."""
+        return MAP_KWARGS
 
     def change_cmap(self, cmap: str, start: int = 0, stop: int = 256) -> "ThematicMap":
         """Change the color palette of the plot.
@@ -438,8 +500,6 @@ class ThematicMap(Map):
             if not self._is_categorical:
                 self.change_cmap("RdPu", start=23)
 
-        self._create_legend()
-
     @property
     def dark(self) -> bool:
         """Whether to use dark background and light text colors."""
@@ -449,6 +509,7 @@ class ThematicMap(Map):
     def dark(self, new_value: bool):
         self._dark = new_value
         self._dark_or_light()
+        self._create_legend()
 
     @property
     def title_fontsize(self) -> int:

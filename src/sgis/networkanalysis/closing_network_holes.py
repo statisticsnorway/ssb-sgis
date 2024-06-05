@@ -44,7 +44,7 @@ def close_network_holes(
         NetworkAnalysis. These values must be filled before analysis.
 
     Examples:
-    --------
+    ---------
     Read road data with small gaps.
 
     >>> import sgis as sg
@@ -157,7 +157,7 @@ def close_network_holes_to_deadends(
         The input GeoDataFrame with new lines added.
 
     Examples:
-    --------
+    ---------
     Read road data with small gaps.
 
     >>> import sgis as sg
