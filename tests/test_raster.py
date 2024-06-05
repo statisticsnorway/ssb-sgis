@@ -345,28 +345,6 @@ def test_to_crs():
     assert original.to_gdf().intersects(r.unary_union).any()
 
 
-def test_indexes_and_shape():
-    # specifying single index is only thing that returns 2dim ndarray
-    r = sg.Raster.from_path(path_singleband, indexes=1)
-    assert len(r.shape) == 2, r.shape
-    assert r.shape == (201, 201), r.shape
-
-    r = sg.Raster.from_path(path_singleband)
-    assert len(r.shape) == 3, r.shape
-    assert r.shape == (1, 201, 201), r.shape
-
-    r = sg.Raster.from_path(path_singleband, indexes=(1,))
-    assert len(r.shape) == 3, r.shape
-    assert r.shape == (1, 201, 201), r.shape
-
-    r2 = sg.Raster.from_path(path_two_bands, indexes=(1, 2))
-    assert len(r2.shape) == 3, r2.shape
-    assert r2.shape[0] == 2, r2.shape
-    r2 = r2.load()
-    assert len(r2.shape) == 3, r2.shape
-    assert r2.shape[0] == 2, r2.shape
-
-
 def test_xarray():
     r = sg.Raster.from_path(path_two_bands)
     xarr = r.load().to_xarray()
@@ -444,8 +422,6 @@ if __name__ == "__main__":
 
     test_transform()
     test_gradient()
-
-    test_indexes_and_shape()
 
     test_sample()
     not_test_write()

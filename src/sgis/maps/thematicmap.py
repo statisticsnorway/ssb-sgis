@@ -56,25 +56,6 @@ def prettify_bins(bins: list[int | float], rounding: int) -> list[int]:
 class ThematicMap(Map):
     """Class for creating static maps with geopandas and matplotlib.
 
-    The class takes one or more GeoDataFrames and a column name. The class attributes
-    can then be set to customise the map before plotting.
-
-    Attributes:
-        size (int): Width and height of the plot in inches.
-        k (int): Number of color groups.
-        legend (Legend): The legend object of the map. The legend holds its own set of
-            attributes. See the Legend class for details.
-        title (str): Title of the plot.
-        title_color (str): Color of the title font.
-        title_fontsize (int): Color of the title font.
-        bins (list[int | float]): For numeric columns. List of numbers that define the
-            maximum value for the color groups.
-        cmap (str): Colormap of the plot. See:
-            https://matplotlib.org/stable/tutorials/colors/colormaps.html
-        cmap_start (int): Start position for the color palette.
-        cmap_stop (int): End position for the color palette.
-        facecolor (str): Background color.
-
     Examples:
     --------
     >>> import sgis as sg
@@ -130,8 +111,21 @@ class ThematicMap(Map):
                 default cmap is "viridis", and when False, the default is red to purple
                 (RdPu).
             legend_kwargs: Attributes for the legend.
-            **kwargs: Additional attributes for the map.
-
+            **kwargs: Additional attributes for the map. E.g.:
+                size (int): Width and height of the plot in inches.
+                k (int): Number of color groups.
+                legend (Legend): The legend object of the map. The legend holds its own set of
+                    attributes. See the Legend class for details.
+                title (str): Title of the plot.
+                title_color (str): Color of the title font.
+                title_fontsize (int): Color of the title font.
+                bins (list[int | float]): For numeric columns. List of numbers that define the
+                    maximum value for the color groups.
+                cmap (str): Colormap of the plot. See:
+                    https://matplotlib.org/stable/tutorials/colors/colormaps.html
+                cmap_start (int): Start position for the color palette.
+                cmap_stop (int): End position for the color palette.
+                facecolor (str): Background color.
         """
         super().__init__(*gdfs, column=column)
 
