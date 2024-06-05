@@ -251,6 +251,10 @@ def _image_collection_to_background_map(
         )
         random.shuffle(images)
         images = images[: (max_images - n_added_images)]
+        try:
+            images = list(sorted(images))
+        except Exception:
+            pass
 
     i = -1
     for image in images:
@@ -346,7 +350,7 @@ class Explore(Map):
         prefer_canvas: bool = True,
         measure_control: bool = True,
         geocoder: bool = False,
-        save: str | None = None,
+        out_path: str | None = None,
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
         decimals: int = 6,
@@ -367,13 +371,13 @@ class Explore(Map):
             prefer_canvas: Option.
             measure_control: Whether to include measurement box.
             geocoder: Whether to include search bar for addresses.
-            save: Optional file path to an html file. The map will then
+            out_path: Optional file path to an html file. The map will then
                 be saved instead of displayed.
             show: Whether to show or hide the data upon creating the map.
                 If False, the data can be toggled on later. 'show' can also be
                 a sequence of boolean values the same length as the number of
                 GeoDataFrames.
-            max_images: Maximum number of images (from .tif files etc) to show per
+            max_images: Maximum number of images (Image, ImageCollection, Band) to show per
                 map. Defaults to 15.
             text: Optional text for a text box in the map.
             decimals: Number of decimals in the coordinates.
@@ -386,7 +390,7 @@ class Explore(Map):
         self.prefer_canvas = prefer_canvas
         self.measure_control = measure_control
         self.geocoder = geocoder
-        self.save = save
+        self.out_path = out_path
         self.mask = mask
         self.text = text
         self.decimals = decimals
@@ -646,6 +650,11 @@ class Explore(Map):
             image_overlay.layer_name = Path(label).stem
             image_overlay.add_to(self.map)
 
+    def save(self, path: str) -> None:
+        """Save the map to local disk as an html document."""
+        with open(path, "w") as f:
+            f.write(self.map._repr_html_())
+
     def _explore(self, **kwargs) -> None:
         self.kwargs = self.kwargs | kwargs
 
@@ -654,8 +663,10 @@ class Explore(Map):
         else:
             self._create_continous_map()
 
-        if self.save:
-            with open(os.getcwd() + "/" + self.save.strip(".html") + ".html", "w") as f:
+        if self.out_path:
+            with open(
+                os.getcwd() + "/" + self.out_path.strip(".html") + ".html", "w"
+            ) as f:
                 f.write(self.map._repr_html_())
         elif self.browser:
             run_html_server(self.map._repr_html_())

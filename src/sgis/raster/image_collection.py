@@ -1,4 +1,3 @@
-import abc
 import functools
 import glob
 import itertools
@@ -9,6 +8,7 @@ import re
 import warnings
 from collections.abc import Callable
 from collections.abc import Iterable
+from collections.abc import Iterator
 from collections.abc import Sequence
 from copy import deepcopy
 from json import loads
@@ -58,6 +58,14 @@ except ImportError:
     pass
 
 try:
+    from gcsfs.core import GCSFile
+except ImportError:
+
+    class GCSFile:
+        """Placeholder."""
+
+
+try:
     from torchgeo.datasets.utils import disambiguate_timestamp
 except ImportError:
 
@@ -100,13 +108,13 @@ from .zonal import _zonal_post
 
 if is_dapla():
 
-    def ls_func(*args, **kwargs):
+    def ls_func(*args, **kwargs) -> list[str]:
         return dp.FileClient.get_gcs_file_system().ls(*args, **kwargs)
 
-    def glob_func(*args, **kwargs):
+    def glob_func(*args, **kwargs) -> list[str]:
         return dp.FileClient.get_gcs_file_system().glob(*args, **kwargs)
 
-    def open_func(*args, **kwargs):
+    def open_func(*args, **kwargs) -> GCSFile:
         return dp.FileClient.get_gcs_file_system().open(*args, **kwargs)
 
 else:
@@ -147,7 +155,6 @@ class ImageCollectionGroupBy:
         self, bounds=None, method="median", as_int: bool = True, indexes=None, **kwargs
     ) -> "ImageCollection":
         """Merge each group into separate Bands per band_id, returned as an ImageCollection."""
-
         images = self._run_func_for_collection_groups(
             _merge_by_band,
             method=method,
@@ -215,7 +222,7 @@ class ImageCollectionGroupBy:
         with joblib.Parallel(n_jobs=processes, backend="threading") as parallel:
             return parallel(joblib.delayed(func)(group, **kwargs) for _, group in self)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[tuple[tuple[Any, ...], "ImageCollection"]]:
         """Iterate over the group values and the ImageCollection groups themselves."""
         return iter(self.data)
 
@@ -228,7 +235,7 @@ class ImageCollectionGroupBy:
         return f"{self.__class__.__name__}({len(self)})"
 
 
-class _ImageBase(abc.ABC):
+class _ImageBase:
     image_regexes: ClassVar[str | None] = None
     filename_regexes: ClassVar[str | tuple[str]] = (DEFAULT_FILENAME_REGEX,)
     date_format: ClassVar[str] = "%Y%m%d"  # T%H%M%S"
@@ -363,6 +370,12 @@ class _ImageBase(abc.ABC):
 
 
 class _ImageBandBase(_ImageBase):
+    def intersects(self, other: GeoDataFrame | GeoSeries | Geometry) -> bool:
+        if hasattr(other, "crs") and not pyproj.CRS(self.crs).equals(
+            pyproj.CRS(other.crs)
+        ):
+            raise ValueError(f"crs mismatch: {self.crs} and {other.crs}")
+        return self.unary_union.intersects(to_shapely(other))
 
     @property
     def year(self) -> str:
@@ -426,7 +439,7 @@ class _ImageBandBase(_ImageBase):
 
 
 class Band(_ImageBandBase):
-    """Single image Band."""
+    """Band holding a single 2 dimensional array representing an image band."""
 
     cmap: ClassVar[str | None] = None
 
@@ -444,6 +457,7 @@ class Band(_ImageBandBase):
         _mask: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
         **kwargs,
     ) -> None:
+        """Band initialiser."""
         if isinstance(data, (GeoDataFrame | GeoSeries)):
             if res is None:
                 raise ValueError("Must specify res when data is vector geometries.")
@@ -571,7 +585,6 @@ class Band(_ImageBandBase):
         self, n: int, precision: float = 0.000001, column: str = "value"
     ) -> GeoDataFrame:
         """Get the largest values of the array as polygons in a GeoDataFrame."""
-
         copied = self.copy()
         value_must_be_at_least = np.sort(np.ravel(copied.values))[-n] - (precision or 0)
         copied._values = np.where(copied.values >= value_must_be_at_least, 1, 0)
@@ -785,7 +798,6 @@ class Band(_ImageBandBase):
             [1., 1., 1., 1., 1.],
             [0., 1., 1., 1., 0.]])
         """
-
         copied = self.copy() if copy else self
         copied._values = _get_gradient(copied, degrees=degrees, copy=copy)
         return copied
@@ -899,10 +911,14 @@ class Band(_ImageBandBase):
 
 
 class NDVIBand(Band):
+    """Band for NDVI values."""
+
     cmap: str = "Greens"
 
 
 class Image(_ImageBandBase):
+    """Image consisting of one or more Bands."""
+
     cloud_cover_regexes: ClassVar[tuple[str] | None] = None
     band_class: ClassVar[Band] = Band
 
@@ -918,6 +934,7 @@ class Image(_ImageBandBase):
         _mask: GeoDataFrame | GeoSeries | Geometry | tuple | None = None,
         processes: int = 1,
     ) -> None:
+        """Image initialiser."""
         super().__init__()
 
         self._res = res
@@ -1005,7 +1022,7 @@ class Image(_ImageBandBase):
             self._bands = list(sorted(self._bands))
 
     def get_ndvi(self, red_band: str, nir_band: str) -> NDVIBand:
-
+        """Calculate the NDVI for the Image."""
         red = self[red_band].load().values
         nir = self[nir_band].load().values
 
@@ -1019,13 +1036,14 @@ class Image(_ImageBandBase):
         )
 
     def get_brightness(self, bounds=None, rbg_bands: list[str] | None = None) -> Band:
+        """Get a Band with a brightness score of the Image's RBG bands."""
         if rbg_bands is None:
             try:
                 r, b, g = self.rbg_bands
-            except AttributeError:
+            except AttributeError as err:
                 raise AttributeError(
                     "Must specify rbg_bands when there is no class variable 'rbd_bands'"
-                )
+                ) from err
         else:
             r, b, g = rbg_bands
 
@@ -1046,14 +1064,17 @@ class Image(_ImageBandBase):
 
     @property
     def band_ids(self) -> list[str]:
+        """The Band ids."""
         return [band.band_id for band in self]
 
     @property
     def file_paths(self) -> list[str]:
+        """The Band file paths."""
         return [band.path for band in self]
 
     @property
-    def bands(self):
+    def bands(self) -> list[Band]:
+        """The Image Bands."""
         return self._bands
 
     @property
@@ -1073,6 +1094,7 @@ class Image(_ImageBandBase):
 
     @property
     def crs(self) -> str | None:
+        """Coordinate reference system of the Image."""
         try:
             return self._crs
         except AttributeError:
@@ -1086,6 +1108,7 @@ class Image(_ImageBandBase):
 
     @property
     def bounds(self) -> tuple[int, int, int, int] | None:
+        """Bounds of the Image (minx, miny, maxx, maxy)."""
         try:
             return self._bounds
         except AttributeError:
@@ -1126,6 +1149,7 @@ class Image(_ImageBandBase):
     #     )
 
     def to_gdf(self, column: str = "value") -> GeoDataFrame:
+        """Convert the array to a GeoDataFrame of grid polygons and values."""
         return pd.concat(
             [band.to_gdf(column=column) for band in self], ignore_index=True
         )
@@ -1144,31 +1168,38 @@ class Image(_ImageBandBase):
         copied._bands = [band.load(bounds=boxes, **kwargs) for band in copied]
         return copied
 
-    def get_path(self, band: str) -> str:
-        simple_string_match = [path for path in self.file_paths if str(band) in path]
-        if len(simple_string_match) == 1:
-            return simple_string_match[0]
+    # def get_filepath(self, band: str) -> str:
+    #     simple_string_match = [path for path in self.file_paths if str(band) in path]
+    #     if len(simple_string_match) == 1:
+    #         return simple_string_match[0]
 
-        regexes_matches = []
-        for path in self.file_paths:
-            for pat in self.filename_patterns:
-                match_ = re.search(pat, Path(path).name)
-                if match_ and str(band) == match_.group("band"):
-                    regexes_matches.append(path)
+    #     regexes_matches = []
+    #     for path in self.file_paths:
+    #         for pat in self.filename_patterns:
+    #             match_ = re.search(pat, Path(path).name)
+    #             if match_ and str(band) == match_.group("band"):
+    #                 regexes_matches.append(path)
 
-        if len(regexes_matches) == 1:
-            return regexes_matches[0]
+    #     if len(regexes_matches) == 1:
+    #         return regexes_matches[0]
 
-        if len(regexes_matches) > 1:
-            prefix = "Multiple"
-        elif not regexes_matches:
-            prefix = "No"
+    #     if len(regexes_matches) > 1:
+    #         prefix = "Multiple"
+    #     elif not regexes_matches:
+    #         prefix = "No"
 
-        raise KeyError(
-            f"{prefix} matches for band {band} among paths {[Path(x).name for x in self.file_paths]}"
-        )
+    #     raise KeyError(
+    #         f"{prefix} matches for band {band} among paths {[Path(x).name for x in self.file_paths]}"
+    #     )
 
-    def __getitem__(self, band: str | int | Sequence[str]) -> "Band | Image":
+    def __getitem__(
+        self, band: str | int | Sequence[str] | Sequence[int]
+    ) -> "Band | Image":
+        """Get bands by band_id or integer index.
+
+        Returns a Band if a string or int is passed,
+        returns an Image if a sequence of strings or integers is passed.
+        """
         if isinstance(band, str):
             return self._get_band(band)
         if isinstance(band, int):
@@ -1177,14 +1208,18 @@ class Image(_ImageBandBase):
         copied = self.copy()
         try:
             copied._bands = [copied._get_band(x) for x in band]
-        except TypeError as e:
-            raise TypeError(
-                f"{self.__class__.__name__} indices should be string or list of string. "
-                f"Got {band}"
-            ) from e
+        except TypeError:
+            try:
+                copied._bands = [copied.bands[i] for i in band]
+            except TypeError as e:
+                raise TypeError(
+                    f"{self.__class__.__name__} indices should be string, int "
+                    f"or sequence of string or int. Got {band}."
+                ) from e
         return copied
 
     def __contains__(self, item: str | Sequence[str]) -> bool:
+        """Check if the Image contains a band_id (str) or all band_ids in a sequence."""
         if isinstance(item, str):
             return item in self.band_ids
         return all(x in self.band_ids for x in item)
@@ -1193,10 +1228,12 @@ class Image(_ImageBandBase):
         """Makes Images sortable by date."""
         return self.date < other.date
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Band]:
+        """Iterate over the Bands."""
         return iter(self.bands)
 
     def __len__(self) -> int:
+        """Number of bands in the Image."""
         return len(self.bands)
 
     def __repr__(self) -> str:
@@ -1204,16 +1241,10 @@ class Image(_ImageBandBase):
         return f"{self.__class__.__name__}(bands={self.bands})"
 
     def get_cloud_band(self) -> Band:
+        """Get a Band where self.cloud_values have value 1 and the rest have value 0."""
         scl = self[self.cloud_band].load()
         scl._values = np.where(np.isin(scl.values, self.cloud_values), 1, 0)
         return scl
-
-    def intersects(self, other: GeoDataFrame | GeoSeries | Geometry) -> bool:
-        if hasattr(other, "crs") and not pyproj.CRS(self.crs).equals(
-            pyproj.CRS(other.crs)
-        ):
-            raise ValueError(f"crs mismatch: {self.crs} and {other.crs}")
-        return self.unary_union(to_shapely(other))
 
     # @property
     # def transform(self) -> Affine | None:
@@ -1273,7 +1304,10 @@ class Image(_ImageBandBase):
 
 
 class ImageCollection(_ImageBase):
-    """Collection of Images."""
+    """Collection of Images.
+
+    Loops though Images.
+    """
 
     image_class: ClassVar[Image] = Image
     band_class: ClassVar[Band] = Band
@@ -1591,6 +1625,7 @@ class ImageCollection(_ImageBase):
                 )
                 for img in self
                 for band in img
+                if bounds is None or img.intersects(bounds)
             )
 
         return self
@@ -1768,7 +1803,7 @@ class ImageCollection(_ImageBase):
         """Concatenate the collection with another collection."""
         return concat_image_collections([self, collection])
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Image]:
         """Iterate over the images."""
         return iter(self.images)
 
@@ -1852,12 +1887,12 @@ class ImageCollection(_ImageBase):
 
     @property
     def mint(self) -> float:
-        """ "Min timestamp of the images combined."""
+        """Min timestamp of the images combined."""
         return min(img.mint for img in self)
 
     @property
     def maxt(self) -> float:
-        """ "Max timestamp of the images combined."""
+        """Max timestamp of the images combined."""
         return max(img.maxt for img in self)
 
     @property
@@ -1965,7 +2000,7 @@ def concat_image_collections(collections: Sequence[ImageCollection]) -> ImageCol
         raise ValueError(f"resoultion mismatch. {resolutions}")
     images = list(itertools.chain.from_iterable([x.images for x in collections]))
     levels = {x.level for x in collections}
-    level = list(levels)[0] if len(levels) == 1 else None
+    level = next(iter(levels)) if len(levels) == 1 else None
     first_collection = collections[0]
 
     out_collection = first_collection.__class__(
@@ -2114,19 +2149,19 @@ def _get_regex_match_from_xml_in_local_dir(
 def _extract_regex_match_from_string(
     xml_file: str, regexes: tuple[str]
 ) -> str | dict[str, str]:
-    for regexes in regexes:
-        if isinstance(regexes, dict):
+    for regex in regexes:
+        if isinstance(regex, dict):
             out = {}
-            for key, value in regexes.items():
+            for key, value in regex.items():
                 try:
                     out[key] = re.search(value, xml_file).group(1)
                 except (TypeError, AttributeError):
                     continue
-            if len(out) != len(regexes):
+            if len(out) != len(regex):
                 raise _RegexError()
             return out
         try:
-            return re.search(regexes, xml_file).group(1)
+            return re.search(regex, xml_file).group(1)
         except (TypeError, AttributeError):
             continue
     raise _RegexError()
@@ -2217,7 +2252,9 @@ def _arr_from_gdf(
         elif len(gdf.columns) == 1:
             values = gdf.index
         else:
-            col: str = [col for col in gdf if col != gdf._geometry_column_name][0]
+            col: str = next(
+                iter([col for col in gdf if col != gdf._geometry_column_name])
+            )
             values = gdf[col]
 
     if isinstance(values, pd.MultiIndex):
@@ -2293,11 +2330,11 @@ def _date_is_within(
             assert len(date_min) == 8
             assert isinstance(date_max, str)
             assert len(date_max) == 8
-        except AssertionError:
+        except AssertionError as err:
             raise TypeError(
                 "date_ranges should be a tuple of two 8-charactered strings (start and end date)."
                 f"Got {date_range} of type {[type(x) for x in date_range]}"
-            )
+            ) from err
         if date >= date_min and date <= date_max:
             return True
 
@@ -2359,8 +2396,8 @@ def _array_to_geojson(
             array = array.astype(np.float32)
             return _array_to_geojson_loop(array, transform, processes)
 
-        except Exception as e:
-            raise e.__class__(array.shape, e)
+        except Exception as err:
+            raise err.__class__(array.shape, err) from err
 
 
 def _array_to_geojson_loop(array, transform, processes):
@@ -2482,6 +2519,7 @@ class Sentinel2Image(Sentinel2Config, Image):
         red_band: str = Sentinel2Config.ndvi_bands[0],
         nir_band: str = Sentinel2Config.ndvi_bands[1],
     ) -> NDVIBand:
+        """Calculate the NDVI for the Image."""
         return super().get_ndvi(red_band=red_band, nir_band=nir_band)
 
 
@@ -2493,22 +2531,26 @@ class Sentinel2Collection(Sentinel2Config, ImageCollection):
 
 
 class Sentinel2CloudlessBand(Sentinel2CloudlessConfig, Band):
-    """Band with Sentinel2 specific name variables and regexes."""
+    """Band for cloudless mosaic with Sentinel2 specific name variables and regexes."""
 
 
 class Sentinel2CloudlessImage(Sentinel2CloudlessConfig, Sentinel2Image):
+    """Image for cloudless mosaic with Sentinel2 specific name variables and regexes."""
+
     # image_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_IMAGE_REGEX,)
     # filename_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_FILENAME_REGEX,)
 
     cloud_cover_regexes: ClassVar[None] = None
     band_class: ClassVar[Sentinel2CloudlessBand] = Sentinel2CloudlessBand
 
-    def get_ndvi(
-        self,
-        red_band: str = Sentinel2Config.ndvi_bands[0],
-        nir_band: str = Sentinel2Config.ndvi_bands[1],
-    ) -> NDVIBand:
-        return super().get_ndvi(red_band=red_band, nir_band=nir_band)
+    get_ndvi = Sentinel2Image.get_ndvi
+    # def get_ndvi(
+    #     self,
+    #     red_band: str = Sentinel2Config.ndvi_bands[0],
+    #     nir_band: str = Sentinel2Config.ndvi_bands[1],
+    # ) -> NDVIBand:
+    #     """Calculate the NDVI for the Image."""
+    #     return super().get_ndvi(red_band=red_band, nir_band=nir_band)
 
 
 class Sentinel2CloudlessCollection(Sentinel2CloudlessConfig, ImageCollection):

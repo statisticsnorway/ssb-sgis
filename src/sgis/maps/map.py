@@ -24,6 +24,7 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import drop_inactive_geometry_columns
 from ..geopandas_tools.general import get_common_crs
 from ..helpers import get_object_name
+from ..helpers import unit_is_meters
 from ..raster.image_collection import Band
 from ..raster.image_collection import Image
 from ..raster.image_collection import ImageCollection
@@ -476,7 +477,18 @@ class Map:
         if not self._column:
             return True
 
+        def is_maybe_km2():
+            if "area" in self._column and (
+                "km2" in self._column
+                or "kilomet" in self._column
+                and ("sq" in self._column or "2" in self._column)
+            ):
+                return True
+            else:
+                return False
+
         maybe_area = 1 if "area" in self._column else 0
+        maybe_area_km2 = 1 if is_maybe_km2() else 0
         maybe_length = (
             1 if any(x in self._column for x in ["meter", "metre", "leng"]) else 0
         )
@@ -485,7 +497,10 @@ class Map:
         col_not_present = 0
         for gdf in self._gdfs:
             if self._column not in gdf:
-                if maybe_area:
+                if maybe_area_km2 and unit_is_meters(gdf):
+                    gdf["area_km2"] = gdf.area / 1_000_000
+                    maybe_area_km2 += 1
+                elif maybe_area:
                     gdf["area"] = gdf.area
                     maybe_area += 1
                 elif maybe_length:
@@ -498,6 +513,9 @@ class Map:
                     all_nan += 1
                 return True
 
+        if maybe_area_km2 > 1:
+            self._column = "area_km2"
+            return False
         if maybe_area > 1:
             self._column = "area"
             return False
@@ -751,19 +769,19 @@ class Map:
 def _determine_best_name(obj: Any, column: str | None, i: int) -> str:
     try:
         # Frame 3: actual object name Frame 2: maps.py:explore(). Frame 1: __init__. Frame 0: this function.
-        return get_object_name(obj, start=3)
+        return str(get_object_name(obj, start=3))
     except ValueError:
         if isinstance(obj, GeoSeries) and obj.name:
-            return obj.name
+            return str(obj.name)
         elif isinstance(obj, GeoDataFrame) and len(obj.columns) == 2 and not column:
             series = obj.drop(columns=obj._geometry_column_name).iloc[:, 0]
             if (
                 len(series.unique()) == 1
                 and mean(isinstance(x, str) for x in series) > 0.5
             ):
-                return next(iter(series))
+                return str(next(iter(series)))
             elif series.name:
-                return series.name
+                return str(series.name)
         else:
             # generic label e.g. Image(1)
             return f"{obj.__class__.__name__}({i})"

@@ -157,7 +157,7 @@ def test_ndvi_and_explore():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
-    e = sg.explore(collection, return_explorer=True)
+    e = sg.explore(collection)
     assert e.rasters
     # assert (x := [x["label"] for x in e.raster_data]) == [
     #     f"{img.tile}_{img.date[:8]}" for img in collection
@@ -167,20 +167,19 @@ def test_ndvi_and_explore():
 
     for (tile_id,), tile_collection in collection.groupby("tile"):
 
+        assert tile_collection.tile_id == tile_id
         for img in tile_collection:
             ndvi = img.get_ndvi()
 
             assert (ndvi.cmap) == "Greens"
 
-            e = sg.explore(ndvi, return_explorer=True)
+            e = sg.explore(ndvi)
             assert e.rasters
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
                 "ndvi",
             ], x
 
-            e = sg.explore(
-                ndvi.get_n_largest(n), ndvi.get_n_smallest(n), img, return_explorer=True
-            )
+            e = sg.explore(ndvi.get_n_largest(n), ndvi.get_n_smallest(n), img)
             assert e.rasters
             assert e["labels"] == [
                 f"largest_{n}",
@@ -193,13 +192,13 @@ def test_ndvi_and_explore():
 
             new_img = sg.Image([ndvi], res=10)
 
-            e = sg.explore(new_img, return_explorer=True)
+            e = sg.explore(new_img)
             assert e.rasters
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
                 "new_img",
             ], x
 
-            e = sg.explore(sg.Image([ndvi], res=10), return_explorer=True)
+            e = sg.explore(sg.Image([ndvi], res=10))
             assert e.rasters
             # cannot find an object name since the image is created within the explore constructor
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
@@ -234,12 +233,12 @@ def test_sample():
     # low buffer resolution means the area won't be exactly this
     circle_area_should_be = int((size**2) * 3.14159265359)
 
-    e = sg.explore(collection.sample(1, size=size), return_explorer=True)
+    e = sg.explore(collection.sample(1, size=size))
     assert (x := e.raster_data[0]["arr"].shape) == (40, 40, 3), x
 
     bbox = sg.to_gdf(collection.unary_union, collection.crs)
 
-    e = sg.samplemap(collection, bbox, size=size, return_explorer=True)
+    e = sg.samplemap(collection, bbox, size=size)
     assert len(e.raster_data) in [1, 2], e.raster_data
 
     assert (x := e.raster_data[0]["arr"].shape) == (40, 40, 3), x
@@ -262,11 +261,11 @@ def test_sample():
 
     sample = collection.sample(15, size=size)
     print("as images")
-    e = sg.explore(sample, return_explorer=True)
+    e = sg.explore(sample)
 
     assert len(sample) >= 15, len(sample)
     for img in sample:
-        e = sg.explore(img, return_explorer=True)
+        e = sg.explore(img)
         assert e.rasters
         for band in img:
             arr = band.load().values
@@ -689,7 +688,7 @@ def test_cloud():
         assert isinstance(cloud_arr, sg.Band), cloud_arr
         assert cloud_arr.values.shape == (300, 300), cloud_arr.values.shape
         cloud_polys = img.get_cloud_band().to_gdf().geometry
-        sg.explore(cloud_polys, return_explorer=True)
+        sg.explore(cloud_polys)
         assert isinstance(cloud_polys, GeoSeries), type(cloud_polys)
 
 
@@ -705,8 +704,9 @@ def test_iteration():
     assert isinstance(collection.unary_union, MultiPolygon), collection.unary_union
 
     # one of the imgs has no SCL band
-    n_bands = [13, 12, 13]
-    for i, (n, img) in enumerate(zip(n_bands, collection, strict=False)):
+    # n_bands = [13, 12, 13]
+    # for n, img in zip(n_bands, collection, strict=False):
+    for img in collection:
         assert isinstance(img, sg.Sentinel2Image), type(img)
         assert img.band_ids, img.band_ids
         assert all(x is not None for x in img.band_ids), img.band_ids
@@ -816,7 +816,7 @@ def test_convertion():
 
     gdf = band.to_gdf(column="val")
     from_gdf = sg.Band(gdf, res=band.res)
-    e = sg.explore(from_gdf.to_gdf(), band.to_gdf(), gdf, return_explorer=True)
+    e = sg.explore(from_gdf.to_gdf(), band.to_gdf(), gdf)
     assert len(e._gdfs) == 3
     assert all(len(gdf) == 889 for gdf in e._gdfs), [len(gdf) for gdf in e._gdfs]
     assert all(int(gdf.area.sum()) == 9_000_000 for gdf in e._gdfs), [
@@ -914,14 +914,13 @@ def main():
 
 if __name__ == "__main__":
     main()
-    ssss
-    import cProfile
+#     import cProfile
 
-    cProfile.run(
-        """
-main()
-                 """,
-        sort="cumtime",
-    )
+#     cProfile.run(
+#         """
+# main()
+#                  """,
+#         sort="cumtime",
+#     )
 
 # %%

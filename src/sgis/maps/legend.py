@@ -26,6 +26,51 @@ warnings.filterwarnings(
 pd.options.mode.chained_assignment = None
 
 
+LEGEND_KWARGS = {
+    "title",
+    "size",
+    "position",
+    "fontsize",
+    "title_fontsize",
+    "markersize",
+    "framealpha",
+    "edgecolor",
+    "kwargs",
+    "labelspacing",
+    "title_color",
+    "width",
+    "height",
+    "labels",
+    "pretty_labels",
+}
+
+LOWERCASE_WORDS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "but",
+    "by",
+    "for",
+    "in",
+    "nor",
+    "of",
+    "on",
+    "or",
+    "the",
+    "up",
+}
+
+
+def prettify_label(label: str) -> str:
+    """Replace underscores with spaces and capitalize words that are all lowecase."""
+    return " ".join(
+        word.title() if word.islower() and word not in LOWERCASE_WORDS else word
+        for word in label.replace("_", " ").split()
+    )
+
+
 class Legend:
     """Holds the general attributes of the legend in the ThematicMap class.
 
@@ -121,6 +166,7 @@ class Legend:
     def __init__(
         self,
         title: str | None = None,
+        pretty_labels: bool = True,
         labels: list[str] | None = None,
         position: tuple[float] | None = None,
         markersize: int | None = None,
@@ -135,6 +181,8 @@ class Legend:
         Args:
             title: Legend title. Defaults to the column name if used in the
                 ThematicMap class.
+            pretty_labels: If True, words will be capitalized and underscores turned to spaces.
+                If continous values, numbers will be rounded.
             labels: Labels of the categories.
             position: The legend's x and y position in the plot, specified as a tuple of
                 x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
@@ -163,6 +211,7 @@ class Legend:
             self._fontsize = fontsize
             self._markersize = markersize
 
+        self.pretty_labels = pretty_labels  # to activate the setter
         self.framealpha = framealpha
         self.edgecolor = edgecolor
         self.width = kwargs.pop("width", 0.1)
@@ -172,8 +221,17 @@ class Legend:
 
         self.labels = labels
         self._position = position
-        self.kwargs = kwargs
         self._position_has_been_set = True if position else False
+
+        self.kwargs = {}
+        for key, value in kwargs.items():
+            if key not in LEGEND_KWARGS:
+                self.kwargs[key] = value
+            else:
+                try:
+                    setattr(self, key, value)
+                except Exception:
+                    setattr(self, f"_{key}", value)
 
     def _get_legend_sizes(self, size: int | float, kwargs: dict) -> None:
         """Adjust fontsize and markersize to size kwarg."""
@@ -218,6 +276,8 @@ class Legend:
 
         self._patches, self._categories = [], []
         for category, color in categories_colors.items():
+            if self.pretty_labels:
+                category = prettify_label(category)
             if category == nan_label:
                 self._categories.append(nan_label)
             else:
@@ -236,6 +296,8 @@ class Legend:
             )
 
     def _actually_add_legend(self, ax: matplotlib.axes.Axes) -> matplotlib.axes.Axes:
+        if self.pretty_labels:
+            self.title = prettify_label(self.title)
         legend = ax.legend(
             self._patches,
             self._categories,
@@ -520,8 +582,8 @@ class ContinousLegend(Legend):
     ) -> None:
         # TODO: clean up this messy method
 
-        for attr in self.__dict__.keys():
-            if attr in self.kwargs:
+        for attr in self.kwargs:
+            if attr in self.__dict__:
                 self[attr] = self.kwargs.pop(attr)
 
         self._patches, self._categories = [], []

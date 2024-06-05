@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 
+from .legend import LEGEND_KWARGS
 from .legend import ContinousLegend
 from .legend import Legend
 from .map import Map
@@ -20,7 +21,7 @@ warnings.filterwarnings(
 )
 pd.options.mode.chained_assignment = None
 
-MAP_KWARGS = [
+MAP_KWARGS = {
     "bins",
     "title",
     "title_fontsize",
@@ -31,23 +32,7 @@ MAP_KWARGS = [
     "scheme",
     "k",
     "column",
-]
-LEGEND_KWARGS = [
-    "title",
-    "size",
-    "position",
-    "fontsize",
-    "title_fontsize",
-    "markersize",
-    "framealpha",
-    "edgecolor",
-    "kwargs",
-    "labelspacing",
-    "title_color",
-    "width",
-    "height",
-    "labels",
-]
+}
 
 
 class ThematicMap(Map):
@@ -136,6 +121,8 @@ class ThematicMap(Map):
         self._dark = dark
         self.background_gdfs = []
 
+        legend_kwargs = legend_kwargs or {}
+
         self._title_fontsize = self._size * 2
 
         black = kwargs.pop("black", None)
@@ -157,16 +144,15 @@ class ThematicMap(Map):
             except Exception:
                 setattr(self, f"_{key}", value)
 
-        if legend_kwargs:
-            for key, value in legend_kwargs.items():
-                if key not in LEGEND_KWARGS:
-                    raise TypeError(
-                        f"{self.__class__.__name__} legend_kwargs got an unexpected key {key}"
-                    )
-                try:
-                    setattr(self.legend, key, value)
-                except Exception:
-                    setattr(self.legend, f"_{key}", value)
+        for key, value in legend_kwargs.items():
+            if key not in LEGEND_KWARGS:
+                raise TypeError(
+                    f"{self.__class__.__name__} legend_kwargs got an unexpected key {key}"
+                )
+            try:
+                setattr(self.legend, key, value)
+            except Exception:
+                setattr(self.legend, f"_{key}", value)
 
     def change_cmap(self, cmap: str, start: int = 0, stop: int = 256) -> "ThematicMap":
         """Change the color palette of the plot.
