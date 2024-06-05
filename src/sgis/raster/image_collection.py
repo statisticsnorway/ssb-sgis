@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 from typing import ClassVar
 
-import dapla as dp
 import joblib
 import numpy as np
 import pandas as pd
@@ -36,6 +35,15 @@ from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
 from shapely.geometry import Polygon
 from shapely.geometry import shape
+
+try:
+    import dapla as dp
+    from dapla.gcs import GCSFileSystem
+except ImportError:
+
+    class GCSFileSystem:
+        """Placeholder."""
+
 
 try:
     from rioxarray.exceptions import NoDataInBounds
@@ -451,7 +459,7 @@ class Band(_ImageBandBase):
         bounds: tuple[float, float, float, float] | None = None,
         cmap: str | None = None,
         name: str | None = None,
-        file_system: dp.gcs.GCSFileSystem | None = None,
+        file_system: GCSFileSystem | None = None,
         band_id: str | None = None,
         processes: int = 1,
         _mask: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
@@ -928,7 +936,7 @@ class Image(_ImageBandBase):
         res: int | None = None,
         # crs: Any | None = None,
         single_banded: bool = False,
-        file_system: dp.gcs.GCSFileSystem | None = None,
+        file_system: GCSFileSystem | None = None,
         df: pd.DataFrame | None = None,
         all_file_paths: list[str] | None = None,
         _mask: GeoDataFrame | GeoSeries | Geometry | tuple | None = None,
@@ -1319,7 +1327,7 @@ class ImageCollection(_ImageBase):
         level: str | None,
         single_banded: bool = False,
         processes: int = 1,
-        file_system: dp.gcs.GCSFileSystem | None = None,
+        file_system: GCSFileSystem | None = None,
         df: pd.DataFrame | None = None,
         _mask: Any | None = None,
     ) -> None:

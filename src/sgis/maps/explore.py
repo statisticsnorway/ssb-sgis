@@ -41,9 +41,23 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
-from ..raster.image_collection import Band
-from ..raster.image_collection import Image
-from ..raster.image_collection import ImageCollection
+
+try:
+    from ..raster.image_collection import Band
+    from ..raster.image_collection import Image
+    from ..raster.image_collection import ImageCollection
+except ImportError:
+
+    class Band:
+        """Placeholder."""
+
+    class Image:
+        """Placeholder."""
+
+    class ImageCollection:
+        """Placeholder."""
+
+
 from .httpserver import run_html_server
 from .map import Map
 from .map import _determine_best_name
