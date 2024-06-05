@@ -194,7 +194,7 @@ class Raster:
             **kwargs: Arguments concerning file metadata or
                 spatial properties of the image.
         """
-        warnings.warn("This class is deprecated in favor of Band")
+        warnings.warn("This class is deprecated in favor of Band", stacklevel=1)
         self.filename_regex = filename_regex
         if filename_regex:
             self.filename_pattern = re.compile(self.filename_regex, re.VERBOSE)
@@ -480,6 +480,7 @@ class Raster:
         of the Raster.
 
         Args:
+            reload: Whether to reload the array if already loaded.
             **kwargs: Keyword arguments passed to the rasterio read
                 method.
         """
@@ -1377,14 +1378,14 @@ class Raster:
         #     except AttributeError:
         #         pass
 
-        if not hasattr(self, "_indexes") or getattr(self, "_indexes") is None:
-            new_value = getattr(src, "indexes")
+        if not hasattr(self, "_indexes") or self._indexes is None:
+            new_value = src.indexes
             if new_value == 1 or new_value == (1,):
                 new_value = 1
             self._indexes = new_value
 
-        if not hasattr(self, "_nodata") or getattr(self, "_nodata") is None:
-            new_value = getattr(src, "nodata")
+        if not hasattr(self, "_nodata") or self._nodata is None:
+            new_value = src.nodata
             self._nodata = new_value
 
         # if not hasattr(self, "_indexes") or self._indexes is None:

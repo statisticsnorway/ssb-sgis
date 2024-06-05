@@ -2,6 +2,7 @@ import functools
 import itertools
 import multiprocessing
 import re
+import warnings
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
@@ -10,7 +11,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from typing import ClassVar
-import warnings
 
 import geopandas as gpd
 import numpy as np
@@ -141,7 +141,9 @@ class DataCube:
             copy: If True, makes deep copies of Rasters provided.
             parallelizer: sgis.Parallel instance to handle concurrent operations.
         """
-        warnings.warn("This class is deprecated in favor of ImageCollection")
+        warnings.warn(
+            "This class is deprecated in favor of ImageCollection", stacklevel=1
+        )
 
         self._arrays = None
         self._res = res
@@ -225,6 +227,7 @@ class DataCube:
                 that holds metadata for the files in the directory.
             contains: Filter files containing specific substrings.
             endswith: Filter files that end with specific substrings.
+            bands: One or more band ids to keep.
             filename_regex: Regular expression to match file names
                 and attributes (date, band, tile, resolution).
             parallelizer: sgis.Parallel instance for concurrent file processing.
@@ -302,6 +305,7 @@ class DataCube:
             file_system: File system to use for file operations, used in Dapla environment.
             contains: Filter files containing specific substrings.
             endswith: Filter files that end with specific substrings.
+            bands: One or more band ids to keep.
             filename_regex: Regular expression to match file names.
             **kwargs: Additional keyword arguments to pass to the raster loading function.
 

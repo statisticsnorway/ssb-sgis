@@ -684,9 +684,9 @@ def get_total_bounds(
                     minx, miny, maxx, maxy = to_bbox(x)
                     xs += [minx, maxx]
                     ys += [miny, maxy]
-            except Exception:
+            except Exception as e2:
                 if strict:
-                    raise e
+                    raise e2 from e
                 else:
                     continue
     return min(xs), min(ys), max(xs), max(ys)

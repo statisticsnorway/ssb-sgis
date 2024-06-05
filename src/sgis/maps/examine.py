@@ -3,12 +3,14 @@ import numpy as np
 
 from ..geopandas_tools.bounds import get_total_bounds
 from ..helpers import unit_is_degrees
-from .map import Map
+from ..raster.image_collection import Band
+from ..raster.image_collection import Image
+from ..raster.image_collection import ImageCollection
 from .explore import Explore
+from .map import Map
 from .maps import clipmap
 from .maps import explore
 from .maps import samplemap
-from ..raster.image_collection import Image, Band, ImageCollection
 
 
 class Examine:
