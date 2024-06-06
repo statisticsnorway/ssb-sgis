@@ -56,7 +56,7 @@ def test_thematicmap2():
         3: 12,
         4: 2,
     }, bins_and_category_lengths
-    assert m.legend.title == ["Area Km2"], m.legend.title
+    assert m.legend.title == "Area Km2", m.legend.title
 
 
 @pytest.mark.skip(reason="This test requires GUI")
