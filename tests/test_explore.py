@@ -135,13 +135,6 @@ if 0:
     folium.raster_layers.ImageOverlay(arr, bounds=raster.bounds)
 
 
-def test_torch():
-
-    torch_dataset = sg.torchgeo.Sentinel2(path_sentinel, res=10)
-
-    sg.explore(torch_dataset, "value")
-
-
 def test_image_collection():
 
     collection = sg.Sentinel2Collection(path_sentinel, res=10, level="L2A")
