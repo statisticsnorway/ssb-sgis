@@ -314,7 +314,7 @@ class ThematicMap(Map):
         else:
             kwargs = self._prepare_continous_plot(kwargs)
             if self.legend:
-                if not self.legend.rounding:  # _rounding_has_been_set:
+                if not self.legend.rounding:
                     self.legend._rounding = self.legend._get_rounding(
                         array=self._gdf.loc[~self._nan_idx, self._column]
                     )
@@ -434,7 +434,7 @@ class ThematicMap(Map):
         if self._gdf is not None and len(self._gdf):
             self._fix_nans()
 
-        elif self._gdf is not None:
+        if self._gdf is not None:
             colorarray = self._gdf["color"]
             kwargs["color"] = colorarray
         return kwargs

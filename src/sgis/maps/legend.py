@@ -658,14 +658,11 @@ class ContinousLegend(Legend):
                     if (self.rounding or 0) <= 0:
                         cat1 = int(cat1)
                         cat2 = int(cat2 - 1) if not is_last else int(cat2)
-                    elif (self.rounding or 0) > 0:  # i != 0:
+                    elif (self.rounding or 0) > 0:
                         cat1 = round(cat1, self._rounding)
-                        # if i == 0:
-                        # else:
                         cat2 = round(
                             cat2 - float(f"1e-{self._rounding}"), self._rounding
                         )
-                        # cat1 = round(cat1, self._rounding)
                     else:
                         cat1 = round(cat1, self._rounding)
                         cat2 = round(cat2, self._rounding)
@@ -742,4 +739,3 @@ class ContinousLegend(Legend):
     @rounding.setter
     def rounding(self, new_value: int) -> None:
         self._rounding = new_value
-        # self._rounding_has_been_set = True
