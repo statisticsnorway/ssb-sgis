@@ -158,7 +158,7 @@ def test_thematicmap(points_oslo):
         m.plot()
         assert m._k == 5
         assert m.column == "length"
-        assert m.legend.title == "length"
+        assert m.legend.title == "Length"
         assert list(m._unique_colors) == [
             "#fee6e3",
             "#fbb0ba",
@@ -170,7 +170,7 @@ def test_thematicmap(points_oslo):
         assert (m.facecolor, m.title_color, m.bg_gdf_color) == (
             "#fefefe",
             "#0f0f0f",
-            "#ebebeb",
+            "#dbdbdb",
         )
 
     check_colors_bins(points)

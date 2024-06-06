@@ -13,6 +13,7 @@ from geopandas import GeoDataFrame
 from .legend import LEGEND_KWARGS
 from .legend import ContinousLegend
 from .legend import Legend
+from .legend import prettify_bins
 from .map import Map
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -38,23 +39,6 @@ MAP_KWARGS = {
     "nan_color",
     "bg_gdf_color",
 }
-
-
-def prettify_number(x: int | float, rounding: int) -> int:
-    rounding = int(float(f"1e+{abs(rounding)}"))
-    return int(x // rounding * rounding)
-
-
-def prettify_bins(bins: list[int | float], rounding: int) -> list[int]:
-    return [
-        (
-            prettify_number(x, rounding)
-            if i != len(bins) - 1
-            else int(x)
-            # else prettify_number(x, rounding) + abs(rounding)
-        )
-        for i, x in enumerate(bins)
-    ]
 
 
 class ThematicMap(Map):
@@ -185,7 +169,6 @@ class ThematicMap(Map):
             nan_label=nan_label,
         )
 
-        self._cmap = cmap
         self._size = size
         self._dark = dark
         self.background_gdfs = []
@@ -202,6 +185,9 @@ class ThematicMap(Map):
 
         self._dark_or_light()
         self._create_legend()
+
+        if cmap:
+            self._cmap = cmap
 
         for key, value in kwargs.items():
             if key not in MAP_KWARGS:
@@ -293,7 +279,7 @@ class ThematicMap(Map):
         else:
             kwargs = self._prepare_continous_plot(kwargs)
             if self.legend:
-                if not self.legend._rounding_has_been_set:
+                if not self.legend.rounding:  # _rounding_has_been_set:
                     self.legend._rounding = self.legend._get_rounding(
                         array=self._gdf.loc[~self._nan_idx, self._column]
                     )
@@ -373,11 +359,12 @@ class ThematicMap(Map):
             return kwargs
 
         else:
-
             if self.legend.rounding and self.legend.rounding < 0:
                 self.bins = prettify_bins(self.bins, self.legend.rounding)
-                self.legend.rounding = None
-                self.legend._rounding_has_been_set = True
+                self.bins = list({round(bin_, 5) for bin_ in self.bins})
+                self.bins.sort()
+                # self.legend._rounding_was = self.legend.rounding
+                # self.legend.rounding = None
 
             classified = self._classify_from_bins(self._gdf, bins=self.bins)
             classified_sequential = self._push_classification(classified)
@@ -386,6 +373,7 @@ class ThematicMap(Map):
             self._bins_unique_values = self._make_bin_value_dict(
                 self._gdf, classified_sequential
             )
+
             colorarray = self._unique_colors[classified_sequential]
             kwargs["color"] = colorarray
 

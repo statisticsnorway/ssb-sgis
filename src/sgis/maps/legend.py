@@ -78,6 +78,30 @@ def prettify_label(label: str) -> str:
     )
 
 
+def prettify_number(x: int | float, rounding: int) -> int:
+    rounding = int(float(f"1e+{abs(rounding)}"))
+    rounded_down = int(x // rounding * rounding)
+    rounded_up = rounded_down + rounding
+    diff_up = abs(x - rounded_up)
+    diff_down = abs(x - rounded_down)
+    if diff_up < diff_down:
+        return rounded_up
+    else:
+        return rounded_down
+
+
+def prettify_bins(bins: list[int | float], rounding: int) -> list[int]:
+    return [
+        (
+            prettify_number(x, rounding)
+            if i != len(bins) - 1
+            else int(x)
+            # else prettify_number(x, rounding) + abs(rounding)
+        )
+        for i, x in enumerate(bins)
+    ]
+
+
 class Legend:
     """Holds the general attributes of the legend in the ThematicMap class.
 
@@ -122,33 +146,25 @@ class Legend:
     9  POINT (0.75000 0.25000)       9
 
     Creating the ThematicMap instance will also create the legend. Since we
-    specify a numeric column, a ContinousLegend instance is created.
+    pass a numeric column, a ContinousLegend is created.
 
-    >>> m = sg.ThematicMap(points, column="number")
+    >>> m = sg.ThematicMap(
+    ...     points,
+    ...     column="number"
+    ...     legend_kwargs=dict(
+    ...         title="Meters",
+    ...         label_sep="to",
+    ...         label_suffix="num",
+    ...         rounding=2,
+    ...         position = (0.35, 0.28),
+    ...         title_fontsize=11,
+    ...         fontsize=9,
+    ...         markersize=7.5,
+    ...     ),
+    ... )
+    >>> m.plot()
     >>> m.legend
     <sgis.maps.legend.ContinousLegend object at 0x00000222206738D0>
-
-    Changing the attributes that apply to both numeric and categorical columns.
-
-    >>> m.legend.title = "Meters"
-    >>> m.legend.title_fontsize = 11
-    >>> m.legend.fontsize = 9
-    >>> m.legend.markersize = 7.5
-    >>> m.legend.position = (0.35, 0.28)
-    >>> m.plot()
-
-    Additional matplotlib keyword arguments can be specified as kwargs.
-
-    >>> m.legend.kwargs["labelcolor"] = "red"
-
-    Since we are using a numeric column, the legend is of type ContinousLegend.
-    We can therefore also access the attributes that only apply to numeric columns.
-
-    >>> m.label_sep = "to"
-    >>> m.label_suffix = "num"
-    >>> m.rounding = 2
-    >>> m.plot()
-
     """
 
     def __init__(
@@ -525,7 +541,7 @@ class ContinousLegend(Legend):
         self.label_sep = label_sep
         self.label_suffix = "" if not label_suffix else label_suffix
         self._rounding = rounding
-        self._rounding_has_been_set = True if rounding else False
+        # self._rounding_has_been_set = True if rounding else False
 
     def _get_rounding(self, array: Series | np.ndarray) -> int:
         def isinteger(x):
@@ -555,6 +571,8 @@ class ContinousLegend(Legend):
     def _set_rounding(bins, rounding: int | float) -> list[int | float]:
         if not rounding:
             return [int(round(bin_, 0)) for bin_ in bins]
+        elif rounding <= 0:
+            return [int(round(bin_, rounding)) for bin_ in bins]
         else:
             return [round(bin_, rounding) for bin_ in bins]
 
@@ -628,22 +646,19 @@ class ContinousLegend(Legend):
 
                 min_ = np.min(bin_values[i])
                 max_ = np.max(bin_values[i])
-                min_rounded = self._set_rounding([min_], self._rounding)[0]
-                max_rounded = self._set_rounding([max_], self._rounding)[0]
+
                 if self.pretty_labels:
-                    if (self._rounding or 0) <= 0:
-                        # if (
-                        #     self._rounding is None or self._rounding or self._rounding == 0
-                        # ):  # <= 0:
+                    if i == 0:
+                        cat1 = int(min_) if (self.rounding or 0) <= 0 else min_
+
+                    is_last = i == len(bins) - 2
+                    if is_last:
+                        cat2 = int(max_) if (self.rounding or 0) <= 0 else max_
+
+                    if (self.rounding or 0) <= 0:
                         cat1 = int(cat1)
-                        cat2 = int(cat2 - 1)
-                    # elif i != 0 and (self._rounding or 0) <= 0:
-                    # # if (
-                    # #     self._rounding is None or self._rounding or self._rounding == 0
-                    # # ):  # <= 0:
-                    #     cat2 = int(cat2 - 1)
-                    #     cat1 = int(cat1 - 1)
-                    elif i != 0:
+                        cat2 = int(cat2 - 1) if not is_last else int(cat2)
+                    elif (self.rounding or 0) > 0:  # i != 0:
                         cat1 = round(
                             cat1 - float(f"1e-{self._rounding}"), self._rounding
                         )
@@ -663,7 +678,11 @@ class ContinousLegend(Legend):
                     label = self._get_two_value_label(cat1, cat2)
                     self._categories.append(label)
 
-                elif min_ == max_:
+                    continue
+
+                min_rounded = self._set_rounding([min_], self._rounding)[0]
+                max_rounded = self._set_rounding([max_], self._rounding)[0]
+                if min_ == max_:
                     min_rounded = self._format_number(min_rounded)
                     label = self._get_one_value_label(min_rounded)
                     self._categories.append(label)
@@ -720,4 +739,4 @@ class ContinousLegend(Legend):
     @rounding.setter
     def rounding(self, new_value: int) -> None:
         self._rounding = new_value
-        self._rounding_has_been_set = True
+        # self._rounding_has_been_set = True

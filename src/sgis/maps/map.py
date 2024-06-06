@@ -97,7 +97,6 @@ class Map:
         self,
         *gdfs: GeoDataFrame,
         column: str | None = None,
-        labels: tuple[str] | None = None,
         k: int = 5,
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
@@ -111,7 +110,6 @@ class Map:
         Args:
             *gdfs: Variable length GeoDataFrame list.
             column: The column name to work with.
-            labels: Tuple of labels for each GeoDataFrame.
             k: Number of bins or classes for classification (default: 5).
             bins: Predefined bins for data classification.
             nan_label: Label for missing data.
@@ -133,11 +131,9 @@ class Map:
 
         # need to get the object names of the gdfs before copying. Only getting,
         # not setting, labels. So the original gdfs don't get the label column.
-        self.labels = labels
-        if not self.labels:
-            self.labels: list[str] = [
-                _determine_best_name(gdf, column, i) for i, gdf in enumerate(gdfs)
-            ]
+        self.labels: list[str] = [
+            _determine_best_name(gdf, column, i) for i, gdf in enumerate(gdfs)
+        ]
 
         show = kwargs.pop("show", True)
         if isinstance(show, (int, bool)):
@@ -302,34 +298,66 @@ class Map:
             self._gdf.loc[list(~self._nan_idx), self._column]
         ) < min(bins):
             num = min(self._gdf.loc[list(~self._nan_idx), self._column])
-            if isinstance(num, float):
-                num -= 0.001
+            # if isinstance(num, float):
+            #     num -= (
+            #         float(f"1e-{abs(self.legend.rounding)}")
+            #         if self.legend and self.legend.rounding
+            #         else 0
+            #     )
             bins = [num] + bins
 
         if min(bins) < 0 and min(
             self._gdf.loc[list(~self._nan_idx), self._column]
         ) < min(bins):
             num = min(self._gdf.loc[list(~self._nan_idx), self._column])
-            if isinstance(num, float):
-                num -= 0.001
+            # if isinstance(num, float):
+            #     num -= (
+            #         float(f"1e-{abs(self.legend.rounding)}")
+            #         if self.legend and self.legend.rounding
+            #         else 0
+            #     )
             bins = [num] + bins
 
         if max(bins) > 0 and max(
             self._gdf.loc[self._gdf[self._column].notna(), self._column]
         ) > max(bins):
             num = max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
-            if isinstance(num, float):
-                num += 0.001
+            # if isinstance(num, float):
+            #     num += (
+            #         float(f"1e-{abs(self.legend.rounding)}")
+            #         if self.legend and self.legend.rounding
+            #         else 0
+            #     )
             bins = bins + [num]
 
         if max(bins) < 0 and max(
             self._gdf.loc[self._gdf[self._column].notna(), self._column]
         ) < max(bins):
             num = max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
-            if isinstance(num, float):
-                num += 0.001
+            # if isinstance(num, float):
+            #     num += (
+            #         float(f"1e-{abs(self.legend.rounding)}")
+            #         if self.legend and self.legend.rounding
+            #         else 0
+            #     )
 
             bins = bins + [num]
+
+        def adjust_bin(num: int | float, i: int) -> int | float:
+            if isinstance(num, int):
+                return num
+            adjuster = (
+                float(f"1e-{abs(self.legend.rounding)}")
+                if self.legend and self.legend.rounding
+                else 0
+            )
+            if i == 0:
+                return num - adjuster
+            elif i == len(bins) - 1:
+                return num + adjuster
+            return num
+
+        bins = [adjust_bin(x, i) for i, x in enumerate(bins)]
 
         return bins
 
@@ -602,29 +630,26 @@ class Map:
             n_classes = len(self._unique_values)
 
         if self.scheme == "jenks":
-            try:
-                bins = jenks_breaks(
-                    gdf.loc[list(~self._nan_idx), column], n_classes=n_classes
-                )
-                bins = self._add_minmax_to_bins(bins)
-            except Exception:
-                pass
+            bins = jenks_breaks(
+                gdf.loc[list(~self._nan_idx), column], n_classes=n_classes
+            )
         else:
             binning = classify(
                 np.asarray(gdf.loc[list(~self._nan_idx), column]),
                 scheme=self.scheme,
-                k=self._k,
+                # k=self._k,
+                k=n_classes,
             )
             bins = binning.bins
-            bins = self._add_minmax_to_bins(bins)
+
+        bins = self._add_minmax_to_bins(bins)
 
         unique_bins = list({round(bin_, 5) for bin_ in bins})
         unique_bins.sort()
 
-        if self._k == len(self._unique_values) - 1:
-            return np.array(unique_bins)
-
-        if len(unique_bins) == len(self._unique_values):
+        if self._k == len(self._unique_values) - 1 or len(unique_bins) == len(
+            self._unique_values
+        ):
             return np.array(unique_bins)
 
         if len(unique_bins) == len(bins) - 1:
@@ -661,6 +686,8 @@ class Map:
 
     def _classify_from_bins(self, gdf: GeoDataFrame, bins: np.ndarray) -> np.ndarray:
         """Place the column values into groups."""
+        bins = bins.copy()
+
         # if equal lenght, convert to integer and check for equality
         if len(bins) == len(self._unique_values):
             if gdf[self._column].isna().all():
@@ -674,6 +701,10 @@ class Map:
         else:
             if len(bins) == self._k + 1:
                 bins = bins[1:]
+
+            if (self.legend.rounding or 1) <= 0:
+                bins[0] = bins[0] - 1
+                bins[-1] = bins[-1] + 1
 
             if gdf[self._column].isna().all():
                 return np.repeat(len(bins), len(gdf))
@@ -723,7 +754,7 @@ class Map:
     @cmap.setter
     def cmap(self, new_value: str) -> None:
         self._cmap = new_value
-        if not self._is_categorical():
+        if not self._is_categorical:
             self.change_cmap(cmap=new_value, start=self.cmap_start, stop=self.cmap_stop)
 
     @property
