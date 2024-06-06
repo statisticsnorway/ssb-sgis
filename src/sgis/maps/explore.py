@@ -409,6 +409,7 @@ class Explore(Map):
         self.text = text
         self.decimals = decimals
         self.max_images = max_images
+        self.legend = None
 
         self.browser = browser
         if not self.browser and "show_in_browser" in kwargs:

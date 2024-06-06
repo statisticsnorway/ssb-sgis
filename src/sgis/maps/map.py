@@ -702,7 +702,11 @@ class Map:
             if len(bins) == self._k + 1:
                 bins = bins[1:]
 
-            if (self.legend.rounding or 1) <= 0:
+            if (
+                self.legend
+                and self.legend.rounding
+                and (self.legend.rounding or 1) <= 0
+            ):
                 bins[0] = bins[0] - 1
                 bins[-1] = bins[-1] + 1
 

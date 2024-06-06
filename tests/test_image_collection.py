@@ -167,8 +167,8 @@ def test_ndvi_and_explore():
 
     for (tile_id,), tile_collection in collection.groupby("tile"):
 
-        assert tile_collection.tile_id == tile_id
         for img in tile_collection:
+            assert img.tile == tile_id
             ndvi = img.get_ndvi()
 
             assert (ndvi.cmap) == "Greens"
