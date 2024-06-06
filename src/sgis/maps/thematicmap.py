@@ -331,15 +331,15 @@ class ThematicMap(Map):
                 self._gdf, k=self._k + bool(len(self._nan_idx))
             )
 
-        if __test:
-            return
-
         self._prepare_plot(**kwargs)
 
         if self.legend:
             self.ax = self.legend._actually_add_legend(ax=self.ax)
 
-        self._gdf.plot(legend=include_legend, ax=self.ax, **kwargs)
+        self.ax = self._gdf.plot(legend=include_legend, ax=self.ax, **kwargs)
+
+        if __test:
+            return self
 
     def save(self, path: str) -> None:
         """Save figure as image file.

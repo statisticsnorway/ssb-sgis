@@ -2,11 +2,13 @@
 import inspect
 from pathlib import Path
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
+testdata = str(Path(__file__).parent.parent) + "/tests/testdata"
 
 import sys
 
@@ -17,6 +19,44 @@ import sgis as sg
 # set to True to not actually create the plots
 # because pytest breaks with all these plots on github
 __test = 1
+
+
+def test_thematicmap2():
+    municipalities = gpd.read_parquet(f"{testdata}/municipalities_2017.parquet")
+    m = sg.ThematicMap(
+        municipalities,
+        column="area_km2",
+        title="Municipalities of Norway \nby Area",
+        legend_kwargs=dict(
+            rounding=-2,
+            thousand_sep=" ",
+            position=(0.82, 0.25),
+        ),
+        cmap="Greens",
+        cmap_start=45,
+        title_position=(0.035, 0.9),
+    )
+    m.plot()
+    assert m.cmap == "Greens"
+    assert m.cmap_start == 45
+    assert m.title_kwargs == {"loc": "left", "x": 0.025, "y": 0.92}
+    assert m.bins == [0, 600, 1400, 2700, 5400, 9700], m.bins
+    assert m.legend._categories == [
+        "2  - 599 ",
+        "600  - 1 399 ",
+        "1 400  - 2 699 ",
+        "2 700  - 5 399 ",
+        "5 400  - 9 730 ",
+    ], m.legend._categories
+    bins_and_category_lengths = {k: len(v) for k, v in m._bins_unique_values.items()}
+    assert bins_and_category_lengths == {
+        0: 248,
+        1: 121,
+        2: 43,
+        3: 12,
+        4: 2,
+    }, bins_and_category_lengths
+    assert m.legend.title == ["Area Km2"], m.legend.title
 
 
 @pytest.mark.skip(reason="This test requires GUI")
@@ -567,6 +607,7 @@ def test_thematicmap(points_oslo):
 def main():
     from oslo import points_oslo
 
+    test_thematicmap2()
     test_thematicmap(points_oslo())
 
 
