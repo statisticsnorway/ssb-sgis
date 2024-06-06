@@ -1672,7 +1672,7 @@ class ImageCollection(_ImageBase):
             date_ranges = (bounds.mint, bounds.maxt)
 
         if date_ranges:
-            copied = copied._filter_dates(date_ranges, bounds, copy=False)
+            copied = copied._filter_dates(date_ranges, copy=False)
 
         if max_cloud_coverage is not None:
             copied.images = [
@@ -1698,7 +1698,6 @@ class ImageCollection(_ImageBase):
         date_ranges: (
             tuple[str | None, str | None] | tuple[tuple[str | None, str | None], ...]
         ),
-        bounds: BoundingBox | None = None,
         copy: bool = True,
     ) -> "ImageCollection":
         if not isinstance(date_ranges, (tuple, list)):
@@ -1720,16 +1719,6 @@ class ImageCollection(_ImageBase):
                 img.path, date_ranges, copied.image_patterns, copied.date_format
             )
         ]
-        return copied
-
-        copied.df = copied.df.loc[
-            lambda x: x["image_path"].apply(
-                lambda y: _date_is_within(
-                    y, date_ranges, copied.image_patterns, copied.date_format
-                )
-            )
-        ]
-
         return copied
 
     def _filter_bounds(

@@ -395,9 +395,9 @@ class ThematicMap(Map):
         if self._gdf is not None and len(self._gdf):
             self._fix_nans()
 
-        colorarray = self._gdf["color"]
-
-        kwargs["color"] = colorarray
+        elif self._gdf is not None:
+            colorarray = self._gdf["color"]
+            kwargs["color"] = colorarray
         return kwargs
 
     def _actually_add_legend(self) -> None:

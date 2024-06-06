@@ -595,17 +595,6 @@ class Explore(Map):
 
         return self.clipmap(mask, column, **kwargs)
 
-        gdfs: tuple[GeoDataFrame] = ()
-        for gdf in self._gdfs:
-            gdf = gdf.clip(self.mask)
-            gdfs = gdfs + (gdf,)
-        self._gdfs = gdfs
-        self._gdf = pd.concat(gdfs, ignore_index=True)
-
-        self._get_unique_values()
-
-        self._explore(**kwargs)
-
     def clipmap(
         self,
         mask: Any,
