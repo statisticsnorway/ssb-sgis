@@ -39,7 +39,7 @@ def test_thematicmap2():
     m.plot()
     assert m.cmap == "Greens"
     assert m.cmap_start == 45
-    assert m.title_kwargs == {"loc": "left", "x": 0.025, "y": 0.92}
+    assert m.title_kwargs == {"loc": "left", "x": 0.035, "y": 0.9}
     assert m.bins == [0, 600, 1400, 2700, 5400, 9700], m.bins
     assert m.legend._categories == [
         "2  - 599 ",
