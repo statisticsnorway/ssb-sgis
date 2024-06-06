@@ -37,7 +37,9 @@ MAP_KWARGS = {
     "facecolor",
     "labelcolor",
     "nan_color",
+    "title_kwargs",
     "bg_gdf_color",
+    "title_position",
 }
 
 
@@ -48,6 +50,7 @@ class ThematicMap(Map):
         *gdfs: One or more GeoDataFrames.
         column: The name of the column to plot.
         title: Title of the plot.
+        title_position: Title position. Either "center" (default), "left" or "right".
         size: Width and height of the plot in inches. Fontsize of title and legend is
             adjusted accordingly. Defaults to 25.
         dark: If False (default), the background will be white and the text black. If
@@ -62,7 +65,7 @@ class ThematicMap(Map):
         bins: For numeric columns. List of numbers that define the
             maximum value for the color groups.
         nan_label: Label for missing data.
-        legend_kwargs: Attributes for the legend. E.g.:
+        legend_kwargs: dictionary with attributes for the legend. E.g.:
             title: Legend title. Defaults to the column name.
             rounding: If positive number, it will round floats to n decimals.
                 If negative, eg. -2, the number 3429 is rounded to 3400.
@@ -89,7 +92,7 @@ class ThematicMap(Map):
             cmap_start (int): Start position for the color palette.
             cmap_stop (int): End position for the color palette.
             facecolor (str): Background color.
-            labelcolor (str): Background color.
+            labelcolor (str): Color for the labels.
             nan_color: Color for missing data.
 
     Examples:
@@ -133,6 +136,11 @@ class ThematicMap(Map):
     ...     nan_label="Missing",
     ...     title = "Area of random circles",
     ...     bins = [5000, 10000, 15000, 20000],
+    ...     title_kwargs=dict(
+    ...         loc="left",
+    ...         y=0.93,
+    ...         x=0.025,
+    ...     ),
     ...     legend_kwargs=dict(
     ...         thousand_sep=" ",
     ...         label_sep="to",
@@ -148,6 +156,7 @@ class ThematicMap(Map):
         *gdfs: GeoDataFrame,
         column: str | None = None,
         title: str | None = None,
+        title_position: tuple[float, float] | None = None,
         size: int = 25,
         dark: bool = False,
         cmap: str | None = None,
@@ -156,26 +165,52 @@ class ThematicMap(Map):
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
         legend_kwargs: dict | None = None,
+        title_kwargs: dict | None = None,
         **kwargs,
     ) -> None:
         """Initialiser."""
         super().__init__(
             *gdfs,
             column=column,
-            title=title,
             scheme=scheme,
             k=k,
             bins=bins,
             nan_label=nan_label,
         )
 
+        self.title = title
         self._size = size
         self._dark = dark
+        self.title_kwargs = title_kwargs or {}
+        if title_position and "position" in self.title_kwargs:
+            raise TypeError(
+                "Specify either 'title_position' or title_kwargs position, not both."
+            )
+        if title_position or "position" in self.title_kwargs:
+            position = self.title_kwargs.pop("position", title_position)
+            error_mess = (
+                "legend_kwargs position should be a two length tuple/list with two numbers between "
+                "0 and 1 (x, y position)"
+            )
+            if not hasattr(position, "__len__"):
+                raise TypeError(error_mess)
+            if len(position) != 2:
+                raise ValueError(error_mess)
+            x, y = position
+            if "loc" not in self.title_kwargs:
+                if x < 0.4:
+                    self.title_kwargs["loc"] = "left"
+                elif x > 0.6:
+                    self.title_kwargs["loc"] = "right"
+                else:
+                    self.title_kwargs["loc"] = "center"
+
+            self.title_kwargs["x"], self.title_kwargs["y"] = x, y
         self.background_gdfs = []
 
         legend_kwargs = legend_kwargs or {}
 
-        self._title_fontsize = self._size * 2
+        self._title_fontsize = self._size * 1.9
 
         black = kwargs.pop("black", None)
         self._dark = self._dark or black
@@ -340,9 +375,13 @@ class ThematicMap(Map):
         if hasattr(self, "_background_gdfs"):
             self._actually_add_background()
 
-        if hasattr(self, "title") and self.title:
+        if self.title:
             self.ax.set_title(
-                self.title, fontsize=self.title_fontsize, color=self.title_color
+                self.title,
+                **(
+                    dict(fontsize=self.title_fontsize, color=self.title_color)
+                    | self.title_kwargs
+                ),
             )
 
     def _prepare_continous_plot(self, kwargs: dict) -> dict:
