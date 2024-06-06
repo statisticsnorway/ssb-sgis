@@ -54,7 +54,7 @@ def update_geometries(
         predicate: Spatial predicate for the spatial tree.
 
     Example:
-    ------
+    --------
     Create two circles and get the overlap.
 
     >>> import sgis as sg
@@ -213,7 +213,7 @@ def get_intersections(
         A GeoDataFrame of the overlapping polygons.
 
     Examples:
-    --------
+    ---------
     Create three partially overlapping polygons.
 
     >>> import sgis as sg

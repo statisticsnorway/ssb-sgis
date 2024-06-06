@@ -4,6 +4,8 @@ This module holds the Map class, which is the basis for the Explore class.
 """
 
 import warnings
+from collections.abc import Sequence
+from statistics import mean
 from typing import Any
 
 import matplotlib
@@ -22,6 +24,10 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import drop_inactive_geometry_columns
 from ..geopandas_tools.general import get_common_crs
 from ..helpers import get_object_name
+from ..helpers import unit_is_meters
+from ..raster.image_collection import Band
+from ..raster.image_collection import Image
+from ..raster.image_collection import ImageCollection
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -91,12 +97,12 @@ class Map:
         self,
         *gdfs: GeoDataFrame,
         column: str | None = None,
-        labels: tuple[str] | None = None,
         k: int = 5,
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
         nan_color="#c2c2c2",
         scheme: str = DEFAULT_SCHEME,
+        cmap: str | None = None,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -104,12 +110,13 @@ class Map:
         Args:
             *gdfs: Variable length GeoDataFrame list.
             column: The column name to work with.
-            labels: Tuple of labels for each GeoDataFrame.
             k: Number of bins or classes for classification (default: 5).
             bins: Predefined bins for data classification.
             nan_label: Label for missing data.
             nan_color: Color for missing data.
             scheme: Classification scheme to be used.
+            cmap (str): Colormap of the plot. See:
+                https://matplotlib.org/stable/tutorials/colors/colormaps.html
             **kwargs: Arbitrary keyword arguments.
         """
         gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
@@ -119,27 +126,14 @@ class Map:
         self._k = k
         self.nan_label = nan_label
         self.nan_color = nan_color
-        self._cmap = kwargs.pop("cmap", None)
+        self._cmap = cmap
         self.scheme = scheme
-
-        if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
-            gdfs = [
-                to_gdf(gdf) if not isinstance(gdf, GeoDataFrame) else gdf
-                for gdf in gdfs
-            ]
-            if not all(isinstance(gdf, GeoDataFrame) for gdf in gdfs):
-                raise ValueError("gdfs must be GeoDataFrames.")
-
-        if "namedict" in kwargs:
-            for i, gdf in enumerate(gdfs):
-                gdf.name = kwargs["namedict"][i]
-            kwargs.pop("namedict")
 
         # need to get the object names of the gdfs before copying. Only getting,
         # not setting, labels. So the original gdfs don't get the label column.
-        self.labels = labels
-        if not self.labels:
-            self._get_labels(gdfs)
+        self.labels: list[str] = [
+            _determine_best_name(gdf, column, i) for i, gdf in enumerate(gdfs)
+        ]
 
         show = kwargs.pop("show", True)
         if isinstance(show, (int, bool)):
@@ -165,31 +159,18 @@ class Map:
             if not len(gdf):
                 continue
 
-            self._gdfs.append(gdf)
+            self._gdfs.append(to_gdf(gdf))
             new_labels.append(label)
             self.show.append(show)
         self.labels = new_labels
-
-        # if len(self._gdfs):
-        #     last_show = self.show[-1]
-        # else:
-        #     last_show = show
 
         # pop all geometry-like items from kwargs into self._gdfs
         self.kwargs = {}
         i = 0
         for key, value in kwargs.items():
-            # if isinstance(value, GeoDataFrame):
-            #     self._gdfs.append(value)
-            #     self.labels.append(key)
-            #     try:
-            #         show = show_kwargs[i]
-            #     except IndexError:
-            #         pass
-            #     self.show.append(show)
-            #     i += 1
-            #     continue
             try:
+                if not len(value):
+                    continue
                 self._gdfs.append(to_gdf(value))
                 self.labels.append(key)
                 try:
@@ -208,10 +189,10 @@ class Map:
             )
 
         if not any(len(gdf) for gdf in self._gdfs):
-            warnings.warn("None of the GeoDataFrames have rows.", stacklevel=1)
-            self._gdfs = None
+            self._gdfs = []
             self._is_categorical = True
             self._unique_values = []
+            self._nan_idx = []
             return
 
         if not self.labels:
@@ -262,7 +243,7 @@ class Map:
         Because floats don't always equal each other. This will make very
         similar values count as the same value in the color classification.
         """
-        array = self._gdf.loc[~self._nan_idx, self._column]
+        array = self._gdf.loc[list(~self._nan_idx), self._column]
         self._min = np.min(array)
         self._max = np.max(array)
         self._get_multiplier(array)
@@ -313,29 +294,70 @@ class Map:
         # make sure they are lists
         bins = [bin_ for bin_ in bins]
 
-        if min(bins) > 0 and min(self._gdf.loc[~self._nan_idx, self._column]) < min(
-            bins
-        ):
-            bins = [min(self._gdf.loc[~self._nan_idx, self._column])] + bins
+        if min(bins) > 0 and min(
+            self._gdf.loc[list(~self._nan_idx), self._column]
+        ) < min(bins):
+            num = min(self._gdf.loc[list(~self._nan_idx), self._column])
+            # if isinstance(num, float):
+            #     num -= (
+            #         float(f"1e-{abs(self.legend.rounding)}")
+            #         if self.legend and self.legend.rounding
+            #         else 0
+            #     )
+            bins = [num] + bins
 
-        if min(bins) < 0 and min(self._gdf.loc[~self._nan_idx, self._column]) < min(
-            bins
-        ):
-            bins = [min(self._gdf.loc[~self._nan_idx, self._column])] + bins
+        if min(bins) < 0 and min(
+            self._gdf.loc[list(~self._nan_idx), self._column]
+        ) < min(bins):
+            num = min(self._gdf.loc[list(~self._nan_idx), self._column])
+            # if isinstance(num, float):
+            #     num -= (
+            #         float(f"1e-{abs(self.legend.rounding)}")
+            #         if self.legend and self.legend.rounding
+            #         else 0
+            #     )
+            bins = [num] + bins
 
         if max(bins) > 0 and max(
             self._gdf.loc[self._gdf[self._column].notna(), self._column]
         ) > max(bins):
-            bins = bins + [
-                max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
-            ]
+            num = max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
+            # if isinstance(num, float):
+            #     num += (
+            #         float(f"1e-{abs(self.legend.rounding)}")
+            #         if self.legend and self.legend.rounding
+            #         else 0
+            #     )
+            bins = bins + [num]
 
         if max(bins) < 0 and max(
             self._gdf.loc[self._gdf[self._column].notna(), self._column]
         ) < max(bins):
-            bins = bins + [
-                max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
-            ]
+            num = max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
+            # if isinstance(num, float):
+            #     num += (
+            #         float(f"1e-{abs(self.legend.rounding)}")
+            #         if self.legend and self.legend.rounding
+            #         else 0
+            #     )
+
+            bins = bins + [num]
+
+        def adjust_bin(num: int | float, i: int) -> int | float:
+            if isinstance(num, int):
+                return num
+            adjuster = (
+                float(f"1e-{abs(self.legend.rounding)}")
+                if self.legend and self.legend.rounding
+                else 0
+            )
+            if i == 0:
+                return num - adjuster
+            elif i == len(bins) - 1:
+                return num + adjuster
+            return num
+
+        bins = [adjust_bin(x, i) for i, x in enumerate(bins)]
 
         return bins
 
@@ -347,16 +369,26 @@ class Map:
     ) -> tuple[tuple[GeoDataFrame], str]:
         """Separate GeoDataFrames from string (column argument)."""
 
-        def as_dict(obj):
+        def as_dict(obj) -> dict:
             if hasattr(obj, "__dict__"):
                 return obj.__dict__
             elif isinstance(obj, dict):
                 return obj
-            raise TypeError
+            raise TypeError(type(obj))
 
-        allowed_types = (GeoDataFrame, GeoSeries, Geometry, RasterDataset)
+        allowed_types = (
+            GeoDataFrame,
+            GeoSeries,
+            Geometry,
+            RasterDataset,
+            ImageCollection,
+            Image,
+            Band,
+        )
 
-        gdfs: tuple[GeoDataFrame | GeoSeries | Geometry | RasterDataset] = ()
+        gdfs = ()
+        more_gdfs = {}
+        i = 0
         for arg in args:
             if isinstance(arg, str):
                 if column is None:
@@ -367,12 +399,31 @@ class Map:
                     )
             elif isinstance(arg, allowed_types):
                 gdfs = gdfs + (arg,)
+            # elif isinstance(arg, Sequence) and not isinstance(arg, str):
             elif isinstance(arg, dict) or hasattr(arg, "__dict__"):
                 # add dicts or classes with GeoDataFrames to kwargs
-                more_gdfs = {}
                 for key, value in as_dict(arg).items():
                     if isinstance(value, allowed_types):
                         more_gdfs[key] = value
+                    elif isinstance(value, dict) or hasattr(value, "__dict__"):
+                        # elif isinstance(value, Sequence) and not isinstance(value, str):
+                        try:
+                            # same as above, one level down
+                            more_gdfs |= {
+                                k: v
+                                for k, v in as_dict(value).items()
+                                if isinstance(v, allowed_types)
+                            }
+                        except Exception:
+                            # ignore all exceptions
+                            pass
+
+            elif isinstance(arg, Sequence) and not isinstance(arg, str):
+                # add dicts or classes with GeoDataFrames to kwargs
+                for value in arg:
+                    if isinstance(value, allowed_types):
+                        name = _determine_best_name(value, column, i)
+                        more_gdfs[name] = value
                     elif isinstance(value, dict) or hasattr(value, "__dict__"):
                         try:
                             # same as above, one level down
@@ -384,8 +435,15 @@ class Map:
                         except Exception:
                             # no need to raise here
                             pass
+                    elif isinstance(value, Sequence) and not isinstance(value, str):
+                        for x in value:
+                            if not isinstance(x, allowed_types):
+                                continue
+                            name = _determine_best_name(value, column, i)
+                            more_gdfs[name] = x
+                    i += 1
 
-                kwargs |= more_gdfs
+        kwargs |= more_gdfs
 
         return gdfs, column, kwargs
 
@@ -394,7 +452,7 @@ class Map:
         if self.scheme is None:
             return
 
-        if not self.bins:
+        if self.bins is None:
             self.bins = self._create_bins(self._gdf, self._column)
             if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
                 self._k = len(self.bins)
@@ -405,17 +463,6 @@ class Map:
         else:
             self._unique_values = self.nan_label
             self._k = 1
-
-    def _get_labels(self, gdfs: tuple[GeoDataFrame]) -> None:
-        """Putting the labels/names in a list before copying the gdfs."""
-        self.labels: list[str] = []
-        for i, gdf in enumerate(gdfs):
-            if hasattr(gdf, "name") and isinstance(gdf.name, str):
-                name = gdf.name
-            else:
-                name = get_object_name(gdf)
-                name = name or str(i)
-            self.labels.append(name)
 
     def _set_labels(self) -> None:
         """Setting the labels after copying the gdfs."""
@@ -470,7 +517,18 @@ class Map:
         if not self._column:
             return True
 
+        def is_maybe_km2():
+            if "area" in self._column and (
+                "km2" in self._column
+                or "kilomet" in self._column
+                and ("sq" in self._column or "2" in self._column)
+            ):
+                return True
+            else:
+                return False
+
         maybe_area = 1 if "area" in self._column else 0
+        maybe_area_km2 = 1 if is_maybe_km2() else 0
         maybe_length = (
             1 if any(x in self._column for x in ["meter", "metre", "leng"]) else 0
         )
@@ -479,7 +537,10 @@ class Map:
         col_not_present = 0
         for gdf in self._gdfs:
             if self._column not in gdf:
-                if maybe_area:
+                if maybe_area_km2 and unit_is_meters(gdf):
+                    gdf["area_km2"] = gdf.area / 1_000_000
+                    maybe_area_km2 += 1
+                elif maybe_area:
                     gdf["area"] = gdf.area
                     maybe_area += 1
                 elif maybe_length:
@@ -492,6 +553,9 @@ class Map:
                     all_nan += 1
                 return True
 
+        if maybe_area_km2 > 1:
+            self._column = "area_km2"
+            return False
         if maybe_area > 1:
             self._column = "area"
             return False
@@ -507,7 +571,7 @@ class Map:
 
         return False
 
-    def _get_categorical_colors(self) -> None:
+    def _make_categories_colors_dict(self) -> None:
         # custom categorical cmap
         if not self._cmap and len(self._unique_values) <= len(_CATEGORICAL_CMAP):
             self._categories_colors_dict = {
@@ -529,6 +593,7 @@ class Map:
                 for i, category in enumerate(self._unique_values)
             }
 
+    def _fix_nans(self) -> None:
         if any(self._nan_idx):
             self._gdf[self._column] = self._gdf[self._column].fillna(self.nan_label)
             self._categories_colors_dict[self.nan_label] = self.nan_color
@@ -549,7 +614,7 @@ class Map:
         If 'scheme' is not specified, the jenks_breaks function is used, which is
         much faster than the one from Mapclassifier.
         """
-        if not len(gdf.loc[~self._nan_idx, column]):
+        if not len(gdf.loc[list(~self._nan_idx), column]):
             return np.array([0])
 
         n_classes = (
@@ -565,29 +630,26 @@ class Map:
             n_classes = len(self._unique_values)
 
         if self.scheme == "jenks":
-            try:
-                bins = jenks_breaks(
-                    gdf.loc[~self._nan_idx, column], n_classes=n_classes
-                )
-                bins = self._add_minmax_to_bins(bins)
-            except Exception:
-                pass
+            bins = jenks_breaks(
+                gdf.loc[list(~self._nan_idx), column], n_classes=n_classes
+            )
         else:
             binning = classify(
-                np.asarray(gdf.loc[~self._nan_idx, column]),
+                np.asarray(gdf.loc[list(~self._nan_idx), column]),
                 scheme=self.scheme,
-                k=self._k,
+                # k=self._k,
+                k=n_classes,
             )
             bins = binning.bins
-            bins = self._add_minmax_to_bins(bins)
+
+        bins = self._add_minmax_to_bins(bins)
 
         unique_bins = list({round(bin_, 5) for bin_ in bins})
         unique_bins.sort()
 
-        if self._k == len(self._unique_values) - 1:
-            return np.array(unique_bins)
-
-        if len(unique_bins) == len(self._unique_values):
+        if self._k == len(self._unique_values) - 1 or len(unique_bins) == len(
+            self._unique_values
+        ):
             return np.array(unique_bins)
 
         if len(unique_bins) == len(bins) - 1:
@@ -624,6 +686,8 @@ class Map:
 
     def _classify_from_bins(self, gdf: GeoDataFrame, bins: np.ndarray) -> np.ndarray:
         """Place the column values into groups."""
+        bins = bins.copy()
+
         # if equal lenght, convert to integer and check for equality
         if len(bins) == len(self._unique_values):
             if gdf[self._column].isna().all():
@@ -637,6 +701,14 @@ class Map:
         else:
             if len(bins) == self._k + 1:
                 bins = bins[1:]
+
+            if (
+                self.legend
+                and self.legend.rounding
+                and (self.legend.rounding or 1) <= 0
+            ):
+                bins[0] = bins[0] - 1
+                bins[-1] = bins[-1] + 1
 
             if gdf[self._column].isna().all():
                 return np.repeat(len(bins), len(gdf))
@@ -686,7 +758,8 @@ class Map:
     @cmap.setter
     def cmap(self, new_value: str) -> None:
         self._cmap = new_value
-        self.change_cmap(cmap=new_value, start=self.cmap_start, stop=self.cmap_stop)
+        if not self._is_categorical:
+            self.change_cmap(cmap=new_value, start=self.cmap_start, stop=self.cmap_stop)
 
     @property
     def gdf(self) -> GeoDataFrame:
@@ -738,3 +811,24 @@ class Map:
             return self[key]
         except (KeyError, ValueError, IndexError, AttributeError):
             return default
+
+
+def _determine_best_name(obj: Any, column: str | None, i: int) -> str:
+    try:
+        # Frame 3: actual object name Frame 2: maps.py:explore(). Frame 1: __init__. Frame 0: this function.
+        return str(get_object_name(obj, start=3))
+    except ValueError:
+        if isinstance(obj, GeoSeries) and obj.name:
+            return str(obj.name)
+        elif isinstance(obj, GeoDataFrame) and len(obj.columns) == 2 and not column:
+            series = obj.drop(columns=obj._geometry_column_name).iloc[:, 0]
+            if (
+                len(series.unique()) == 1
+                and mean(isinstance(x, str) for x in series) > 0.5
+            ):
+                return str(next(iter(series)))
+            elif series.name:
+                return str(series.name)
+        else:
+            # generic label e.g. Image(1)
+            return f"{obj.__class__.__name__}({i})"

@@ -8,18 +8,21 @@ The 'qtm' function shows a simple static map of one or more GeoDataFrames.
 """
 
 import inspect
+import random
 from numbers import Number
 from typing import Any
 
+import pyproj
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from pyproj import CRS
 from shapely import Geometry
 from shapely import box
 from shapely.geometry import Polygon
 
 from ..geopandas_tools.bounds import get_total_bounds
-from ..geopandas_tools.conversion import to_gdf as to_gdf_func
+from ..geopandas_tools.conversion import to_bbox
+from ..geopandas_tools.conversion import to_gdf
+from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.general import is_wkt
@@ -40,10 +43,10 @@ except ImportError:
 def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
     try:
         crs = get_common_crs(gdfs)
-    except IndexError:
+    except (IndexError, pyproj.exceptions.CRSError):
         for x in kwargs.values():
             try:
-                crs = CRS(x.crs) if hasattr(x, "crs") else CRS(x["crs"])
+                crs = pyproj.CRS(x.crs) if hasattr(x, "crs") else pyproj.CRS(x["crs"])
                 break
             except Exception:
                 crs = None
@@ -67,7 +70,7 @@ def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
             kwargs.pop(key)
             if isinstance(value, Number) and value > 1:
                 size = value
-            the_mask = to_gdf_func([mask], crs=4326).to_crs(crs).buffer(size)
+            the_mask = to_gdf([mask], crs=4326).to_crs(crs).buffer(size)
             return the_mask, kwargs
 
     return None, kwargs
@@ -77,13 +80,13 @@ def explore(
     *gdfs: GeoDataFrame | dict[str, GeoDataFrame],
     column: str | None = None,
     center: Any | None = None,
-    labels: tuple[str] | None = None,
     max_zoom: int = 40,
     browser: bool = False,
     smooth_factor: int | float = 1.5,
     size: int | None = None,
+    max_images: int = 15,
     **kwargs,
-) -> None:
+) -> Explore:
     """Interactive map of GeoDataFrames with layers that can be toggled on/off.
 
     It takes all the given GeoDataFrames and displays them together in an
@@ -101,9 +104,6 @@ def explore(
         center: Geometry-like object to center the map on. If a three-length tuple
             is given, the first two should be x and y coordinates and the third
             should be a number of meters to buffer the centerpoint by.
-        labels: By default, the GeoDataFrames will be labeled by their object names.
-            Alternatively, labels can be specified as a tuple of strings with the same
-            length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         browser: If False (default), the maps will be shown in Jupyter.
@@ -112,17 +112,19 @@ def explore(
             5 is quite a lot of simplification.
         size: The buffer distance. Only used when center is given. It then defaults to
             1000.
+        max_images: Maximum number of images (Image, ImageCollection, Band) to show per
+            map. Defaults to 15.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See Also:
-    --------
+    ---------
     samplemap: same functionality, but shows only a random area of a given size.
     clipmap: same functionality, but shows only the areas clipped by a given mask.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
@@ -154,7 +156,6 @@ def explore(
             *gdfs,
             column=column,
             mask=mask,
-            labels=labels,
             browser=browser,
             max_zoom=max_zoom,
             **kwargs,
@@ -162,10 +163,10 @@ def explore(
 
     try:
         to_crs = gdfs[0].crs
-    except IndexError:
+    except (IndexError, AttributeError):
         try:
             to_crs = next(x for x in kwargs.values() if hasattr(x, "crs")).crs
-        except IndexError:
+        except (IndexError, StopIteration):
             to_crs = None
 
     if "crs" in kwargs:
@@ -182,7 +183,7 @@ def explore(
         else:
             if isinstance(center, (tuple, list)) and len(center) == 3:
                 *center, size = center
-            mask = to_gdf_func(center, crs=from_crs)
+            mask = to_gdf(center, crs=from_crs)
 
         bounds: Polygon = box(*get_total_bounds(*gdfs, *list(kwargs.values())))
         if not mask.intersects(bounds).any():
@@ -200,7 +201,6 @@ def explore(
             *gdfs,
             column=column,
             mask=mask,
-            labels=labels,
             browser=browser,
             max_zoom=max_zoom,
             **kwargs,
@@ -209,20 +209,22 @@ def explore(
     m = Explore(
         *gdfs,
         column=column,
-        labels=labels,
         browser=browser,
         max_zoom=max_zoom,
         smooth_factor=smooth_factor,
+        max_images=max_images,
         **kwargs,
     )
 
-    if m.gdfs is None and not len(m.raster_datasets):
-        return
+    if m.gdfs is None and not len(m.rasters):
+        return m
 
     if not kwargs.pop("explore", True):
         return qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
 
     m.explore()
+
+    return m
 
 
 def samplemap(
@@ -230,13 +232,13 @@ def samplemap(
     column: str | None = None,
     size: int = 1000,
     sample_from_first: bool = True,
-    labels: tuple[str] | None = None,
     max_zoom: int = 40,
     smooth_factor: int = 1.5,
     explore: bool = True,
     browser: bool = False,
+    max_images: int = 15,
     **kwargs,
-) -> None:
+) -> Explore:
     """Shows an interactive map of a random area of GeoDataFrames.
 
     It takes all the GeoDataFrames specified, takes a random sample point from the
@@ -258,9 +260,6 @@ def samplemap(
             Defaults to 1000 (meters).
         sample_from_first: If True (default), the sample point is taken form the
             first specified GeoDataFrame. If False, all GeoDataFrames are considered.
-        labels: By default, the GeoDataFrames will be labeled by their object names.
-            Alternatively, labels can be specified as a tuple of strings the same
-            length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         smooth_factor: How much to simplify the geometries. 1 is the minimum,
@@ -269,17 +268,19 @@ def samplemap(
             or not in Jupyter, a static plot will be shown.
         browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
+        max_images: Maximum number of images (Image, ImageCollection, Band) to show per
+            map. Defaults to 15.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See Also:
-    --------
+    ---------
     explore: Same functionality, but shows the entire area of the geometries.
     clipmap: Same functionality, but shows only the areas clipped by a given mask.
 
     Examples:
-    --------
+    ---------
     >>> from sgis import read_parquet_url, samplemap
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_eidskog_2022.parquet")
     >>> points = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_eidskog.parquet")
@@ -293,77 +294,72 @@ def samplemap(
     >>> samplemap(roads, points, size=5_000, column="meters")
 
     """
-    if gdfs and isinstance(gdfs[-1], (float, int)):
+    if gdfs and len(gdfs) > 1 and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
-    mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
+    loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
     kwargs.pop("size")
+    mask = kwargs.pop("mask", loc_mask)
 
-    if explore:
-        m = Explore(
-            *gdfs,
-            column=column,
-            labels=labels,
-            browser=browser,
-            max_zoom=max_zoom,
-            smooth_factor=smooth_factor,
-            **kwargs,
-        )
-        if m.gdfs is None and not len(m.raster_datasets):
-            return
-        if mask is not None:
-            m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
-            m._gdf = m._gdf.clip(mask)
-            m._nan_idx = m._gdf[m._column].isna()
-            m._get_unique_values()
+    i = 0 if sample_from_first else random.choice(list(range(len(gdfs))))
+    try:
+        sample = gdfs[i]
+    except IndexError:
+        sample = list(kwargs.values())[i]
 
-        m.samplemap(size, sample_from_first=sample_from_first)
-
+    if mask is None:
+        try:
+            sample = sample.geometry.dropna().sample(1)
+        except Exception:
+            try:
+                sample = sample.sample(1)
+            except Exception:
+                pass
+        try:
+            sample = to_gdf(to_shapely(sample)).explode(ignore_index=True)
+        except Exception:
+            sample = to_gdf(to_shapely(to_bbox(sample))).explode(ignore_index=True)
     else:
-        m = Map(
-            *gdfs,
-            column=column,
-            labels=labels,
-            **kwargs,
-        )
+        try:
+            sample = to_gdf(to_shapely(sample)).explode(ignore_index=True)
+        except Exception:
+            sample = to_gdf(to_shapely(to_bbox(sample))).explode(ignore_index=True)
 
-        if sample_from_first:
-            sample = m._gdfs[0].sample(1)
-        else:
-            sample = m._gdf.sample(1)
+        sample = sample.clip(mask).sample(1)
 
-        # convert lines to polygons
-        if get_geom_type(sample) == "line":
-            sample["geometry"] = sample.buffer(1)
+    random_point = sample.sample_points(size=1)
 
-        if get_geom_type(sample) == "polygon":
-            random_point = sample.sample_points(size=1)
+    center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
+    print(f"center={center}, size={size}")
 
-        # if point or mixed geometries
-        else:
-            random_point = sample.centroid
+    mask = random_point.buffer(size)
 
-        center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
-        print(f"center={center}, size={size}")
-
-        m._gdf = m._gdf.clip(random_point.buffer(size))
-
-        qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
+    return clipmap(
+        *gdfs,
+        column=column,
+        mask=mask,
+        browser=browser,
+        max_zoom=max_zoom,
+        explore=explore,
+        smooth_factor=smooth_factor,
+        max_images=max_images,
+        **kwargs,
+    )
 
 
 def clipmap(
     *gdfs: GeoDataFrame,
     column: str | None = None,
     mask: GeoDataFrame | GeoSeries | Geometry = None,
-    labels: tuple[str] | None = None,
     explore: bool = True,
     max_zoom: int = 40,
     smooth_factor: int | float = 1.5,
     browser: bool = False,
+    max_images: int = 15,
     **kwargs,
-) -> None:
+) -> Explore | Map:
     """Shows an interactive map of a of GeoDataFrames clipped to the mask extent.
 
     It takes all the GeoDataFrames specified, clips them to the extent of the mask,
@@ -380,9 +376,6 @@ def clipmap(
         mask: the geometry to clip the data by.
         column: The column to color the geometries by. Defaults to None, which means
             each GeoDataFrame will get a unique color.
-        labels: By default, the GeoDataFrames will be labeled by their object names.
-            Alternatively, labels can be specified as a tuple of strings the same
-            length as the number of gdfs.
         max_zoom: The maximum allowed level of zoom. Higher number means more zoom
             allowed. Defaults to 30, which is higher than the geopandas default.
         smooth_factor: How much to simplify the geometries. 1 is the minimum,
@@ -391,12 +384,14 @@ def clipmap(
             or not in Jupyter, a static plot will be shown.
         browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
+        max_images: Maximum number of images (Image, ImageCollection, Band) to show per
+            map. Defaults to 15.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
 
     See Also:
-    --------
+    ---------
     explore: same functionality, but shows the entire area of the geometries.
     samplemap: same functionality, but shows only a random area of a given size.
     """
@@ -406,6 +401,12 @@ def clipmap(
         mask = gdfs[-1]
         gdfs = gdfs[:-1]
 
+    if not isinstance(mask, (GeoDataFrame | GeoSeries | Geometry | tuple)):
+        try:
+            mask = to_gdf(mask)
+        except Exception:
+            mask = to_shapely(to_bbox(mask))
+
     center = kwargs.pop("center", None)
     size = kwargs.pop("size", None)
 
@@ -413,29 +414,31 @@ def clipmap(
         m = Explore(
             *gdfs,
             column=column,
-            labels=labels,
             browser=browser,
             max_zoom=max_zoom,
             smooth_factor=smooth_factor,
+            max_images=max_images,
             **kwargs,
         )
-        if m.gdfs is None and not len(m.raster_datasets):
-            return
+        m.mask = mask
+
+        if m.gdfs is None and not len(m.rasters):
+            return m
 
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
         m._gdf = m._gdf.clip(mask)
         m._nan_idx = m._gdf[m._column].isna()
         m._get_unique_values()
         m.explore(center=center, size=size)
+        return m
     else:
         m = Map(
             *gdfs,
             column=column,
-            labels=labels,
             **kwargs,
         )
         if m.gdfs is None:
-            return
+            return m
 
         m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
         m._gdf = m._gdf.clip(mask)
@@ -443,6 +446,8 @@ def clipmap(
         m._get_unique_values()
 
         qtm(m._gdf, column=m.column, cmap=m._cmap, k=m.k)
+
+        return m
 
 
 def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
@@ -481,7 +486,7 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
                 # add dicts or classes with GeoDataFrames to kwargs
                 for key, val in as_dict(value).items():
                     if isinstance(val, allowed_types):
-                        gdf = clean_geoms(to_gdf_func(val))
+                        gdf = clean_geoms(to_gdf(val))
                         if len(gdf):
                             local_gdfs[key] = gdf
 
@@ -489,7 +494,7 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
                         try:
                             for k, v in val.items():
                                 if isinstance(v, allowed_types):
-                                    gdf = clean_geoms(to_gdf_func(v))
+                                    gdf = clean_geoms(to_gdf(v))
                                     if len(gdf):
                                         local_gdfs[k] = gdf
                         except Exception:
@@ -498,7 +503,7 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
 
                 continue
             try:
-                gdf = clean_geoms(to_gdf_func(value))
+                gdf = clean_geoms(to_gdf(value))
                 if len(gdf):
                     local_gdfs[name] = gdf
                 continue
@@ -513,7 +518,7 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
         if not frame:
             break
 
-    explore(*gdfs, **local_gdfs, **kwargs)
+    return explore(*gdfs, **local_gdfs, **kwargs)
 
 
 def qtm(
@@ -562,9 +567,6 @@ def qtm(
             gdfs += (value,)
         else:
             new_kwargs[key] = value
-
-            # self.labels.append(key)
-            # self.show.append(last_show)
 
     m = ThematicMap(*gdfs, column=column, size=size, black=black)
 

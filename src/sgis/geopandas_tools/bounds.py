@@ -37,7 +37,7 @@ class Gridlooper:
             Defaults to True.
 
     Examples:
-    --------
+    ---------
     Get some points and some polygons.
 
     >>> import sgis as sg
@@ -222,7 +222,7 @@ def gridloop(
         TypeError: If args or kwargs has a wrong type
 
     Examples:
-    --------
+    ---------
     Get some points and some polygons.
 
     >>> import sgis as sg
@@ -442,7 +442,7 @@ def make_grid(
     obj: GeoDataFrame | GeoSeries | Geometry | tuple,
     gridsize: int | float,
     *,
-    crs: CRS = None,
+    crs: CRS | None = None,
     clip_to_bounds: bool = False,
 ) -> GeoDataFrame:
     """Create a polygon grid around geometries.
@@ -467,10 +467,6 @@ def make_grid(
     """
     if isinstance(obj, (GeoDataFrame | GeoSeries)):
         crs = obj.crs or crs
-    elif not crs:
-        raise ValueError(
-            "'crs' cannot be None when 'obj' is not GeoDataFrame/GeoSeries."
-        )
     if hasattr(obj, "__len__") and not len(obj):
         return GeoDataFrame({"geometry": []}, crs=crs)
 
@@ -617,7 +613,7 @@ def bounds_to_polygon(
         GeoDataFrame of box polygons with length and index of 'gdf'.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
@@ -652,7 +648,7 @@ def bounds_to_points(
         GeoDataFrame of multipoints with same length and index as 'gdf'.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
@@ -680,13 +676,19 @@ def get_total_bounds(
     for obj in geometries:
         try:
             minx, miny, maxx, maxy = to_bbox(obj)
+            xs += [minx, maxx]
+            ys += [miny, maxy]
         except Exception as e:
-            if strict:
-                raise e
-            else:
-                continue
-        xs += [minx, maxx]
-        ys += [miny, maxy]
+            try:
+                for x in obj:
+                    minx, miny, maxx, maxy = to_bbox(x)
+                    xs += [minx, maxx]
+                    ys += [miny, maxy]
+            except Exception as e2:
+                if strict:
+                    raise e2 from e
+                else:
+                    continue
     return min(xs), min(ys), max(xs), max(ys)
 
 

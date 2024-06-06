@@ -50,7 +50,7 @@ class NetworkAnalysisRules:
             to 1, the weight will be equal to the straigt line distance.
 
     Examples:
-    --------
+    ---------
     Read testdata.
 
     >>> import sgis as sg

@@ -2,6 +2,7 @@ import functools
 import itertools
 import multiprocessing
 import re
+import warnings
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
@@ -140,6 +141,10 @@ class DataCube:
             copy: If True, makes deep copies of Rasters provided.
             parallelizer: sgis.Parallel instance to handle concurrent operations.
         """
+        warnings.warn(
+            "This class is deprecated in favor of ImageCollection", stacklevel=1
+        )
+
         self._arrays = None
         self._res = res
         self.parallelizer = parallelizer
@@ -207,6 +212,7 @@ class DataCube:
         check_for_df: bool = True,
         contains: str | None = None,
         endswith: str = ".tif",
+        bands: str | list[str] | None = None,
         filename_regex: str | None = None,
         parallelizer: Parallel | None = None,
         file_system=None,
@@ -221,6 +227,7 @@ class DataCube:
                 that holds metadata for the files in the directory.
             contains: Filter files containing specific substrings.
             endswith: Filter files that end with specific substrings.
+            bands: One or more band ids to keep.
             filename_regex: Regular expression to match file names
                 and attributes (date, band, tile, resolution).
             parallelizer: sgis.Parallel instance for concurrent file processing.
@@ -233,6 +240,7 @@ class DataCube:
         kwargs["res"] = res
         kwargs["filename_regex"] = filename_regex
         kwargs["contains"] = contains
+        kwargs["bands"] = bands
         kwargs["endswith"] = endswith
 
         if is_dapla():
@@ -283,6 +291,7 @@ class DataCube:
         parallelizer: Parallel | None = None,
         file_system=None,
         contains: str | None = None,
+        bands: str | list[str] | None = None,
         endswith: str = ".tif",
         filename_regex: str | None = None,
         **kwargs,
@@ -296,6 +305,7 @@ class DataCube:
             file_system: File system to use for file operations, used in Dapla environment.
             contains: Filter files containing specific substrings.
             endswith: Filter files that end with specific substrings.
+            bands: One or more band ids to keep.
             filename_regex: Regular expression to match file names.
             **kwargs: Additional keyword arguments to pass to the raster loading function.
 
@@ -311,6 +321,10 @@ class DataCube:
         if filename_regex:
             compiled = re.compile(filename_regex, re.VERBOSE)
             paths = [path for path in paths if re.search(compiled, Path(path).name)]
+        if bands:
+            if isinstance(bands, str):
+                bands = [bands]
+            paths = [path for path in paths if any(band in str(path) for band in bands)]
 
         if not paths:
             return cls(crs=crs, parallelizer=parallelizer, res=res)
@@ -544,6 +558,19 @@ class DataCube:
         self.data = data
         return self
 
+    def sample(self, n: int, copy: bool = True, **kwargs) -> Self:
+        """Take n samples of the cube."""
+        if self.crs is None:
+            self._crs = get_common_crs(self.data)
+
+        cube = self.copy() if copy else self
+
+        cube.data = list(pd.Series(cube.data).sample(n))
+
+        cube.data = cube.run_raster_method("load", **kwargs)
+
+        return cube
+
     def load(self, copy: bool = True, **kwargs) -> Self:
         """Load all images as arrays into a DataCube copy."""
         if self.crs is None:
@@ -620,7 +647,7 @@ class DataCube:
                 ).items()
                 if key in ALLOWED_KEYS and key not in ["array", "indexes"]
             }
-            if raster.array is None:
+            if raster.values is None:
                 return [
                     raster.__class__.from_dict({"indexes": i} | all_meta)
                     for i in raster.indexes_as_tuple()
@@ -830,7 +857,7 @@ class DataCube:
     @property
     def arrays(self) -> list[np.ndarray]:
         """The arrays of the images as a list."""
-        return [raster.array for raster in self]
+        return [raster.values for raster in self]
 
     @arrays.setter
     def arrays(self, new_arrays: list[np.ndarray]):
@@ -995,12 +1022,22 @@ class DataCube:
 
     def _check_for_array(self, text: str = "") -> None:
         mess = "Arrays are not loaded. " + text
-        if all(raster.array is None for raster in self):
+        if all(raster.values is None for raster in self):
             raise ValueError(mess)
 
     def __getitem__(
         self,
-        item: slice | int | Series | list | tuple | Callable | Geometry | BoundingBox,
+        item: (
+            str
+            | slice
+            | int
+            | Series
+            | list
+            | tuple
+            | Callable
+            | Geometry
+            | BoundingBox
+        ),
     ) -> Self | Raster | TORCHGEO_RETURN_TYPE:
         """Select one or more of the Rasters based on indexing or spatial or boolean predicates.
 
@@ -1026,6 +1063,14 @@ class DataCube:
 
         """
         copy = self.copy()
+        if isinstance(item, str) and copy.path is not None:
+            copy.data = [raster for raster in copy if item in raster.path]
+            if len(copy) == 1:
+                return copy[0]
+            elif not len(copy):
+                return Raster()
+            return copy
+
         if isinstance(item, slice):
             copy.data = copy.data[item]
             return copy
@@ -1127,7 +1172,7 @@ def _merge(
     bounds: Any | None = None,
     **kwargs,
 ) -> DataCube:
-    if not all(r.array is None for r in cube):
+    if not all(r.values is None for r in cube):
         raise ValueError("Arrays can't be loaded when calling merge.")
 
     bounds = to_bbox(bounds) if bounds is not None else bounds
@@ -1185,6 +1230,7 @@ def _merge_by_bounds(
 
 
 def _merge(cube: DataCube, **kwargs) -> DataCube:
+    by = kwargs.pop("by")
     if cube.crs is None:
         cube._crs = get_common_crs(cube.data)
 

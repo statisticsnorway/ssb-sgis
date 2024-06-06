@@ -90,8 +90,10 @@ def to_shapely(obj: Any) -> Geometry:
         return obj
     if not hasattr(obj, "__iter__"):
         raise TypeError(type(obj))
-    if hasattr(obj, "unary_union"):
+    try:
         return obj.unary_union
+    except AttributeError:
+        pass
     try:
         return Point(*obj)
     except TypeError:
@@ -108,6 +110,7 @@ def to_shapely(obj: Any) -> Geometry:
         return shapely.wkb.loads(obj)
     except TypeError:
         pass
+    raise TypeError(type(obj))
 
 
 def to_bbox(
@@ -122,9 +125,15 @@ def to_bbox(
             "xmin", "ymin", "xmax", "ymax".
     """
     if isinstance(obj, (GeoDataFrame, GeoSeries)):
-        return tuple(obj.total_bounds)
-    if isinstance(obj, Geometry):
-        return tuple(obj.bounds)
+        bounds = tuple(obj.total_bounds)
+        assert isinstance(bounds, tuple)
+        return bounds
+    try:
+        bounds = tuple(obj.bounds)
+        assert isinstance(bounds, tuple)
+        return bounds
+    except Exception:
+        pass
 
     try:
         minx = int(np.min(obj["minx"]))  # type: ignore [index]
@@ -195,7 +204,7 @@ def coordinate_array(
         np.ndarray of np.ndarrays of coordinates.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> points = sg.to_gdf(
     ...     [
@@ -279,7 +288,7 @@ def to_gdf(
         A GeoDataFrame with one column, the geometry column.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> coords = (10, 60)
     >>> sg.to_gdf(coords, crs=4326)

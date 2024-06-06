@@ -4,7 +4,6 @@ from collections.abc import Hashable
 from collections.abc import Iterable
 from typing import Any
 
-import dask_geopandas
 import joblib
 import numpy as np
 import pandas as pd
@@ -26,6 +25,11 @@ from shapely import points as shapely_points
 from shapely import unary_union
 from shapely.geometry import LineString
 from shapely.geometry import Point
+
+try:
+    import dask_geopandas
+except ImportError:
+    pass
 
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
@@ -164,7 +168,7 @@ def clean_geoms(
         non-empty and not-NaN/-None geometries.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> import pandas as pd
     >>> from shapely import wkt
@@ -281,7 +285,7 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
         A GeoDataFrame or GeoSeries sorted from large to small in area.
 
     Examples:
-    --------
+    ---------
     Create GeoDataFrame with NaN values.
 
     >>> import sgis as sg
@@ -423,7 +427,7 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
         A GeoDataFrame of points with n rows.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> points = sg.random_points(10_000)
     >>> points
@@ -523,7 +527,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         always ignores the index.
 
     Examples:
-    --------
+    ---------
     Convert single polygon to linestring.
 
     >>> import sgis as sg

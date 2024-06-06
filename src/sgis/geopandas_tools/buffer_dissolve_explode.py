@@ -52,6 +52,7 @@ def buffdissexp(
     copy: bool = True,
     grid_size: float | int | None = None,
     n_jobs: int = 1,
+    join_style: int | str = "round",
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Buffers and dissolves overlapping geometries.
@@ -71,6 +72,7 @@ def buffdissexp(
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         grid_size: Rounding of the coordinates. Defaults to None.
         n_jobs: Number of threads to use. Defaults to 1.
+        join_style: Buffer join style.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -85,6 +87,7 @@ def buffdissexp(
         copy=copy,
         grid_size=grid_size,
         n_jobs=n_jobs,
+        join_style=join_style,
         **dissolve_kwargs,
     )
 
@@ -99,6 +102,7 @@ def buffdiss(
     resolution: int = 50,
     copy: bool = True,
     n_jobs: int = 1,
+    join_style: int | str = "round",
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Buffers and dissolves geometries.
@@ -114,6 +118,7 @@ def buffdiss(
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
             Here defaults to 50, as opposed to the default 16 in geopandas.
+        join_style: Buffer join style.
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         n_jobs: Number of threads to use. Defaults to 1.
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
@@ -122,7 +127,7 @@ def buffdiss(
         A buffered GeoDataFrame where geometries are dissolved.
 
     Examples:
-    --------
+    ---------
     Create some random points.
 
     >>> import sgis as sg
@@ -169,7 +174,9 @@ def buffdiss(
     1     b  MULTIPOLYGON (((258404.858 6647830.931, 258404...  0.687635
     2     d  MULTIPOLYGON (((258180.258 6647935.731, 258179...  0.580157
     """
-    buffered = buff(gdf, distance, resolution=resolution, copy=copy)
+    buffered = buff(
+        gdf, distance, resolution=resolution, copy=copy, join_style=join_style
+    )
 
     return _dissolve(buffered, n_jobs=n_jobs, **dissolve_kwargs)
 
@@ -462,6 +469,7 @@ def buffdissexp_by_cluster(
     resolution: int = 50,
     copy: bool = True,
     n_jobs: int = 1,
+    join_style: int | str = "round",
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Buffers and dissolves overlapping geometries.
@@ -480,6 +488,7 @@ def buffdissexp_by_cluster(
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
             Here defaults to 50, as opposed to the default 16 in geopandas.
+        join_style: Buffer join style.
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         n_jobs: int = 1,
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
@@ -487,7 +496,13 @@ def buffdissexp_by_cluster(
     Returns:
         A buffered GeoDataFrame where overlapping geometries are dissolved.
     """
-    buffered = buff(gdf, distance, resolution=resolution, copy=copy)
+    buffered = buff(
+        gdf,
+        distance,
+        resolution=resolution,
+        copy=copy,
+        join_style=join_style,
+    )
     return dissexp_by_cluster(buffered, n_jobs=n_jobs, **dissolve_kwargs)
 
 
@@ -496,6 +511,7 @@ def buff(
     distance: int | float,
     resolution: int = 50,
     copy: bool = True,
+    join_style: int | str = "round",
     **buffer_kwargs,
 ) -> GeoDataFrame:
     """Buffers a GeoDataFrame with high resolution and returns a new GeoDataFrame.
@@ -506,6 +522,7 @@ def buff(
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
             Here defaults to 50, as opposed to the default 16 in geopandas.
+        join_style: Buffer join style.
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         **buffer_kwargs: additional keyword arguments passed to geopandas' buffer.
 
@@ -513,13 +530,15 @@ def buff(
         A buffered GeoDataFrame.
     """
     if isinstance(gdf, GeoSeries):
-        return gdf.buffer(distance, resolution=resolution, **buffer_kwargs).make_valid()
+        return gdf.buffer(
+            distance, resolution=resolution, join_style=join_style, **buffer_kwargs
+        ).make_valid()
 
     if copy:
         gdf = gdf.copy()
 
     gdf[gdf._geometry_column_name] = gdf.buffer(
-        distance, resolution=resolution, **buffer_kwargs
+        distance, resolution=resolution, join_style=join_style, **buffer_kwargs
     ).make_valid()
 
     return gdf

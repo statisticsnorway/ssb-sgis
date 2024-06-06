@@ -50,7 +50,7 @@ def get_neighbor_indices(
             system.
 
     Examples:
-    --------
+    ---------
     >>> from sgis import get_neighbor_indices, to_gdf
     >>> points = to_gdf([(0, 0), (0.5, 0.5)])
     >>> points
@@ -153,7 +153,7 @@ def get_all_distances(
             not the same.
 
     Examples:
-    --------
+    ---------
     >>> from sgis import get_all_distances, random_points
     >>> points = random_points(100)
     >>> neighbors = random_points(100)
@@ -297,7 +297,7 @@ def get_k_nearest_neighbors(
             not the same.
 
     Examples:
-    --------
+    ---------
     Make some random points.
 
     >>> from sgis import get_k_nearest_neighbors, random_points

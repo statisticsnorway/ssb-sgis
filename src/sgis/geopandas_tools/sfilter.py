@@ -35,7 +35,7 @@ def sfilter(
         spatial predicate with 'other'.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
@@ -101,7 +101,7 @@ def sfilter_split(
         and one with the rows that do not.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
@@ -172,7 +172,7 @@ def sfilter_inverse(
         spatial predicate with 'other'.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1

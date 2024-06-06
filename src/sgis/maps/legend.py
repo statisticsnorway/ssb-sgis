@@ -26,6 +26,82 @@ warnings.filterwarnings(
 pd.options.mode.chained_assignment = None
 
 
+LEGEND_KWARGS = {
+    "title",
+    "size",
+    "position",
+    "fontsize",
+    "title_fontsize",
+    "markersize",
+    "framealpha",
+    "edgecolor",
+    "kwargs",
+    "labelspacing",
+    "title_color",
+    "width",
+    "height",
+    "labels",
+    "pretty_labels",
+    "thousand_sep",
+    "decimal_mark",
+    "label_sep",
+    "label_suffix",
+    "rounding",
+    "facecolor",
+    "labelcolor",
+}
+
+LOWERCASE_WORDS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "but",
+    "by",
+    "for",
+    "in",
+    "nor",
+    "of",
+    "on",
+    "or",
+    "the",
+    "up",
+}
+
+
+def prettify_label(label: str) -> str:
+    """Replace underscores with spaces and capitalize words that are all lowecase."""
+    return " ".join(
+        word.title() if word.islower() and word not in LOWERCASE_WORDS else word
+        for word in label.replace("_", " ").split()
+    )
+
+
+def prettify_number(x: int | float, rounding: int) -> int:
+    rounding = int(float(f"1e+{abs(rounding)}"))
+    rounded_down = int(x // rounding * rounding)
+    rounded_up = rounded_down + rounding
+    diff_up = abs(x - rounded_up)
+    diff_down = abs(x - rounded_down)
+    if diff_up < diff_down:
+        return rounded_up
+    else:
+        return rounded_down
+
+
+def prettify_bins(bins: list[int | float], rounding: int) -> list[int]:
+    return [
+        (
+            prettify_number(x, rounding)
+            if i != len(bins) - 1
+            else int(x)
+            # else prettify_number(x, rounding) + abs(rounding)
+        )
+        for i, x in enumerate(bins)
+    ]
+
+
 class Legend:
     """Holds the general attributes of the legend in the ThematicMap class.
 
@@ -36,27 +112,8 @@ class Legend:
     If a numeric column is used, additional attributes can be found in the
     ContinousLegend class.
 
-    Attributes:
-        title: Legend title. Defaults to the column name if used in the
-            ThematicMap class.
-        position: The legend's x and y position in the plot, specified as a tuple of
-            x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
-            in the bottom right corner, (0.2, 0.8) for the upper left corner.
-        fontsize: Text size of the legend labels. Defaults to the size of
-            the ThematicMap class.
-        title_fontsize: Text size of the legend title. Defaults to the
-            size * 1.2 of the ThematicMap class.
-        markersize: Size of the color circles in the legend. Defaults to the size of
-            the ThematicMap class.
-        framealpha: Transparency of the legend background.
-        edgecolor: Color of the legend border. Defaults to #0f0f0f (almost black).
-        kwargs: Stores additional keyword arguments taken by the matplotlib legend
-            method. Specify this as e.g. m.legend.kwargs["labelcolor"] = "red", where
-            'm' is the name of the ThematicMap instance. See here:
-            https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html
-
     Examples:
-    --------
+    ---------
     Create ten points with a numeric column from 0 to 9.
 
     >>> import sgis as sg
@@ -89,38 +146,31 @@ class Legend:
     9  POINT (0.75000 0.25000)       9
 
     Creating the ThematicMap instance will also create the legend. Since we
-    specify a numeric column, a ContinousLegend instance is created.
+    pass a numeric column, a ContinousLegend is created.
 
-    >>> m = sg.ThematicMap(points, column="number")
+    >>> m = sg.ThematicMap(
+    ...     points,
+    ...     column="number"
+    ...     legend_kwargs=dict(
+    ...         title="Meters",
+    ...         label_sep="to",
+    ...         label_suffix="num",
+    ...         rounding=2,
+    ...         position = (0.35, 0.28),
+    ...         title_fontsize=11,
+    ...         fontsize=9,
+    ...         markersize=7.5,
+    ...     ),
+    ... )
+    >>> m.plot()
     >>> m.legend
     <sgis.maps.legend.ContinousLegend object at 0x00000222206738D0>
-
-    Changing the attributes that apply to both numeric and categorical columns.
-
-    >>> m.legend.title = "Meters"
-    >>> m.legend.title_fontsize = 11
-    >>> m.legend.fontsize = 9
-    >>> m.legend.markersize = 7.5
-    >>> m.legend.position = (0.35, 0.28)
-    >>> m.plot()
-
-    Additional matplotlib keyword arguments can be specified as kwargs.
-
-    >>> m.legend.kwargs["labelcolor"] = "red"
-
-    Since we are using a numeric column, the legend is of type ContinousLegend.
-    We can therefore also access the attributes that only apply to numeric columns.
-
-    >>> m.label_sep = "to"
-    >>> m.label_suffix = "num"
-    >>> m.rounding = 2
-    >>> m.plot()
-
     """
 
     def __init__(
         self,
         title: str | None = None,
+        pretty_labels: bool = True,
         labels: list[str] | None = None,
         position: tuple[float] | None = None,
         markersize: int | None = None,
@@ -135,6 +185,8 @@ class Legend:
         Args:
             title: Legend title. Defaults to the column name if used in the
                 ThematicMap class.
+            pretty_labels: If True, words will be capitalized and underscores turned to spaces.
+                If continous values, numbers will be rounded.
             labels: Labels of the categories.
             position: The legend's x and y position in the plot, specified as a tuple of
                 x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
@@ -163,6 +215,7 @@ class Legend:
             self._fontsize = fontsize
             self._markersize = markersize
 
+        self.pretty_labels = pretty_labels
         self.framealpha = framealpha
         self.edgecolor = edgecolor
         self.width = kwargs.pop("width", 0.1)
@@ -172,8 +225,22 @@ class Legend:
 
         self.labels = labels
         self._position = position
-        self.kwargs = kwargs
         self._position_has_been_set = True if position else False
+
+        self.kwargs = {}
+        for key, value in kwargs.items():
+            if key not in LEGEND_KWARGS:
+                self.kwargs[key] = value
+            else:
+                try:
+                    setattr(self, key, value)
+                except Exception:
+                    setattr(self, f"_{key}", value)
+
+    @property
+    def valid_keywords(self) -> set[str]:
+        """List all valid keywords for the class initialiser."""
+        return LEGEND_KWARGS
 
     def _get_legend_sizes(self, size: int | float, kwargs: dict) -> None:
         """Adjust fontsize and markersize to size kwarg."""
@@ -218,6 +285,8 @@ class Legend:
 
         self._patches, self._categories = [], []
         for category, color in categories_colors.items():
+            if self.pretty_labels:
+                category = prettify_label(category)
             if category == nan_label:
                 self._categories.append(nan_label)
             else:
@@ -236,6 +305,8 @@ class Legend:
             )
 
     def _actually_add_legend(self, ax: matplotlib.axes.Axes) -> matplotlib.axes.Axes:
+        if self.pretty_labels:
+            self.title = prettify_label(self.title)
         legend = ax.legend(
             self._patches,
             self._categories,
@@ -360,10 +431,6 @@ class ContinousLegend(Legend):
             Defaults to None.
         label_sep: Text to put in between the two numbers in each color group in
             the legend. Defaults to '-'.
-        rounding: Number of decimals in the labels. By default, the rounding
-            depends on the column's maximum value and standard deviation.
-            OBS: The bins will not be rounded, meaning the labels might be wrong
-            if not bins are set manually.
         thousand_sep: Separator between each thousand for large numbers. Defaults to
             None, meaning no separator.
         decimal_mark: Text to use as decimal point. Defaults to None, meaning '.' (dot)
@@ -371,7 +438,7 @@ class ContinousLegend(Legend):
             decimal mark.
 
     Examples:
-    --------
+    ---------
     Create ten random points with a numeric column from 0 to 9.
 
     >>> import sgis as sg
@@ -428,7 +495,7 @@ class ContinousLegend(Legend):
     def __init__(
         self,
         labels: list[str] | None = None,
-        pretty_labels: bool = False,
+        pretty_labels: bool = True,
         label_suffix: str | None = None,
         label_sep: str = "-",
         rounding: int | None = None,
@@ -474,7 +541,7 @@ class ContinousLegend(Legend):
         self.label_sep = label_sep
         self.label_suffix = "" if not label_suffix else label_suffix
         self._rounding = rounding
-        self._rounding_has_been_set = True if rounding else False
+        # self._rounding_has_been_set = True if rounding else False
 
     def _get_rounding(self, array: Series | np.ndarray) -> int:
         def isinteger(x):
@@ -502,8 +569,10 @@ class ContinousLegend(Legend):
 
     @staticmethod
     def _set_rounding(bins, rounding: int | float) -> list[int | float]:
-        if rounding == 0:
+        if not rounding:
             return [int(round(bin_, 0)) for bin_ in bins]
+        elif rounding <= 0:
+            return [int(round(bin_, rounding)) for bin_ in bins]
         else:
             return [round(bin_, rounding) for bin_ in bins]
 
@@ -520,8 +589,8 @@ class ContinousLegend(Legend):
     ) -> None:
         # TODO: clean up this messy method
 
-        for attr in self.__dict__.keys():
-            if attr in self.kwargs:
+        for attr in self.kwargs:
+            if attr in self.__dict__:
                 self[attr] = self.kwargs.pop(attr)
 
         self._patches, self._categories = [], []
@@ -544,9 +613,10 @@ class ContinousLegend(Legend):
             if len(self.labels) != len(colors):
                 raise ValueError(
                     "Label list must be same length as the number of groups. "
-                    f"Got k={len(colors)} and labels={len(colors)}."
+                    f"Got k={len(colors)} and labels={len(self.labels)}."
                     f"labels: {', '.join(self.labels)}"
                     f"colors: {', '.join(colors)}"
+                    f"bins: {bins}"
                 )
             self._categories = self.labels
 
@@ -576,42 +646,59 @@ class ContinousLegend(Legend):
 
                 min_ = np.min(bin_values[i])
                 max_ = np.max(bin_values[i])
-                min_rounded = self._set_rounding([min_], self._rounding)[0]
-                max_rounded = self._set_rounding([max_], self._rounding)[0]
+
                 if self.pretty_labels:
-                    if i != 0 and self._rounding == 0:
-                        cat1 = int(cat1 + 1)
-                    elif i != 0:
-                        cat1 = cat1 + float(f"1e-{self._rounding}")
+                    if i == 0:
+                        cat1 = int(min_) if (self.rounding or 0) <= 0 else min_
+
+                    is_last = i == len(bins) - 2
+                    if is_last:
+                        cat2 = int(max_) if (self.rounding or 0) <= 0 else max_
+
+                    if (self.rounding or 0) <= 0:
+                        cat1 = int(cat1)
+                        cat2 = int(cat2 - 1) if not is_last else int(cat2)
+                    elif (self.rounding or 0) > 0:
+                        cat1 = round(cat1, self._rounding)
+                        cat2 = round(
+                            cat2 - float(f"1e-{self._rounding}"), self._rounding
+                        )
+                    else:
+                        cat1 = round(cat1, self._rounding)
+                        cat2 = round(cat2, self._rounding)
 
                     cat1 = self._format_number(cat1)
                     cat2 = self._format_number(cat2)
 
                     if min_ == max_:
-                        label = self._two_value_label(cat1, cat2)
+                        label = self._get_two_value_label(cat1, cat2)
                         self._categories.append(label)
                         continue
 
-                    label = self._two_value_label(cat1, cat2)
+                    label = self._get_two_value_label(cat1, cat2)
                     self._categories.append(label)
 
-                elif min_ == max_:
+                    continue
+
+                min_rounded = self._set_rounding([min_], self._rounding)[0]
+                max_rounded = self._set_rounding([max_], self._rounding)[0]
+                if min_ == max_:
                     min_rounded = self._format_number(min_rounded)
-                    label = self._one_value_label(min_rounded)
+                    label = self._get_one_value_label(min_rounded)
                     self._categories.append(label)
                 else:
                     min_rounded = self._format_number(min_rounded)
                     max_rounded = self._format_number(max_rounded)
-                    label = self._two_value_label(min_rounded, max_rounded)
+                    label = self._get_two_value_label(min_rounded, max_rounded)
                     self._categories.append(label)
 
-    def _two_value_label(self, value1: int | float, value2: int | float) -> str:
+    def _get_two_value_label(self, value1: int | float, value2: int | float) -> str:
         return (
             f"{value1} {self.label_suffix} {self.label_sep} "
             f"{value2} {self.label_suffix}"
         )
 
-    def _one_value_label(self, value1: int | float) -> str:
+    def _get_one_value_label(self, value1: int | float) -> str:
         return f"{value1} {self.label_suffix}"
 
     def _format_number(self, number: int | float) -> int | float:
@@ -640,10 +727,15 @@ class ContinousLegend(Legend):
 
     @property
     def rounding(self) -> int:
-        """Number rounding."""
+        """Number of decimals in the labels.
+
+        By default, the rounding
+        depends on the column's maximum value and standard deviation.
+        OBS: The bins will not be rounded, meaning the labels might be wrong
+        if not bins are set manually.
+        """
         return self._rounding
 
     @rounding.setter
     def rounding(self, new_value: int) -> None:
         self._rounding = new_value
-        self._rounding_has_been_set = True

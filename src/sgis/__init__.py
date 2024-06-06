@@ -115,12 +115,16 @@ from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
 from .parallel.parallel import parallel_overlay
 from .raster.cube import DataCube
-
-try:
-    import sgis.raster.torchgeo as torchgeo
-except ImportError:
-    pass
-
+from .raster.cube import concat_cubes
+from .raster.image_collection import Band
+from .raster.image_collection import Image
+from .raster.image_collection import ImageCollection
+from .raster.image_collection import Sentinel2Band
+from .raster.image_collection import Sentinel2CloudlessCollection
+from .raster.image_collection import Sentinel2CloudlessImage
+from .raster.image_collection import Sentinel2Collection
+from .raster.image_collection import Sentinel2Image
+from .raster.image_collection import concat_image_collections
 
 try:
     from .io.dapla_functions import check_files

@@ -3,6 +3,10 @@ import numpy as np
 
 from ..geopandas_tools.bounds import get_total_bounds
 from ..helpers import unit_is_degrees
+from ..raster.image_collection import Band
+from ..raster.image_collection import Image
+from ..raster.image_collection import ImageCollection
+from .explore import Explore
 from .map import Map
 from .maps import clipmap
 from .maps import explore
@@ -22,7 +26,7 @@ class Examine:
     can then be repeated.
 
     Examples:
-    --------
+    ---------
     Create the examiner.
 
     >>> import sgis as sg
@@ -93,10 +97,14 @@ class Examine:
         else:
             self.mask_gdf = mask_gdf
 
-        m = Map(*gdfs, column=column, **kwargs)
+        m = Explore(*gdfs, column=column, **kwargs)
+
+        # m = Map(*gdfs, column=column, **kwargs)
         self._gdfs: dict[str, gpd.GeoDataFrame] = dict(
             zip(m.labels, m.gdfs, strict=False)
         )
+
+        self.rasters: dict[str, ImageCollection | Image | Band] = m.rasters
 
         self.indices = list(range(len(self.mask_gdf)))
         self.i = 0
@@ -154,6 +162,7 @@ class Examine:
         print(f"i == {self.i} (of {len(self.mask_gdf)})")
         clipmap(
             self.column,
+            *list(self.rasters.values()),
             **self._gdfs,
             mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
             **self.kwargs,
@@ -175,6 +184,7 @@ class Examine:
         print(f"Showing index {i}")
         clipmap(
             self.column,
+            *list(self.rasters.values()),
             **self._gdfs,
             mask=self.mask_gdf.iloc[[i]].buffer(self.size),
             **self.kwargs,
@@ -194,6 +204,7 @@ class Examine:
         print(f"{self.i + 1} of {len(self.mask_gdf)}")
         clipmap(
             self.column,
+            *list(self.rasters.values()),
             **self._gdfs,
             mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
             **self.kwargs,
@@ -206,6 +217,7 @@ class Examine:
             self.kwargs = self.kwargs | kwargs
 
         explore(
+            *list(self.rasters.values()),
             **self._gdfs,
             column=self.column,
             **self.kwargs,
@@ -218,6 +230,7 @@ class Examine:
             self.kwargs = self.kwargs | kwargs
 
         clipmap(
+            *list(self.rasters.values()),
             **self._gdfs,
             column=self.column,
             **self.kwargs,
@@ -230,6 +243,7 @@ class Examine:
             self.kwargs = self.kwargs | kwargs
 
         samplemap(
+            *list(self.rasters.values()),
             **self._gdfs,
             column=self.column,
             **self.kwargs,

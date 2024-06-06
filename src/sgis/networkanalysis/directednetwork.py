@@ -29,7 +29,7 @@ def make_directed_network_norway(gdf: GeoDataFrame, dropnegative: bool) -> GeoDa
             to keep them.
 
     Examples:
-    --------
+    ---------
     2022 data for the municipalities of Oslo and Eidskog can be read directly like this:
 
     >>> import sgis as sg

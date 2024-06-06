@@ -57,7 +57,7 @@ class NetworkAnalysis:
         log: A DataFrame with information about each analysis run.
 
     Examples:
-    --------
+    ---------
     Read example data.
 
     >>> import sgis as sg
@@ -191,7 +191,7 @@ class NetworkAnalysis:
             straight lines between origin and destination.
 
         Examples:
-        --------
+        ---------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
@@ -479,7 +479,7 @@ class NetworkAnalysis:
                 that contain weights and all indices of 'origins' and 'destinations'.
 
         Examples:
-        --------
+        ---------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
@@ -692,7 +692,7 @@ class NetworkAnalysis:
             containing the indices of the origins and destinations GeoDataFrames.
 
         Examples:
-        --------
+        ---------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
@@ -820,7 +820,7 @@ class NetworkAnalysis:
             ValueError: if drop_middle_percent is not between 0 and 100.
 
         Examples:
-        --------
+        ---------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
@@ -966,7 +966,7 @@ class NetworkAnalysis:
             precice results.
 
         Examples:
-        --------
+        ---------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
@@ -1093,7 +1093,7 @@ class NetworkAnalysis:
             service_area: Faster method where lines are not cut to get precice results.
 
         Examples:
-        --------
+        ---------
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
