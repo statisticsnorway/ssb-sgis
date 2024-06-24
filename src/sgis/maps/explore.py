@@ -194,7 +194,13 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     )
     # if np.max(arr) > 0:
     #     arr = arr / 255
-    raster_data_dict["cmap"] = plt.get_cmap(band.cmap) if band.cmap else None
+    try:
+        raster_data_dict["cmap"] = band.get_cmap(arr)
+    except Exception:
+        try:
+            raster_data_dict["cmap"] = plt.get_cmap(band.cmap)
+        except Exception:
+            raster_data_dict["cmap"] = band.cmap
     raster_data_dict["arr"] = arr
     raster_data_dict["bounds"] = bounds
     raster_data_dict["label"] = name
@@ -290,25 +296,34 @@ def _image_collection_to_background_map(
 
         for red, blue, green in rbg_bands:
             try:
-                red_band = image[red].load(indexes=1, bounds=mask).values
+                red_band = image[red].load(indexes=1, bounds=mask)
             except KeyError:
                 continue
             try:
-                blue_band = image[blue].load(indexes=1, bounds=mask).values
+                blue_band = image[blue].load(indexes=1, bounds=mask)
             except KeyError:
                 continue
             try:
-                green_band = image[green].load(indexes=1, bounds=mask).values
+                green_band = image[green].load(indexes=1, bounds=mask)
             except KeyError:
                 continue
             break
 
-        if mask is not None:
-            print(mask)
-            print(to_gdf(mask).area.sum())
-            print(to_gdf(image.bounds).area.sum())
-            print(red_band.shape)
-            print(image.bounds)
+        crs = red_band.crs
+
+        bounds: tuple = (
+            _any_to_bbox_crs4326(mask, crs)
+            if mask is not None
+            else (
+                gpd.GeoSeries(box(*red_band.bounds), crs=crs)
+                .to_crs(4326)
+                .unary_union.bounds
+            )
+        )
+
+        red_band = red_band.values
+        blue_band = blue_band.values
+        green_band = green_band.values
 
         if red_band.shape[0] == 0:
             continue
@@ -316,19 +331,6 @@ def _image_collection_to_background_map(
             continue
         if green_band.shape[0] == 0:
             continue
-
-        crs = image.crs
-        bounds: tuple = (
-            _any_to_bbox_crs4326(mask, crs)
-            if mask is not None
-            else (
-                gpd.GeoSeries(box(*image.bounds), crs=crs)
-                .to_crs(4326)
-                .unary_union.bounds
-            )
-        )
-        print(bounds)
-        print(to_gdf(bounds).area.sum())
 
         # to 3d array in shape (x, y, 3)
         rbg_image = np.stack([red_band, blue_band, green_band], axis=2)
@@ -513,6 +515,13 @@ class Explore(Map):
         """Representation."""
         return f"{self.__class__.__name__}()"
 
+    def __bool__(self) -> bool:
+        try:
+            rasters = self.raster_data
+        except AttributeError:
+            rasters = self.rasters
+        return bool(len(self._gdfs) + len(self._gdf) + len(rasters))
+
     def explore(
         self,
         column: str | None = None,
@@ -641,6 +650,8 @@ class Explore(Map):
     def _rasters_to_background_maps(self):
         for raster_data_dict in self.raster_data:
             arr = raster_data_dict["arr"]
+            if hasattr(arr, "mask"):
+                arr = arr.data
             label = raster_data_dict["label"]
             bounds = raster_data_dict["bounds"]
             if raster_data_dict["cmap"] is not None:

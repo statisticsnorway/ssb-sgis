@@ -32,7 +32,6 @@ try:
     from ..io.dapla_functions import read_geopandas
     from ..io.dapla_functions import write_geopandas
 
-    # from ..io.write_municipality_data import write_municipality_data
 except ImportError:
     pass
 
@@ -109,6 +108,101 @@ class Parallel:
         self.kwargs = kwargs
         self.funcs: list[functools.partial] = []
         self.results: list[Any] = []
+
+    def run(
+        self,
+        funcs: Iterable[Callable],
+        args: tuple | None = None,
+        kwargs: dict | None = None,
+    ) -> list[Any]:
+        """Run functions in parallel with items of an iterable as 0th arguemnt.
+
+        Args:
+            func: Function to be run.
+            iterable: An iterable where each item will be passed to func as
+                0th positional argument.
+            args: Positional arguments passed to 'func' starting from the 1st argument.
+                The 0th argument will be reserved for the values of 'iterable'.
+            kwargs: Keyword arguments passed to 'func'. Must be passed as a dict,
+                not unpacked into separate keyword arguments.
+
+        Returns:
+            A list of the return values of the function, one for each item in
+            'iterable'.
+
+        Examples:
+        ---------
+        Multiply each list element by 2.
+
+        >>> iterable = [1, 2, 3]
+        >>> def x2(x):
+        ...     return x * 2
+        >>> p = sg.Parallel(4, backend="loky")
+        >>> results = p.map(x2, iterable)
+        >>> results
+        [2, 4, 6]
+
+        With args and kwargs.
+
+        >>> iterable = [1, 2, 3]
+        >>> def x2(x, plus, minus):
+        ...     return x * 2 + plus - minus
+        >>> p = sg.Parallel(4, backend="loky")
+        ...
+        >>> # these three are the same
+        >>> results1 = p.map(x2, iterable, args=(2, 1))
+        >>> results2 = p.map(x2, iterable, kwargs=dict(plus=2, minus=1))
+        >>> results3 = p.map(x2, iterable, args=(2,), kwargs=dict(minus=1))
+        >>> assert results1 == results2 == results3
+        ...
+        >>> results1
+        [3, 5, 7]
+
+        If in Jupyter the function should be defined in another module.
+        And if using the multiprocessing backend, the code should be
+        guarded by if __name__ == "__main__".
+
+        >>> from .file import x2
+        >>> if __name__ == "__main__":
+        ...     p = sg.Parallel(4, backend="loky")
+        ...     results = p.map(x2, iterable)
+        ...     print(results)
+        [2, 4, 6]
+        """
+        args = args or ()
+        kwargs = kwargs or {}
+        if self.processes == 1:
+            return [func(*args, **kwargs) for func in funcs]
+
+        # don't use unnecessary processes
+        processes = min(self.processes, len(funcs))
+
+        if not processes:
+            return []
+        elif processes == 1:
+            return [func(*args, **kwargs) for func in funcs]
+
+        try:
+            with joblib.Parallel(
+                n_jobs=processes, backend=self.backend, **self.kwargs
+            ) as parallel:
+                return parallel(
+                    (joblib.delayed(func)(*args, **kwargs)) for func in funcs
+                )
+        except pickle.PickleError as e:
+            unpicklable = []
+            for k, v in locals().items():
+                try:
+                    pickle.dumps(v)
+                except pickle.PickleError:
+                    unpicklable.append(k)
+                except TypeError:
+                    pass
+            if unpicklable:
+                raise pickle.PickleError(
+                    f"Cannot unpickle objects: {unpicklable}"
+                ) from e
+            raise e
 
     def map(
         self,

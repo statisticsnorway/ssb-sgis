@@ -222,6 +222,9 @@ class Map:
         self._nan_idx = self._gdf[self._column].isna()
         self._get_unique_values()
 
+    def __bool__(self) -> bool:
+        return bool(len(self._gdfs) + len(self._gdf))
+
     def _get_unique_values(self) -> None:
         if not self._is_categorical:
             self._unique_values = self._get_unique_floats()

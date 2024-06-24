@@ -1,9 +1,10 @@
 # %%
 
-
 from collections.abc import Iterable
 from pathlib import Path
+from time import perf_counter
 
+import pytest
 import numpy as np
 import torch
 from geopandas import GeoSeries
@@ -137,7 +138,7 @@ def test_concat_image_collections():
         ), f"different value for '{k}': {v} and {getattr(collection, k)}"
 
 
-def x():
+def demo():
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     sg.explore(collection)
@@ -151,29 +152,59 @@ def x():
     sg.explore(ndvi)
 
 
-def test_ndvi_and_explore():
-    """Running ndvi and checking how it's plotted with explore."""
+def test_explore():
     n = 3000
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     e = sg.explore(collection)
     assert e.rasters
-    # assert (x := [x["label"] for x in e.raster_data]) == [
-    #     f"{img.tile}_{img.date[:8]}" for img in collection
-    # ], x
+    assert (x := [x["label"] for x in e.raster_data]) == [
+        f"{img.tile}_{img.date[:8]}" for img in collection
+    ], x
 
-    collection = collection.filter(bands=collection.ndvi_bands)
+
+def test_ndvi():
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    _test_ndvi(collection, np.ma.core.MaskedArray)
+
+    collection = sg.concat_image_collections(
+        [
+            sg.Sentinel2Collection(path_sentinel, level="L2A", res=10),
+            sg.Sentinel2CloudlessCollection(path_sentinel, level=None, res=10),
+        ]
+    )
+    print(collection)
+    _test_ndvi(collection, (np.ma.core.MaskedArray | np.ndarray))
+
+    collection = sg.Sentinel2CloudlessCollection(path_sentinel, level=None, res=10)
+    print(collection)
+    _test_ndvi(collection, np.ndarray)
+
+
+def _test_ndvi(collection, type_should_be):
+    """Running ndvi and checking how it's plotted with explore."""
+    n = 1000
 
     for (tile_id,), tile_collection in collection.groupby("tile"):
 
         for img in tile_collection:
             assert img.tile == tile_id
             ndvi = img.get_ndvi()
+            assert isinstance(ndvi.values, type_should_be), type(ndvi.values)
+            assert ndvi.values.max() <= 1, ndvi.values.max()
+            assert ndvi.values.min() >= -1, ndvi.values.min()
 
-            assert (ndvi.cmap) == "Greens"
+            if type_should_be == np.ma.core.MaskedArray:
+                assert np.sum(ndvi.values.mask)
 
-            e = sg.explore(ndvi)
+            # assert (ndvi.cmap) == "Greens"
+
+            print("explore ndvi, masking=", img.masking)
+            gdf = ndvi.to_gdf()
+            gdf_sample = gdf.sample(min(n, len(gdf)))
+            e = sg.explore(ndvi, gdf_sample=gdf_sample, column="value")
+
             assert e.rasters
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
                 "ndvi",
@@ -207,21 +238,39 @@ def test_ndvi_and_explore():
 
 
 def test_bbox():
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, processes=2)
-
-    no_imgs = collection.filter(bounds=Point(0, 0))  # bounds=Point(0, 0))
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, processes=1)
+    no_imgs = collection.filter(bbox=Point(0, 0))
     assert not len(no_imgs), no_imgs
 
     centroid = collection[0].centroid
-    imgs = collection.filter(bounds=centroid)  # bounds=centroid)
+    imgs = collection.filter(bbox=centroid)
+    assert len(imgs) == 2, imgs
+    for img in imgs:
+        for band in img:
+            shape = band.load().values.shape
+            assert shape == (0,), shape
+
+    imgs = collection.filter(bbox=centroid.buffer(100))
+
+    assert len(imgs) == 2, imgs
+    for img in imgs:
+        for band in img:
+            shape = band.load().values.shape
+            assert shape == (20, 20), shape
+
+    no_imgs = collection.filter(intersects=Point(0, 0))  # intersects=Point(0, 0))
+    assert not len(no_imgs), no_imgs
+
+    centroid = collection[0].centroid
+    imgs = collection.filter(intersects=centroid)  # intersects=centroid)
     assert len(imgs) == 2, imgs
 
     centroid = collection[1].centroid
-    imgs = collection.filter(bounds=centroid)  # bounds=centroid)
+    imgs = collection.filter(intersects=centroid)  # intersects=centroid)
     assert len(imgs) == 2, imgs
 
     centroid = collection[2].centroid
-    imgs = collection.filter(bounds=centroid)  # bounds=centroid)
+    imgs = collection.filter(intersects=centroid)  # intersects=centroid)
     assert len(imgs) == 1, imgs
 
 
@@ -264,8 +313,17 @@ def test_sample():
     e = sg.explore(sample)
 
     assert len(sample) >= 15, len(sample)
+
     for img in sample:
         e = sg.explore(img)
+        # for k, v in img.__dict__.items():
+        #     print()
+        #     print(k)
+        #     print(v)
+
+        # for band in img:
+        #     print(sg.to_shapely(band.bounds).length / 4)
+        sss
         assert e.rasters
         for band in img:
             arr = band.load().values
@@ -368,12 +426,75 @@ def test_sorting():
     assert band.date.startswith("2017"), band.date
 
     band = collection[1]["B02"]
+
     assert isinstance(band, sg.Band)
     assert band.date.startswith("2023"), band.date
 
 
+def test_masking():
+    collection = sg.ImageCollection(path_sentinel, level=None, res=20)
+    assert collection.masking is None
+    assert len(collection)
+    for img in collection:
+        assert img.masking is None
+        for band in img:
+            if "SCL" in band.path:
+                continue
+            assert band.mask is None
+            band = band.load()
+            assert np.sum(band.values)
+            assert np.sum(band.values.data)
+
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=20)
+    assert collection.masking
+    for img in collection:
+        assert img.masking
+        assert "SCL" not in img
+        for band in img:
+            assert band.band_id != "SCL"
+            assert band.mask is not None
+            band = band.load()
+            print(band)
+            print(band.values)
+            assert np.sum(band.values)
+            assert np.sum(band.values.data)
+            assert np.sum(band.values.mask)
+            assert isinstance(band.values, np.ma.core.MaskedArray)
+
+
 def test_merge():
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    # collection.masking = None
+    # assert sg.Sentinel2Collection.masking is not None
+
+    # merged_by_band = collection.merge_by_band(method="mean", nodata=0)
+    # for band in merged_by_band:
+    #     band.write(
+    #         f"c:/users/ort/git/ssb-sgis/tests/testdata/raster/{band.band_id}.tif"
+    #     )
+    t = perf_counter()
+    merged_by_band = collection.merge_by_band(method="median", nodata=0)
+    print("merged_by_band mean", perf_counter() - t)
+    t = perf_counter()
+    # merged_by_band = collection.merge_by_band(method="median", nodata=0)
+    # print("merged_by_band median", perf_counter() - t)
+
+    print()
+    print(collection.bounds)
+    print(merged_by_band.bounds)
+    sg.explore(
+        collection,
+        merged_by_band,
+        cc=sg.to_gdf(collection.bounds, collection.crs).assign(area=lambda x: x.area),
+        bbb=sg.to_gdf(merged_by_band.bounds, collection.crs).assign(
+            area=lambda x: x.area
+        ),
+    )
+    print()
+    print()
+    sss
+    assert len(merged_by_band) == 12, len(merged_by_band)
 
     # loop through each individual image to check the maths
     for ((tile, date), date_group), (img) in zip(
@@ -403,9 +524,6 @@ def test_merge():
 
         assert int(np.mean(meaned)) == int(np.mean(manually_meaned))
         assert int(np.mean(medianed)) == int(np.mean(manually_medianed))
-
-    merged_by_band = collection.merge_by_band()
-    assert len(merged_by_band) == 13, len(merged_by_band)
 
     grouped_by_year_merged_by_band = collection.groupby("year").merge_by_band(
         method="mean"
@@ -514,9 +632,10 @@ def test_groupby():
     assert len(n := collection.groupby("date")) == 3, (n, len(n))
     assert len(n := collection.groupby("year")) == 2, (n, len(n))
     assert len(n := collection.groupby("month")) == 2, (n, len(n))
+    assert len(n := collection.groupby(["year", "month"])) == 2, (n, len(n))
     assert len(n := collection.groupby("tile")) == 2, (n, len(n))
-    assert len(n := collection.groupby("band_id")) == 13, (n, len(n))
-    assert len(n := collection.groupby(["band_id", "date"])) == 38, (n, len(n))
+    assert len(n := collection.groupby("band_id")) == 12, (n, len(n))
+    assert len(n := collection.groupby(["band_id", "date"])) == 36, (n, len(n))
 
     bands_should_be = [
         "B01",
@@ -624,11 +743,17 @@ def test_groupby():
             assert img.date > largest_date, (img.date, largest_date, subcollection, img)
             largest_date = img.date
 
-    for (month,), subcollection in collection.groupby("month"):
+    for (
+        year,
+        month,
+    ), subcollection in collection.groupby(["year", "month"]):
         merged = subcollection.merge_by_band()
         assert isinstance(month, str), month
-        assert month.startswith("20")
-        assert len(month) == 6, month
+        assert month.startswith("0")
+        assert isinstance(year, str), year
+        assert year.startswith("20")
+        assert len(month) == 2, month
+        assert len(year) == 4, year
         for img in subcollection:
             assert img.month == month
             for band in img:
@@ -683,11 +808,11 @@ def test_cloud():
         )
 
     for img in collection[[0, -1]]:
-        cloud_arr = img.get_cloud_band()
-        # assert np.sum(cloud_arr)
-        assert isinstance(cloud_arr, sg.Band), cloud_arr
-        assert cloud_arr.values.shape == (300, 300), cloud_arr.values.shape
-        cloud_polys = img.get_cloud_band().to_gdf().geometry
+        cloud_band = img.mask.load()
+        # assert np.sum(cloud_band)
+        assert isinstance(cloud_band, sg.Band), cloud_band
+        assert cloud_band.values.shape == (300, 300), cloud_band.values.shape
+        cloud_polys = img.mask.to_gdf().geometry
         sg.explore(cloud_polys)
         assert isinstance(cloud_polys, GeoSeries), type(cloud_polys)
 
@@ -698,7 +823,7 @@ def test_iteration():
     assert isinstance(collection, sg.Sentinel2Collection), type(collection)
     assert len(collection.images) == 3, len(collection.images)
 
-    assert len(collection.file_paths) == 38, len(collection.file_paths)
+    assert len(collection.file_paths) == 36, len(collection.file_paths)
     assert len(collection) == 3, len(collection)
 
     assert isinstance(collection.unary_union, MultiPolygon), collection.unary_union
@@ -707,12 +832,14 @@ def test_iteration():
     # n_bands = [13, 12, 13]
     # for n, img in zip(n_bands, collection, strict=False):
     for img in collection:
+        with pytest.raises(KeyError):
+            img[img.masking["band_id"]]
         assert isinstance(img, sg.Sentinel2Image), type(img)
         assert img.band_ids, img.band_ids
         assert all(x is not None for x in img.band_ids), img.band_ids
         assert img.bands, img.bands
         assert all(isinstance(x, sg.Band) for x in img.bands), img.bands
-        assert all(isinstance(x, sg.Band) for x in img), img.__iter__()
+        assert all(isinstance(x, sg.Band) for x in img), list(img)
         assert img.name, img.name
 
         assert img.date, img.date
@@ -774,8 +901,8 @@ def test_iteration_base_image_collection():
 
     assert len(collection.images) == 4, len(collection.images)
     assert len(collection) == 4, len(collection)
-    # assert len(collection.explode()) == 38, len(collection.explode())
-    assert len(collection.file_paths) == 54, len(collection.file_paths)
+    # assert len(collection.explode()) == 39, len(collection.explode())
+    assert len(collection.file_paths) == 55, len(collection.file_paths)
 
     for img in collection:
         assert isinstance(img, sg.Image), type(img)
@@ -803,7 +930,11 @@ def test_iteration_base_image_collection():
             assert isinstance(band, sg.Band), band
             arr = band.load().values
             assert isinstance(arr, np.ndarray), arr
-            assert (arr.shape) == (300, 300) or (arr.shape) == (200, 200), arr.shape
+            print(band.__dict__)
+            assert (arr.shape) == (300, 300) or (arr.shape) == (200, 200), (
+                arr.shape,
+                band,
+            )
 
 
 def test_convertion():
@@ -829,13 +960,7 @@ def test_torch():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
-    collection = collection.filter(
-        bands=[
-            band_id
-            for band_id in collection.band_ids
-            if band_id != collection.cloud_band
-        ]
-    )
+    collection = collection
     assert len(collection) == 3
     for img in collection:
         assert len(img) == 12, len(img)
@@ -861,12 +986,12 @@ def test_torch():
 
     # Training loop
     for batch in dataloader:
-        imgs = batch["image"]  # list of imgs
+        images = batch["image"]  # list of images
         boxes = batch["boxes"]  # list of boxes
         labels = batch["labels"]  # list of labels
         masks = batch["masks"]  # list of masks
-        print(imgs)
-        assert len(imgs.shape) == 4, imgs.shape
+        print(images)
+        assert len(images.shape) == 4, images.shape
 
     return
 
@@ -893,34 +1018,35 @@ def test_torch():
 
 def main():
 
-    test_merge()
+    test_masking()
+    test_ndvi()
+    test_cloud()
+    test_bbox()
     test_zonal()
     test_gradient()
     test_groupby()
-    test_concat_image_collections()
-    test_iteration_base_image_collection()
-    test_sample()
     test_with_mosaic()
     test_convertion()
     test_iteration()
     test_indexing()
-    test_bbox()
     test_regexes()
     test_date_ranges()
-    test_cloud()
     test_torch()
-    test_ndvi_and_explore()
+    test_iteration_base_image_collection()
+    test_sample()
+    test_merge()
+    test_concat_image_collections()
 
 
 if __name__ == "__main__":
     main()
-#     import cProfile
+    import cProfile
 
-#     cProfile.run(
-#         """
-# main()
-#                  """,
-#         sort="cumtime",
-#     )
+    cProfile.run(
+        """
+main()
+                 """,
+        sort="cumtime",
+    )
 
 # %%

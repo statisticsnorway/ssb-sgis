@@ -16,6 +16,10 @@ def x2(x):
     return x * 2
 
 
+def x3(x):
+    return x * 3
+
+
 def test_attributes():
     p = sg.Parallel(2, backend="loky")
     assert p.processes == 2
@@ -39,6 +43,13 @@ def add(x, y):
 
 def add2(x, y, z):
     return x + y + z
+
+
+def test_run():
+    for backend in ["loky", "multiprocessing", "threading"]:
+        res_x2, res_x3 = sg.Parallel(2, backend=backend).run([x2, x3], args=(3,))
+        assert res_x2 == 6, res_x2
+        assert res_x3 == 9, res_x3
 
 
 def test_map():
@@ -143,6 +154,7 @@ def test_starmap():
 
 
 if __name__ == "__main__":
+    test_run()
     test_chunkwise()
     test_args_to_kwargs()
     test_starmap()

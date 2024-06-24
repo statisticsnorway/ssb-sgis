@@ -385,35 +385,27 @@ def sort_small_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
 
 
 def make_lines_between_points(
-    arr1: NDArray[Point] | GeometryArray | GeoSeries,
-    arr2: NDArray[Point] | GeometryArray | GeoSeries,
+    *arrs: NDArray[Point] | GeometryArray | GeoSeries,
 ) -> NDArray[LineString]:
-    """Creates an array of linestrings from two arrays of points.
+    """Creates an array of linestrings from two or more arrays of points.
 
-    The operation is done rowwise.
+    The lines are created rowwise, meaning from arr0[0] to arr1[0], from arr0[1] to arr1[1]...
+    If more than two arrays are passed, e.g. three arrays,
+    the lines will go from arr0[0] via arr1[0] to arr2[0].
 
     Args:
-        arr1: GeometryArray og GeoSeries of points.
-        arr2: GeometryArray og GeoSeries of points of same length as arr1.
+        arrs: 1 dimensional arrays of point geometries.
+            All arrays must have the same shape.
+            Must be at least two arrays.
 
     Returns:
         A numpy array of linestrings.
 
-    Raises:
-        ValueError: If the arrays have unequal shape.
-
     """
-    if arr1.shape != arr2.shape:
-        raise ValueError("Arrays must have equal shape.")
-
-    coords: pd.DataFrame = pd.concat(
-        [
-            pd.DataFrame(get_coordinates(arr1), columns=["x", "y"]),
-            pd.DataFrame(get_coordinates(arr2), columns=["x", "y"]),
-        ]
-    ).sort_index()
-
-    return linestrings(coords.values, indices=coords.index)
+    coords = [get_coordinates(arr, return_index=False) for arr in arrs]
+    return linestrings(
+        np.concatenate([coords_arr[:, None, :] for coords_arr in coords], axis=1)
+    )
 
 
 def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:

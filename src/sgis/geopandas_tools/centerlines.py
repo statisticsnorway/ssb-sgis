@@ -21,9 +21,7 @@ from shapely.errors import GEOSException
 from shapely.geometry import LineString
 from shapely.ops import nearest_points
 
-from ..maps.maps import explore
 from ..networkanalysis.traveling_salesman import traveling_salesman_problem
-from .conversion import to_gdf
 from .conversion import to_geoseries
 from .general import clean_geoms
 from .general import make_lines_between_points
@@ -185,8 +183,6 @@ def get_rough_centerlines(
             endpoints,
         ]
     )
-
-    explore(points=to_gdf(points, 25833), gdf=gdf)
 
     remove_longest = functools.partial(_remove_longest_if_not_intersecting, geoms=geoms)
 

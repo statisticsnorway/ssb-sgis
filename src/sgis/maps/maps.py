@@ -396,7 +396,6 @@ def clipmap(
     samplemap: same functionality, but shows only a random area of a given size.
     """
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
-
     if mask is None and len(gdfs) > 1:
         mask = gdfs[-1]
         gdfs = gdfs[:-1]

@@ -86,10 +86,14 @@ def split_lines_by_nearest_point(
         raise ValueError("crs mismatch:", points.crs, "and", gdf.crs)
 
     if get_geom_type(gdf) != "line":
-        raise ValueError("'gdf' should only have line geometries.", gdf.geom_type)
+        raise ValueError(
+            f"'gdf' should only have line geometriess. Got {gdf.geom_type.value_counts()}"
+        )
 
     if get_geom_type(points) != "point":
-        raise ValueError("'points' should only have point geometries.")
+        raise ValueError(
+            f"'points' should only have point geometries. Got {gdf.geom_type.value_counts()}"
+        )
 
     gdf = gdf.copy()
 

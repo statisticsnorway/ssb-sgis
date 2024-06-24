@@ -320,14 +320,21 @@ class PolygonsAsRings:
 
         exterior = self.rings.loc[self.is_exterior].sort_index()
         assert exterior.shape == (len(self.gdf),)
+        nonempty_exteriors = exterior.loc[lambda x: x.notna()]
+        empty_exteriors = exterior.loc[lambda x: x.isna()]
 
         nonempty_interiors = self.rings.loc[self.is_interior]
 
         if not len(nonempty_interiors):
             try:
-                return make_valid(polygons(exterior.values))
+                nonempty_exteriors.loc[:] = make_valid(
+                    polygons(nonempty_exteriors.values)
+                )
             except Exception:
-                return _geoms_to_linearrings_fallback(exterior).values
+                nonempty_exteriors.loc[:] = _geoms_to_linearrings_fallback(
+                    nonempty_exteriors
+                ).values
+            return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
 
         empty_interiors = pd.Series(
             [None for _ in range(len(self.gdf) * self.max_rings)],
@@ -342,6 +349,41 @@ class PolygonsAsRings:
             .sort_index()
         )
         assert interiors.shape == (len(self.gdf), self.max_rings), interiors.shape
+
+        interiors = interiors.loc[
+            interiors.index.get_level_values(1).isin(
+                nonempty_exteriors.index.get_level_values(1)
+            )
+        ]
+        assert interiors.index.get_level_values(1).equals(
+            nonempty_exteriors.index.get_level_values(1)
+        )
+
+        # nan gives TypeError in shapely.polygons. None does not.
+        for i, _ in enumerate(interiors.columns):
+            interiors.loc[interiors.iloc[:, i].isna(), i] = None
+        nonempty_exteriors.loc[nonempty_exteriors.isna()] = None
+
+        try:
+            print(nonempty_exteriors.values.shape)
+            print(interiors.values.shape)
+            nonempty_exteriors.loc[:] = make_valid(
+                polygons(
+                    nonempty_exteriors.values,
+                    interiors.values,
+                )
+            )
+            return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
+        except Exception as e:
+            print("\n\n")
+            print(empty_exteriors)
+            print(interiors)
+            print(nonempty_exteriors)
+            raise e
+            nonempty_exteriors.loc[:] = _geoms_to_linearrings_fallback(
+                nonempty_exteriors, interiors
+            ).values
+            return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
 
         try:
             return make_valid(polygons(exterior.values, interiors.values))

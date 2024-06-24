@@ -754,22 +754,16 @@ def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
     inside_holes = sfilter(gdf, holes, predicate="within").unary_union
 
     def to_none_if_thin(geoms):
+        if not len(geoms):
+            return geoms
         try:
-            buffered_in = buffer(
-                difference(polygons(geoms), inside_holes), -(tolerance / 2)
-            )
-            return np.where(is_empty(buffered_in), None, geoms)
+            polys = polygons(geoms)
         except GEOSException:
-            buffered_in = buffer(
-                difference(make_valid(polygons(make_valid(geoms))), inside_holes),
-                -(tolerance / 2),
-            )
-            return np.where(is_empty(buffered_in), None, geoms)
-
-        except ValueError as e:
-            if not len(geoms):
-                return geoms
-            raise e
+            polys = make_valid(polygons(make_valid(geoms)))
+        if inside_holes is not None:
+            polys = difference(polys, inside_holes)
+        buffered_in = buffer(polys, -(tolerance / 2))
+        return np.where(is_empty(buffered_in), None, geoms)
 
     if not (gdf.geom_type == "Polygon").all():
         raise ValueError(gdf.geom_type.value_counts())
@@ -1062,7 +1056,7 @@ def get_gaps(
     return without_outer_ring.reset_index(drop=True)
 
 
-def get_holes(gdf: GeoDataFrame, as_polygons=True) -> GeoDataFrame:
+def get_holes(gdf: GeoDataFrame, as_polygons: bool = True) -> GeoDataFrame:
     """Get the holes inside polygons.
 
     Args:

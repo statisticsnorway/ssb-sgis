@@ -14,7 +14,8 @@ def ndvi(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
     elif red.max() > 1 or nir.max() > 1:
         raise ValueError()
 
-    ndvi_values = np.where((red + nir) == 0, 0, (nir - red) / (nir + red))
+    ndvi_values = (nir - red) / (nir + red)
+    ndvi_values[(red + nir) == 0] = 0
 
     return ndvi_values
 

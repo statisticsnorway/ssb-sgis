@@ -469,6 +469,6 @@ def _get_edges(
     Returns:
       A 2d numpy array of edges (from-to indices).
     """
-    return np.array(
-        [[(i, neighbor) for neighbor in indices[i]] for i in range(len(gdf))]
-    )
+    row_indices = np.arange(len(indices)).reshape(-1, 1)
+
+    return np.stack((np.broadcast_to(row_indices, indices.shape), indices), axis=-1)
