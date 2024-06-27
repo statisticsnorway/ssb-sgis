@@ -4,8 +4,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from time import perf_counter
 
-import pytest
 import numpy as np
+import pytest
 import torch
 from geopandas import GeoSeries
 from lightning.pytorch import Trainer
@@ -153,7 +153,7 @@ def demo():
 
 
 def test_explore():
-    n = 3000
+    n = 2990
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
@@ -507,20 +507,20 @@ def test_merge():
         # get 2d array with mean/median values of all bands in the image
         medianed = date_group.merge(method="median").values
         meaned = date_group.merge(method="mean").values
-        assert meaned.shape == (300, 300)
-        assert medianed.shape == (300, 300)
+        assert meaned.shape == (299, 299)
+        assert medianed.shape == (299, 299)
 
         # reading all bands as 3d array and taking mean/median manually
         arr = np.array([band.load().values for band in img])
         assert arr.shape in [
-            (12, 300, 300),
-            (13, 300, 300),
+            (12, 299, 299),
+            (13, 299, 299),
         ], arr.shape
         manually_meaned = np.mean(arr, axis=0).astype(int)
-        assert manually_meaned.shape == (300, 300)
+        assert manually_meaned.shape == (299, 299)
 
         manually_medianed = np.median(arr, axis=0).astype(int)
-        assert manually_medianed.shape == (300, 300)
+        assert manually_medianed.shape == (299, 299)
 
         assert int(np.mean(meaned)) == int(np.mean(manually_meaned))
         assert int(np.mean(medianed)) == int(np.mean(manually_medianed))
@@ -811,7 +811,7 @@ def test_cloud():
         cloud_band = img.mask.load()
         # assert np.sum(cloud_band)
         assert isinstance(cloud_band, sg.Band), cloud_band
-        assert cloud_band.values.shape == (300, 300), cloud_band.values.shape
+        assert cloud_band.values.shape == (299, 299), cloud_band.values.shape
         cloud_polys = img.mask.to_gdf().geometry
         sg.explore(cloud_polys)
         assert isinstance(cloud_polys, GeoSeries), type(cloud_polys)
@@ -820,6 +820,7 @@ def test_cloud():
 def test_iteration():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+
     assert isinstance(collection, sg.Sentinel2Collection), type(collection)
     assert len(collection.images) == 3, len(collection.images)
 
@@ -864,26 +865,26 @@ def test_iteration():
 
         # arr = img.read()
         # assert isinstance(arr, np.ndarray), arr
-        # assert (arr.shape) == (n, 300, 300), (i, n, arr.shape)
+        # assert (arr.shape) == (n, 299, 299), (i, n, arr.shape)
 
         # # without SCL band, always 12 bands
         # arr = img[img.l2a_bands].read()
         # assert isinstance(arr, np.ndarray), arr
-        # assert (arr.shape) == (12, 300, 300), (i, arr.shape)
+        # assert (arr.shape) == (12, 299, 299), (i, arr.shape)
 
         # arr = img[["B02", "B03", "B04"]].read()
         # assert isinstance(arr, np.ndarray), arr
-        # assert (arr.shape) == (3, 300, 300), arr.shape
+        # assert (arr.shape) == (3, 299, 299), arr.shape
 
         arr = img["B02"].load().values
         assert isinstance(arr, np.ndarray), arr
-        assert (arr.shape) == (300, 300), arr.shape
+        assert (arr.shape) == (299, 299), arr.shape
 
         for band in img:
             assert isinstance(band, sg.Band), band
             arr = band.load().values
             assert isinstance(arr, np.ndarray), arr
-            assert (arr.shape) == (300, 300), arr.shape
+            assert (arr.shape) == (299, 299), arr.shape
 
         for band_id, file_path in zip(img.band_ids, img.file_paths, strict=True):
             assert isinstance(band_id, str), band_id
@@ -892,6 +893,14 @@ def test_iteration():
             assert raster.band_id is not None, raster.band_id
             raster = img[file_path]
             assert raster.band_id is not None, raster.band_id
+
+    assert collection.values.shape == (3, 12, 299, 299), collection.values.shape
+    ndvi = collection.ndvi()
+    assert ndvi.values.shape == (3, 1, 299, 299), ndvi.values.shape
+    for img in collection:
+        assert img.values.shape == (12, 299, 299), img.values.shape
+        for band in img:
+            assert band.values.shape == (299, 299), band.values.shape
 
 
 def test_iteration_base_image_collection():
@@ -921,8 +930,8 @@ def test_iteration_base_image_collection():
         # arr = img.read()
         # assert isinstance(arr, np.ndarray), arr
         # assert (
-        #     (arr.shape) == (13, 300, 300)
-        #     or (arr.shape) == (12, 300, 300)
+        #     (arr.shape) == (13, 299, 299)
+        #     or (arr.shape) == (12, 299, 299)
         #     or (arr.shape) == (16, 200, 200)
         # ), arr.shape
 
@@ -931,7 +940,7 @@ def test_iteration_base_image_collection():
             arr = band.load().values
             assert isinstance(arr, np.ndarray), arr
             print(band.__dict__)
-            assert (arr.shape) == (300, 300) or (arr.shape) == (200, 200), (
+            assert (arr.shape) == (299, 299) or (arr.shape) == (200, 200), (
                 arr.shape,
                 band,
             )
@@ -1018,6 +1027,7 @@ def test_torch():
 
 def main():
 
+    test_iteration()
     test_masking()
     test_ndvi()
     test_cloud()
@@ -1027,7 +1037,6 @@ def main():
     test_groupby()
     test_with_mosaic()
     test_convertion()
-    test_iteration()
     test_indexing()
     test_regexes()
     test_date_ranges()

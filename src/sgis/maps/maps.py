@@ -84,7 +84,7 @@ def explore(
     browser: bool = False,
     smooth_factor: int | float = 1.5,
     size: int | None = None,
-    max_images: int = 15,
+    max_images: int = 10,
     **kwargs,
 ) -> Explore:
     """Interactive map of GeoDataFrames with layers that can be toggled on/off.
@@ -113,7 +113,7 @@ def explore(
         size: The buffer distance. Only used when center is given. It then defaults to
             1000.
         max_images: Maximum number of images (Image, ImageCollection, Band) to show per
-            map. Defaults to 15.
+            map. Defaults to 10.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -236,7 +236,7 @@ def samplemap(
     smooth_factor: int = 1.5,
     explore: bool = True,
     browser: bool = False,
-    max_images: int = 15,
+    max_images: int = 10,
     **kwargs,
 ) -> Explore:
     """Shows an interactive map of a random area of GeoDataFrames.
@@ -269,7 +269,7 @@ def samplemap(
         browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
         max_images: Maximum number of images (Image, ImageCollection, Band) to show per
-            map. Defaults to 15.
+            map. Defaults to 10.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -311,7 +311,7 @@ def samplemap(
 
     if mask is None:
         try:
-            sample = sample.geometry.dropna().sample(1)
+            sample = sample.geometry.loc[lambda x: ~x.is_empty].sample(1)
         except Exception:
             try:
                 sample = sample.sample(1)
@@ -357,7 +357,7 @@ def clipmap(
     max_zoom: int = 40,
     smooth_factor: int | float = 1.5,
     browser: bool = False,
-    max_images: int = 15,
+    max_images: int = 10,
     **kwargs,
 ) -> Explore | Map:
     """Shows an interactive map of a of GeoDataFrames clipped to the mask extent.
@@ -385,7 +385,7 @@ def clipmap(
         browser: If False (default), the maps will be shown in Jupyter.
             If True the maps will be opened in a browser folder.
         max_images: Maximum number of images (Image, ImageCollection, Band) to show per
-            map. Defaults to 15.
+            map. Defaults to 10.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.

@@ -12,44 +12,24 @@ src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 sys.path.insert(0, src)
 
-import sgis as sg
-
-
-from sgis.geopandas_tools.cleaning import *
-from sgis import *
-import re
 import warnings
-from typing import Callable
+from collections.abc import Callable
 
-import networkx as nx
 import numpy as np
-import pandas as pd
-import shapely
-from geopandas import GeoDataFrame, GeoSeries
-from geopandas.array import GeometryArray
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from numpy.typing import NDArray
-from shapely import (
-    Geometry,
-    STRtree,
-    extract_unique_points,
-    force_2d,
-    get_coordinates,
-    get_exterior_ring,
-    get_parts,
-    linearrings,
-    linestrings,
-    make_valid,
-    multipoints,
-    polygons,
-    reverse,
-    segmentize,
-    simplify,
-    unary_union,
-)
-from shapely.errors import GEOSException
-from shapely.geometry import LinearRing, LineString, MultiLineString, MultiPoint, Point
-from shapely.ops import nearest_points
+from shapely import Geometry
+from shapely import STRtree
+from shapely import extract_unique_points
+from shapely import polygons
+from shapely.geometry import LinearRing
+from shapely.geometry import LineString
+from shapely.geometry import Point
 
+import sgis as sg
+from sgis import *
+from sgis.geopandas_tools.cleaning import *
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
@@ -103,7 +83,6 @@ def coverage_clean(
     return eliminate_by_largest(gdf, to_eliminate).explode(ignore_index=True)
 
     return split_and_eliminate_thin(gdf, tolerance, mask=mask)
-
 
 
 def split_and_eliminate_thin(
@@ -405,17 +384,19 @@ def _snap_to_anchors(
     #     ),
     # )
 
-    should_be_snapped = (points.index.isin(snap_indices.values)) | (
-        points.index.isin(no_longer_anchors)
-    )
-    if anchors is not None:
-        should_be_snapped |= points.index.isin(
-            sfilter(points, anchors.buffer(tolerance)).index
-        )
+    # should_be_snapped = (points.index.isin(snap_indices.values)) | (
+    #     points.index.isin(no_longer_anchors)
+    # )
+    # if anchors is not None:
+    #     should_be_snapped |= points.index.isin(
+    #         sfilter(points, anchors.buffer(tolerance)).index
+    #     )
 
-    to_be_snapped = points.loc[should_be_snapped].rename(
-        columns={"_geom_idx": "_geom_idx_left"}, errors="raise"
-    )
+    to_be_snapped = points.loc[
+        lambda x: x["_is_snapped"] != True
+    ]  # .loc[should_be_snapped].rename(
+    #     columns={"_geom_idx": "_geom_idx_left"}, errors="raise"
+    # )
 
     snapped = (
         to_be_snapped.sjoin_nearest(anchors, max_distance=tolerance)
@@ -549,9 +530,10 @@ def _snap_linearrings(
     as_polygons = as_polygons.loc[is_thin == False]
 
     points: GeoDataFrame = (
-        gdf.assign(geometry=lambda x: extract_unique_points(x.geometry.values))
-        .explode(ignore_index=True)
-        .pipe(sfilter, donuts_without_spikes)
+        gdf.assign(geometry=lambda x: extract_unique_points(x.geometry.values)).explode(
+            ignore_index=True
+        )
+        # .pipe(sfilter, donuts_without_spikes)
     )
 
     not_snapped = (
@@ -702,6 +684,7 @@ def points_to_line_segments(points: GeoDataFrame) -> GeoDataFrame:
 
 
 def _add_midpoints_to_segments(points, relevant_mask_nodes, tolerance, as_polygons):
+    assert points.index.is_unique
     relevant_mask_nodes["_right_geom"] = relevant_mask_nodes.geometry
 
     relevant_mask_nodes = buff(relevant_mask_nodes, tolerance, resolution=10)
@@ -768,7 +751,7 @@ def _add_midpoints_to_segments(points, relevant_mask_nodes, tolerance, as_polygo
     # sss
 
     explore_locals(
-        to_gdf(midpoints, 25833),
+        midpoints=to_gdf(midpoints, 25833),
         center=(6550872, -29405, 10),
     )
     # explore_locals(
@@ -808,6 +791,7 @@ def _add_midpoints_to_segments(points, relevant_mask_nodes, tolerance, as_polygo
         .groupby(level=0)
         .agg(lambda x: _sorted_unary_union(x.values))
     )
+    with_new_midpoints_orig = with_new_midpoints.copy()
 
     with_new_midpoints = pd.concat(
         [with_new_midpoints, has_two_points, has_three_points]
@@ -827,9 +811,14 @@ def _add_midpoints_to_segments(points, relevant_mask_nodes, tolerance, as_polygo
     #     geoms=to_gdf(geoms, 25833),
     # )
 
+    segs_before = to_gdf(segments, 25833)
     segments.loc[with_new_midpoints.index, "geometry"] = with_new_midpoints
     explore_locals(
-        to_gdf(segments, 25833),
+        has_two_points=to_gdf(has_two_points, 25833),
+        has_three_points=to_gdf(has_three_points, 25833),
+        with_new_midpoints_orig=to_gdf(with_new_midpoints_orig, 25833),
+        segs_before=segs_before,
+        segs=to_gdf(segments, 25833),
         center=(6550872, -29405, 10),
     )
     # explore(
@@ -1030,6 +1019,7 @@ def get_missing(df, other):
 
 
 def test_clean():
+
     df = gpd.read_parquet(Path(__file__).parent / "testdata" / "polygon_snap.parquet")
 
     bbox = sg.to_gdf(shapely.minimum_rotated_rectangle(df.unary_union), df.crs)
@@ -1085,7 +1075,7 @@ def test_clean():
 
 
 def not_test_spikes():
-    from shapely.geometry import Point, Polygon
+    from shapely.geometry import Polygon
 
     factor = 10000
 
@@ -1188,6 +1178,7 @@ def not_test_spikes():
     for area1, area2 in zip(
         sorted(fixed_and_cleaned.area),
         sorted(area_should_be),
+        strict=False,
     ):
         assert is_close_enough(area1, area2), (area1, area2)
 
@@ -1203,6 +1194,7 @@ def not_test_spikes():
     for length1, length2 in zip(
         sorted(fixed_and_cleaned.length),
         sorted(length_should_be),
+        strict=False,
     ):
         assert is_close_enough(length1, length2), (length1, length2)
 

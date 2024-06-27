@@ -119,6 +119,7 @@ from .raster.cube import concat_cubes
 from .raster.image_collection import Band
 from .raster.image_collection import Image
 from .raster.image_collection import ImageCollection
+from .raster.image_collection import NDVIBand
 from .raster.image_collection import Sentinel2Band
 from .raster.image_collection import Sentinel2CloudlessCollection
 from .raster.image_collection import Sentinel2CloudlessImage

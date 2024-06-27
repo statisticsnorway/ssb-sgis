@@ -100,13 +100,6 @@ def coverage_clean(
         lambda x: x.geom_type.isin(["Polygon", "MultiPolygon"])
     ]
 
-    # gdf = _safe_simplify(gdf, PRECISION)
-
-    # try:
-    #     gdf = _safe_simplify(gdf, PRECISION)
-    # except GEOSException:
-    #     pass
-
     gdf = (
         clean_geoms(gdf)
         .pipe(make_all_singlepart)
@@ -773,7 +766,6 @@ from geopandas import GeoSeries
 from numpy.typing import NDArray
 from shapely.errors import GEOSException
 from shapely.geometry import LineString
-
 
 # from .general import sort_large_first as _sort_large_first
 

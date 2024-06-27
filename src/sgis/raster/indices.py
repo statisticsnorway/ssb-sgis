@@ -8,11 +8,13 @@ from .raster import Raster
 
 def ndvi(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
     # normalize red and nir arrays to 0-1 scale if needed
-    if red.max() > 1 and nir.max() > 1:
-        red = red / 255
-        nir = nir / 255
-    elif red.max() > 1 or nir.max() > 1:
-        raise ValueError()
+    # if red.max() > 1 and nir.max() > 1:
+    #     red = red / 255
+    #     nir = nir / 255
+    # elif red.max() > 1 or nir.max() > 1:
+    #     raise ValueError()
+    red = red / 255
+    nir = nir / 255
 
     ndvi_values = (nir - red) / (nir + red)
     ndvi_values[(red + nir) == 0] = 0
