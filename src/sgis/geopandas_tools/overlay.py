@@ -302,6 +302,8 @@ def _shapely_pd_overlay(
     )
 
     # push geometry column to the end
+    print(overlayed)
+    print(overlayed.columns)
     overlayed = overlayed.reindex(
         columns=[c for c in overlayed.columns if c != "geometry"] + ["geometry"]
     )

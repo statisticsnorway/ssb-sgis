@@ -77,6 +77,10 @@ def coverage_clean(
     is_thin = gdf.buffer(-tolerance).is_empty
     thin = gdf[is_thin]
     gdf = gdf[~is_thin]
+    print(missing.columns)
+    print(thin.columns)
+    print("concat")
+    print(pd.concat([missing, thin]).columns)
     to_eliminate = buff(pd.concat([missing, thin]), PRECISION).pipe(
         clean_overlay, mask, how="intersection", geom_type="polygon"
     )

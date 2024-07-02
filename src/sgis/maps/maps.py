@@ -85,6 +85,7 @@ def explore(
     smooth_factor: int | float = 1.5,
     size: int | None = None,
     max_images: int = 10,
+    images_to_gdf: bool = False,
     **kwargs,
 ) -> Explore:
     """Interactive map of GeoDataFrames with layers that can be toggled on/off.
@@ -114,6 +115,8 @@ def explore(
             1000.
         max_images: Maximum number of images (Image, ImageCollection, Band) to show per
             map. Defaults to 10.
+        images_to_gdf: If True (not default), images (Image, ImageCollection, Band)
+            will be converted to GeoDataFrame and added to the map.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.

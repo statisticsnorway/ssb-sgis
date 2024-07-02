@@ -200,7 +200,7 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
         try:
             raster_data_dict["cmap"] = plt.get_cmap(band.cmap)
         except Exception:
-            raster_data_dict["cmap"] = band.cmap
+            raster_data_dict["cmap"] = band.cmap or "Grays"
     raster_data_dict["arr"] = arr
     raster_data_dict["bounds"] = bounds
     raster_data_dict["label"] = name
@@ -516,9 +516,23 @@ class Explore(Map):
 
     def _rasters_to_background_maps(self):
         for raster_data_dict in self.raster_data:
-            arr = raster_data_dict["arr"]
+            try:
+                arr = raster_data_dict["arr"]
+            except KeyError:
+                continue
+            if (arr.shape) == 1:
+                continue
             if hasattr(arr, "mask"):
                 arr = arr.data
+            if "bool" in str(arr.dtype):
+                arr = np.where(arr == True, 1, 0)
+            # if np.max(arr[~np.isnan(arr)]) > 255:
+            #     arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
+            try:
+                arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
+            except Exception:
+                pass
+
             label = raster_data_dict["label"]
             bounds = raster_data_dict["bounds"]
             if raster_data_dict["cmap"] is not None:
@@ -1046,9 +1060,11 @@ class Explore(Map):
             name = None
         elif isinstance(image_collection, Image):
             img = image_collection
-            if mask is not None and not to_shapely(mask).intersects(
-                to_shapely(img.bounds)
-            ):
+            if not _intersects_if_not_none_or_empty(
+                mask, img.bounds
+            ):  # is not None and not to_shapely(mask).intersects(
+                #     to_shapely(img.bounds)
+                # ):
                 return out, n_added_images
 
             if len(img) == 1:
@@ -1073,9 +1089,11 @@ class Explore(Map):
         elif isinstance(image_collection, Band):
             band = image_collection
 
-            if mask is not None and not to_shapely(mask).intersects(
-                to_shapely(band.bounds)
-            ):
+            if not _intersects_if_not_none_or_empty(
+                mask, band.bounds
+            ):  # mask is not None and not to_shapely(mask).intersects(
+                #     to_shapely(band.bounds)
+                # ):
                 return out, n_added_images
 
             raster_data_dict = {}
@@ -1109,9 +1127,11 @@ class Explore(Map):
 
         for image in images:
 
-            if mask is not None and not to_shapely(mask).intersects(
-                to_shapely(image.bounds)
-            ):
+            if not _intersects_if_not_none_or_empty(
+                mask, image.bounds
+            ):  # mask is not None and not to_shapely(mask).intersects(
+                #     to_shapely(image.bounds)
+                # ):
                 continue
 
             raster_data_dict = {}
@@ -1202,6 +1222,15 @@ def _tooltip_popup(
         return folium.GeoJsonTooltip(fields, **kwargs)
     elif type_ == "popup":
         return folium.GeoJsonPopup(fields, **kwargs)
+
+
+def _intersects_if_not_none_or_empty(obj: Any, other: Any) -> bool:
+    if obj is None:
+        return True
+    obj = to_shapely(obj)
+    if obj is None or obj.is_empty:
+        return True
+    return obj.intersects(to_shapely(other))
 
 
 def _determine_label(

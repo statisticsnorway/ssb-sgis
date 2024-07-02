@@ -110,7 +110,7 @@ def to_shapely(obj: Any) -> Geometry:
         return shapely.wkb.loads(obj)
     except TypeError:
         pass
-    raise TypeError(type(obj))
+    raise TypeError(type(obj), obj)
 
 
 def to_bbox(

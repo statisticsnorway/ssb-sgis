@@ -160,13 +160,14 @@ class Examine:
             return
 
         print(f"i == {self.i} (of {len(self.mask_gdf)})")
-        clipmap(
+        self.explorer = clipmap(
             self.column,
             *list(self.rasters.values()),
             **self._gdfs,
             mask=self.mask_gdf.iloc[[self.i]].buffer(self.size),
             **self.kwargs,
         )
+
         self.i += 1
 
     def sample(self, **kwargs) -> None:
@@ -182,7 +183,7 @@ class Examine:
         i = np.random.randint(0, len(self.mask_gdf))
 
         print(f"Showing index {i}")
-        clipmap(
+        self.explorer = clipmap(
             self.column,
             *list(self.rasters.values()),
             **self._gdfs,
@@ -202,7 +203,7 @@ class Examine:
             self.i = i
 
         print(f"{self.i + 1} of {len(self.mask_gdf)}")
-        clipmap(
+        self.explorer = clipmap(
             self.column,
             *list(self.rasters.values()),
             **self._gdfs,
@@ -216,7 +217,7 @@ class Examine:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        explore(
+        self.explorer = explore(
             *list(self.rasters.values()),
             **self._gdfs,
             column=self.column,
@@ -229,7 +230,7 @@ class Examine:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        clipmap(
+        self.explorer = clipmap(
             *list(self.rasters.values()),
             **self._gdfs,
             column=self.column,
@@ -242,7 +243,7 @@ class Examine:
             kwargs = self._fix_kwargs(kwargs)
             self.kwargs = self.kwargs | kwargs
 
-        samplemap(
+        self.explorer = samplemap(
             *list(self.rasters.values()),
             **self._gdfs,
             column=self.column,

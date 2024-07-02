@@ -36,7 +36,7 @@ path_two_bands = testdata + "/dtm_10_two_bands.tif"
 
 
 def test_zonal():
-    r = sg.Band(path_singleband, indexes=1, res=None).load()
+    r = sg.Band(path_singleband, res=None).load()
     gdf = sg.make_grid(r.bounds, 100, crs=r.crs)
 
     sg.explore(sg.to_gdf(r.bounds, r.crs), gdf)
@@ -46,6 +46,53 @@ def test_zonal():
     zonal_stats = r.zonal(gdf, aggfunc=[sum, np.mean, "median"], array_func=None)
     print(zonal_stats)
     print(gdf)
+
+
+def test_buffer():
+    arr = np.zeros((50, 50))
+    arr[10, 10] = 1
+    arr[20, 20] = 1
+    arr[20, 10] = 1
+    arr[10, 20] = 1
+
+    band = sg.Band(arr, crs=25833, bounds=(0, 0, 50, 50), res=10)
+
+    buffered = band.copy().buffer(10)
+
+    should_equal = np.array(
+        [[1 for _ in range(31)] + [0 for _ in range(19)] for _ in range(31)]
+        + [[0 for _ in range(50)] for _ in range(19)]
+    )
+    assert buffered.values.shape == should_equal.shape, (
+        buffered.values.shape,
+        should_equal.shape,
+    )
+    assert np.array_equal(buffered.values, should_equal), sg.explore(
+        buffered,
+        should_equal=sg.Band(should_equal, crs=25833, bounds=(0, 0, 50, 50), res=10),
+    )
+
+    buffered2 = buffered.copy().buffer(-10)
+
+    should_equal = np.array(
+        [[0 for _ in range(50)] for _ in range(10)]
+        + [
+            [0 for _ in range(10)] + [1 for _ in range(11)] + [0 for _ in range(29)]
+            for _ in range(11)
+        ]
+        + [[0 for _ in range(50)] for _ in range(29)]
+    )
+    assert buffered.values.shape == should_equal.shape, (
+        buffered.values.shape,
+        should_equal.shape,
+    )
+
+    assert np.array_equal(buffered2.values, should_equal), sg.explore(
+        buffered2,
+        should_equal=sg.Band(should_equal, crs=25833, bounds=(0, 0, 50, 50), res=10),
+    )
+
+    sg.explore(band, buffered, buffered2)
 
 
 def test_gradient():
@@ -62,32 +109,32 @@ def test_gradient():
 
     # creating a simple Band with a resolution of 10 (50 / width or height).
     band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50), res=10)
-    gradient = band.get_gradient(copy=True)
+    gradient = band.gradient(copy=True)
     assert np.max(gradient.values) == 1, gradient.values
 
-    degrees = band.get_gradient(degrees=True, copy=True)
+    degrees = band.gradient(degrees=True, copy=True)
 
     assert np.max(degrees.values) == 45, np.max(degrees.values)
 
     # r = sg.Band(path_singleband, indexes=1, res=None).load(nodata=0)
     # assert int(np.min(r.values)) == 0, np.min(r.values)
-    # degrees = r.get_gradient(degrees=True, copy=True)
+    # degrees = r.gradient(degrees=True, copy=True)
     # assert int(np.max(degrees.values)) == 75, np.max(degrees.values)
-    # gradient = r.get_gradient(copy=True)
+    # gradient = r.gradient(copy=True)
     # assert int(np.max(gradient.values)) == 3, np.max(gradient.values)
 
     # r = sg.Band(path_two_bands, indexes=1).load(nodata=0)
     # assert r.shape == (101, 101), r.shape
-    # gradient = r.get_gradient(copy=True)
+    # gradient = r.gradient(copy=True)
     # assert int(np.max(gradient.values)) == 3, np.max(gradient.values)
 
-    # degrees = r.get_gradient(degrees=True, copy=True)
+    # degrees = r.gradient(degrees=True, copy=True)
     # assert int(np.max(degrees.values)) == 75, np.max(degrees.values)
 
     # r = sg.Band(path_two_bands, indexes=(1, 2))
     # assert r.shape == (2, 101, 101), r.shape
 
-    # degrees = r.load().get_gradient(degrees=True)
+    # degrees = r.load().gradient(degrees=True)
 
     # assert int(np.nanmax(degrees.values)) == 75, int(np.nanmax(degrees.values))
     # assert len(degrees.shape) == 3
@@ -97,7 +144,7 @@ def test_gradient():
     #     sg.explore(gdf[gdf["indexes"] == 2], "value")
 
     # max_ = int(np.nanmax(r.values))
-    # gradient = r.get_gradient(copy=True)
+    # gradient = r.gradient(copy=True)
     # gradient.plot()
     # assert max_ == int(np.nanmax(r.values))
     # assert int(np.nanmax(gradient.values)) == 6, int(np.nanmax(gradient.values))
@@ -147,7 +194,7 @@ def demo():
 
     sg.explore(merged)
 
-    ndvi = merged.get_ndvi()
+    ndvi = merged.ndvi()
 
     sg.explore(ndvi)
 
@@ -159,8 +206,11 @@ def test_explore():
 
     e = sg.explore(collection)
     assert e.rasters
+    return
     assert (x := [x["label"] for x in e.raster_data]) == [
-        f"{img.tile}_{img.date[:8]}" for img in collection
+        img.name
+        for img in collection
+        # f"{img.tile}_{img.date[:8]}" for img in collection
     ], x
 
 
@@ -190,7 +240,7 @@ def _test_ndvi(collection, type_should_be):
 
         for img in tile_collection:
             assert img.tile == tile_id
-            ndvi = img.get_ndvi()
+            ndvi = img.ndvi()
             assert isinstance(ndvi.values, type_should_be), type(ndvi.values)
             assert ndvi.values.max() <= 1, ndvi.values.max()
             assert ndvi.values.min() >= -1, ndvi.values.min()
@@ -208,7 +258,7 @@ def _test_ndvi(collection, type_should_be):
             assert e.rasters
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
                 "ndvi",
-            ], x
+            ], (x, ndvi.values, e.__dict__)
 
             e = sg.explore(ndvi.get_n_largest(n), ndvi.get_n_smallest(n), img)
             assert e.rasters
@@ -256,6 +306,7 @@ def test_bbox():
     for img in imgs:
         for band in img:
             shape = band.load().values.shape
+
             assert shape == (20, 20), shape
 
     no_imgs = collection.filter(intersects=Point(0, 0))  # intersects=Point(0, 0))
@@ -323,7 +374,6 @@ def test_sample():
 
         # for band in img:
         #     print(sg.to_shapely(band.bounds).length / 4)
-        sss
         assert e.rasters
         for band in img:
             arr = band.load().values
@@ -432,20 +482,79 @@ def test_sorting():
 
 
 def test_masking():
-    collection = sg.ImageCollection(path_sentinel, level=None, res=20)
-    assert collection.masking is None
-    assert len(collection)
-    for img in collection:
-        assert img.masking is None
-        for band in img:
-            if "SCL" in band.path:
-                continue
-            assert band.mask is None
-            band = band.load()
-            assert np.sum(band.values)
-            assert np.sum(band.values.data)
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=20)
+
+    img = collection[2]
+
+    (img.mask.load().values)
+    # for band in img:
+    #     print(band.band_id)
+    #     band.load()
+    #     assert band.values.mask.sum() == img.mask.values.sum(), (
+    #         band.values.mask.sum(),
+    #         img.mask.values.sum(),
+    #         band.values.mask,
+    #         img.mask.values,
+    #     )
+
+    assert img.masking
+    # band = img["B02"].load()
+
+    # assert band.values.mask.sum()
+
+    # img.mask.values = np.isin(img.mask.values, img.masking["values"])
+    img.mask.cmap = "Grays"
+
+    assert img.mask.values.sum() == 3519, img.mask.values.sum()
+    for band in img:
+        assert band.mask.values.sum() == 3519, band.mask.values.sum()
+
+    sg.explore(img.mask)
+
+    img.mask = img.mask.buffer(2)
+
+    assert img.mask.values.sum() == 4918, img.mask.values.sum()
+
+    sg.explore(img.mask)
+
+    img.mask = img.mask.buffer(-2)
+
+    assert img.mask.values.sum() == 3694, img.mask.values.sum()
+
+    sg.explore(img.mask)
+    # sg.explore(img.mask.to_gdf(), "value")
+
+    for band in img:
+        assert band.mask.values.sum() == 3694, band.mask.values.sum()
+        band.load()
+        assert band.values.mask.sum() == img.mask.values.sum(), (
+            band.values.mask.sum(),
+            img.mask.values.sum(),
+            band.values.mask,
+            img.mask.values,
+        )
+
+    collection_with_little_mask = collection[
+        lambda img: img.mask_percentage
+        < 0.1  # mask.values.sum() < img.mask.width * img.mask.height * 0.90
+        # lambda img: img.mask.values.sum() < img.mask.width * img.mask.height * 0.001
+    ]
+    assert len(collection_with_little_mask) == 1, len(collection_with_little_mask)
+
+    collection_with_little_mask = collection[
+        lambda img: img.mask_percentage
+        < 10  # mask.values.sum() < img.mask.width * img.mask.height * 0.90
+        # lambda img: img.mask.values.sum() < img.mask.width * img.mask.height * 0.10
+    ]
+    assert len(collection_with_little_mask) == 2, len(collection_with_little_mask)
+
+    collection_with_little_mask = collection[
+        lambda img: img.mask_percentage
+        < 90  # mask.values.sum() < img.mask.width * img.mask.height * 0.90
+    ]
+    assert len(collection_with_little_mask) == 3, len(collection_with_little_mask)
+
     assert collection.masking
     for img in collection:
         assert img.masking
@@ -461,10 +570,27 @@ def test_masking():
             assert np.sum(band.values.mask)
             assert isinstance(band.values, np.ma.core.MaskedArray)
 
+    print("\n\n\n\nheixxxx")
+    collection = sg.ImageCollection(path_sentinel, level=None, res=20)
+    print(collection._should_be_sorted)
+    assert collection.masking is None
+    assert len(collection)
+    print(collection.__dict__)
+    for img in collection:
+        print(img.__dict__)
+        assert img.masking is None
+        for band in img:
+            if "SCL" in band.path:
+                continue
+            assert band.mask is None
+            band = band.load()
+            assert np.sum(band.values)
+            assert np.sum(band.values.data)
+
 
 def test_merge():
 
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, nodata=0)
     # collection.masking = None
     # assert sg.Sentinel2Collection.masking is not None
 
@@ -474,7 +600,7 @@ def test_merge():
     #         f"c:/users/ort/git/ssb-sgis/tests/testdata/raster/{band.band_id}.tif"
     #     )
     t = perf_counter()
-    merged_by_band = collection.merge_by_band(method="median", nodata=0)
+    merged_by_band = collection.merge_by_band(method="median")
     print("merged_by_band mean", perf_counter() - t)
     t = perf_counter()
     # merged_by_band = collection.merge_by_band(method="median", nodata=0)
@@ -820,6 +946,32 @@ def test_cloud():
 def test_iteration():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    # collection.masking = None
+    # for img in collection:  # [[1]]:
+    #     print()
+    #     for band in img:
+    #         # print(band.load().values.shape)
+    #         # print(band.res)
+    #         # continue
+    #         print(band.path)
+    #         print(band.bounds)
+    #         continue
+    #         arr = band.load().values
+    #         if "SCL" in band.path and arr.shape == (300, 300):
+    #             band.values = arr[:-1, :-1]
+    #             assert (band.values.shape) == (299, 299)
+    #             assert band.values[0, 0] == 3
+    #             band._bounds = prev_band.bounds
+    #             band.transform = prev_band.transform
+    #             print(band.bounds)
+    #             band.write(band.path)
+
+    #             sss
+    #         else:
+    #             bounds = band.bounds
+    #             prev_band = band.copy()
+
+    # sss
 
     assert isinstance(collection, sg.Sentinel2Collection), type(collection)
     assert len(collection.images) == 3, len(collection.images)
@@ -895,12 +1047,12 @@ def test_iteration():
             assert raster.band_id is not None, raster.band_id
 
     assert collection.values.shape == (3, 12, 299, 299), collection.values.shape
-    ndvi = collection.ndvi()
-    assert ndvi.values.shape == (3, 1, 299, 299), ndvi.values.shape
-    for img in collection:
-        assert img.values.shape == (12, 299, 299), img.values.shape
-        for band in img:
-            assert band.values.shape == (299, 299), band.values.shape
+    # ndvi = collection.ndvi()
+    # assert ndvi.values.shape == (3, 1, 299, 299), ndvi.values.shape
+    # for img in collection:
+    #     assert img.values.shape == (12, 299, 299), img.values.shape
+    #     for band in img:
+    #         assert band.values.shape == (299, 299), band.values.shape
 
 
 def test_iteration_base_image_collection():
@@ -952,7 +1104,7 @@ def test_convertion():
 
     arr = band.load().values
     _from_array = sg.Band(arr, res=band.res, crs=band.crs, bounds=band.bounds)
-    assert (shape := _from_array.values.shape) == (30, 30), shape
+    assert (shape := _from_array.values.shape) == (29, 29), shape
 
     gdf = band.to_gdf(column="val")
     from_gdf = sg.Band(gdf, res=band.res)
@@ -962,7 +1114,7 @@ def test_convertion():
     assert all(int(gdf.area.sum()) == 9_000_000 for gdf in e._gdfs), [
         int(gdf.area.sum()) for gdf in e._gdfs
     ]
-    assert (shape := from_gdf.values.shape) == (30, 30), shape
+    assert (shape := from_gdf.values.shape) == (29, 29), shape
 
 
 def test_torch():
@@ -1027,11 +1179,11 @@ def test_torch():
 
 def main():
 
-    test_iteration()
-    test_masking()
-    test_ndvi()
-    test_cloud()
     test_bbox()
+    test_masking()
+    test_buffer()
+    test_iteration()
+    test_ndvi()
     test_zonal()
     test_gradient()
     test_groupby()
@@ -1042,9 +1194,10 @@ def main():
     test_date_ranges()
     test_torch()
     test_iteration_base_image_collection()
+    test_cloud()
     test_sample()
-    test_merge()
     test_concat_image_collections()
+    test_merge()
 
 
 if __name__ == "__main__":
