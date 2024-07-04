@@ -1,7 +1,6 @@
 import functools
 import glob
 import itertools
-import math
 import numbers
 import os
 import random
@@ -27,6 +26,7 @@ import rasterio
 from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from matplotlib.colors import LinearSegmentedColormap
 from rasterio import features
 from rasterio.enums import MergeAlg
 from rtree.index import Index
@@ -122,27 +122,27 @@ from .zonal import _zonal_post
 
 if is_dapla():
 
-    def ls_func(*args, **kwargs) -> list[str]:
+    def _ls_func(*args, **kwargs) -> list[str]:
         return dp.FileClient.get_gcs_file_system().ls(*args, **kwargs)
 
-    def glob_func(*args, **kwargs) -> list[str]:
+    def _glob_func(*args, **kwargs) -> list[str]:
         return dp.FileClient.get_gcs_file_system().glob(*args, **kwargs)
 
-    def open_func(*args, **kwargs) -> GCSFile:
+    def _open_func(*args, **kwargs) -> GCSFile:
         return dp.FileClient.get_gcs_file_system().open(*args, **kwargs)
 
-    def rm_file_func(*args, **kwargs) -> None:
+    def _rm_file_func(*args, **kwargs) -> None:
         return dp.FileClient.get_gcs_file_system().rm_file(*args, **kwargs)
 
-    def read_parquet_func(*args, **kwargs) -> list[str]:
+    def _read_parquet_func(*args, **kwargs) -> list[str]:
         return dp.read_pandas(*args, **kwargs)
 
 else:
-    ls_func = functools.partial(get_all_files, recursive=False)
-    open_func = open
-    glob_func = glob.glob
-    rm_file_func = os.remove
-    read_parquet_func = pd.read_parquet
+    _ls_func = functools.partial(get_all_files, recursive=False)
+    _open_func = open
+    _glob_func = glob.glob
+    _rm_file_func = os.remove
+    _read_parquet_func = pd.read_parquet
 
 TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
 FILENAME_COL_SUFFIX = "_filename"
@@ -200,10 +200,10 @@ class ImageCollectionGroupBy:
 
     def merge_by_band(
         self,
-        bounds=None,
-        method="median",
+        bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
+        method: str | Callable = "median",
         as_int: bool = True,
-        indexes=None,
+        indexes: int | tuple[int] | None = None,
         **kwargs,
     ) -> "ImageCollection":
         """Merge each group into separate Bands per band_id, returned as an ImageCollection."""
@@ -215,7 +215,6 @@ class ImageCollectionGroupBy:
             indexes=indexes,
             **kwargs,
         )
-        print("hihihih")
         for img, (group_values, _) in zip(images, self.data, strict=True):
             for attr, group_value in zip(self.by, group_values, strict=True):
                 print(attr, group_value)
@@ -226,7 +225,7 @@ class ImageCollectionGroupBy:
 
         collection = ImageCollection(
             images,
-            # TODO band_class
+            # TODO band_class?
             level=self.collection.level,
             **self.collection._common_init_kwargs,
         )
@@ -235,10 +234,10 @@ class ImageCollectionGroupBy:
 
     def merge(
         self,
-        bounds=None,
-        method="median",
+        bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
+        method: str | Callable = "median",
         as_int: bool = True,
-        indexes=None,
+        indexes: int | tuple[int] | None = None,
         **kwargs,
     ) -> "Image":
         """Merge each group into a single Band, returned as combined Image."""
@@ -264,7 +263,7 @@ class ImageCollectionGroupBy:
 
         image = Image(
             bands,
-            # TODO band_class
+            # TODO band_class?
             **self.collection._common_init_kwargs,
         )
         image._merged = True
@@ -301,7 +300,8 @@ class BandMasking:
     band_id: str
     values: tuple[int]
 
-    def __getitem__(self, item: str):
+    def __getitem__(self, item: str) -> Any:
+        """Index into attributes to mimick dict."""
         return getattr(self, item)
 
 
@@ -352,7 +352,6 @@ class _ImageBase:
             "file_system": self.file_system,
             "processes": self.processes,
             "res": self.res,
-            # "_bounds": self._bounds,
             "bbox": self._bbox,
             "nodata": self.nodata,
         }
@@ -371,6 +370,7 @@ class _ImageBase:
 
     @property
     def centroid(self) -> Point:
+        """Centerpoint of the object."""
         return self.unary_union.centroid
 
     def _name_regex_searcher(
@@ -384,13 +384,14 @@ class _ImageBase:
                 return re.match(pat, self.name).group(group)
             except (TypeError, KeyError):
                 pass
-        if not any(group in get_non_optional_groups(pat) for pat in patterns):
+        if not any(group in _get_non_optional_groups(pat) for pat in patterns):
             return None
         raise ValueError(
             f"Couldn't find group '{group}' in name {self.name} with regex patterns {patterns}"
         )
 
-    def _create_metadata_df(self, file_paths: list[str]) -> None:
+    def _create_metadata_df(self, file_paths: list[str]) -> pd.DataFrame:
+        """Create a dataframe with file paths and image paths that match regexes."""
         df = pd.DataFrame({"file_path": file_paths})
 
         df["filename"] = df["file_path"].apply(lambda x: _fix_path(Path(x).name))
@@ -406,9 +407,7 @@ class _ImageBase:
             return df
 
         if self.filename_patterns:
-            df = _get_regexes_matches_for_df(
-                df, "filename", self.filename_patterns, suffix=FILENAME_COL_SUFFIX
-            )
+            df = _get_regexes_matches_for_df(df, "filename", self.filename_patterns)
 
             if not len(df):
                 return df
@@ -430,96 +429,18 @@ class _ImageBase:
 
         if self.image_patterns and len(grouped):
             grouped = _get_regexes_matches_for_df(
-                grouped, "imagename", self.image_patterns, suffix=""
+                grouped, "imagename", self.image_patterns
             )
 
         return grouped
 
-        # if self.masking is not None:
-        #     mask_band_id = self.masking["band_id"]
-        #     self._images  = [image for image in self if mask_band_id in image.band_ids]
-        #     for image in self:
-        #         image._bands = [band for band in image if band.band_id is not None]
-
-        #     band_id_col = self._find_band_col(grouped)
-        #     images_with_mask_band = grouped.explode(band_id_col).loc[
-        #         lambda x: x[band_id_col] == self.masking["band_id"],
-        #         "image_path",
-        #     ]
-        #     grouped = grouped.loc[grouped["image_path"].isin(images_with_mask_band)]
-
-        if "date" in grouped:
-            if f"date{FILENAME_COL_SUFFIX}" in grouped and grouped["date"].isna().all():
-
-                grouped["date"] = grouped[f"date{FILENAME_COL_SUFFIX}"].apply(
-                    _get_single_value
-                )
-            return grouped.sort_values("date")
-        else:
-            return grouped
-
-        if self.filename_patterns:
-            df, match_cols_filename = _get_regexes_matches_for_df(
-                df, "filename", self.filename_patterns, suffix=FILENAME_COL_SUFFIX
-            )
-
-            if not len(df):
-                return df
-
-            self._match_cols_filename = match_cols_filename
-            grouped = (
-                df.drop(columns=match_cols_filename, errors="ignore")
-                .drop_duplicates("image_path")
-                .set_index("image_path")
-            )
-            for col in ["file_path", "filename", *match_cols_filename]:
-                if col in df:
-                    grouped[col] = df.groupby("image_path")[col].apply(tuple)
-
-            grouped = grouped.reset_index()
-        else:
-            df["file_path"] = df.groupby("image_path")["file_path"].apply(tuple)
-            df["filename"] = df.groupby("image_path")["filename"].apply(tuple)
-            grouped = df.drop_duplicates("image_path")
-
-        grouped["imagename"] = grouped["image_path"].apply(
-            lambda x: _fix_path(Path(x).name)
-        )
-
-        if self.image_patterns and len(grouped):
-            grouped, _ = _get_regexes_matches_for_df(
-                grouped, "imagename", self.image_patterns, suffix=""
-            )
-
-        if self.masking is not None:
-            band_id_col = self._find_band_col(grouped)
-            images_with_mask_band = grouped.explode(band_id_col).loc[
-                lambda x: x[band_id_col] == self.masking["band_id"],
-                "image_path",
-            ]
-            grouped = grouped.loc[grouped["image_path"].isin(images_with_mask_band)]
-
-        if "date" in grouped:
-            if f"date{FILENAME_COL_SUFFIX}" in grouped and grouped["date"].isna().all():
-
-                grouped["date"] = grouped[f"date{FILENAME_COL_SUFFIX}"].apply(
-                    _get_single_value
-                )
-            return grouped.sort_values("date")
-        else:
-            return grouped
-
-    def _find_band_col(self, df) -> str:
-        if f"band{FILENAME_COL_SUFFIX}" in df:
-            return f"band{FILENAME_COL_SUFFIX}"
-        elif f"band_id{FILENAME_COL_SUFFIX}" in df:
-            return f"band_id{FILENAME_COL_SUFFIX}"
-        else:
-            raise ValueError("Cannot find 'band' regex group.")
-
     def copy(self) -> "_ImageBase":
         """Copy the instance and its attributes."""
         copied = deepcopy(self)
+        try:
+            print("copy", self.path)
+        except PathlessImageError:
+            pass
         for key, value in copied.__dict__.items():
             try:
                 setattr(copied, key, value.copy())
@@ -527,6 +448,7 @@ class _ImageBase:
                 setattr(copied, key, deepcopy(value))
             except TypeError:
                 continue
+            print(key)
         return copied
 
 
@@ -616,6 +538,7 @@ class Band(_ImageBandBase):
         cls,
         gdf: GeoDataFrame | GeoSeries,
         res: int,
+        *,
         fill: int = 0,
         all_touched: bool = False,
         merge_alg: Callable = MergeAlg.replace,
@@ -623,22 +546,18 @@ class Band(_ImageBandBase):
         dtype: Any | None = None,
         **kwargs,
     ) -> None:
-        if isinstance(gdf, (GeoDataFrame | GeoSeries)):
-            bounds = to_bbox(bounds) if bounds is not None else gdf.total_bounds
-            crs = crs if crs else gdf.crs
-            arr: np.ndarray = _arr_from_gdf(
-                gdf,
-                res=res,
-                fill=fill,
-                all_touched=all_touched,
-                merge_alg=merge_alg,
-                default_value=default_value,
-                dtype=dtype,
-            )
-        else:
-            bounds = to_bbox(bounds) if bounds is not None else None
+        """Create Band from a GeoDataFrame."""
+        arr: np.ndarray = _arr_from_gdf(
+            gdf,
+            res=res,
+            fill=fill,
+            all_touched=all_touched,
+            merge_alg=merge_alg,
+            default_value=default_value,
+            dtype=dtype,
+        )
 
-        obj = cls(arr, res=res, crs=crs, bounds=bounds, **kwargs)
+        obj = cls(arr, res=res, crs=gdf.crs, bounds=gdf.total_bounds, **kwargs)
         obj._from_gdf = True
         return obj
 
@@ -697,14 +616,14 @@ class Band(_ImageBandBase):
         self._band_id = band_id
         self.processes = processes
 
-        if self.filename_regexes:
-            if isinstance(self.filename_regexes, str):
-                self.filename_regexes = [self.filename_regexes]
-            self.filename_patterns = [
-                re.compile(pat, flags=re.VERBOSE) for pat in self.filename_regexes
-            ]
-        else:
-            self.filename_patterns = None
+        # if self.filename_regexes:
+        #     if isinstance(self.filename_regexes, str):
+        #         self.filename_regexes = [self.filename_regexes]
+        #     self.filename_patterns = [
+        #         re.compile(pat, flags=re.VERBOSE) for pat in self.filename_regexes
+        #     ]
+        # else:
+        #     self.filename_patterns = None
 
     def __lt__(self, other: "Band") -> bool:
         """Makes Bands sortable by band_id."""
@@ -722,20 +641,17 @@ class Band(_ImageBandBase):
         if not isinstance(new_val, np.ndarray):
             raise TypeError(f"{self.__class__.__name__} 'values' must be np.ndarray.")
         self._values = new_val
-        # if self.mask is not None and isinstance(new_val, np.ma.core.MaskedArray):
-        #     self._values = new_val
-        # elif self.mask is not None:
-        #     self._values = np.ma.array(new_val, mask=self.mask.mask, fill_value=None)
-        # else:
-        #     self._values = new_val
 
     @property
-    def mask(self) -> np.ma.core.MaskedArray:
-        # if self._mask is not None and not isinstance(
-        #     self._mask, np.ma.core.MaskedArray
-        # ):
-        #     raise TypeError(f"mask must be numpy ndarray. Got {type(self._mask)}")
+    def mask(self) -> "Band":
+        """Mask Band."""
         return self._mask
+
+    @mask.setter
+    def mask(self, values: "Band") -> None:
+        if values is not None and not isinstance(values, Band):
+            raise TypeError(f"'mask' should be of type Band. Got {type(values)}")
+        self._mask = values
 
     @property
     def band_id(self) -> str:
@@ -748,15 +664,11 @@ class Band(_ImageBandBase):
     def height(self) -> int:
         """Pixel heigth of the image band."""
         return self.values.shape[-2]
-        i = 1 if len(self.values.shape) == 3 else 0
-        return self.values.shape[i]
 
     @property
     def width(self) -> int:
         """Pixel width of the image band."""
         return self.values.shape[-1]
-        i = 2 if len(self.values.shape) == 3 else 1
-        return self.values.shape[i]
 
     @property
     def tile(self) -> str:
@@ -823,8 +735,8 @@ class Band(_ImageBandBase):
 
     def load(
         self,
-        bounds=None,
-        indexes=None,
+        bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
+        indexes: int | tuple[int] | None = None,
         masked: bool | None = None,
         **kwargs,
     ) -> "Band":
@@ -837,17 +749,26 @@ class Band(_ImageBandBase):
 
         bounds_was_none = bounds is None
 
+        try:
+            if not isinstance(self.values, np.ndarray):
+                raise ValueError()
+            has_array = True
+        except ValueError:
+            has_array = False
+
         if bounds is None and self._bbox is None:
             bounds = None
         elif bounds is not None and self._bbox is None:
-            bounds = to_shapely(bounds)
+            bounds = to_shapely(bounds).intersection(self.unary_union)
         elif bounds is None and self._bbox is not None:
-            bounds = to_shapely(self._bbox)
+            bounds = to_shapely(self._bbox).intersection(self.unary_union)
         else:
             bounds = to_shapely(bounds).intersection(to_shapely(self._bbox))
 
         if bounds is not None and bounds.area == 0:
             self._values = np.array([])
+            if self.mask is not None:
+                self._mask = self._mask.load()
             # self._mask = np.ma.array([], [])
             self._bounds = None
             self.transform = None
@@ -863,33 +784,40 @@ class Band(_ImageBandBase):
 
         _indexes = (indexes,) if isinstance(indexes, int) else indexes
 
-        try:
-            assert isinstance(self.values, np.ndarray)
-            has_array = True
-        except (ValueError, AssertionError):
-            has_array = False
+        out_shape = kwargs.pop("out_shape", None)
 
         if has_array:
             if bounds_was_none:
                 return self
-            # bounds_shapely = to_shapely(bounds)
-            # if not bounds_shapely.intersects(self.)
-            # bounds_arr = GeoSeries([bounds_shapely]).values
             bounds_arr = GeoSeries([to_shapely(bounds)]).values
             try:
+                print(
+                    "helteeeheroppe00000",
+                    self.band_id,
+                    self.values.shape,
+                    to_shapely(bounds).area,
+                )
+
                 self.values = (
                     to_xarray(
                         self.values,
                         transform=self.transform,
                         crs=self.crs,
-                        name=self.name,
                     )
                     .rio.clip(bounds_arr, crs=self.crs, **kwargs)
                     .to_numpy()
                 )
+                print(
+                    "helteeeheroppe",
+                    self.band_id,
+                    self.values.shape,
+                    to_shapely(bounds).area,
+                )
+
             except NoDataInBounds:
                 self.values = np.array([])
             self._bounds = bounds
+            self.transform = _get_transform_from_bounds(self._bounds, self.values.shape)
 
         else:
             with opener(self.path, file_system=self.file_system) as f:
@@ -912,12 +840,15 @@ class Band(_ImageBandBase):
 
                     if bounds is None:
                         if self._res != int(src.res[0]):
-                            out_shape = _get_shape_from_bounds(
-                                to_bbox(src.bounds), self.res, indexes
+                            if out_shape is None:
+                                out_shape = _get_shape_from_bounds(
+                                    to_bbox(src.bounds), self.res, indexes
+                                )
+                            self.transform = _get_transform_from_bounds(
+                                to_bbox(src.bounds), shape=out_shape
                             )
                         else:
-                            out_shape = None
-                        self.transform = src.transform
+                            self.transform = src.transform
 
                         self._values = src.read(
                             indexes=indexes,
@@ -930,7 +861,13 @@ class Band(_ImageBandBase):
                             *bounds, transform=src.transform
                         )
 
-                        out_shape = _get_shape_from_bounds(bounds, self.res, indexes)
+                        if out_shape is None:
+                            out_shape = _get_shape_from_bounds(
+                                bounds, self.res, indexes
+                            )
+                        print(
+                            "heroppe", self.band_id, out_shape, to_shapely(bounds).area
+                        )
 
                         self._values = src.read(
                             indexes=indexes,
@@ -943,11 +880,8 @@ class Band(_ImageBandBase):
                         self.transform = rasterio.transform.from_bounds(
                             *bounds, self.width, self.height
                         )
-                        if bounds is not None:
-                            self._bounds = bounds
+                        self._bounds = bounds
 
-                    # print(locals())
-                    # print(self.values.data)
                     if self.nodata is not None and not np.isnan(self.nodata):
                         if isinstance(self.values, np.ma.core.MaskedArray):
                             self.values.data[self.values.data == src.nodata] = (
@@ -955,63 +889,34 @@ class Band(_ImageBandBase):
                             )
                         else:
                             self.values[self.values == src.nodata] = self.nodata
-                    # print(self.values.data)
 
-                    # if isinstance(indexes, int):
-                    #     _indexes = (indexes,)
-                    # else:
-                    #     _indexes = indexes
+        if self.masking and self.is_mask:
+            self.values = np.isin(self.values, self.masking["values"])
 
-                    # arr, transform = rasterio.merge.merge(
-                    #     [src],
-                    #     res=self.res,
-                    #     indexes=_indexes,
-                    #     bounds=bounds,
-                    #     nodata=nodata,
-                    #     **kwargs,
-                    # )
-                    # self.transform = transform
-                    # if bounds is not None:
-                    #     self._bounds = bounds
-
-                    # if isinstance(indexes, int):
-                    #     arr = arr[0]
-                    #
-                    # self._values = arr
-
-        if self.mask is not None and not isinstance(
+        elif self.mask is not None and not isinstance(
             self.values, np.ma.core.MaskedArray
         ):
-            mask_arr = self.mask.load(bounds=bounds, indexes=indexes, **kwargs).values
+            self.mask = self.mask.load(
+                bounds=bounds, indexes=indexes, out_shape=out_shape, **kwargs
+            )
+            mask_arr = self.mask.values
 
-            if self.masking:
-                mask_arr = np.isin(mask_arr, self.masking["values"])
+            # if self.masking:
+            #     mask_arr = np.isin(mask_arr, self.masking["values"])
 
+            print()
+            print(self._values.shape)
+            print(mask_arr.shape)
             self._values = np.ma.array(
                 self._values, mask=mask_arr, fill_value=self.nodata
             )
 
-        # if bounds is not None and self.mask is not None:
-        #     bounds_arr = GeoSeries([to_shapely(bounds)]).values
-        #     try:
-        #         self._mask = (
-        #             to_xarray(
-        #                 self.mask,
-        #                 transform=self.transform,
-        #                 crs=self.crs,
-        #                 name=self.name,
-        #             )
-        #             .rio.clip(bounds_arr, crs=self.crs, **kwargs)
-        #             .to_numpy()
-        #         )
-
-        #     except NoDataInBounds:
-        #         self._mask = np.ma.array([], [], fill_value=None)
-
-        # # activate setter
-        # self.values = self._values
-
         return self
+
+    @property
+    def is_mask(self) -> bool:
+        """True if the band_id is equal to the masking band_id."""
+        return self.band_id == self.masking["band_id"]
 
     def write(
         self, path: str | Path, driver: str = "GTiff", compress: str = "LZW", **kwargs
@@ -1035,24 +940,13 @@ class Band(_ImageBandBase):
             "count": 1 if len(self.values.shape) == 2 else self.values.shape[0],
             "height": self.height,
             "width": self.width,
-            # "indexes": self.indexes,
         } | kwargs
 
         with opener(path, "wb", file_system=self.file_system) as f:
             with rasterio.open(f, "w", **profile) as dst:
-                # bounds = to_bbox(self._bounds) if self._bbox is not None else dst.bounds
 
-                # if (
-                #     self.nodata is None
-                #     or np.isnan(self.nodata)
-                #     and dst.nodata is not None
-                # ):
-                #     dst.nodata = self.nodata
                 if dst.nodata is None:
                     dst.nodata = _get_dtype_min(dst.dtypes[0])
-                # else:
-                #     nodata = self.nodata or dst.nodata
-                # res = dst.res if not self.res else self.res
 
                 # if (
                 #     isinstance(self.values, np.ma.core.MaskedArray)
@@ -1072,7 +966,13 @@ class Band(_ImageBandBase):
 
         self._path = str(path)
 
+    def apply(self, func: Callable, **kwargs) -> "Band":
+        """Apply a function to the array."""
+        self.values = func(self.values, **kwargs)
+        return self
+
     def normalize(self) -> "Band":
+        """Normalize array values between 0 and 1."""
         arr = self.values
         self.values = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
         return self
@@ -1089,21 +989,17 @@ class Band(_ImageBandBase):
         return copied
 
     def buffer(self, distance: int, copy: bool = True) -> "Band":
-        if not np.all(np.isin(self.values, (1, 0, True, False))):
-            raise ValueError("Array must be all 0s and 1s or boolean.")
+        """Buffer array points with the value 1 in a binary array.
 
+        Args:
+            distance: Number of array cells to buffer by.
+            copy: Whether to copy the Band.
+
+        Returns:
+            Band with buffered values.
+        """
         copied = self.copy() if copy else self
-
-        structure = np.ones((2 * abs(distance) + 1, 2 * abs(distance) + 1))
-
-        arr = np.where(copied.values, 1, 0)
-
-        if distance > 0:
-            copied.values = binary_dilation(arr, structure=structure).astype(arr.dtype)
-        elif distance < 0:
-
-            copied.values = binary_erosion(arr, structure=structure).astype(arr.dtype)
-
+        copied.values = array_buffer(copied.values, distance)
         return copied
 
     def gradient(self, degrees: bool = False, copy: bool = True) -> "Band":
@@ -1251,7 +1147,7 @@ class Band(_ImageBandBase):
             dims=dims,
             name=name,
             attrs={"crs": self.crs},
-        )  # .transpose("y", "x")
+        )
 
     def __repr__(self) -> str:
         """String representation."""
@@ -1277,13 +1173,8 @@ class NDVIBand(Band):
     # def get_cmap(arr: np.ndarray):
     #     return get_cmap(arr)
 
-    def plot_pixels(self, *args, ylim=(-1, 1), **kwargs) -> None:
-        return super().plot_pixels(*args, ylim=ylim, **kwargs)
 
-
-def get_cmap(arr: np.ndarray):
-    import numpy as np
-    from matplotlib.colors import LinearSegmentedColormap
+def get_cmap(arr: np.ndarray) -> LinearSegmentedColormap:
 
     # blue = [[i / 10 + 0.1, i / 10 + 0.1, 1 - (i / 10) + 0.1] for i in range(11)][1:]
     blue = [
@@ -1418,7 +1309,6 @@ class Image(_ImageBandBase):
     """Image consisting of one or more Bands."""
 
     cloud_cover_regexes: ClassVar[tuple[str] | None] = None
-    bounds_regexes: ClassVar[tuple[str] | None] = None
     band_class: ClassVar[Band] = Band
 
     def __init__(
@@ -1432,7 +1322,6 @@ class Image(_ImageBandBase):
         all_file_paths: list[str] | None = None,
         processes: int = 1,
         bbox: GeoDataFrame | GeoSeries | Geometry | tuple | None = None,
-        # _mask: np.ma.core.MaskedArray | None = None,
         nodata: int | None = None,
         **kwargs,
     ) -> None:
@@ -1451,8 +1340,6 @@ class Image(_ImageBandBase):
 
         if hasattr(data, "__iter__") and all(isinstance(x, Band) for x in data):
             self._bands = list(data)
-            # self._bounds = get_total_bounds(self._bands)
-            # self._crs = get_common_crs(self._bands)
             if res is None:
                 res = list({band.res for band in self._bands})
                 if len(res) == 1:
@@ -1471,15 +1358,15 @@ class Image(_ImageBandBase):
 
         if df is None:
             if is_dapla():
-                file_paths = list(sorted(set(glob_func(self.path + "/**"))))
+                file_paths = list(sorted(set(_glob_func(self.path + "/**"))))
             else:
                 file_paths = list(
                     sorted(
                         set(
-                            glob_func(self.path + "/**/**")
-                            + glob_func(self.path + "/**/**/**")
-                            + glob_func(self.path + "/**/**/**/**")
-                            + glob_func(self.path + "/**/**/**/**/**")
+                            _glob_func(self.path + "/**/**")
+                            + _glob_func(self.path + "/**/**/**")
+                            + _glob_func(self.path + "/**/**/**/**")
+                            + _glob_func(self.path + "/**/**/**/**/**")
                         )
                     )
                 )
@@ -1503,18 +1390,9 @@ class Image(_ImageBandBase):
 
         df = df.loc[lambda x: x["image_path"].str.contains(_fix_path(self.path))]
 
-        # if (
-        #     self.filename_patterns
-        #     and any(get_non_optional_groups(pat) for pat in self.filename_patterns)
-        #     or self.image_patterns
-        #     and any(get_non_optional_groups(pat) for pat in self.image_patterns)
-        # ):
-        #     band_id_col = self._find_band_col(df)
-        #     df = df.loc[lambda x: (x[band_id_col].notna())].sort_values(band_id_col)
-
         if self.cloud_cover_regexes:
             if all_file_paths is None:
-                file_paths = ls_func(self.path)
+                file_paths = _ls_func(self.path)
             else:
                 file_paths = [path for path in all_file_paths if self.name in path]
             self.cloud_coverage_percentage = float(
@@ -1526,27 +1404,6 @@ class Image(_ImageBandBase):
             self.cloud_coverage_percentage = None
 
         self._df = df
-
-        # if "date" in df and df["date"].notna().all():
-        #     self._date = _get_single_value(df["date"])
-
-        # if "level" in df:
-        #     assert (df.level!="L1C").all(), df.level.fillna("NA").value_counts()
-        # assert not any("L1C" in path for path in file_paths)
-
-    def write(self, path: str, **kwargs) -> None:
-        path = Path(path)
-        for band in self:
-            band.write(path / band.name, **kwargs)
-
-        with opener(path, "wb", file_system=self.file_system) as f:
-            metadata_df = pd.DataFrame(
-                {
-                    "bounds": self.bounds,
-                    "cloud_cover_percentage": self.cloud_cover_percentage,
-                }
-            )
-            metadata_df.to_parquet(f)
 
     @property
     def values(self) -> np.ndarray:
@@ -1561,12 +1418,12 @@ class Image(_ImageBandBase):
 
         arr: np.ndarray | np.ma.core.MaskedArray = ndvi(red.values, nir.values)
 
-        if self.nodata is not None and not np.isnan(self.nodata):
-            try:
-                arr.data[arr.mask] = self.nodata
-                arr = arr.copy()
-            except AttributeError:
-                pass
+        # if self.nodata is not None and not np.isnan(self.nodata):
+        #     try:
+        #         arr.data[arr.mask] = self.nodata
+        #         arr = arr.copy()
+        #     except AttributeError:
+        #         pass
 
         return NDVIBand(
             arr,
@@ -1576,7 +1433,11 @@ class Image(_ImageBandBase):
             **red._common_init_kwargs,
         )
 
-    def get_brightness(self, bounds=None, rbg_bands: list[str] | None = None) -> Band:
+    def get_brightness(
+        self,
+        bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
+        rbg_bands: list[str] | None = None,
+    ) -> Band:
         """Get a Band with a brightness score of the Image's RBG bands."""
         if rbg_bands is None:
             try:
@@ -1606,6 +1467,7 @@ class Image(_ImageBandBase):
 
     @property
     def mask(self) -> Band | None:
+        """Mask Band."""
         if self._mask is not None:
             return self._mask
         if self.masking is None:
@@ -1621,30 +1483,26 @@ class Image(_ImageBandBase):
             raise ValueError(
                 f"No file_paths match mask band_id {mask_band_id} for {self.path}"
             )
-        self._mask = (
-            self.band_class(
-                mask_paths[0],
-                **self._common_init_kwargs,
-            )  # .load()
-            # .values
+        self._mask = self.band_class(
+            mask_paths[0],
+            **self._common_init_kwargs,
         )
-
-        # self._mask.values = np.isin(self._mask._mask.values, self.masking["values"])
-
-        # self._mask = np.ma.array(
-        #     arr, mask=np.isin(arr, self.masking["values"]), fill_value=None
-        # )
 
         return self._mask
 
     @mask.setter
-    def mask(self, values: Band):
+    def mask(self, values: Band) -> None:
+        if values is None:
+            self._mask = None
+            for band in self:
+                band.mask = None
+            return
         if not isinstance(values, Band):
             raise TypeError(f"mask must be Band. Got {type(values)}")
         self._mask = values
         mask_arr = self._mask.values
         for band in self:
-            band._mask.values = mask_arr
+            band._mask = self._mask
             try:
                 band.values = np.ma.array(
                     band.values, mask=mask_arr, fill_value=band.nodata
@@ -1665,11 +1523,8 @@ class Image(_ImageBandBase):
     @property
     def bands(self) -> list[Band]:
         """The Image Bands."""
-        try:
-            assert self._bands is not None
+        if self._bands is not None:
             return self._bands
-        except (AttributeError, AssertionError):
-            pass
 
         # if self.masking:
         #     mask_band_id = self.masking["band_id"]
@@ -1712,9 +1567,9 @@ class Image(_ImageBandBase):
 
         if (
             self.filename_patterns
-            and any(get_non_optional_groups(pat) for pat in self.filename_patterns)
+            and any(_get_non_optional_groups(pat) for pat in self.filename_patterns)
             or self.image_patterns
-            and any(get_non_optional_groups(pat) for pat in self.image_patterns)
+            and any(_get_non_optional_groups(pat) for pat in self.image_patterns)
         ):
             self._bands = [band for band in self._bands if band.band_id is not None]
 
@@ -1749,7 +1604,7 @@ class Image(_ImageBandBase):
     def _should_be_sorted(self) -> bool:
         sort_groups = ["band", "band_id"]
         return self.filename_patterns and any(
-            group in get_non_optional_groups(pat)
+            group in _get_non_optional_groups(pat)
             for group in sort_groups
             for pat in self.filename_patterns
         )
@@ -1760,7 +1615,7 @@ class Image(_ImageBandBase):
         if hasattr(self, "_tile") and self._tile:
             return self._tile
         return self._name_regex_searcher(
-            "tile", self.image_patterns + self.image_patterns
+            "tile", self.image_patterns + self.filename_patterns
         )
 
     @property
@@ -1770,7 +1625,7 @@ class Image(_ImageBandBase):
             return self._date
 
         return self._name_regex_searcher(
-            "date", self.image_patterns + self.image_patterns
+            "date", self.image_patterns + self.filename_patterns
         )
 
     @property
@@ -1782,68 +1637,11 @@ class Image(_ImageBandBase):
             return None
         self._crs = get_common_crs(self)
         return self._crs
-        with opener(self.file_paths[0], file_system=self.file_system) as file:
-            with rasterio.open(file) as src:
-                # self._bounds = to_bbox(src.bounds)
-                self._crs = src.crs
-                return self._crs
 
     @property
     def bounds(self) -> tuple[int, int, int, int] | None:
         """Bounds of the Image (minx, miny, maxx, maxy)."""
         return get_total_bounds([band.bounds for band in self])
-        if self._bounds is None:
-            self._bounds = get_total_bounds([band.bounds for band in self])
-        # if self._bbox is not None:
-        #     intersection = box(*self._bounds).intersection(box(*self._bbox))
-        #     if intersection:
-        #         return tuple(*intersection.bounds)
-        #     else:
-        #         return None
-        return self._bounds
-
-        if self._bounds is not None and (
-            not hasattr(self, "_bands") or self._bands is None
-        ):
-            return self._bounds
-        # try:
-        return get_total_bounds([band.bounds for band in self])
-        # except AttributeError:
-        #     if not len(self):
-        #         return None
-        #     with opener(self.file_paths[0], file_system=self.file_system) as file:
-        #         with rasterio.open(file) as src:
-        #             self._bounds = to_bbox(src.bounds)
-        #             self._crs = src.crs
-        #             return self._bounds
-        # except TypeError:
-        #     return None
-
-    # @property
-    # def year(self) -> str:
-    #     return self.date[:4]
-
-    # @property
-    # def month(self) -> str:
-    #     return "".join(self.date.split("-"))[:6]
-
-    # def write(self, image_path: str | Path, file_type: str = "tif", **kwargs) -> None:
-    #     _test = kwargs.pop("_test")
-    #     suffix = "." + file_type.strip(".")
-    #     img_path = Path(image_path)
-    #     for band in self:
-    #         band_path = (img_path / band.name).with_suffix(suffix)
-    #         if _test:
-    #             print(f"{self.__class__.__name__}.write: {band_path}")
-    #             continue
-
-    #         band.write(band_path, **kwargs)
-
-    # def read(self, bounds=None, **kwargs) -> np.ndarray:
-    #     """Return 3 dimensional numpy.ndarray of shape (n bands, width, height)."""
-    #     return np.array(
-    #         [(band.load(bounds=bounds, **kwargs).values) for band in self.bands]
-    #     )
 
     def to_gdf(self, column: str = "value") -> GeoDataFrame:
         """Convert the array to a GeoDataFrame of grid polygons and values."""
@@ -1996,7 +1794,7 @@ class ImageCollection(_ImageBase):
 
         if metadata is not None:
             if isinstance(metadata, (str | Path | os.PathLike)):
-                self.metadata = read_parquet_func(metadata)
+                self.metadata = _read_parquet_func(metadata)
             else:
                 self.metadata = metadata
         else:
@@ -2015,15 +1813,15 @@ class ImageCollection(_ImageBase):
         self._path = str(data)
 
         if is_dapla():
-            self._all_file_paths = list(sorted(set(glob_func(self.path + "/**"))))
+            self._all_file_paths = list(sorted(set(_glob_func(self.path + "/**"))))
         else:
             self._all_file_paths = list(
                 sorted(
                     set(
-                        glob_func(self.path + "/**/**")
-                        + glob_func(self.path + "/**/**/**")
-                        + glob_func(self.path + "/**/**/**/**")
-                        + glob_func(self.path + "/**/**/**/**/**")
+                        _glob_func(self.path + "/**/**")
+                        + _glob_func(self.path + "/**/**/**")
+                        + _glob_func(self.path + "/**/**/**/**")
+                        + _glob_func(self.path + "/**/**/**/**/**")
                     )
                 )
             )
@@ -2118,10 +1916,10 @@ class ImageCollection(_ImageBase):
 
     def merge(
         self,
-        bounds=None,
-        method="median",
+        bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
+        method: str | Callable = "median",
         as_int: bool = True,
-        indexes=None,
+        indexes: int | tuple[int] | None = None,
         **kwargs,
     ) -> Band:
         """Merge all areas and all bands to a single Band."""
@@ -2195,7 +1993,7 @@ class ImageCollection(_ImageBase):
         """Merge all areas to a single tile, one band per band_id."""
         bounds = to_bbox(bounds) if bounds is not None else self._bbox
         bounds = self.bounds if bounds is None else bounds
-        out_bounds = bounds  # self.bbox if bounds is None else bounds
+        out_bounds = bounds
         crs = self.crs
 
         if indexes is None:
@@ -2242,8 +2040,6 @@ class ImageCollection(_ImageBase):
                     else:
                         arr = arr / len(datasets)
 
-            # mask = image.mask
-
             arrs.append(arr)
             bands.append(
                 self.band_class(
@@ -2251,7 +2047,6 @@ class ImageCollection(_ImageBase):
                     bounds=out_bounds,
                     crs=crs,
                     band_id=band_id,
-                    # mask=mask,
                     **self._common_init_kwargs,
                 )
             )
@@ -2269,9 +2064,9 @@ class ImageCollection(_ImageBase):
     def _merge_with_numpy_func(
         self,
         method: str | Callable,
-        bounds=None,
+        bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
         as_int: bool = True,
-        indexes=None,
+        indexes: int | tuple[int] | None = None,
         **kwargs,
     ) -> np.ndarray:
         arrs = []
@@ -2325,29 +2120,13 @@ class ImageCollection(_ImageBase):
                 )
             )
 
-        # if bounds is None:
-        #     bounds = self.bounds
-
         merged = merge_arrays(
             arrs,
-            # bounds=bounds,
             res=self.res,
             nodata=self.nodata,
         )
 
         return merged.to_numpy()
-
-    # def write(self, root: str | Path, file_type: str = "tif", **kwargs) -> None:
-    #     _test = kwargs.pop("_test")
-    #     suffix = "." + file_type.strip(".")
-    #     for img in self:
-    #         img_path = Path(root) / img.name
-    #         for band in img:
-    #             band_path = (img_path / band.name).with_suffix(suffix)
-    #             if _test:
-    #                 print(f"{self.__class__.__name__}.write: {band_path}")
-    #                 continue
-    #             band.write(band_path, **kwargs)
 
     def sort_images(self, ascending: bool = True) -> "ImageCollection":
         """Sort Images by date."""
@@ -2363,17 +2142,27 @@ class ImageCollection(_ImageBase):
             self._images = list(reversed(self.images))
         return self
 
-    def load_bands(self, bounds=None, indexes=None, **kwargs) -> "ImageCollection":
+    def load(
+        self,
+        bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
+        indexes: int | tuple[int] | None = None,
+        **kwargs,
+    ) -> "ImageCollection":
         """Load all image Bands with threading."""
-        bounds = bounds if bounds is None else self._bbox
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
+            if self.masking:
+                parallel(
+                    joblib.delayed(_load_band)(
+                        img.mask, bounds=bounds, indexes=indexes, **kwargs
+                    )
+                    for img in self
+                )
             parallel(
                 joblib.delayed(_load_band)(
                     band, bounds=bounds, indexes=indexes, **kwargs
                 )
                 for img in self
                 for band in img
-                if bounds is None or img.intersects(bounds)
             )
 
         return self
@@ -2395,11 +2184,10 @@ class ImageCollection(_ImageBase):
 
         return self
 
-    def apply(self, func: Callable) -> "ImageCollection":
+    def apply(self, func: Callable, **kwargs) -> "ImageCollection":
         """Apply a function to all bands in each image of the collection."""
         for img in self:
-            for band in img:
-                band.values = func(band.values)
+            img.bands = [func(band, **kwargs) for band in img]
         return self
 
     def filter(
@@ -2497,7 +2285,6 @@ class ImageCollection(_ImageBase):
         other = to_shapely(other)
 
         # intersects_list = GeoSeries([img.unary_union for img in self]).intersects(other)
-
         with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
             intersects_list: list[bool] = parallel(
                 joblib.delayed(_intesects)(image, other) for image in self
@@ -2613,7 +2400,7 @@ class ImageCollection(_ImageBase):
 
             def _get_from_single_element_list(lst: list[Any]) -> Any:
                 if len(lst) != 1:
-                    raise ValueError()
+                    raise ValueError(lst)
                 return next(iter(lst))
 
             copied = self.copy()
@@ -2630,31 +2417,19 @@ class ImageCollection(_ImageBase):
             and len(item)
             and all(isinstance(x, BoundingBox) for x in item)
         ):
-            try:
-                copied = self.copy()
-                if callable(item):
-                    item = [item(img) for img in copied]
+            copied = self.copy()
+            if callable(item):
+                item = [item(img) for img in copied]
 
-                # check for base bool and numpy bool
-                if all("bool" in str(type(x)) for x in item):
-                    copied.images = [
-                        img for x, img in zip(item, copied, strict=True) if x
-                    ]
+            # check for base bool and numpy bool
+            if all("bool" in str(type(x)) for x in item):
+                copied.images = [img for x, img in zip(item, copied, strict=True) if x]
 
-                else:
-                    copied.images = [copied.images[i] for i in item]
-                return copied
-            except Exception as e:
-                if hasattr(item, "__iter__"):
-                    endnote = f" of length {len(item)} with types {set(type(x) for x in item)}"
-                else:
-                    endnote = ""
-                raise TypeError(
-                    "ImageCollection indices must be int or BoundingBox. "
-                    f"Got {type(item)}{endnote}: {item}"
-                ) from e
+            else:
+                copied.images = [copied.images[i] for i in item]
+            return copied
 
-        elif isinstance(item, BoundingBox):
+        if isinstance(item, BoundingBox):
             date_ranges: tuple[str] = (item.mint, item.maxt)
             data: torch.Tensor = numpy_to_torch(
                 np.array(
@@ -2691,9 +2466,6 @@ class ImageCollection(_ImageBase):
         sample = {key: data, "crs": crs, "bbox": item}
 
         return sample
-
-    # def dates_as_float(self) -> list[tuple[float, float]]:
-    #     return [disambiguate_timestamp(date, self.date_format) for date in self.dates]
 
     @property
     def mint(self) -> float:
@@ -2748,9 +2520,10 @@ class ImageCollection(_ImageBase):
             images = []
             for image in self._images:
                 try:
-                    assert isinstance(image.mask, Band)
+                    if not isinstance(image.mask, Band):
+                        raise ValueError()
                     images.append(image)
-                except (AssertionError, ValueError):
+                except ValueError:
                     continue
             self._images = images
             for image in self._images:
@@ -2763,11 +2536,8 @@ class ImageCollection(_ImageBase):
                         try:
                             value = self.metadata[band.path][key]
                         except KeyError:
-                            try:
-                                value = self.metadata[key][band.path]
-                            except KeyError:
-                                pass
-                        setattr(self, f"_{key}", value)
+                            value = self.metadata[key][band.path]
+                        setattr(band, f"_{key}", value)
 
         self._images = [img for img in self if len(img)]
 
@@ -2778,18 +2548,19 @@ class ImageCollection(_ImageBase):
 
     @property
     def _should_be_sorted(self) -> bool:
+        """True if the ImageCollection has regexes that should make it sortable by date."""
         sort_group = "date"
         return (
             self.filename_patterns
             and any(
                 sort_group in pat.groupindex
-                and sort_group in get_non_optional_groups(pat)
+                and sort_group in _get_non_optional_groups(pat)
                 for pat in self.filename_patterns
             )
             or self.image_patterns
             and any(
                 sort_group in pat.groupindex
-                and sort_group in get_non_optional_groups(pat)
+                and sort_group in _get_non_optional_groups(pat)
                 for pat in self.image_patterns
             )
             or all(img.date is not None for img in self)
@@ -2847,12 +2618,25 @@ class ImageCollection(_ImageBase):
 
     def plot_pixels(
         self,
-        by=None,
+        by: str | list[str] | None = None,
         x_var: str = "days_since_start",
         y_label: str = "value",
         p: float = 0.95,
-        ylim=None,
-    ):
+        ylim: tuple[float, float] | None = None,
+    ) -> None:
+        """Plot each individual pixel in a dotplot for all dates.
+
+        Args:
+            by: Band attributes to groupby. Defaults to "bounds" and "band_id"
+                if all bands have no-None band_ids, otherwise defaults to "bounds".
+            x_var: Attribute to use on the x-axis. Defaults to "days_since_start"
+                if the ImageCollection is sortable by date, otherwise a range index.
+                Can be set to "date" to use actual dates.
+            y_label: Label to use on the y-axis.
+            p: p-value for the confidence interval.
+            ylim: Limits of the y-axis.
+
+        """
         if by is None and all(band.band_id is not None for img in self for band in img):
             by = ["bounds", "band_id"]
         elif by is None:
@@ -2919,12 +2703,6 @@ class ImageCollection(_ImageBase):
                     # Mean squared error of the residuals
                     mse = np.sum((this_y - predicted) ** 2) / dof
 
-                    # Variance of the parameters
-                    # x_aux = np.vstack([this_x, np.ones(len(this_x))]).T
-                    # var_params = np.linalg.inv(x_aux.T @ x_aux) * mse
-                    # stderr_slope = np.sqrt(var_params[0, 0])
-                    # stderr_intercept = np.sqrt(var_params[1, 1])
-
                     # Calculate the standard error of predictions
                     pred_stderr = np.sqrt(
                         mse
@@ -2941,27 +2719,6 @@ class ImageCollection(_ImageBase):
 
                     rounding = int(np.log(1 / abs(coef)))
 
-                    # if this_mask is not None:
-                    #     this_x_mask = this_x[this_mask]
-                    #     this_y_mask = this_y[this_mask]
-                    #     this_x_not_mask = this_x[~this_mask]
-                    #     this_y_not_mask = this_y[~this_mask]
-                    #     plt.scatter(
-                    #         this_x_mask,
-                    #         this_y_mask,
-                    #         color="#c439ab",
-                    #         alpha=0.6,
-                    #         label="Masked values",
-                    #     )
-                    #     plt.scatter(
-                    #         this_x_not_mask,
-                    #         this_y_not_mask,
-                    #         color="#38ba49",
-                    #         alpha=0.6,
-                    #         label="Non-masked values",
-                    #     )
-
-                    # else:
                     plt.scatter(this_x, this_y, color="#2c93db")
                     plt.plot(this_x, predicted, color="#e0436b")
                     plt.fill_between(
@@ -2997,7 +2754,6 @@ def concat_image_collections(collections: Sequence[ImageCollection]) -> ImageCol
         band_class=first_collection.band_class,
         image_class=first_collection.image_class,
         **first_collection._common_init_kwargs,
-        # res=list(resolutions)[0],
     )
     out_collection._all_file_paths = list(
         sorted(
@@ -3039,7 +2795,7 @@ def to_xarray(
         dims=dims,
         name=name,
         attrs={"crs": crs},
-    )  # .transpose("y", "x")
+    )
 
 
 def _slope_2d(array: np.ndarray, res: int, degrees: int) -> np.ndarray:
@@ -3061,7 +2817,6 @@ def _slope_2d(array: np.ndarray, res: int, degrees: int) -> np.ndarray:
 def _get_images(
     image_paths: list[str],
     *,
-    # res: int,
     all_file_paths: list[str],
     df: pd.DataFrame,
     processes: int,
@@ -3070,7 +2825,6 @@ def _get_images(
     bbox: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None,
     masking: BandMasking | None,
     **kwargs,
-    # nodata: int|float|None=None,
 ) -> list[Image]:
 
     with joblib.Parallel(n_jobs=processes, backend="loky") as parallel:
@@ -3078,13 +2832,9 @@ def _get_images(
             joblib.delayed(image_class)(
                 path,
                 df=df,
-                # res=res,
                 all_file_paths=all_file_paths,
                 masking=masking,
-                # bbox=bbox,
-                # processes=processes,
                 band_class=band_class,
-                # nodata=nodata,
                 **kwargs,
             )
             for path in image_paths
@@ -3117,11 +2867,11 @@ class _RegexError(ValueError):
 
 
 class ArrayNotLoadedError(ValueError):
-    pass
+    """Arrays are not loaded."""
 
 
 class PathlessImageError(ValueError):
-    """Exception for when Images, Bands or ImageCollections have no path."""
+    """'path' attribute is needed but instance has no path."""
 
     def __init__(self, instance: _ImageBase) -> None:
         """Initialise error class."""
@@ -3148,7 +2898,7 @@ def _get_regex_match_from_xml_in_local_dir(
     for i, path in enumerate(paths):
         if ".xml" not in path:
             continue
-        with open_func(path, "rb") as file:
+        with _open_func(path, "rb") as file:
             filebytes: bytes = file.read()
             try:
                 return _extract_regex_match_from_string(
@@ -3172,26 +2922,14 @@ def _extract_regex_match_from_string(
 
     out = {}
     for regex in regexes:
-        # if isinstance(regex, dict):
-        #     out = {}
-        #     for key, value in regex.items():
-        #         try:
-        #             out[key] = re.search(value, xml_file).group(1)
-        #         except (TypeError, AttributeError):
-        #             continue
-        #     if len(out) != len(regex):
-        #         raise _RegexError()
-        #     return out
         try:
             matches = re.search(regex, xml_file)
             out |= matches.groupdict()
-            # else:
-            #     return matches.group(1)
         except (TypeError, AttributeError):
             continue
-    if out:
-        return out
-    raise _RegexError()
+    if not out:
+        raise _RegexError()
+    return out
 
 
 def _fix_path(path: str) -> str:
@@ -3201,7 +2939,7 @@ def _fix_path(path: str) -> str:
 
 
 def _get_regexes_matches_for_df(
-    df, match_col: str, patterns: Sequence[re.Pattern], suffix: str = ""
+    df, match_col: str, patterns: Sequence[re.Pattern]
 ) -> pd.DataFrame:
     if not len(df):
         return df
@@ -3209,13 +2947,13 @@ def _get_regexes_matches_for_df(
     non_optional_groups = list(
         set(
             itertools.chain.from_iterable(
-                [get_non_optional_groups(pat) for pat in patterns]
+                [_get_non_optional_groups(pat) for pat in patterns]
             )
         )
     )
 
     if not non_optional_groups:
-        return df  # .drop(columns=f"{match_col}{suffix}", errors="ignore")
+        return df
 
     assert df.index.is_unique
     keep = []
@@ -3227,52 +2965,8 @@ def _get_regexes_matches_for_df(
 
     return df.loc[keep]
 
-    return df.loc[~df[non_optional_groups].isna().all(axis=1)].drop(
-        columns=f"{match_col}{suffix}", errors="ignore"
-    )
 
-    matches: list[pd.DataFrame] = []
-    for pat in patterns:
-        if pat.groups:
-            print(df[match_col].str.extract(pat))
-            print(df[match_col].apply(lambda x: _get_first_group_match(pat, x)))
-            try:
-                matches.append(df[match_col].str.extract(pat))
-            except ValueError:
-                continue
-        else:
-            match_ = df[match_col].loc[df[match_col].str.match(pat)]
-            if len(match_):
-                matches.append(match_)
-
-    matches = pd.concat(matches).groupby(level=0, dropna=True).first()
-
-    print(matches)
-
-    if isinstance(matches, pd.Series):
-        matches = pd.DataFrame({matches.name: matches.values}, index=matches.index)
-
-    match_cols = [f"{col}{suffix}" for col in matches.columns]
-    df[match_cols] = matches
-    non_optional_groups = list(
-        set(
-            itertools.chain.from_iterable(
-                [[x + suffix for x in get_non_optional_groups(pat)] for pat in patterns]
-            )
-        )
-    )
-
-    if not non_optional_groups:
-        return df.drop(columns=f"{match_col}{suffix}", errors="ignore"), match_cols
-    return (
-        df.loc[~df[non_optional_groups].isna().all(axis=1)].drop(
-            columns=f"{match_col}{suffix}", errors="ignore"
-        ),
-        match_cols,
-    )
-
-
-def get_non_optional_groups(pat):
+def _get_non_optional_groups(pat: re.Pattern | str) -> list[str]:
     return [
         x
         for x in [
@@ -3373,16 +3067,6 @@ def _gdf_to_geojson_with_col(gdf: GeoDataFrame, values: np.ndarray) -> list[dict
         ]
 
 
-def _get_all_group_match(pat: re.Pattern, text: str) -> dict[str, list[str]]:
-    groups = pat.groupindex.keys()
-    all_matches: dict[str, list[str]] = {group: [] for group in groups}
-    for x in pat.findall(text):
-        for group, value in zip(groups, x, strict=True):
-            if value:
-                all_matches[group].append(value)
-    return all_matches
-
-
 def _get_first_group_match(pat: re.Pattern, text: str) -> dict[str, str]:
     groups = pat.groupindex.keys()
     all_matches: dict[str, str] = {}
@@ -3405,7 +3089,6 @@ def _date_is_within(
 
         try:
             date = _get_first_group_match(pat, Path(path).name)["date"]
-            # date = re.match(pat, Path(path).name).group("date")
             break
         except KeyError:
             date = None
@@ -3435,11 +3118,14 @@ def _date_is_within(
         try:
             date_min = date_min or "00000000"
             date_max = date_max or "99999999"
-            assert isinstance(date_min, str)
-            assert len(date_min) == 8
-            assert isinstance(date_max, str)
-            assert len(date_max) == 8
-        except AssertionError as err:
+            if not (
+                isinstance(date_min, str)
+                and len(date_min) == 8
+                and isinstance(date_max, str)
+                and len(date_max) == 8
+            ):
+                raise ValueError()
+        except ValueError as err:
             raise TypeError(
                 "date_ranges should be a tuple of two 8-charactered strings (start and end date)."
                 f"Got {date_range} of type {[type(x) for x in date_range]}"
@@ -3455,9 +3141,9 @@ def _get_transform_from_bounds(
 ) -> Affine:
     minx, miny, maxx, maxy = to_bbox(obj)
     if len(shape) == 2:
-        width, height = shape
+        height, width = shape
     elif len(shape) == 3:
-        _, width, height = shape
+        _, height, width = shape
     else:
         raise ValueError
     return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
@@ -3472,20 +3158,19 @@ def _get_shape_from_bounds(
 
     minx, miny, maxx, maxy = to_bbox(obj)
 
-    if 0:
-        minx = math.floor(minx / res) * res
-        maxx = math.ceil(maxx / res) * res
-        miny = math.floor(miny / res) * res
-        maxy = math.ceil(maxy / res) * res
+    # minx = math.floor(minx / res) * res
+    # maxx = math.ceil(maxx / res) * res
+    # miny = math.floor(miny / res) * res
+    # maxy = math.ceil(maxy / res) * res
 
-        # Compute output array shape. We guarantee it will cover the output
-        # bounds completely
-        width = round((maxx - minx) // res)
-        height = round((maxy - miny) // res)
+    # # Compute output array shape. We guarantee it will cover the output
+    # # bounds completely
+    # width = round((maxx - minx) // res)
+    # height = round((maxy - miny) // res)
 
-        if not isinstance(indexes, int):
-            return len(indexes), width, height
-        return height, width
+    # if not isinstance(indexes, int):
+    #     return len(indexes), height, width
+    # return height, width
 
     diffx = maxx - minx
     diffy = maxy - miny
@@ -3499,10 +3184,12 @@ def _get_shape_from_bounds(
 def _array_to_geojson(
     array: np.ndarray, transform: Affine, processes: int
 ) -> list[tuple]:
-    if np.ma.is_masked(array):
-        mask = array.mask == False
+    if hasattr(array, "mask"):
+        if isinstance(array.mask, np.ndarray):
+            mask = array.mask == False
+        else:
+            mask = None
         array = array.data
-
     else:
         mask = None
 
@@ -3518,19 +3205,6 @@ def _array_to_geojson(
 
 
 def _array_to_geojson_loop(array, transform, mask, processes):
-    # if mask is not None and processes == 1:
-    #     return [
-    #         (value, shape(geom))
-    #         for geom, value in features.shapes(array, transform=transform, mask=None)
-    #     ]
-    # elif mask is not None:
-    #     with joblib.Parallel(n_jobs=processes, backend="threading") as parallel:
-    #         return parallel(
-    #             joblib.delayed(_value_geom_pair)(value, geom)
-    #             for geom, value in features.shapes(
-    #                 array, transform=transform, mask=None
-    #             )
-    #         )
     if processes == 1:
         return [
             (value, shape(geom))
@@ -3584,15 +3258,6 @@ def _copy_and_add_df_parallel(
         for img in copied.images:
             img._bands = [band for band in img if band.band_id in band_ids]
 
-    # for col in group.columns.difference({"_image_instance", "_image_idx"}):
-    #     if not all(
-    #         col in dir(band) or col in band.__dict__ for img in copied for band in img
-    #     ):
-    #         continue
-    #     values = set(group[col].values)
-    #     for img in copied.images:
-    #         img._bands = [band for band in img if getattr(band, col) in values]
-
     return (i, copied)
 
 
@@ -3628,6 +3293,33 @@ def _zonal_one_pair(i: int, poly: Polygon, band: Band, aggfunc, array_func, func
     return _aggregate(clipped.values, array_func, aggfunc, func_names, band.date, i)
 
 
+def array_buffer(arr: np.ndarray, distance: int, copy: bool = True) -> np.ndarray:
+    """Buffer array points with the value 1 in a binary array.
+
+    Args:
+        arr: The array.
+        distance: Number of array cells to buffer by.
+        copy: Whether to copy the Band.
+
+    Returns:
+        Array with buffered values.
+    """
+    if not np.all(np.isin(arr, (1, 0, True, False))):
+        raise ValueError("Array must be all 0s and 1s or boolean.")
+
+    dtype = arr.dtype
+
+    structure = np.ones((2 * abs(distance) + 1, 2 * abs(distance) + 1))
+
+    arr = np.where(arr, 1, 0)
+
+    if distance > 0:
+        return binary_dilation(arr, structure=structure).astype(dtype)
+    elif distance < 0:
+
+        return binary_erosion(arr, structure=structure).astype(dtype)
+
+
 class Sentinel2Config:
     """Holder of Sentinel 2 regexes, band_ids etc."""
 
@@ -3637,8 +3329,8 @@ class Sentinel2Config:
         config.SENTINEL2_CLOUD_FILENAME_REGEX,
     )
     all_bands: ClassVar[list[str]] = list(config.SENTINEL2_BANDS)
-    rbg_bands: ClassVar[list[str]] = ["B02", "B03", "B04"]
-    ndvi_bands: ClassVar[list[str]] = ["B04", "B08"]
+    rbg_bands: ClassVar[list[str]] = config.SENTINEL2_RBG_BANDS
+    ndvi_bands: ClassVar[list[str]] = config.SENTINEL2_NDVI_BANDS
     l2a_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L2A_BANDS
     l1c_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L1C_BANDS
     date_format: ClassVar[str] = "%Y%m%d"  # T%H%M%S"
@@ -3654,6 +3346,15 @@ class Sentinel2CloudlessConfig(Sentinel2Config):
     filename_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_FILENAME_REGEX,)
     masking: ClassVar[None] = None
     date_format: ClassVar[str] = "%Y%m%d"
+    all_bands: ClassVar[list[str]] = [
+        x.replace("B0", "B") for x in Sentinel2Config.all_bands
+    ]
+    rbg_bands: ClassVar[list[str]] = [
+        x.replace("B0", "B") for x in Sentinel2Config.rbg_bands
+    ]
+    ndvi_bands: ClassVar[list[str]] = [
+        x.replace("B0", "B") for x in Sentinel2Config.ndvi_bands
+    ]
 
 
 class Sentinel2Band(Sentinel2Config, Band):
@@ -3664,7 +3365,6 @@ class Sentinel2Image(Sentinel2Config, Image):
     """Image with Sentinel2 specific name variables and regexes."""
 
     cloud_cover_regexes: ClassVar[tuple[str]] = config.CLOUD_COVERAGE_REGEXES
-    bounds_regexes: ClassVar[tuple[dict[str, str]]] = config.BOUNDS_REGEXES
     band_class: ClassVar[Sentinel2Band] = Sentinel2Band
 
     def ndvi(
@@ -3683,15 +3383,6 @@ class Sentinel2Collection(Sentinel2Config, ImageCollection):
     image_class: ClassVar[Sentinel2Image] = Sentinel2Image
     band_class: ClassVar[Sentinel2Band] = Sentinel2Band
 
-    # def ndvi(
-    #     self,
-    #     red_band: str = Sentinel2Config.ndvi_bands[0],
-    #     nir_band: str = Sentinel2Config.ndvi_bands[1],
-    #     copy: bool = True,
-    # ) -> NDVIBand:
-    #     """Calculate the NDVI for the Image."""
-    #     return super().ndvi(red_band=red_band, nir_band=nir_band, copy=copy)
-
 
 class Sentinel2CloudlessBand(Sentinel2CloudlessConfig, Band):
     """Band for cloudless mosaic with Sentinel2 specific name variables and regexes."""
@@ -3701,7 +3392,6 @@ class Sentinel2CloudlessImage(Sentinel2CloudlessConfig, Sentinel2Image):
     """Image for cloudless mosaic with Sentinel2 specific name variables and regexes."""
 
     cloud_cover_regexes: ClassVar[None] = None
-    bounds_regexes: ClassVar[None] = None
     band_class: ClassVar[Sentinel2CloudlessBand] = Sentinel2CloudlessBand
 
     ndvi = Sentinel2Image.ndvi
@@ -3711,6 +3401,4 @@ class Sentinel2CloudlessCollection(Sentinel2CloudlessConfig, ImageCollection):
     """ImageCollection with Sentinel2 specific name variables and regexes."""
 
     image_class: ClassVar[Sentinel2CloudlessImage] = Sentinel2CloudlessImage
-    band_class: ClassVar[Sentinel2Band] = Sentinel2Band
-
-    # ndvi = Sentinel2Collection.ndvi
+    band_class: ClassVar[Sentinel2Band] = Sentinel2CloudlessBand

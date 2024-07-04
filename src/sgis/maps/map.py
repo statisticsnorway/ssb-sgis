@@ -48,17 +48,17 @@ pd.options.mode.chained_assignment = None
 # similar colors. The palette is like the "Set2" cmap from matplotlib, but with more
 # colors. If more than 14 categories, the geopandas default cmap is used.
 _CATEGORICAL_CMAP = {
-    0: "#4576ff",
-    1: "#ff455e",
-    2: "#ffa617",
-    3: "#ff8cc9",
-    4: "#804e00",
-    5: "#99ff00",
-    6: "#fff700",
+    0: "#3b93ff",
+    1: "#ff3370",
+    2: "#f7cf19",
+    3: "#60e825",
+    4: "#ff8cc9",
+    5: "#804e00",
+    6: "#e3dc00",
     7: "#00ffee",
-    8: "#36d19b",
-    9: "#94006b",
-    10: "#750000",
+    8: "#4be3c5",
+    9: "#870062",
+    10: "#751500",
     11: "#1c6b00",
 }
 
@@ -223,6 +223,7 @@ class Map:
         self._get_unique_values()
 
     def __bool__(self) -> bool:
+        """True of any gdfs with more than 0 rows."""
         return bool(len(self._gdfs) + len(self._gdf))
 
     def _get_unique_values(self) -> None:

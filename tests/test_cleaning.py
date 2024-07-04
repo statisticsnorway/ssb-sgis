@@ -28,8 +28,22 @@ from shapely.geometry import LineString
 from shapely.geometry import Point
 
 import sgis as sg
-from sgis import *
-from sgis.geopandas_tools.cleaning import *
+from sgis.geopandas_tools.buffer_dissolve_explode import buff
+from sgis.geopandas_tools.buffer_dissolve_explode import dissexp_by_cluster
+from sgis.geopandas_tools.conversion import to_gdf
+from sgis.geopandas_tools.conversion import to_geoseries
+from sgis.geopandas_tools.duplicates import update_geometries
+from sgis.geopandas_tools.general import clean_geoms
+from sgis.geopandas_tools.general import make_lines_between_points
+from sgis.geopandas_tools.general import to_lines
+from sgis.geopandas_tools.geometry_types import make_all_singlepart
+from sgis.geopandas_tools.geometry_types import to_single_geom_type
+from sgis.geopandas_tools.overlay import clean_overlay
+from sgis.geopandas_tools.polygon_operations import close_all_holes
+from sgis.geopandas_tools.polygon_operations import eliminate_by_largest
+from sgis.geopandas_tools.polygon_operations import get_cluster_mapper
+from sgis.geopandas_tools.polygons_as_rings import PolygonsAsRings
+from sgis.networkanalysis.cutting_lines import split_lines_by_nearest_point
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
@@ -47,7 +61,7 @@ PRECISION = 1e-3
 BUFFER_RES = 50
 
 
-def coverage_clean(
+def _coverage_clean(
     gdf: GeoDataFrame,
     tolerance: int | float,
     mask: GeoDataFrame | GeoSeries | Geometry | None = None,
@@ -55,7 +69,7 @@ def coverage_clean(
 ) -> GeoDataFrame:
     if mask is None:
         mask: GeoDataFrame = (
-            close_all_holes(dissexp_by_cluster(gdf))
+            close_all_holes(dissexp_by_cluster(gdf[["geometry"]]))
             # .dissolve()
             .pipe(make_all_singlepart)
         )
@@ -74,13 +88,10 @@ def coverage_clean(
     missing = clean_overlay(mask, gdf, how="difference", geom_type="polygon").loc[
         lambda x: x.buffer(-tolerance / 2).is_empty
     ]
-    is_thin = gdf.buffer(-tolerance).is_empty
+
+    is_thin = gdf.buffer(-tolerance / 2).is_empty
     thin = gdf[is_thin]
     gdf = gdf[~is_thin]
-    print(missing.columns)
-    print(thin.columns)
-    print("concat")
-    print(pd.concat([missing, thin]).columns)
     to_eliminate = buff(pd.concat([missing, thin]), PRECISION).pipe(
         clean_overlay, mask, how="intersection", geom_type="polygon"
     )
@@ -213,9 +224,9 @@ def _snap_to_anchors(
 
     assert points.index.is_unique
 
-    tree = STRtree(points.loc[lambda x: x["_is_snapped"] != True, "geometry"].values)
+    tree = STRtree(points.loc[lambda x: x["_is_snapped"] == False, "geometry"].values)
     left, right = tree.query(
-        points.loc[lambda x: x["_is_snapped"] != True, "geometry"].values,
+        points.loc[lambda x: x["_is_snapped"] == False, "geometry"].values,
         # points.geometry.values,
         predicate="dwithin",
         distance=tolerance,
@@ -223,7 +234,7 @@ def _snap_to_anchors(
     indices = pd.Series(right, index=left, name="_right_idx")
 
     idx_mapper = dict(
-        enumerate(points.loc[lambda x: x["_is_snapped"] != True, "_geom_idx"])
+        enumerate(points.loc[lambda x: x["_is_snapped"] == False, "_geom_idx"])
     )
     geom_idx_left = indices.index.map(idx_mapper)
     geom_idx_right = indices.map(idx_mapper)
@@ -397,7 +408,7 @@ def _snap_to_anchors(
     #     )
 
     to_be_snapped = points.loc[
-        lambda x: x["_is_snapped"] != True
+        lambda x: x["_is_snapped"] == False
     ]  # .loc[should_be_snapped].rename(
     #     columns={"_geom_idx": "_geom_idx_left"}, errors="raise"
     # )
@@ -467,7 +478,7 @@ def _snap(
     # )
 
     snapped = (
-        points.loc[lambda x: x["_is_snapped"] != True]
+        points.loc[lambda x: x["_is_snapped"] == False]
         .sjoin_nearest(anchors, max_distance=tolerance, distance_col="_dist")
         .loc[lambda x: x["_dist"] > 0]
         .sort_values("_dist")
@@ -752,8 +763,6 @@ def _add_midpoints_to_segments(points, relevant_mask_nodes, tolerance, as_polygo
         # .loc[lambda x: x.groupby(level=0).size() > 1]
     )
 
-    # sss
-
     explore_locals(
         midpoints=to_gdf(midpoints, 25833),
         center=(6550872, -29405, 10),
@@ -969,12 +978,14 @@ def test_clean_1144():
         # allow near-thin polygons to dissappear. this happens because snapping makes them thin
         # before eliminate
         thick_df_indices = df.loc[
-            lambda x: ~x.buffer(-tolerance / 2.2).is_empty, "df_idx"
+            lambda x: ~x.buffer(-tolerance / 1.8).is_empty, "df_idx"
         ]
 
         cleaned = sg.coverage_clean(
             df, tolerance, mask=kommune_utenhav
         )  # .pipe(sg.coverage_clean, tolerance)
+
+        assert list(sorted(cleaned.columns)) == list(sorted(cols)), cleaned.columns
 
         # cleaned = sg.coverage_clean(
         #     sg.sort_large_first(df), tolerance, mask=kommune_utenhav
@@ -1148,21 +1159,13 @@ def not_test_spikes():
     tolerance = 0.09 * factor
 
     snapped = sg.coverage_clean(df, tolerance)
-    # spikes_removed = sg.remove_spikes(df, tolerance)
     gaps = sg.get_gaps(snapped, True)
     print(gaps)
-    # spikes_fixed = sg.split_spiky_polygons(df, tolerance)
-    # fixed_and_cleaned = sg.coverage_clean(
-    #     spikes_fixed, tolerance  # , pre_dissolve_func=_buff
-    # )  # .pipe(sg.remove_spikes, tolerance / 100)
 
     if __name__ == "__main__":
         sg.explore(
-            # fixed_and_cleaned=fixed_and_cleaned,
             snapped=snapped,
             gaps=gaps,
-            # spikes_fixed=spikes_fixed,
-            # df=df,
         )
 
     def is_close_enough(num1, num2):
@@ -1178,9 +1181,9 @@ def not_test_spikes():
         48285369.993336275,
         26450336.353161283,
     ]
-    print(list(fixed_and_cleaned.area))
+    print(list(snapped.area))
     for area1, area2 in zip(
-        sorted(fixed_and_cleaned.area),
+        sorted(snapped.area),
         sorted(area_should_be),
         strict=False,
     ):
@@ -1194,9 +1197,9 @@ def not_test_spikes():
         18541.01966249684,
     ]
 
-    print(list(fixed_and_cleaned.length))
+    print(list(snapped.length))
     for length1, length2 in zip(
-        sorted(fixed_and_cleaned.length),
+        sorted(snapped.length),
         sorted(length_should_be),
         strict=False,
     ):
@@ -1204,14 +1207,14 @@ def not_test_spikes():
 
 
 def main():
+    test_clean_1144()
     test_clean()
     test_clean_dissappearing_polygon()
     not_test_spikes()
-    test_clean_1144()
 
 
 if __name__ == "__main__":
-    sg.coverage_clean = coverage_clean
+    sg.coverage_clean = _coverage_clean
 
     # cProfile.run("main()", sort="cumtime")
 

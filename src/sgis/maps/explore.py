@@ -383,6 +383,7 @@ class Explore(Map):
         return f"{self.__class__.__name__}()"
 
     def __bool__(self) -> bool:
+        """True if any gdfs have rows or there are any raster images."""
         try:
             rasters = self.raster_data
         except AttributeError:
@@ -525,7 +526,7 @@ class Explore(Map):
             if hasattr(arr, "mask"):
                 arr = arr.data
             if "bool" in str(arr.dtype):
-                arr = np.where(arr == True, 1, 0)
+                arr = np.where(arr, 1, 0)
             # if np.max(arr[~np.isnan(arr)]) > 255:
             #     arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
             try:

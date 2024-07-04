@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ssb-sgis"
-version = "1.0.3"
+version = "1.0.4"
 description = "GIS functions used at Statistics Norway."
 authors = ["Morten Letnes <morten.letnes@ssb.no>"]
 license = "MIT"
@@ -161,6 +161,7 @@ select = [
     "RUF",  # the ruff developer's own rules
 ]
 ignore = [
+    "E712", # Avoid equality comparisons to `True`. (this does not work with Pandas)
     "ANN002", # Typehint *args
     "ANN003", # Typehint **kwargs
     "ANN101", # Supress missing-type-self.

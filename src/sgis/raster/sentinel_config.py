@@ -3,28 +3,16 @@ import re
 SENTINEL2_FILENAME_REGEX = r"""
     ^(?P<tile>T\d{2}[A-Z]{3})
     _(?P<date>\d{8})T\d{6}
-    # _(?P<date>\d{8}T\d{6})
     _(?P<band>B[018][\dA])
     (?:_(?P<resolution>\d+)m)?
     .*
     \..*$
 """
 
-SENTINEL2_MOSAIC_FILENAME_REGEX = r"""
-    ^SENTINEL2X_
-    (?P<date>\d{8})
-    .*(?P<tile>T\d{2}[A-Z]{3})
-    _(?P<band>B[018][\dA])
-    .*(?:_(?P<resolution>{}m))?
-    .*
-    .*\..*$
-"""
-
 
 SENTINEL2_CLOUD_FILENAME_REGEX = r"""
     ^(?P<tile>T\d{2}[A-Z]{3})
     _(?P<date>\d{8})T\d{6}
-    # _(?P<date>\d{8}T\d{6})
     _(?P<band>SCL)
     (?:_(?P<resolution>\d+)m)?
     .*
@@ -35,7 +23,6 @@ SENTINEL2_IMAGE_REGEX = r"""
     ^(?P<mission_id>S2[AB])
     _MSI(?P<level>[A-Z]\d{1}[A-Z])
     _(?P<date>\d{8})T\d{6}
-    # _(?P<date>\d{8}T\d{6})
     _(?P<baseline>N\d{4})
     _(?P<orbit>R\d{3})
     _(?P<tile>T\d{2}[A-Z]{3})
@@ -44,15 +31,28 @@ SENTINEL2_IMAGE_REGEX = r"""
     .*$
 """
 
+SENTINEL2_MOSAIC_FILENAME_REGEX = r"""
+    ^SENTINEL2X_
+    (?P<date>\d{8})
+    .*?
+    (?P<tile>T\d{2}[A-Z]{3})
+    .*?
+    _(?P<band>B\d{1,2}A?)_
+    .*?
+    (?:_(?P<resolution>\d+m))?
+    .*?\.tif$
+"""
+
 SENTINEL2_MOSAIC_IMAGE_REGEX = r"""
     ^SENTINEL2X_
     (?P<date>\d{8})
     -\d{6}
     -\d{3}
     _(?P<level>[A-Z]\d{1}[A-Z])
-    .*T(?P<tile>\d{2}[A-Z]{3})
+    .*(?P<tile>T\d{2}[A-Z]{3})
     .*.*$
 """
+
 
 # multiple regex searches because there are different xml files with same info, but different naming
 CLOUD_COVERAGE_REGEXES: tuple[str] = (
