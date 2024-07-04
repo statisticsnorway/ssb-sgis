@@ -444,11 +444,12 @@ class _ImageBase:
         for key, value in copied.__dict__.items():
             try:
                 setattr(copied, key, value.copy())
+                print("kjorer .copy() for ", key)
             except AttributeError:
                 setattr(copied, key, deepcopy(value))
+                print("kjorer deepcopy() for ", key)
             except TypeError:
                 continue
-            print(key)
         return copied
 
 
