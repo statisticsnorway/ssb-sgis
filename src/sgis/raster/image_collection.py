@@ -897,7 +897,7 @@ class Band(_ImageBandBase):
         elif self.mask is not None and not isinstance(
             self.values, np.ma.core.MaskedArray
         ):
-            self.mask = self.mask.load(
+            self.mask = self.mask.copy().load(
                 bounds=bounds, indexes=indexes, out_shape=out_shape, **kwargs
             )
             mask_arr = self.mask.values
