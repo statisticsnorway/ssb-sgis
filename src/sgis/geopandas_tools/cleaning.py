@@ -121,26 +121,13 @@ def coverage_clean(
                 to_geoseries(mask).to_frame("geometry").pipe(make_all_singlepart)
             )
 
-    mmm0 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(1))
-    explore(
-        mmm0,
-        gdf,
-        msk=mask,
-        center=_DEBUG_CONFIG["center"],
-    )
-
     gdf = snap_polygons(gdf, tolerance, mask=mask)
 
-    print("etter snap_polygons")
     explore(
         gdf,
         msk=mask,
         center=_DEBUG_CONFIG["center"],
     )
-    # gdf = clean_overlay(gdf, gdf[["geometry"]], geom_type="polygon")
-
-    mmm1 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(1))
-    explore(mmm1)
 
     gdf.geometry = (
         gdf.buffer(
@@ -159,15 +146,6 @@ def coverage_clean(
             join_style=2,
         )
     )
-    print("etter buffer inn, ut, inn")
-    explore(
-        gdf,
-        msk=mask,
-        center=_DEBUG_CONFIG["center"],
-    )
-
-    mmm2 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(1))
-    explore(mmm2)
 
     gdf = clean_overlay(gdf, mask, how="intersection", geom_type="polygon")
     gdf["_was_to_eliminate"] = 0
@@ -333,60 +311,66 @@ def coverage_clean(
         center=_DEBUG_CONFIG["center"],
     )
 
-    mmm3 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833))
-    explore(mmm3)
-    was_to_eliminate = gdf["_was_to_eliminate"] == 1
-    still_not_eliminated = gdf[was_to_eliminate]
+    if 0:
+        mmm3 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833))
+        explore(mmm3)
+        was_to_eliminate = gdf["_was_to_eliminate"] == 1
+        still_not_eliminated = gdf[was_to_eliminate]
 
-    still_not_eliminated.geometry = still_not_eliminated.buffer(0.01)
+        still_not_eliminated.geometry = still_not_eliminated.buffer(0.01)
 
-    still_not_eliminated = clean_overlay(
-        still_not_eliminated,
-        mask,
-        how="intersection",
-        geom_type="polygon",
-    )
-    explore(
-        gdf,
-        still_not_eliminated,
-        msk=mask,
-        center=_DEBUG_CONFIG["center"],
-        # center=_DEBUG_CONFIG["center"],
-    )
+        still_not_eliminated = clean_overlay(
+            still_not_eliminated,
+            mask,
+            how="intersection",
+            geom_type="polygon",
+        )
+        explore(
+            gdf,
+            still_not_eliminated,
+            msk=mask,
+            center=_DEBUG_CONFIG["center"],
+            # center=_DEBUG_CONFIG["center"],
+        )
 
-    gdf = (
-        eliminate_by_longest(
-            gdf[~was_to_eliminate], still_not_eliminated, remove_isolated=True
-        ).explode(ignore_index=True)
-        # .pipe(clean_overlay, mask, geom_type="polygon")
-        # .pipe(update_geometries, geom_type="polygon")
-    ).drop(columns="_was_to_eliminate")
+        gdf = (
+            eliminate_by_longest(
+                gdf[~was_to_eliminate], still_not_eliminated, remove_isolated=True
+            ).explode(ignore_index=True)
+            # .pipe(clean_overlay, mask, geom_type="polygon")
+            # .pipe(update_geometries, geom_type="polygon")
+        ).drop(columns="_was_to_eliminate")
 
-    explore(
-        gdf,
-        msk=mask,
-        center=_DEBUG_CONFIG["center"],
-        # center=_DEBUG_CONFIG["center"],
-    )
+        explore(
+            gdf,
+            msk=mask,
+            center=_DEBUG_CONFIG["center"],
+            # center=_DEBUG_CONFIG["center"],
+        )
 
-    mm4 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(1))
-    explore(mm4)
+        mm4 = sfilter(
+            gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(1)
+        )
+        explore(mm4)
+    else:
+        gdf = gdf.drop(columns="_was_to_eliminate")
 
-    gdf.geometry = gdf.buffer(
-        PRECISION,
-        resolution=1,
-        join_style=2,
-    ).buffer(
-        -PRECISION,
-        resolution=1,
-        join_style=2,
-    )
+    if 0:
+        gdf.geometry = gdf.buffer(
+            PRECISION,
+            resolution=1,
+            join_style=2,
+        ).buffer(
+            -PRECISION,
+            resolution=1,
+            join_style=2,
+        )
 
-    explore(
-        gdf,
-        msk=mask,
-        # center=_DEBUG_CONFIG["center"],
-    )
+        explore(
+            gdf,
+            msk=mask,
+            # center=_DEBUG_CONFIG["center"],
+        )
 
     # return pd.concat([gdf, thick_missing_from_gdf], ignore_index=True)
 
