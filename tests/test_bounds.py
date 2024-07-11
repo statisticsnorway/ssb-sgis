@@ -18,7 +18,7 @@ import sgis as sg
     points["col2"] = np.random.choice([1, 2, 3, 4], len(points))
 
     grid = sg.make_grid(points, gridsize=1000)
-    assert all(points.intersects(grid.unary_union))
+    assert all(points.intersects(grid.union_all()))
     assert list(grid.columns) == ["col", "col2", "geometry"], list(grid.columns)
     print(grid)
     ss
@@ -112,7 +112,7 @@ def test_gridloop():
                 gridbuffer=100,
                 mask=points,
                 args=(points, grid),
-                parallelizer=sg.Parallel(3, backend="multiprocessing"),
+                parallelizer=sg.Parallel(2, backend="multiprocessing"),
             ),
             ignore_index=True,
         )
@@ -130,7 +130,7 @@ def test_gridloop():
                 gridbuffer=100,
                 mask=points,
                 args=(points, grid),
-                parallelizer=sg.Parallel(3, backend="loky"),
+                parallelizer=sg.Parallel(2, backend="loky"),
             ),
             ignore_index=True,
         )
@@ -251,15 +251,15 @@ def test_bounds():
     assert len(single_cell) == 1, len(single_cell)
 
     grid = sg.make_grid(points, gridsize=1000)
-    assert all(points.intersects(grid.unary_union))
+    assert all(points.intersects(grid.union_all()))
 
     # should work with geoseries, tuple and polygon
     sg.make_grid(points.geometry, 1000),
     sg.make_grid(points.geometry.total_bounds, 1000, crs=points.crs)
-    sg.make_grid(points.unary_union, 1000, crs=points.crs)
+    sg.make_grid(points.union_all(), 1000, crs=points.crs)
 
     ssb_grid = sg.make_ssb_grid(points, gridsize=1000)
-    assert all(points.intersects(ssb_grid.unary_union))
+    assert all(points.intersects(ssb_grid.union_all()))
 
     if __name__ == "__main__":
         sg.explore(grid, ssb_grid, points)
@@ -268,10 +268,10 @@ def test_bounds():
         p = points.sample(10).buffer(1000 * np.random.random(1))
 
         grid = sg.make_grid(p, gridsize=1000)
-        assert p.within(grid.unary_union).all()
+        assert p.within(grid.union_all()).all()
 
         grid = sg.make_ssb_grid(p, gridsize=1000)
-        assert p.within(grid.unary_union).all()
+        assert p.within(grid.union_all()).all()
 
     grid = sg.make_grid_from_bbox(0, 0, 1, 1, gridsize=0.1, crs=25833)
     print(grid.total_bounds)
@@ -285,7 +285,7 @@ def test_bounds():
     from_bounds["idx"] = from_bounds.index
     if __name__ == "__main__":
         sg.qtm(from_bounds, grid, alpha=0.5)
-    assert grid.within(from_bounds.unary_union.buffer(0.00001)).all()
+    assert grid.within(from_bounds.union_all().buffer(0.00001)).all()
 
     gdf = sg.to_gdf([(0, 0), (1, 1), (2, 2)]).pipe(sg.buff, 0.1)
     gdf.index = [1, 3, 5]
@@ -305,7 +305,7 @@ def test_bounds():
         sg.qtm(gdf, boxes, alpha=0.5)
     assert len(gdf) == len(points)
     assert list(gdf.index) == list(points.index)
-    assert points.intersects(boxes.unary_union).all()
+    assert points.intersects(boxes.union_all()).all()
     assert not any(gdf.geometry.isna())
 
 

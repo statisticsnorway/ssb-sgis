@@ -15,10 +15,10 @@ from shapely import get_num_interior_rings
 from shapely import linearrings
 from shapely import make_valid
 from shapely import polygons
+from shapely import difference
 from shapely import unary_union
 from shapely.geometry import LinearRing
 from shapely.geometry import Polygon
-
 from .conversion import to_gdf
 from .conversion import to_geoseries
 
@@ -364,9 +364,29 @@ class PolygonsAsRings:
             interiors.loc[interiors.iloc[:, i].isna(), i] = None
         nonempty_exteriors.loc[nonempty_exteriors.isna()] = None
 
+        # construct polygons with holes
+        polys = make_valid(
+            polygons(
+                nonempty_exteriors.values,
+                interiors.values,
+            )
+        )
+
+        # interiors might have moved (e.g. snapped) so that they are not within the exterior
+        # these interiors will not be holes, so we need to erase them manually
+        interiors_as_polys = make_valid(polygons(interiors.values))
+        # merge interior polygons into 1d array
+        interiors_as_polys = np.array(
+            [
+                make_valid(unary_union(interiors_as_polys[i, :]))
+                for i in range(interiors_as_polys.shape[0])
+            ]
+        )
+        # erase rowwise
+        nonempty_exteriors.loc[:] = make_valid(difference(polys, interiors_as_polys))
+        return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
+
         try:
-            print(nonempty_exteriors.values.shape)
-            print(interiors.values.shape)
             nonempty_exteriors.loc[:] = make_valid(
                 polygons(
                     nonempty_exteriors.values,

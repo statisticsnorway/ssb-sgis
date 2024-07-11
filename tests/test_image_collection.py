@@ -318,7 +318,7 @@ def test_sample():
     e = sg.explore(collection.sample(1, size=size))
     assert (x := e.raster_data[0]["arr"].shape) <= (40, 40, 3), x
 
-    bbox = sg.to_gdf(collection.unary_union, collection.crs)
+    bbox = sg.to_gdf(collection.union_all(), collection.crs)
 
     e = sg.samplemap(collection, bbox, size=size)
     assert len(e.raster_data) in [1, 2], e.raster_data
@@ -421,7 +421,7 @@ def test_indexing():
 
     assert isinstance(collection[0]["B02"].load().values, np.ndarray)
 
-    bounds = GeoSeries([collection[0].unary_union]).bounds
+    bounds = GeoSeries([collection[0].union_all()]).bounds
     torchgeo_bbox = BoundingBox(
         minx=bounds.minx[0],
         miny=bounds.miny[0],
@@ -963,7 +963,7 @@ def test_iteration():
     assert len(collection.file_paths) == 36, len(collection.file_paths)
     assert len(collection) == 3, len(collection)
 
-    assert isinstance(collection.unary_union, MultiPolygon), collection.unary_union
+    assert isinstance(collection.union_all(), MultiPolygon), collection.union_all()
 
     # one of the imgs has no SCL band
     # n_bands = [13, 12, 13]
@@ -983,7 +983,7 @@ def test_iteration():
         assert img.tile, img.tile
         assert img.level, img.level
 
-        assert isinstance(img.unary_union, Polygon), img.unary_union
+        assert isinstance(img.union_all(), Polygon), img.union_all()
 
         assert img.file_paths, img.file_paths
         assert img.date.startswith("20"), img.date

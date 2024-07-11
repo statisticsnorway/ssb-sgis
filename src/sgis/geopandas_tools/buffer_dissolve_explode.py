@@ -21,8 +21,10 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from shapely import unary_union
 
-from .general import _merge_geometries
+from .general import _merge_geometries, _grouped_unary_union
+from .general import _safe_and_clean_unary_union
 from .general import _parallel_unary_union
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper
@@ -194,6 +196,11 @@ def _dissolve(
 
     geom_col = gdf._geometry_column_name
 
+    more_than_one = (gdf.count_geometries() > 1).values
+    gdf.loc[more_than_one, geom_col] = gdf.loc[more_than_one, geom_col].apply(
+        _safe_and_clean_unary_union
+    )
+
     by = dissolve_kwargs.pop("by", None)
 
     by_was_none = not bool(by)
@@ -249,9 +256,12 @@ def _dissolve(
             print(e, dissolved, agged, many_hits)
             raise e
 
-    geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
-        lambda x: _merge_geometries(x, grid_size=grid_size)
-    )
+    # geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
+    #     lambda x: _safe_and_clean_unary_union(x, grid_size=grid_size)
+    # )
+    # print("\n\n\ngeomsagged\n", geoms_agged, geoms_agged.shape)
+    geoms_agged = _grouped_unary_union(many_hits, by, **dissolve_kwargs)
+    # print(geoms_agged, geoms_agged.shape)
 
     if not dissolve_kwargs.get("as_index"):
         try:

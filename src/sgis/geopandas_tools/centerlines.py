@@ -62,7 +62,7 @@ def _remove_longest_if_not_intersecting(
 
     nearest = longest_endpoints.groupby(level=0).apply(
         lambda x: nearest_points(
-            x, not_longest[not_longest.index.isin(x.index)].unary_union
+            x, not_longest[not_longest.index.isin(x.index)].union_all()
         )[1]
     )
     longest_endpoints.loc[:] = make_lines_between_points(

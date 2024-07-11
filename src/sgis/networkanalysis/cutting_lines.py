@@ -77,7 +77,7 @@ def split_lines_by_nearest_point(
     """
     PRECISION = 1e-6
 
-    if not len(gdf):
+    if not len(gdf) or not len(points):
         return gdf
 
     if (points.crs is not None and gdf.crs is not None) and not points.crs.equals(
@@ -92,7 +92,7 @@ def split_lines_by_nearest_point(
 
     if get_geom_type(points) != "point":
         raise ValueError(
-            f"'points' should only have point geometries. Got {gdf.geom_type.value_counts()}"
+            f"'points' should only have point geometries. Got {points.geom_type.value_counts()}"
         )
 
     gdf = gdf.copy()

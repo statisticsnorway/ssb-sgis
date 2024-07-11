@@ -23,7 +23,7 @@ def test_get_centerline():
     centerline = sg.get_rough_centerlines(circle, 5)
     sg.qtm(centerline, circle)
 
-    circle_with_hole = circle.difference(sg.to_gdf([0, 0]).buffer(0.5).unary_union)
+    circle_with_hole = circle.difference(sg.to_gdf([0, 0]).buffer(0.5).union_all())
     centerline = sg.get_rough_centerlines(circle, 5)
     sg.qtm(centerline, circle_with_hole)
 
@@ -50,9 +50,9 @@ def test_get_centerline():
     assert (geom_type := sg.get_geom_type(centerline)) == "line", geom_type
 
     # TODO add this assert
-    """assert centerline.unary_union.intersects(
+    """assert centerline.union_all().intersects(
         Point(0, 0).buffer(0.1)
-    ), centerline.unary_union"""
+    ), centerline.union_all()"""
 
     roads = roads_oslo()
     p = points_oslo()

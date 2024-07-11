@@ -33,11 +33,11 @@ def test_sfilter():
             assert sg.sfilter(df1, df2.geometry.tolist(), predicate=predicate).equals(
                 should_equal
             )
-            assert sg.sfilter(df1, df2.unary_union, predicate=predicate).equals(
+            assert sg.sfilter(df1, df2.union_all(), predicate=predicate).equals(
                 should_equal
             )
             assert sg.sfilter(
-                df1.geometry, df2.unary_union, predicate=predicate
+                df1.geometry, df2.union_all(), predicate=predicate
             ).equals(should_equal.geometry)
 
     df1 = sg.to_gdf([(0, 0), (0, 1), (1, 1)])
@@ -76,7 +76,7 @@ def test_sfilter_random():
         assert intersecting.equals(sg.sfilter(gdf, other))
         assert not_intersecting.equals(sg.sfilter_inverse(gdf, other))
 
-        filt = gdf.intersects(other.unary_union)
+        filt = gdf.intersects(other.union_all())
         assert intersecting.equals(gdf[filt]), (intersecting, gdf[filt])
         assert not_intersecting.equals(gdf[~filt]), (intersecting, gdf[~filt])
 

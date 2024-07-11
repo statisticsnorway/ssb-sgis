@@ -190,7 +190,8 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
         if mask is not None
         else gpd.GeoSeries(box(*band.bounds), crs=band.crs)
         .to_crs(4326)
-        .unary_union.bounds
+        .union_all()
+        .bounds
     )
     # if np.max(arr) > 0:
     #     arr = arr / 255
@@ -614,6 +615,8 @@ class Explore(Map):
         return gdf
 
     def _update_column(self) -> None:
+        if not self._gdfs:
+            return
         self._is_categorical = self._check_if_categorical()
         self._fillna_if_col_is_missing()
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
@@ -1168,7 +1171,8 @@ class Explore(Map):
                 else (
                     gpd.GeoSeries(box(*red_band.bounds), crs=crs)
                     .to_crs(4326)
-                    .unary_union.bounds
+                    .union_all()
+                    .bounds
                 )
             )
 

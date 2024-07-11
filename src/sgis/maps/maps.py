@@ -31,6 +31,7 @@ from ..geopandas_tools.geometry_types import get_geom_type
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
+from ..debug_config import _NoExplore
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -146,6 +147,9 @@ def explore(
     >>> points["meters"] = points.length
     >>> sg.explore(roads, points, column="meters", cmap="plasma", max_zoom=60, center_4326=(10.7463, 59.92, 500))
     """
+    if isinstance(center, _NoExplore):
+        return
+
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
     loc_mask, kwargs = _get_location_mask(kwargs | {"size": size}, gdfs)
@@ -189,7 +193,7 @@ def explore(
             mask = to_gdf(center, crs=from_crs)
 
         bounds: Polygon = box(*get_total_bounds(*gdfs, *list(kwargs.values())))
-        if not mask.intersects(bounds).any():
+        if bounds is None or not mask.intersects(bounds).any():
             mask = mask.set_crs(4326, allow_override=True)
 
         try:
@@ -297,6 +301,9 @@ def samplemap(
     >>> samplemap(roads, points, size=5_000, column="meters")
 
     """
+    if isinstance(kwargs.get("center", None), _NoExplore):
+        return
+
     if gdfs and len(gdfs) > 1 and isinstance(gdfs[-1], (float, int)):
         *gdfs, size = gdfs
 
@@ -398,6 +405,9 @@ def clipmap(
     explore: same functionality, but shows the entire area of the geometries.
     samplemap: same functionality, but shows only a random area of a given size.
     """
+    if isinstance(kwargs.get("center", None), _NoExplore):
+        return
+
     gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
     if mask is None and len(gdfs) > 1:
         mask = gdfs[-1]
@@ -452,7 +462,9 @@ def clipmap(
         return m
 
 
-def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
+def explore_locals(
+    *gdfs: GeoDataFrame, convert: bool = True, crs: Any | None = None, **kwargs
+) -> None:
     """Displays all local variables with geometries (GeoDataFrame etc.).
 
     Local means inside a function or file/notebook.
@@ -461,8 +473,11 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
         *gdfs: Additional GeoDataFrames.
         convert: If True (default), non-GeoDataFrames will be converted
             to GeoDataFrames if possible.
+        crs: Optional crs if no objects have any crs.
         **kwargs: keyword arguments passed to sg.explore.
     """
+    if isinstance(kwargs.get("center", None), _NoExplore):
+        return
 
     def as_dict(obj):
         if hasattr(obj, "__dict__"):
@@ -484,11 +499,19 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
             if not convert:
                 continue
 
+            try:
+                gdf = clean_geoms(to_gdf(value, crs=crs))
+                if len(gdf):
+                    local_gdfs[name] = gdf
+                continue
+            except Exception:
+                pass
+
             if isinstance(value, dict) or hasattr(value, "__dict__"):
                 # add dicts or classes with GeoDataFrames to kwargs
                 for key, val in as_dict(value).items():
                     if isinstance(val, allowed_types):
-                        gdf = clean_geoms(to_gdf(val))
+                        gdf = clean_geoms(to_gdf(val, crs=crs))
                         if len(gdf):
                             local_gdfs[key] = gdf
 
@@ -496,21 +519,12 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
                         try:
                             for k, v in val.items():
                                 if isinstance(v, allowed_types):
-                                    gdf = clean_geoms(to_gdf(v))
+                                    gdf = clean_geoms(to_gdf(v, crs=crs))
                                     if len(gdf):
                                         local_gdfs[k] = gdf
                         except Exception:
                             # no need to raise here
                             pass
-
-                continue
-            try:
-                gdf = clean_geoms(to_gdf(value))
-                if len(gdf):
-                    local_gdfs[name] = gdf
-                continue
-            except Exception:
-                pass
 
         if local_gdfs:
             break
@@ -520,7 +534,7 @@ def explore_locals(*gdfs: GeoDataFrame, convert: bool = True, **kwargs) -> None:
         if not frame:
             break
 
-    return explore(*gdfs, **local_gdfs, **kwargs)
+    return explore(*gdfs, **(local_gdfs | kwargs))
 
 
 def qtm(

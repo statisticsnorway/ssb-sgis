@@ -18,23 +18,30 @@ from shapely import is_empty
 from shapely import make_valid
 from shapely import polygons
 from shapely import unary_union
+from shapely import get_num_geometries
 from shapely.errors import GEOSException
+from shapely.geometry import Polygon
 
 from .general import _parallel_unary_union
-from .general import _parallel_unary_union_geoseries
+from .general import _parallel_unary_union_geoseries, _grouped_unary_union
+from .buffer_dissolve_explode import _safe_and_clean_unary_union
 from .general import _push_geom_col
 from .general import clean_geoms
 from .general import get_grouped_centroids
 from .general import to_lines
+from .general import _unary_union_for_notna
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .neighbors import get_neighbor_indices
 from .overlay import _try_difference
-from .overlay import clean_overlay
+from .overlay import clean_overlay, _shapely_pd_overlay
 from .polygons_as_rings import PolygonsAsRings
 from .sfilter import sfilter
 from .sfilter import sfilter_inverse
+from .conversion import to_gdf
+from ..maps.maps import explore_locals, explore
+from ..debug_config import _DEBUG_CONFIG
 
 
 def get_polygon_clusters(
@@ -272,11 +279,12 @@ def eliminate_by_longest(
 
     >>> polys = pd.concat([small_poly, large_poly])
     >>> eliminated = sg.eliminate_by_longest(polys, sliver)
-
-
     """
     if not len(to_eliminate):
         return gdf
+
+    if not len(gdf) and not remove_isolated:
+        return to_eliminate
 
     if isinstance(gdf, (list, tuple)):
         # concat, then break up the dataframes in the end
@@ -365,6 +373,8 @@ def eliminate_by_longest(
 
     out = out.reset_index(drop=True) if ignore_index else out
 
+    explore_locals(center=_DEBUG_CONFIG["center"])
+
     if not was_multiple_gdfs:
         return out
 
@@ -382,7 +392,7 @@ def eliminate_by_largest(
     *,
     max_distance: int | float | None = None,
     remove_isolated: bool = False,
-    fix_double: bool = False,
+    fix_double: bool = True,
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
     predicate: str = "intersects",
@@ -475,7 +485,7 @@ def eliminate_by_smallest(
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
     predicate: str = "intersects",
-    fix_double: bool = False,
+    fix_double: bool = True,
     grid_size=None,
     n_jobs: int = 1,
     **kwargs,
@@ -505,13 +515,16 @@ def _eliminate_by_area(
     ignore_index: bool = False,
     aggfunc: str | dict | list | None = None,
     predicate="intersects",
-    fix_double: bool = False,
+    fix_double: bool = True,
     grid_size=None,
     n_jobs: int = 1,
     **kwargs,
 ) -> GeoDataFrame:
     if not len(to_eliminate):
         return gdf
+    if not len(gdf) and not remove_isolated:
+        return to_eliminate
+
     if isinstance(gdf, (list, tuple)):
         was_multiple_gdfs = True
         original_cols = [df.columns for df in gdf]
@@ -680,19 +693,23 @@ def _eliminate(
             (~to_be_eliminated["_row_idx"].isin(soon_erased["_row_idx"])),
             # | (~to_be_eliminated["_row_idx"].isin(soon_erased.index)),
             "geometry",
+            # TODO ADDED erase here
         ]
 
         # allign and aggregate by dissolve index to not get duplicates in difference
         intersecting.index = soon_erased.index
-        soon_erased = soon_erased.geometry.groupby(level=0).agg(
-            lambda x: unary_union(x, grid_size=grid_size)
-        )
-        intersecting = intersecting.groupby(level=0).agg(
-            lambda x: unary_union(x, grid_size=grid_size)
-        )
 
-        # from ..maps.maps import explore_locals
-        # explore_locals()
+        soon_erased = _grouped_unary_union(soon_erased, level=0, grid_size=grid_size)
+        intersecting = _grouped_unary_union(intersecting, level=0, grid_size=grid_size)
+
+        # soon_erased = soon_erased.geometry.groupby(level=0).agg(
+        #     lambda x: unary_union(x, grid_size=grid_size)
+        # )
+        # intersecting = intersecting.groupby(level=0).agg(
+        #     lambda x: unary_union(x, grid_size=grid_size)
+        # )
+
+        # explore_locals(center=_DEBUG_CONFIG["center"])
 
         soon_erased.loc[:] = _try_difference(
             soon_erased.to_numpy(),
@@ -702,10 +719,27 @@ def _eliminate(
             geom_type="polygon",
         )
 
+        missing = missing.loc[lambda x: (~is_empty(x)) & (x.notna())]
+        soon_erased = soon_erased.loc[lambda x: (~is_empty(x)) & (x.notna())]
+
+        missing = _shapely_pd_overlay(
+            missing.to_frame("geometry"),
+            soon_erased.to_frame("geometry"),
+            how="difference",
+            geom_type="polygon",
+        ).geometry
+
+        soon_eliminated = pd.concat([eliminators, soon_erased, missing])
+        more_than_one = get_num_geometries(soon_eliminated.values) > 1
+
+        soon_eliminated.loc[more_than_one] = soon_eliminated.loc[more_than_one].apply(
+            _unary_union_for_notna
+        )
+
         if n_jobs > 1:
             eliminated["geometry"] = GeoSeries(
                 _parallel_unary_union_geoseries(
-                    pd.concat([eliminators, soon_erased, missing]),
+                    soon_eliminated,
                     level=0,
                     grid_size=grid_size,
                     n_jobs=n_jobs,
@@ -713,15 +747,18 @@ def _eliminate(
                 index=eliminated.index,
             )
         else:
-            eliminated["geometry"] = (
-                pd.concat([eliminators, soon_erased, missing])
-                .groupby(level=0)
-                .agg(
-                    lambda x: make_valid(
-                        unary_union(x.dropna().values, grid_size=grid_size)
-                    )
-                )
-            )
+            eliminated["geometry"] = _grouped_unary_union(soon_eliminated, level=0)
+            # soon_eliminated.groupby(level=0).agg(
+            #     _safe_and_clean_unary_union
+            # )
+
+        explore_locals(center=_DEBUG_CONFIG["center"])
+
+        # explore(
+        #     gdf=to_gdf(gdf, 25833),
+        #     eliminated=to_gdf(eliminated, 25833),
+        #     soon_eliminated=to_gdf(soon_eliminated, 25833),
+        # )
 
     else:
         if n_jobs > 1:
@@ -729,9 +766,10 @@ def _eliminate(
                 many_hits, by="_dissolve_idx", grid_size=grid_size, n_jobs=n_jobs
             )
         else:
-            eliminated["geometry"] = many_hits.groupby("_dissolve_idx")["geometry"].agg(
-                lambda x: make_valid(unary_union(x.values, grid_size=grid_size))
-            )
+            eliminated["geometry"] = _grouped_unary_union(many_hits, by="_dissolve_idx")
+            # many_hits.groupby("_dissolve_idx")["geometry"].agg(
+            # _safe_and_clean_unary_union
+            # )
 
     # setting crs on the GeometryArrays to avoid warning in concat
     not_to_dissolve.geometry.values.crs = crs
@@ -751,7 +789,7 @@ def _eliminate(
 def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
     gdf = make_all_singlepart(gdf)
     holes = get_holes(gdf)
-    inside_holes = sfilter(gdf, holes, predicate="within").unary_union
+    inside_holes = sfilter(gdf, holes, predicate="within").union_all()
 
     def to_none_if_thin(geoms):
         if not len(geoms):
@@ -842,7 +880,7 @@ def close_all_holes(
         else:
             return holes_closed
 
-    all_geoms = make_valid(gdf.unary_union)
+    all_geoms = make_valid(gdf.union_all())
     if isinstance(gdf, GeoDataFrame):
         gdf.geometry = gdf.geometry.map(
             lambda x: _close_all_holes_no_islands(x, all_geoms)
@@ -928,7 +966,7 @@ def close_small_holes(
     gdf = make_all_singlepart(gdf)
 
     if not ignore_islands:
-        all_geoms = make_valid(gdf.unary_union)
+        all_geoms = make_valid(gdf.union_all())
 
         if isinstance(gdf, GeoDataFrame):
             gdf.geometry = gdf.geometry.map(

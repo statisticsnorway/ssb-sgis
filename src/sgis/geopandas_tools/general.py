@@ -13,8 +13,9 @@ from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from geopandas.array import GeometryDtype
 from numpy.typing import NDArray
+import shapely
 from shapely import Geometry
-from shapely import get_coordinates
+from shapely import get_coordinates, difference
 from shapely import get_exterior_ring
 from shapely import get_interior_ring
 from shapely import get_num_interior_rings
@@ -23,7 +24,8 @@ from shapely import linestrings
 from shapely import make_valid
 from shapely import points as shapely_points
 from shapely import unary_union
-from shapely.geometry import LineString
+from shapely.errors import GEOSException
+from shapely.geometry import LineString, Polygon
 from shapely.geometry import Point
 
 try:
@@ -34,6 +36,7 @@ except ImportError:
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
+from ..debug_config import _DEBUG_CONFIG
 
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
@@ -688,8 +691,198 @@ def _determine_geom_type_args(
     return gdf, geom_type, keep_geom_type
 
 
+def _grouped_unary_union(
+    df: GeoDataFrame | GeoSeries | pd.DataFrame | pd.Series,
+    by: str | list[str] | None = None,
+    level: int | None = None,
+    as_index: bool = True,
+    grid_size: float | int | None = None,
+    **kwargs,
+) -> GeoSeries:
+    from ..maps.maps import explore
+    from .conversion import to_gdf
+
+    try:
+        geom_col = df._geometry_column_name
+    except AttributeError:
+        try:
+            geom_col = df.name
+            if geom_col is None:
+                geom_col = "geometry"
+        except AttributeError:
+            geom_col = "geometry"
+
+    if not len(df):
+        return GeoSeries(name=geom_col)
+
+    if isinstance(df, pd.Series):
+        df.name = geom_col
+        original_index = df.index
+        df = df.reset_index()
+        df.index = original_index
+
+    # df[geom_col] = make_valid(df[geom_col].values)
+
+    try:
+        explore(
+            xxxx=to_gdf(
+                df.assign(**{"_dissolve_idx": lambda x: x[df.columns[0]].astype(str)}),
+                crs=25833,
+            ),
+            column="_dissolve_idx",
+            center=_DEBUG_CONFIG["center"],
+        )
+    except Exception:
+        print("her nede")
+        explore(
+            xxxx=to_gdf(
+                df.assign(
+                    **dict(_dissolve_idx=lambda x: x["_dissolve_idx"].astype(str))
+                ),
+                crs=25833,
+            ),
+            column="_dissolve_idx",
+            center=_DEBUG_CONFIG["center"],
+        )
+
+    if isinstance(by, str):
+        by = [by]
+    elif by is None and level is None:
+        raise TypeError("You have to supply one of 'by' and 'level'")
+    elif by is None:
+        by = df.index.get_level_values(level)
+
+    cumcount = df.groupby(by).cumcount()
+
+    def get_col_or_index(df, col: str) -> pd.Series | pd.Index:
+        try:
+            return df[col]
+        except KeyError:
+            for i, name in enumerate(df.index.names):
+                if name == col:
+                    return df.index.get_level_values(i)
+        raise KeyError(col)
+
+    try:
+        df.index = pd.MultiIndex.from_arrays(
+            [cumcount, *[get_col_or_index(df, col) for col in by]]
+        )
+    except KeyError:
+        df.index = pd.MultiIndex.from_arrays([cumcount, by])
+
+    # to wide format: each row will be one group to be merged to one geometry
+    geoms_wide: pd.DataFrame = df[geom_col].unstack(level=0)
+    geometries_2d: NDArray[Polygon | None] = geoms_wide.values
+    geometries_2d = make_valid(geometries_2d)
+
+    if 1:
+        # union the geometries one column at the time.
+        # This prevents some, but not all, dissappearing surfaces.
+        unioned = geometries_2d[:, 0]
+        for i in range(1, geometries_2d.shape[1]):
+            for _ in range(1):
+                unioned = make_valid(
+                    unary_union(
+                        np.stack([unioned, geometries_2d[:, i]], axis=1),
+                        axis=1,
+                        grid_size=grid_size,
+                        **kwargs,
+                    )
+                )
+    elif 0:
+        unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
+
+        for i in range(geometries_2d.shape[1]):
+            unioned = make_valid(
+                unary_union(
+                    np.stack([unioned, geometries_2d[:, i]], axis=1),
+                    axis=1,
+                    grid_size=grid_size,
+                    **kwargs,
+                )
+            )
+    else:
+        unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
+
+    if 1:
+        for i in reversed(range(geometries_2d.shape[1])):
+            for _ in range(1):
+                unioned = make_valid(
+                    unary_union(
+                        np.stack([unioned, geometries_2d[:, i]], axis=1),
+                        axis=1,
+                        grid_size=grid_size,
+                        **kwargs,
+                    )
+                )
+
+    geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
+
+    explore(
+        etterpaa=to_gdf(geoms, crs=25833),
+        center=_DEBUG_CONFIG["center"],
+    )
+    return geoms if as_index else geoms.reset_index()
+
+
 def _merge_geometries(geoms: GeoSeries, grid_size=None) -> Geometry:
-    return make_valid(unary_union(geoms, grid_size=grid_size))
+    return make_valid(
+        unary_union(
+            geoms,
+            grid_size=grid_size,
+            # [unary_union(geom, grid_size=grid_size) for geom in geoms],
+            # grid_size=grid_size,
+        )
+    )
+
+
+def _safe_and_clean_unary_union(x, grid_size=None):
+    """Need to do individual unary_union before merging all together to avoid double surfaces."""
+    x = x.dropna().values
+    unioned = make_valid(x[0])
+    try:
+        for geom in x[1:]:
+            unioned = make_valid(
+                unary_union([unioned, make_valid(geom)], grid_size=grid_size)
+            )
+    except IndexError:
+        assert len(x) == 1
+        return unioned
+    return unioned
+    p = to_gdf([5.38349348, 59.00461738], 4326).to_crs(25833)
+    if len(sfilter(to_gdf(x, 25833), p)):
+        from shapely.geometry import Polygon
+
+        agged2 = Polygon()
+        for geom in x:
+            print(geom)
+            agged2 = unary_union([agged2, geom])
+
+        geoms = pd.concat([to_gdf(y, 25833) for y in x])
+        geoms["xxx"] = [str(i) for i in range(len(geoms))]
+        explore(geoms, "xxx")
+        explore(
+            agged2=to_gdf(agged2, 25833),
+            xxx=to_gdf(x, 25833),
+            xxx2=to_gdf(make_valid(unary_union(x.dropna().values))),
+            mask=p.buffer(1),
+        )
+
+    return make_valid(
+        unary_union(x.dropna().values, grid_size=grid_size)
+        # unary_union(
+        #     [unary_union(geom, grid_size=grid_size) for geom in x.dropna().values],
+        #     grid_size=grid_size,
+        # )
+    )
+
+
+def _unary_union_for_notna(geoms, **kwargs):
+    # TODO
+    try:
+        return make_valid(unary_union(geoms, **kwargs))
+    except TypeError:
+        return unary_union([geom for geom in geoms.dropna().values], **kwargs)
 
 
 def _parallel_unary_union(
@@ -761,7 +954,7 @@ def _parallel_unary_union(
         delayed_operations = []
         for _, geoms in gdf.groupby(by, **kwargs)[geom_col]:
             delayed_operations.append(
-                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
+                joblib.delayed(_safe_and_clean_unary_union)(geoms, grid_size=grid_size)
             )
 
         return parallel(delayed_operations)
@@ -780,7 +973,7 @@ def _parallel_unary_union_geoseries(
         delayed_operations = []
         for _, geoms in many_hits.groupby(**kwargs):
             delayed_operations.append(
-                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
+                joblib.delayed(_safe_and_clean_unary_union)(geoms, grid_size=grid_size)
             )
 
         dissolved = pd.Series(
@@ -799,7 +992,7 @@ def _parallel_unary_union_geoseries(
         delayed_operations = []
         for _, geoms in ser.groupby(**kwargs):
             delayed_operations.append(
-                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
+                joblib.delayed(_safe_and_clean_unary_union)(geoms, grid_size=grid_size)
             )
 
         return parallel(delayed_operations)

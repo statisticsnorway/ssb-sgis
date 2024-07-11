@@ -211,6 +211,35 @@ def test_get_polygon_clusters():
     assert c["cluster"].isin(["0_0", "9_9", "20_20"]).all()
 
 
+def test_eliminate_too_far_away():
+    to_pandas_na = {value: pd.NA for value in [None, np.nan]}
+
+    df = sg.to_gdf([(0, 0)]).pipe(sg.buff, 1)
+    too_far_away = sg.to_gdf([(10, 10)]).pipe(sg.buff, 1)
+    too_far_away["_idx"] = "a"
+    eliminated = sg.eliminate_by_longest(df, too_far_away, remove_isolated=False)
+    eliminated["_idx"] = eliminated["_idx"].replace(to_pandas_na).fillna(pd.NA)
+    assert len(eliminated) == 2
+    assert (
+        eliminated["_idx"].replace().equals(pd.Series([pd.NA, "a"], index=[0, 0]))
+    ), eliminated["_idx"]
+
+    eliminated = sg.eliminate_by_largest(df, too_far_away, remove_isolated=False)
+    eliminated["_idx"] = eliminated["_idx"].replace(to_pandas_na).fillna(pd.NA)
+    assert len(eliminated) == 2
+    assert (
+        eliminated["_idx"].replace().equals(pd.Series([pd.NA, "a"], index=[0, 0]))
+    ), eliminated["_idx"]
+
+    eliminated = sg.eliminate_by_longest(df, too_far_away, remove_isolated=True)
+    assert len(eliminated) == 1
+    assert "_idx" not in eliminated
+
+    eliminated = sg.eliminate_by_largest(df, too_far_away, remove_isolated=True)
+    assert len(eliminated) == 1
+    assert "_idx" not in eliminated
+
+
 def test_eliminate():
     from shapely.geometry import Polygon
 
@@ -400,6 +429,7 @@ def test_eliminate():
 
 
 if __name__ == "__main__":
+    test_eliminate_too_far_away()
     test_eliminate()
     test_get_polygon_clusters()
     test_polygonsasrings()

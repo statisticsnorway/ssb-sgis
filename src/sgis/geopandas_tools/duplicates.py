@@ -11,10 +11,10 @@ from shapely import simplify
 from shapely import unary_union
 from shapely.errors import GEOSException
 
-from .general import _determine_geom_type_args
+from .general import _determine_geom_type_args, _safe_and_clean_unary_union
 from .general import _parallel_unary_union_geoseries
 from .general import _push_geom_col
-from .general import clean_geoms
+from .general import clean_geoms, _grouped_unary_union
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
@@ -126,9 +126,10 @@ def update_geometries(
         only_one = erasers.groupby(level=0).transform("size") == 1
         one_hit = erasers[only_one]
         many_hits = (
-            erasers[~only_one]
-            .groupby(level=0)
-            .agg(lambda x: make_valid(unary_union(x, grid_size=grid_size)))
+            _grouped_unary_union(erasers[~only_one], level=0, grid_size=grid_size)
+            # erasers[~only_one]
+            # .groupby(level=0)
+            # .agg(lambda x: _safe_and_clean_unary_union(x, grid_size=grid_size))
         )
         erasers = pd.concat([one_hit, many_hits]).sort_index()
 

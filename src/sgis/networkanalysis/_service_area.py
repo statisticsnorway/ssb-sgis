@@ -113,7 +113,7 @@ def _service_area(
                 else:
                     snapped_origin: Point = nearest_points(
                         nodes_union,
-                        origins.loc[origins["temp_idx"] == idx, "geometry"].unary_union,
+                        origins.loc[origins["temp_idx"] == idx, "geometry"].union_all(),
                     )[0]
 
                     within = sfilter(within, snapped_origin.buffer(0.01))

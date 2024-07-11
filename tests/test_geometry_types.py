@@ -60,7 +60,7 @@ def test_all_geom_types():
         MultiPoint([(10, 10), (11, 11)]),
         MultiPoint([(0, 0), (10, 10), (11, 11)]),
     ], res
-    assert (res := sg.to_single_geom_type(gdf.unary_union, "point")) == MultiPoint(
+    assert (res := sg.to_single_geom_type(gdf.union_all(), "point")) == MultiPoint(
         ([0, 0], (10, 10), (11, 11))
     ), res
 
@@ -73,7 +73,7 @@ def test_all_geom_types():
         "MULTILINESTRING ((60 60, 60 61, 61 61, 61 60, 60 60), (20 20, 21 21), (30 30, 31 31), (32 32, 33 33))",
     ], res
     assert (
-        res := sg.to_single_geom_type(gdf.unary_union, "line")
+        res := sg.to_single_geom_type(gdf.union_all(), "line")
     ) == shapely.wkt.loads(
         "MULTILINESTRING ((60 60, 60 61), (60 61, 61 61), (61 61, 61 60), (61 60, 60 60), (20 20, 21 21), (30 30, 31 31), (32 32, 33 33))"
     ), res
@@ -83,7 +83,7 @@ def test_all_geom_types():
         for x in sg.to_single_geom_type(gdf.geometry.values, "polygon")
     )
 
-    assert "POLYGON" in sg.to_single_geom_type(gdf.unary_union, "polygon").wkt
+    assert "POLYGON" in sg.to_single_geom_type(gdf.union_all(), "polygon").wkt
 
 
 def test_geom_types():

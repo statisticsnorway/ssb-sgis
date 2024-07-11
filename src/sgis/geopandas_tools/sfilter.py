@@ -66,7 +66,7 @@ def sfilter(
     Also equivelent to using the intersects method, which
     is often a lot slower since df2 must be dissolved:
 
-    >>> df1.loc[df1.intersects(df2.unary_union)]
+    >>> df1.loc[df1.intersects(df2.union_all())]
                       geometry
     0  POINT (0.00000 0.00000)
 
@@ -135,7 +135,7 @@ def sfilter_split(
     Also equivelent to using the intersects method, which
     is often slower since df2 must be dissolved:
 
-    >>> filt = df1.intersects(df2.unary_union)
+    >>> filt = df1.intersects(df2.union_all())
     >>> intersecting = df1.loc[filt]
     >>> not_intersecting = df1.loc[~filt]
 
@@ -202,7 +202,7 @@ def sfilter_inverse(
     Also equivelent to using the intersects method, which
     is often slower since df2 must be dissolved:
 
-    >>> not_intersecting = df1.loc[~df1.intersects(df2.unary_union)]
+    >>> not_intersecting = df1.loc[~df1.intersects(df2.union_all())]
 
     """
     if not isinstance(gdf, (GeoDataFrame | GeoSeries)):

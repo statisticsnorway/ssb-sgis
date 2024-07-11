@@ -188,7 +188,7 @@ class Map:
                 f"length as gdfs ({len(gdfs)}). Got len {len(show)}"
             )
 
-        if not any(len(gdf) for gdf in self._gdfs):
+        if not self._gdfs or not any(len(gdf) for gdf in self._gdfs):
             self._gdfs = []
             self._is_categorical = True
             self._unique_values = []
@@ -518,7 +518,7 @@ class Map:
 
     def _check_if_categorical(self) -> bool:
         """Quite messy this..."""
-        if not self._column:
+        if not self._column or not self._gdfs:
             return True
 
         def is_maybe_km2():
@@ -568,7 +568,9 @@ class Map:
             return False
 
         if all_nan == len(self._gdfs):
-            raise ValueError(f"All values are NaN in column {self.column!r}.")
+            raise ValueError(
+                f"All values are NaN in column {self.column!r}. {self._gdfs}"
+            )
 
         if col_not_present == len(self._gdfs):
             raise ValueError(f"{self.column} not found.")

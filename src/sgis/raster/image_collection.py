@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from typing import ClassVar
 
+import datetime
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -371,7 +372,7 @@ class _ImageBase:
     @property
     def centroid(self) -> Point:
         """Centerpoint of the object."""
-        return self.unary_union.centroid
+        return self.union_all().centroid
 
     def _name_regex_searcher(
         self, group: str, patterns: tuple[re.Pattern]
@@ -437,17 +438,11 @@ class _ImageBase:
     def copy(self) -> "_ImageBase":
         """Copy the instance and its attributes."""
         copied = deepcopy(self)
-        try:
-            print("copy", self.path)
-        except PathlessImageError:
-            pass
         for key, value in copied.__dict__.items():
             try:
                 setattr(copied, key, value.copy())
-                print("kjorer .copy() for ", key)
             except AttributeError:
                 setattr(copied, key, deepcopy(value))
-                print("kjorer deepcopy() for ", key)
             except TypeError:
                 continue
         return copied
@@ -459,7 +454,7 @@ class _ImageBandBase(_ImageBase):
             pyproj.CRS(other.crs)
         ):
             raise ValueError(f"crs mismatch: {self.crs} and {other.crs}")
-        return self.unary_union.intersects(to_shapely(other))
+        return self.union_all().intersects(to_shapely(other))
 
     @property
     def mask_percentage(self) -> float:
@@ -509,8 +504,7 @@ class _ImageBandBase(_ImageBase):
     def maxt(self) -> float:
         return disambiguate_timestamp(self.date, self.date_format)[1]
 
-    @property
-    def unary_union(self) -> Polygon:
+    def union_all(self) -> Polygon:
         try:
             return box(*self.bounds)
         except TypeError:
@@ -518,7 +512,7 @@ class _ImageBandBase(_ImageBase):
 
     @property
     def torch_bbox(self) -> BoundingBox:
-        bounds = GeoSeries([self.unary_union]).bounds
+        bounds = GeoSeries([self.union_all()]).bounds
         return BoundingBox(
             minx=bounds.minx[0],
             miny=bounds.miny[0],
@@ -760,15 +754,15 @@ class Band(_ImageBandBase):
         if bounds is None and self._bbox is None:
             bounds = None
         elif bounds is not None and self._bbox is None:
-            bounds = to_shapely(bounds).intersection(self.unary_union)
+            bounds = to_shapely(bounds).intersection(self.union_all())
         elif bounds is None and self._bbox is not None:
-            bounds = to_shapely(self._bbox).intersection(self.unary_union)
+            bounds = to_shapely(self._bbox).intersection(self.union_all())
         else:
             bounds = to_shapely(bounds).intersection(to_shapely(self._bbox))
 
         if bounds is not None and bounds.area == 0:
             self._values = np.array([])
-            if self.mask is not None:
+            if self.mask is not None and not self.is_mask:
                 self._mask = self._mask.load()
             # self._mask = np.ma.array([], [])
             self._bounds = None
@@ -982,10 +976,10 @@ class Band(_ImageBandBase):
         """Take a random spatial sample area of the Band."""
         copied = self.copy()
         if mask is not None:
-            point = GeoSeries([copied.unary_union]).clip(mask).sample_points(1)
+            point = GeoSeries([copied.union_all()]).clip(mask).sample_points(1)
         else:
-            point = GeoSeries([copied.unary_union]).sample_points(1)
-        buffered = point.buffer(size / 2).clip(copied.unary_union)
+            point = GeoSeries([copied.union_all()]).sample_points(1)
+        buffered = point.buffer(size / 2).clip(copied.union_all())
         copied = copied.load(bounds=buffered.total_bounds, **kwargs)
         return copied
 
@@ -1656,10 +1650,10 @@ class Image(_ImageBandBase):
         """Take a random spatial sample of the image."""
         copied = self.copy()
         if mask is not None:
-            points = GeoSeries([self.unary_union]).clip(mask).sample_points(n)
+            points = GeoSeries([self.union_all()]).clip(mask).sample_points(n)
         else:
-            points = GeoSeries([self.unary_union]).sample_points(n)
-        buffered = points.buffer(size / 2).clip(self.unary_union)
+            points = GeoSeries([self.union_all()]).sample_points(n)
+        buffered = points.buffer(size / 2).clip(self.union_all())
         boxes = to_gdf([box(*arr) for arr in buffered.bounds.values], crs=self.crs)
         copied._bands = [band.load(bounds=boxes, **kwargs) for band in copied]
         copied._bounds = get_total_bounds([band.bounds for band in copied])
@@ -2285,7 +2279,7 @@ class ImageCollection(_ImageBase):
 
         other = to_shapely(other)
 
-        # intersects_list = GeoSeries([img.unary_union for img in self]).intersects(other)
+        # intersects_list = GeoSeries([img.union_all() for img in self]).intersects(other)
         with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
             intersects_list: list[bool] = parallel(
                 joblib.delayed(_intesects)(image, other) for image in self
@@ -2320,7 +2314,7 @@ class ImageCollection(_ImageBase):
 
     def sample(self, n: int = 1, size: int = 500) -> "ImageCollection":
         """Sample one or more areas of a given size and set this as mask for the images."""
-        unioned = self.unary_union
+        unioned = self.union_all()
         buffered_in = unioned.buffer(-size / 2)
         if not buffered_in.is_empty:
             bbox = to_gdf(buffered_in)
@@ -2599,10 +2593,9 @@ class ImageCollection(_ImageBase):
         """String representation."""
         return f"{self.__class__.__name__}({len(self)}, path='{self.path}')"
 
-    @property
-    def unary_union(self) -> Polygon | MultiPolygon:
+    def union_all(self) -> Polygon | MultiPolygon:
         """(Multi)Polygon representing the union of all image bounds."""
-        return unary_union([img.unary_union for img in self])
+        return unary_union([img.union_all() for img in self])
 
     @property
     def bounds(self) -> tuple[int, int, int, int]:
@@ -2620,22 +2613,24 @@ class ImageCollection(_ImageBase):
     def plot_pixels(
         self,
         by: str | list[str] | None = None,
-        x_var: str = "days_since_start",
+        x_var: str = "date",
         y_label: str = "value",
         p: float = 0.95,
         ylim: tuple[float, float] | None = None,
+        figsize: tuple[int] = (20, 8),
     ) -> None:
         """Plot each individual pixel in a dotplot for all dates.
 
         Args:
             by: Band attributes to groupby. Defaults to "bounds" and "band_id"
                 if all bands have no-None band_ids, otherwise defaults to "bounds".
-            x_var: Attribute to use on the x-axis. Defaults to "days_since_start"
+            x_var: Attribute to use on the x-axis. Defaults to "date"
                 if the ImageCollection is sortable by date, otherwise a range index.
-                Can be set to "date" to use actual dates.
+                Can be set to "days_since_start".
             y_label: Label to use on the y-axis.
             p: p-value for the confidence interval.
             ylim: Limits of the y-axis.
+            figsize: Figure size as tuple (width, height).
 
         """
         if by is None and all(band.band_id is not None for img in self for band in img):
@@ -2655,8 +2650,18 @@ class ImageCollection(_ImageBase):
             y = np.array([band.values for img in subcollection for band in img])
             if "date" in x_var and subcollection._should_be_sorted:
                 x = np.array(
-                    [int(band.date[:8]) for img in subcollection for band in img]
+                    [
+                        datetime.datetime.strptime(band.date[:8], "%Y%m%d").date()
+                        for img in subcollection
+                        for band in img
+                    ]
                 )
+                x = (
+                    pd.to_datetime(
+                        [band.date[:8] for img in subcollection for band in img]
+                    )
+                    - pd.Timestamp(np.min(x))
+                ).days
             else:
                 x = np.arange(0, len(y))
 
@@ -2720,9 +2725,12 @@ class ImageCollection(_ImageBase):
 
                     rounding = int(np.log(1 / abs(coef)))
 
-                    plt.scatter(this_x, this_y, color="#2c93db")
-                    plt.plot(this_x, predicted, color="#e0436b")
-                    plt.fill_between(
+                    fig = plt.figure(figsize=figsize)
+                    ax = fig.add_subplot(1, 1, 1)
+
+                    ax.scatter(this_x, this_y, color="#2c93db")
+                    ax.plot(this_x, predicted, color="#e0436b")
+                    ax.fill_between(
                         this_x,
                         ci_lower,
                         ci_upper,
@@ -2841,7 +2849,7 @@ def _get_images(
             for path in image_paths
         )
     if bbox is not None:
-        intersects_list = GeoSeries([img.unary_union for img in images]).intersects(
+        intersects_list = GeoSeries([img.union_all() for img in images]).intersects(
             to_shapely(bbox)
         )
         return [

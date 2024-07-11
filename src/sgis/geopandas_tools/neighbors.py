@@ -100,8 +100,14 @@ def get_neighbor_indices(
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
+    index_col_name = neighbors.index.name
+    if index_col_name is None or index_col_name == "index":
+        index_col_name = "index_right"
+
     if isinstance(neighbors, GeoSeries):
         neighbors = neighbors.to_frame()
+    else:
+        neighbors = neighbors[[neighbors._geometry_column_name]]
 
     # buffer and keep only geometry column
     if max_distance and predicate != "nearest":
@@ -113,10 +119,10 @@ def get_neighbor_indices(
         max_distance = None if max_distance == 0 else max_distance
         joined = gdf.sjoin_nearest(
             neighbors, how="inner", max_distance=max_distance
-        ).rename(columns={"index_right": "neighbor_index"}, errors="raise")
+        ).rename(columns={index_col_name: "neighbor_index"}, errors="raise")
     else:
         joined = gdf.sjoin(neighbors, how="inner", predicate=predicate).rename(
-            columns={"index_right": "neighbor_index"}, errors="raise"
+            columns={index_col_name: "neighbor_index"}, errors="raise"
         )
 
     return joined["neighbor_index"]

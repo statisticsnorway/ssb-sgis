@@ -238,8 +238,8 @@ def _shapely_pd_overlay(
     left, right = tree.query(df1.geometry.values, predicate=predicate)
 
     pairs = _get_intersects_pairs(df1, df2, left, right, rsuffix)
-    assert pairs.geometry.notna().all()
-    assert pairs.geom_right.notna().all()
+    assert pairs.geometry.notna().all(), pairs.geometry
+    assert pairs.geom_right.notna().all(), pairs.geom_right
 
     if how == "intersection":
         overlayed = [
@@ -302,8 +302,6 @@ def _shapely_pd_overlay(
     )
 
     # push geometry column to the end
-    print(overlayed)
-    print(overlayed.columns)
     overlayed = overlayed.reindex(
         columns=[c for c in overlayed.columns if c != "geometry"] + ["geometry"]
     )

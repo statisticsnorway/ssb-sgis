@@ -201,7 +201,7 @@ def _shapely_snap(
     max_distance: int | float | None = None,
 ) -> GeoSeries:
     try:
-        unioned = to.unary_union
+        unioned = to.union_all()
     except AttributeError:
         unioned = unary_union(to)
 

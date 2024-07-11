@@ -274,7 +274,7 @@ def test_explore(points_oslo, roads_oslo):
             size=50,
             show_in_browser=False,
         )
-    monopoly = sg.to_gdf(r300.unary_union.convex_hull, crs=r300.crs)
+    monopoly = sg.to_gdf(r300.union_all().convex_hull, crs=r300.crs)
 
     for _ in range(5):
         sg.samplemap(

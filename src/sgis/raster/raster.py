@@ -135,7 +135,7 @@ class Raster:
 
     The image can also be clipped by a mask while loading.
 
-    >>> small_circle = raster_as_polygons.unary_union.centroid.buffer(50)
+    >>> small_circle = raster_as_polygons.union_all().centroid.buffer(50)
     >>> raster = sg.Raster.from_path(path).clip(small_circle)
     Raster(shape=(1, 10, 10), res=10, crs=ETRS89 / UTM zone 33N (N-E), path=https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/raster/dtm_10.tif)
 
@@ -535,16 +535,16 @@ class Raster:
 
     def intersects(self, other: Any) -> bool:
         """Returns True if the image bounds intersect with 'other'."""
-        return self.unary_union.intersects(to_shapely(other))
+        return self.union_all().intersects(to_shapely(other))
 
     def sample(
         self, n: int = 1, size: int = 20, mask: Any = None, copy: bool = True, **kwargs
     ) -> Self:
         """Take a random spatial sample of the image."""
         if mask is not None:
-            points = GeoSeries(self.unary_union).clip(mask).sample_points(n)
+            points = GeoSeries(self.union_all()).clip(mask).sample_points(n)
         else:
-            points = GeoSeries(self.unary_union).sample_points(n)
+            points = GeoSeries(self.union_all()).sample_points(n)
         buffered = points.buffer(size / self.res)
         boxes = to_gdf(
             [shapely.box(*arr) for arr in buffered.bounds.values], crs=self.crs
@@ -1026,12 +1026,12 @@ class Raster:
     @property
     def area(self) -> float:
         """Get the area of the image."""
-        return shapely.area(self.unary_union)
+        return shapely.area(self.union_all())
 
     @property
     def length(self) -> float:
         """Get the circumfence of the image."""
-        return shapely.length(self.unary_union)
+        return shapely.length(self.union_all())
 
     @property
     def unary_union(self) -> Polygon:

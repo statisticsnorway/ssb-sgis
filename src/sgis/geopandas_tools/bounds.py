@@ -18,6 +18,8 @@ from ..parallel.parallel import Parallel
 from .conversion import to_bbox
 from .conversion import to_gdf
 from .general import clean_clip
+from .general import get_common_crs
+
 from .general import is_bbox_like
 
 
@@ -133,11 +135,7 @@ class Gridlooper:
             )
             results = self.parallelizer.map(func_with_clip, buffered_grid)
             if not self.gridbuffer or not self.clip:
-                return (
-                    results
-                    if not self.concat
-                    else pd.concat(results, ignore_index=True)
-                )
+                return self._return(results, args, kwargs)
             out = []
             for cell_res, unbuffered in zip(results, grid, strict=True):
                 out.append(
@@ -145,7 +143,7 @@ class Gridlooper:
                         cell_res, unbuffered, self.keep_geom_type
                     )
                 )
-            return out if not self.concat else pd.concat(out, ignore_index=True)
+            return self._return(out, args, kwargs)
 
         results = []
         for i, (unbuffered, buffered) in enumerate(
@@ -175,7 +173,18 @@ class Gridlooper:
             if self.verbose:
                 print(f"Done with {i+1} of {n} grid cells", end="\r")
 
-        return results if not self.concat else pd.concat(results, ignore_index=True)
+        return self._return(results, args, kwargs)
+
+    def _return(
+        self, results: list[Any], args: tuple[Any], kwargs: dict[str, Any]
+    ) -> list[Any] | GeoDataFrame:
+        if self.concat and len(results):
+            return pd.concat(results, ignore_index=True)
+        elif self.concat:
+            crs = get_common_crs(list(args) + list(kwargs.values()))
+            return GeoDataFrame({"geometry": []}, crs=crs)
+        else:
+            return results
 
 
 def gridloop(

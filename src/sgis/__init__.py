@@ -2,6 +2,7 @@ config = {
     "n_jobs": 1,
 }
 
+
 import sgis.raster.indices as indices
 from sgis.raster.raster import Raster
 from sgis.raster.raster import get_shape_from_bounds
@@ -26,8 +27,6 @@ from .geopandas_tools.buffer_dissolve_explode import dissexp
 from .geopandas_tools.buffer_dissolve_explode import dissexp_by_cluster
 from .geopandas_tools.centerlines import get_rough_centerlines
 from .geopandas_tools.cleaning import coverage_clean
-from .geopandas_tools.cleaning import remove_spikes
-from .geopandas_tools.cleaning import split_and_eliminate_by_longest
 from .geopandas_tools.cleaning import split_by_neighbors
 from .geopandas_tools.conversion import coordinate_array
 from .geopandas_tools.conversion import from_4326

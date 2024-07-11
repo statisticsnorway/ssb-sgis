@@ -91,6 +91,7 @@ def write_geopandas(
     overwrite: bool = True,
     pandas_fallback: bool = False,
     file_system: dp.gcs.GCSFileSystem | None = None,
+    write_covering_bbox: bool = False,
     **kwargs,
 ) -> None:
     """Writes a GeoDataFrame to the speficied format.
@@ -106,6 +107,13 @@ def write_geopandas(
             not be written with geopandas and the number of rows is more than 0. If True,
             the file will be written without geo-metadata if >0 rows.
         file_system: Optional file sustem.
+        write_covering_bbox: Writes the bounding box column for each row entry with column name "bbox".
+            Writing a bbox column can be computationally expensive, but allows you to specify
+            a bbox in : func:read_parquet for filtered reading.
+            Note: this bbox column is part of the newer GeoParquet 1.1 specification and should be
+            considered as experimental. While writing the column is backwards compatible, using it
+            for filtering may not be supported by all readers.
+
         **kwargs: Additional keyword arguments passed to parquet.write_table
             (for parquet) or geopandas' to_file method (if not parquet).
     """
@@ -135,7 +143,12 @@ def write_geopandas(
 
     if ".parquet" in gcs_path or "prqt" in gcs_path:
         with file_system.open(gcs_path, mode="wb") as buffer:
-            table = _geopandas_to_arrow(df, index=df.index, schema_version=None)
+            table = _geopandas_to_arrow(
+                df,
+                index=df.index,
+                schema_version=None,
+                write_covering_bbox=write_covering_bbox,
+            )
             parquet.write_table(table, buffer, compression="snappy", **kwargs)
         return
 
