@@ -1,14 +1,11 @@
 # %%
 
 import sys
-import time
 from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 import shapely
-
-from helpers import cprofile_df
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 
@@ -123,6 +120,7 @@ def test_clean_1144():
         cleaned_clipped = sg.clean_clip(cleaned, bbox.buffer(-tolerance * 1.1))
 
         gaps = sg.get_gaps(cleaned_clipped)
+
         double = sg.get_intersections(cleaned_clipped)
         missing = get_missing(
             sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)), cleaned_clipped
@@ -340,6 +338,7 @@ def not_test_spikes():
     ]
 
     print(list(snapped.length))
+
     for length1, length2 in zip(
         sorted(snapped.length),
         sorted(length_should_be),
@@ -366,5 +365,6 @@ if __name__ == "__main__":
     # cProfile.run("main()", sort="cumtime")
 
     main()
+
 
 # %%

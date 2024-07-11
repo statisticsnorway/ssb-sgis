@@ -8,12 +8,29 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
+from shapely.geometry import LineString
 
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
 
 import sgis as sg
+
+
+def test_split_polygons_by_lines():
+    l = LineString([(0, 0), (1, 1)])
+    l2 = LineString([(0, 0.1), (1, 1)])
+    l3 = LineString([(0, 0.3), (0.36352539, 0.58325195)])
+    poly = LineString([(1, 0), (0, 1)]).buffer(0.1)
+    poly2 = LineString([(1, 0), (0.5, 0.5)]).buffer(0.1)
+    polys = sg.to_gdf([poly, poly2])
+    polys["col"] = ["0", "1"]
+    polys.index = 5, 1
+    lines = sg.to_gdf([l, l2, l3])
+
+    splitted = sg.split_polygons_by_lines(polys, lines)
+    assert len(splitted) == 6
+    assert splitted.index.equals(pd.Index([5, 5, 5, 1, 1, 1]))
 
 
 def test_polygonsasrings():

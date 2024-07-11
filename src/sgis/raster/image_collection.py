@@ -1,3 +1,4 @@
+import datetime
 import functools
 import glob
 import itertools
@@ -17,7 +18,6 @@ from pathlib import Path
 from typing import Any
 from typing import ClassVar
 
-import datetime
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -3302,13 +3302,12 @@ def _zonal_one_pair(i: int, poly: Polygon, band: Band, aggfunc, array_func, func
     return _aggregate(clipped.values, array_func, aggfunc, func_names, band.date, i)
 
 
-def array_buffer(arr: np.ndarray, distance: int, copy: bool = True) -> np.ndarray:
+def array_buffer(arr: np.ndarray, distance: int) -> np.ndarray:
     """Buffer array points with the value 1 in a binary array.
 
     Args:
         arr: The array.
         distance: Number of array cells to buffer by.
-        copy: Whether to copy the Band.
 
     Returns:
         Array with buffered values.

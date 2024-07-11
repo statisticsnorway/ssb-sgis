@@ -7,42 +7,40 @@ import pandas as pd
 import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from geopandas.array import GeometryArray
 from numpy.typing import NDArray
-from shapely import extract_unique_points
-from shapely import get_parts
-from shapely.errors import GEOSException
-from shapely.geometry import LineString
 from shapely import Geometry
 from shapely import STRtree
+from shapely import extract_unique_points
 from shapely import polygons
-from shapely import unary_union, voronoi_polygons
+from shapely.errors import GEOSException
 from shapely.geometry import LinearRing
+from shapely.geometry import LineString
 from shapely.geometry import Point
 
+from ..debug_config import _DEBUG_CONFIG
+from ..maps.maps import explore
+from ..maps.maps import explore_locals
+from ..networkanalysis.cutting_lines import split_lines_by_nearest_point
 from .buffer_dissolve_explode import buff
-from .conversion import coordinate_array
+from .buffer_dissolve_explode import dissexp_by_cluster
 from .conversion import to_gdf
-from .duplicates import update_geometries, get_intersections
+from .conversion import to_geoseries
+from .duplicates import get_intersections
+from .duplicates import update_geometries
 from .general import clean_geoms
 from .general import make_lines_between_points
 from .general import to_lines
-from .general import _unary_union_for_notna
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .overlay import clean_overlay
+from .polygon_operations import close_all_holes
 from .polygon_operations import eliminate_by_longest
 from .polygon_operations import get_cluster_mapper
-from .sfilter import sfilter_inverse, sfilter
-from .buffer_dissolve_explode import dissexp_by_cluster
-from .conversion import to_geoseries
-from .polygon_operations import close_all_holes, get_gaps
-from .polygon_operations import eliminate_by_largest
+from .polygon_operations import get_gaps
+from .polygon_operations import split_by_neighbors
 from .polygons_as_rings import PolygonsAsRings
-from ..networkanalysis.cutting_lines import split_lines_by_nearest_point
-from ..maps.maps import explore, explore_locals
-from ..debug_config import _DEBUG_CONFIG
-
+from .sfilter import sfilter
+from .sfilter import sfilter_inverse
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
@@ -124,7 +122,12 @@ def coverage_clean(
             )
 
     mmm0 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(1))
-    explore(mmm0)
+    explore(
+        mmm0,
+        gdf,
+        msk=mask,
+        center=_DEBUG_CONFIG["center"],
+    )
 
     gdf = snap_polygons(gdf, tolerance, mask=mask)
 
@@ -180,7 +183,7 @@ def coverage_clean(
 
     is_thin = gdf.buffer(-tolerance / 2).is_empty
     thin, gdf = gdf[is_thin], gdf[~is_thin]
-    to_eliminate = pd.concat([thin_missing_from_gdf, thin])
+    to_eliminate = pd.concat([thin_missing_from_gdf, thin], ignore_index=True)
     if 0:
         to_eliminate.geometry = to_eliminate.buffer(
             -PRECISION,
@@ -191,7 +194,16 @@ def coverage_clean(
             resolution=1,
             join_style=2,
         )
-    to_eliminate = split_by_neighbors(to_eliminate, gdf, tolerance=tolerance)
+        to_eliminate = to_eliminate.loc[lambda x: ~x.is_empty]
+    print("split_by_neighbors 1")
+
+    # now to split polygons to be eliminated to avoid weird shapes
+    # split only the polygons with multiple neighbors
+    single_neighbored, multi_neighbored = (
+        _separate_single_neighbored_from_multi_neighoured_geometries(to_eliminate, gdf)
+    )
+    multi_neighbored = split_by_neighbors(multi_neighbored, gdf, tolerance=tolerance)
+    to_eliminate = pd.concat([multi_neighbored, single_neighbored])
     to_eliminate["_was_to_eliminate"] = 1
     print("eliminate_by_longest")
     gdf_before = gdf.copy()
@@ -219,9 +231,16 @@ def coverage_clean(
             resolution=1,
             join_style=2,
         )
-    thin_missing_from_mask = split_by_neighbors(
-        thin_missing_from_mask, gdf, tolerance=tolerance
+    print("split_by_neighbors 2")
+
+    single_neighbored, multi_neighbored = (
+        _separate_single_neighbored_from_multi_neighoured_geometries(
+            thin_missing_from_mask, gdf
+        )
     )
+
+    multi_neighbored = split_by_neighbors(multi_neighbored, gdf, tolerance=tolerance)
+    thin_missing_from_mask = pd.concat([multi_neighbored, single_neighbored])
     thin_missing_from_mask["_was_to_eliminate"] = 1
     print("eliminate_by_longest again with mask")
     gdf_between = gdf.copy()
@@ -249,7 +268,9 @@ def coverage_clean(
         is_thin = gdf.buffer(-tolerance / 2).is_empty
         thin, gdf = gdf[is_thin], gdf[~is_thin]
         to_eliminate = pd.concat([thin_missing_from_gdf, thin])
-        to_eliminate = split_by_neighbors(to_eliminate, to_eliminate, tolerance=tolerance)
+        to_eliminate = split_by_neighbors(
+            to_eliminate, to_eliminate, tolerance=tolerance
+        )
         to_eliminate["_was_to_eliminate"] = 1
         print("eliminate_by_longest")
         gdf_before = gdf.copy()
@@ -265,7 +286,9 @@ def coverage_clean(
         thin_missing_from_mask["_was_to_eliminate"] = 1
         print("eliminate_by_longest again with mask")
         gdf_between = gdf.copy()
-        gdf = eliminate_by_longest(gdf, thin_missing_from_mask).explode(ignore_index=True)
+        gdf = eliminate_by_longest(gdf, thin_missing_from_mask).explode(
+            ignore_index=True
+        )
 
     if 0:
         thin_missing_from_mask["_what"] = 1
@@ -546,7 +569,27 @@ def _snap_linearrings(
         }
     ).explode(ignore_index=True)
 
-    if 0:
+    try:
+        print("inni snap_polygons 0 ")
+        explore(
+            as_rings=to_gdf(
+                polygons(
+                    points.sort_index()
+                    .set_index("_geom_idx")
+                    # .pipe(_remove_legit_spikes)
+                    .loc[lambda x: x.groupby(level=0).size() > 2]
+                    .groupby(level=0)["geometry"]
+                    .agg(LinearRing)
+                ),
+                25833,
+            ),
+            as_polys=to_gdf(as_polys, 25833),
+            center=_DEBUG_CONFIG["center"],
+        )
+    except GEOSException:
+        pass
+
+    if 1:
         points = _snap(points, mask_nodes, tolerance, as_polygons)
 
     points2 = points.copy()
@@ -557,6 +600,26 @@ def _snap_linearrings(
         .groupby(level=0)["geometry"]
         .agg(LinearRing)
     )
+
+    try:
+        print("inni snap_polygons 1 ")
+        explore(
+            as_rings=to_gdf(
+                polygons(
+                    points.sort_index()
+                    .set_index("_geom_idx")
+                    # .pipe(_remove_legit_spikes)
+                    .loc[lambda x: x.groupby(level=0).size() > 2]
+                    .groupby(level=0)["geometry"]
+                    .agg(LinearRing)
+                ),
+                25833,
+            ),
+            as_polys=to_gdf(as_polys, 25833),
+            center=_DEBUG_CONFIG["center"],
+        )
+    except GEOSException:
+        pass
 
     snapped, anchors = _snap_to_anchors(
         points,
@@ -579,6 +642,7 @@ def _snap_linearrings(
     )
 
     try:
+        print("inni snap_polygons 2 ")
         explore(
             points=to_gdf((points), 25833),
             points2=to_gdf((points2), 25833),
@@ -989,6 +1053,13 @@ def _snap(
     snapped.geometry = shapely.shortest_line(
         snapped.geometry.values, snapped["_right_geom"].values
     )
+
+    explore(
+        points=to_gdf(points, 25833),
+        snapped=to_gdf(snapped, 25833),
+        anchors=to_gdf(anchors, 25833),
+        center=_DEBUG_CONFIG["center"],
+    )
     # snapped = sfilter_inverse(
     #     snapped, as_polygons
     # )  # snapped.loc[lambda x: ~x.intersects(
@@ -1214,120 +1285,20 @@ def _sorted_unary_union(df: NDArray[Point]) -> LineString:
     return LineString([first, *mid_sorted, last])
 
 
-def split_by_neighbors(
-    df: GeoDataFrame,
-    split_by: GeoDataFrame,
-    tolerance: int | float,
-    grid_size: float | int | None = None,
-) -> GeoDataFrame:
-    if not len(df):
-        return df
-
-    split_by = split_by.copy()
-
-    intersecting_lines = (
-        clean_overlay(
-            to_lines(split_by),
-            buff(df, tolerance),
-            how="intersection",
-            grid_size=grid_size,
-        )
-        .pipe(get_line_segments)
-        .reset_index(drop=True)
+def _separate_single_neighbored_from_multi_neighoured_geometries(
+    gdf: GeoDataFrame, neighbors: GeoDataFrame
+) -> tuple[GeoDataFrame, GeoDataFrame]:
+    """Split GeoDataFrame in two: those with 0 or 1 neighbors and those with 2 or more."""
+    tree = STRtree(neighbors.geometry.values)
+    left, right = tree.query(gdf.geometry.values, predicate="intersects")
+    pairs = pd.Series(right, index=left)
+    has_more_than_one_neighbor = (
+        pairs.groupby(level=0).size().loc[lambda x: x > 1].index
     )
 
-    endpoints = intersecting_lines.boundary.explode(index_parts=False)
-
-    extended_lines = GeoDataFrame(
-        {
-            "geometry": extend_lines(
-                endpoints.loc[lambda x: ~x.index.duplicated(keep="first")].values,
-                endpoints.loc[lambda x: ~x.index.duplicated(keep="last")].values,
-                distance=tolerance * 3,
-            )
-        },
-        crs=df.crs,
-    )
-
-    buffered = buff(extended_lines, tolerance, single_sided=True)
-
-    return clean_overlay(df, buffered, how="identity", grid_size=grid_size)
-
-
-def extend_lines(arr1, arr2, distance) -> NDArray[LineString]:
-    if len(arr1) != len(arr2):
-        raise ValueError
-    if not len(arr1):
-        return arr1
-
-    arr1, arr2 = arr2, arr1  # TODO fix
-
-    coords1 = coordinate_array(arr1)
-    coords2 = coordinate_array(arr2)
-
-    dx = coords2[:, 0] - coords1[:, 0]
-    dy = coords2[:, 1] - coords1[:, 1]
-    len_xy = np.sqrt((dx**2.0) + (dy**2.0))
-    x = coords1[:, 0] + (coords1[:, 0] - coords2[:, 0]) / len_xy * distance
-    y = coords1[:, 1] + (coords1[:, 1] - coords2[:, 1]) / len_xy * distance
-
-    new_points = np.array([None for _ in range(len(arr1))])
-    new_points[~np.isnan(x)] = shapely.points(x[~np.isnan(x)], y[~np.isnan(x)])
-
-    new_points[~np.isnan(x)] = make_lines_between_points(
-        arr2[~np.isnan(x)], new_points[~np.isnan(x)]
-    )
-    return new_points
-
-
-def get_line_segments(lines: GeoDataFrame | GeoSeries) -> GeoDataFrame:
-    assert lines.index.is_unique
-    if isinstance(lines, GeoDataFrame):
-        geom_col = lines._geometry_column_name
-        multipoints = lines.assign(
-            **{geom_col: extract_unique_points(lines.geometry.values)}
-        )
-        segments = multipoints_to_line_segments(multipoints.geometry)
-        return segments.join(lines.drop(columns=geom_col))
-
-    multipoints = GeoSeries(extract_unique_points(lines.values), index=lines.index)
-
-    return multipoints_to_line_segments(multipoints)
-
-
-def multipoints_to_line_segments(multipoints: GeoSeries) -> GeoDataFrame:
-    if not len(multipoints):
-        return GeoDataFrame({"geometry": multipoints}, index=multipoints.index)
-
-    try:
-        crs = multipoints.crs
-    except AttributeError:
-        crs = None
-
-    try:
-        point_df = multipoints.explode(index_parts=False)
-    except AttributeError:
-        points, indices = get_parts(multipoints, return_index=True)
-        if isinstance(multipoints.index, pd.MultiIndex):
-            indices = pd.MultiIndex.from_arrays(indices, names=multipoints.index.names)
-
-        point_df = pd.DataFrame({"geometry": GeometryArray(points)}, index=indices)
-
-    try:
-        point_df = point_df.to_frame("geometry")
-    except AttributeError:
-        pass
-
-    point_df["next"] = point_df.groupby(level=0)["geometry"].shift(-1)
-
-    first_points = point_df.loc[lambda x: ~x.index.duplicated(), "geometry"]
-    is_last_point = point_df["next"].isna()
-
-    point_df.loc[is_last_point, "next"] = first_points
-    assert point_df["next"].notna().all()
-
-    point_df["geometry"] = [
-        LineString([x1, x2])
-        for x1, x2 in zip(point_df["geometry"], point_df["next"], strict=False)
+    more_than_one_neighbor = gdf.iloc[has_more_than_one_neighbor]
+    one_or_zero_neighbors = gdf.iloc[
+        pd.Index(range(len(gdf))).difference(has_more_than_one_neighbor)
     ]
-    return GeoDataFrame(point_df.drop(columns=["next"]), geometry="geometry", crs=crs)
+
+    return one_or_zero_neighbors, more_than_one_neighbor

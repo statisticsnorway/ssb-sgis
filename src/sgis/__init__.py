@@ -75,6 +75,7 @@ from .geopandas_tools.polygon_operations import get_cluster_mapper
 from .geopandas_tools.polygon_operations import get_gaps
 from .geopandas_tools.polygon_operations import get_holes
 from .geopandas_tools.polygon_operations import get_polygon_clusters
+from .geopandas_tools.polygon_operations import split_polygons_by_lines
 from .geopandas_tools.polygons_as_rings import PolygonsAsRings
 from .geopandas_tools.sfilter import sfilter
 from .geopandas_tools.sfilter import sfilter_inverse
