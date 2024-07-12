@@ -125,11 +125,8 @@ def update_geometries(
     else:
         only_one = erasers.groupby(level=0).transform("size") == 1
         one_hit = erasers[only_one]
-        many_hits = (
-            _grouped_unary_union(erasers[~only_one], level=0, grid_size=grid_size)
-            # erasers[~only_one]
-            # .groupby(level=0)
-            # .agg(lambda x: _safe_and_clean_unary_union(x, grid_size=grid_size))
+        many_hits = _grouped_unary_union(
+            erasers[~only_one], level=0, grid_size=grid_size
         )
         erasers = pd.concat([one_hit, many_hits]).sort_index()
 

@@ -46,8 +46,12 @@ warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
 
-# def explore(*args, **kwargs) -> None:
-#     pass
+def explore(*args, **kwargs) -> None:
+    pass
+
+
+def print(*args) -> None:
+    pass
 
 
 def explore_locals(*args, **kwargs) -> None:
@@ -530,7 +534,8 @@ def _snap_linearrings(
 
     points0 = points.copy()
 
-    # points = _snap(points, mask_nodes, tolerance, as_polygons)
+    if 0:
+        points = _snap(points, mask_nodes, tolerance, as_polygons)
 
     points1 = points.copy()
     not_snapped1 = (
@@ -573,7 +578,7 @@ def _snap_linearrings(
     except GEOSException:
         pass
 
-    if 1:
+    if 0:
         points = _snap(points, mask_nodes, tolerance, as_polygons)
 
     points2 = points.copy()

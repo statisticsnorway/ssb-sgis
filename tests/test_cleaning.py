@@ -1,5 +1,6 @@
 # %%
 
+import time
 import sys
 from pathlib import Path
 
@@ -147,13 +148,13 @@ def test_clean_1144():
             missing.area.sum(),
         )
         assert (
-            gaps.area.sum() <= 1e-2
+            gaps.area.sum() <= 1e-6
         ), f"tolerance {tolerance}, gaps: {gaps.area.sum()}"
         assert (
-            double.area.sum() <= 1e-2
+            double.area.sum() <= 1e-6
         ), f"tolerance {tolerance}, gaps: {double.area.sum()}"
         assert (
-            missing.area.sum() <= 1e-2
+            missing.area.sum() <= 1e-6
         ), f"tolerance {tolerance}, gaps: {missing.area.sum()}"
 
         assert thick_df_indices.isin(cleaned_clipped["df_idx"]).all(), sg.explore(
@@ -218,9 +219,9 @@ def test_clean():
             gaps=gaps.to_crs(25833),
         )
 
-        assert (a := max(list(double.area) + [0])) < 1e-4, a
-        assert (a := max(list(missing.area) + [0])) < 1e-4, a
-        assert (a := max(list(gaps.area) + [0])) < 1e-4, a
+        assert (a := max(list(double.area) + [0])) < 1e-5, a
+        assert (a := max(list(missing.area) + [0])) < 1e-5, a
+        assert (a := max(list(gaps.area) + [0])) < 1e-5, a
 
     sg.explore(
         snapped1=sg.coverage_clean(df, 1),
@@ -363,8 +364,9 @@ if __name__ == "__main__":
     # import cProfile
 
     # cProfile.run("main()", sort="cumtime")
-
+    _time = time.perf_counter()
     main()
+    print("seconds passed:", time.perf_counter() - _time)
 
 
 # %%

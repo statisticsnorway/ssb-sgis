@@ -24,7 +24,7 @@ from geopandas import GeoSeries
 from shapely import unary_union
 
 from .general import _merge_geometries, _grouped_unary_union
-from .general import _safe_and_clean_unary_union
+from .general import _unary_union_for_notna
 from .general import _parallel_unary_union
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper
@@ -198,7 +198,7 @@ def _dissolve(
 
     more_than_one = (gdf.count_geometries() > 1).values
     gdf.loc[more_than_one, geom_col] = gdf.loc[more_than_one, geom_col].apply(
-        _safe_and_clean_unary_union
+        _unary_union_for_notna
     )
 
     by = dissolve_kwargs.pop("by", None)
@@ -257,7 +257,7 @@ def _dissolve(
             raise e
 
     # geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
-    #     lambda x: _safe_and_clean_unary_union(x, grid_size=grid_size)
+    #     lambda x: _unary_union_for_notna(x, grid_size=grid_size)
     # )
     # print("\n\n\ngeomsagged\n", geoms_agged, geoms_agged.shape)
     geoms_agged = _grouped_unary_union(many_hits, by, **dissolve_kwargs)

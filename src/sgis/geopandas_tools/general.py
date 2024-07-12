@@ -780,9 +780,12 @@ def _grouped_unary_union(
     grid_size: float | int | None = None,
     **kwargs,
 ) -> GeoSeries:
+    """Vectorized unary_union for groups, faster than groupby.agg."""
     print("_grouped_unary_union")
     from ..maps.maps import explore
     from .conversion import to_gdf
+
+    df = df.copy()
 
     try:
         geom_col = df._geometry_column_name
@@ -803,7 +806,11 @@ def _grouped_unary_union(
         df = df.reset_index()
         df.index = original_index
 
-    # df[geom_col] = make_valid(df[geom_col].values)
+    return GeoSeries(
+        df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
+            lambda x: unary_union(x)
+        )
+    ).make_valid()
 
     try:
         explore(
@@ -815,7 +822,6 @@ def _grouped_unary_union(
             center=_DEBUG_CONFIG["center"],
         )
     except Exception:
-        print("her nede")
         explore(
             xxxx=to_gdf(
                 df.assign(
@@ -834,6 +840,7 @@ def _grouped_unary_union(
     elif by is None:
         by = df.index.get_level_values(level)
 
+    print(df)
     cumcount = df.groupby(by).cumcount()
 
     def get_col_or_index(df, col: str) -> pd.Series | pd.Index:
@@ -863,7 +870,7 @@ def _grouped_unary_union(
         np_isinstance = np.vectorize(isinstance)
         geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
 
-    if 1:
+    if 0:
         # union the geometries one column at the time.
         # This prevents some, but not all, dissappearing surfaces.
         unioned = geometries_2d[:, 0]
@@ -892,7 +899,7 @@ def _grouped_unary_union(
     else:
         unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
 
-    if 1:
+    if 0:
         for i in reversed(range(geometries_2d.shape[1])):
             for _ in range(1):
                 unioned = make_valid(
@@ -906,14 +913,6 @@ def _grouped_unary_union(
 
     geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
 
-    col = geoms.index.name or "index"
-    explore(
-        etterpaa=to_gdf(
-            geoms.reset_index().assign(**{col: lambda x: x[col].astype(str)}), crs=25833
-        ),
-        column=col,
-        center=_DEBUG_CONFIG["center"],
-    )
     return geoms if as_index else geoms.reset_index()
 
 

@@ -389,8 +389,16 @@ def eliminate_by_longest(
         eliminated.index = eliminated.index.map(idx_mapper)
         eliminated.index.name = idx_name
 
-    # if not remove_isolated and len(isolated):
-    #     eliminated = pd.concat([eliminated, isolated])
+    eliminated = eliminated.drop(
+        ["_dissolve_idx", "_length", "_eliminate_idx"],
+        axis=1,
+        errors="ignore",
+    )
+    isolated = isolated.drop(
+        ["_dissolve_idx", "_length", "_eliminate_idx"],
+        axis=1,
+        errors="ignore",
+    )
 
     out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
 
@@ -409,7 +417,7 @@ def eliminate_by_longest(
     print("inni eliminate_by_longest")
     explore_locals(center=_DEBUG_CONFIG["center"])
 
-    if not remove_isolated and not return_isolated and len(isolated):
+    if not remove_isolated and len(isolated):
         if 0:
             isolated.geometry = isolated.buffer(
                 -PRECISION,
@@ -429,12 +437,6 @@ def eliminate_by_longest(
 
     print("inni eliminate_by_longest 2")
     explore_locals(center=_DEBUG_CONFIG["center"])
-
-    out = out.drop(
-        ["_dissolve_idx", "_length", "_eliminate_idx"],
-        axis=1,
-        errors="ignore",
-    )
 
     if not was_multiple_gdfs:
         if return_isolated:
@@ -464,6 +466,7 @@ def _recursively_eliminate_new_neighbors(
             df,
             isolated,
             return_isolated=True,
+            remove_isolated=True,
             **kwargs,
         )
         if len_now == len(isolated):
@@ -668,14 +671,23 @@ def _eliminate_by_area(
         **kwargs,
     )
 
+    eliminated = eliminated.drop(
+        ["_dissolve_idx", "_area", "_eliminate_idx", "_dissolve_idx"],
+        axis=1,
+        errors="ignore",
+    )
+
+    isolated = GeoDataFrame(
+        joined.loc[joined["_dissolve_idx"].isna()], geometry="geometry", crs=crs
+    ).drop(
+        ["_dissolve_idx", "_area", "_eliminate_idx", "_dissolve_idx"],
+        axis=1,
+        errors="ignore",
+    )
+
     if not ignore_index:
         eliminated.index = eliminated.index.map(idx_mapper)
         eliminated.index.name = idx_name
-
-    if not remove_isolated:
-        isolated = joined.loc[joined["_dissolve_idx"].isna()]
-        if len(isolated):
-            eliminated = pd.concat([eliminated, isolated])
 
     out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
 
@@ -684,7 +696,7 @@ def _eliminate_by_area(
 
     out = out.reset_index(drop=True) if ignore_index else out
 
-    if not remove_isolated and not return_isolated and len(isolated):
+    if not remove_isolated and len(isolated):
         out = _recursively_eliminate_new_neighbors(
             out,
             isolated,
@@ -698,12 +710,6 @@ def _eliminate_by_area(
             grid_size=grid_size,
             n_jobs=n_jobs,
         )
-
-    eliminated = eliminated.drop(
-        ["_dissolve_idx", "_area", "_eliminate_idx", "_dissolve_idx"],
-        axis=1,
-        errors="ignore",
-    )
 
     if not was_multiple_gdfs:
         if return_isolated:

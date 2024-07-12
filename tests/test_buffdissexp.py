@@ -1,16 +1,19 @@
 # %%
 
 import sys
+import random
 import timeit
 from pathlib import Path
-
+from shapely import extract_unique_points, unary_union
 import numpy as np
+import pandas as pd
 
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
 
 import sgis as sg
+from conftest import testgdf
 
 
 def not_test_dissexp_n_jobs():
@@ -140,13 +143,14 @@ def test_buffdissexp(gdf_fixture):
 
         copy2 = copy2.loc[:, copy.columns]
 
-        assert copy.equals(copy2)
+        assert copy.equals(copy2), (copy, copy2, sg.explore(copy, copy2, browser=True))
 
 
 def test_buffdiss(gdf_fixture):
     sg.buffdiss(gdf_fixture, 10)
 
     for distance in [1, 10, 100, 1000, 10000]:
+        print("distance", distance)
         copy = gdf_fixture.copy()
 
         # with geopandas
@@ -158,7 +162,23 @@ def test_buffdiss(gdf_fixture):
 
         copy2 = copy2.loc[:, copy.columns]
 
-        assert copy.equals(copy2)
+        assert copy.equals(copy2), (
+            copy,
+            copy2,
+            len(copy.geometry.apply(extract_unique_points).explode()),
+            len(copy2.geometry.apply(extract_unique_points).explode()),
+            sg.explore(
+                copy,
+                copy2,
+                copy_p=copy.assign(
+                    geometry=lambda x: extract_unique_points(x.geometry.values)
+                ).explode(),
+                copy2_p=copy2.assign(
+                    geometry=lambda x: extract_unique_points(x.geometry.values)
+                ).explode(),
+                # browser=True,
+            ),
+        )
 
 
 def test_dissexp(gdf_fixture):
@@ -175,7 +195,7 @@ def test_dissexp(gdf_fixture):
 
     copy2 = copy2.loc[:, copy.columns]
 
-    assert copy.equals(copy2), (copy, copy2)
+    assert copy.equals(copy2), (copy, copy2, sg.explore(copy, copy2, browser=True))
 
     gdf = sg.random_points(10).pipe(sg.buff, 1)
     gdf.index = [0, 0, 1, 1, 1, 2, 2, 1, 2, 3]
@@ -277,10 +297,44 @@ def test_dissexp_index():
     assert list(singlepart.index) == [0, 1, 2], singlepart
 
 
+def test_grouped_unary_union():
+    number = 5
+
+    df = sg.random_points(10000).pipe(sg.buff, 0.01)
+    df["col"] = [random.choice(list(range(250))) for _ in range(len(df))]
+
+    for _ in range(2):
+        dissolved = sg.geopandas_tools.general._grouped_unary_union(df, by="col")
+        dissolved2 = (
+            df.groupby("col")["geometry"].agg(lambda x: (unary_union(x))).make_valid()
+        )
+
+    assert dissolved.equals(dissolved2), (dissolved, dissolved2)
+
+    def grouped_unary_union():
+        return sg.geopandas_tools.general._grouped_unary_union(df, by="col")
+
+    def groupby_unary_union():
+        return df.groupby("col")["geometry"].agg(unary_union).make_valid()
+
+    times = {"grouped_unary_union": 0, "groupby_unary_union": 0}
+    for _ in range(2):
+        times["grouped_unary_union"] = timeit.timeit(grouped_unary_union, number=number)
+        times["groupby_unary_union"] = timeit.timeit(groupby_unary_union, number=number)
+
+    print(pd.Series(times).apply(lambda x: round(x, 1)))
+
+
 if __name__ == "__main__":
 
-    # not_test_dissexp_n_jobs()
+    test_grouped_unary_union()
+    sss
+    gdf_fixture = testgdf()
+    test_buffdiss(gdf_fixture)
     test_dissexp_index()
+    test_buffdissexp(gdf_fixture)
+    test_dissexp(gdf_fixture)
     test_buffdissexp_index()
     test_dissexp_by_cluster()
     test_dissexp_grid_size()
+    # not_test_dissexp_n_jobs()
