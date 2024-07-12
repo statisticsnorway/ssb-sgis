@@ -188,6 +188,7 @@ def _dissolve(
     aggfunc: str = "first",
     grid_size: None | float = None,
     n_jobs: int = 1,
+    as_index: bool = True,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
 
@@ -195,6 +196,8 @@ def _dissolve(
         return gdf
 
     geom_col = gdf._geometry_column_name
+
+    gdf[geom_col] = gdf[geom_col].make_valid()
 
     more_than_one = (gdf.count_geometries() > 1).values
     gdf.loc[more_than_one, geom_col] = gdf.loc[more_than_one, geom_col].apply(
@@ -214,7 +217,9 @@ def _dissolve(
         other_cols = list(gdf.columns.difference({geom_col} | set(by or {})))
 
     try:
-        is_one_hit = gdf.groupby(by, **dissolve_kwargs).transform("size") == 1
+        is_one_hit = (
+            gdf.groupby(by, as_index=True, **dissolve_kwargs).transform("size") == 1
+        )
     except IndexError:
         # if no rows when dropna=True
         original_by = [x for x in by]
@@ -223,7 +228,7 @@ def _dissolve(
             query &= gdf[col].notna()
         gdf = gdf.loc[query]
         assert not len(gdf), gdf
-        if not by_was_none and dissolve_kwargs.get("as_index", True):
+        if not by_was_none and as_index:
             try:
                 gdf = gdf.set_index(original_by)
             except Exception as e:
@@ -232,7 +237,7 @@ def _dissolve(
                 raise e
         return gdf
 
-    if not by_was_none and dissolve_kwargs.get("as_index", True):
+    if 0:  # not by_was_none and as_index:
         one_hit = gdf[is_one_hit].set_index(by)
     else:
         one_hit = gdf[is_one_hit]
@@ -241,14 +246,21 @@ def _dissolve(
     if not len(many_hits):
         return GeoDataFrame(one_hit, geometry=geom_col, crs=gdf.crs)
 
-    dissolved = many_hits.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
+    dissolved = many_hits.groupby(by, as_index=True, **dissolve_kwargs)[other_cols].agg(
+        aggfunc
+    )
 
     # dissolved = gdf.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
 
     if n_jobs > 1:
         try:
             agged = _parallel_unary_union(
-                many_hits, n_jobs=n_jobs, by=by, grid_size=grid_size, **dissolve_kwargs
+                many_hits,
+                n_jobs=n_jobs,
+                by=by,
+                grid_size=grid_size,
+                as_index=True,
+                **dissolve_kwargs,
             )
             dissolved[geom_col] = agged
             return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
@@ -260,16 +272,36 @@ def _dissolve(
     #     lambda x: _unary_union_for_notna(x, grid_size=grid_size)
     # )
     # print("\n\n\ngeomsagged\n", geoms_agged, geoms_agged.shape)
-    geoms_agged = _grouped_unary_union(many_hits, by, **dissolve_kwargs)
+    geoms_agged = _grouped_unary_union(many_hits, by, as_index=True, **dissolve_kwargs)
     # print(geoms_agged, geoms_agged.shape)
 
-    if not dissolve_kwargs.get("as_index"):
-        try:
-            geoms_agged = geoms_agged[geom_col]
-        except KeyError:
-            pass
+    # if not as_index:
+    #     try:
+    #         geoms_agged = geoms_agged[geom_col]
+    #     except KeyError:
+    #         pass
 
     dissolved[geom_col] = geoms_agged
+
+    if not as_index:
+        dissolved = dissolved.reset_index()
+
+    # from ..maps.maps import explore, explore_locals
+    # from .conversion import to_gdf
+
+    # try:
+    #     explore(
+    #         dissolved=to_gdf(dissolved, 25833),
+    #         geoms_agged=to_gdf(geoms_agged, 25833),
+    #         gdf=gdf,
+    #         column="ARTYPE",
+    #     )
+    # except Exception:
+    #     explore(
+    #         dissolved=to_gdf(dissolved, 25833),
+    #         geoms_agged=to_gdf(geoms_agged, 25833),
+    #         gdf=gdf,
+    #     )
 
     return GeoDataFrame(
         pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs

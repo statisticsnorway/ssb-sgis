@@ -778,14 +778,13 @@ def _grouped_unary_union(
     level: int | None = None,
     as_index: bool = True,
     grid_size: float | int | None = None,
+    dropna: bool = False,
     **kwargs,
-) -> GeoSeries:
+) -> GeoSeries | GeoDataFrame:
     """Vectorized unary_union for groups, faster than groupby.agg."""
-    print("_grouped_unary_union")
-    from ..maps.maps import explore
-    from .conversion import to_gdf
 
     df = df.copy()
+    df_orig = df.copy()
 
     try:
         geom_col = df._geometry_column_name
@@ -806,11 +805,36 @@ def _grouped_unary_union(
         df = df.reset_index()
         df.index = original_index
 
-    return GeoSeries(
-        df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
-            lambda x: unary_union(x)
+    from ..maps.maps import explore, explore_locals
+    from .conversion import to_gdf
+
+    if 0:
+
+        agged = df.groupby(by, level=level, as_index=as_index, dropna=dropna, **kwargs)[
+            geom_col
+        ].agg(
+            lambda x: print(
+                "\n\nhei\n",
+                [i.wkt for i in x],
+                "\n",
+                len(x),
+                explore(
+                    x1=to_gdf(x, 25833),
+                    x2=to_gdf(unary_union(x), 25833),
+                    x3=to_gdf(unary_union(make_valid(x)), 25833),
+                    center=(5.41647553, 59.06387654, 50),
+                ),
+            )
+            or unary_union(x)
         )
-    ).make_valid()
+
+        explore_locals()
+
+        if as_index:
+            return GeoSeries(agged).make_valid()
+        else:
+            agged[geom_col] = GeoSeries(agged[geom_col]).make_valid()
+            return GeoDataFrame(agged)
 
     try:
         explore(
@@ -840,8 +864,7 @@ def _grouped_unary_union(
     elif by is None:
         by = df.index.get_level_values(level)
 
-    print(df)
-    cumcount = df.groupby(by).cumcount()
+    cumcount = df.groupby(by, dropna=dropna).cumcount().values
 
     def get_col_or_index(df, col: str) -> pd.Series | pd.Index:
         try:
@@ -860,7 +883,11 @@ def _grouped_unary_union(
         df.index = pd.MultiIndex.from_arrays([cumcount, by])
 
     # to wide format: each row will be one group to be merged to one geometry
-    geoms_wide: pd.DataFrame = df[geom_col].unstack(level=0)
+    try:
+        geoms_wide: pd.DataFrame = df[geom_col].unstack(level=0)
+    except Exception as e:
+        bb = [*by, geom_col]
+        raise e.__class__(e, f"by={by}", df_orig[bb], df[geom_col])
     geometries_2d: NDArray[Polygon | None] = geoms_wide.values
     try:
         geometries_2d = make_valid(geometries_2d)
@@ -870,7 +897,7 @@ def _grouped_unary_union(
         np_isinstance = np.vectorize(isinstance)
         geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
 
-    if 0:
+    if 1:
         # union the geometries one column at the time.
         # This prevents some, but not all, dissappearing surfaces.
         unioned = geometries_2d[:, 0]

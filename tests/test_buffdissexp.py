@@ -143,7 +143,14 @@ def test_buffdissexp(gdf_fixture):
 
         copy2 = copy2.loc[:, copy.columns]
 
-        assert copy.equals(copy2), (copy, copy2, sg.explore(copy, copy2, browser=True))
+        assert copy.equals(copy2), (
+            copy,
+            copy2,
+            sg.explore(
+                copy,
+                copy2,
+            ),
+        )
 
 
 def test_buffdiss(gdf_fixture):
@@ -176,7 +183,7 @@ def test_buffdiss(gdf_fixture):
                 copy2_p=copy2.assign(
                     geometry=lambda x: extract_unique_points(x.geometry.values)
                 ).explode(),
-                # browser=True,
+                # ,
             ),
         )
 
@@ -195,7 +202,14 @@ def test_dissexp(gdf_fixture):
 
     copy2 = copy2.loc[:, copy.columns]
 
-    assert copy.equals(copy2), (copy, copy2, sg.explore(copy, copy2, browser=True))
+    assert copy.equals(copy2), (
+        copy,
+        copy2,
+        sg.explore(
+            copy,
+            copy2,
+        ),
+    )
 
     gdf = sg.random_points(10).pipe(sg.buff, 1)
     gdf.index = [0, 0, 1, 1, 1, 2, 2, 1, 2, 3]

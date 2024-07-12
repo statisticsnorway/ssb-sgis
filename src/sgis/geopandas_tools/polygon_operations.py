@@ -52,6 +52,8 @@ from .sfilter import sfilter_inverse
 
 PRECISION = 1e-3
 
+def print(*args):
+    pass
 
 def get_polygon_clusters(
     *gdfs: GeoDataFrame | GeoSeries,
