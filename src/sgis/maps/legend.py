@@ -17,7 +17,7 @@ from geopandas import GeoDataFrame
 from matplotlib.lines import Line2D
 from pandas import Series
 
-from ..geopandas_tools.bounds import points_in_bounds
+from ..geopandas_tools.general import points_in_bounds
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(

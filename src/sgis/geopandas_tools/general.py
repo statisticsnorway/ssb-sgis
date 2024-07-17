@@ -28,6 +28,7 @@ from shapely import unary_union
 from shapely.geometry import LineString
 from shapely.geometry import Point
 from shapely.geometry import Polygon
+from shapely import buffer
 
 try:
     import dask_geopandas
@@ -35,15 +36,18 @@ except ImportError:
     pass
 
 from ..debug_config import _DEBUG_CONFIG
-from .conversion import coordinate_array
+from .conversion import coordinate_array, to_bbox, to_gdf
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 
+# from ..raster.base import _gdf_to_arr, _array_to_geojson, _get_transform_from_bounds
+from .sfilter import sfilter
+
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
     return tuple(
-        gdf.loc[gdf.geom_type == geom_type] for geom_type in gdf.geom_type.unique()
+        gdf[gdf.geom_type == geom_type] for geom_type in gdf.geom_type.unique()
     )
 
 
@@ -753,6 +757,42 @@ def multipoints_to_line_segments(multipoints: GeoSeries) -> GeoDataFrame:
     return GeoDataFrame(point_df.drop(columns=["next"]), geometry="geometry", crs=crs)
 
 
+def get_index_right_columns(gdf: pd.DataFrame | pd.Series) -> list[str]:
+    """Get a list of what will be the resulting columns in an sjoin."""
+    if gdf.index.name is None and all(name is None for name in gdf.index.names):
+        if gdf.index.nlevels == 1:
+            return ["index_right"]
+        else:
+            return [f"index_right{i}" for i in range(gdf.index.nlevels)]
+    else:
+        return gdf.index.names
+
+
+def points_in_bounds(
+    gdf: GeoDataFrame | GeoSeries, gridsize: int | float
+) -> GeoDataFrame:
+    """Get a GeoDataFrame of points within the bounds of the GeoDataFrame."""
+    minx, miny, maxx, maxy = to_bbox(gdf)
+    try:
+        crs = gdf.crs
+    except AttributeError:
+        crs = None
+    xs = np.linspace(minx, maxx, num=int((maxx - minx) / gridsize))
+    ys = np.linspace(miny, maxy, num=int((maxy - miny) / gridsize))
+    x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")
+    coords = np.concatenate((x_coords.reshape(-1, 1), y_coords.reshape(-1, 1)), axis=1)
+    return to_gdf(coords, crs=crs)
+
+
+def points_in_polygons(
+    gdf: GeoDataFrame | GeoSeries, gridsize: int | float
+) -> GeoDataFrame:
+    index_right_col = get_index_right_columns(gdf)
+    out = points_in_bounds(gdf, gridsize).sjoin(gdf).set_index(index_right_col)
+    out.index.name = gdf.index.name
+    return out.sort_index()
+
+
 def _determine_geom_type_args(
     gdf: GeoDataFrame, geom_type: str | None, keep_geom_type: bool | None
 ) -> tuple[GeoDataFrame, str, bool]:
@@ -805,58 +845,6 @@ def _grouped_unary_union(
         df = df.reset_index()
         df.index = original_index
 
-    from ..maps.maps import explore, explore_locals
-    from .conversion import to_gdf
-
-    if 0:
-
-        agged = df.groupby(by, level=level, as_index=as_index, dropna=dropna, **kwargs)[
-            geom_col
-        ].agg(
-            lambda x: print(
-                "\n\nhei\n",
-                [i.wkt for i in x],
-                "\n",
-                len(x),
-                explore(
-                    x1=to_gdf(x, 25833),
-                    x2=to_gdf(unary_union(x), 25833),
-                    x3=to_gdf(unary_union(make_valid(x)), 25833),
-                    center=(5.41647553, 59.06387654, 50),
-                ),
-            )
-            or unary_union(x)
-        )
-
-        explore_locals()
-
-        if as_index:
-            return GeoSeries(agged).make_valid()
-        else:
-            agged[geom_col] = GeoSeries(agged[geom_col]).make_valid()
-            return GeoDataFrame(agged)
-
-    try:
-        explore(
-            xxxx=to_gdf(
-                df.assign(**{"_dissolve_idx": lambda x: x[df.columns[0]].astype(str)}),
-                crs=25833,
-            ),
-            column="_dissolve_idx",
-            center=_DEBUG_CONFIG["center"],
-        )
-    except Exception:
-        explore(
-            xxxx=to_gdf(
-                df.assign(
-                    **dict(_dissolve_idx=lambda x: x["_dissolve_idx"].astype(str))
-                ),
-                crs=25833,
-            ),
-            column="_dissolve_idx",
-            center=_DEBUG_CONFIG["center"],
-        )
-
     if isinstance(by, str):
         by = [by]
     elif by is None and level is None:
@@ -897,7 +885,37 @@ def _grouped_unary_union(
         np_isinstance = np.vectorize(isinstance)
         geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
 
-    if 1:
+    if 0:
+        arr = _gdf_to_arr(
+            GeoDataFrame(
+                {"geometry": df.geometry.values, "value": df.index.get_level_values(1)},
+            ),
+            res=0.1,
+            fill=-99,
+        )
+        transform = _get_transform_from_bounds(df, arr.shape)
+
+        unioned = (
+            GeoDataFrame(
+                pd.DataFrame(
+                    _array_to_geojson(arr, transform, processes=1),
+                    columns=["value", geom_col],
+                ),
+                geometry=geom_col,
+                crs=25833,
+            )
+            .loc[lambda x: x["value"] != -99]
+            .dissolve(by="value")
+        )
+        print(unioned)
+        geoms = unioned.geometry
+        # geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
+
+        return geoms if as_index else geoms.reset_index()
+
+    # geometries_2d = buffer(geometries_2d, 0.001, quad_segs=1, join_style=2)
+
+    if 0:
         # union the geometries one column at the time.
         # This prevents some, but not all, dissappearing surfaces.
         unioned = geometries_2d[:, 0]
@@ -923,6 +941,30 @@ def _grouped_unary_union(
                     **kwargs,
                 )
             )
+    elif 0:
+        # unioned = make_valid(unary_union(geometries_2d[:, ::-1], axis=1, **kwargs))
+        unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
+        unioned_reversed = make_valid(
+            unary_union(geometries_2d[:, ::-1], axis=1, **kwargs)
+        )
+        from ..maps.maps import explore
+
+        explore(
+            unioned_rev=to_gdf(unioned_reversed, 25833),
+            unioned=to_gdf(unioned, 25833),
+            unioned3=to_gdf(
+                make_valid(
+                    unary_union(
+                        np.stack([unioned, unioned_reversed], axis=1), axis=1, **kwargs
+                    )
+                ),
+                25833,
+            ),
+            center=_DEBUG_CONFIG["center"],
+        )
+        unioned = make_valid(
+            unary_union(np.stack([unioned, unioned_reversed], axis=1), axis=1, **kwargs)
+        )
     else:
         unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
 
@@ -938,7 +980,25 @@ def _grouped_unary_union(
                     )
                 )
 
+    # unioned = buffer(unioned, -0.001, quad_segs=1, join_style=2)
+
     geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
+
+    if 0:
+        tolerance = 1
+        points = points_in_polygons(GeoDataFrame(df), gridsize=tolerance)
+        print()
+        print()
+        print()
+        print()
+        print(df)
+        print(points)
+        joined = points.sjoin(geoms.to_frame(), how="inner")
+        print(joined)
+        if not joined.index.is_unique:
+            raise ValueError("Double surfaces.", joined)
+        if not (joined.index == joined["index_right"]).all():
+            raise ValueError("Wrong results.", joined)
 
     return geoms if as_index else geoms.reset_index()
 

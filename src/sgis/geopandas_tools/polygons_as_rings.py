@@ -326,14 +326,7 @@ class PolygonsAsRings:
         nonempty_interiors = self.rings.loc[self.is_interior]
 
         if not len(nonempty_interiors):
-            try:
-                nonempty_exteriors.loc[:] = make_valid(
-                    polygons(nonempty_exteriors.values)
-                )
-            except Exception:
-                nonempty_exteriors.loc[:] = _geoms_to_linearrings_fallback(
-                    nonempty_exteriors
-                ).values
+            nonempty_exteriors.loc[:] = make_valid(polygons(nonempty_exteriors.values))
             return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
 
         empty_interiors = pd.Series(

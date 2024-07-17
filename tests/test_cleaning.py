@@ -2,11 +2,13 @@
 
 import time
 import sys
+import random
 from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 import shapely
+import numpy as np
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 
@@ -92,7 +94,19 @@ def test_clean_1144():
 
     df["df_idx"] = range(len(df))
 
-    for tolerance in [5, 1, 0.5, 2, 0.75, 1.5, 2.25]:
+    for tolerance in [
+        0.5,
+        0.91,
+        0.57,
+        5,
+        1,
+        2,
+        0.75,
+        1.5,
+        2.25,
+        *[round(random.random() + 0.5, 2) for _ in range(10)],
+        *[round(x, 2) for x in np.arange(0.4, 5, 0.01)],
+    ]:
         print("\ntolerance")
         print(tolerance)
         # cleaned = sg.coverage_clean(df, tolerance, pre_dissolve_func=_buff).pipe(
@@ -104,14 +118,12 @@ def test_clean_1144():
         # before eliminate
 
         thick_df_indices = df.loc[
-            lambda x: ~x.buffer(-tolerance / 1.1).is_empty, "df_idx"
+            lambda x: ~x.buffer(-tolerance / 1.3).is_empty, "df_idx"
         ]
 
         cleaned = sg.coverage_clean(
             df, tolerance, mask=kommune_utenhav
         )  # .pipe(sg.coverage_clean, tolerance)
-
-        assert list(sorted(cleaned.columns)) == list(sorted(cols)), cleaned.columns
 
         # cleaned = sg.coverage_clean(
         #     sg.sort_large_first(df), tolerance, mask=kommune_utenhav
@@ -127,6 +139,9 @@ def test_clean_1144():
             sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)), cleaned_clipped
         )
 
+        cleaned_points = cleaned.extract_unique_points().to_frame("geometry").explode()
+        df_points = df.extract_unique_points().to_frame("geometry").explode()
+
         sg.explore(
             cleaned,
             gaps,
@@ -136,7 +151,16 @@ def test_clean_1144():
             kommune_utenhav,
             center=sg.debug_config._DEBUG_CONFIG["center"],
         )
-        sg.explore(cleaned, gaps, double, missing, df, kommune_utenhav)
+        sg.explore(
+            cleaned,
+            gaps,
+            double,
+            missing,
+            df,
+            kommune_utenhav,
+            cleaned_points,
+            df_points,
+        )
 
         print(
             f"tolerance {tolerance}",
@@ -165,6 +189,18 @@ def test_clean_1144():
                 & (~df["df_idx"].isin(cleaned_clipped["df_idx"]))
             ],
         )
+
+        notna_df = df.notna().all()
+        cols_notna = list(notna_df[lambda x: x == True].index)
+        notna_df_relevant_cols = df[cols_notna].notna().all()
+        notna_cleaned = cleaned[cols_notna].notna().all()
+        assert notna_cleaned.equals(notna_df_relevant_cols), (
+            notna_cleaned,
+            notna_df_relevant_cols,
+            cleaned[cols_notna].sort_values(by=cols_notna),
+        )
+
+        assert list(sorted(cleaned.columns)) == list(sorted(cols)), cleaned.columns
 
 
 def get_missing(df, other):
@@ -202,18 +238,18 @@ def test_clean():
     for tolerance in [5, 6, 7, 8, 9, 10]:
         print("tolerance:", tolerance)
 
-        snapped = sg.coverage_clean(df, tolerance)
-        assert sg.get_geom_type(snapped) == "polygon", sg.get_geom_type(snapped)
+        cleaned = sg.coverage_clean(df, tolerance)
+        assert sg.get_geom_type(cleaned) == "polygon", sg.get_geom_type(cleaned)
 
-        double = sg.get_intersections(snapped).loc[lambda x: ~x.buffer(-1e-9).is_empty]
-        gaps = sg.get_gaps(snapped).loc[lambda x: ~x.buffer(-1e-9).is_empty]
-        missing = get_missing(df, snapped)
+        double = sg.get_intersections(cleaned).loc[lambda x: ~x.buffer(-1e-9).is_empty]
+        gaps = sg.get_gaps(cleaned).loc[lambda x: ~x.buffer(-1e-9).is_empty]
+        missing = get_missing(df, cleaned)
 
         print(double.area.sum(), missing.area.sum(), gaps.area.sum())
 
         sg.explore(
             df=df.to_crs(25833),
-            snapped=snapped.to_crs(25833),
+            cleaned=cleaned.to_crs(25833),
             double=double.to_crs(25833),
             missing=missing,
             gaps=gaps.to_crs(25833),
@@ -223,10 +259,14 @@ def test_clean():
         assert (a := max(list(missing.area) + [0])) < 1e-5, a
         assert (a := max(list(gaps.area) + [0])) < 1e-5, a
 
+        notna_cleaned = cleaned[df.columns].notna().all()
+        notna_df = df.notna().all()
+        assert notna_cleaned.equals(notna_df), (notna_cleaned, notna_df)
+
     sg.explore(
-        snapped1=sg.coverage_clean(df, 1),
-        snapped3=sg.coverage_clean(df, 3),
-        snapped5=sg.coverage_clean(df, 5),
+        cleaned1=sg.coverage_clean(df, 1),
+        cleaned3=sg.coverage_clean(df, 3),
+        cleaned5=sg.coverage_clean(df, 5),
         df=df,
     )
 
@@ -300,12 +340,12 @@ def not_test_spikes():
 
     tolerance = 0.09 * factor
 
-    snapped = sg.coverage_clean(df, tolerance)
-    gaps = sg.get_gaps(snapped, True)
+    cleaned = sg.coverage_clean(df, tolerance)
+    gaps = sg.get_gaps(cleaned, True)
 
     if __name__ == "__main__":
         sg.explore(
-            snapped=snapped,
+            cleaned=cleaned,
             gaps=gaps,
         )
 
@@ -322,9 +362,9 @@ def not_test_spikes():
         48285369.993336275,
         26450336.353161283,
     ]
-    print(list(snapped.area))
+    print(list(cleaned.area))
     for area1, area2 in zip(
-        sorted(snapped.area),
+        sorted(cleaned.area),
         sorted(area_should_be),
         strict=False,
     ):
@@ -338,10 +378,10 @@ def not_test_spikes():
         18541.01966249684,
     ]
 
-    print(list(snapped.length))
+    print(list(cleaned.length))
 
     for length1, length2 in zip(
-        sorted(snapped.length),
+        sorted(cleaned.length),
         sorted(length_should_be),
         strict=False,
     ):

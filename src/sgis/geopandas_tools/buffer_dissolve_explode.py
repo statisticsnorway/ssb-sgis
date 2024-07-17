@@ -235,9 +235,10 @@ def _dissolve(
                 print(gdf)
                 print(original_by)
                 raise e
+
         return gdf
 
-    if 0:  # not by_was_none and as_index:
+    if not by_was_none and as_index:
         one_hit = gdf[is_one_hit].set_index(by)
     else:
         one_hit = gdf[is_one_hit]
@@ -285,6 +286,9 @@ def _dissolve(
 
     if not as_index:
         dissolved = dissolved.reset_index()
+    # else:
+    #     one_hit = one_hit.set
+    # dissolved = dissolved.reset_index()
 
     # from ..maps.maps import explore, explore_locals
     # from .conversion import to_gdf
@@ -383,6 +387,7 @@ def dissexp(
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
+
     dissolve_kwargs = dissolve_kwargs | {
         "by": by,
         "as_index": as_index,

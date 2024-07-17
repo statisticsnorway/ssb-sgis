@@ -21,7 +21,7 @@ from ..debug_config import _DEBUG_CONFIG
 from ..maps.maps import explore
 from ..maps.maps import explore_locals
 from ..networkanalysis.cutting_lines import split_lines_by_nearest_point
-from .buffer_dissolve_explode import buff
+from .buffer_dissolve_explode import buff, dissexp
 from .buffer_dissolve_explode import dissexp_by_cluster
 from .conversion import to_gdf
 from .conversion import to_geoseries
@@ -41,21 +41,22 @@ from .polygon_operations import split_by_neighbors
 from .polygons_as_rings import PolygonsAsRings
 from .sfilter import sfilter
 from .sfilter import sfilter_inverse
+from .sfilter import sfilter_split
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
 
 
-def explore(*args, **kwargs) -> None:
-    pass
+# def explore(*args, **kwargs) -> None:
+#     pass
 
 
-def print(*args) -> None:
-    pass
+# def print(*args) -> None:
+#     pass
 
 
-def explore_locals(*args, **kwargs) -> None:
-    pass
+# def explore_locals(*args, **kwargs) -> None:
+#     pass
 
 
 PRECISION = 1e-3
@@ -129,30 +130,41 @@ def coverage_clean(
 
     explore(
         gdf,
+        gdf_original,
         msk=mask,
+        points=gdf.extract_unique_points().explode().to_frame(),
         center=_DEBUG_CONFIG["center"],
     )
 
-    gdf.geometry = (
-        gdf.buffer(
-            -PRECISION,
-            resolution=1,
-            join_style=2,
+    if 0:
+        gdf.geometry = (
+            gdf.buffer(
+                -PRECISION,
+                resolution=1,
+                join_style=2,
+            )
+            .buffer(
+                PRECISION * 2,
+                resolution=1,
+                join_style=2,
+            )
+            .buffer(
+                -PRECISION,
+                resolution=1,
+                join_style=2,
+            )
         )
-        .buffer(
-            PRECISION * 2,
-            resolution=1,
-            join_style=2,
+        gdf = clean_geoms(gdf)
+        print("etter buffer")
+        explore(
+            gdf,
+            gdf_original,
+            msk=mask,
+            points=gdf.extract_unique_points().explode().to_frame(),
+            center=_DEBUG_CONFIG["center"],
         )
-        .buffer(
-            -PRECISION,
-            resolution=1,
-            join_style=2,
-        )
-    )
 
-    gdf = clean_overlay(gdf, mask, how="intersection", geom_type="polygon")
-    gdf["_was_to_eliminate"] = 0
+    gdf["_gdf_range_idx"] = range(len(gdf))
 
     missing_from_gdf = clean_overlay(
         gdf_original, gdf, how="difference", geom_type="polygon"
@@ -166,147 +178,68 @@ def coverage_clean(
     is_thin = gdf.buffer(-tolerance / 2).is_empty
     thin, gdf = gdf[is_thin], gdf[~is_thin]
     to_eliminate = pd.concat([thin_missing_from_gdf, thin], ignore_index=True)
-    if 0:
-        to_eliminate.geometry = to_eliminate.buffer(
-            -PRECISION,
-            resolution=1,
-            join_style=2,
-        ).buffer(
-            PRECISION,
-            resolution=1,
-            join_style=2,
-        )
-        to_eliminate = to_eliminate.loc[lambda x: ~x.is_empty]
-    print("split_by_neighbors 1")
 
-    # now to split polygons to be eliminated to avoid weird shapes
-    # split only the polygons with multiple neighbors
-    single_neighbored, multi_neighbored = (
-        _separate_single_neighbored_from_multi_neighoured_geometries(to_eliminate, gdf)
-    )
-    multi_neighbored = split_by_neighbors(multi_neighbored, gdf, tolerance=tolerance)
-    to_eliminate = pd.concat([multi_neighbored, single_neighbored])
-    to_eliminate["_was_to_eliminate"] = 1
-    print("eliminate_by_longest")
-    gdf_before = gdf.copy()
-    gdf = eliminate_by_longest(gdf, to_eliminate).explode(ignore_index=True)
+    print("split_by_neighbors gdf thin")
+    gdf, isolated = split_and_eliminate_by_longest(gdf, to_eliminate, tolerance)
 
-    print("etter eliminate 1")
+    gdf = _eliminate_not_really_isolated(gdf, isolated)
+
+    print("etter eliminate 1 (med gdf)")
     explore(
+        gdf_original,
         gdf=gdf,
-        gdf_before=gdf_before,
+        isolated=isolated,
         to_eliminate=to_eliminate,
+        dissexped=dissexp(gdf, by="_gdf_range_idx", dropna=False, as_index=False),
+        points=gdf.extract_unique_points().explode().to_frame(),
         center=_DEBUG_CONFIG["center"],
     )
+
+    gdf = dissexp(gdf, by="_gdf_range_idx", dropna=False, as_index=False)
 
     # we don't want the thick polygons from the mask
     thin_missing_from_mask = clean_overlay(
         mask, gdf, how="difference", geom_type="polygon"
     ).loc[lambda x: x.buffer(-tolerance / 2).is_empty]
-    if 0:
-        thin_missing_from_mask.geometry = thin_missing_from_mask.buffer(
-            -PRECISION,
-            resolution=1,
-            join_style=2,
-        ).buffer(
-            PRECISION,
-            resolution=1,
-            join_style=2,
-        )
-    print("split_by_neighbors 2")
 
-    single_neighbored, multi_neighbored = (
-        _separate_single_neighbored_from_multi_neighoured_geometries(
-            thin_missing_from_mask, gdf
-        )
+    print("split_by_neighbors 2 mask")
+    gdf, isolated = split_and_eliminate_by_longest(
+        gdf, thin_missing_from_mask, tolerance
     )
+    gdf = _eliminate_not_really_isolated(gdf, isolated)
 
-    multi_neighbored = split_by_neighbors(multi_neighbored, gdf, tolerance=tolerance)
-    thin_missing_from_mask = pd.concat([multi_neighbored, single_neighbored])
-    thin_missing_from_mask["_was_to_eliminate"] = 1
-    print("eliminate_by_longest again with mask")
-    gdf_between = gdf.copy()
-    gdf = eliminate_by_longest(gdf, thin_missing_from_mask).explode(ignore_index=True)
+    # if 0:
+    #     thin_missing_from_mask.geometry = thin_missing_from_mask.buffer(
+    #         -PRECISION,
+    #         resolution=1,
+    #         join_style=2,
+    #     ).buffer(
+    #         PRECISION,
+    #         resolution=1,
+    #         join_style=2,
+    #     )
+    # print("split_by_neighbors 2")
 
-    print("etter eliminate 2")
+    # single_neighbored, multi_neighbored = (
+    #     _separate_single_neighbored_from_multi_neighoured_geometries(
+    #         thin_missing_from_mask, gdf
+    #     )
+    # )
+
+    # multi_neighbored = split_by_neighbors(multi_neighbored, gdf, tolerance=tolerance)
+    # thin_missing_from_mask = pd.concat([multi_neighbored, single_neighbored])
+    # thin_missing_from_mask["_was_to_eliminate"] = 1
+    # print("eliminate_by_longest again with mask")
+    # gdf_between = gdf.copy()
+    # gdf, isolated = eliminate_by_longest(
+    #     gdf, thin_missing_from_mask, return_isolated=True
+    # )
+    # gdf = gdf.explode(ignore_index=True)
+    # assert not len(isolated), (explore(isolated, gdf, browser=True), isolated)
+
+    print("etter eliminate 2 (av mask)")
     explore(
         gdf=gdf,
-        gdf_before=gdf_before,
-        to_eliminate=to_eliminate,
-        center=_DEBUG_CONFIG["center"],
-    )
-
-    # repeat
-    if 0:
-        missing_from_gdf = clean_overlay(
-            gdf_original, gdf, how="difference", geom_type="polygon"
-        )
-        is_thin = missing_from_gdf.buffer(-tolerance / 2).is_empty
-        thin_missing_from_gdf, thick_missing_from_gdf = (
-            missing_from_gdf[is_thin],
-            missing_from_gdf[~is_thin],
-        )
-
-        is_thin = gdf.buffer(-tolerance / 2).is_empty
-        thin, gdf = gdf[is_thin], gdf[~is_thin]
-        to_eliminate = pd.concat([thin_missing_from_gdf, thin])
-        to_eliminate = split_by_neighbors(
-            to_eliminate, to_eliminate, tolerance=tolerance
-        )
-        to_eliminate["_was_to_eliminate"] = 1
-        print("eliminate_by_longest")
-        gdf_before = gdf.copy()
-        gdf = eliminate_by_longest(gdf, to_eliminate).explode(ignore_index=True)
-
-        # we don't want the thick polygons from the mask
-        thin_missing_from_mask = clean_overlay(
-            mask, gdf, how="difference", geom_type="polygon"
-        ).loc[lambda x: x.buffer(-tolerance / 2).is_empty]
-        thin_missing_from_mask = split_by_neighbors(
-            thin_missing_from_mask, thin_missing_from_mask, tolerance=tolerance
-        )
-        thin_missing_from_mask["_was_to_eliminate"] = 1
-        print("eliminate_by_longest again with mask")
-        gdf_between = gdf.copy()
-        gdf = eliminate_by_longest(gdf, thin_missing_from_mask).explode(
-            ignore_index=True
-        )
-
-    if 0:
-        thin_missing_from_mask["_what"] = 1
-        thin_missing_from_gdf["_what"] = 2
-        thin["_what"] = 3
-        to_eliminate = pd.concat([thin_missing_from_mask, thin_missing_from_gdf, thin])
-        gdf["_was_to_eliminate"] = 0
-        to_eliminate["_was_to_eliminate"] = 1
-
-        to_eliminate = split_by_neighbors(
-            to_eliminate, to_eliminate, tolerance=tolerance
-        )
-
-        # for geom in sfilter(
-        #     to_eliminate,
-        #     to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(40),
-        # ).geometry:
-        #     explore(to_gdf(geom, 25833))
-
-        gdf = eliminate_by_longest(gdf, to_eliminate[to_eliminate._what == 1]).explode(
-            ignore_index=True
-        )
-        gdf_between = gdf.copy()
-        gdf = eliminate_by_longest(gdf, to_eliminate[to_eliminate._what == 2]).explode(
-            ignore_index=True
-        )
-        gdf_between2 = gdf.copy()
-        gdf = eliminate_by_longest(gdf, to_eliminate[to_eliminate._what == 3]).explode(
-            ignore_index=True
-        )
-        gdf = gdf.drop(columns="_what", errors="ignore")
-
-    explore(
-        gdf=gdf,
-        gdf_before=gdf_before,
-        gdf_between=gdf_between,
         thin_missing_from_mask=thin_missing_from_mask,
         thin_missing_from_gdf=thin_missing_from_gdf,
         thick_missing_from_gdf=thick_missing_from_gdf,
@@ -314,6 +247,8 @@ def coverage_clean(
         to_eliminate=to_eliminate,
         center=_DEBUG_CONFIG["center"],
     )
+
+    gdf = clean_overlay(gdf, mask, how="intersection", geom_type="polygon")
 
     if 0:
         mmm3 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833))
@@ -356,8 +291,8 @@ def coverage_clean(
             gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(1)
         )
         explore(mm4)
-    else:
-        gdf = gdf.drop(columns="_was_to_eliminate")
+    # else:
+    #     gdf = gdf.drop(columns="_was_to_eliminate")
 
     if 0:
         gdf.geometry = gdf.buffer(
@@ -383,7 +318,10 @@ def coverage_clean(
     dissappeared = sfilter_inverse(gdf_original, gdf.buffer(-PRECISION)).loc[
         lambda x: ~x.buffer(-PRECISION).is_empty
     ]
-    return pd.concat([gdf, dissappeared], ignore_index=True)
+
+    return pd.concat([gdf, dissappeared], ignore_index=True).drop(
+        columns="_gdf_range_idx"
+    )
 
 
 def snap_polygons(
@@ -393,7 +331,7 @@ def snap_polygons(
     **kwargs,
 ) -> GeoDataFrame:
     if not len(gdf):
-        return gdf
+        return gdf.copy()
 
     gdf_orig = gdf.copy()
 
@@ -494,7 +432,7 @@ def _snap_linearrings(
 
     is_thin = as_polygons.buffer(-tolerance / 2).is_empty
 
-    as_polygons.geometry = as_polygons.geometry.buffer(-PRECISION)
+    # as_polygons.geometry = as_polygons.geometry.buffer(-PRECISION)
 
     polygon_mapper: GeoSeries = as_polygons.set_index("_geom_idx")["geometry"]
 
@@ -541,7 +479,7 @@ def _snap_linearrings(
     not_snapped1 = (
         points.sort_index()
         .set_index("_geom_idx")
-        # .pipe(_remove_legit_spikes)
+        .pipe(_remove_legit_spikes)
         .loc[lambda x: x.groupby(level=0).size() > 2]
         .groupby(level=0)["geometry"]
         .agg(LinearRing)
@@ -565,7 +503,7 @@ def _snap_linearrings(
                 polygons(
                     points.sort_index()
                     .set_index("_geom_idx")
-                    # .pipe(_remove_legit_spikes)
+                    .pipe(_remove_legit_spikes)
                     .loc[lambda x: x.groupby(level=0).size() > 2]
                     .groupby(level=0)["geometry"]
                     .agg(LinearRing)
@@ -597,7 +535,7 @@ def _snap_linearrings(
                 polygons(
                     points.sort_index()
                     .set_index("_geom_idx")
-                    # .pipe(_remove_legit_spikes)
+                    .pipe(_remove_legit_spikes)
                     .loc[lambda x: x.groupby(level=0).size() > 2]
                     .groupby(level=0)["geometry"]
                     .agg(LinearRing)
@@ -624,7 +562,7 @@ def _snap_linearrings(
     as_rings = (
         snapped.sort_index()
         .set_index("_geom_idx")
-        # .pipe(_remove_legit_spikes)
+        .pipe(_remove_legit_spikes)
         .loc[lambda x: x.groupby(level=0).size() > 2]
         .groupby(level=0)["geometry"]
         .agg(LinearRing)
@@ -1291,3 +1229,102 @@ def _separate_single_neighbored_from_multi_neighoured_geometries(
     ]
 
     return one_or_zero_neighbors, more_than_one_neighbor
+
+
+def split_and_eliminate_by_longest(
+    gdf: GeoDataFrame | tuple[GeoDataFrame],
+    to_eliminate: GeoDataFrame,
+    tolerance: float | int,
+    ignore_index: bool = False,
+    **kwargs,
+) -> tuple[GeoDataFrame]:
+    if isinstance(gdf, (list, tuple)):
+        # concat, then break up the dataframes in the end
+        was_multiple_gdfs = True
+        original_cols = [df.columns for df in gdf]
+        gdf = pd.concat(df.assign(**{"_df_idx": i}) for i, df in enumerate(gdf))
+    else:
+        was_multiple_gdfs = False
+
+    if 0:
+        to_eliminate.geometry = to_eliminate.buffer(
+            -PRECISION,
+            resolution=1,
+            join_style=2,
+        ).buffer(
+            PRECISION,
+            resolution=1,
+            join_style=2,
+        )
+        to_eliminate = to_eliminate.loc[lambda x: ~x.is_empty]
+
+    # now to split polygons to be eliminated to avoid weird shapes
+    # split only the polygons with multiple neighbors
+    single_neighbored, multi_neighbored = (
+        _separate_single_neighbored_from_multi_neighoured_geometries(to_eliminate, gdf)
+    )
+    multi_neighbored = split_by_neighbors(multi_neighbored, gdf, tolerance=tolerance)
+    to_eliminate = pd.concat([multi_neighbored, single_neighbored])
+    gdf, isolated = eliminate_by_longest(
+        gdf, to_eliminate, return_isolated=True, ignore_index=ignore_index, **kwargs
+    )
+
+    if not was_multiple_gdfs:
+        return gdf, isolated
+
+    gdfs = ()
+    for i, cols in enumerate(original_cols):
+        df = gdf.loc[gdf["_df_idx"] == i, cols]
+        gdfs += (df,)
+    gdfs += (isolated,)
+
+    return gdfs
+
+
+def _eliminate_not_really_isolated(gdf, isolated):
+    gdf = make_all_singlepart(gdf)
+    not_really_isolated, really_isolated = sfilter_split(
+        isolated, gdf.buffer(PRECISION)
+    )
+    not_really_isolated.geometry = not_really_isolated.buffer(PRECISION * 10)
+    gdf, still_isolated = eliminate_by_longest(
+        gdf,
+        not_really_isolated,
+        return_isolated=True,
+    )
+    assert not len(still_isolated), still_isolated
+    gdf = make_all_singlepart(gdf)
+
+    return pd.concat([gdf, really_isolated])
+
+
+def _remove_legit_spikes(df):
+    """Remove points where the next and previous points are the same.
+
+    The lines these points make are as spiky as they come,
+    hence the term "legit spikes".
+    """
+    df["next"] = df.groupby(level=0)["geometry"].shift(-1)
+    df["prev"] = df.groupby(level=0)["geometry"].shift(1)
+
+    first_points = df.loc[lambda x: ~x.index.duplicated(keep="first"), "geometry"]
+    is_last_point = df["next"].isna()
+    df.loc[is_last_point, "next"] = first_points
+
+    last_points = df.loc[lambda x: ~x.index.duplicated(keep="last"), "geometry"]
+    is_first_point = df["prev"].isna()
+    df.loc[is_first_point, "prev"] = last_points
+
+    assert df["next"].notna().all()
+    assert df["prev"].notna().all()
+
+    # print("_remove_legit_spikes")
+    # print(df)
+    # print(df.loc[lambda x: x["next"] != x["prev"]])
+    # explore(
+    #     df.set_crs(25833),
+    #     df.loc[lambda x: x["next"] != x["prev"]],
+    #     df.loc[lambda x: x["next"] == x["prev"]],
+    # )
+
+    return df.loc[lambda x: x["next"] != x["prev"]]

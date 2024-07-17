@@ -52,8 +52,18 @@ from .sfilter import sfilter_inverse
 
 PRECISION = 1e-3
 
-def print(*args):
-    pass
+
+# def print(*args):
+#     pass
+
+
+# def explore(*args, **kwargs):
+#     pass
+
+
+# def explore_locals(*args, **kwargs):
+#     pass
+
 
 def get_polygon_clusters(
     *gdfs: GeoDataFrame | GeoSeries,
@@ -231,7 +241,7 @@ def eliminate_by_longest(
     aggfunc: str | dict | list | None = None,
     grid_size=None,
     n_jobs: int = 1,
-    return_isolated: bool = False,
+    return_isolated: bool = True,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Dissolves selected polygons with the longest bordering neighbor polygon.
@@ -292,11 +302,15 @@ def eliminate_by_longest(
     >>> polys = pd.concat([small_poly, large_poly])
     >>> eliminated = sg.eliminate_by_longest(polys, sliver)
     """
-    if not len(to_eliminate):
-        return gdf
+    _recurse = kwargs.pop("_recurse", False)
 
-    if not len(gdf) and not remove_isolated:
-        return to_eliminate
+    if not len(to_eliminate) or not len(gdf) and not remove_isolated:
+        if isinstance(gdf, (list, tuple)):
+            return (*gdf, to_eliminate)
+        return gdf, to_eliminate
+        if return_isolated:
+            return gdf, to_eliminate
+        return gdf
 
     if isinstance(gdf, (list, tuple)):
         # concat, then break up the dataframes in the end
@@ -375,6 +389,11 @@ def eliminate_by_longest(
         .drop(columns="index_right")
         .drop_duplicates("_eliminate_idx")
     )
+    isolated = isolated.drop(
+        ["_dissolve_idx", "_length", "_eliminate_idx"],
+        axis=1,
+        errors="ignore",
+    )
 
     eliminated = _eliminate(
         pd.DataFrame(gdf),
@@ -392,11 +411,6 @@ def eliminate_by_longest(
         eliminated.index.name = idx_name
 
     eliminated = eliminated.drop(
-        ["_dissolve_idx", "_length", "_eliminate_idx"],
-        axis=1,
-        errors="ignore",
-    )
-    isolated = isolated.drop(
         ["_dissolve_idx", "_length", "_eliminate_idx"],
         axis=1,
         errors="ignore",
@@ -419,14 +433,14 @@ def eliminate_by_longest(
     print("inni eliminate_by_longest")
     explore_locals(center=_DEBUG_CONFIG["center"])
 
-    if not remove_isolated and len(isolated):
+    if not _recurse and len(isolated):
         if 0:
             isolated.geometry = isolated.buffer(
                 -PRECISION,
                 resolution=1,
                 join_style=2,
             )
-        out = _recursively_eliminate_new_neighbors(
+        out, isolated = _recursively_eliminate_new_neighbors(
             out,
             isolated,
             func=eliminate_by_longest,
@@ -440,10 +454,22 @@ def eliminate_by_longest(
     print("inni eliminate_by_longest 2")
     explore_locals(center=_DEBUG_CONFIG["center"])
 
+    # assert (
+    #     out[["ARTYPE", "ARTRESLAG", "ARSKOGBON", "ARGRUNNF", "kilde"]]
+    #     .notna()
+    #     .all()
+    #     .all()
+    # ), out[["ARTYPE", "ARTRESLAG", "ARSKOGBON", "ARGRUNNF", "kilde"]].sort_values(
+    #     ["ARTYPE", "ARTRESLAG", "ARSKOGBON", "ARGRUNNF", "kilde"]
+    # )
+
     if not was_multiple_gdfs:
         if return_isolated:
             return out, isolated
-        return out
+        elif not remove_isolated:
+            return pd.concat([out, isolated], ignore_index=ignore_index)
+        else:
+            return out
 
     gdfs = ()
     for i, cols in enumerate(original_cols):
@@ -463,18 +489,21 @@ def _recursively_eliminate_new_neighbors(
 ):
     len_now = len(isolated)
     while len(isolated):
-        print("recurse")
+        print(f"recurse len({len(isolated)})")
         df, isolated = func(
             df,
             isolated,
             return_isolated=True,
             remove_isolated=True,
+            _recurse=True,
             **kwargs,
         )
+
         if len_now == len(isolated):
             break
         len_now = len(isolated)
-    return pd.concat([df, isolated])
+
+    return df, isolated
 
 
 def eliminate_by_largest(
@@ -489,7 +518,7 @@ def eliminate_by_largest(
     predicate: str = "intersects",
     grid_size=None,
     n_jobs: int = 1,
-    return_isolated: bool = False,
+    return_isolated: bool = True,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     """Dissolves selected polygons with the largest neighbor polygon.
@@ -581,7 +610,7 @@ def eliminate_by_smallest(
     fix_double: bool = True,
     grid_size=None,
     n_jobs: int = 1,
-    return_isolated: bool = False,
+    return_isolated: bool = True,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     return _eliminate_by_area(
@@ -613,9 +642,11 @@ def _eliminate_by_area(
     fix_double: bool = True,
     grid_size=None,
     n_jobs: int = 1,
-    return_isolated: bool = False,
+    return_isolated: bool = True,
     **kwargs,
 ) -> GeoDataFrame:
+    _recurse = kwargs.pop("_recurse", False)
+
     if not len(to_eliminate):
         return gdf
     if not len(gdf) and not remove_isolated:
@@ -679,27 +710,33 @@ def _eliminate_by_area(
         errors="ignore",
     )
 
-    isolated = GeoDataFrame(
-        joined.loc[joined["_dissolve_idx"].isna()], geometry="geometry", crs=crs
-    ).drop(
-        ["_dissolve_idx", "_area", "_eliminate_idx", "_dissolve_idx"],
-        axis=1,
-        errors="ignore",
-    )
-
     if not ignore_index:
         eliminated.index = eliminated.index.map(idx_mapper)
         eliminated.index.name = idx_name
 
-    out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
+    out = GeoDataFrame(
+        eliminated.loc[joined["_dissolve_idx"].notna()], geometry="geometry", crs=crs
+    ).pipe(clean_geoms)
+
+    isolated = (
+        GeoDataFrame(
+            joined.loc[joined["_dissolve_idx"].isna()], geometry="geometry", crs=crs
+        )
+        .drop(
+            ["_dissolve_idx", "_area", "_eliminate_idx", "_dissolve_idx"],
+            axis=1,
+            errors="ignore",
+        )
+        .pipe(clean_geoms)
+    )
 
     if geom_type != "mixed":
         out = to_single_geom_type(out, geom_type)
 
     out = out.reset_index(drop=True) if ignore_index else out
 
-    if not remove_isolated and len(isolated):
-        out = _recursively_eliminate_new_neighbors(
+    if not _recurse and len(isolated):
+        out, isolated = _recursively_eliminate_new_neighbors(
             out,
             isolated,
             func=_eliminate_by_area,
@@ -1296,9 +1333,16 @@ def split_polygons_by_lines(polygons: GeoSeries, lines: GeoSeries) -> GeoSeries:
 
     for i, line in lines.items():
         intersecting = pairs.loc[[i]].values
-        splitted.loc[intersecting] = splitted.loc[intersecting].apply(
-            lambda poly: SplitOp._split_polygon_with_line(poly, line) or poly
-        )
+        try:
+            splitted.loc[intersecting] = splitted.loc[intersecting].apply(
+                lambda poly: SplitOp._split_polygon_with_line(poly, line) or poly
+            )
+        except TypeError:
+            # if we got multipolygon
+            splitted = splitted.apply(get_parts).explode()
+            splitted.loc[intersecting] = splitted.loc[intersecting].apply(
+                lambda poly: SplitOp._split_polygon_with_line(poly, line) or poly
+            )
         splitted = splitted.explode()
 
     if isinstance(polygons, GeoDataFrame):
@@ -1321,6 +1365,8 @@ def split_by_neighbors(
 ) -> GeoDataFrame:
     if not len(df):
         return df
+
+    df = make_all_singlepart(df)
 
     split_by = split_by.copy()
 

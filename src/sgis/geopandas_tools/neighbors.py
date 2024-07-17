@@ -18,6 +18,7 @@ from sklearn.neighbors import NearestNeighbors
 
 from .conversion import coordinate_array
 from .geometry_types import get_geom_type
+from .general import get_index_right_columns
 
 
 def get_neighbor_indices(
@@ -100,9 +101,7 @@ def get_neighbor_indices(
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
-    index_col_name = neighbors.index.name
-    if index_col_name is None or index_col_name == "index":
-        index_col_name = "index_right"
+    index_col_name = get_index_right_columns(neighbors)
 
     if isinstance(neighbors, GeoSeries):
         neighbors = neighbors.to_frame()
@@ -117,14 +116,13 @@ def get_neighbor_indices(
 
     if predicate == "nearest":
         max_distance = None if max_distance == 0 else max_distance
-        joined = gdf.sjoin_nearest(
-            neighbors, how="inner", max_distance=max_distance
-        ).rename(columns={index_col_name: "neighbor_index"}, errors="raise")
+        joined = gdf.sjoin_nearest(neighbors, how="inner", max_distance=max_distance)
     else:
-        joined = gdf.sjoin(neighbors, how="inner", predicate=predicate).rename(
-            columns={index_col_name: "neighbor_index"}, errors="raise"
-        )
+        joined = gdf.sjoin(neighbors, how="inner", predicate=predicate)
 
+    joined["neighbor_index"] = [
+        values for values in zip(*[joined[col] for col in index_col_name])
+    ]
     return joined["neighbor_index"]
 
 

@@ -21,6 +21,7 @@ from .general import clean_clip
 from .general import get_common_crs
 
 from .general import is_bbox_like
+from .sfilter import sfilter
 
 
 @dataclass
@@ -699,16 +700,3 @@ def get_total_bounds(
                 else:
                     continue
     return min(xs), min(ys), max(xs), max(ys)
-
-
-def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int) -> GeoDataFrame:
-    """Get a GeoDataFrame of points within the bounds of the GeoDataFrame."""
-    if not isinstance(gdf, (GeoDataFrame | GeoSeries)) and is_bbox_like(gdf):
-        minx, miny, maxx, maxy = gdf
-    else:
-        minx, miny, maxx, maxy = gdf.total_bounds
-    xs = np.linspace(minx, maxx, num=n2)
-    ys = np.linspace(miny, maxy, num=n2)
-    x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")
-    coords = np.concatenate((x_coords.reshape(-1, 1), y_coords.reshape(-1, 1)), axis=1)
-    return to_gdf(coords, crs=gdf.crs)

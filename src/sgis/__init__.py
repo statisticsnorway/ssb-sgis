@@ -16,7 +16,7 @@ from .geopandas_tools.bounds import gridloop
 from .geopandas_tools.bounds import make_grid
 from .geopandas_tools.bounds import make_grid_from_bbox
 from .geopandas_tools.bounds import make_ssb_grid
-from .geopandas_tools.bounds import points_in_bounds
+from .geopandas_tools.general import points_in_bounds
 from .geopandas_tools.buffer_dissolve_explode import buff
 from .geopandas_tools.buffer_dissolve_explode import buffdiss
 from .geopandas_tools.buffer_dissolve_explode import buffdissexp
@@ -71,6 +71,7 @@ from .geopandas_tools.polygon_operations import close_thin_holes
 from .geopandas_tools.polygon_operations import eliminate_by_largest
 from .geopandas_tools.polygon_operations import eliminate_by_longest
 from .geopandas_tools.polygon_operations import eliminate_by_smallest
+from .geopandas_tools.cleaning import split_and_eliminate_by_longest
 from .geopandas_tools.polygon_operations import get_cluster_mapper
 from .geopandas_tools.polygon_operations import get_gaps
 from .geopandas_tools.polygon_operations import get_holes
