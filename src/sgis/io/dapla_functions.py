@@ -1,24 +1,31 @@
 """Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla."""
 
+import json
 from pathlib import Path
 
 import dapla as dp
 import geopandas as gpd
 import joblib
 import pandas as pd
+import shapely
 from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from geopandas.io.arrow import _geopandas_to_arrow
 from pandas import DataFrame
 from pyarrow import parquet
+
+from ..geopandas_tools.sfilter import sfilter
 
 
 def read_geopandas(
     gcs_path: str | Path | list[str | Path],
     pandas_fallback: bool = False,
     file_system: dp.gcs.GCSFileSystem | None = None,
+    mask: GeoSeries | GeoDataFrame | shapely.Geometry | tuple | None = None,
+    validate_crs: bool = True,
     **kwargs,
 ) -> GeoDataFrame | DataFrame:
-    """Reads geoparquet or other geodata from a file on GCS.
+    """Reads geoparquet or other geodata from one or more files on GCS.
 
     If the file has 0 rows, the contents will be returned as a pandas.DataFrame,
     since geopandas does not read and write empty tables.
@@ -33,6 +40,11 @@ def read_geopandas(
             not be read with geopandas and the number of rows is more than 0. If True,
             the file will be read with pandas if geopandas fails.
         file_system: Optional file system.
+        mask: Optional geometry mask to keep only intersecting geometries.
+            If 'gcs_path' is an iterable of multiple paths, only the files
+            with a bbox that intersects the mask are read, then filtered by location.
+        validate_crs: If multiple files are to be read and validate_crs is True (default),
+            all files in the folder has to have the same coordinate reference system.
         **kwargs: Additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
@@ -44,12 +56,22 @@ def read_geopandas(
 
     if isinstance(gcs_path, (list, tuple)):
         kwargs |= {"file_system": file_system, "pandas_fallback": pandas_fallback}
+
+        if mask is not None:
+            in_bounds: GeoSeries = sfilter(
+                _get_bounds_series(gcs_path, file_system, validate_crs), mask
+            )
+            gcs_path: list[str] = list(in_bounds.index)
+
         # recursive read with threads
         with joblib.Parallel(n_jobs=len(gcs_path), backend="threading") as parallel:
             dfs: list[GeoDataFrame] = parallel(
                 joblib.delayed(read_geopandas)(x, **kwargs) for x in gcs_path
             )
-        return pd.concat(dfs)
+        df = pd.concat(dfs)
+        if mask is not None:
+            return sfilter(df, mask)
+        return df
 
     if not isinstance(gcs_path, str):
         try:
@@ -60,7 +82,7 @@ def read_geopandas(
     if "parquet" in gcs_path or "prqt" in gcs_path:
         with file_system.open(gcs_path, mode="rb") as file:
             try:
-                return gpd.read_parquet(file, **kwargs)
+                df = gpd.read_parquet(file, **kwargs)
             except ValueError as e:
                 if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
                     raise e
@@ -73,7 +95,7 @@ def read_geopandas(
     else:
         with file_system.open(gcs_path, mode="rb") as file:
             try:
-                return gpd.read_file(file, **kwargs)
+                df = gpd.read_file(file, **kwargs)
             except ValueError as e:
                 if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
                     raise e
@@ -83,6 +105,32 @@ def read_geopandas(
                     return df
                 else:
                     raise e
+
+    if mask is not None:
+        return sfilter(df, mask)
+    return df
+
+
+def _get_bounds_parquet(
+    path: str | Path, fs: dp.gcs.GCSFileSystem
+) -> tuple[list[float], dict]:
+    with fs.open(path) as f:
+        meta = json.loads(parquet.read_schema(f).metadata[b"geo"])["columns"][
+            "geometry"
+        ]
+    return meta["bbox"], meta["crs"]
+
+
+def _get_bounds_series(gcs_path, fs: dp.gcs.GCSFileSystem, validate_crs) -> GeoSeries:
+    with joblib.Parallel(n_jobs=len(gcs_path), backend="threading") as parallel:
+        bounds: list[tuple[list[float], dict]] = parallel(
+            joblib.delayed(_get_bounds_parquet)(path, fs=fs) for path in gcs_path
+        )
+    if validate_crs and len({json.dumps(x[1]) for x in bounds}) != 1:
+        raise ValueError(f"crs mismatch {({json.dumps(x[1]) for x in bounds})}")
+    return GeoSeries(
+        [shapely.box(*bbox[0]) for bbox in bounds], index=gcs_path, crs=bounds[0][1]
+    )
 
 
 def write_geopandas(
@@ -126,16 +174,16 @@ def write_geopandas(
     if not overwrite and exists(gcs_path):
         raise ValueError("File already exists.")
 
-    if file_system is None:
-        file_system = dp.FileClient.get_gcs_file_system()
-
     if not isinstance(df, GeoDataFrame):
         raise ValueError("DataFrame must be GeoDataFrame.")
 
+    if file_system is None:
+        file_system = dp.FileClient.get_gcs_file_system()
+
     if not len(df):
         if pandas_fallback:
-            df.geometry = df.geometry.astype(str)
             df = pd.DataFrame(df)
+            df.geometry = df.geometry.astype(str)
         dp.write_pandas(df, gcs_path, **kwargs)
         return
 
