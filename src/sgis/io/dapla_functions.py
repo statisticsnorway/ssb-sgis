@@ -62,7 +62,7 @@ def read_geopandas(
                 gcs_path: GeoSeries = get_bounds_series(
                     gcs_path, file_system, validate_crs
                 )
-            gcs_path: GeoSeries = sfilter(gcs_path, mask)
+            gcs_path = sfilter(gcs_path, mask)
             if not len(gcs_path):
                 return GeoDataFrame({"geometry": []})
             paths: list[str] = list(gcs_path.index)
