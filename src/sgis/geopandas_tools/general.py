@@ -15,34 +15,34 @@ from geopandas.array import GeometryArray
 from geopandas.array import GeometryDtype
 from numpy.typing import NDArray
 from shapely import Geometry
+from shapely import difference
 from shapely import extract_unique_points
 from shapely import get_coordinates
 from shapely import get_exterior_ring
 from shapely import get_interior_ring
 from shapely import get_num_interior_rings
 from shapely import get_parts
+from shapely import intersection
 from shapely import linestrings
 from shapely import make_valid
 from shapely import points as shapely_points
+from shapely import polygons
 from shapely import unary_union
 from shapely.geometry import LineString
 from shapely.geometry import Point
 from shapely.geometry import Polygon
-from shapely import buffer
 
 try:
     import dask_geopandas
 except ImportError:
     pass
 
-from ..debug_config import _DEBUG_CONFIG
-from .conversion import coordinate_array, to_bbox, to_gdf
+from .conversion import coordinate_array
+from .conversion import to_bbox
+from .conversion import to_gdf
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
-
-# from ..raster.base import _gdf_to_arr, _array_to_geojson, _get_transform_from_bounds
-from .sfilter import sfilter
 
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
@@ -564,7 +564,9 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         raise TypeError("gdf must be GeoDataFrame or GeoSeries")
 
     if any(gdf.geom_type.isin(["Point", "MultiPoint"]).any() for gdf in gdfs):
-        raise ValueError("Cannot convert points to lines.")
+        raise ValueError(
+            f"Cannot convert points to lines. {[gdf.geom_type.value_counts() for gdf in gdfs]}"
+        )
 
     def _shapely_geometry_to_lines(geom):
         """Get all lines from the exterior and interiors of a Polygon."""
@@ -777,6 +779,7 @@ def points_in_bounds(
         crs = gdf.crs
     except AttributeError:
         crs = None
+
     xs = np.linspace(minx, maxx, num=int((maxx - minx) / gridsize))
     ys = np.linspace(miny, maxy, num=int((maxy - miny) / gridsize))
     x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")
@@ -822,7 +825,6 @@ def _grouped_unary_union(
     **kwargs,
 ) -> GeoSeries | GeoDataFrame:
     """Vectorized unary_union for groups, faster than groupby.agg."""
-
     df = df.copy()
     df_orig = df.copy()
 
@@ -875,7 +877,7 @@ def _grouped_unary_union(
         geoms_wide: pd.DataFrame = df[geom_col].unstack(level=0)
     except Exception as e:
         bb = [*by, geom_col]
-        raise e.__class__(e, f"by={by}", df_orig[bb], df[geom_col])
+        raise e.__class__(e, f"by={by}", df_orig[bb], df[geom_col]) from e
     geometries_2d: NDArray[Polygon | None] = geoms_wide.values
     try:
         geometries_2d = make_valid(geometries_2d)
@@ -885,33 +887,51 @@ def _grouped_unary_union(
         np_isinstance = np.vectorize(isinstance)
         geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
 
-    if 0:
-        arr = _gdf_to_arr(
-            GeoDataFrame(
-                {"geometry": df.geometry.values, "value": df.index.get_level_values(1)},
-            ),
-            res=0.1,
-            fill=-99,
-        )
-        transform = _get_transform_from_bounds(df, arr.shape)
+    # from ..maps.maps import explore
 
-        unioned = (
-            GeoDataFrame(
-                pd.DataFrame(
-                    _array_to_geojson(arr, transform, processes=1),
-                    columns=["value", geom_col],
-                ),
-                geometry=geom_col,
-                crs=25833,
-            )
-            .loc[lambda x: x["value"] != -99]
-            .dissolve(by="value")
-        )
-        print(unioned)
-        geoms = unioned.geometry
-        # geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
+    # print(df.shape)
+    # print(geoms_wide.shape)
+    # print(geometries_2d.shape)
 
-        return geoms if as_index else geoms.reset_index()
+    # for i, idx in enumerate(df.index):
+    #     print(i, idx)
+    #     geoms3 = [x for x in geometries_2d[i, :] if x is not None]
+    #     # geoms4 = [x for x in geoms_wide.iloc[i] if x is not None]
+    #     # geoms4 = [x for x in geoms_wide.loc[idx] if x is not None]
+    #     # for geom in geoms3:
+    #     #     print(geom.wkt)
+    #     if geoms3:
+    #         geoms3 = to_gdf(geoms3, 25833)
+    #         geoms3_diss = geoms3.dissolve()
+    #     else:
+    #         geoms3 = {}
+    #         geoms3_diss = {}
+
+    #     # if geoms4:
+    #     #     geoms4 = to_gdf(geoms4, 25833)
+    #     # else:
+    #     #     geoms4 = {}
+
+    #     # explore(
+    #     #     geoms2=to_gdf(df.loc[idx, 25833),
+    #     #     geoms3=geoms3,
+    #     #     geoms4=geoms4
+    #     # )
+
+    #     explore(
+    #         geoms=to_gdf(
+    #             df.loc[[idx], geom_col].reset_index(),
+    #             25833,
+    #         ),
+    #         # geoms2=to_gdf(df.loc[[idx]], 25833),
+    #         geoms3=geoms3,
+    #         geoms3_diss=geoms3_diss,
+    #         # geoms4=geoms4,
+    #         # center=(4.92072064, 60.80329956, 80),
+    #     )
+
+    #     if i > 10:
+    #         break
 
     # geometries_2d = buffer(geometries_2d, 0.001, quad_segs=1, join_style=2)
 
@@ -947,24 +967,139 @@ def _grouped_unary_union(
         unioned_reversed = make_valid(
             unary_union(geometries_2d[:, ::-1], axis=1, **kwargs)
         )
-        from ..maps.maps import explore
-
-        explore(
-            unioned_rev=to_gdf(unioned_reversed, 25833),
-            unioned=to_gdf(unioned, 25833),
-            unioned3=to_gdf(
-                make_valid(
+        # union the geometries one column at the time.
+        # This prevents some, but not all, dissappearing surfaces.
+        unioned_loop = geometries_2d[:, 0]
+        for i in range(1, geometries_2d.shape[1]):
+            for _ in range(1):
+                unioned_loop = make_valid(
                     unary_union(
-                        np.stack([unioned, unioned_reversed], axis=1), axis=1, **kwargs
+                        np.stack([unioned_loop, geometries_2d[:, i]], axis=1),
+                        axis=1,
+                        grid_size=grid_size,
+                        **kwargs,
                     )
-                ),
-                25833,
-            ),
-            center=_DEBUG_CONFIG["center"],
+                )
+
+        #         explore(
+        #             geoms=to_gdf(df[geom_col], 25833),
+        #             unioned_loop=to_gdf(unioned_loop, 25833),
+        #             center=_DEBUG_CONFIG["center"],
+        #         )
+
+        # from ..maps.maps import explore
+
+        # explore(
+        #     geoms=to_gdf(df[geom_col], 25833),
+        #     unioned_rev=to_gdf(unioned_reversed, 25833),
+        #     unioned_loop=to_gdf(unioned_loop, 25833),
+        #     unioned=to_gdf(unioned, 25833),
+        #     unioned3=to_gdf(
+        #         make_valid(
+        #             unary_union(
+        #                 np.stack([unioned, unioned_reversed], axis=1), axis=1, **kwargs
+        #             )
+        #         ),
+        #         25833,
+        #     ),
+        #     # center=_DEBUG_CONFIG["center"],
+        # )
+        unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
+        # unioned = make_valid(
+        #     unary_union(np.stack([unioned, unioned_reversed], axis=1), axis=1, **kwargs)
+        # )
+    elif 0:
+        unioned = make_valid(unary_union(geometries_2d[:, ::-1], axis=1, **kwargs))
+    elif 0:
+        interiors = [
+            [
+                (
+                    unary_union(
+                        [
+                            polygons(get_interior_ring(geometries_2d[i, j], x))
+                            for x in range(get_num_interior_rings(geometries_2d[i, j]))
+                        ]
+                    )
+                )
+                for j in range(geometries_2d.shape[1])
+            ]
+            for i in range(geometries_2d.shape[0])
+        ]
+        interiors = make_valid(unary_union(interiors, axis=1))
+
+        # unioned = geometries_2d[:, 0]
+        # for i in range(1, geometries_2d.shape[1]):
+        #     unioned = make_valid(
+        #         unary_union(
+        #             np.stack([unioned, geometries_2d[:, i]], axis=1),
+        #             axis=1,
+        #             grid_size=grid_size,
+        #             **kwargs,
+        #         )
+        #     )
+
+        unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
+
+        # unioned_reversed = make_valid(
+        #     unary_union(geometries_2d[:, ::-1], axis=1, **kwargs)
+        # )
+
+        # unioned_loop = unioned
+        # for i in range(geometries_2d.shape[1]):
+        #     unioned_loop = make_valid(
+        #         unary_union(
+        #             np.stack([unioned_loop, geometries_2d[:, i]], axis=1),
+        #             axis=1,
+        #             grid_size=grid_size,
+        #             **kwargs,
+        #         )
+        #     )
+        # unioned = make_valid(intersection(unioned, unioned_reversed))
+        # unioned = make_valid(intersection(unioned, unioned_loop))
+
+        # from ..maps.maps import explore
+        # explore(
+        #     unioned=to_gdf(unioned, 25833),
+        #     interiors=to_gdf(interiors, 25833),
+        #     unioned_erased=to_gdf(make_valid(difference(unioned, interiors)), 25833),
+        #     center=_DEBUG_CONFIG["center"],
+        # )
+
+        assert unioned.shape == interiors.shape
+        unioned = make_valid(difference(unioned, interiors))
+
+    elif 0:
+        unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
+
+        unioned_reversed = make_valid(
+            unary_union(geometries_2d[:, ::-1], axis=1, **kwargs)
         )
-        unioned = make_valid(
-            unary_union(np.stack([unioned, unioned_reversed], axis=1), axis=1, **kwargs)
-        )
+
+        # unioned_loop = unioned
+        # for i in range(geometries_2d.shape[1]):
+        #     unioned_loop = make_valid(
+        #         unary_union(
+        #             np.stack([unioned_loop, geometries_2d[:, i]], axis=1),
+        #             axis=1,
+        #             grid_size=grid_size,
+        #             **kwargs,
+        #         )
+        #     )
+
+        # unioned_loop_rev = unioned
+        # for i in reversed(range(geometries_2d.shape[1])):
+        #     unioned_loop_rev = make_valid(
+        #         unary_union(
+        #             np.stack([unioned_loop_rev, geometries_2d[:, i]], axis=1),
+        #             axis=1,
+        #             grid_size=grid_size,
+        #             **kwargs,
+        #         )
+        #     )
+
+        unioned = make_valid(intersection(unioned, unioned_reversed))
+        # unioned = make_valid(intersection(unioned, unioned_loop))
+        # unioned = make_valid(intersection(unioned, unioned_loop_rev))
     else:
         unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
 
@@ -984,21 +1119,29 @@ def _grouped_unary_union(
 
     geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
 
-    if 0:
-        tolerance = 1
-        points = points_in_polygons(GeoDataFrame(df), gridsize=tolerance)
-        print()
-        print()
-        print()
-        print()
-        print(df)
-        print(points)
-        joined = points.sjoin(geoms.to_frame(), how="inner")
-        print(joined)
-        if not joined.index.is_unique:
-            raise ValueError("Double surfaces.", joined)
-        if not (joined.index == joined["index_right"]).all():
-            raise ValueError("Wrong results.", joined)
+    # from ..maps.maps import explore
+
+    # explore(
+    #     geoms=to_gdf(df, 25833),
+    #     new_geoms=geoms.reset_index(),
+    # )
+    # ssss
+
+    # if 0:
+    #     tolerance = 1
+    #     points = points_in_polygons(GeoDataFrame(df), gridsize=tolerance)
+    #     print()
+    #     print()
+    #     print()
+    #     print()
+    #     print(df)
+    #     print(points)
+    #     joined = points.sjoin(geoms.to_frame(), how="inner")
+    #     print(joined)
+    #     if not joined.index.is_unique:
+    #         raise ValueError("Double surfaces.", joined)
+    #     if not (joined.index == joined["index_right"]).all():
+    #         raise ValueError("Wrong results.", joined)
 
     return geoms if as_index else geoms.reset_index()
 
@@ -1027,32 +1170,32 @@ def _safe_and_clean_unary_union(x, grid_size=None):
         assert len(x) == 1
         return unioned
     return unioned
-    p = to_gdf([5.38349348, 59.00461738], 4326).to_crs(25833)
-    if len(sfilter(to_gdf(x, 25833), p)):
-        from shapely.geometry import Polygon
+    # p = to_gdf([5.38349348, 59.00461738], 4326).to_crs(25833)
+    # if len(sfilter(to_gdf(x, 25833), p)):
+    #     from shapely.geometry import Polygon
 
-        agged2 = Polygon()
-        for geom in x:
-            print(geom)
-            agged2 = unary_union([agged2, geom])
+    #     agged2 = Polygon()
+    #     for geom in x:
+    #         print(geom)
+    #         agged2 = unary_union([agged2, geom])
 
-        geoms = pd.concat([to_gdf(y, 25833) for y in x])
-        geoms["xxx"] = [str(i) for i in range(len(geoms))]
-        explore(geoms, "xxx")
-        explore(
-            agged2=to_gdf(agged2, 25833),
-            xxx=to_gdf(x, 25833),
-            xxx2=to_gdf(make_valid(unary_union(x.dropna().values))),
-            mask=p.buffer(1),
-        )
+    #     geoms = pd.concat([to_gdf(y, 25833) for y in x])
+    #     geoms["xxx"] = [str(i) for i in range(len(geoms))]
+    #     explore(geoms, "xxx")
+    #     explore(
+    #         agged2=to_gdf(agged2, 25833),
+    #         xxx=to_gdf(x, 25833),
+    #         xxx2=to_gdf(make_valid(unary_union(x.dropna().values))),
+    #         mask=p.buffer(1),
+    #     )
 
-    return make_valid(
-        unary_union(x.dropna().values, grid_size=grid_size)
-        # unary_union(
-        #     [unary_union(geom, grid_size=grid_size) for geom in x.dropna().values],
-        #     grid_size=grid_size,
-        # )
-    )
+    # return make_valid(
+    #     unary_union(x.dropna().values, grid_size=grid_size)
+    #     # unary_union(
+    #     #     [unary_union(geom, grid_size=grid_size) for geom in x.dropna().values],
+    #     #     grid_size=grid_size,
+    #     # )
+    # )
 
 
 def _unary_union_for_notna(geoms, **kwargs):

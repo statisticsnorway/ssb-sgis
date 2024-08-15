@@ -12,6 +12,7 @@ from shapely import area
 from shapely import box
 from shapely import buffer
 from shapely import difference
+from shapely import extract_unique_points
 from shapely import get_exterior_ring
 from shapely import get_interior_ring
 from shapely import get_num_geometries
@@ -22,6 +23,7 @@ from shapely import make_valid
 from shapely import polygons
 from shapely import unary_union
 from shapely.errors import GEOSException
+from shapely.geometry import LinearRing
 from shapely.ops import SplitOp
 
 from ..debug_config import _DEBUG_CONFIG
@@ -29,6 +31,7 @@ from ..debug_config import _try_debug_print
 from ..maps.maps import explore_locals
 from .conversion import to_gdf
 from .conversion import to_geoseries
+from .duplicates import _get_intersecting_geometries
 from .duplicates import update_geometries
 from .general import _grouped_unary_union
 from .general import _parallel_unary_union
@@ -52,6 +55,7 @@ from .sfilter import sfilter
 from .sfilter import sfilter_inverse
 
 PRECISION = 1e-3
+_BUFFER = False
 
 
 def get_polygon_clusters(
@@ -318,7 +322,7 @@ def eliminate_by_longest(
         to_single_geom_type, "polygon"
     )
 
-    if 0:
+    if _BUFFER:
         gdf.geometry = gdf.buffer(
             PRECISION,
             resolution=1,
@@ -402,8 +406,13 @@ def eliminate_by_longest(
 
     out = GeoDataFrame(eliminated, geometry="geometry", crs=crs).pipe(clean_geoms)
 
-    if 0:
+    if _BUFFER:
         out.geometry = out.buffer(
+            -PRECISION,
+            resolution=1,
+            join_style=2,
+        )
+        isolated.geometry = isolated.buffer(
             -PRECISION,
             resolution=1,
             join_style=2,
@@ -741,6 +750,8 @@ def _eliminate(
     if not len(to_eliminate):
         return gdf
 
+    gdf["_range_idx_elim"] = range(len(gdf))
+
     in_to_eliminate = gdf["_dissolve_idx"].isin(to_eliminate["_dissolve_idx"])
     to_dissolve = gdf.loc[in_to_eliminate]
     not_to_dissolve = gdf.loc[~in_to_eliminate].set_index("_dissolve_idx")
@@ -899,18 +910,9 @@ def _eliminate(
             )
         else:
             eliminated["geometry"] = _grouped_unary_union(soon_eliminated, level=0)
-            # soon_eliminated.groupby(level=0).agg(
-            #     _safe_and_clean_unary_union
+            # eliminated["geometry"] = soon_eliminated.groupby(level=0).agg(
+            #     lambda x: make_valid(unary_union(x))
             # )
-
-        _try_debug_print("inni _eliminate")
-        explore_locals(center=_DEBUG_CONFIG["center"])
-
-        # explore(
-        #     gdf=to_gdf(gdf, 25833),
-        #     eliminated=to_gdf(eliminated, 25833),
-        #     soon_eliminated=to_gdf(soon_eliminated, 25833),
-        # )
 
     else:
         if n_jobs > 1:
@@ -919,9 +921,6 @@ def _eliminate(
             )
         else:
             eliminated["geometry"] = _grouped_unary_union(many_hits, by="_dissolve_idx")
-            # many_hits.groupby("_dissolve_idx")["geometry"].agg(
-            # _safe_and_clean_unary_union
-            # )
 
     # setting crs on the GeometryArrays to avoid warning in concat
     not_to_dissolve.geometry.values.crs = crs
@@ -935,7 +934,165 @@ def _eliminate(
 
     assert all(df.index.name == "_dissolve_idx" for df in to_concat)
 
-    return pd.concat(to_concat).sort_index().drop(columns="_to_eliminate")
+    out = pd.concat(to_concat).sort_index()
+
+    duplicated_geoms = _get_intersecting_geometries(
+        GeoDataFrame(
+            {
+                "geometry": out.geometry.values,
+                "_range_idx_elim_dups": out["_range_idx_elim"].values,
+            },
+        ),
+        geom_type="polygon",
+        keep_geom_type=True,
+        n_jobs=n_jobs,
+        predicate="intersects",
+    ).pipe(clean_geoms)
+    duplicated_geoms.geometry = duplicated_geoms.buffer(-PRECISION)
+    duplicated_geoms = duplicated_geoms.pipe(clean_geoms)
+
+    if len(duplicated_geoms):
+        hits_in_original_df = duplicated_geoms.sjoin(
+            GeoDataFrame(
+                {
+                    "geometry": gdf.geometry.values,
+                    "_range_idx_elim": gdf["_range_idx_elim"].values,
+                },
+            ),
+            how="inner",
+        )
+
+        should_be_erased = hits_in_original_df.loc[
+            lambda x: x["_range_idx_elim"] != x["_range_idx_elim_dups"]
+        ]
+
+        should_be_erased_idx = list(
+            sorted(should_be_erased["_range_idx_elim_dups"].unique())
+        )
+        should_erase = (
+            should_be_erased.groupby("_range_idx_elim_dups")["geometry"]
+            .agg(lambda x: make_valid(unary_union(x)))
+            .sort_index()
+        )
+
+        # aligining out with "should_erase" before rowwise difference
+        out = out.sort_values("_range_idx_elim")
+        assert out["_range_idx_elim"].is_unique
+        to_be_erased_idx = out["_range_idx_elim"].isin(should_be_erased_idx)
+
+        out.loc[to_be_erased_idx, "geometry"] = make_valid(
+            difference(
+                out.loc[
+                    to_be_erased_idx,
+                    "geometry",
+                ].values,
+                should_erase.values,
+            )
+        )
+
+        from ..maps.maps import explore
+
+        # display(hits_in_original_df)
+        # display(should_be_erased.assign(area=lambda x: x.area))
+
+        explore(
+            gdf=to_gdf(gdf, 25833),
+            out=to_gdf(out, 25833),
+            should_be_erased=to_gdf(should_be_erased, 25833),
+            duplicated_geoms=duplicated_geoms.set_crs(25833),
+            eli=GeoDataFrame(
+                {
+                    "geometry": out.geometry.values,
+                    "_range_idx_elim": out["_range_idx_elim"].values,
+                },
+                crs=25833,
+            ),
+            center=_DEBUG_CONFIG["center"],
+        )
+
+    _try_debug_print("inni _eliminate")
+    _try_debug_print(duplicated_geoms)
+    explore_locals(center=_DEBUG_CONFIG["center"])
+
+    return out.drop(columns=["_to_eliminate", "_range_idx_elim"])
+
+
+def _try_for_gdf_and_geoseries(
+    df_or_series: GeoDataFrame | GeoSeries, func: Callable, **kwargs
+) -> GeoDataFrame | GeoSeries:
+    try:
+        df_or_series.geometry = func(df_or_series, **kwargs)
+    except AttributeError as e:
+        if isinstance(df_or_series, GeoSeries):
+            df_or_series.loc[:] = func(df_or_series, **kwargs)
+        else:
+            raise e
+        return df_or_series
+
+
+def clean_dissexp(df: GeoDataFrame, dissolve_func: Callable, **kwargs) -> GeoDataFrame:
+    """Experimental."""
+    original_points = GeoDataFrame(
+        {"geometry": get_parts(extract_unique_points(df.geometry.values))}
+    )[lambda x: ~x.geometry.duplicated()]
+
+    dissolved = df.copy()
+
+    try:
+        dissolved.geometry = dissolved.buffer(PRECISION, resolution=1, join_style=2)
+    except AttributeError as e:
+        if isinstance(dissolved, GeoSeries):
+            dissolved.loc[:] = dissolved.buffer(PRECISION, resolution=1, join_style=2)
+        else:
+            raise e
+
+    dissolved = dissolve_func(dissolved, **kwargs)
+
+    try:
+        dissolved.geometry = dissolved.buffer(-PRECISION, resolution=1, join_style=2)
+    except AttributeError as e:
+        if isinstance(dissolved, GeoSeries):
+            dissolved.loc[:] = dissolved.buffer(-PRECISION, resolution=1, join_style=2)
+        else:
+            raise e
+
+    dissolved = dissolved.loc[lambda x: ~x.geometry.is_empty]
+    dissolved = dissolved.explode(ignore_index=True)
+
+    original_points = sfilter_inverse(original_points, dissolved.buffer(-PRECISION))
+
+    snapped = (
+        PolygonsAsRings(
+            dissolved.geometry,
+        )
+        .apply_numpy_func(
+            _snap_points_back,
+            kwargs={"snap_to": original_points, "tolerance": PRECISION},
+        )
+        .to_numpy()
+    )
+
+    try:
+        dissolved.geometry = snapped
+    except AttributeError as e:
+        if isinstance(dissolved, GeoSeries):
+            dissolved.loc[:] = snapped
+        else:
+            raise e
+
+    return dissolved
+
+
+def _snap_points_back(rings, snap_to, tolerance):
+    points = GeoDataFrame({"geometry": extract_unique_points(rings)})
+    points = points.explode(index_parts=True)
+
+    snap_to["geom_right"] = snap_to.geometry
+    nearest = points.sjoin_nearest(snap_to, max_distance=tolerance)
+    points.loc[nearest.index, points.geometry.name] = nearest["geom_right"]
+
+    new_rings = points.groupby(level=0)[points.geometry.name].agg(LinearRing)
+    return new_rings
 
 
 def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:

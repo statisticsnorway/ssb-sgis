@@ -21,11 +21,10 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from shapely import unary_union
 
-from .general import _merge_geometries, _grouped_unary_union
-from .general import _unary_union_for_notna
+from .general import _grouped_unary_union
 from .general import _parallel_unary_union
+from .general import _unary_union_for_notna
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper
 from .polygon_operations import get_grouped_centroids
@@ -307,9 +306,17 @@ def _dissolve(
     #         gdf=gdf,
     #     )
 
-    return GeoDataFrame(
-        pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs
-    )
+    # from ..maps.maps import explore_locals
+    # from .conversion import to_gdf
+
+    # explore_locals()
+
+    try:
+        return GeoDataFrame(
+            pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs
+        )
+    except TypeError as e:
+        raise e.__class__(e, dissolved.index, one_hit.index) from e
 
 
 def diss(
@@ -387,7 +394,6 @@ def dissexp(
     Returns:
         A GeoDataFrame where overlapping geometries are dissolved.
     """
-
     dissolve_kwargs = dissolve_kwargs | {
         "by": by,
         "as_index": as_index,
@@ -405,7 +411,10 @@ def dissexp(
 
 
 def dissexp_by_cluster(
-    gdf: GeoDataFrame, predicate: str | None = None, n_jobs: int = 1, **dissolve_kwargs
+    gdf: GeoDataFrame,
+    predicate: str | None = "intersects",
+    n_jobs: int = 1,
+    **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Dissolves overlapping geometries through clustering with sjoin and networkx.
 
@@ -461,7 +470,7 @@ def diss_by_cluster(
 def _run_func_by_cluster(
     func: Callable,
     gdf: GeoDataFrame,
-    predicate: str | None = None,
+    predicate: str | None = "intersects",
     n_jobs: int = 1,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
@@ -488,7 +497,7 @@ def _run_func_by_cluster(
     if by:
         dissolved = (
             make_all_singlepart(gdf)
-            .groupby(by, group_keys=True, dropna=False, as_index=False)
+            .groupby(by, group_keys=False, dropna=False, as_index=False)
             .apply(get_group_clusters)
             .pipe(func, by=["_cluster"] + by, n_jobs=n_jobs, **dissolve_kwargs)
         )

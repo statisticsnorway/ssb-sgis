@@ -136,20 +136,30 @@ def to_bbox(
         pass
 
     try:
-        minx = int(np.min(obj["minx"]))  # type: ignore [index]
-        miny = int(np.min(obj["miny"]))  # type: ignore [index]
-        maxx = int(np.max(obj["maxx"]))  # type: ignore [index]
-        maxy = int(np.max(obj["maxy"]))  # type: ignore [index]
+        minx = float(np.min(obj["minx"]))  # type: ignore [index]
+        miny = float(np.min(obj["miny"]))  # type: ignore [index]
+        maxx = float(np.max(obj["maxx"]))  # type: ignore [index]
+        maxy = float(np.max(obj["maxy"]))  # type: ignore [index]
         return minx, miny, maxx, maxy
     except Exception:
-        try:
-            minx = int(np.min(obj.minx))  # type: ignore [union-attr]
-            miny = int(np.min(obj.miny))  # type: ignore [union-attr]
-            maxx = int(np.max(obj.maxx))  # type: ignore [union-attr]
-            maxy = int(np.max(obj.maxy))  # type: ignore [union-attr]
-            return minx, miny, maxx, maxy
-        except Exception:
-            pass
+        pass
+    try:
+        minx = float(np.min(obj.minx))  # type: ignore [union-attr]
+        miny = float(np.min(obj.miny))  # type: ignore [union-attr]
+        maxx = float(np.max(obj.maxx))  # type: ignore [union-attr]
+        maxy = float(np.max(obj.maxy))  # type: ignore [union-attr]
+        return minx, miny, maxx, maxy
+    except Exception:
+        pass
+
+    try:
+        minx = float(np.min(obj["west_longitude"]))  # type: ignore [index]
+        miny = float(np.min(obj["south_latitude"]))  # type: ignore [index]
+        maxx = float(np.max(obj["east_longitude"]))  # type: ignore [index]
+        maxy = float(np.max(obj["north_latitude"]))  # type: ignore [index]
+        return minx, miny, maxx, maxy
+    except Exception:
+        pass
 
     if hasattr(obj, "geometry"):
         try:

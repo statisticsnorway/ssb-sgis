@@ -1,20 +1,21 @@
-import warnings
-import joblib
-from collections.abc import Callable
-from typing import Any
-import numbers
-from contextlib import contextmanager
 import json
+import numbers
+import warnings
+from collections.abc import Callable
+from contextlib import contextmanager
+from typing import Any
 
-from geopandas import GeoDataFrame, GeoSeries
-from shapely import Geometry
+import joblib
 import numpy as np
-from affine import Affine
 import pandas as pd
 import rasterio
-from shapely.geometry import shape
-from rasterio.enums import MergeAlg
+from affine import Affine
+from geopandas import GeoDataFrame
+from geopandas import GeoSeries
 from rasterio import features
+from rasterio.enums import MergeAlg
+from shapely import Geometry
+from shapely.geometry import shape
 
 from ..geopandas_tools.conversion import to_bbox
 
@@ -101,6 +102,10 @@ def _array_to_geojson_loop(array, transform, mask, processes):
                     array, transform=transform, mask=mask
                 )
             )
+
+
+def _value_geom_pair(value, geom):
+    return (value, shape(geom))
 
 
 def _gdf_to_arr(

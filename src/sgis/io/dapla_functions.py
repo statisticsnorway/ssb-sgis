@@ -18,7 +18,7 @@ from ..geopandas_tools.sfilter import sfilter
 
 
 def read_geopandas(
-    gcs_path: str | Path | list[str | Path],
+    gcs_path: str | Path | list[str | Path] | GeoSeries,
     pandas_fallback: bool = False,
     file_system: dp.gcs.GCSFileSystem | None = None,
     mask: GeoSeries | GeoDataFrame | shapely.Geometry | tuple | None = None,
@@ -54,14 +54,18 @@ def read_geopandas(
     if file_system is None:
         file_system = dp.FileClient.get_gcs_file_system()
 
-    if isinstance(gcs_path, (list, tuple)):
+    if isinstance(gcs_path, (list | tuple | GeoSeries)):
         kwargs |= {"file_system": file_system, "pandas_fallback": pandas_fallback}
 
         if mask is not None:
-            in_bounds: GeoSeries = sfilter(
-                _get_bounds_series(gcs_path, file_system, validate_crs), mask
-            )
-            gcs_path: list[str] = list(in_bounds.index)
+            if not isinstance(gcs_path, GeoSeries):
+                gcs_path: GeoSeries = get_bounds_series(
+                    gcs_path, file_system, validate_crs
+                )
+            gcs_path: GeoSeries = sfilter(gcs_path, mask)
+            gcs_path: list[str] = list(gcs_path.index)
+            if not len(gcs_path):
+                return GeoDataFrame({"geometry": []})
 
         # recursive read with threads
         with joblib.Parallel(n_jobs=len(gcs_path), backend="threading") as parallel:
@@ -112,24 +116,89 @@ def read_geopandas(
 
 
 def _get_bounds_parquet(
-    path: str | Path, fs: dp.gcs.GCSFileSystem
+    path: str | Path, file_system: dp.gcs.GCSFileSystem
 ) -> tuple[list[float], dict]:
-    with fs.open(path) as f:
-        meta = json.loads(parquet.read_schema(f).metadata[b"geo"])["columns"][
-            "geometry"
-        ]
+    with file_system.open(path) as f:
+        num_rows = parquet.read_metadata(f).num_rows
+        if not num_rows:
+            return None, None
+        meta = parquet.read_schema(f).metadata
+    meta = json.loads(meta[b"geo"])["columns"]["geometry"]
     return meta["bbox"], meta["crs"]
 
 
-def _get_bounds_series(gcs_path, fs: dp.gcs.GCSFileSystem, validate_crs) -> GeoSeries:
-    with joblib.Parallel(n_jobs=len(gcs_path), backend="threading") as parallel:
+def get_bounds_series(
+    paths: list[str | Path],
+    file_system: dp.gcs.GCSFileSystem | None = None,
+    validate_crs: bool = False,
+) -> GeoSeries:
+    """Get a GeoSeries with file paths as indexes and the file's bounds as values.
+
+    The returned GeoSeries can be used as the first argument of 'read_geopandas'
+    along with the 'mask' keyword.
+
+    Args:
+        paths: Iterable of file paths in gcs.
+        file_system: Optional instance of dp.gcs.GCSFileSystem.
+            If None, an instance is created within the function.
+            Note that this is slower in long loops.
+        validate_crs: If True, a ValueError is raised if all
+            files does not have the same coordinate reference system.
+            Defaults to False.
+
+    Returns:
+        A geopandas.GeoSeries with file paths as indexes and bounds as values.
+
+    Examples:
+    -------
+    >>> import sgis as sg
+    >>> import dapla as dp
+    >>> file_system = dp.FileClient.get_gcs_file_system()
+    >>> all_paths = file_system.ls("...")
+
+    Get the bounds of all your file paths, indexed by path.
+
+    >>> bounds_series = sg.get_bounds_series(all_paths, file_system)
+    >>> bounds_series
+    .../0301.parquet    POLYGON ((273514.334 6638380.233, 273514.334 6...
+    .../1101.parquet    POLYGON ((6464.463 6503547.192, 6464.463 65299...
+    .../1103.parquet    POLYGON ((-6282.301 6564097.347, -6282.301 660...
+    .../1106.parquet    POLYGON ((-46359.891 6622984.385, -46359.891 6...
+    .../1108.parquet    POLYGON ((30490.798 6551661.467, 30490.798 658...
+                                                                                                            ...
+    .../5628.parquet    POLYGON ((1019391.867 7809550.777, 1019391.867...
+    .../5630.parquet    POLYGON ((1017907.145 7893398.317, 1017907.145...
+    .../5632.parquet    POLYGON ((1075687.587 7887714.263, 1075687.587...
+    .../5634.parquet    POLYGON ((1103447.451 7874551.663, 1103447.451...
+    .../5636.parquet    POLYGON ((1024129.618 7838961.91, 1024129.618 ...
+    Length: 357, dtype: geometry
+
+    Make a grid around the total bounds of the files,
+    and read geometries intersecting with the mask in a loop.
+
+    >>> grid = sg.make_grid(bounds_series, 10_000)
+    >>> for mask in grid.geometry:
+    ...     df = sg.read_geopandas(
+    ...         bounds_series,
+    ...         mask=mask,
+    ...         file_system=file_system,
+    ...     )
+
+    """
+    if file_system is None:
+        file_system = dp.FileClient.get_gcs_file_system()
+
+    with joblib.Parallel(n_jobs=len(paths), backend="threading") as parallel:
         bounds: list[tuple[list[float], dict]] = parallel(
-            joblib.delayed(_get_bounds_parquet)(path, fs=fs) for path in gcs_path
+            joblib.delayed(_get_bounds_parquet)(path, file_system=file_system)
+            for path in paths
         )
     if validate_crs and len({json.dumps(x[1]) for x in bounds}) != 1:
         raise ValueError(f"crs mismatch {({json.dumps(x[1]) for x in bounds})}")
     return GeoSeries(
-        [shapely.box(*bbox[0]) for bbox in bounds], index=gcs_path, crs=bounds[0][1]
+        [shapely.box(*bbox[0]) if bbox[0] is not None else None for bbox in bounds],
+        index=paths,
+        crs=bounds[0][1],
     )
 
 

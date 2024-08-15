@@ -8,13 +8,13 @@ from shapely import STRtree
 from shapely import difference
 from shapely import make_valid
 from shapely import simplify
-from shapely import unary_union
 from shapely.errors import GEOSException
 
-from .general import _determine_geom_type_args, _safe_and_clean_unary_union
+from .general import _determine_geom_type_args
+from .general import _grouped_unary_union
 from .general import _parallel_unary_union_geoseries
 from .general import _push_geom_col
-from .general import clean_geoms, _grouped_unary_union
+from .general import clean_geoms
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
@@ -355,9 +355,32 @@ def _get_intersecting_geometries(
 
     duplicated_points = points_joined.loc[points_joined.index.duplicated(keep=False)]
 
-    return intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
+    out = intersected.loc[intersected.index.isin(duplicated_points.index)].drop(
         columns=["idx_left", "idx_right"]
     )
+
+    # some polygons within polygons are not counted in the
+    within = (
+        gdf.assign(_range_idx_inters_left=lambda x: range(len(x)))
+        .sjoin(
+            GeoDataFrame(
+                {
+                    "geometry": gdf.buffer(1e-6).values,
+                    "_range_idx_inters_right": range(len(gdf)),
+                },
+                crs=gdf.crs,
+            ),
+            how="inner",
+            predicate="within",
+        )
+        .loc[lambda x: x["_range_idx_inters_left"] != x["_range_idx_inters_right"]]
+        .drop(
+            columns=["index_right", "_range_idx_inters_left", "_range_idx_inters_right"]
+        )
+        .pipe(sfilter_inverse, out.buffer(-PRECISION))
+    )
+
+    return pd.concat([out, within])
 
 
 def _drop_duplicate_geometries(gdf: GeoDataFrame, **kwargs) -> GeoDataFrame:

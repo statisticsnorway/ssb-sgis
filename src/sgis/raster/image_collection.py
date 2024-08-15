@@ -2,18 +2,15 @@ import datetime
 import functools
 import glob
 import itertools
-import numbers
 import os
 import random
 import re
-import warnings
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
 from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import dataclass
-from json import loads
 from pathlib import Path
 from typing import Any
 from typing import ClassVar
@@ -28,7 +25,6 @@ from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from matplotlib.colors import LinearSegmentedColormap
-from rasterio import features
 from rasterio.enums import MergeAlg
 from rtree.index import Index
 from rtree.index import Property
@@ -41,7 +37,6 @@ from shapely import unary_union
 from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
 from shapely.geometry import Polygon
-from shapely.geometry import shape
 
 try:
     import dapla as dp
@@ -113,6 +108,10 @@ from ..helpers import get_numpy_func
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
 from . import sentinel_config as config
+from .base import _array_to_geojson
+from .base import _gdf_to_arr
+from .base import _get_shape_from_bounds
+from .base import _get_transform_from_bounds
 from .base import get_index_mapper
 from .indices import ndvi
 from .zonal import _aggregate
@@ -120,12 +119,6 @@ from .zonal import _make_geometry_iterrows
 from .zonal import _no_overlap_df
 from .zonal import _prepare_zonal
 from .zonal import _zonal_post
-from .base import (
-    _gdf_to_arr,
-    _array_to_geojson,
-    _get_shape_from_bounds,
-    _get_transform_from_bounds,
-)
 
 if is_dapla():
 
@@ -3087,10 +3080,6 @@ def _get_dtype_max(dtype: str | type) -> int | float:
 
 def _img_ndvi(img, **kwargs):
     return Image([img.ndvi(**kwargs)])
-
-
-def _value_geom_pair(value, geom):
-    return (value, shape(geom))
 
 
 def _intesects(x, other) -> bool:

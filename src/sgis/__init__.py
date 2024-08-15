@@ -16,7 +16,6 @@ from .geopandas_tools.bounds import gridloop
 from .geopandas_tools.bounds import make_grid
 from .geopandas_tools.bounds import make_grid_from_bbox
 from .geopandas_tools.bounds import make_ssb_grid
-from .geopandas_tools.general import points_in_bounds
 from .geopandas_tools.buffer_dissolve_explode import buff
 from .geopandas_tools.buffer_dissolve_explode import buffdiss
 from .geopandas_tools.buffer_dissolve_explode import buffdissexp
@@ -27,6 +26,7 @@ from .geopandas_tools.buffer_dissolve_explode import dissexp
 from .geopandas_tools.buffer_dissolve_explode import dissexp_by_cluster
 from .geopandas_tools.centerlines import get_rough_centerlines
 from .geopandas_tools.cleaning import coverage_clean
+from .geopandas_tools.cleaning import split_and_eliminate_by_longest
 from .geopandas_tools.cleaning import split_by_neighbors
 from .geopandas_tools.conversion import coordinate_array
 from .geopandas_tools.conversion import from_4326
@@ -43,6 +43,7 @@ from .geopandas_tools.general import clean_geoms
 from .geopandas_tools.general import drop_inactive_geometry_columns
 from .geopandas_tools.general import get_common_crs
 from .geopandas_tools.general import get_grouped_centroids
+from .geopandas_tools.general import points_in_bounds
 from .geopandas_tools.general import random_points
 from .geopandas_tools.general import random_points_in_polygons
 from .geopandas_tools.general import sort_large_first
@@ -65,13 +66,13 @@ from .geopandas_tools.neighbors import sjoin_within_distance
 from .geopandas_tools.overlay import clean_overlay
 from .geopandas_tools.point_operations import snap_all
 from .geopandas_tools.point_operations import snap_within_distance
+from .geopandas_tools.polygon_operations import clean_dissexp
 from .geopandas_tools.polygon_operations import close_all_holes
 from .geopandas_tools.polygon_operations import close_small_holes
 from .geopandas_tools.polygon_operations import close_thin_holes
 from .geopandas_tools.polygon_operations import eliminate_by_largest
 from .geopandas_tools.polygon_operations import eliminate_by_longest
 from .geopandas_tools.polygon_operations import eliminate_by_smallest
-from .geopandas_tools.cleaning import split_and_eliminate_by_longest
 from .geopandas_tools.polygon_operations import get_cluster_mapper
 from .geopandas_tools.polygon_operations import get_gaps
 from .geopandas_tools.polygon_operations import get_holes
@@ -131,6 +132,7 @@ from .raster.image_collection import concat_image_collections
 
 try:
     from .io.dapla_functions import check_files
+    from .io.dapla_functions import get_bounds_series
     from .io.dapla_functions import read_geopandas
     from .io.dapla_functions import write_geopandas
 except ImportError:

@@ -16,6 +16,7 @@ from shapely import line_merge
 from shapely import make_valid
 from shapely import segmentize
 from shapely import unary_union
+from shapely import union_all
 from shapely import voronoi_polygons
 from shapely.errors import GEOSException
 from shapely.geometry import LineString
@@ -62,7 +63,7 @@ def _remove_longest_if_not_intersecting(
 
     nearest = longest_endpoints.groupby(level=0).apply(
         lambda x: nearest_points(
-            x, not_longest[not_longest.index.isin(x.index)].union_all()
+            x, union_all(not_longest[not_longest.index.isin(x.index)].geometry.values)
         )[1]
     )
     longest_endpoints.loc[:] = make_lines_between_points(

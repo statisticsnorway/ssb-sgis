@@ -18,7 +18,7 @@ import sgis as sg
 
 
 def test_split_polygons_by_lines():
-    l = LineString([(0, 0), (1, 1)])
+    line = LineString([(0, 0), (1, 1)])
     l2 = LineString([(0, 0.1), (1, 1)])
     l3 = LineString([(0, 0.3), (0.36352539, 0.58325195)])
     poly = LineString([(1, 0), (0, 1)]).buffer(0.1)
@@ -26,7 +26,7 @@ def test_split_polygons_by_lines():
     polys = sg.to_gdf([poly, poly2])
     polys["col"] = ["0", "1"]
     polys.index = 5, 1
-    lines = sg.to_gdf([l, l2, l3])
+    lines = sg.to_gdf([line, l2, l3])
 
     splitted = sg.split_polygons_by_lines(polys, lines)
     assert len(splitted) == 6
@@ -229,32 +229,18 @@ def test_get_polygon_clusters():
 
 
 def test_eliminate_too_far_away():
-    to_pandas_na = {value: pd.NA for value in [None, np.nan]}
 
     df = sg.to_gdf([(0, 0)]).pipe(sg.buff, 1)
     too_far_away = sg.to_gdf([(10, 10)]).pipe(sg.buff, 1)
-    too_far_away["_idx"] = "a"
-    eliminated = sg.eliminate_by_longest(df, too_far_away, remove_isolated=False)
-    eliminated["_idx"] = eliminated["_idx"].replace(to_pandas_na).fillna(pd.NA)
-    assert len(eliminated) == 2
-    assert (
-        eliminated["_idx"].replace().equals(pd.Series([pd.NA, "a"], index=[0, 0]))
-    ), eliminated["_idx"]
-
-    eliminated = sg.eliminate_by_largest(df, too_far_away, remove_isolated=False)
-    eliminated["_idx"] = eliminated["_idx"].replace(to_pandas_na).fillna(pd.NA)
-    assert len(eliminated) == 2
-    assert (
-        eliminated["_idx"].replace().equals(pd.Series([pd.NA, "a"], index=[0, 0]))
-    ), eliminated["_idx"]
-
-    eliminated = sg.eliminate_by_longest(df, too_far_away, remove_isolated=True)
-    assert len(eliminated) == 1
-    assert "_idx" not in eliminated
-
-    eliminated = sg.eliminate_by_largest(df, too_far_away, remove_isolated=True)
-    assert len(eliminated) == 1
-    assert "_idx" not in eliminated
+    eliminated, isolated = sg.eliminate_by_longest(
+        df, too_far_away  # , remove_isolated=False
+    )
+    assert len(too_far_away) == 1, too_far_away
+    assert len(isolated) == 1, isolated
+    assert len(df) == 1, df
+    assert len(eliminated) == 1, eliminated
+    assert int(eliminated.area.sum()) == int(df.area.sum())
+    assert int(too_far_away.area.sum()) == int(too_far_away.area.sum())
 
 
 def test_eliminate():
@@ -269,19 +255,30 @@ def test_eliminate():
     large_poly = sg.to_gdf(
         Polygon([(0, 0), (0.1, 1), (1, 2), (2, 2), (3, 2), (3, 0)])
     ).assign(what="large", num=3)
-    isolated = sg.to_gdf(
-        Polygon([(10, 10), (-10.1, 11), (10, 12), (-11, 12), (-12, 12), (-11, 11)])
+    isolated_poly = sg.to_gdf(
+        Polygon(
+            [
+                (10, 10),
+                (-10.1, 11),
+                (10, 12),
+                (-11, 12),
+                (-12, 12),
+                (-11, 11),
+            ]
+        )
     ).assign(what="isolated", num=4)
 
+    isolated_poly.index = [-2]
     small_poly.index = [5]
     large_poly.index = [7]
 
     for n_jobs in [1, 3]:
-        small_poly_eliminated, large_poly_eliminated = sg.eliminate_by_longest(
-            [small_poly, large_poly], sliver, n_jobs=n_jobs
+        small_poly_eliminated, large_poly_eliminated, isolated = (
+            sg.eliminate_by_longest([small_poly, large_poly], sliver, n_jobs=n_jobs)
         )
         if __name__ == "__main__":
             sg.qtm(small_poly_eliminated, large_poly_eliminated, alpha=0.5)
+        assert not len(isolated), len(isolated)
         assert (
             area := sg.clean_overlay(small_poly_eliminated, large_poly_eliminated)
             .buffer(-0.0001)
@@ -309,11 +306,12 @@ def test_eliminate():
             large_poly_eliminated.area
         )
 
-        small_poly_eliminated, large_poly_eliminated = sg.eliminate_by_largest(
-            [small_poly, large_poly], sliver, n_jobs=n_jobs
+        small_poly_eliminated, large_poly_eliminated, isolated = (
+            sg.eliminate_by_largest([small_poly, large_poly], sliver, n_jobs=n_jobs)
         )
         if __name__ == "__main__":
             sg.qtm(small_poly_eliminated, large_poly_eliminated, alpha=0.5)
+        assert not len(isolated), len(isolated)
         assert (
             area := sg.clean_overlay(small_poly_eliminated, large_poly_eliminated)
             .buffer(-0.0001)
@@ -343,29 +341,32 @@ def test_eliminate():
 
         polys = pd.concat([small_poly, large_poly])
 
-        eliminated = sg.eliminate_by_longest(polys, sliver, n_jobs=n_jobs)
+        eliminated, isolated = sg.eliminate_by_longest(polys, sliver, n_jobs=n_jobs)
 
         if __name__ == "__main__":
             sg.qtm(eliminated, "what", title="after eliminate_by_longest", alpha=0.8)
+        assert not len(isolated), len(isolated)
         assert list(eliminated.index) == [5, 7], list(eliminated.index)
         assert list(eliminated.num) == [2, 3], list(eliminated.num)
         assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
         assert list(round(eliminated.area, 1)) == [2.1, 5.4], list(eliminated.area)
 
-        eliminated = sg.eliminate_by_longest(
+        eliminated, isolated = sg.eliminate_by_longest(
             polys, sliver, aggfunc={"num": "sum", "what": "first"}, n_jobs=n_jobs
         )
         if __name__ == "__main__":
             sg.qtm(eliminated, "num", title="", alpha=0.8)
 
+        assert not len(isolated), len(isolated)
         assert list(eliminated.num) == [3, 3], list(eliminated.num)
         assert list(sorted(eliminated.columns)) == ["geometry", "num", "what"], list(
             sorted(eliminated.columns)
         )
 
-        eliminated = sg.eliminate_by_largest(polys, sliver, n_jobs=n_jobs)
+        eliminated, isolated = sg.eliminate_by_largest(polys, sliver, n_jobs=n_jobs)
         if __name__ == "__main__":
             sg.qtm(eliminated, "what", title="after eliminate_by_largest", alpha=0.8)
+        assert not len(isolated), len(isolated)
         assert list(eliminated.index) == [5, 7], list(eliminated.index)
         assert list(eliminated.num) == [2, 3], list(eliminated.num)
         assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
@@ -374,18 +375,20 @@ def test_eliminate():
             sorted(eliminated.columns)
         )
 
-        eliminated = sg.eliminate_by_largest(
+        eliminated, isolated = sg.eliminate_by_largest(
             polys, sliver, aggfunc={"num": "sum", "what": "first"}, n_jobs=n_jobs
         )
+        assert not len(isolated), len(isolated)
         assert list(eliminated.num) == [2, 4], list(eliminated.num)
         assert list(sorted(eliminated.columns)) == ["geometry", "num", "what"], list(
             sorted(eliminated.columns)
         )
-        eliminated = sg.eliminate_by_smallest(
+        eliminated, isolated = sg.eliminate_by_smallest(
             polys, sliver, aggfunc={"num": "sum", "what": "first"}, n_jobs=n_jobs
         )
         if __name__ == "__main__":
             sg.qtm(eliminated, "what", title="after eliminate_by_smallest", alpha=0.8)
+        assert not len(isolated), len(isolated)
         assert list(eliminated.index) == [5, 7], list(eliminated.index)
         assert list(eliminated.num) == [3, 3], list(eliminated.num)
         assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
@@ -394,25 +397,31 @@ def test_eliminate():
             sorted(eliminated.columns)
         )
         missing_value = polys.assign(what=pd.NA)
-        eliminated = sg.eliminate_by_smallest(missing_value, sliver, n_jobs=n_jobs)
+        eliminated, isolated = sg.eliminate_by_smallest(
+            missing_value, sliver, n_jobs=n_jobs
+        )
         assert eliminated["what"].isna().all()
+        assert not len(isolated), len(isolated)
 
-        eliminated = sg.eliminate_by_longest(polys, isolated, n_jobs=n_jobs)
+        eliminated, isolated = sg.eliminate_by_longest(
+            polys, isolated_poly, n_jobs=n_jobs
+        )
 
         if __name__ == "__main__":
-            sg.qtm(eliminated, "what", title="with isolated", alpha=0.8)
-        assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
-        assert list(eliminated.what) == ["small", "large", "isolated"], list(
-            eliminated.what
-        )
+            sg.qtm(eliminated, "what", title="with isolated_poly", alpha=0.8)
+        assert len(isolated) == 1, len(isolated)
+        assert list(eliminated.index) == [5, 7], list(eliminated.index)
+        assert list(isolated.index) == [-2], list(isolated.index)
+        assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
+        assert list(isolated.what) == ["isolated"], list(isolated.what)
 
-        eliminated = sg.eliminate_by_largest(polys, isolated)
-        assert list(eliminated.what) == ["small", "large", "isolated"], list(
-            eliminated.what
-        )
-        assert list(eliminated.index) == [5, 7, 0], list(eliminated.index)
+        eliminated, isolated = sg.eliminate_by_largest(polys, isolated_poly)
+        assert len(isolated) == 1, len(isolated)
+        assert list(eliminated.what) == ["small", "large"], list(eliminated.what)
+        assert list(eliminated.index) == [5, 7], list(eliminated.index)
+        assert list(isolated.index) == [-2], list(isolated.index)
 
-        eliminated = sg.eliminate_by_longest(
+        eliminated, isolated = sg.eliminate_by_longest(
             polys, sg.buff(sliver, 0.1), fix_double=True, n_jobs=n_jobs
         )
         double = sg.get_intersections(eliminated)
@@ -427,7 +436,7 @@ def test_eliminate():
 
         assert double.area.sum() < 1e-10, double
 
-        eliminated = sg.eliminate_by_largest(
+        eliminated, isolated = sg.eliminate_by_largest(
             polys, sg.buff(sliver, 0.1), fix_double=True, n_jobs=n_jobs
         )
         double = sg.get_intersections(eliminated)

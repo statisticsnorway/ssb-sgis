@@ -20,9 +20,6 @@ from .conversion import to_gdf
 from .general import clean_clip
 from .general import get_common_crs
 
-from .general import is_bbox_like
-from .sfilter import sfilter
-
 
 @dataclass
 class Gridlooper:
@@ -660,6 +657,7 @@ def bounds_to_points(
     Examples:
     ---------
     >>> import sgis as sg
+    >>> from shapely.geometry import MultiPoint, Point
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
                                             geometry

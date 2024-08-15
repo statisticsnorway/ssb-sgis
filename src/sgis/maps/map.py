@@ -147,6 +147,7 @@ class Map:
             show_temp = show
 
         show_args = show_temp[: len(gdfs)]
+        # gdfs that are in kwargs
         show_kwargs = show_temp[len(gdfs) :]
         self._gdfs = []
         new_labels = []
@@ -169,6 +170,8 @@ class Map:
         i = 0
         for key, value in kwargs.items():
             try:
+                if isinstance(value, Geometry):
+                    value = to_gdf(value)
                 if not len(value):
                     continue
                 self._gdfs.append(to_gdf(value))

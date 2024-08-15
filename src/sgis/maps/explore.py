@@ -31,6 +31,7 @@ from jinja2 import Template
 from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely import box
+from shapely import union_all
 from shapely.geometry import LineString
 
 from ..geopandas_tools.bounds import get_total_bounds
@@ -188,10 +189,9 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     bounds: tuple = (
         _any_to_bbox_crs4326(mask, band.crs)
         if mask is not None
-        else gpd.GeoSeries(box(*band.bounds), crs=band.crs)
-        .to_crs(4326)
-        .union_all()
-        .bounds
+        else union_all(
+            gpd.GeoSeries(box(*band.bounds), crs=band.crs).to_crs(4326).geometry.values
+        ).bounds
     )
     # if np.max(arr) > 0:
     #     arr = arr / 255
@@ -288,10 +288,10 @@ class Explore(Map):
             self.browser = kwargs.pop("in_browser")
 
         if show is None:
-            show_was_none = True
+            self._show_was_none = True
             show = True
         else:
-            show_was_none = False
+            self._show_was_none = False
 
         new_gdfs = {}
         self.rasters = {}
@@ -362,8 +362,8 @@ class Explore(Map):
             self._gdf = GeoDataFrame({"geometry": [], self._column: []})
         self.show = show_new
 
-        if show_was_none and len(self._gdfs) > 6:
-            self.show = [False] * len(self._gdfs)
+        # if self._show_was_none and len(self._gdfs) > 6:
+        #     self.show = [False] * len(self._gdfs)
 
         if self._is_categorical:
             if len(self.gdfs) == 1:
@@ -381,15 +381,19 @@ class Explore(Map):
 
     def __repr__(self) -> str:
         """Representation."""
-        return f"{self.__class__.__name__}()"
+        return f"{self.__class__.__name__}({len(self)})"
 
-    def __bool__(self) -> bool:
-        """True if any gdfs have rows or there are any raster images."""
+    def __len__(self) -> int:
+        """Number of gdfs that have rows plus number of raster images."""
         try:
             rasters = self.raster_data
         except AttributeError:
             rasters = self.rasters
-        return bool(len(self._gdfs) + len(self._gdf) + len(rasters))
+        return len([gdf for gdf in self._gdfs if len(gdf)]) + len(rasters)
+
+    def __bool__(self) -> bool:
+        """True if any gdfs have rows or there are any raster images."""
+        return bool(len(self))
 
     def explore(
         self,
@@ -558,6 +562,9 @@ class Explore(Map):
 
     def _explore(self, **kwargs) -> None:
         self.kwargs = self.kwargs | kwargs
+
+        if self._show_was_none and len([gdf for gdf in self._gdfs if len(gdf)]) > 6:
+            self.show = [False] * len(self._gdfs)
 
         if self._is_categorical:
             self._create_categorical_map()
@@ -1169,10 +1176,11 @@ class Explore(Map):
                 _any_to_bbox_crs4326(mask, crs)
                 if mask is not None
                 else (
-                    gpd.GeoSeries(box(*red_band.bounds), crs=crs)
-                    .to_crs(4326)
-                    .union_all()
-                    .bounds
+                    union_all(
+                        gpd.GeoSeries(box(*red_band.bounds), crs=crs)
+                        .to_crs(4326)
+                        .geometry.values
+                    ).bounds
                 )
             )
 

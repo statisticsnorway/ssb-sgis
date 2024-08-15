@@ -17,8 +17,8 @@ from pandas import Series
 from sklearn.neighbors import NearestNeighbors
 
 from .conversion import coordinate_array
-from .geometry_types import get_geom_type
 from .general import get_index_right_columns
+from .geometry_types import get_geom_type
 
 
 def get_neighbor_indices(
@@ -120,9 +120,14 @@ def get_neighbor_indices(
     else:
         joined = gdf.sjoin(neighbors, how="inner", predicate=predicate)
 
-    joined["neighbor_index"] = [
-        values for values in zip(*[joined[col] for col in index_col_name])
-    ]
+    if len(index_col_name) > 1:
+        joined["neighbor_index"] = [
+            values
+            for values in zip(*[joined[col] for col in index_col_name], strict=False)
+        ]
+    else:
+        joined["neighbor_index"] = joined[index_col_name[0]]
+
     return joined["neighbor_index"]
 
 

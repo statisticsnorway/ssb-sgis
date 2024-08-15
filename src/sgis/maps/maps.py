@@ -19,6 +19,7 @@ from shapely import Geometry
 from shapely import box
 from shapely.geometry import Polygon
 
+from ..debug_config import _NoExplore
 from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.conversion import to_bbox
 from ..geopandas_tools.conversion import to_gdf
@@ -31,7 +32,6 @@ from ..geopandas_tools.geometry_types import get_geom_type
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
-from ..debug_config import _NoExplore
 
 try:
     from torchgeo.datasets.geo import RasterDataset
@@ -193,13 +193,63 @@ def explore(
             mask = to_gdf(center, crs=from_crs)
 
         bounds: Polygon = box(*get_total_bounds(*gdfs, *list(kwargs.values())))
-        if bounds is None or not mask.intersects(bounds).any():
-            mask = mask.set_crs(4326, allow_override=True)
 
-        try:
-            mask = mask.to_crs(to_crs)
-        except ValueError:
-            pass
+        any_intersections: bool = mask.intersects(bounds).any()
+        if not any_intersections and to_crs is None:
+            mask = to_gdf(Polygon(), to_crs)
+        elif not any_intersections:
+            bounds4326 = to_gdf(bounds, to_crs).to_crs(25833).geometry.iloc[0]
+            mask4326 = mask.set_crs(4326, allow_override=True).to_crs(25833)
+
+            if (mask4326.distance(bounds4326) > size).all():
+                # try flipping coordinates
+                x, y = next(iter(mask.geometry.iloc[0].coords))
+                mask4326 = to_gdf([y, x], 4326).to_crs(25833)
+
+            if (mask4326.distance(bounds4326) > size).all():
+                mask = to_gdf(Polygon(), to_crs)
+            else:
+                mask = mask4326.to_crs(to_crs)
+
+        # else:
+        #     mask_flipped = mask
+
+        # # coords = mask.get_coordinates()
+        # if (
+        #     (mask_flipped.distance(bounds) > size).all()
+        #     # and coords["x"].max() < 180
+        #     # and coords["y"].max() < 180
+        #     # and coords["x"].min() > -180
+        #     # and coords["y"].min() > -180
+        # ):
+        #     try:
+        #         bounds4326 = to_gdf(bounds, to_crs).to_crs(4326).geometry.iloc[0]
+        #     except ValueError:
+        #         bounds4326 = to_gdf(bounds, to_crs).set_crs(4326).geometry.iloc[0]
+
+        #     mask4326 = mask.set_crs(4326, allow_override=True)
+
+        #     if (mask4326.distance(bounds4326) > size).all():
+        #         # try flipping coordinates
+        #         x, y = list(mask4326.geometry.iloc[0].coords)[0]
+        #         mask4326 = to_gdf([y, x], 4326)
+
+        #     mask = mask4326
+
+        #     # if mask4326.intersects(bounds4326).any():
+        #     #     mask = mask4326
+        #     # else:
+        #     #     try:
+        #     #         mask = mask.to_crs(to_crs)
+        #     #     except ValueError:
+        #     #         pass
+        # else:
+        #     mask = mask_flipped
+
+        # try:
+        #     mask = mask.to_crs(to_crs)
+        # except ValueError:
+        #     pass
 
         if get_geom_type(mask) in ["point", "line"]:
             mask = mask.buffer(size)

@@ -1,19 +1,22 @@
 # %%
 
-import sys
 import random
+import sys
 import timeit
 from pathlib import Path
-from shapely import extract_unique_points, unary_union
+
 import numpy as np
 import pandas as pd
+from shapely import extract_unique_points
+from shapely import unary_union
 
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
 
-import sgis as sg
 from conftest import testgdf
+
+import sgis as sg
 
 
 def not_test_dissexp_n_jobs():
@@ -342,7 +345,6 @@ def test_grouped_unary_union():
 if __name__ == "__main__":
 
     test_grouped_unary_union()
-    sss
     gdf_fixture = testgdf()
     test_buffdiss(gdf_fixture)
     test_dissexp_index()

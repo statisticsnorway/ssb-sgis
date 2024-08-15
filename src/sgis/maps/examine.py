@@ -90,12 +90,12 @@ class Examine:
             **kwargs: Additional keyword arguments passed to sgis.clipmap.
 
         """
-        gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
-
         if mask_gdf is None:
             self.mask_gdf = gdfs[0]
         else:
             self.mask_gdf = mask_gdf
+
+        gdfs, column, kwargs = Map._separate_args(gdfs, column, kwargs)
 
         m = Explore(*gdfs, column=column, **kwargs)
 
@@ -159,7 +159,7 @@ class Examine:
             print("All rows are shown.")
             return
 
-        print(f"i == {self.i} (of {len(self.mask_gdf)})")
+        print(f"i == {self.i} (max. {len(self.mask_gdf)- 1})")
         self.explorer = clipmap(
             self.column,
             *list(self.rasters.values()),
@@ -253,7 +253,7 @@ class Examine:
     @property
     def mask(self) -> gpd.GeoDataFrame:
         """Returns a GeoDataFrame of the last shown mask geometry."""
-        return self.mask_gdf.iloc[[self.i]]
+        return self.mask_gdf.iloc[[self.i - 1]]
 
     @property
     def gdfs(self) -> dict[str, gpd.GeoDataFrame]:

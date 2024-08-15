@@ -8,6 +8,7 @@ from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from numpy.typing import NDArray
 from pyproj import CRS
+from shapely import difference
 from shapely import get_coordinates
 from shapely import get_exterior_ring
 from shapely import get_interior_ring
@@ -15,10 +16,10 @@ from shapely import get_num_interior_rings
 from shapely import linearrings
 from shapely import make_valid
 from shapely import polygons
-from shapely import difference
 from shapely import unary_union
 from shapely.geometry import LinearRing
 from shapely.geometry import Polygon
+
 from .conversion import to_gdf
 from .conversion import to_geoseries
 
@@ -378,30 +379,6 @@ class PolygonsAsRings:
         # erase rowwise
         nonempty_exteriors.loc[:] = make_valid(difference(polys, interiors_as_polys))
         return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
-
-        try:
-            nonempty_exteriors.loc[:] = make_valid(
-                polygons(
-                    nonempty_exteriors.values,
-                    interiors.values,
-                )
-            )
-            return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
-        except Exception as e:
-            print("\n\n")
-            print(empty_exteriors)
-            print(interiors)
-            print(nonempty_exteriors)
-            raise e
-            nonempty_exteriors.loc[:] = _geoms_to_linearrings_fallback(
-                nonempty_exteriors, interiors
-            ).values
-            return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
-
-        try:
-            return make_valid(polygons(exterior.values, interiors.values))
-        except Exception:
-            return _geoms_to_linearrings_fallback(exterior, interiors).values
 
 
 def get_linearring_series(geoms: GeoDataFrame | GeoSeries) -> pd.Series:

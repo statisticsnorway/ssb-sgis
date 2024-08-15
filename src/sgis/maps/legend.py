@@ -17,6 +17,7 @@ from geopandas import GeoDataFrame
 from matplotlib.lines import Line2D
 from pandas import Series
 
+from ..geopandas_tools.bounds import bounds_to_points
 from ..geopandas_tools.general import points_in_bounds
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
@@ -333,13 +334,21 @@ class Legend:
         diffx = maxx - minx
         diffy = maxy - miny
 
-        points = points_in_bounds(gdf, 30)
+        points = pd.concat(
+            [
+                points_in_bounds(gdf, 30),
+                bounds_to_points(gdf)
+                .geometry.explode(ignore_index=True)
+                .to_frame("geometry"),
+            ]
+        )
+
         gdf = gdf.loc[:, ~gdf.columns.str.contains("index|level_")]
         joined = points.sjoin_nearest(gdf, distance_col="nearest")
 
-        max_distance = max(joined.nearest)
+        max_distance = max(joined["nearest"])
 
-        best_position = joined.loc[joined.nearest == max_distance].drop_duplicates(
+        best_position = joined.loc[joined["nearest"] == max_distance].drop_duplicates(
             "geometry"
         )
 

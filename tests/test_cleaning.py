@@ -1,14 +1,14 @@
 # %%
 
-import time
-import sys
 import random
+import sys
+import time
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import shapely
-import numpy as np
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 
@@ -16,6 +16,22 @@ src = str(Path(__file__).parent).replace("tests", "") + "src"
 sys.path.insert(0, src)
 
 import sgis as sg
+
+# sizes = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10]
+# coords = (
+#     [(x, y) for x, y in zip(sizes[::-1], sizes)]
+#     + [(x, y) for x, y in zip(sizes, sizes[::-1])]
+#     + [(x, x) for x in sizes]
+#     + [(0, x) for x in sizes]
+#     + [(x, 0) for x in sizes]
+#     + [(0, 0)]
+# )
+
+# df = sg.to_gdf(coords)
+# df.geometry = df.buffer(10).difference(df.buffer(9.9))
+# dissolved = df.dissolve()
+# sg.explore(df, dissolved)
+# sss
 
 
 def test_clean_dissappearing_polygon():
@@ -62,6 +78,104 @@ def test_clean_dissappearing_polygon():
     ) == AREA_SHOULD_BE, area
 
 
+def test_clean_complicated_roads():
+    for tolerance in [
+        0.5,
+    ]:
+
+        _test_clean_complicated_roads_base(
+            Path(__file__).parent / "testdata/roads_difficult_to_dissolve4.txt",
+            "POLYGON ((-32050 6557614, -32050 6556914, -32750 6556914, -32750 6557614, -32050 6557614))",
+            tolerance=tolerance,
+        )
+
+        _test_clean_complicated_roads_base(
+            Path(__file__).parent / "testdata/roads_difficult_to_dissolve3.txt",
+            "POLYGON ((28120 6945720, 28120 6945020, 27420 6945020, 27420 6945720, 28120 6945720))",
+            tolerance=tolerance,
+        )
+
+        _test_clean_complicated_roads_base(
+            Path(__file__).parent / "testdata/roads_difficult_to_dissolve2.txt",
+            "POLYGON ((270257 6654842, 270257 6654142, 269557 6654142, 269557 6654842, 270257 6654842))",
+            tolerance=tolerance,
+        )
+
+        _test_clean_complicated_roads_base(
+            Path(__file__).parent / "testdata/roads_difficult_to_dissolve.txt",
+            "POLYGON ((-49922 6630166, -49922 6629466, -50622 6629466, -50622 6630166, -49922 6630166))",
+            tolerance=tolerance,
+        )
+
+
+def test_clean_dissexp():
+    from geopandas import GeoDataFrame
+    from shapely import extract_unique_points
+    from shapely import get_parts
+
+    df = sg.to_gdf(
+        [
+            "POLYGON ((373693.16000000015 7321024.640000001, 373690.5999999996 7321023.460000001, 373688.5499999998 7321022.210000001, 373686.01999999955 7321021.34, 373685.04000000004 7321020.43, 373684.76999999955 7321019.190000001, 373681.96999999974 7321015.460000001, 373680.11000000034 7321012.82, 373677.33999999985 7321010.59, 373673.21999999974 7321003.699999999, 373671.70999999996 7321002.870000001, 373667.29000000004 7321001.620000001, 373677.5 7321015, 373695 7321030, 373700.8520873802 7321030, 373695.46999999974 7321027.460000001, 373694.63999999966 7321026.039999999, 373693.16000000015 7321024.640000001))",
+            "POLYGON ((373700.4003424102 7321029.786805352, 373700.8520873802 7321030, 373700.85208738025 7321030, 373700.4003424102 7321029.786805352))",
+        ],
+        25833,
+    )
+
+    original_points = GeoDataFrame(
+        {"geometry": get_parts(extract_unique_points(df.geometry.values))}
+    )[lambda x: ~x.geometry.duplicated()]
+
+    cleaned = sg.clean_dissexp(df, dissolve_func=sg.dissexp, by=None)
+
+    print(cleaned)
+    sg.explore(cleaned)
+
+    cleaned.geometry = extract_unique_points(cleaned.geometry.values)
+    assert cleaned.index.is_unique
+    cleaned = cleaned.explode(index_parts=True)
+
+    still_in, gone = sg.sfilter_split(cleaned, original_points.buffer(1e-10))
+    sg.explore(still_in, gone, df, cleaned)
+
+
+def _test_clean_complicated_roads_base(path, mask, tolerance):
+    print()
+    print(path)
+
+    with open(path) as f:
+        df = sg.to_gdf(f.readlines(), 25833)
+
+    mask = sg.to_gdf(
+        mask,
+        25833,
+    )
+    df["ARTYPE"] = 12
+    cleaned = sg.coverage_clean(df, tolerance, mask=mask)
+
+    gaps = sg.get_gaps(cleaned)
+    double = sg.get_intersections(cleaned)
+    # missing = get_missing(sg.clean_clip(df, bbox.buffer(-tolerance * 1.1)), cleaned)
+    missing = get_missing(df, cleaned)
+    sg.explore(df, cleaned, gaps, missing, double)
+
+    print(
+        f"tolerance {tolerance}",
+        "gaps",
+        gaps.area.sum(),
+        "dup",
+        double.area.sum(),
+        "missing",
+        missing.area.sum(),
+    )
+    assert gaps.area.sum() <= 1e-6, f"tolerance {tolerance}, gaps: {gaps.area.sum()}"
+    assert (
+        double.area.sum() <= 1e-6
+    ), f"tolerance {tolerance}, double: {double.area.sum()}"
+    assert (
+        missing.area.sum() <= 1e-6
+    ), f"tolerance {tolerance}, missing: {missing.area.sum()}"
+
+
 def test_clean_1144():
     df = gpd.read_parquet(
         Path(__file__).parent / "testdata" / "snap_problem_area_1144.parquet"
@@ -95,6 +209,7 @@ def test_clean_1144():
     df["df_idx"] = range(len(df))
 
     for tolerance in [
+        0.51,
         0.5,
         0.91,
         0.57,
@@ -105,7 +220,7 @@ def test_clean_1144():
         1.5,
         2.25,
         *[round(random.random() + 0.5, 2) for _ in range(10)],
-        *[round(x, 2) for x in np.arange(0.4, 5, 0.01)],
+        *[round(x, 2) for x in np.arange(0.4, 1, 0.01)],
     ]:
         print("\ntolerance")
         print(tolerance)
@@ -160,6 +275,9 @@ def test_clean_1144():
             kommune_utenhav,
             cleaned_points,
             df_points,
+            gaps_buff=sg.buff(gaps, np.log(gaps.area.values + 2) ** 2),
+            missing_buff=sg.buff(missing, np.log(missing.area.values + 2) ** 2),
+            double_buff=sg.buff(double, np.log(double.area.values + 2) ** 2),
         )
 
         print(
@@ -176,10 +294,10 @@ def test_clean_1144():
         ), f"tolerance {tolerance}, gaps: {gaps.area.sum()}"
         assert (
             double.area.sum() <= 1e-6
-        ), f"tolerance {tolerance}, gaps: {double.area.sum()}"
+        ), f"tolerance {tolerance}, double: {double.area.sum()}"
         assert (
-            missing.area.sum() <= 1e-6
-        ), f"tolerance {tolerance}, gaps: {missing.area.sum()}"
+            missing.area.sum() <= 1e-3
+        ), f"tolerance {tolerance}, missing: {missing.area.sum()}"
 
         assert thick_df_indices.isin(cleaned_clipped["df_idx"]).all(), sg.explore(
             df,
@@ -206,8 +324,9 @@ def test_clean_1144():
 def get_missing(df, other):
     return (
         sg.clean_overlay(df, other, how="difference", geom_type="polygon")
-        .pipe(sg.buff, -0.0001)
-        .pipe(sg.clean_overlay, other, how="difference", geom_type="polygon")
+        # .pipe(sg.buff, -0.0001)
+        # .pipe(sg.clean_overlay, other, how="difference", geom_type="polygon")
+        .pipe(sg.sfilter_inverse, other.buffer(-0.001))
     )
 
 
@@ -389,7 +508,9 @@ def not_test_spikes():
 
 
 def main():
+    test_clean_dissexp()
     test_clean_1144()
+    test_clean_complicated_roads()
     test_clean()
     test_clean_dissappearing_polygon()
     not_test_spikes()

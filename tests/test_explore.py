@@ -172,9 +172,26 @@ def test_image_collection():
     assert len(e.rasters), e.rasters
 
 
-def not_test_center(r300, r200, r100, p):
+def inner_test_center(r300, r200, r100, p):
+
+    explorer = sg.explore(
+        sg.to_gdf([10.51125371, 0], 25833),
+        center=(6.02240883, 62.47416834, 300),
+    )
+    assert not len(explorer), len(explorer)
+
+    explorer = sg.explore(
+        sg.to_gdf("POINT (306.022 62.474)", 25833),
+        center=(6.02240883, 62.47416834, 300),
+    )
+
+    assert not len(explorer), len(explorer)
+
     for center in [
-        (263206.184457095, 6651199.528012605),
+        (263206.184457095, 6651199.528012605, 100),
+        # (6651199.528012605, 263206.184457095, 100),
+        (10.76100918, 59.92997799, 100),
+        (59.92997799, 10.76100918, 100),
         "point (263206.184457095 6651199.528012605)",
         {"geometry": [(263206.184457095, 6651199.528012605)]},
         sg.to_gdf("point (263206.184457095 6651199.528012605)", crs=r300.crs),
@@ -182,7 +199,7 @@ def not_test_center(r300, r200, r100, p):
             100
         ),
     ]:
-        sg.explore(
+        explorer = sg.explore(
             r300,
             r200,
             r100,
@@ -192,6 +209,8 @@ def not_test_center(r300, r200, r100, p):
             size=100,
             show_in_browser=False,
         )
+        assert explorer, (explorer, center)
+        assert len(explorer) == 3, (len(explorer), explorer)
 
 
 def test_explore(points_oslo, roads_oslo):
@@ -214,6 +233,8 @@ def test_explore(points_oslo, roads_oslo):
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
 
+    inner_test_center(r300, r200, r100, p)
+
     sg.explore(r300, "meters", r100, bygdoy=7000)
 
     # sg.explore(r300, r100, center_4326=(10.75966535, 59.92945927, 1000))
@@ -222,7 +243,6 @@ def test_explore(points_oslo, roads_oslo):
 
     sg.clipmap(r300, r200, "meters", show_in_browser=False)
     sg.explore(r300, r200, bygdoy=1, size=10_000, show_in_browser=False)
-    not_test_center(r300, r200, r100, p)
 
     sg.explore(
         r300,
@@ -347,9 +367,9 @@ def main():
     from oslo import points_oslo
     from oslo import roads_oslo
 
-    test_image_collection()
     # test_torch()
     test_explore(points_oslo(), roads_oslo())
+    test_image_collection()
     # not_test_explore(points_oslo(), roads_oslo())
 
 
