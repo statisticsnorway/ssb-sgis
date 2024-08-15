@@ -63,14 +63,14 @@ def read_geopandas(
                     gcs_path, file_system, validate_crs
                 )
             gcs_path: GeoSeries = sfilter(gcs_path, mask)
-            gcs_path: list[str] = list(gcs_path.index)
             if not len(gcs_path):
                 return GeoDataFrame({"geometry": []})
+            paths: list[str] = list(gcs_path.index)
 
         # recursive read with threads
-        with joblib.Parallel(n_jobs=len(gcs_path), backend="threading") as parallel:
+        with joblib.Parallel(n_jobs=len(paths), backend="threading") as parallel:
             dfs: list[GeoDataFrame] = parallel(
-                joblib.delayed(read_geopandas)(x, **kwargs) for x in gcs_path
+                joblib.delayed(read_geopandas)(x, **kwargs) for x in paths
             )
         df = pd.concat(dfs)
         if mask is not None:
@@ -117,7 +117,7 @@ def read_geopandas(
 
 def _get_bounds_parquet(
     path: str | Path, file_system: dp.gcs.GCSFileSystem
-) -> tuple[list[float], dict]:
+) -> tuple[list[float], dict] | tuple[None, None]:
     with file_system.open(path) as f:
         num_rows = parquet.read_metadata(f).num_rows
         if not num_rows:
