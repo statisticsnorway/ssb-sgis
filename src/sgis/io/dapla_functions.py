@@ -59,13 +59,15 @@ def read_geopandas(
 
         if mask is not None:
             if not isinstance(gcs_path, GeoSeries):
-                gcs_path: GeoSeries = get_bounds_series(
+                bounds_series: GeoSeries = get_bounds_series(
                     gcs_path, file_system, validate_crs
                 )
-            gcs_path = sfilter(gcs_path, mask)
-            if not len(gcs_path):
+            else:
+                bounds_series = gcs_path
+            bounds_series = sfilter(bounds_series, mask)
+            if not len(bounds_series):
                 return GeoDataFrame({"geometry": []})
-            paths: list[str] = list(gcs_path.index)
+            paths: list[str] = list(bounds_series.index)
 
         # recursive read with threads
         with joblib.Parallel(n_jobs=len(paths), backend="threading") as parallel:
