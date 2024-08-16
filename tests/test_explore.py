@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from shapely import union_all
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -294,7 +295,7 @@ def test_explore(points_oslo, roads_oslo):
             size=50,
             show_in_browser=False,
         )
-    monopoly = sg.to_gdf(r300.union_all().convex_hull, crs=r300.crs)
+    monopoly = sg.to_gdf(union_all(r300.geometry.values).convex_hull, crs=r300.crs)
 
     for _ in range(5):
         sg.samplemap(

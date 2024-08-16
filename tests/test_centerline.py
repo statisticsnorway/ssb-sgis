@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import geopandas as gpd
+from shapely import union_all
 from shapely.geometry import LineString
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
@@ -23,7 +24,9 @@ def test_get_centerline():
     centerline = sg.get_rough_centerlines(circle, 5)
     sg.qtm(centerline, circle)
 
-    circle_with_hole = circle.difference(sg.to_gdf([0, 0]).buffer(0.5).union_all())
+    circle_with_hole = circle.difference(
+        union_all(sg.to_gdf([0, 0]).buffer(0.5).geometry.values)
+    )
     centerline = sg.get_rough_centerlines(circle, 5)
     sg.qtm(centerline, circle_with_hole)
 

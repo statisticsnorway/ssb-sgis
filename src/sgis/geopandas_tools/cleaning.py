@@ -92,7 +92,7 @@ def coverage_clean(
 
     gdf_original = gdf.copy()
 
-    # more_than_one = (gdf.count_geometries() > 1).values
+    # more_than_one = get_num_geometries(gdf.geometry.values) > 1
     # gdf.loc[more_than_one, gdf._geometry_column_name] = gdf.loc[
     #     more_than_one, gdf._geometry_column_name
     # ].apply(_unary_union_for_notna)
@@ -1224,7 +1224,10 @@ def _sorted_unary_union(df: NDArray[Point]) -> LineString:
 def _separate_single_neighbored_from_multi_neighoured_geometries(
     gdf: GeoDataFrame, neighbors: GeoDataFrame
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
-    """Split GeoDataFrame in two: those with 0 or 1 neighbors and those with 2 or more."""
+    """Split GeoDataFrame in two: those with 0 or 1 neighbors and those with 2 or more.
+
+    Because single-neighbored polygons does not need splitting.
+    """
     tree = STRtree(neighbors.geometry.values)
     left, right = tree.query(gdf.geometry.values, predicate="intersects")
     pairs = pd.Series(right, index=left)

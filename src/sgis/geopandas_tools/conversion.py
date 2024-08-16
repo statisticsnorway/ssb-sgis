@@ -91,7 +91,7 @@ def to_shapely(obj: Any) -> Geometry:
     if not hasattr(obj, "__iter__"):
         raise TypeError(type(obj))
     try:
-        return obj.union_all()
+        return shapely.union_all(obj.geometry.values)
     except AttributeError:
         pass
     try:

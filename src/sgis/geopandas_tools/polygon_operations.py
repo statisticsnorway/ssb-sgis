@@ -21,7 +21,7 @@ from shapely import get_parts
 from shapely import is_empty
 from shapely import make_valid
 from shapely import polygons
-from shapely import unary_union
+from shapely import union_all
 from shapely.errors import GEOSException
 from shapely.geometry import LinearRing
 from shapely.ops import SplitOp
@@ -971,7 +971,7 @@ def _eliminate(
         )
         should_erase = (
             should_be_erased.groupby("_range_idx_elim_dups")["geometry"]
-            .agg(lambda x: make_valid(unary_union(x)))
+            .agg(lambda x: make_valid(union_all(x)))
             .sort_index()
         )
 
@@ -1015,19 +1015,6 @@ def _eliminate(
     explore_locals(center=_DEBUG_CONFIG["center"])
 
     return out.drop(columns=["_to_eliminate", "_range_idx_elim"])
-
-
-def _try_for_gdf_and_geoseries(
-    df_or_series: GeoDataFrame | GeoSeries, func: Callable, **kwargs
-) -> GeoDataFrame | GeoSeries:
-    try:
-        df_or_series.geometry = func(df_or_series, **kwargs)
-    except AttributeError as e:
-        if isinstance(df_or_series, GeoSeries):
-            df_or_series.loc[:] = func(df_or_series, **kwargs)
-        else:
-            raise e
-        return df_or_series
 
 
 def clean_dissexp(df: GeoDataFrame, dissolve_func: Callable, **kwargs) -> GeoDataFrame:
@@ -1098,7 +1085,7 @@ def _snap_points_back(rings, snap_to, tolerance):
 def close_thin_holes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
     gdf = make_all_singlepart(gdf)
     holes = get_holes(gdf)
-    inside_holes = sfilter(gdf, holes, predicate="within").union_all()
+    inside_holes = union_all(sfilter(gdf, holes, predicate="within").geometry.values)
 
     def to_none_if_thin(geoms):
         if not len(geoms):
@@ -1189,7 +1176,7 @@ def close_all_holes(
         else:
             return holes_closed
 
-    all_geoms = make_valid(gdf.union_all())
+    all_geoms = make_valid(union_all(gdf.geometry.values))
     if isinstance(gdf, GeoDataFrame):
         gdf.geometry = gdf.geometry.map(
             lambda x: _close_all_holes_no_islands(x, all_geoms)
@@ -1275,7 +1262,7 @@ def close_small_holes(
     gdf = make_all_singlepart(gdf)
 
     if not ignore_islands:
-        all_geoms = make_valid(gdf.union_all())
+        all_geoms = make_valid(union_all(gdf.geometry.values))
 
         if isinstance(gdf, GeoDataFrame):
             gdf.geometry = gdf.geometry.map(
@@ -1331,14 +1318,14 @@ def _close_small_holes_no_islands(poly, max_area, all_geoms):
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
             try:
-                no_islands = unary_union(hole.difference(all_geoms))
+                no_islands = union_all(hole.difference(all_geoms))
             except GEOSException:
-                no_islands = make_valid(unary_union(hole.difference(all_geoms)))
+                no_islands = make_valid(union_all(hole.difference(all_geoms)))
 
             if area(no_islands) < max_area:
                 holes_closed.append(no_islands)
 
-    return make_valid(unary_union(holes_closed))
+    return make_valid(union_all(holes_closed))
 
 
 def _close_all_holes_no_islands(poly, all_geoms):
@@ -1353,13 +1340,13 @@ def _close_all_holes_no_islands(poly, all_geoms):
         for n in range(n_interior_rings):
             hole = polygons(get_interior_ring(part, n))
             try:
-                no_islands = unary_union(hole.difference(all_geoms))
+                no_islands = union_all(hole.difference(all_geoms))
             except GEOSException:
-                no_islands = make_valid(unary_union(hole.difference(all_geoms)))
+                no_islands = make_valid(union_all(hole.difference(all_geoms)))
 
             holes_closed.append(no_islands)
 
-    return make_valid(unary_union(holes_closed))
+    return make_valid(union_all(holes_closed))
 
 
 def get_gaps(

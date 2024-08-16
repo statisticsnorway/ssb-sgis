@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from shapely import get_num_geometries
 
 from .general import _grouped_unary_union
 from .general import _parallel_unary_union
@@ -198,7 +199,7 @@ def _dissolve(
 
     gdf[geom_col] = gdf[geom_col].make_valid()
 
-    more_than_one = (gdf.count_geometries() > 1).values
+    more_than_one = get_num_geometries(gdf.geometry.values) > 1
     gdf.loc[more_than_one, geom_col] = gdf.loc[more_than_one, geom_col].apply(
         _unary_union_for_notna
     )

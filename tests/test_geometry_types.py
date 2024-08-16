@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import shapely
 from helpers import create_all_geometry_types
+from shapely import union_all
 from shapely.geometry import LineString
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
@@ -60,9 +61,9 @@ def test_all_geom_types():
         MultiPoint([(10, 10), (11, 11)]),
         MultiPoint([(0, 0), (10, 10), (11, 11)]),
     ], res
-    assert (res := sg.to_single_geom_type(gdf.union_all(), "point")) == MultiPoint(
-        ([0, 0], (10, 10), (11, 11))
-    ), res
+    assert (
+        res := sg.to_single_geom_type(union_all(gdf.geometry.values), "point")
+    ) == MultiPoint(([0, 0], (10, 10), (11, 11))), res
 
     assert (
         res := [x.wkt for x in sg.to_single_geom_type(gdf.geometry.values, "line")]
@@ -73,7 +74,7 @@ def test_all_geom_types():
         "MULTILINESTRING ((60 60, 60 61, 61 61, 61 60, 60 60), (20 20, 21 21), (30 30, 31 31), (32 32, 33 33))",
     ], res
     assert (
-        res := sg.to_single_geom_type(gdf.union_all(), "line")
+        res := sg.to_single_geom_type(union_all(gdf.geometry.values), "line")
     ) == shapely.wkt.loads(
         "MULTILINESTRING ((60 60, 60 61), (60 61, 61 61), (61 61, 61 60), (61 60, 60 60), (20 20, 21 21), (30 30, 31 31), (32 32, 33 33))"
     ), res
@@ -83,7 +84,10 @@ def test_all_geom_types():
         for x in sg.to_single_geom_type(gdf.geometry.values, "polygon")
     )
 
-    assert "POLYGON" in sg.to_single_geom_type(gdf.union_all(), "polygon").wkt
+    assert (
+        "POLYGON"
+        in sg.to_single_geom_type(union_all(gdf.geometry.values), "polygon").wkt
+    )
 
 
 def test_geom_types():

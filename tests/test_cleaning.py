@@ -181,7 +181,9 @@ def test_clean_1144():
         Path(__file__).parent / "testdata" / "snap_problem_area_1144.parquet"
     )
 
-    bbox = sg.to_gdf(shapely.minimum_rotated_rectangle(df.union_all()), df.crs)
+    bbox = sg.to_gdf(
+        shapely.minimum_rotated_rectangle(shapely.union_all(df.geometry.values)), df.crs
+    )
 
     kommune_utenhav = gpd.read_parquet(
         Path(__file__).parent / "testdata" / "kommune_utenhav_1144_2023.parquet"
@@ -334,7 +336,9 @@ def test_clean():
 
     df = gpd.read_parquet(Path(__file__).parent / "testdata" / "polygon_snap.parquet")
 
-    bbox = sg.to_gdf(shapely.minimum_rotated_rectangle(df.union_all()), df.crs)
+    bbox = sg.to_gdf(
+        shapely.minimum_rotated_rectangle(shapely.union_all(df.geometry.values)), df.crs
+    )
 
     kommune_utenhav = gpd.read_parquet(
         Path(__file__).parent / "testdata" / "kommune_utenhav_5435_2023.parquet"
