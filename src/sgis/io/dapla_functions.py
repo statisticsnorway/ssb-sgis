@@ -67,10 +67,10 @@ def read_geopandas(
             bounds_series = sfilter(bounds_series, mask)
             if not len(bounds_series):
                 return GeoDataFrame({"geometry": []})
-            paths: list[str] = list(bounds_series.index)
+            paths = list(bounds_series.index)
         else:
             if isinstance(gcs_path, GeoSeries):
-                paths: list[str] = list(gcs_path.index)
+                paths = list(gcs_path.index)
             else:
                 paths = gcs_path
 
