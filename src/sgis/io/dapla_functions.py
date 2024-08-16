@@ -72,7 +72,7 @@ def read_geopandas(
             if isinstance(gcs_path, GeoSeries):
                 paths = list(gcs_path.index)
             else:
-                paths = gcs_path
+                paths = list(gcs_path)
 
         # recursive read with threads
         with joblib.Parallel(n_jobs=len(paths), backend="threading") as parallel:
