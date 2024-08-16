@@ -18,7 +18,7 @@ from ..geopandas_tools.sfilter import sfilter
 
 
 def read_geopandas(
-    gcs_path: str | Path | list[str | Path] | GeoSeries,
+    gcs_path: str | Path | list[str | Path] | tuple[str | Path] | GeoSeries,
     pandas_fallback: bool = False,
     file_system: dp.gcs.GCSFileSystem | None = None,
     mask: GeoSeries | GeoDataFrame | shapely.Geometry | tuple | None = None,
@@ -68,6 +68,11 @@ def read_geopandas(
             if not len(bounds_series):
                 return GeoDataFrame({"geometry": []})
             paths: list[str] = list(bounds_series.index)
+        else:
+            if isinstance(gcs_path, GeoSeries):
+                paths: list[str] = list(gcs_path.index)
+            else:
+                paths = gcs_path
 
         # recursive read with threads
         with joblib.Parallel(n_jobs=len(paths), backend="threading") as parallel:
@@ -130,7 +135,7 @@ def _get_bounds_parquet(
 
 
 def get_bounds_series(
-    paths: list[str | Path],
+    paths: list[str | Path] | tuple[str | Path],
     file_system: dp.gcs.GCSFileSystem | None = None,
     validate_crs: bool = False,
 ) -> GeoSeries:
