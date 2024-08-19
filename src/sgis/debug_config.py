@@ -8,10 +8,10 @@ class _NoExplore:
 _DEBUG_CONFIG = {
     # "center": (5.3719398, 59.00999914, 0.01),
     # "center": (5.27306727, 59.44232754, 200),
-    "center": (5.85575588, 62.33991158, 200),
+    # "center": (5.85575588, 62.33991158, 200),
     # "center": (26.02870514, 70.68108478, 200),
-    # "center": _NoExplore(),
-    "print": True,
+    "center": _NoExplore(),
+    "print": False,
 }
 
 
