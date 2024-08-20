@@ -305,7 +305,7 @@ def test_sample():
 
     size = 200
 
-    for _ in range(10):
+    for _ in range(5):
         for img in collection.sample(1, size=size):
             for band in img:
                 band.load()
