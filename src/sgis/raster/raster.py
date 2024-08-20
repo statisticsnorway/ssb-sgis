@@ -1078,7 +1078,7 @@ class Raster:
         """Check if the Raster is equal to another Raster."""
         if not isinstance(other, Raster):
             raise NotImplementedError("other must be of type Raster")
-        if type(other) != type(self):
+        if type(other) is not type(self):
             return False
         if self.values is None and other.values is not None:
             return False
