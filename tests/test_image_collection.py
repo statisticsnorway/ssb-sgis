@@ -6,13 +6,13 @@ from time import perf_counter
 
 import numpy as np
 import pytest
-import torch
 from geopandas import GeoSeries
 from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
 from shapely.geometry import Polygon
 
 try:
+    import torch
     from lightning.pytorch import Trainer
     from torch.utils.data import DataLoader
     from torchgeo.datamodules import InriaAerialImageLabelingDataModule
