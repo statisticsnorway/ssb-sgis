@@ -935,6 +935,15 @@ def _grouped_unary_union(
 
     # geometries_2d = buffer(geometries_2d, 0.001, quad_segs=1, join_style=2)
 
+    # Here comes some ugly code...
+    # trying different ways to dissolve the polygons, either in a loop or all together,
+    # and reversed or not reversed.
+    # Why? Because it sometimes gives different results. Haven't yet found a method
+    # that gives correct results in all cases.
+    # Biggest problem is that holes in polygons might dissappear (e.i. get closed)
+    # therefore also tring to dissolve only the holes, then erase (difference) them
+    # after dissolving the polygons. This might give GEOSExceptions however.
+
     if 0:
         # union the geometries one column at the time.
         # This prevents some, but not all, dissappearing surfaces.
@@ -980,34 +989,7 @@ def _grouped_unary_union(
                         **kwargs,
                     )
                 )
-
-        #         explore(
-        #             geoms=to_gdf(df[geom_col], 25833),
-        #             unioned_loop=to_gdf(unioned_loop, 25833),
-        #             center=_DEBUG_CONFIG["center"],
-        #         )
-
-        # from ..maps.maps import explore
-
-        # explore(
-        #     geoms=to_gdf(df[geom_col], 25833),
-        #     unioned_rev=to_gdf(unioned_reversed, 25833),
-        #     unioned_loop=to_gdf(unioned_loop, 25833),
-        #     unioned=to_gdf(unioned, 25833),
-        #     unioned3=to_gdf(
-        #         make_valid(
-        #             unary_union(
-        #                 np.stack([unioned, unioned_reversed], axis=1), axis=1, **kwargs
-        #             )
-        #         ),
-        #         25833,
-        #     ),
-        #     # center=_DEBUG_CONFIG["center"],
-        # )
         unioned = make_valid(unary_union(geometries_2d, axis=1, **kwargs))
-        # unioned = make_valid(
-        #     unary_union(np.stack([unioned, unioned_reversed], axis=1), axis=1, **kwargs)
-        # )
     elif 0:
         unioned = make_valid(unary_union(geometries_2d[:, ::-1], axis=1, **kwargs))
     elif 0:
@@ -1056,14 +1038,6 @@ def _grouped_unary_union(
         #     )
         # unioned = make_valid(intersection(unioned, unioned_reversed))
         # unioned = make_valid(intersection(unioned, unioned_loop))
-
-        # from ..maps.maps import explore
-        # explore(
-        #     unioned=to_gdf(unioned, 25833),
-        #     interiors=to_gdf(interiors, 25833),
-        #     unioned_erased=to_gdf(make_valid(difference(unioned, interiors)), 25833),
-        #     center=_DEBUG_CONFIG["center"],
-        # )
 
         assert unioned.shape == interiors.shape
         unioned = make_valid(difference(unioned, interiors))
@@ -1118,30 +1092,6 @@ def _grouped_unary_union(
     # unioned = buffer(unioned, -0.001, quad_segs=1, join_style=2)
 
     geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
-
-    # from ..maps.maps import explore
-
-    # explore(
-    #     geoms=to_gdf(df, 25833),
-    #     new_geoms=geoms.reset_index(),
-    # )
-    # ssss
-
-    # if 0:
-    #     tolerance = 1
-    #     points = points_in_polygons(GeoDataFrame(df), gridsize=tolerance)
-    #     print()
-    #     print()
-    #     print()
-    #     print()
-    #     print(df)
-    #     print(points)
-    #     joined = points.sjoin(geoms.to_frame(), how="inner")
-    #     print(joined)
-    #     if not joined.index.is_unique:
-    #         raise ValueError("Double surfaces.", joined)
-    #     if not (joined.index == joined["index_right"]).all():
-    #         raise ValueError("Wrong results.", joined)
 
     return geoms if as_index else geoms.reset_index()
 
