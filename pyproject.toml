@@ -44,12 +44,19 @@ scikit-learn = ">=1.4.2"
 shapely = ">=2.0.1"
 typing-extensions = ">=4.11.0"
 xyzservices = ">=2023.2.0"
+xarray = { version = ">=2024.3.0", optional = true }
+rioxarray = { version = ">=0.15.5", optional = true }
+torch = { version = "==2.2.2", optional = true }  # Until this is fixed https://github.com/pytorch/pytorch/issues/124897
+torchgeo = { version = ">=0.5.2", optional = true }
 dapla-toolbelt = { version = ">=2.0.12", optional = true }
 gcsfs = { version = ">=2024.3.1", optional = true }
 
 [tool.poetry.extras]
-all = ["pyogrio",  "dapla-toolbelt", "gcsfs"]
+all = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", "gcsfs"]
 bucket = ["dapla-toolbelt", "gcsfs"]
+torch = ["torch", "torchgeo"]
+xarray = ["xarray", "rioxarray"]
+test = ["xarray", "rioxarray", "torch", "torchgeo"]
 
 [tool.poetry.group.dev.dependencies]
 pygments = ">=2.10.0"
