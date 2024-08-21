@@ -126,7 +126,12 @@ def get_neighbor_indices(
             for values in zip(*[joined[col] for col in index_col_name], strict=False)
         ]
     else:
-        joined["neighbor_index"] = joined[index_col_name[0]]
+        try:
+            joined["neighbor_index"] = joined[index_col_name[0]]
+        except KeyError as e:
+            raise KeyError(
+                e, joined.columns, neighbors.columns, gdf.columns, index_col_name
+            ) from e
 
     return joined["neighbor_index"]
 
