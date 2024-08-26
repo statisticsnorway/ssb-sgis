@@ -205,7 +205,10 @@ def test_get_neighbor_indices():
     p1 = points.iloc[[0]]
 
     neighbor_indices = sg.get_neighbor_indices(p1, points)
-    assert neighbor_indices.equals(pd.Series([0], index=[0]))
+    assert neighbor_indices.equals(pd.Series([0], index=[0])), (
+        neighbor_indices,
+        pd.Series([0], index=[0]),
+    )
 
     neighbor_indices = sg.get_neighbor_indices(p1, points, max_distance=1)
     assert neighbor_indices.equals(pd.Series([0, 1], index=[0, 0]))

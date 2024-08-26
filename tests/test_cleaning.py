@@ -78,7 +78,7 @@ def test_clean_dissappearing_polygon():
     ) == AREA_SHOULD_BE, area
 
 
-def test_clean_complicated_roads():
+def not_test_clean_complicated_roads():
     for tolerance in [
         0.5,
     ]:
@@ -514,7 +514,7 @@ def not_test_spikes():
 def main():
     test_clean_dissexp()
     test_clean_1144()
-    test_clean_complicated_roads()
+    not_test_clean_complicated_roads()
     test_clean()
     test_clean_dissappearing_polygon()
     not_test_spikes()

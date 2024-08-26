@@ -63,41 +63,91 @@ def test_dissexp_by_cluster():
         x=[np.random.choice([*"abc"]) for _ in range(100)],
         y=[np.random.choice([*"abc"]) for _ in range(100)],
     )
+    gdf.geometry = gdf.buffer(0.001)
 
-    for n_jobs in [
-        1,
-        3,
-    ]:
-        by_cluster = sg.dissexp_by_cluster(gdf, n_jobs=n_jobs)
-        regular = sg.dissexp(gdf, n_jobs=n_jobs)
-        assert len(by_cluster) == len(regular)
-        assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
+    for n_jobs in [1, 3]:
+        for processes in [1, 3]:
+            print(n_jobs, processes)
+            by_cluster = sg.dissexp_by_cluster(gdf, n_jobs=n_jobs)
+            regular = sg.dissexp(gdf, n_jobs=n_jobs)
+            assert len(by_cluster) == len(regular)
+            assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
-        assert list(sorted(by_cluster.columns)) == [
-            "geometry",
-            "x",
-            "y",
-        ], by_cluster.columns
+            assert list(sorted(by_cluster.columns)) == [
+                "geometry",
+                "x",
+                "y",
+            ], by_cluster.columns
 
-        assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
+            assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
 
-        diss = sg.diss_by_cluster(gdf, by="x", n_jobs=n_jobs)
-        assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
-        diss = sg.diss_by_cluster(gdf, by=["x", "y"], n_jobs=n_jobs)
-        assert list(diss.columns) == ["geometry"], diss.columns
-        diss = sg.diss_by_cluster(gdf, by=("y",), n_jobs=n_jobs)
-        assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+            diss = sg.diss_by_cluster(gdf, by="x", n_jobs=n_jobs, processes=processes)
+            assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area0 = [int(x) for x in diss.area]
+            else:
+                assert area0 == [int(x) for x in diss.area], (
+                    area0,
+                    [int(x) for x in diss.area],
+                )
 
-        diss = sg.dissexp_by_cluster(gdf, by="x", n_jobs=n_jobs)
-        assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
-        diss = sg.dissexp_by_cluster(gdf, by=["x", "y"], n_jobs=n_jobs)
-        assert list(diss.columns) == ["geometry"], diss.columns
-        diss = sg.dissexp_by_cluster(gdf, by=("y",), n_jobs=n_jobs)
-        assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+            diss = sg.diss_by_cluster(
+                gdf, by=["x", "y"], n_jobs=n_jobs, processes=processes
+            )
+            assert list(diss.columns) == ["geometry"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area1 = [int(x) for x in diss.area]
+            else:
+                assert area1 == [int(x) for x in diss.area], (
+                    area1,
+                    [int(x) for x in diss.area],
+                )
 
-        sg.buffdissexp_by_cluster(gdf, 0.1, n_jobs=n_jobs).pipe(sg.buff, 0.1).pipe(
-            sg.buffdissexp_by_cluster, 0.1, n_jobs=n_jobs
-        )
+            diss = sg.diss_by_cluster(
+                gdf, by=("y",), n_jobs=n_jobs, processes=processes
+            )
+            assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area2 = [int(x) for x in diss.area]
+            else:
+                assert area2 == [int(x) for x in diss.area], (
+                    area2,
+                    [int(x) for x in diss.area],
+                )
+
+            diss = sg.dissexp_by_cluster(
+                gdf, by="x", n_jobs=n_jobs, processes=processes
+            )
+            assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area3 = [int(x) for x in diss.area]
+            else:
+                assert area3 == [int(x) for x in diss.area], (
+                    area3,
+                    [int(x) for x in diss.area],
+                )
+
+            diss = sg.dissexp_by_cluster(
+                gdf, by=["x", "y"], n_jobs=n_jobs, processes=processes
+            )
+            assert list(diss.columns) == ["geometry"], diss.columns
+            diss = sg.dissexp_by_cluster(
+                gdf, by=("y",), n_jobs=n_jobs, processes=processes
+            )
+            assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area4 = [int(x) for x in diss.area]
+            else:
+                assert area4 == [int(x) for x in diss.area], (
+                    area4,
+                    [int(x) for x in diss.area],
+                )
+
+            sg.buffdissexp_by_cluster(
+                gdf, 0.1, n_jobs=n_jobs, processes=processes
+            ).pipe(sg.buff, 0.1).pipe(
+                sg.buffdissexp_by_cluster, 0.1, n_jobs=n_jobs, processes=processes
+            )
 
 
 def test_buffdissexp_by_cluster(gdf_fixture):
@@ -344,13 +394,13 @@ def test_grouped_unary_union():
 
 if __name__ == "__main__":
 
-    test_grouped_unary_union()
+    # test_grouped_unary_union()
     gdf_fixture = testgdf()
+    test_dissexp_by_cluster()
     test_buffdiss(gdf_fixture)
     test_dissexp_index()
     test_buffdissexp(gdf_fixture)
     test_dissexp(gdf_fixture)
     test_buffdissexp_index()
-    test_dissexp_by_cluster()
     test_dissexp_grid_size()
     # not_test_dissexp_n_jobs()
