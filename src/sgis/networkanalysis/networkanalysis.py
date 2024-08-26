@@ -1027,7 +1027,7 @@ class NetworkAnalysis:
 
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
-                    :, ["geometry"]
+                    :, [results.geometry.name]
                 ]
 
             results = results.reset_index()
@@ -1038,7 +1038,7 @@ class NetworkAnalysis:
             ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
             if len(missing):
-                missing["geometry"] = pd.NA
+                missing[results.geometry.name] = pd.NA
                 results = pd.concat([results, missing], ignore_index=True)
 
             results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -1151,7 +1151,7 @@ class NetworkAnalysis:
         if not all(results.geometry.isna()):
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
-                    :, ["geometry"]
+                    :, [results.geometry.name]
                 ]
             else:
                 results = results.dissolve(
@@ -1166,7 +1166,7 @@ class NetworkAnalysis:
             ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
             if len(missing):
-                missing["geometry"] = pd.NA
+                missing[results.geometry.name] = pd.NA
                 results = pd.concat([results, missing], ignore_index=True)
 
             results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -1329,7 +1329,7 @@ class NetworkAnalysis:
                 df["cost_std"] = results[self.rules.weight].std()
 
         if fun == "service_area":
-            df["percent_missing"] = results["geometry"].isna().mean() * 100
+            df["percent_missing"] = results[results.geometry.name].isna().mean() * 100
         else:
             df["destinations_count"] = len(self.destinations.gdf)
 
@@ -1456,7 +1456,7 @@ class NetworkAnalysis:
         else:
             points = self.origins.gdf
 
-        points = points.drop_duplicates("geometry")
+        points = points.drop_duplicates(points.geometry.name)
 
         self.network.gdf["meters_"] = self.network.gdf.length
 
