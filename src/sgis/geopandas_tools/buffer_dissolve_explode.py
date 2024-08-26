@@ -23,6 +23,7 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import get_num_geometries
 
+from ..parallel.parallel import Parallel
 from .general import _grouped_unary_union
 from .general import _parallel_unary_union
 from .general import _unary_union_for_notna
@@ -477,6 +478,8 @@ def _run_func_by_cluster(
 ) -> GeoDataFrame:
     is_geoseries = isinstance(gdf, GeoSeries)
 
+    processes = dissolve_kwargs.pop("processes", 1)
+
     by = dissolve_kwargs.pop("by", [])
     if isinstance(by, str):
         by = [by]
@@ -489,22 +492,44 @@ def _run_func_by_cluster(
     def get_group_clusters(group: GeoDataFrame):
         """Adds cluster column. Applied to each group because much faster."""
         group = group.reset_index(drop=True)
-        group["_cluster"] = get_cluster_mapper(
-            group, predicate=predicate
-        )  # component_mapper
+        group["_cluster"] = get_cluster_mapper(group, predicate=predicate)
         group["_cluster"] = get_grouped_centroids(group, groupby="_cluster")
         return group
 
+    gdf = make_all_singlepart(gdf)
+
     if by:
-        dissolved = (
-            make_all_singlepart(gdf)
-            .groupby(by, group_keys=False, dropna=False, as_index=False)
-            .apply(get_group_clusters)
-            .pipe(func, by=["_cluster"] + by, n_jobs=n_jobs, **dissolve_kwargs)
-        )
+        if processes == 1:
+            gdf = gdf.groupby(by, group_keys=False, dropna=False, as_index=False).apply(
+                get_group_clusters
+            )
+        else:
+            gdf = pd.concat(
+                Parallel(processes, backend="loky").map(
+                    get_group_clusters,
+                    [
+                        gdf[lambda x: x[by].values == values]
+                        for values in np.unique(gdf[by].values)
+                    ],
+                ),
+            )
+        _by = ["_cluster"] + by
     else:
-        dissolved = get_group_clusters(make_all_singlepart(gdf)).pipe(
-            func, by="_cluster", n_jobs=n_jobs, **dissolve_kwargs
+        gdf = get_group_clusters(gdf)
+        _by = ["_cluster"]
+
+    if processes == 1:
+        dissolved = func(gdf, by=_by, n_jobs=n_jobs, **dissolve_kwargs)
+    else:
+        dissolved = pd.concat(
+            Parallel(processes, backend="loky").map(
+                func,
+                [
+                    gdf[gdf["_cluster"] == cluster]
+                    for cluster in gdf["_cluster"].unique()
+                ],
+                kwargs=dissolve_kwargs | {"n_jobs": n_jobs, "by": _by},
+            ),
         )
 
     if not by:
