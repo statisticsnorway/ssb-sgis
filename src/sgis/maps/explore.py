@@ -216,10 +216,10 @@ class Explore(Map):
 
     # class attribute that can be overridden locally
     tiles: ClassVar[tuple[str]] = (
-        "grunnkart",
-        "norge_i_bilder",
-        "dark",
         "OpenStreetMap",
+        "dark",
+        "norge_i_bilder",
+        "grunnkart",
     )
 
     def __init__(
