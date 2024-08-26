@@ -12,6 +12,7 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from geopandas.io.arrow import _geopandas_to_arrow
 from pandas import DataFrame
+from pyarrow import ArrowInvalid
 from pyarrow import parquet
 
 from ..geopandas_tools.sfilter import sfilter
@@ -126,7 +127,12 @@ def _get_bounds_parquet(
     path: str | Path, file_system: dp.gcs.GCSFileSystem
 ) -> tuple[list[float], dict] | tuple[None, None]:
     with file_system.open(path) as f:
-        num_rows = parquet.read_metadata(f).num_rows
+        try:
+            num_rows = parquet.read_metadata(f).num_rows
+        except ArrowInvalid as e:
+            if not file_system.isfile(f):
+                return None, None
+            raise ArrowInvalid(e, path) from e
         if not num_rows:
             return None, None
         meta = parquet.read_schema(f).metadata
