@@ -13,11 +13,11 @@ import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from pandas import DataFrame
+from pandas import MultiIndex
 from pandas import Series
 from sklearn.neighbors import NearestNeighbors
 
 from .conversion import coordinate_array
-from .general import get_index_right_columns
 from .geometry_types import get_geom_type
 
 
@@ -98,10 +98,10 @@ def get_neighbor_indices(
     ['a' 'a' 'b' 'b']
 
     """
+    if isinstance(gdf.index, MultiIndex) or isinstance(neighbors.index, MultiIndex):
+        raise ValueError("get_neighbor_indices not implemented for pandas.MultiIndex")
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
-
-    index_col_name = get_index_right_columns(neighbors)
 
     if isinstance(neighbors, GeoSeries):
         neighbors = neighbors.to_frame()
@@ -110,9 +110,12 @@ def get_neighbor_indices(
 
     # buffer and keep only geometry column
     if max_distance and predicate != "nearest":
-        gdf = gdf.buffer(max_distance).to_frame()
+        gdf = gdf.buffer(max_distance).to_frame("geometry")
     else:
-        gdf = gdf.geometry.to_frame()
+        gdf = gdf.geometry.to_frame("geometry")
+
+    neighbors.index.name = None
+    gdf.index.name = None
 
     if predicate == "nearest":
         max_distance = None if max_distance == 0 else max_distance
@@ -120,20 +123,7 @@ def get_neighbor_indices(
     else:
         joined = gdf.sjoin(neighbors, how="inner", predicate=predicate)
 
-    if len(index_col_name) > 1:
-        joined["neighbor_index"] = [
-            values
-            for values in zip(*[joined[col] for col in index_col_name], strict=False)
-        ]
-    else:
-        try:
-            joined["neighbor_index"] = joined[index_col_name[0]]
-        except KeyError as e:
-            raise KeyError(
-                e, joined.columns, neighbors.columns, gdf.columns, index_col_name
-            ) from e
-
-    return joined["neighbor_index"]
+    return joined.rename(columns={"index_right": "neighbor_index"})["neighbor_index"]
 
 
 def get_neighbor_dfs(
