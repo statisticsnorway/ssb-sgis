@@ -1,19 +1,20 @@
 """Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla."""
 
 import json
+import multiprocessing
 from pathlib import Path
 
 import dapla as dp
 import geopandas as gpd
 import joblib
 import pandas as pd
+import pyarrow
 import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from geopandas.io.arrow import _geopandas_to_arrow
 from pandas import DataFrame
 from pyarrow import ArrowInvalid
-from pyarrow import parquet
 
 from ..geopandas_tools.sfilter import sfilter
 
@@ -24,6 +25,7 @@ def read_geopandas(
     file_system: dp.gcs.GCSFileSystem | None = None,
     mask: GeoSeries | GeoDataFrame | shapely.Geometry | tuple | None = None,
     validate_crs: bool = True,
+    threads: int | None = None,
     **kwargs,
 ) -> GeoDataFrame | DataFrame:
     """Reads geoparquet or other geodata from one or more files on GCS.
@@ -46,6 +48,8 @@ def read_geopandas(
             with a bbox that intersects the mask are read, then filtered by location.
         validate_crs: If multiple files are to be read and validate_crs is True (default),
             all files in the folder has to have the same coordinate reference system.
+        threads: Number of threads to use if reading multiple files. Defaults to
+            the number of files to read or the number of available threads (if lower).
         **kwargs: Additional keyword arguments passed to geopandas' read_parquet
             or read_file, depending on the file type.
 
@@ -61,22 +65,31 @@ def read_geopandas(
         if mask is not None:
             if not isinstance(gcs_path, GeoSeries):
                 bounds_series: GeoSeries = get_bounds_series(
-                    gcs_path, file_system, validate_crs
+                    gcs_path, file_system, validate_crs, threads=threads
                 )
             else:
                 bounds_series = gcs_path
-            bounds_series = sfilter(bounds_series, mask)
-            if not len(bounds_series):
-                return GeoDataFrame({"geometry": []})
-            paths = list(bounds_series.index)
+            new_bounds_series = sfilter(bounds_series, mask)
+            if not len(new_bounds_series):
+                if "columns" in kwargs:
+                    cols = {col: [] for col in kwargs.get("columns")}
+                else:
+                    cols = {}
+                    for path in bounds_series.index:
+                        cols |= {col: [] for col in _get_columns(path, file_system)}
+                return GeoDataFrame(cols | {"geometry": []})
+            paths = list(new_bounds_series.index)
         else:
             if isinstance(gcs_path, GeoSeries):
                 paths = list(gcs_path.index)
             else:
                 paths = list(gcs_path)
 
+        if threads is None:
+            threads = min(len(gcs_path), int(multiprocessing.cpu_count())) or 1
+
         # recursive read with threads
-        with joblib.Parallel(n_jobs=len(paths), backend="threading") as parallel:
+        with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:
             dfs: list[GeoDataFrame] = parallel(
                 joblib.delayed(read_geopandas)(x, **kwargs) for x in paths
             )
@@ -128,22 +141,42 @@ def _get_bounds_parquet(
 ) -> tuple[list[float], dict] | tuple[None, None]:
     with file_system.open(path) as f:
         try:
-            num_rows = parquet.read_metadata(f).num_rows
+            num_rows = pyarrow.parquet.read_metadata(f).num_rows
         except ArrowInvalid as e:
             if not file_system.isfile(f):
                 return None, None
             raise ArrowInvalid(e, path) from e
         if not num_rows:
             return None, None
-        meta = parquet.read_schema(f).metadata
-    meta = json.loads(meta[b"geo"])["columns"]["geometry"]
+        meta = pyarrow.parquet.read_schema(f).metadata
+    try:
+        meta = json.loads(meta[b"geo"])["columns"]["geometry"]
+    except KeyError as e:
+        raise KeyError(e, path, f"{num_rows=}", meta) from e
     return meta["bbox"], meta["crs"]
+
+
+def _get_columns(path: str | Path, file_system: dp.gcs.GCSFileSystem) -> pd.Index:
+    with file_system.open(path) as f:
+        try:
+            schema = pyarrow.parquet.read_schema(f)
+            index_cols = _get_index_cols(schema)
+            return pd.Index(schema.names).difference(index_cols)
+        except ArrowInvalid as e:
+            if not file_system.isfile(f):
+                return []
+            raise ArrowInvalid(e, path) from e
+
+
+def _get_index_cols(schema: pyarrow.Schema) -> list[str]:
+    return json.loads(schema.metadata[b"pandas"])["index_columns"]
 
 
 def get_bounds_series(
     paths: list[str | Path] | tuple[str | Path],
     file_system: dp.gcs.GCSFileSystem | None = None,
     validate_crs: bool = False,
+    threads: int | None = None,
 ) -> GeoSeries:
     """Get a GeoSeries with file paths as indexes and the file's bounds as values.
 
@@ -158,6 +191,8 @@ def get_bounds_series(
         validate_crs: If True, a ValueError is raised if all
             files does not have the same coordinate reference system.
             Defaults to False.
+        threads: Number of threads to use if reading multiple files. Defaults to
+            the number of files to read or the number of available threads (if lower).
 
     Returns:
         A geopandas.GeoSeries with file paths as indexes and bounds as values.
@@ -201,7 +236,10 @@ def get_bounds_series(
     if file_system is None:
         file_system = dp.FileClient.get_gcs_file_system()
 
-    with joblib.Parallel(n_jobs=len(paths), backend="threading") as parallel:
+    if threads is None:
+        threads = min(len(paths), int(multiprocessing.cpu_count())) or 1
+
+    with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:
         bounds: list[tuple[list[float], dict]] = parallel(
             joblib.delayed(_get_bounds_parquet)(path, file_system=file_system)
             for path in paths
@@ -265,6 +303,7 @@ def write_geopandas(
     if not len(df):
         if pandas_fallback:
             df = pd.DataFrame(df)
+            df.geometry = None
             df.geometry = df.geometry.astype(str)
         dp.write_pandas(df, gcs_path, **kwargs)
         return
@@ -279,7 +318,7 @@ def write_geopandas(
                 schema_version=None,
                 write_covering_bbox=write_covering_bbox,
             )
-            parquet.write_table(table, buffer, compression="snappy", **kwargs)
+            pyarrow.parquet.write_table(table, buffer, compression="snappy", **kwargs)
         return
 
     layer = kwargs.pop("layer", None)
