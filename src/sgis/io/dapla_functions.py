@@ -175,7 +175,6 @@ def _get_index_cols(schema: pyarrow.Schema) -> list[str]:
 def get_bounds_series(
     paths: list[str | Path] | tuple[str | Path],
     file_system: dp.gcs.GCSFileSystem | None = None,
-    validate_crs: bool = False,
     threads: int | None = None,
 ) -> GeoSeries:
     """Get a GeoSeries with file paths as indexes and the file's bounds as values.
@@ -188,9 +187,6 @@ def get_bounds_series(
         file_system: Optional instance of dp.gcs.GCSFileSystem.
             If None, an instance is created within the function.
             Note that this is slower in long loops.
-        validate_crs: If True, a ValueError is raised if all
-            files does not have the same coordinate reference system.
-            Defaults to False.
         threads: Number of threads to use if reading multiple files. Defaults to
             the number of files to read or the number of available threads (if lower).
 
@@ -244,12 +240,22 @@ def get_bounds_series(
             joblib.delayed(_get_bounds_parquet)(path, file_system=file_system)
             for path in paths
         )
-    if validate_crs and len({json.dumps(x[1]) for x in bounds}) != 1:
-        raise ValueError(f"crs mismatch {({json.dumps(x[1]) for x in bounds})}")
+    crss = {json.dumps(x[1]) for x in bounds}
+    crss = {
+        crs
+        for crs in crss
+        if not any(str(crs).lower() == txt for txt in ["none", "null"])
+    }
+    if not crss:
+        crs = None
+    elif len(crss) == 1:
+        crs = next(iter(crss))
+    else:
+        raise ValueError(f"crs mismatch: {crss}")
     return GeoSeries(
         [shapely.box(*bbox[0]) if bbox[0] is not None else None for bbox in bounds],
         index=paths,
-        crs=bounds[0][1],
+        crs=crs,
     )
 
 
@@ -305,7 +311,13 @@ def write_geopandas(
             df = pd.DataFrame(df)
             df.geometry = None
             df.geometry = df.geometry.astype(str)
-        dp.write_pandas(df, gcs_path, **kwargs)
+        try:
+            dp.write_pandas(df, gcs_path, **kwargs)
+        except Exception as e:
+            try:
+                raise e.__class__(e, df) from e
+            except Exception as e2:
+                raise e from e2
         return
 
     file_system = dp.FileClient.get_gcs_file_system()
