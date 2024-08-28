@@ -61,8 +61,90 @@ jobs:
               pandas: "2.2.2",
               geopandas: "1.0.1",
             }
-          - { python: "3.12", os: "windows-latest", session: "tests" }
-          - { python: "3.12", os: "macos-latest", session: "tests" }
+          - {
+              python: "3.10",
+              os: "macos",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.11",
+              os: "macos",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.12",
+              os: "macos",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.10",
+              os: "macos",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
+          - {
+              python: "3.11",
+              os: "macos",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
+          - {
+              python: "3.12",
+              os: "macos",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
+          - {
+              python: "3.10",
+              os: "windows",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.11",
+              os: "windows",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.12",
+              os: "windows",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.10",
+              os: "windows",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
+          - {
+              python: "3.11",
+              os: "windows",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
+          - {
+              python: "3.12",
+              os: "windows",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
           - { python: "3.10", os: "ubuntu-latest", session: "typeguard" }
           # - { python: "3.10", os: "ubuntu-latest", session: "xdoctest" }  # TODO: Reenable xdoctest later
           - { python: "3.10", os: "ubuntu-latest", session: "docs-build" }
