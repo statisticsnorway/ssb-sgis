@@ -9,14 +9,13 @@ on:
 
 jobs:
   tests:
-    name: ${{ matrix.session }} ${{ matrix.python }} / ${{ matrix.os }}
+    name: ${{ matrix.session }} ${{ matrix.python }} / ${{ matrix.os }} / ${{ matrix.pandas }} / ${{ matrix.geopandas }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         pandas: ["2.0.3", "2.2.2"]
         geopandas: ["0.14.4", "1.0.1"]
-        numpy: ["1.26.4", "2.1.0"]
         include:
           - { python: "3.10", os: "ubuntu-latest", session: "pre-commit" }
           - { python: "3.10", os: "ubuntu-latest", session: "mypy" }
