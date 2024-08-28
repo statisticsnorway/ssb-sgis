@@ -306,8 +306,8 @@ def write_geopandas(
     if not len(df):
         if pandas_fallback:
             df = pd.DataFrame(df)
-            df.geometry = None
             df.geometry = df.geometry.astype(str)
+            df.geometry = None
         try:
             dp.write_pandas(df, gcs_path, **kwargs)
         except Exception as e:
