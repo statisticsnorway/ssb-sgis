@@ -14,6 +14,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        pandas: ["2.0.3", "2.2.2"]
+        geopandas: ["0.14.4", "1.0.1"]
+        numpy: ["1.26.4", "2.1.0"]
         include:
           - { python: "3.10", os: "ubuntu-latest", session: "pre-commit" }
           - { python: "3.10", os: "ubuntu-latest", session: "mypy" }
@@ -68,6 +71,10 @@ jobs:
           pipx install --pip-args "-c ${{ github.workspace }}/.github/workflows/constraints.txt" nox
           pipx inject --pip-args "-c ${{ github.workspace }}/.github/workflows/constraints.txt" nox nox-poetry
           nox --version
+
+      - name: Install dependencies
+        run: |
+          pip install geopandas==${{ matrix.geopandas }} pandas==${{ matrix.pandas }} numpy==${{ matrix.numpy }}
 
       - name: Compute pre-commit cache key
         if: matrix.session == 'pre-commit'
