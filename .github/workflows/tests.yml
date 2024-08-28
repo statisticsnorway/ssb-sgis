@@ -74,7 +74,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install geopandas==${{ matrix.geopandas }} pandas==${{ matrix.pandas }} numpy==${{ matrix.numpy }}
+          poetry add geopandas==${{ matrix.geopandas }}
+          poetry add pandas==${{ matrix.pandas }}
+          poetry add numpy==${{ matrix.numpy }}
 
       - name: Compute pre-commit cache key
         if: matrix.session == 'pre-commit'
