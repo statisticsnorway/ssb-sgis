@@ -24,7 +24,6 @@ def read_geopandas(
     pandas_fallback: bool = False,
     file_system: dp.gcs.GCSFileSystem | None = None,
     mask: GeoSeries | GeoDataFrame | shapely.Geometry | tuple | None = None,
-    validate_crs: bool = True,
     threads: int | None = None,
     **kwargs,
 ) -> GeoDataFrame | DataFrame:
@@ -46,8 +45,6 @@ def read_geopandas(
         mask: Optional geometry mask to keep only intersecting geometries.
             If 'gcs_path' is an iterable of multiple paths, only the files
             with a bbox that intersects the mask are read, then filtered by location.
-        validate_crs: If multiple files are to be read and validate_crs is True (default),
-            all files in the folder has to have the same coordinate reference system.
         threads: Number of threads to use if reading multiple files. Defaults to
             the number of files to read or the number of available threads (if lower).
         **kwargs: Additional keyword arguments passed to geopandas' read_parquet
@@ -65,7 +62,7 @@ def read_geopandas(
         if mask is not None:
             if not isinstance(gcs_path, GeoSeries):
                 bounds_series: GeoSeries = get_bounds_series(
-                    gcs_path, file_system, validate_crs, threads=threads
+                    gcs_path, file_system, threads=threads
                 )
             else:
                 bounds_series = gcs_path
@@ -76,7 +73,12 @@ def read_geopandas(
                 else:
                     cols = {}
                     for path in bounds_series.index:
-                        cols |= {col: [] for col in _get_columns(path, file_system)}
+                        try:
+                            cols |= {col: [] for col in _get_columns(path, file_system)}
+                        except ArrowInvalid as e:
+                            if file_system.isfile(path):
+                                raise ArrowInvalid(e, path) from e
+
                 return GeoDataFrame(cols | {"geometry": []})
             paths = list(new_bounds_series.index)
         else:
@@ -158,14 +160,9 @@ def _get_bounds_parquet(
 
 def _get_columns(path: str | Path, file_system: dp.gcs.GCSFileSystem) -> pd.Index:
     with file_system.open(path) as f:
-        try:
-            schema = pyarrow.parquet.read_schema(f)
-            index_cols = _get_index_cols(schema)
-            return pd.Index(schema.names).difference(index_cols)
-        except ArrowInvalid as e:
-            if not file_system.isfile(f):
-                return []
-            raise ArrowInvalid(e, path) from e
+        schema = pyarrow.parquet.read_schema(f)
+        index_cols = _get_index_cols(schema)
+        return pd.Index(schema.names).difference(index_cols)
 
 
 def _get_index_cols(schema: pyarrow.Schema) -> list[str]:
