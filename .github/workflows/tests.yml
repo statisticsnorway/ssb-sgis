@@ -14,16 +14,53 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pandas: ["2.0.3", "2.2.2"]
-        geopandas: ["0.14.4", "1.0.1"]
         include:
           - { python: "3.10", os: "ubuntu-latest", session: "pre-commit" }
           - { python: "3.10", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.11", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.12", os: "ubuntu-latest", session: "mypy" }
-          - { python: "3.10", os: "ubuntu-latest", session: "tests" }
-          - { python: "3.11", os: "ubuntu-latest", session: "tests" }
-          - { python: "3.12", os: "ubuntu-latest", session: "tests" }
+          - {
+              python: "3.10",
+              os: "ubuntu-latest",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.11",
+              os: "ubuntu-latest",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.12",
+              os: "ubuntu-latest",
+              session: "tests",
+              pandas: "2.0.3",
+              geopandas: "0.14.4",
+            }
+          - {
+              python: "3.10",
+              os: "ubuntu-latest",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
+          - {
+              python: "3.11",
+              os: "ubuntu-latest",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
+          - {
+              python: "3.12",
+              os: "ubuntu-latest",
+              session: "tests",
+              pandas: "2.2.2",
+              geopandas: "1.0.1",
+            }
           - { python: "3.12", os: "windows-latest", session: "tests" }
           - { python: "3.12", os: "macos-latest", session: "tests" }
           - { python: "3.10", os: "ubuntu-latest", session: "typeguard" }
@@ -75,7 +112,6 @@ jobs:
         run: |
           poetry add geopandas==${{ matrix.geopandas }}
           poetry add pandas==${{ matrix.pandas }}
-          poetry add numpy==${{ matrix.numpy }}
 
       - name: Compute pre-commit cache key
         if: matrix.session == 'pre-commit'
