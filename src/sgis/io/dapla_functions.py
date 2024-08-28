@@ -68,7 +68,7 @@ def read_geopandas(
                 bounds_series = gcs_path
             new_bounds_series = sfilter(bounds_series, mask)
             if not len(new_bounds_series):
-                if "columns" in kwargs:
+                if kwargs.get("columns"):
                     cols = {col: [] for col in kwargs.get("columns")}
                 else:
                     cols = {}
