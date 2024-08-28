@@ -2,6 +2,7 @@
 
 import json
 import multiprocessing
+from collections.abc import Iterable
 from pathlib import Path
 
 import dapla as dp
@@ -68,8 +69,8 @@ def read_geopandas(
                 bounds_series = gcs_path
             new_bounds_series = sfilter(bounds_series, mask)
             if not len(new_bounds_series):
-                if kwargs.get("columns"):
-                    cols = {col: [] for col in kwargs.get("columns")}
+                if isinstance(kwargs.get("columns"), Iterable):
+                    cols = {col: [] for col in kwargs["columns"]}
                 else:
                     cols = {}
                     for path in bounds_series.index:
