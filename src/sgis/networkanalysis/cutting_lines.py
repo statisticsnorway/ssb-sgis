@@ -234,9 +234,12 @@ def _change_line_endpoint(
         .values
     )
 
-    relevant_lines_mapped = relevant_lines.groupby(level=0)["geometry"].agg(LineString)
+    is_line = relevant_lines.groupby(level=0).size() > 1
+    relevant_lines_mapped = (
+        relevant_lines.loc[is_line].groupby(level=0)["geometry"].agg(LineString)
+    )
 
-    gdf.loc[is_relevant, "geometry"] = relevant_lines_mapped
+    gdf.loc[relevant_lines_mapped.index, "geometry"] = relevant_lines_mapped
 
     return gdf
 
