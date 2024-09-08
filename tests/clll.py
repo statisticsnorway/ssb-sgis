@@ -412,7 +412,7 @@ def snap_polygons(
 
     # thin = GeoDataFrame()  # gdf[lambda x: x.buffer(-tolerance / 2).is_empty]
     # thin = gdf[lambda x: x.buffer(-tolerance / 2 - PRECISION).is_empty]
-    # gdf = gdf[lambda x: ~x.buffer(-tolerance / 2 - PRECISION).is_empty]
+    gdf = gdf[lambda x: ~x.buffer(-tolerance / 2 - PRECISION).is_empty]
 
     # donuts_without_spikes = (
     #     gdf.geometry.buffer(tolerance / 2, resolution=1, join_style=2)
