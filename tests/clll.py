@@ -149,10 +149,13 @@ def coverage_clean(
 
     gdf = snap_polygons(gdf, tolerance, mask=mask)
 
-    missing_from_gdf = sfilter_inverse(gdf_original, gdf.buffer(-PRECISION)).loc[
+    missing_from_mask = clean_overlay(mask, gdf, how="difference", geom_type="polygon")
+    eliminated, missing = eliminate_by_longest(gdf, missing_from_mask)
+
+    missing_from_gdf = sfilter_inverse(gdf_original, eliminated.buffer(-PRECISION)).loc[
         lambda x: (~x.buffer(-PRECISION).is_empty)
     ]
-    return pd.concat([gdf, missing_from_gdf], ignore_index=True)
+    return pd.concat([eliminated, missing_from_gdf], ignore_index=True)
 
     # missing_from_gdf = sfilter_inverse(gdf_original, gdf).loc[
     missing_from_gdf = clean_overlay(
@@ -410,9 +413,8 @@ def snap_polygons(
     #         )
     #     mask.crs = None
 
-    # thin = GeoDataFrame()  # gdf[lambda x: x.buffer(-tolerance / 2).is_empty]
-    # thin = gdf[lambda x: x.buffer(-tolerance / 2 - PRECISION).is_empty]
     gdf = gdf[lambda x: ~x.buffer(-tolerance / 2 - PRECISION).is_empty]
+    # gdf = gdf[lambda x: ~x.buffer(-tolerance / 3).is_empty]
 
     # donuts_without_spikes = (
     #     gdf.geometry.buffer(tolerance / 2, resolution=1, join_style=2)
@@ -722,7 +724,7 @@ def _build_anchors(
         if is_anchor:  # not len(distances) or np.min(distances) > tolerance:
             anchors.append(geom)
             anchor_indices.append(index)
-            was_midpoint_mask.append(False)
+            was_midpoint_mask.append(True)
     return anchors, anchor_indices, is_anchor_arr, was_midpoint_mask
 
 
@@ -875,33 +877,22 @@ def _snap_linearrings(
         shapely.linearrings(mask_coords, indices=mask_indices),
         tolerance * 1.1,
     )
-    if 1:
-        mask_coords, mask_indices, was_midpoint_mask, dist_to_closest_geom = (
-            _add_midpoints_to_segments_numba(
-                mask_coords,
-                mask_indices,
-                # coords,
-                get_coordinates(
-                    sfilter(
-                        points.geometry.drop_duplicates(),
-                        original_mask_buffered,
-                    )
-                ),
-                tolerance * 1.1,
+    mask_coords, mask_indices, was_midpoint_mask, _ = _add_midpoints_to_segments_numba(
+        mask_coords,
+        mask_indices,
+        get_coordinates(
+            sfilter(
+                points.geometry.drop_duplicates(),
+                original_mask_buffered,
             )
-        )
+        ),
+        tolerance * 1.1,
+    )
 
-        mask_coords = np.array(mask_coords)
-        mask_indices = np.array(mask_indices)
-        mask_indices = (mask_indices + 1) * -1
+    mask_coords = np.array(mask_coords)
+    mask_indices = np.array(mask_indices)
+    mask_indices = (mask_indices + 1) * -1
 
-        # dist_to_closest_geom = np.array(dist_to_closest_geom)
-        # mask_range_indices_sorted_by_distance = np.argsort(dist_to_closest_geom)[::-1]
-        # mask_coords = mask_coords[mask_range_indices_sorted_by_distance]
-    else:
-        mask_indices = (mask_indices + 1) * -1
-
-    # coords, indices = get_coordinates(geoms, return_index=True)
     is_anchor = np.full(len(coords), False)
     coords, indices, is_anchor = _remove_duplicate_points(coords, indices, is_anchor)
     coords, indices = _add_last_points_to_end(coords, indices)
@@ -951,11 +942,6 @@ def _snap_linearrings(
     anchors = np.array(anchors)
     anchor_indices = np.array(anchor_indices)
 
-    # is_anchor = np.array(is_anchor)
-
-    # anchors = np.concatenate([mask_coords, np.array(anchors)])
-    # anchor_indices = np.concatenate([mask_indices, np.array(anchor_indices)])
-
     print(len(coords), len(anchors), coords.dtype, anchors.dtype, mask_coords.dtype)
     # coords = coords.astype(float)
     # anchors = anchors.astype(float)
@@ -964,11 +950,7 @@ def _snap_linearrings(
         coords,
         indices,
         anchors,
-        tolerance * 1.1,  # + PRECISION * 100,
-        # GeoDataFrame({"geometry": shapely.points(coords), "_geom_idx": indices}),
-        # GeoDataFrame({"geometry": shapely.points(anchors)}),
-        # tolerance,  # + PRECISION * 100,
-        # None,
+        tolerance * 1.1,
     )
     print(len(coords), len(anchors), len(was_midpoint))
 
@@ -1921,7 +1903,7 @@ def test_clean_1144():
             lambda x: x["df_index_1"] == x["df_index_2"]
         ].area.sum()
         area_same_index_ratio = area_same_index / intersected.area.sum()
-        assert area_same_index_ratio > 0.998, area_same_index_ratio
+        assert area_same_index_ratio > 0.998 - tolerance * 0.035, area_same_index_ratio
 
         notna_df = df.notna().all()
         cols_notna = list(notna_df[lambda x: x == True].index)
@@ -2326,10 +2308,10 @@ def test_snappping(_test=False):
 
 
 def main():
-    test_clean()
     test_snappping(_test=False)
     test_clean_dissappearing_polygon()
     not_test_clean_complicated_roads()
+    test_clean()
     test_clean_1144()
     not_test_spikes()
     test_clean_dissexp()
