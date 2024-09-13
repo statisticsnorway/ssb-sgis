@@ -84,7 +84,8 @@ jupytext = ">=1.16.1"
 pytest-cov = ">=5.0.0"
 pandas-stubs = ">=2.2.1.240316"
 types-requests = ">=2.31.0.20240406"
-
+# bitsandbytes not released for macos for version > 0.42
+bitsandbytes = { version = "0.42.0", markers = "sys_platform == 'darwin'" }
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
