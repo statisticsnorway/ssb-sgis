@@ -19,6 +19,8 @@ from pyarrow import ArrowInvalid
 
 from ..geopandas_tools.sfilter import sfilter
 
+PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
+
 
 def read_geopandas(
     gcs_path: str | Path | list[str | Path] | tuple[str | Path] | GeoSeries,
@@ -63,7 +65,10 @@ def read_geopandas(
         if mask is not None:
             if not isinstance(gcs_path, GeoSeries):
                 bounds_series: GeoSeries = get_bounds_series(
-                    gcs_path, file_system, threads=threads
+                    gcs_path,
+                    file_system,
+                    threads=threads,
+                    pandas_fallback=pandas_fallback,
                 )
             else:
                 bounds_series = gcs_path
@@ -113,13 +118,19 @@ def read_geopandas(
                 df = gpd.read_parquet(file, **kwargs)
             except ValueError as e:
                 if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
-                    raise e
+                    raise e.__class__(
+                        f"{e.__class__.__name__}: {e} for {gcs_path}."
+                    ) from e
                 df = dp.read_pandas(gcs_path, **kwargs)
 
                 if pandas_fallback or not len(df):
                     return df
                 else:
-                    raise e
+                    more_txt = PANDAS_FALLBACK_INFO if not len(df) else ""
+                    raise e.__class__(
+                        f"{e.__class__.__name__}: {e} for {df}." + more_txt
+                    ) from e
+
     else:
         with file_system.open(gcs_path, mode="rb") as file:
             try:
@@ -132,7 +143,10 @@ def read_geopandas(
                 if pandas_fallback or not len(df):
                     return df
                 else:
-                    raise e
+                    more_txt = PANDAS_FALLBACK_INFO if not len(df) else ""
+                    raise e.__class__(
+                        f"{e.__class__.__name__}: {e} for {df}. " + more_txt
+                    ) from e
 
     if mask is not None:
         return sfilter(df, mask)
@@ -140,7 +154,7 @@ def read_geopandas(
 
 
 def _get_bounds_parquet(
-    path: str | Path, file_system: dp.gcs.GCSFileSystem
+    path: str | Path, file_system: dp.gcs.GCSFileSystem, pandas_fallback: bool = False
 ) -> tuple[list[float], dict] | tuple[None, None]:
     with file_system.open(path) as f:
         try:
@@ -155,7 +169,13 @@ def _get_bounds_parquet(
     try:
         meta = json.loads(meta[b"geo"])["columns"]["geometry"]
     except KeyError as e:
-        raise KeyError(e, path, f"{num_rows=}", meta) from e
+        if pandas_fallback:
+            return None, None
+        raise KeyError(
+            f"{e.__class__.__name__}: {e} for {path}." + PANDAS_FALLBACK_INFO,
+            # f"{num_rows=}",
+            # meta,
+        ) from e
     return meta["bbox"], meta["crs"]
 
 
@@ -167,13 +187,15 @@ def _get_columns(path: str | Path, file_system: dp.gcs.GCSFileSystem) -> pd.Inde
 
 
 def _get_index_cols(schema: pyarrow.Schema) -> list[str]:
-    return json.loads(schema.metadata[b"pandas"])["index_columns"]
+    cols = json.loads(schema.metadata[b"pandas"])["index_columns"]
+    return [x for x in cols if not isinstance(x, dict)]
 
 
 def get_bounds_series(
     paths: list[str | Path] | tuple[str | Path],
     file_system: dp.gcs.GCSFileSystem | None = None,
     threads: int | None = None,
+    pandas_fallback: bool = False,
 ) -> GeoSeries:
     """Get a GeoSeries with file paths as indexes and the file's bounds as values.
 
@@ -187,6 +209,8 @@ def get_bounds_series(
             Note that this is slower in long loops.
         threads: Number of threads to use if reading multiple files. Defaults to
             the number of files to read or the number of available threads (if lower).
+        pandas_fallback: If False (default), an exception is raised if the file has
+            no geo metadata. If True, the geometry value is set to None for this file.
 
     Returns:
         A geopandas.GeoSeries with file paths as indexes and bounds as values.
@@ -235,7 +259,9 @@ def get_bounds_series(
 
     with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:
         bounds: list[tuple[list[float], dict]] = parallel(
-            joblib.delayed(_get_bounds_parquet)(path, file_system=file_system)
+            joblib.delayed(_get_bounds_parquet)(
+                path, file_system=file_system, pandas_fallback=pandas_fallback
+            )
             for path in paths
         )
     crss = {json.dumps(x[1]) for x in bounds}
@@ -312,10 +338,10 @@ def write_geopandas(
         try:
             dp.write_pandas(df, gcs_path, **kwargs)
         except Exception as e:
-            try:
-                raise e.__class__(e, df) from e
-            except Exception as e2:
-                raise e from e2
+            more_txt = PANDAS_FALLBACK_INFO if not pandas_fallback else ""
+            raise e.__class__(
+                f"{e.__class__.__name__}: {e} for {df}. " + more_txt
+            ) from e
         return
 
     file_system = dp.FileClient.get_gcs_file_system()
