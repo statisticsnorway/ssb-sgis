@@ -29,7 +29,8 @@ def _get_transform_from_bounds(
     elif len(shape) == 3:
         _, height, width = shape
     else:
-        raise ValueError
+        return None
+        # raise ValueError(shape)
     return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
 
 
