@@ -56,10 +56,10 @@ _CATEGORICAL_CMAP = {
     5: "#804e00",
     6: "#e3dc00",
     7: "#00ffee",
-    8: "#4be3c5",
     9: "#870062",
     10: "#751500",
     11: "#1c6b00",
+    8: "#7cebb9",
 }
 
 DEFAULT_SCHEME = "quantiles"
