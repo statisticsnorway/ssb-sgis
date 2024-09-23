@@ -166,6 +166,7 @@ class ThematicMap(Map):
         nan_label: str = "Missing",
         legend_kwargs: dict | None = None,
         title_kwargs: dict | None = None,
+        legend: bool = False,
         **kwargs,
     ) -> None:
         """Initialiser."""
@@ -177,6 +178,9 @@ class ThematicMap(Map):
             bins=bins,
             nan_label=nan_label,
         )
+
+        if not legend:
+            self.legend = None
 
         self.title = title
         self._size = size
@@ -398,7 +402,7 @@ class ThematicMap(Map):
             return kwargs
 
         else:
-            if self.legend.rounding and self.legend.rounding < 0:
+            if self.legend and self.legend.rounding and self.legend.rounding < 0:
                 self.bins = prettify_bins(self.bins, self.legend.rounding)
                 self.bins = list({round(bin_, 5) for bin_ in self.bins})
                 self.bins.sort()
@@ -463,6 +467,8 @@ class ThematicMap(Map):
 
     def _create_legend(self) -> None:
         """Instantiate the Legend class."""
+        if self.legend is None:
+            return
         kwargs = {}
         if self._dark:
             kwargs["facecolor"] = "#0f0f0f"
