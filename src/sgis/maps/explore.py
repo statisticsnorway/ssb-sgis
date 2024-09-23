@@ -316,7 +316,7 @@ class Explore(Map):
             else:
                 new_kwargs[key] = value
 
-        super().__init__(column=column, show=show, **new_kwargs, **new_gdfs)
+        super().__init__(column=column, show=show, **(new_kwargs | new_gdfs))
 
         if self.gdfs is None:
             return
