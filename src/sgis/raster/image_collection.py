@@ -785,27 +785,32 @@ class Band(_ImageBandBase):
                 return self
             bounds_arr = GeoSeries([to_shapely(bounds)]).values
             try:
-                print(
-                    "helteeeheroppe00000",
-                    self.band_id,
-                    self.values.shape,
-                    to_shapely(bounds).area,
-                )
 
-                self.values = (
-                    to_xarray(
-                        self.values,
-                        transform=self.transform,
-                        crs=self.crs,
+                new_values = self.values
+                while out_shape != self.values.shape:
+                    print(
+                        "helteeeheroppe00000",
+                        self.band_id,
+                        new_values.shape,
+                        to_shapely(bounds).area,
+                        bounds_arr.area,
                     )
-                    .rio.clip(bounds_arr, crs=self.crs, **kwargs)
-                    .to_numpy()
-                )
-                print(
-                    "helteeeheroppe",
-                    self.band_id,
-                    self.values.shape,
-                    to_shapely(bounds).area,
+                    new_values = (
+                        to_xarray(
+                            new_values,
+                            transform=self.transform,
+                            crs=self.crs,
+                        )
+                        .rio.clip(bounds_arr, crs=self.crs, **kwargs)
+                        .to_numpy()
+                    )
+
+                    bounds_arr = bounds_arr.buffer(0.0000001)
+
+                self.values = new_values
+                assert out_shape == self.values.shape, (
+                    out_shape,
+                    self._values.shape,
                 )
 
             except NoDataInBounds:
@@ -859,9 +864,6 @@ class Band(_ImageBandBase):
                             out_shape = _get_shape_from_bounds(
                                 bounds, self.res, indexes
                             )
-                        print(
-                            "heroppe", self.band_id, out_shape, to_shapely(bounds).area
-                        )
 
                         self._values = src.read(
                             indexes=indexes,
@@ -871,6 +873,19 @@ class Band(_ImageBandBase):
                             masked=masked,
                             **kwargs,
                         )
+
+                        assert out_shape == self._values.shape, (
+                            out_shape,
+                            self._values.shape,
+                        )
+                        print(
+                            "heroppe",
+                            self.band_id,
+                            out_shape,
+                            self._values.shape,
+                            to_shapely(bounds).area,
+                        )
+
                         self.transform = rasterio.transform.from_bounds(
                             *bounds, self.width, self.height
                         )
