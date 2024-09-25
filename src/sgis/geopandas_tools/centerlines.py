@@ -2,9 +2,7 @@ import functools
 import itertools
 import warnings
 
-import numpy as np
 import pandas as pd
-import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from numpy.typing import NDArray
@@ -26,6 +24,7 @@ from ..networkanalysis.traveling_salesman import traveling_salesman_problem
 from .conversion import to_geoseries
 from .general import clean_geoms
 from .general import make_lines_between_points
+from .general import multipoints_to_line_segments
 from .general import sort_long_first
 from .geometry_types import make_all_singlepart
 from .sfilter import sfilter_inverse
@@ -333,7 +332,7 @@ def _get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
 
         out_geoms.append(nearest_geom_points)
 
-    lines_around_geometries = _multipoints_to_line_segments(
+    lines_around_geometries = multipoints_to_line_segments(
         extract_unique_points(rectangles)
     )
 
@@ -369,86 +368,3 @@ def _get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
         out_geoms.append(points_moved)
 
     return pd.concat(out_geoms)
-
-
-def _multipoints_to_line_segments(
-    multipoints: GeoSeries | GeoDataFrame, to_next: bool = True, cycle: bool = True
-) -> GeoSeries | GeoDataFrame:
-    if not len(multipoints):
-        return multipoints
-
-    multipoints = to_geoseries(multipoints)
-
-    if isinstance(multipoints.index, pd.MultiIndex):
-        index = [
-            multipoints.index.get_level_values(i)
-            for i in range(multipoints.index.nlevels)
-        ]
-        multipoints.index = pd.MultiIndex.from_arrays(
-            [list(range(len(multipoints))), *index],
-            names=["range_idx", *multipoints.index.names],
-        )
-    else:
-        multipoints.index = pd.MultiIndex.from_arrays(
-            [np.arange(0, len(multipoints)), multipoints.index],
-            names=["range_idx", multipoints.index.name],
-        )
-
-    try:
-        crs = multipoints.crs
-    except AttributeError:
-        crs = None
-
-    point_df = multipoints.explode(index_parts=False).to_frame("geometry")
-
-    if to_next:
-        shift = -1
-        keep = "first"
-    else:
-        shift = 1
-        keep = "last"
-
-    point_df["next"] = point_df.groupby(level=0)["geometry"].shift(shift)
-
-    if cycle:
-        first_points: GeoSeries = point_df.loc[
-            lambda x: ~x.index.get_level_values(0).duplicated(keep=keep), "geometry"
-        ]
-        is_last_point = point_df["next"].isna()
-
-        point_df.loc[is_last_point, "next"] = first_points
-        assert point_df["next"].notna().all()
-    else:
-        point_df = point_df[point_df["next"].notna()]
-
-    point_df["geometry"] = [
-        LineString([x1, x2])
-        for x1, x2 in zip(point_df["geometry"], point_df["next"], strict=False)
-    ]
-    if isinstance(multipoints.index, pd.MultiIndex):
-        point_df.index = point_df.index.droplevel(0)
-
-    if isinstance(multipoints, GeoDataFrame):
-        return GeoDataFrame(
-            point_df.drop(columns=["next"]), geometry="geometry", crs=crs
-        )
-    return GeoSeries(point_df["geometry"], crs=crs)
-
-
-def get_line_segments(
-    lines: GeoDataFrame | GeoSeries, extract_unique: bool = False, cycle=False
-) -> GeoDataFrame:
-    try:
-        assert lines.index.is_unique
-    except AttributeError:
-        pass
-
-    lines = to_geoseries(lines)
-
-    if extract_unique:
-        points = extract_unique_points(lines.values)
-    else:
-        coords, indices = shapely.get_coordinates(lines, return_index=True)
-        points = GeoSeries(shapely.points(coords), index=indices)
-
-    return _multipoints_to_line_segments(points, cycle=cycle)

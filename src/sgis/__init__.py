@@ -27,7 +27,8 @@ from .geopandas_tools.buffer_dissolve_explode import dissexp_by_cluster
 from .geopandas_tools.centerlines import get_rough_centerlines
 from .geopandas_tools.cleaning import coverage_clean
 from .geopandas_tools.cleaning import split_and_eliminate_by_longest
-from .geopandas_tools.cleaning import split_by_neighbors
+
+# from .geopandas_tools.cleaning import split_by_neighbors
 from .geopandas_tools.conversion import coordinate_array
 from .geopandas_tools.conversion import from_4326
 from .geopandas_tools.conversion import to_4326
@@ -43,6 +44,7 @@ from .geopandas_tools.general import clean_geoms
 from .geopandas_tools.general import drop_inactive_geometry_columns
 from .geopandas_tools.general import get_common_crs
 from .geopandas_tools.general import get_grouped_centroids
+from .geopandas_tools.general import get_line_segments
 from .geopandas_tools.general import points_in_bounds
 from .geopandas_tools.general import random_points
 from .geopandas_tools.general import random_points_in_polygons
