@@ -387,11 +387,16 @@ def samplemap(
         except Exception:
             sample = to_gdf(to_shapely(to_bbox(sample))).explode(ignore_index=True)
 
-        sample = sample.clip(mask).sample(1)
+        sample = sample.clip(mask).explode(ignore_index=True).sample(1)
 
+    print(locals())
     random_point = sample.sample_points(size=1)
 
-    center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
+    try:
+        center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
+    except AttributeError as e:
+        raise AttributeError(e, random_point.geometry.iloc[0]) from e
+
     print(f"center={center}, size={size}")
 
     mask = random_point.buffer(size)

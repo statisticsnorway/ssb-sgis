@@ -2,6 +2,7 @@ import datetime
 import functools
 import glob
 import itertools
+import math
 import os
 import random
 import re
@@ -217,7 +218,6 @@ class ImageCollectionGroupBy:
         )
         for img, (group_values, _) in zip(images, self.data, strict=True):
             for attr, group_value in zip(self.by, group_values, strict=True):
-                print(attr, group_value)
                 try:
                     setattr(img, attr, group_value)
                 except AttributeError:
@@ -633,7 +633,9 @@ class Band(_ImageBandBase):
     @values.setter
     def values(self, new_val):
         if not isinstance(new_val, np.ndarray):
-            raise TypeError(f"{self.__class__.__name__} 'values' must be np.ndarray.")
+            raise TypeError(
+                f"{self.__class__.__name__} 'values' must be np.ndarray. Got {type(new_val)}"
+            )
         self._values = new_val
 
     @property
@@ -747,9 +749,10 @@ class Band(_ImageBandBase):
             if not isinstance(self.values, np.ndarray):
                 raise ValueError()
             has_array = True
-        except ValueError:
+        except ValueError:  # also catches ArrayNotLoadedError
             has_array = False
 
+        # get common bounds of function argument 'bounds' and previously set bbox
         if bounds is None and self._bbox is None:
             bounds = None
         elif bounds is not None and self._bbox is None:
@@ -759,7 +762,8 @@ class Band(_ImageBandBase):
         else:
             bounds = to_shapely(bounds).intersection(to_shapely(self._bbox))
 
-        if bounds is not None and bounds.area == 0:
+        should_return_empty: bool = bounds is not None and bounds.area == 0
+        if should_return_empty:
             self._values = np.array([])
             if self.mask is not None and not self.is_mask:
                 self._mask = self._mask.load()
@@ -768,53 +772,30 @@ class Band(_ImageBandBase):
             self.transform = None
             return self
 
+        if has_array and bounds_was_none:
+            return self
+
+        # round down/up to integer to avoid precision trouble
         if bounds is not None:
-            bounds = to_bbox(bounds)
+            #     bounds = to_bbox(bounds)
+            minx, miny, maxx, maxy = to_bbox(bounds)
+            bounds = (int(minx), int(miny), math.ceil(maxx), math.ceil(maxy))
 
         boundless = False
 
         if indexes is None:
             indexes = 1
 
-        _indexes = (indexes,) if isinstance(indexes, int) else indexes
+        # as tuple to ensure we get 3d array
+        _indexes: tuple[int] = (indexes,) if isinstance(indexes, int) else indexes
 
+        # allow setting a fixed out_shape for the array, in order to make mask same shape as values
         out_shape = kwargs.pop("out_shape", None)
 
         if has_array:
-            if bounds_was_none:
-                return self
-            bounds_arr = GeoSeries([to_shapely(bounds)]).values
-            try:
-
-                new_values = self.values
-                while out_shape != self.values.shape:
-                    print(
-                        "helteeeheroppe00000",
-                        self.band_id,
-                        new_values.shape,
-                        to_shapely(bounds).area,
-                        bounds_arr.area,
-                    )
-                    new_values = (
-                        to_xarray(
-                            new_values,
-                            transform=self.transform,
-                            crs=self.crs,
-                        )
-                        .rio.clip(bounds_arr, crs=self.crs, **kwargs)
-                        .to_numpy()
-                    )
-
-                    bounds_arr = bounds_arr.buffer(0.0000001)
-
-                self.values = new_values
-                assert out_shape == self.values.shape, (
-                    out_shape,
-                    self._values.shape,
-                )
-
-            except NoDataInBounds:
-                self.values = np.array([])
+            self.values = _clip_loaded_array(
+                self.values, bounds, self.transform, self.crs, out_shape, **kwargs
+            )
             self._bounds = bounds
             self.transform = _get_transform_from_bounds(self._bounds, self.values.shape)
 
@@ -878,13 +859,6 @@ class Band(_ImageBandBase):
                             out_shape,
                             self._values.shape,
                         )
-                        print(
-                            "heroppe",
-                            self.band_id,
-                            out_shape,
-                            self._values.shape,
-                            to_shapely(bounds).area,
-                        )
 
                         self.transform = rasterio.transform.from_bounds(
                             *bounds, self.width, self.height
@@ -913,9 +887,6 @@ class Band(_ImageBandBase):
             # if self.masking:
             #     mask_arr = np.isin(mask_arr, self.masking["values"])
 
-            print()
-            print(self._values.shape)
-            print(mask_arr.shape)
             self._values = np.ma.array(
                 self._values, mask=mask_arr, fill_value=self.nodata
             )
@@ -2837,6 +2808,35 @@ def _slope_2d(array: np.ndarray, res: int, degrees: int) -> np.ndarray:
     return degrees
 
 
+def _clip_loaded_array(
+    arr: np.ndarray,
+    bounds: tuple[int, int, int, int],
+    transform: Affine,
+    crs: Any,
+    out_shape: tuple[int, int],
+    **kwargs,
+) -> np.ndarray:
+    # xarray needs a numpy array of polygon(s)
+    bounds_arr: np.ndarray = GeoSeries([to_shapely(bounds)]).values
+    try:
+
+        while out_shape != arr.shape:
+            arr = (
+                to_xarray(
+                    arr,
+                    transform=transform,
+                    crs=crs,
+                )
+                .rio.clip(bounds_arr, crs=crs, **kwargs)
+                .to_numpy()
+            )
+            # bounds_arr = bounds_arr.buffer(0.0000001)
+        return arr
+
+    except NoDataInBounds:
+        return np.array([])
+
+
 def _get_images(
     image_paths: list[str],
     *,
@@ -3133,7 +3133,6 @@ def _load_band(band: Band, **kwargs) -> None:
 
 
 def _merge_by_band(collection: ImageCollection, **kwargs) -> Image:
-    print("_merge_by_band", collection.dates)
     return collection.merge_by_band(**kwargs)
 
 
