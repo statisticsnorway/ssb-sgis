@@ -1,10 +1,10 @@
 import functools
+import itertools
 import numbers
 import warnings
 from collections.abc import Hashable
 from collections.abc import Iterable
 from typing import Any
-import itertools
 
 import joblib
 import numpy as np
@@ -31,7 +31,8 @@ from shapely import points as shapely_points
 from shapely import polygons
 from shapely import union_all
 from shapely.geometry import LineString
-from shapely.geometry import Point, MultiPoint
+from shapely.geometry import MultiPoint
+from shapely.geometry import Point
 from shapely.geometry import Polygon
 
 try:
@@ -39,9 +40,10 @@ try:
 except ImportError:
     pass
 
-from .conversion import coordinate_array, to_geoseries
+from .conversion import coordinate_array
 from .conversion import to_bbox
 from .conversion import to_gdf
+from .conversion import to_geoseries
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
