@@ -22,7 +22,6 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 from pandas import Series
 
-from ..geopandas_tools.sfilter import sfilter_split
 from ..geopandas_tools.neighbors import get_neighbor_indices
 from ..geopandas_tools.overlay import clean_overlay
 from ..helpers import LocalFunctionError
@@ -40,11 +39,8 @@ except ImportError:
 try:
     from dapla import read_pandas
     from dapla import write_pandas
-    from dapla.gcs import GCSFileSystem
 except ImportError:
-
-    class GCSFileSystem:
-        """Placeholder."""
+    pass
 
 
 class Parallel:
