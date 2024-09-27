@@ -465,7 +465,7 @@ def test_clean_1144():
         area_same_index_ratio = area_same_index / intersected.area.sum()
         assert area_same_index_ratio > 0.998 - tolerance * 0.035, area_same_index_ratio
 
-        notna_df = df.notna().all()
+        notna_df: pd.DataFrame = df.notna().all()
         cols_notna = list(notna_df[lambda x: x == True].index)
         notna_df_relevant_cols = df[cols_notna].notna().all()
         notna_cleaned = cleaned[cols_notna].notna().all()

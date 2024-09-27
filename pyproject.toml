@@ -182,6 +182,7 @@ ignore = [
     "ANN001", # TODO temporary. Missing type annotation for function argument ...
     "D103",   # TODO temporary. Missing docstring in public function
     "B018",   # Found useless expression
+    "E712",   # Avoid equality comparisons to `True`; use `if x:` for truth checks (because 'is' doesn't work with numpy/pandas)
 ]
 
 [tool.ruff.lint.isort]
