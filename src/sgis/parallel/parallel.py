@@ -22,6 +22,7 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 from pandas import Series
 
+from ..geopandas_tools.sfilter import sfilter_split
 from ..geopandas_tools.neighbors import get_neighbor_indices
 from ..geopandas_tools.overlay import clean_overlay
 from ..helpers import LocalFunctionError
@@ -805,7 +806,11 @@ def _write_one_muni(
 
     if not len(gdf_muni):
         if write_empty:
-            gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
+            try:
+                geom_col = gdf.geometry.name
+            except AttributeError:
+                geom_col = "geometry"
+            gdf_muni = gdf_muni.drop(columns=geom_col, errors="ignore")
             gdf_muni["geometry"] = None
             write_pandas(gdf_muni, out)
         return
@@ -833,7 +838,11 @@ def _write_one_muni_with_neighbors(
 
     if not len(gdf_neighbor):
         if write_empty:
-            gdf_neighbor = gdf_neighbor.drop(columns="geometry", errors="ignore")
+            try:
+                geom_col = gdf.geometry.name
+            except AttributeError:
+                geom_col = "geometry"
+            gdf_neighbor = gdf_neighbor.drop(columns=geom_col, errors="ignore")
             gdf_neighbor["geometry"] = None
             write_pandas(gdf_neighbor, out)
         return
@@ -879,7 +888,9 @@ def _fix_missing_muni_numbers(
         )
 
     try:
-        municipalities = municipalities[[muni_number_col, "geometry"]].to_crs(gdf.crs)
+        municipalities = municipalities[
+            [muni_number_col, municipalities.geometry.name]
+        ].to_crs(gdf.crs)
     except Exception as e:
         raise e.__class__(e, to_print) from e
 
@@ -966,10 +977,21 @@ def parallel_overlay(
 
 
 def _clean_intersection(
-    df1: GeoDataFrame, df2: GeoDataFrame, to_print: str = ""
+    df1: GeoDataFrame, df2: GeoDataFrame, to_print: str | None = None
 ) -> GeoDataFrame:
     print(to_print, "- intersection chunk len:", len(df1))
-    return clean_overlay(df1, df2, how="intersection")
+    cols_to_keep = df1.columns.union(df2.columns.difference({df2.geometry.name}))
+    df1["_range_idx"] = range(len(df1))
+    joined = df1.sjoin(df2, predicate="within", how="left")
+    within = joined.loc[joined["_range_idx"].notna(), cols_to_keep]
+    not_within = joined.loc[joined["_range_idx"].isna(), df1.columns]
+    return pd.concat(
+        [
+            within,
+            clean_overlay(not_within, df2, how="intersection"),
+        ],
+        ignore_index=True,
+    )
 
 
 def chunkwise(
