@@ -1573,7 +1573,7 @@ class NetworkAnalysis:
         This method is best stored in the NetworkAnalysis class,
         since the point classes are instantiated each time an analysis is run.
         """
-        if self.wkts[what] != [geom.wkt for geom in points.geometry]:
+        if not np.array_equal(self.wkts[what], points.geometry.to_wkt().values):
             return True
 
         if not all(x in self.graph.vs["name"] for x in list(points.temp_idx.values)):
@@ -1590,17 +1590,15 @@ class NetworkAnalysis:
         """
         self.wkts = {}
 
-        self.wkts["network"] = [geom.wkt for geom in self.network.gdf.geometry]
+        self.wkts["network"] = self.network.gdf.geometry.to_wkt().values
 
         if not hasattr(self, "origins"):
             return
 
-        self.wkts["origins"] = [geom.wkt for geom in self.origins.gdf.geometry]
+        self.wkts["origins"] = self.origins.gdf.geometry.to_wkt().values
 
         if self.destinations is not None:
-            self.wkts["destinations"] = [
-                geom.wkt for geom in self.destinations.gdf.geometry
-            ]
+            self.wkts["destinations"] = self.destinations.gdf.geometry.to_wkt().values
 
     @staticmethod
     def _sort_breaks(breaks: str | list | tuple | int | float) -> list[float | int]:
