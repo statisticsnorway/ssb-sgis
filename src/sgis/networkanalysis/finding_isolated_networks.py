@@ -1,6 +1,7 @@
 """Functions for Finding network components in a GeoDataFrame of lines."""
 
 import networkx as nx
+import pandas as pd
 from geopandas import GeoDataFrame
 
 from .nodes import make_node_ids
@@ -81,7 +82,7 @@ def get_component_size(gdf: GeoDataFrame) -> GeoDataFrame:
     >>> roads = read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
 
     >>> roads = get_component_size(roads)
-    >>> roads.component_size.value_counts().head()
+    >>> roads["component_size"].value_counts().head()
     component_size
     79180    85638
     2         1601
@@ -101,11 +102,17 @@ def get_component_size(gdf: GeoDataFrame) -> GeoDataFrame:
     graph.add_edges_from(edges)
     components = [list(x) for x in nx.connected_components(graph)]
 
-    componentsdict = {
-        idx: len(component) for component in components for idx in component
-    }
+    mapper = pd.DataFrame(
+        {
+            idx: [i, len(component)]
+            for i, component in enumerate(components)
+            for idx in component
+        },
+    ).transpose()
+    mapper.columns = ["component_index", "component_size"]
 
-    gdf["component_size"] = gdf.source.map(componentsdict)
+    gdf["component_index"] = gdf["source"].map(mapper["component_index"])
+    gdf["component_size"] = gdf["source"].map(mapper["component_size"])
 
     gdf = gdf.drop(
         ["source_wkt", "target_wkt", "source", "target", "n_source", "n_target"], axis=1
