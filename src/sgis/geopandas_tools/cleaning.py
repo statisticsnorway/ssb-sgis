@@ -1,8 +1,8 @@
 # %%
 import warnings
+from collections.abc import Callable
 from typing import Any
 
-import numba
 import numpy as np
 import pandas as pd
 import shapely
@@ -19,6 +19,23 @@ from shapely.errors import GEOSException
 from shapely.geometry import LinearRing
 from shapely.geometry import LineString
 from shapely.geometry import Point
+
+try:
+    import numba
+except ImportError:
+
+    class numba:
+        """Placeholder."""
+
+        @staticmethod
+        def njit(func) -> Callable:
+            """Placeholder that does nothing."""
+
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+
+            return wrapper
+
 
 from ..debug_config import _DEBUG_CONFIG
 from ..debug_config import _try_debug_print
