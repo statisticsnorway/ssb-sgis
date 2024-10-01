@@ -162,8 +162,8 @@ def tests(session: Session) -> None:
             "--parallel",
             "-m",
             "pytest",
-            "-o",
             "-v",
+            "-o",
             "pythonpath=",
             *session.posargs,
         )
