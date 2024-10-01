@@ -96,7 +96,7 @@ jobs:
 
       - name: Run Nox
         run: |
-          nox --python=${{ matrix.python }} --full-trace
+          nox --python=${{ matrix.python }}
 
       - name: Upload coverage data
         if: always() && matrix.session == 'tests'
