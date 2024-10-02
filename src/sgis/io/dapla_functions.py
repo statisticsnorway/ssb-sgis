@@ -2,6 +2,7 @@
 
 import json
 import multiprocessing
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -59,7 +60,7 @@ def read_geopandas(
     if file_system is None:
         file_system = dp.FileClient.get_gcs_file_system()
 
-    if isinstance(gcs_path, (list | tuple | GeoSeries)):
+    if not isinstance(gcs_path, (str | Path | os.PathLike)):
         kwargs |= {"file_system": file_system, "pandas_fallback": pandas_fallback}
 
         if mask is not None:
