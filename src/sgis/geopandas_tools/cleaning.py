@@ -38,10 +38,7 @@ except ImportError:
 
 
 from ..debug_config import _DEBUG_CONFIG
-from ..debug_config import _try_debug_print
 from ..maps.maps import explore
-from ..maps.maps import explore_locals
-from .buffer_dissolve_explode import dissexp
 from .conversion import to_gdf
 from .conversion import to_geoseries
 from .duplicates import update_geometries
@@ -50,7 +47,6 @@ from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .overlay import clean_overlay
 from .polygon_operations import eliminate_by_longest
-from .polygon_operations import get_gaps
 from .polygon_operations import split_by_neighbors
 from .polygons_as_rings import PolygonsAsRings
 from .sfilter import sfilter
@@ -72,7 +68,7 @@ BUFFER_RES = 50
 #     pass
 
 
-# def xxx(func):
+# def no_njit(func):
 #     def wrapper(*args, **kwargs):
 #         result = func(*args, **kwargs)
 #         return result
@@ -80,7 +76,7 @@ BUFFER_RES = 50
 #     return wrapper
 
 
-# numba.njit = xxx
+# numba.njit = no_njit
 
 
 def coverage_clean(
@@ -168,8 +164,6 @@ def coverage_clean(
 
     gdf = snap_polygons(gdf, tolerance, mask=mask, snap_to_anchors=snap_to_anchors)
 
-    return gdf
-
     if mask is not None:
         missing_from_mask = clean_overlay(
             mask, gdf, how="difference", geom_type="polygon"
@@ -194,210 +188,6 @@ def coverage_clean(
 
     return pd.concat([gdf, missing_from_gdf], ignore_index=True).pipe(
         update_geometries, geom_type="polygon"
-    )
-
-    explore(
-        gdf,
-        gdf_original,
-        msk=mask,
-        points=gdf.extract_unique_points().explode().to_frame(),
-        center=_DEBUG_CONFIG["center"],
-    )
-
-    gdf["_gdf_range_idx"] = range(len(gdf))
-
-    missing_from_gdf = clean_overlay(
-        gdf_original, gdf, how="difference", geom_type="polygon"
-    )
-
-    is_thin = missing_from_gdf.buffer(-tolerance / 2).is_empty
-    thin_missing_from_gdf, thick_missing_from_gdf = (
-        missing_from_gdf[is_thin],
-        missing_from_gdf[~is_thin],
-    )
-
-    # errors can occur, so keeping only polygons within gdf after negative buffer
-    # resetting index to be able to do iloc, in case of non-unique index
-    thick_missing_from_gdf = thick_missing_from_gdf.iloc[
-        lambda x: sfilter_inverse(
-            x.buffer(-tolerance / 2).reset_index(drop=True), gdf  # , predicate="within"
-        ).index
-    ]
-
-    # missing_grid_size_01 = clean_overlay(
-    #     gdf_original, gdf, how="difference", geom_type="polygon", grid_size=0.1
-    # )
-
-    # missing_grid_size_001 = clean_overlay(
-    #     gdf_original, gdf, how="difference", geom_type="polygon", grid_size=0.01
-    # )
-
-    # missing_grid_size_0001 = clean_overlay(
-    #     gdf_original, gdf, how="difference", geom_type="polygon", grid_size=0.001
-    # )
-
-    is_thin = gdf.buffer(-tolerance / 2).is_empty
-    thin, gdf = gdf[is_thin], gdf[~is_thin]
-    gaps = get_gaps(gdf, include_interiors=True).loc[
-        lambda x: x.buffer(-tolerance / 2).is_empty
-    ]
-    to_eliminate = pd.concat([thin_missing_from_gdf, thin, gaps], ignore_index=True)
-    assert gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all()
-
-    gdf, isolated = split_and_eliminate_by_longest(gdf, to_eliminate, tolerance)
-    # assert gdf.ARTYPE.notna().all(), gdf[gdf.ARTYPE.isna()]
-    assert gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all()
-
-    gdf = pd.concat(_eliminate_not_really_isolated(gdf, isolated), ignore_index=True)
-    # assert gdf.ARTYPE.notna().all(), gdf[gdf.ARTYPE.isna()]
-
-    _try_debug_print("etter eliminate 1 (med gdf)")
-    explore_locals(
-        gdf=gdf,
-        isolated=isolated,
-        to_eliminate=to_eliminate,
-        # dissexped=dissexp(gdf, by="_gdf_range_idx", dropna=False, as_index=False),
-        points=gdf.extract_unique_points().explode().to_frame(),
-        center=(5.76394723, 58.82643877, 1),
-    )
-    explore(
-        gdf_original,
-        gdf=gdf,
-        isolated=isolated,
-        to_eliminate=to_eliminate,
-        # dissexped=dissexp(gdf, by="_gdf_range_idx", dropna=False, as_index=False),
-        points=gdf.extract_unique_points().explode().to_frame(),
-        center=_DEBUG_CONFIG["center"],
-    )
-
-    assert gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all()
-
-    return gdf.drop(columns="_gdf_range_idx", errors="ignore")
-
-    gdf = dissexp(gdf, by="_gdf_range_idx", dropna=False, as_index=False)
-
-    # assert gdf.ARTYPE.notna().all(), gdf[gdf.ARTYPE.isna()]
-
-    # we don't want the thick polygons from the mask
-    thin_missing_from_mask = clean_overlay(
-        mask, gdf, how="difference", geom_type="polygon"
-    ).loc[lambda x: x.buffer(-tolerance / 2).is_empty]
-
-    _try_debug_print("split_by_neighbors 2 mask")
-
-    assert gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all()
-
-    gdf, isolated = split_and_eliminate_by_longest(
-        gdf, thin_missing_from_mask, tolerance
-    )
-    # assert gdf.ARTYPE.notna().all(), gdf[gdf.ARTYPE.isna()]
-    gdf, _ = _eliminate_not_really_isolated(gdf, isolated)
-    # assert gdf.ARTYPE.notna().all(), gdf[gdf.ARTYPE.isna()]
-
-    # if 0:
-    #     thin_missing_from_mask.geometry = thin_missing_from_mask.buffer(
-    #         -PRECISION,
-    #         resolution=1,
-    #         join_style=2,
-    #     ).buffer(
-    #         PRECISION,
-    #         resolution=1,
-    #         join_style=2,
-    #     )
-    # _try_debug_print("split_by_neighbors 2")
-
-    # single_neighbored, multi_neighbored = (
-    #     _separate_single_neighbored_from_multi_neighoured_geometries(
-    #         thin_missing_from_mask, gdf
-    #     )
-    # )
-
-    # multi_neighbored = split_by_neighbors(multi_neighbored, gdf, tolerance=tolerance)
-    # thin_missing_from_mask = pd.concat([multi_neighbored, single_neighbored])
-    # thin_missing_from_mask["_was_to_eliminate"] = 1
-    # _try_debug_print("eliminate_by_longest again with mask")
-    # gdf_between = gdf.copy()
-    # gdf, isolated = eliminate_by_longest(
-    #     gdf, thin_missing_from_mask
-    # )
-    # gdf = gdf.explode(ignore_index=True)
-    # assert not len(isolated), (explore(isolated, gdf, browser=False), isolated)
-
-    _try_debug_print("etter eliminate 2 (av mask)")
-    explore(
-        gdf=gdf,
-        thin_missing_from_mask=thin_missing_from_mask,
-        thin_missing_from_gdf=thin_missing_from_gdf,
-        thick_missing_from_gdf=thick_missing_from_gdf,
-        # thick_missing_from_gdf2=thick_missing_from_gdf2,
-        # missing_grid_size_01=missing_grid_size_01,
-        # missing_grid_size_001=missing_grid_size_001,
-        # missing_grid_size_0001=missing_grid_size_0001,
-        thin=thin,
-        to_eliminate=to_eliminate,
-        center=_DEBUG_CONFIG["center"],
-    )
-
-    gdf = clean_overlay(gdf, mask, how="intersection", geom_type="polygon")
-    # assert gdf.ARTYPE.notna().all(), gdf[gdf.ARTYPE.isna()]
-
-    if 0:
-        mmm3 = sfilter(gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833))
-        explore(mmm3)
-        was_to_eliminate = gdf["_was_to_eliminate"] == 1
-        still_not_eliminated = gdf[was_to_eliminate]
-
-        still_not_eliminated.geometry = still_not_eliminated.buffer(0.01)
-
-        still_not_eliminated = clean_overlay(
-            still_not_eliminated,
-            mask,
-            how="intersection",
-            geom_type="polygon",
-        )
-        explore(
-            gdf,
-            still_not_eliminated,
-            msk=mask,
-            center=_DEBUG_CONFIG["center"],
-            # center=_DEBUG_CONFIG["center"],
-        )
-
-        gdf = (
-            eliminate_by_longest(gdf[~was_to_eliminate], still_not_eliminated).explode(
-                ignore_index=True
-            )
-            # .pipe(clean_overlay, mask, geom_type="polygon")
-            # .pipe(update_geometries, geom_type="polygon")
-        ).drop(columns="_was_to_eliminate")
-
-        explore(
-            gdf,
-            msk=mask,
-            center=_DEBUG_CONFIG["center"],
-            # center=_DEBUG_CONFIG["center"],
-        )
-
-        mm4 = sfilter(
-            gdf, to_gdf([5.37027276, 59.00997572], 4326).to_crs(25833).buffer(1)
-        )
-        explore(mm4)
-    # else:
-    #     gdf = gdf.drop(columns="_was_to_eliminate")
-
-    # return pd.concat([gdf, thick_missing_from_gdf], ignore_index=True)
-
-    # TODO this can create duble surfaces because of errors
-    gdf = pd.concat([gdf, thick_missing_from_gdf], ignore_index=True)
-    # assert gdf.ARTYPE.notna().all(), gdf[gdf.ARTYPE.isna()]
-
-    dissappeared = sfilter_inverse(gdf_original, gdf.buffer(-PRECISION)).loc[
-        lambda x: ~x.buffer(-PRECISION).is_empty
-    ]
-    # assert dissappeared.ARTYPE.notna().all()
-
-    return pd.concat([gdf, dissappeared], ignore_index=True).drop(
-        columns="_gdf_range_idx"
     )
 
 
@@ -616,7 +406,7 @@ def _snap_to_anchors(
     tolerance: int | float,
 ) -> tuple[NDArray, NDArray, NDArray]:
 
-    coords, all_distances = _snap_to_anchors222(
+    coords, all_distances = _snap_to_anchors_inner(
         geoms,
         indices,
         anchors,
@@ -948,249 +738,9 @@ def _snap_to_anchors(
 
     return coords, indices
 
-    for i in range(len(coords)):
-        if is_snapped[i]:
-            print(i, "000")
-            continue
-        distances = all_distances[i]
-        min_dist = np.min(distances)
-        if min_dist > tolerance or min_dist == 0:
-            print(i, "111")
-            continue
-        index = indices[i]
-
-        # if anchor_indices[np.argmin(distances)] == index:
-        #     continue
-
-        is_snapped_now = False
-        # dists_not_midpoints = distances[was_midpoint_mask==False]
-        # dists_not_midpoints = dists_not_midpoints[np.argsort(dists_not_midpoints)]
-        # anchors_sorted = anchors[np.argsort(dists_not_midpoints)]
-
-    #     for j in np.argsort(distances):
-    #         if distances[j] > tolerance or distances[j] == 0:
-    #             break
-
-    #         if was_midpoint_mask[j]:
-    #             continue
-
-    #         anchor = anchors[j]
-    #         ring = coords.copy()
-    #         ring[i] = anchor
-
-    #         # snap the nexts points to same anchor
-    #         indices_with_same_anchor = [i]
-    #         these_coords = coords[indices==index]
-    #         i_among_these =
-
-    #         for j4 in range(len(these_coords)):
-    #             these_coords[j4]
-    #         pos_counter = 0
-    #         neg_counter = 0
-    #         has_same_anchor_pos = True
-    #         has_same_anchor_neg = True
-    #         # while i + n_points_with_same_anchor < n_coords - 1:
-    #         while has_same_anchor_pos or has_same_anchor_neg:
-    #             pos_counter += 1
-
-    #             if indices[i + pos_counter] != index:
-    #                 break
-    #             next_distances = all_distances[i + pos_counter]
-    #             has_same_anchor_pos = False
-    #             for j2 in np.argsort(next_distances):
-    #                 if was_midpoint_mask[j2]:
-    #                     continue
-    #                 if next_distances[j2] > tolerance:
-    #                     break
-
-    #                 has_same_anchor_pos = j2 == j
-    #                 print(
-    #                     i,
-    #                     j,
-    #                     j2,
-    #                     pos_counter,
-    #                     has_same_anchor,
-    #                     distances[j],
-    #                     next_distances[j2],
-    #                 )
-    #                 break
-    #             if has_same_anchor_pos:
-    #                 ring[i + pos_counter] = anchor
-    #                 indices_with_same_anchor.append(i + pos_counter)
-
-    #             neg_counter -= 1
-
-    #             if indices[i + pos_counter] != index:
-    #                 break
-    #             next_distances = all_distances[i + pos_counter]
-    #             has_same_anchor = False
-    #             for j2 in np.argsort(next_distances):
-    #                 if was_midpoint_mask[j2]:
-    #                     continue
-    #                 if next_distances[j2] > tolerance:
-    #                     break
-
-    #                 has_same_anchor = j2 == j
-    #                 print(
-    #                     i,
-    #                     j,
-    #                     j2,
-    #                     pos_counter,
-    #                     has_same_anchor,
-    #                     distances[j],
-    #                     next_distances[j2],
-    #                 )
-    #                 break
-    #             if has_same_anchor:
-    #                 ring[i + pos_counter] = anchor
-    #                 indices_with_same_anchor.append(i + pos_counter)
-
-    #             # else:
-    #             #     break
-
-    #         ring = ring[indices == index]
-
-    #         line_is_simple: bool = LineString(ring).is_simple
-
-    #         # if i in [67, 68, 69, 173, 174, 175, 176, 177]:  # or
-    #         if Point(coords[i]).intersects(
-    #             to_gdf([12.08375303, 67.50052183], 4326)
-    #             .to_crs(25833)
-    #             .buffer(10)
-    #             .union_all()
-    #         ):
-    #             for xxx, yyy in locals().items():
-    #                 if len(str(yyy)) > 50:
-    #                     continue
-    #                 print(xxx)
-    #                 print(yyy)
-
-    #             print("prev:", was_midpoint_mask[j - 1])
-    #             # print(distances[np.argsort(distances)])
-    #             # print(anchors[np.argsort(distances)])
-    #             print(ring)
-    #             explore(
-    #                 out_coords=to_gdf(
-    #                     shapely.linestrings(coords, indices=indices), 25833
-    #                 ),
-    #                 llll=to_gdf(LineString(ring), 25833),
-    #                 # this=to_gdf(this),
-    #                 # next_=to_gdf(next_),
-    #                 # line=to_gdf(LineString(np.array([this, next_])), 25833),
-    #                 geom=to_gdf(coords[i], 25833),
-    #                 prev=to_gdf(coords[i - 1], 25833),
-    #                 nxt=to_gdf(coords[i + 1], 25833),
-    #                 nxt2=to_gdf(coords[i + 2], 25833),
-    #                 anchor=to_gdf(anchor, 25833),
-    #                 # browser=True,
-    #             )
-
-    #         if line_is_simple:
-    #             # coords[i] = anchors[j]
-    #             # is_snapped_to[j] = True
-    #             is_snapped[i] = True
-    #             # explore(
-    #             #     out_coords=to_gdf(
-    #             #         shapely.linestrings(coords, indices=indices), 25833
-    #             #     ),
-    #             #     llll=to_gdf(LineString(ring), 25833),
-    #             #     # this=to_gdf(this),
-    #             #     # next_=to_gdf(next_),
-    #             #     # line=to_gdf(LineString(np.array([this, next_])), 25833),
-    #             #     anc=to_gdf(anchors[j]),
-    #             #     geom=to_gdf(coords[i], 25833),
-    #             #     these=to_gdf(coords[i : i + n_points_with_same_anchor ], 25833),
-    #             #     prev=to_gdf(coords[i - 1], 25833),
-    #             #     prev2=to_gdf(coords[i - 2], 25833),
-    #             #     nxt=to_gdf(coords[i + n_points_with_same_anchor + 1], 25833),
-    #             #     nxt2=to_gdf(coords[i + n_points_with_same_anchor + 2], 25833),
-    #             #     nxt3=to_gdf(coords[i + n_points_with_same_anchor + 3], 25833),
-    #             # )
-    #             print(coords[i : i + n_points_with_same_anchor + 1])
-    #             for x in indices_with_same_anchor:  # range(n_points_with_same_anchor):
-    #                 coords[x] = anchors[j]
-    #                 is_snapped[x] = True
-    #                 # coords[i + x] = anchors[j]
-    #                 # is_snapped[i + x] = True
-    #             print(coords[i : i + n_points_with_same_anchor + 1])
-
-    #             is_snapped_now = True
-    #             break
-    #         # else:
-
-    #     if not is_snapped_now:
-    #         coords[i] = anchors[np.argmin(distances)]
-    #         # is_snapped_to[np.argmin(distances)] = True
-
-    #     if i > 30 and i < 40:
-    #         print(i)
-    #         explore(
-    #             out_coords=to_gdf(shapely.linestrings(coords, indices=indices), 25833),
-    #             llll=to_gdf(LineString(ring), 25833),
-    #             pppp=to_gdf(shapely.points(ring), 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             # this=to_gdf(this),
-    #             # next_=to_gdf(next_),
-    #             # line=to_gdf(LineString(np.array([this, next_])), 25833),
-    #             anc=to_gdf(anchors[j]).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             geom=to_gdf(coords[i], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             these=to_gdf(coords[i : i + n_points_with_same_anchor], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             prev=to_gdf(coords[i - 1], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             prev2=to_gdf(coords[i - 2], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             nxt=to_gdf(coords[i + 1], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             nxt2=to_gdf(coords[i + 2], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             nxt3=to_gdf(coords[i + 3], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             nxt_n=to_gdf(coords[i + n_points_with_same_anchor + 1], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             nxt_n2=to_gdf(coords[i + n_points_with_same_anchor + 2], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #             nxt_n3=to_gdf(coords[i + n_points_with_same_anchor + 3], 25833).assign(
-    #                 wkt=lambda x: [g.wkt for g in x.geometry]
-    #             ),
-    #         )
-    #     # if (
-    #     #     indices[i] == 48
-    #     # ):  # and int(out_coords[i][0]) == 375502 and int(out_coords[i][1]) == 7490104:
-    #     #     print(geom, out_coords[i], out_coords[-3:])
-    #     #     xxx += 1
-    #     #     if xxx > 100 and i >= 2106:
-    #     #         print(locals())
-    #     #         explore(
-    #     #             geom=to_gdf(geom, 25833),
-    #     #             out=to_gdf(out_coords[i], 25833),
-    #     #             anc=to_gdf(shapely.points(anchors), 25833),
-    #     #             llll=to_gdf(
-    #     #                 shapely.geometry.LineString(
-    #     #                     np.array(out_coords)[indices[: len(out_coords)] == 48]
-    #     #                 ),
-    #     #                 25833,
-    #     #             ),
-    #     #         )
-
-    # return coords, []
-
 
 @numba.njit
-def _snap_to_anchors222(
+def _snap_to_anchors_inner(
     geoms,
     indices: NDArray[np.int32],
     anchors,
@@ -1334,130 +884,7 @@ def _snap_to_anchors222(
             if dist == 0 and not was_midpoint_mask[j2]:
                 break
 
-        continue
     return out_coords, out_distances
-
-    for _ in []:
-        min_dist = np.min(distances)
-        if min_dist > tolerance or min_dist == 0:
-            continue
-
-        # if anchor_indices[np.argmin(distances)] == index:
-        #     continue
-
-        is_snapped_now = False
-        for j3 in np.argsort(distances):
-            if distances[j3] > tolerance:
-                break
-            if distances[j3] == 0:
-                break
-
-            if was_midpoint_mask[j3]:
-                continue
-
-            line_is_simple = True
-
-            if j3 != 0:
-                # now to check if the ring will be simple (shapely.is_simple)
-                # if this point is snapped
-                # If not simple, the point is snapped too far, creating
-                anchor = anchors[j3]
-
-                # segment_vector = anchor - geom
-                # segment_length_squared = np.dot(segment_vector, segment_vector)
-
-                new_line = np.array([list(anchor), list(geom)])
-                ring = out_coords[indices == index].copy()
-                ring[i] = anchor
-                ring = [(x, y) for x, y in ring[indices == index] if x != np.inf]
-
-                line_is_simple: bool = LineString(ring).is_simple
-
-                # # for j4 in range(len(out_coords) - 1):
-                # these_coords = out_coords[:i-1][indices[:i-1] == index]
-                # these_coords = these_coords[these_coords[:, 0] != np.inf]
-                # for j4 in range(len(these_coords) - 1):
-
-                #     this = these_coords[j4]
-                #     next_ = these_coords[j4 + 1]
-                #     if (
-                #         j4 == 0
-                #         or j4 == len(these_coords)
-                #         and (
-                #             # TODO need both distance checks?
-                #             np.sqrt(
-                #                 (anchor[0] - this[0]) ** 2 + (anchor[1] - this[1]) ** 2
-                #             )
-                #             == 0
-                #             or np.sqrt(
-                #                 (anchor[0] - next_[0]) ** 2
-                #                 + (anchor[1] - next_[1]) ** 2
-                #             )
-                #             == 0
-                #         )
-                #     ):
-                #         continue
-
-                #     lines_intersect = check_intersection(
-                #         new_line, np.array([this, next_])
-                #     )
-                #     print(
-                #         i,
-                #         j4,
-                #         lines_intersect,
-                #         indices[j4 - 2],
-                #         indices[j4 + 2],
-                #         indices[j4 + 3],
-                #         indices[j4 + 4],
-                #     )
-                #     if lines_intersect:
-                #         line_is_simple = False
-                #         break
-
-            if line_is_simple:
-                out_coords[i] = anchors[j3]
-                is_snapped_to[j3] = True
-                is_snapped_now = True
-                break
-            elif 1:  # index == 48:
-                print("line_is_simple", line_is_simple)
-                print(out_coords[:i][indices[:i] == index])
-
-                explore(
-                    llll=to_gdf(ring, 25833),
-                    # this=to_gdf(this),
-                    # next_=to_gdf(next_),
-                    # line=to_gdf(LineString(np.array([this, next_])), 25833),
-                    geom=to_gdf(geom, 25833),
-                    anchor=to_gdf(anchor, 25833),
-                    new_line=to_gdf(LineString(new_line), 25833),
-                    # browser=True,
-                )
-
-        if not is_snapped_now:
-            out_coords[i] = anchors[np.argmin(distances)]
-            is_snapped_to[np.argmin(distances)] = True
-
-        # if (
-        #     indices[i] == 48
-        # ):  # and int(out_coords[i][0]) == 375502 and int(out_coords[i][1]) == 7490104:
-        #     print(geom, out_coords[i], out_coords[-3:])
-        #     xxx += 1
-        #     if xxx > 100 and i >= 2106:
-        #         print(locals())
-        #         explore(
-        #             geom=to_gdf(geom, 25833),
-        #             out=to_gdf(out_coords[i], 25833),
-        #             anc=to_gdf(shapely.points(anchors), 25833),
-        #             llll=to_gdf(
-        #                 shapely.geometry.LineString(
-        #                     np.array(out_coords)[indices[: len(out_coords)] == 48]
-        #                 ),
-        #                 25833,
-        #             ),
-        #         )
-
-    return out_coords, is_snapped_to
 
 
 @numba.njit
@@ -1481,14 +908,14 @@ def _build_anchors(
 
         is_anchor = True
         for j in range(len(anchors)):
-            if 1:  # indices[i] != indices[j]:
-                # if i != j  and indices[i] != indices[j]:
-                anchor = anchors[j]
-                dist = np.sqrt((geom[0] - anchor[0]) ** 2 + (geom[1] - anchor[1]) ** 2)
-                if dist <= tolerance:
-                    is_anchor = False
-                    break
-                # distances.append(dist)
+            # if indices[i] != indices[j]:
+            # if i != j  and indices[i] != indices[j]:
+            anchor = anchors[j]
+            dist = np.sqrt((geom[0] - anchor[0]) ** 2 + (geom[1] - anchor[1]) ** 2)
+            if dist <= tolerance:
+                is_anchor = False
+                break
+            # distances.append(dist)
         # distances = np.array(distances)
         is_anchor_arr[i] = is_anchor
         if is_anchor:  # not len(distances) or np.min(distances) > tolerance:
@@ -2318,7 +1745,3 @@ def split_and_eliminate_by_longest(
     gdfs += (isolated,)
 
     return gdfs
-
-
-def _eliminate_not_really_isolated():
-    pass

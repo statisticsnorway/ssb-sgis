@@ -35,11 +35,6 @@ from shapely.geometry import MultiPoint
 from shapely.geometry import Point
 from shapely.geometry import Polygon
 
-try:
-    import dask_geopandas
-except ImportError:
-    pass
-
 from .conversion import coordinate_array
 from .conversion import to_bbox
 from .conversion import to_gdf
@@ -868,7 +863,12 @@ def _grouped_unary_union(
     dropna: bool = False,
     **kwargs,
 ) -> GeoSeries | GeoDataFrame:
-    """Vectorized unary_union for groups, faster than groupby.agg."""
+    """Vectorized unary_union for groups.
+
+    Experimental. Messy code.
+
+    """
+    print("NOTE: experimental.")
     df = df.copy()
     df_orig = df.copy()
 
@@ -930,63 +930,6 @@ def _grouped_unary_union(
         # np.isnan doesn't accept geometry type, so using isinstance
         np_isinstance = np.vectorize(isinstance)
         geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
-
-    # from ..maps.maps import explore
-
-    # print(df.shape)
-    # print(geoms_wide.shape)
-    # print(geometries_2d.shape)
-
-    # for i, idx in enumerate(df.index):
-    #     print(i, idx)
-    #     geoms3 = [x for x in geometries_2d[i, :] if x is not None]
-    #     # geoms4 = [x for x in geoms_wide.iloc[i] if x is not None]
-    #     # geoms4 = [x for x in geoms_wide.loc[idx] if x is not None]
-    #     # for geom in geoms3:
-    #     #     print(geom.wkt)
-    #     if geoms3:
-    #         geoms3 = to_gdf(geoms3, 25833)
-    #         geoms3_diss = geoms3.dissolve()
-    #     else:
-    #         geoms3 = {}
-    #         geoms3_diss = {}
-
-    #     # if geoms4:
-    #     #     geoms4 = to_gdf(geoms4, 25833)
-    #     # else:
-    #     #     geoms4 = {}
-
-    #     # explore(
-    #     #     geoms2=to_gdf(df.loc[idx, 25833),
-    #     #     geoms3=geoms3,
-    #     #     geoms4=geoms4
-    #     # )
-
-    #     explore(
-    #         geoms=to_gdf(
-    #             df.loc[[idx], geom_col].reset_index(),
-    #             25833,
-    #         ),
-    #         # geoms2=to_gdf(df.loc[[idx]], 25833),
-    #         geoms3=geoms3,
-    #         geoms3_diss=geoms3_diss,
-    #         # geoms4=geoms4,
-    #         # center=(4.92072064, 60.80329956, 80),
-    #     )
-
-    #     if i > 10:
-    #         break
-
-    # geometries_2d = buffer(geometries_2d, 0.001, quad_segs=1, join_style=2)
-
-    # Here comes some ugly code...
-    # trying different ways to dissolve the polygons, either in a loop or all together,
-    # and reversed or not reversed.
-    # Why? Because it sometimes gives different results. Haven't yet found a method
-    # that gives correct results in all cases.
-    # Biggest problem is that holes in polygons might dissappear (e.i. get closed)
-    # therefore also tring to dissolve only the holes, then erase (difference) them
-    # after dissolving the polygons. This might give GEOSExceptions however.
 
     if 0:
         # union the geometries one column at the time.
@@ -1140,60 +1083,7 @@ def _grouped_unary_union(
     return geoms if as_index else geoms.reset_index()
 
 
-def _merge_geometries(geoms: GeoSeries, grid_size=None) -> Geometry:
-    return make_valid(
-        union_all(
-            geoms,
-            grid_size=grid_size,
-            # [union_all(geom, grid_size=grid_size) for geom in geoms],
-            # grid_size=grid_size,
-        )
-    )
-
-
-def _safe_and_clean_unary_union(x, grid_size=None):
-    """Need to do individual unary_union before merging all together to avoid double surfaces."""
-    x = x.dropna().values
-    unioned = make_valid(x[0])
-    try:
-        for geom in x[1:]:
-            unioned = make_valid(
-                union_all([unioned, make_valid(geom)], grid_size=grid_size)
-            )
-    except IndexError:
-        assert len(x) == 1
-        return unioned
-    return unioned
-    # p = to_gdf([5.38349348, 59.00461738], 4326).to_crs(25833)
-    # if len(sfilter(to_gdf(x, 25833), p)):
-    #     from shapely.geometry import Polygon
-
-    #     agged2 = Polygon()
-    #     for geom in x:
-    #         print(geom)
-    #         agged2 = union_all([agged2, geom])
-
-    #     geoms = pd.concat([to_gdf(y, 25833) for y in x])
-    #     geoms["xxx"] = [str(i) for i in range(len(geoms))]
-    #     explore(geoms, "xxx")
-    #     explore(
-    #         agged2=to_gdf(agged2, 25833),
-    #         xxx=to_gdf(x, 25833),
-    #         xxx2=to_gdf(make_valid(union_all(x.dropna().values))),
-    #         mask=p.buffer(1),
-    #     )
-
-    # return make_valid(
-    #     union_all(x.dropna().values, grid_size=grid_size)
-    #     # union_all(
-    #     #     [union_all(geom, grid_size=grid_size) for geom in x.dropna().values],
-    #     #     grid_size=grid_size,
-    #     # )
-    # )
-
-
 def _unary_union_for_notna(geoms, **kwargs):
-    # TODO
     try:
         return make_valid(union_all(geoms, **kwargs))
     except TypeError:
@@ -1208,95 +1098,14 @@ def _parallel_unary_union(
     except AttributeError:
         geom_col = "geometry"
 
-    if by is not None and not isinstance(by, str):
-        gdf = gdf.copy()
-        try:
-            gdf["_by"] = gdf[by].astype(str).agg("-".join, axis=1)
-        except KeyError:
-            gdf["_by"] = by
-        by = "_by"
-
-    if gdf.crs is None:
-        gdf.crs = 25833
-        _was_none = True
-    else:
-        _was_none = False
-
-    if isinstance(gdf.index, pd.MultiIndex):
-        gdf = gdf.reset_index(drop=True)
-
-    dissolved = (
-        dask_geopandas.from_geopandas(gdf, npartitions=n_jobs).dissolve(by).compute()
-    )
-    if _was_none:
-        dissolved.crs = None
-
-    return dissolved.geometry
-
-
-def _parallel_unary_union_geoseries(
-    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
-) -> list[Geometry]:
-    if ser.crs is None:
-        ser.crs = 25833
-        _was_none = True
-    else:
-        _was_none = False
-
-    if isinstance(ser.index, pd.MultiIndex):
-        ser = ser.reset_index(drop=True)
-
-    dissolved = (
-        dask_geopandas.from_geopandas(ser.to_frame("geometry"), npartitions=n_jobs)
-        .dissolve(**kwargs)
-        .compute()
-    )
-    if _was_none:
-        dissolved.crs = None
-
-    return dissolved.geometry
-
-
-def _parallel_unary_union(
-    gdf: GeoDataFrame, n_jobs: int = 1, by=None, grid_size=None, **kwargs
-) -> list[Geometry]:
-    try:
-        geom_col = gdf._geometry_column_name
-    except AttributeError:
-        geom_col = "geometry"
-
     with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
         delayed_operations = []
         for _, geoms in gdf.groupby(by, **kwargs)[geom_col]:
             delayed_operations.append(
-                joblib.delayed(_safe_and_clean_unary_union)(geoms, grid_size=grid_size)
+                joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
             )
 
         return parallel(delayed_operations)
-
-
-def _parallel_unary_union_geoseries(
-    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
-) -> list[Geometry]:
-
-    is_one_hit = ser.groupby(**kwargs).transform("size") == 1
-
-    one_hit = ser.loc[is_one_hit]
-    many_hits = ser.loc[~is_one_hit]
-
-    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
-        delayed_operations = []
-        for _, geoms in many_hits.groupby(**kwargs):
-            delayed_operations.append(
-                joblib.delayed(_safe_and_clean_unary_union)(geoms, grid_size=grid_size)
-            )
-
-        dissolved = pd.Series(
-            parallel(delayed_operations),
-            index=is_one_hit[lambda x: x is False].index.unique(),
-        )
-
-    return pd.concat([dissolved, one_hit]).sort_index().values
 
 
 def _parallel_unary_union_geoseries(
@@ -1307,7 +1116,7 @@ def _parallel_unary_union_geoseries(
         delayed_operations = []
         for _, geoms in ser.groupby(**kwargs):
             delayed_operations.append(
-                joblib.delayed(_safe_and_clean_unary_union)(geoms, grid_size=grid_size)
+                joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
             )
 
         return parallel(delayed_operations)

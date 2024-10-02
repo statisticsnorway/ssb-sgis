@@ -22,45 +22,10 @@ sys.path.insert(0, src)
 
 import sgis as sg
 
-# def explore(*args, **kwargs):
+# def no_explore(*args, **kwargs):
 #     pass
 
-
-# sg.explore = explore
-
-
-# def from_qgis(df):
-#     import json
-
-#     features = [f for f in df.getFeatures()]
-#     geojson = {"type": "FeatureCollection", "features": []}
-
-#     for feature in features:
-#         geojson["features"].append(feature.geometry().asJson())
-
-#     return gpd.read_file(json.dumps(geojson))
-
-
-# def qgis_snap(df, tolerance, mask=None):
-#     df = QgsVectorLayer(df.to_json(), "df", "ogr")
-#     if mask is None:
-#         mask = df
-#     else:
-#         mask = QgsVectorLayer(mask.to_json(), "mask", "ogr")
-#     snapped = processing.run(
-#         "native:snapgeometries",
-#         {
-#             "INPUT": df,
-#             "REFERENCE_LAYER": mask,
-#             "TOLERANCE": tolerance,
-#             "BEHAVIOR": 7,
-#             "OUTPUT": "TEMPORARY_OUTPUT",
-#         },
-#     )["OUTPUT"]
-#     return from_qgis(snapped)
-
-
-# sg.coverage_clean = qgis_snap
+# sg.explore = no_explore
 
 
 @pytest.mark.skip(reason="This test fails, need to investigate")
@@ -112,7 +77,6 @@ def test_clean_closing_hole():
     assert missing.area.sum() == 0, f"missing: {missing.area.sum()}"
 
 
-@pytest.mark.skip(reason="This test fails, need to investigate")
 def test_clean_dissappearing_polygon():
     AREA_SHOULD_BE = 104
 
@@ -197,7 +161,6 @@ def test_clean_complicated_land_use():
         )
 
 
-@pytest.mark.skip(reason="This test fails, need to investigate")
 def test_clean_dissexp():
 
     df = sg.to_gdf(
@@ -889,14 +852,14 @@ def test_snappping(_test=False):
 
 def main():
 
-    # test_clean()
-    # test_clean_dissappearing_polygon()
-    # test_clean_complicated_land_use()
+    test_clean_dissappearing_polygon()
     test_snappping(_test=False)
     test_clean_closing_hole()
     test_clean_1144()
-    not_test_spikes()
+    test_clean_complicated_land_use()
+    test_clean()
     test_clean_dissexp()
+    not_test_spikes()
 
 
 if __name__ == "__main__":

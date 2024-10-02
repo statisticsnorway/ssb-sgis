@@ -32,7 +32,6 @@ from ..maps.maps import explore_locals
 from .conversion import to_gdf
 from .conversion import to_geoseries
 from .duplicates import _get_intersecting_geometries
-from .duplicates import update_geometries
 from .general import _grouped_unary_union
 from .general import _parallel_unary_union
 from .general import _parallel_unary_union_geoseries
@@ -42,7 +41,6 @@ from .general import clean_geoms
 from .general import extend_lines
 from .general import get_grouped_centroids
 from .general import get_line_segments
-from .general import sort_small_first
 from .general import to_lines
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
@@ -1503,22 +1501,3 @@ def split_by_neighbors(
     )
 
     return split_polygons_by_lines(df, lines)
-
-    extended_lines = GeoDataFrame(
-        {
-            "geometry": extend_lines(
-                endpoints.loc[lambda x: ~x.index.duplicated(keep="first")].values,
-                endpoints.loc[lambda x: ~x.index.duplicated(keep="last")].values,
-                distance=tolerance * 3,
-            )
-        },
-        crs=df.crs,
-    )
-
-    extended_lines.geometry = extended_lines.buffer(tolerance, single_sided=True)
-
-    return (
-        clean_overlay(df, extended_lines, how="identity", grid_size=grid_size)
-        .pipe(sort_small_first)
-        .pipe(update_geometries, "polygon")
-    )
