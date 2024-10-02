@@ -57,7 +57,7 @@ all = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", 
 bucket = ["dapla-toolbelt", "gcsfs"]
 torch = ["torch", "torchgeo"]
 xarray = ["xarray", "rioxarray"]
-test = ["xarray", "rioxarray", "torch", "torchgeo"]
+test = ["xarray", "rioxarray", "torch", "torchgeo", "dask", "dask-geopandas"]
 
 [tool.poetry.group.dev.dependencies]
 pygments = ">=2.10.0"
