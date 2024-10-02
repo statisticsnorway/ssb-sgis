@@ -243,10 +243,11 @@ class ThematicMap(Map):
                 raise TypeError(
                     f"{self.__class__.__name__} legend_kwargs got an unexpected key {key}"
                 )
-            try:
-                setattr(self.legend, key, value)
-            except Exception:
-                setattr(self.legend, f"_{key}", value)
+            if self.legend is not None:
+                try:
+                    setattr(self.legend, key, value)
+                except Exception:
+                    setattr(self.legend, f"_{key}", value)
 
     @property
     def valid_keywords(self) -> set[str]:
