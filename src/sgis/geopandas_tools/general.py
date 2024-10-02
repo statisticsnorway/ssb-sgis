@@ -17,18 +17,15 @@ from geopandas.array import GeometryArray
 from geopandas.array import GeometryDtype
 from numpy.typing import NDArray
 from shapely import Geometry
-from shapely import difference
 from shapely import extract_unique_points
 from shapely import get_coordinates
 from shapely import get_exterior_ring
 from shapely import get_interior_ring
 from shapely import get_num_interior_rings
 from shapely import get_parts
-from shapely import intersection
 from shapely import linestrings
 from shapely import make_valid
 from shapely import points as shapely_points
-from shapely import polygons
 from shapely import union_all
 from shapely.geometry import LineString
 from shapely.geometry import MultiPoint
@@ -854,6 +851,13 @@ def _determine_geom_type_args(
     return gdf, geom_type, keep_geom_type
 
 
+def _unary_union_for_notna(geoms, **kwargs):
+    try:
+        return make_valid(union_all(geoms, **kwargs))
+    except TypeError:
+        return union_all([geom for geom in geoms.dropna().values], **kwargs)
+
+
 def _grouped_unary_union(
     df: GeoDataFrame | GeoSeries | pd.DataFrame | pd.Series,
     by: str | list[str] | None = None,
@@ -866,9 +870,7 @@ def _grouped_unary_union(
     """Vectorized unary_union for groups.
 
     Experimental. Messy code.
-
     """
-    print("NOTE: experimental.")
     df = df.copy()
     df_orig = df.copy()
 
@@ -931,163 +933,11 @@ def _grouped_unary_union(
         np_isinstance = np.vectorize(isinstance)
         geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
 
-    if 0:
-        # union the geometries one column at the time.
-        # This prevents some, but not all, dissappearing surfaces.
-        unioned = geometries_2d[:, 0]
-        for i in range(1, geometries_2d.shape[1]):
-            for _ in range(1):
-                unioned = make_valid(
-                    union_all(
-                        np.stack([unioned, geometries_2d[:, i]], axis=1),
-                        axis=1,
-                        grid_size=grid_size,
-                        **kwargs,
-                    )
-                )
-    elif 0:
-        unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
-
-        for i in range(geometries_2d.shape[1]):
-            unioned = make_valid(
-                union_all(
-                    np.stack([unioned, geometries_2d[:, i]], axis=1),
-                    axis=1,
-                    grid_size=grid_size,
-                    **kwargs,
-                )
-            )
-    elif 0:
-        # unioned = make_valid(union_all(geometries_2d[:, ::-1], axis=1, **kwargs))
-        unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
-        unioned_reversed = make_valid(
-            union_all(geometries_2d[:, ::-1], axis=1, **kwargs)
-        )
-        # union the geometries one column at the time.
-        # This prevents some, but not all, dissappearing surfaces.
-        unioned_loop = geometries_2d[:, 0]
-        for i in range(1, geometries_2d.shape[1]):
-            for _ in range(1):
-                unioned_loop = make_valid(
-                    union_all(
-                        np.stack([unioned_loop, geometries_2d[:, i]], axis=1),
-                        axis=1,
-                        grid_size=grid_size,
-                        **kwargs,
-                    )
-                )
-        unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
-    elif 0:
-        unioned = make_valid(union_all(geometries_2d[:, ::-1], axis=1, **kwargs))
-    elif 0:
-        interiors = [
-            [
-                (
-                    union_all(
-                        [
-                            polygons(get_interior_ring(geometries_2d[i, j], x))
-                            for x in range(get_num_interior_rings(geometries_2d[i, j]))
-                        ]
-                    )
-                )
-                for j in range(geometries_2d.shape[1])
-            ]
-            for i in range(geometries_2d.shape[0])
-        ]
-        interiors = make_valid(union_all(interiors, axis=1))
-
-        # unioned = geometries_2d[:, 0]
-        # for i in range(1, geometries_2d.shape[1]):
-        #     unioned = make_valid(
-        #         union_all(
-        #             np.stack([unioned, geometries_2d[:, i]], axis=1),
-        #             axis=1,
-        #             grid_size=grid_size,
-        #             **kwargs,
-        #         )
-        #     )
-
-        unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
-
-        # unioned_reversed = make_valid(
-        #     union_all(geometries_2d[:, ::-1], axis=1, **kwargs)
-        # )
-
-        # unioned_loop = unioned
-        # for i in range(geometries_2d.shape[1]):
-        #     unioned_loop = make_valid(
-        #         union_all(
-        #             np.stack([unioned_loop, geometries_2d[:, i]], axis=1),
-        #             axis=1,
-        #             grid_size=grid_size,
-        #             **kwargs,
-        #         )
-        #     )
-        # unioned = make_valid(intersection(unioned, unioned_reversed))
-        # unioned = make_valid(intersection(unioned, unioned_loop))
-
-        assert unioned.shape == interiors.shape
-        unioned = make_valid(difference(unioned, interiors))
-
-    elif 0:
-        unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
-
-        unioned_reversed = make_valid(
-            union_all(geometries_2d[:, ::-1], axis=1, **kwargs)
-        )
-
-        # unioned_loop = unioned
-        # for i in range(geometries_2d.shape[1]):
-        #     unioned_loop = make_valid(
-        #         union_all(
-        #             np.stack([unioned_loop, geometries_2d[:, i]], axis=1),
-        #             axis=1,
-        #             grid_size=grid_size,
-        #             **kwargs,
-        #         )
-        #     )
-
-        # unioned_loop_rev = unioned
-        # for i in reversed(range(geometries_2d.shape[1])):
-        #     unioned_loop_rev = make_valid(
-        #         union_all(
-        #             np.stack([unioned_loop_rev, geometries_2d[:, i]], axis=1),
-        #             axis=1,
-        #             grid_size=grid_size,
-        #             **kwargs,
-        #         )
-        #     )
-
-        unioned = make_valid(intersection(unioned, unioned_reversed))
-        # unioned = make_valid(intersection(unioned, unioned_loop))
-        # unioned = make_valid(intersection(unioned, unioned_loop_rev))
-    else:
-        unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
-
-    if 0:
-        for i in reversed(range(geometries_2d.shape[1])):
-            for _ in range(1):
-                unioned = make_valid(
-                    union_all(
-                        np.stack([unioned, geometries_2d[:, i]], axis=1),
-                        axis=1,
-                        grid_size=grid_size,
-                        **kwargs,
-                    )
-                )
-
-    # unioned = buffer(unioned, -0.001, quad_segs=1, join_style=2)
+    unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
 
     geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
 
     return geoms if as_index else geoms.reset_index()
-
-
-def _unary_union_for_notna(geoms, **kwargs):
-    try:
-        return make_valid(union_all(geoms, **kwargs))
-    except TypeError:
-        return union_all([geom for geom in geoms.dropna().values], **kwargs)
 
 
 def _parallel_unary_union(
