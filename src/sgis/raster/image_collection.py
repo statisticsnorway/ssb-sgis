@@ -202,7 +202,7 @@ class ImageCollectionGroupBy:
     def merge_by_band(
         self,
         bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
-        method: str | Callable = "median",
+        method: str | Callable = "mean",
         as_int: bool = True,
         indexes: int | tuple[int] | None = None,
         **kwargs,
@@ -235,7 +235,7 @@ class ImageCollectionGroupBy:
     def merge(
         self,
         bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
-        method: str | Callable = "median",
+        method: str | Callable = "mean",
         as_int: bool = True,
         indexes: int | tuple[int] | None = None,
         **kwargs,
@@ -1897,7 +1897,7 @@ class ImageCollection(_ImageBase):
     def merge(
         self,
         bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
-        method: str | Callable = "median",
+        method: str | Callable = "mean",
         as_int: bool = True,
         indexes: int | tuple[int] | None = None,
         **kwargs,
@@ -1965,7 +1965,7 @@ class ImageCollection(_ImageBase):
     def merge_by_band(
         self,
         bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
-        method: str = "median",
+        method: str = "mean",
         as_int: bool = True,
         indexes: int | tuple[int] | None = None,
         **kwargs,

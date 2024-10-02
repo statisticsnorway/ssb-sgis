@@ -7996,7 +7996,7 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 type = ["pytest-mypy"]
 
 [extras]
-all = ["dapla-toolbelt", "gcsfs", "rioxarray", "torch", "torchgeo", "xarray"]
+all = ["dapla-toolbelt", "dask", "dask-geopandas", "gcsfs", "rioxarray", "torch", "torchgeo", "xarray"]
 bucket = ["dapla-toolbelt", "gcsfs"]
 test = ["rioxarray", "torch", "torchgeo", "xarray"]
 torch = ["torch", "torchgeo"]
@@ -8005,4 +8005,4 @@ xarray = ["rioxarray", "xarray"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4"
-content-hash = "fc7b1a69ef998fe3cea0e52faf59d920d6d8f531f1a820dc61909daf7e8b5b02"
+content-hash = "3861e4278b9f21a2a2689a51d46a5333bad923792f7ffd0d3ceea3d5ceea95b6"

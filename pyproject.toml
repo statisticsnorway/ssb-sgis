@@ -53,7 +53,7 @@ dapla-toolbelt = { version = ">=3.0.1", optional = true }
 gcsfs = { version = ">=2024.3.1", optional = true }
 
 [tool.poetry.extras]
-all = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", "gcsfs"]
+all = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", "gcsfs", "dask", "dask-geopandas"]
 bucket = ["dapla-toolbelt", "gcsfs"]
 torch = ["torch", "torchgeo"]
 xarray = ["xarray", "rioxarray"]

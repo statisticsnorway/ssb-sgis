@@ -1198,6 +1198,7 @@ def not_test_torch():
 
 def main():
 
+    test_indexing()
     test_regexes()
     test_convertion()
     test_masking()
@@ -1209,7 +1210,6 @@ def main():
     test_zonal()
     test_gradient()
     test_groupby()
-    test_indexing()
     test_date_ranges()
     not_test_torch()
     test_iteration_base_image_collection()
