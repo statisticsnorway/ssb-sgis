@@ -21,6 +21,7 @@ Changelog = "https://github.com/statisticsnorway/ssb-sgis/releases"
 python = ">=3.10,<4"
 affine = ">=2.4.0"
 branca = ">=0.6.0"
+dask = { version = ">=2024.1.1", optional = true }
 folium = ">=0.14.0"
 geopandas = ">=0.14.0"
 igraph = ">=0.11.2"
@@ -51,12 +52,11 @@ dapla-toolbelt = { version = ">=3.0.1", optional = true }
 gcsfs = { version = ">=2024.3.1", optional = true }
 
 [tool.poetry.extras]
-all = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", "gcsfs"]
+all = ["pyogrio", "xarray", "rioxarray", "torch", "torchgeo", "dapla-toolbelt", "gcsfs", "dask"]
 bucket = ["dapla-toolbelt", "gcsfs"]
 torch = ["torch", "torchgeo"]
 xarray = ["xarray", "rioxarray"]
-test = ["xarray", "rioxarray", "torch", "torchgeo"]
-
+test = ["xarray", "rioxarray", "torch", "torchgeo", "dask"]
 [tool.poetry.group.dev.dependencies]
 pygments = ">=2.10.0"
 black = { extras = ["jupyter"], version = ">=23.1.0" }
@@ -113,7 +113,6 @@ module = [
     "affine.*",
     "branca.*",
     "dapla.*",
-    "dask_geopandas.*",
     "folium.*",
     "gcsfs.*",
     "geocoder.*",
