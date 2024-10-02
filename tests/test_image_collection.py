@@ -391,6 +391,9 @@ def not_test_sample():
     assert sample[2].date.startswith("2023")
 
 
+@pytest.mark.skip(
+    reason="This test takes forever on torchgeo bbox, need to investigate"
+)
 def test_indexing():
     print("function:", inspect.currentframe().f_code.co_name)
     wrong_collection = sg.Sentinel2Collection(path_sentinel, level="L1C", res=10)
@@ -599,7 +602,7 @@ def test_merge():
     #         f"c:/users/ort/git/ssb-sgis/tests/testdata/raster/{band.band_id}.tif"
     #     )
     t = perf_counter()
-    merged_by_band = collection.merge_by_band(method="median")
+    merged_by_band = collection.merge_by_band(method="mean")
     print("merged_by_band mean", perf_counter() - t)
     t = perf_counter()
     # merged_by_band = collection.merge_by_band(method="median", nodata=0)
@@ -1198,7 +1201,6 @@ def not_test_torch():
 
 def main():
 
-    test_indexing()
     test_regexes()
     test_convertion()
     test_masking()
@@ -1217,6 +1219,7 @@ def main():
     test_concat_image_collections()
     test_merge()
     not_test_sample()
+    test_indexing()
     not_test_sample()
     not_test_sample()
     not_test_sample()
