@@ -391,9 +391,7 @@ def not_test_sample():
     assert sample[2].date.startswith("2023")
 
 
-@pytest.mark.skip(
-    reason="This test takes forever on torchgeo bbox, need to investigate"
-)
+# @pytest.mark.skip(reason="This test takes forever on torchgeo bbox, need to investigate")
 def test_indexing():
     print("function:", inspect.currentframe().f_code.co_name)
     wrong_collection = sg.Sentinel2Collection(path_sentinel, level="L1C", res=10)
@@ -437,6 +435,9 @@ def test_indexing():
     assert isinstance((x := collection[0]["B02"]), sg.Band), x
 
     assert isinstance(collection[0]["B02"].load().values, np.ndarray)
+
+    # TODO temp
+    return
 
     bounds = GeoSeries([collection[0].union_all()]).bounds
     torchgeo_bbox = BoundingBox(
