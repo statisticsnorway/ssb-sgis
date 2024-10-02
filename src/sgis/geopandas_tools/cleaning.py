@@ -168,24 +168,11 @@ def coverage_clean(
         missing_from_mask = clean_overlay(
             mask, gdf, how="difference", geom_type="polygon"
         ).loc[lambda x: x.buffer(-tolerance + PRECISION).is_empty]
-        gdf, missing = eliminate_by_longest(gdf, missing_from_mask)
+        gdf, _ = eliminate_by_longest(gdf, missing_from_mask)
 
     missing_from_gdf = sfilter_inverse(gdf_original, gdf.buffer(-PRECISION)).loc[
         lambda x: (~x.buffer(-PRECISION).is_empty)
     ]
-    return pd.concat([gdf, missing_from_gdf], ignore_index=True).pipe(
-        update_geometries, geom_type="polygon"
-    )
-
-    # missing_from_gdf = sfilter_inverse(gdf_original, gdf).loc[
-    missing_from_gdf = clean_overlay(
-        gdf_original, gdf, how="difference", geom_type="polygon"
-    ).loc[
-        lambda x: (
-            ~x.buffer(-PRECISION).is_empty
-        )  # & (~x.buffer(-tolerance / 2).is_empty)
-    ]
-
     return pd.concat([gdf, missing_from_gdf], ignore_index=True).pipe(
         update_geometries, geom_type="polygon"
     )

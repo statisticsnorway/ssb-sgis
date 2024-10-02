@@ -68,24 +68,24 @@ class ThematicMap(Map):
         legend_kwargs: dictionary with attributes for the legend. E.g.:
             title: Legend title. Defaults to the column name.
             rounding: If positive number, it will round floats to n decimals.
-                If negative, eg. -2, the number 3429 is rounded to 3400.
-                By default, the rounding depends on the column's maximum value
-                and standard deviation.
+            If negative, eg. -2, the number 3429 is rounded to 3400.
+            By default, the rounding depends on the column's maximum value
+            and standard deviation.
             position: The legend's x and y position in the plot. By default, it's
-                decided dynamically by finding the space with most distance to
-                the geometries. To be specified as a tuple of
-                x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
-                in the bottom right corner, (0.2, 0.8) for the upper left corner.
+            decided dynamically by finding the space with most distance to
+            the geometries. To be specified as a tuple of
+            x and y position between 0 and 1. E.g. position=(0.8, 0.2) for a position
+            in the bottom right corner, (0.2, 0.8) for the upper left corner.
             pretty_labels: Whether to capitalize words in text categories.
             label_suffix: For numeric columns. The text to put after each number
-                in the legend labels. Defaults to None.
+            in the legend labels. Defaults to None.
             label_sep: For numeric columns. Text to put in between the two numbers
-                in each color group in the legend. Defaults to '-'.
+            in each color group in the legend. Defaults to '-'.
             thousand_sep: For numeric columns. Separator between each thousand for
-                large numbers. Defaults to None, meaning no separator.
+            large numbers. Defaults to None, meaning no separator.
             decimal_mark: For numeric columns. Text to use as decimal point.
-                Defaults to None, meaning '.' (dot) unless 'thousand_sep' is
-                '.'. In this case, ',' (comma) will be used as decimal mark.
+            Defaults to None, meaning '.' (dot) unless 'thousand_sep' is
+            '.'. In this case, ',' (comma) will be used as decimal mark.
         **kwargs: Additional attributes for the map. E.g.:
             title_color (str): Color of the title font.
             title_fontsize (int): Color of the title font.
@@ -96,7 +96,7 @@ class ThematicMap(Map):
             nan_color: Color for missing data.
 
     Examples:
-    --------
+    ---------
     >>> import sgis as sg
     >>> points = sg.random_points(100, loc=1000).pipe(sg.buff, np.random.rand(100) * 100)
     >>> points2 = sg.random_points(100, loc=1000).pipe(sg.buff, np.random.rand(100) * 100)

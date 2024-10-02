@@ -216,7 +216,7 @@ def get_bounds_series(
         A geopandas.GeoSeries with file paths as indexes and bounds as values.
 
     Examples:
-    -------
+    ---------
     >>> import sgis as sg
     >>> import dapla as dp
     >>> file_system = dp.FileClient.get_gcs_file_system()
