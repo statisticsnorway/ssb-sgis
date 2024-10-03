@@ -2293,8 +2293,8 @@ class ImageCollection(_ImageBase):
 
                 if name not in out:
                     out[name] = band.to_gdf(column=column)
-                else:
-                    out[name] = f"{self.__class__.__name__}({i})"
+                # else:
+                #     out[name] = f"{self.__class__.__name__}({i})"
         return out
 
     def sample(self, n: int = 1, size: int = 500) -> "ImageCollection":

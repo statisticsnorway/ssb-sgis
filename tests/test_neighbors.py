@@ -200,7 +200,6 @@ def test_k_neighbors(points_oslo):
     assert np.array_equal(indices, indices2)
 
 
-@pytest.mark.skip(reason="This test fails, need to investigate")
 def test_get_neighbor_indices():
     points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
     p1 = points.iloc[[0]]
@@ -265,8 +264,8 @@ def main():
 
     points_oslo = points_oslo()
 
-    test_within_distance(points_oslo)
     test_get_neighbor_indices()
+    test_within_distance(points_oslo)
     test_k_neighbors(points_oslo)
 
 

@@ -11,7 +11,6 @@ version of the solution from GH 2792.
 import functools
 from collections.abc import Callable
 
-import dask.array as da
 import geopandas as gpd
 import joblib
 import numpy as np
@@ -27,6 +26,11 @@ from shapely import intersection
 from shapely import make_valid
 from shapely import unary_union
 from shapely.errors import GEOSException
+
+try:
+    import dask.array as da
+except ImportError:
+    pass
 
 from .general import _determine_geom_type_args
 from .general import clean_geoms
