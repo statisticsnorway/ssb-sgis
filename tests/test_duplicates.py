@@ -23,8 +23,9 @@ def test_random_get_intersections():
         overlapping_now = sg.get_intersections(updated).loc[
             lambda x: x.area / x.length > grid_size
         ]
-        assert not len(overlapping_now), overlapping_now.assign(
-            sliv=lambda x: x.area / x.length
+        assert not len(overlapping_now), (
+            overlapping_now.assign(sliv=lambda x: x.area / x.length),
+            sg.explore(overlapping_now),
         )
 
 

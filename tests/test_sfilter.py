@@ -6,6 +6,7 @@ import timeit
 from pathlib import Path
 
 import pandas as pd
+from shapely import union_all
 
 src = str(Path(__file__).parent.parent) + "/src"
 
@@ -33,11 +34,11 @@ def test_sfilter():
             assert sg.sfilter(df1, df2.geometry.tolist(), predicate=predicate).equals(
                 should_equal
             )
-            assert sg.sfilter(df1, df2.unary_union, predicate=predicate).equals(
-                should_equal
-            )
             assert sg.sfilter(
-                df1.geometry, df2.unary_union, predicate=predicate
+                df1, union_all(df2.geometry.values), predicate=predicate
+            ).equals(should_equal)
+            assert sg.sfilter(
+                df1.geometry, union_all(df2.geometry.values), predicate=predicate
             ).equals(should_equal.geometry)
 
     df1 = sg.to_gdf([(0, 0), (0, 1), (1, 1)])
@@ -64,6 +65,24 @@ def test_sfilter():
 
     sfilter_asserts(df1, df2, should_equal)
 
+    within_distance, not_within_distance = sg.sfilter_split(
+        df1, df2, predicate="dwithin", distance=1
+    )
+    assert len(within_distance) == 3
+    assert not len(not_within_distance)
+
+    within_distance, not_within_distance = sg.sfilter_split(
+        df1, df2, predicate="dwithin", distance=0.5
+    )
+    assert len(within_distance) == 2, within_distance
+    assert len(not_within_distance) == 1, not_within_distance
+
+    within_distance, not_within_distance = sg.sfilter_split(
+        df1, df2, predicate="dwithin", distance=0
+    )
+    assert len(within_distance) == 2, within_distance
+    assert len(not_within_distance) == 1, not_within_distance
+
 
 def test_sfilter_random():
     for _ in range(25):
@@ -76,7 +95,7 @@ def test_sfilter_random():
         assert intersecting.equals(sg.sfilter(gdf, other))
         assert not_intersecting.equals(sg.sfilter_inverse(gdf, other))
 
-        filt = gdf.intersects(other.unary_union)
+        filt = gdf.intersects(union_all(other.geometry.values))
         assert intersecting.equals(gdf[filt]), (intersecting, gdf[filt])
         assert not_intersecting.equals(gdf[~filt]), (intersecting, gdf[~filt])
 

@@ -1,28 +1,18 @@
+import re
+
 SENTINEL2_FILENAME_REGEX = r"""
     ^(?P<tile>T\d{2}[A-Z]{3})
     _(?P<date>\d{8})T\d{6}
-    # _(?P<date>\d{8}T\d{6})
     _(?P<band>B[018][\dA])
     (?:_(?P<resolution>\d+)m)?
     .*
     \..*$
 """
 
-SENTINEL2_MOSAIC_FILENAME_REGEX = r"""
-    ^SENTINEL2X_
-    (?P<date>\d{8})
-    .*T(?P<tile>\d{2}[A-Z]{3})
-    .*(?:_(?P<resolution>{}m))?
-    .*(?P<band>B\d{1,2}A|B\d{1,2})
-    .*
-    .*\..*$
-"""
-
 
 SENTINEL2_CLOUD_FILENAME_REGEX = r"""
     ^(?P<tile>T\d{2}[A-Z]{3})
     _(?P<date>\d{8})T\d{6}
-    # _(?P<date>\d{8}T\d{6})
     _(?P<band>SCL)
     (?:_(?P<resolution>\d+)m)?
     .*
@@ -33,7 +23,6 @@ SENTINEL2_IMAGE_REGEX = r"""
     ^(?P<mission_id>S2[AB])
     _MSI(?P<level>[A-Z]\d{1}[A-Z])
     _(?P<date>\d{8})T\d{6}
-    # _(?P<date>\d{8}T\d{6})
     _(?P<baseline>N\d{4})
     _(?P<orbit>R\d{3})
     _(?P<tile>T\d{2}[A-Z]{3})
@@ -42,15 +31,28 @@ SENTINEL2_IMAGE_REGEX = r"""
     .*$
 """
 
+SENTINEL2_MOSAIC_FILENAME_REGEX = r"""
+    ^SENTINEL2X_
+    (?P<date>\d{8})
+    .*?
+    (?P<tile>T\d{2}[A-Z]{3})
+    .*?
+    _(?P<band>B\d{1,2}A?)_
+    .*?
+    (?:_(?P<resolution>\d+m))?
+    .*?\.tif$
+"""
+
 SENTINEL2_MOSAIC_IMAGE_REGEX = r"""
     ^SENTINEL2X_
     (?P<date>\d{8})
     -\d{6}
     -\d{3}
     _(?P<level>[A-Z]\d{1}[A-Z])
-    .*T(?P<tile>\d{2}[A-Z]{3})
+    .*(?P<tile>T\d{2}[A-Z]{3})
     .*.*$
 """
+
 
 # multiple regex searches because there are different xml files with same info, but different naming
 CLOUD_COVERAGE_REGEXES: tuple[str] = (
@@ -58,12 +60,26 @@ CLOUD_COVERAGE_REGEXES: tuple[str] = (
     r"<CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>([\d.]+)</CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>",
 )
 
-CRS_REGEX: tuple[str] = (r"<HORIZONTAL_CS_CODE>EPSG:(\d+)</HORIZONTAL_CS_CODE>",)
+CRS_REGEXES: tuple[str] = (r"<HORIZONTAL_CS_CODE>EPSG:(\d+)</HORIZONTAL_CS_CODE>",)
 
-BOUNDS_REGEX: tuple[dict[str, str]] = (
+BOUNDS_REGEXES: tuple[dict[str, str]] = (
     {"minx": r"<ULX>(\d+)</ULX>", "maxy": r"<ULY>(\d+)</ULY>"},
 )
-
+BOUNDS_REGEXES: tuple[re.Pattern] = (
+    re.compile(r"<ULX>(?P<minx>\d+)</ULX>"),
+    re.compile(r"<ULY>(?P<maxy>\d+)</ULY>"),
+    # )
+    # SHAPE_PATTERNS: tuple[re.Pattern] = (
+    re.compile(
+        r'<Size resolution="(?P<resolution>\d+)">\s*<NROWS>(?P<nrows>\d+)</NROWS>\s*<NCOLS>(?P<ncols>\d+)</NCOLS>\s*</Size>'
+    ),
+    re.compile(
+        r"<Cloud_Coverage_Assessment>(?P<cloud_coverage_percentage>[\d.]+)</Cloud_Coverage_Assessment>"
+    ),
+    re.compile(
+        r"<CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>(?P<cloud_coverage_percentage>[\d.]+)</CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>"
+    ),
+)
 
 SENTINEL2_L2A_BANDS = {
     "B01": 60,

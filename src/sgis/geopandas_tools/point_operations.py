@@ -5,7 +5,7 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import distance
-from shapely import unary_union
+from shapely import union_all
 from shapely.ops import nearest_points
 
 from ..geopandas_tools.geometry_types import get_geom_type
@@ -201,9 +201,9 @@ def _shapely_snap(
     max_distance: int | float | None = None,
 ) -> GeoSeries:
     try:
-        unioned = to.unary_union
+        unioned = union_all(to.geometry.values)
     except AttributeError:
-        unioned = unary_union(to)
+        unioned = union_all(to)
 
     nearest = nearest_points(points, unioned)[1]
 

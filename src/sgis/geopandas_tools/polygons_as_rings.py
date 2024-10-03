@@ -8,6 +8,7 @@ from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from numpy.typing import NDArray
 from pyproj import CRS
+from shapely import difference
 from shapely import get_coordinates
 from shapely import get_exterior_ring
 from shapely import get_interior_ring
@@ -320,14 +321,14 @@ class PolygonsAsRings:
 
         exterior = self.rings.loc[self.is_exterior].sort_index()
         assert exterior.shape == (len(self.gdf),)
+        nonempty_exteriors = exterior.loc[lambda x: x.notna()]
+        empty_exteriors = exterior.loc[lambda x: x.isna()]
 
         nonempty_interiors = self.rings.loc[self.is_interior]
 
         if not len(nonempty_interiors):
-            try:
-                return make_valid(polygons(exterior.values))
-            except Exception:
-                return _geoms_to_linearrings_fallback(exterior).values
+            nonempty_exteriors.loc[:] = make_valid(polygons(nonempty_exteriors.values))
+            return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
 
         empty_interiors = pd.Series(
             [None for _ in range(len(self.gdf) * self.max_rings)],
@@ -343,10 +344,41 @@ class PolygonsAsRings:
         )
         assert interiors.shape == (len(self.gdf), self.max_rings), interiors.shape
 
-        try:
-            return make_valid(polygons(exterior.values, interiors.values))
-        except Exception:
-            return _geoms_to_linearrings_fallback(exterior, interiors).values
+        interiors = interiors.loc[
+            interiors.index.get_level_values(1).isin(
+                nonempty_exteriors.index.get_level_values(1)
+            )
+        ]
+        assert interiors.index.get_level_values(1).equals(
+            nonempty_exteriors.index.get_level_values(1)
+        )
+
+        # nan gives TypeError in shapely.polygons. None does not.
+        for i, _ in enumerate(interiors.columns):
+            interiors.loc[interiors.iloc[:, i].isna(), i] = None
+        nonempty_exteriors.loc[nonempty_exteriors.isna()] = None
+
+        # construct polygons with holes
+        polys = make_valid(
+            polygons(
+                nonempty_exteriors.values,
+                interiors.values,
+            )
+        )
+
+        # interiors might have moved (e.g. snapped) so that they are not within the exterior
+        # these interiors will not be holes, so we need to erase them manually
+        interiors_as_polys = make_valid(polygons(interiors.values))
+        # merge interior polygons into 1d array
+        interiors_as_polys = np.array(
+            [
+                make_valid(unary_union(interiors_as_polys[i, :]))
+                for i in range(interiors_as_polys.shape[0])
+            ]
+        )
+        # erase rowwise
+        nonempty_exteriors.loc[:] = make_valid(difference(polys, interiors_as_polys))
+        return pd.concat([empty_exteriors, nonempty_exteriors]).sort_index().values
 
 
 def get_linearring_series(geoms: GeoDataFrame | GeoSeries) -> pd.Series:

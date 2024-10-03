@@ -31,6 +31,7 @@ from jinja2 import Template
 from pandas.api.types import is_datetime64_any_dtype
 from shapely import Geometry
 from shapely import box
+from shapely import union_all
 from shapely.geometry import LineString
 
 from ..geopandas_tools.bounds import get_total_bounds
@@ -188,13 +189,19 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     bounds: tuple = (
         _any_to_bbox_crs4326(mask, band.crs)
         if mask is not None
-        else gpd.GeoSeries(box(*band.bounds), crs=band.crs)
-        .to_crs(4326)
-        .unary_union.bounds
+        else union_all(
+            gpd.GeoSeries(box(*band.bounds), crs=band.crs).to_crs(4326).geometry.values
+        ).bounds
     )
     # if np.max(arr) > 0:
     #     arr = arr / 255
-    raster_data_dict["cmap"] = plt.get_cmap(band.cmap) if band.cmap else None
+    try:
+        raster_data_dict["cmap"] = band.get_cmap(arr)
+    except Exception:
+        try:
+            raster_data_dict["cmap"] = plt.get_cmap(band.cmap)
+        except Exception:
+            raster_data_dict["cmap"] = band.cmap or "Grays"
     raster_data_dict["arr"] = arr
     raster_data_dict["bounds"] = bounds
     raster_data_dict["label"] = name
@@ -204,152 +211,15 @@ def _any_to_bbox_crs4326(obj, crs):
     return to_bbox(to_gdf(obj, crs).to_crs(4326))
 
 
-def _image_collection_to_background_map(
-    image_collection: ImageCollection | Image | Band,
-    mask: Any | None,
-    name: str,
-    max_images: int,
-    n_added_images: int,
-    rbg_bands: list[str] = (["B02", "B03", "B04"], ["B2", "B3", "B4"]),
-) -> list[dict]:
-    out = []
-
-    if all(isinstance(x, str) for x in rbg_bands):
-        rbg_bands = (rbg_bands,)
-
-    # red, blue, green = rbg_bands
-    if isinstance(image_collection, ImageCollection):
-        images = image_collection.images
-        name = None
-    elif isinstance(image_collection, Image):
-        img = image_collection
-        if mask is not None and not to_shapely(mask).intersects(to_shapely(img.bounds)):
-            return out
-
-        if len(img) == 1:
-            band = next(iter(img))
-            raster_data_dict = {}
-            out.append(raster_data_dict)
-            name = _determine_label(band, name, out, 0)
-            _single_band_to_arr(band, mask, name, raster_data_dict)
-            return out
-        elif len(img) < 3:
-            raster_data_dict = {}
-            out.append(raster_data_dict)
-            for i, band in enumerate(img):
-                name = _determine_label(band, None, out, i)
-                _single_band_to_arr(band, mask, name, raster_data_dict)
-            return out
-        else:
-            images = [image_collection]
-
-    elif isinstance(image_collection, Band):
-        band = image_collection
-
-        if mask is not None and not to_shapely(mask).intersects(
-            to_shapely(band.bounds)
-        ):
-            return out
-
-        raster_data_dict = {}
-        out.append(raster_data_dict)
-        _single_band_to_arr(band, mask, name, raster_data_dict)
-        return out
-
-    else:
-        raise TypeError(type(image_collection))
-
-    if len(images) + n_added_images > max_images:
-        warnings.warn(
-            f"Showing only a sample of {max_images}. Set 'max_images.", stacklevel=1
-        )
-        random.shuffle(images)
-        images = images[: (max_images - n_added_images)]
-        try:
-            images = list(sorted(images))
-        except Exception:
-            pass
-
-    i = -1
-    for image in images:
-        i += 1
-        if mask is not None and not to_shapely(mask).intersects(
-            to_shapely(image.bounds)
-        ):
-            continue
-
-        raster_data_dict = {}
-        out.append(raster_data_dict)
-
-        if len(image) < 3:
-            for band in image:
-                name = _determine_label(band, None, out, i)
-                _single_band_to_arr(band, mask, name, raster_data_dict)
-                i += 1
-            continue
-
-        for red, blue, green in rbg_bands:
-            try:
-                red_band = image[red].load(indexes=1, bounds=mask).values
-            except KeyError:
-                continue
-            try:
-                blue_band = image[blue].load(indexes=1, bounds=mask).values
-            except KeyError:
-                continue
-            try:
-                green_band = image[green].load(indexes=1, bounds=mask).values
-            except KeyError:
-                continue
-            break
-
-        if mask is not None:
-            print(mask)
-            print(to_gdf(mask).area.sum())
-            print(to_gdf(image.bounds).area.sum())
-            print(red_band.shape)
-            print(image.bounds)
-
-        if red_band.shape[0] == 0:
-            continue
-        if blue_band.shape[0] == 0:
-            continue
-        if green_band.shape[0] == 0:
-            continue
-
-        crs = image.crs
-        bounds: tuple = (
-            _any_to_bbox_crs4326(mask, crs)
-            if mask is not None
-            else (
-                gpd.GeoSeries(box(*image.bounds), crs=crs)
-                .to_crs(4326)
-                .unary_union.bounds
-            )
-        )
-        print(bounds)
-        print(to_gdf(bounds).area.sum())
-
-        # to 3d array in shape (x, y, 3)
-        rbg_image = np.stack([red_band, blue_band, green_band], axis=2)
-
-        raster_data_dict["arr"] = rbg_image
-        raster_data_dict["bounds"] = bounds
-        raster_data_dict["cmap"] = None
-        raster_data_dict["label"] = _determine_label(image, name, out, i)
-
-    return out
-
-
 class Explore(Map):
     """Class for displaying and saving html maps of multiple GeoDataFrames."""
 
     # class attribute that can be overridden locally
     tiles: ClassVar[tuple[str]] = (
-        "grunnkart",
-        "norge_i_bilder",
-        "dark",
         "OpenStreetMap",
+        "dark",
+        "norge_i_bilder",
+        "grunnkart",
     )
 
     def __init__(
@@ -368,7 +238,7 @@ class Explore(Map):
         show: bool | Iterable[bool] | None = None,
         text: str | None = None,
         decimals: int = 6,
-        max_images: int = 15,
+        max_images: int = 10,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -418,10 +288,10 @@ class Explore(Map):
             self.browser = kwargs.pop("in_browser")
 
         if show is None:
-            show_was_none = True
+            self._show_was_none = True
             show = True
         else:
-            show_was_none = False
+            self._show_was_none = False
 
         new_gdfs = {}
         self.rasters = {}
@@ -446,7 +316,7 @@ class Explore(Map):
             else:
                 new_kwargs[key] = value
 
-        super().__init__(column=column, show=show, **new_kwargs, **new_gdfs)
+        super().__init__(column=column, show=show, **(new_kwargs | new_gdfs))
 
         if self.gdfs is None:
             return
@@ -492,8 +362,8 @@ class Explore(Map):
             self._gdf = GeoDataFrame({"geometry": [], self._column: []})
         self.show = show_new
 
-        if show_was_none and len(self._gdfs) > 6:
-            self.show = [False] * len(self._gdfs)
+        # if self._show_was_none and len(self._gdfs) > 6:
+        #     self.show = [False] * len(self._gdfs)
 
         if self._is_categorical:
             if len(self.gdfs) == 1:
@@ -511,7 +381,19 @@ class Explore(Map):
 
     def __repr__(self) -> str:
         """Representation."""
-        return f"{self.__class__.__name__}()"
+        return f"{self.__class__.__name__}({len(self)})"
+
+    def __len__(self) -> int:
+        """Number of gdfs that have rows plus number of raster images."""
+        try:
+            rasters = self.raster_data
+        except AttributeError:
+            rasters = self.rasters
+        return len([gdf for gdf in self._gdfs if len(gdf)]) + len(rasters)
+
+    def __bool__(self) -> bool:
+        """True if any gdfs have rows or there are any raster images."""
+        return bool(len(self))
 
     def explore(
         self,
@@ -627,20 +509,36 @@ class Explore(Map):
     def _load_rasters_as_images(self):
         self.raster_data = []
         n_added_images = 0
+        self._show_rasters = True
         for name, value in self.rasters.items():
-            data = _image_collection_to_background_map(
+            data, n_added_images = self._image_collection_to_background_map(
                 value,
                 self.mask,
                 name,
                 max_images=self.max_images,
                 n_added_images=n_added_images,
             )
-            n_added_images += len(data)
             self.raster_data += data
 
     def _rasters_to_background_maps(self):
         for raster_data_dict in self.raster_data:
-            arr = raster_data_dict["arr"]
+            try:
+                arr = raster_data_dict["arr"]
+            except KeyError:
+                continue
+            if (arr.shape) == 1:
+                continue
+            if hasattr(arr, "mask"):
+                arr = arr.data
+            if "bool" in str(arr.dtype):
+                arr = np.where(arr, 1, 0)
+            # if np.max(arr[~np.isnan(arr)]) > 255:
+            #     arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
+            try:
+                arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
+            except Exception:
+                pass
+
             label = raster_data_dict["label"]
             bounds = raster_data_dict["bounds"]
             if raster_data_dict["cmap"] is not None:
@@ -649,7 +547,10 @@ class Explore(Map):
                 kwargs = {}
             minx, miny, maxx, maxy = bounds
             image_overlay = folium.raster_layers.ImageOverlay(
-                arr, bounds=[[miny, minx], [maxy, maxx]], **kwargs
+                arr,
+                bounds=[[miny, minx], [maxy, maxx]],
+                show=self._show_rasters,
+                **kwargs,
             )
             image_overlay.layer_name = Path(label).stem
             image_overlay.add_to(self.map)
@@ -661,6 +562,9 @@ class Explore(Map):
 
     def _explore(self, **kwargs) -> None:
         self.kwargs = self.kwargs | kwargs
+
+        if self._show_was_none and len([gdf for gdf in self._gdfs if len(gdf)]) > 6:
+            self.show = [False] * len(self._gdfs)
 
         if self._is_categorical:
             self._create_categorical_map()
@@ -718,6 +622,8 @@ class Explore(Map):
         return gdf
 
     def _update_column(self) -> None:
+        if not self._gdfs:
+            return
         self._is_categorical = self._check_if_categorical()
         self._fillna_if_col_is_missing()
         self._gdf = pd.concat(self._gdfs, ignore_index=True)
@@ -1146,6 +1052,163 @@ class Explore(Map):
             **kwargs,
         )
 
+    def _image_collection_to_background_map(
+        self,
+        image_collection: ImageCollection | Image | Band,
+        mask: Any | None,
+        name: str,
+        max_images: int,
+        n_added_images: int,
+        rbg_bands: list[str] = (["B02", "B03", "B04"], ["B2", "B3", "B4"]),
+    ) -> tuple[list[dict], int]:
+        out = []
+
+        if all(isinstance(x, str) for x in rbg_bands):
+            rbg_bands = (rbg_bands,)
+
+        if isinstance(image_collection, ImageCollection):
+            images = image_collection.images
+            name = None
+        elif isinstance(image_collection, Image):
+            img = image_collection
+            if not _intersects_if_not_none_or_empty(
+                mask, img.bounds
+            ):  # is not None and not to_shapely(mask).intersects(
+                #     to_shapely(img.bounds)
+                # ):
+                return out, n_added_images
+
+            if len(img) == 1:
+                band = next(iter(img))
+                raster_data_dict = {}
+                out.append(raster_data_dict)
+                name = _determine_label(band, name, out, n_added_images)
+                _single_band_to_arr(band, mask, name, raster_data_dict)
+                n_added_images += 1
+                return out, n_added_images
+            elif len(img) < 3:
+                raster_data_dict = {}
+                out.append(raster_data_dict)
+                for band in img:
+                    name = _determine_label(band, None, out, n_added_images)
+                    _single_band_to_arr(band, mask, name, raster_data_dict)
+                    n_added_images += 1
+                return out, n_added_images
+            else:
+                images = [image_collection]
+
+        elif isinstance(image_collection, Band):
+            band = image_collection
+
+            if not _intersects_if_not_none_or_empty(
+                mask, band.bounds
+            ):  # mask is not None and not to_shapely(mask).intersects(
+                #     to_shapely(band.bounds)
+                # ):
+                return out, n_added_images
+
+            raster_data_dict = {}
+            out.append(raster_data_dict)
+            _single_band_to_arr(band, mask, name, raster_data_dict)
+            return out, n_added_images
+
+        else:
+            raise TypeError(type(image_collection))
+
+        if max(len(out), len(images)) + n_added_images > max_images:
+            warnings.warn(
+                f"Showing only a sample of {max_images}. Set 'max_images.", stacklevel=1
+            )
+            self._show_rasters = False
+            random.shuffle(images)
+
+            images = images[: (max_images - n_added_images)]
+            images = (
+                list(sorted([img for img in images if img.date is not None]))
+                + sorted(
+                    [
+                        img
+                        for img in images
+                        if img.date is None and img.path is not None
+                    ],
+                    key=lambda x: x.path,
+                )
+                + [img for img in images if img.date is None and img.path is None]
+            )
+
+        for image in images:
+
+            if not _intersects_if_not_none_or_empty(
+                mask, image.bounds
+            ):  # mask is not None and not to_shapely(mask).intersects(
+                #     to_shapely(image.bounds)
+                # ):
+                continue
+
+            raster_data_dict = {}
+            out.append(raster_data_dict)
+
+            if len(image) < 3:
+                for band in image:
+                    name = _determine_label(band, None, out, n_added_images)
+                    _single_band_to_arr(band, mask, name, raster_data_dict)
+                    n_added_images += 1
+                continue
+
+            for red, blue, green in rbg_bands:
+                try:
+                    red_band = image[red].load(indexes=1, bounds=mask)
+                except KeyError:
+                    continue
+                try:
+                    blue_band = image[blue].load(indexes=1, bounds=mask)
+                except KeyError:
+                    continue
+                try:
+                    green_band = image[green].load(indexes=1, bounds=mask)
+                except KeyError:
+                    continue
+                break
+
+            crs = red_band.crs
+
+            bounds: tuple = (
+                _any_to_bbox_crs4326(mask, crs)
+                if mask is not None
+                else (
+                    union_all(
+                        gpd.GeoSeries(box(*red_band.bounds), crs=crs)
+                        .to_crs(4326)
+                        .geometry.values
+                    ).bounds
+                )
+            )
+
+            red_band = red_band.values
+            blue_band = blue_band.values
+            green_band = green_band.values
+
+            if red_band.shape[0] == 0:
+                continue
+            if blue_band.shape[0] == 0:
+                continue
+            if green_band.shape[0] == 0:
+                continue
+
+            # to 3d array in shape (x, y, 3)
+            rbg_image = np.stack([red_band, blue_band, green_band], axis=2)
+
+            raster_data_dict["arr"] = rbg_image
+            raster_data_dict["bounds"] = bounds
+            raster_data_dict["cmap"] = None
+            raster_data_dict["label"] = _determine_label(
+                image, name, out, n_added_images
+            )
+
+            n_added_images += 1
+
+        return out, n_added_images
+
 
 def _tooltip_popup(
     type_: str, fields: Any, gdf: GeoDataFrame, **kwargs
@@ -1172,6 +1235,15 @@ def _tooltip_popup(
         return folium.GeoJsonTooltip(fields, **kwargs)
     elif type_ == "popup":
         return folium.GeoJsonPopup(fields, **kwargs)
+
+
+def _intersects_if_not_none_or_empty(obj: Any, other: Any) -> bool:
+    if obj is None:
+        return True
+    obj = to_shapely(obj)
+    if obj is None or obj.is_empty:
+        return True
+    return obj.intersects(to_shapely(other))
 
 
 def _determine_label(

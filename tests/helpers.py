@@ -23,7 +23,6 @@ def cprofile_df(call: str) -> pd.DataFrame:
     what_was_printed = (
         buffer.getvalue()
     )  # Return a str containing the entire contents of the buffer.
-    print(what_was_printed)
 
     lines = what_was_printed.split("Ordered by: cumulative time")[-1].split("\n")
     lines = [line.strip() for line in lines if line]

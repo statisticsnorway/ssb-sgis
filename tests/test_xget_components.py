@@ -19,6 +19,7 @@ def test_get_components(roads_oslo, points_oslo):
     assert len(r) == 68 + 488, len(r)
 
     nw = sg.get_component_size(r)
+    print(nw)
 
     if __name__ == "__main__":
         sg.qtm(

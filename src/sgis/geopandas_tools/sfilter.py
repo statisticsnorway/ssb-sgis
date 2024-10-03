@@ -4,7 +4,9 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from geopandas import __version__ as geopandas_version
 from shapely import Geometry
+from shapely import STRtree
 
 from .conversion import to_gdf
 
@@ -15,6 +17,7 @@ def sfilter(
     gdf: GeoDataFrame | GeoSeries,
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
+    distance: int | float | None = None,
 ) -> GeoDataFrame:
     """Filter a GeoDataFrame or GeoSeries by spatial predicate.
 
@@ -29,6 +32,7 @@ def sfilter(
         gdf: The GeoDataFrame.
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
+        distance: Max distance to allow if predicate=="dwithin".
 
     Returns:
         A copy of 'gdf' with only the rows matching the
@@ -66,7 +70,7 @@ def sfilter(
     Also equivelent to using the intersects method, which
     is often a lot slower since df2 must be dissolved:
 
-    >>> df1.loc[df1.intersects(df2.unary_union)]
+    >>> df1.loc[df1.intersects(df2.union_all())]
                       geometry
     0  POINT (0.00000 0.00000)
 
@@ -76,7 +80,7 @@ def sfilter(
 
     other = _sfilter_checks(other, crs=gdf.crs)
 
-    indices = _get_sfilter_indices(gdf, other, predicate)
+    indices = _get_sfilter_indices(gdf, other, predicate, distance)
 
     return gdf.iloc[indices]
 
@@ -85,6 +89,7 @@ def sfilter_split(
     gdf: GeoDataFrame | GeoSeries,
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
+    distance: int | float | None = None,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     """Split a GeoDataFrame or GeoSeries by spatial predicate.
 
@@ -95,6 +100,7 @@ def sfilter_split(
         gdf: The GeoDataFrame.
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
+        distance: Max distance to allow if predicate=="dwithin".
 
     Returns:
         A tuple of GeoDataFrames, one with the rows that match the spatial predicate
@@ -135,7 +141,7 @@ def sfilter_split(
     Also equivelent to using the intersects method, which
     is often slower since df2 must be dissolved:
 
-    >>> filt = df1.intersects(df2.unary_union)
+    >>> filt = df1.intersects(df2.union_all())
     >>> intersecting = df1.loc[filt]
     >>> not_intersecting = df1.loc[~filt]
 
@@ -145,7 +151,7 @@ def sfilter_split(
 
     other = _sfilter_checks(other, crs=gdf.crs)
 
-    indices = _get_sfilter_indices(gdf, other, predicate)
+    indices = _get_sfilter_indices(gdf, other, predicate, distance)
 
     return (
         gdf.iloc[indices],
@@ -157,6 +163,7 @@ def sfilter_inverse(
     gdf: GeoDataFrame | GeoSeries,
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
+    distance: int | float | None = None,
 ) -> GeoDataFrame | GeoSeries:
     """Filter a GeoDataFrame or GeoSeries by inverse spatial predicate.
 
@@ -166,6 +173,7 @@ def sfilter_inverse(
         gdf: The GeoDataFrame or GeoSeries.
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
+        distance: Max distance to allow if predicate=="dwithin".
 
     Returns:
         A copy of 'gdf' with only the rows that do not match the
@@ -202,7 +210,7 @@ def sfilter_inverse(
     Also equivelent to using the intersects method, which
     is often slower since df2 must be dissolved:
 
-    >>> not_intersecting = df1.loc[~df1.intersects(df2.unary_union)]
+    >>> not_intersecting = df1.loc[~df1.intersects(df2.union_all())]
 
     """
     if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
@@ -210,7 +218,7 @@ def sfilter_inverse(
 
     other = _sfilter_checks(other, crs=gdf.crs)
 
-    indices = _get_sfilter_indices(gdf, other, predicate)
+    indices = _get_sfilter_indices(gdf, other, predicate, distance)
 
     return gdf.iloc[pd.Index(range(len(gdf))).difference(pd.Index(indices))]
 
@@ -243,6 +251,7 @@ def _get_sfilter_indices(
     left: GeoDataFrame | GeoSeries,
     right: GeoDataFrame | GeoSeries | Geometry,
     predicate: str,
+    distance: int | float | None,
 ) -> np.ndarray:
     """Compute geometric comparisons and get matching indices.
 
@@ -276,17 +285,25 @@ def _get_sfilter_indices(
             # contains is a faster predicate
             # see discussion at https://github.com/geopandas/geopandas/pull/1421
             predicate = "contains"
-            sindex = left.sindex
+            sindex, kwargs = _get_spatial_tree(left)
             input_geoms = right.geometry if isinstance(right, GeoDataFrame) else right
         else:
             # all other predicates are symmetric
             # keep them the same
-            sindex = right.sindex
+            sindex, kwargs = _get_spatial_tree(right)
             input_geoms = left.geometry if isinstance(left, GeoDataFrame) else left
 
-    l_idx, r_idx = sindex.query(input_geoms, predicate=predicate, sort=False)
+    l_idx, r_idx = sindex.query(
+        input_geoms, predicate=predicate, distance=distance, **kwargs
+    )
 
     if original_predicate == "within":
         return np.sort(np.unique(r_idx))
 
     return np.sort(np.unique(l_idx))
+
+
+def _get_spatial_tree(df):
+    if int(geopandas_version[0]) >= 1:
+        return df.sindex, {"sort": False}
+    return STRtree(df.geometry.values), {}

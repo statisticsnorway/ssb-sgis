@@ -48,18 +48,18 @@ pd.options.mode.chained_assignment = None
 # similar colors. The palette is like the "Set2" cmap from matplotlib, but with more
 # colors. If more than 14 categories, the geopandas default cmap is used.
 _CATEGORICAL_CMAP = {
-    0: "#4576ff",
-    1: "#ff455e",
-    2: "#ffa617",
-    3: "#ff8cc9",
-    4: "#804e00",
-    5: "#99ff00",
-    6: "#fff700",
+    0: "#3b93ff",
+    1: "#ff3370",
+    2: "#f7cf19",
+    3: "#60e825",
+    4: "#ff8cc9",
+    5: "#804e00",
+    6: "#e3dc00",
     7: "#00ffee",
-    8: "#36d19b",
-    9: "#94006b",
-    10: "#750000",
+    9: "#870062",
+    10: "#751500",
     11: "#1c6b00",
+    8: "#7cebb9",
 }
 
 DEFAULT_SCHEME = "quantiles"
@@ -147,6 +147,7 @@ class Map:
             show_temp = show
 
         show_args = show_temp[: len(gdfs)]
+        # gdfs that are in kwargs
         show_kwargs = show_temp[len(gdfs) :]
         self._gdfs = []
         new_labels = []
@@ -169,6 +170,8 @@ class Map:
         i = 0
         for key, value in kwargs.items():
             try:
+                if isinstance(value, Geometry):
+                    value = to_gdf(value)
                 if not len(value):
                     continue
                 self._gdfs.append(to_gdf(value))
@@ -188,7 +191,7 @@ class Map:
                 f"length as gdfs ({len(gdfs)}). Got len {len(show)}"
             )
 
-        if not any(len(gdf) for gdf in self._gdfs):
+        if not self._gdfs or not any(len(gdf) for gdf in self._gdfs):
             self._gdfs = []
             self._is_categorical = True
             self._unique_values = []
@@ -221,6 +224,10 @@ class Map:
 
         self._nan_idx = self._gdf[self._column].isna()
         self._get_unique_values()
+
+    def __bool__(self) -> bool:
+        """True of any gdfs with more than 0 rows."""
+        return bool(len(self._gdfs) + len(self._gdf))
 
     def _get_unique_values(self) -> None:
         if not self._is_categorical:
@@ -514,7 +521,7 @@ class Map:
 
     def _check_if_categorical(self) -> bool:
         """Quite messy this..."""
-        if not self._column:
+        if not self._column or not self._gdfs:
             return True
 
         def is_maybe_km2():
@@ -564,7 +571,9 @@ class Map:
             return False
 
         if all_nan == len(self._gdfs):
-            raise ValueError(f"All values are NaN in column {self.column!r}.")
+            raise ValueError(
+                f"All values are NaN in column {self.column!r}. {self._gdfs}"
+            )
 
         if col_not_present == len(self._gdfs):
             raise ValueError(f"{self.column} not found.")

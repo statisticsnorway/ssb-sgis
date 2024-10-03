@@ -77,7 +77,7 @@ def split_lines_by_nearest_point(
     """
     PRECISION = 1e-6
 
-    if not len(gdf):
+    if not len(gdf) or not len(points):
         return gdf
 
     if (points.crs is not None and gdf.crs is not None) and not points.crs.equals(
@@ -86,10 +86,14 @@ def split_lines_by_nearest_point(
         raise ValueError("crs mismatch:", points.crs, "and", gdf.crs)
 
     if get_geom_type(gdf) != "line":
-        raise ValueError("'gdf' should only have line geometries.", gdf.geom_type)
+        raise ValueError(
+            f"'gdf' should only have line geometriess. Got {gdf.geom_type.value_counts()}"
+        )
 
     if get_geom_type(points) != "point":
-        raise ValueError("'points' should only have point geometries.")
+        raise ValueError(
+            f"'points' should only have point geometries. Got {points.geom_type.value_counts()}"
+        )
 
     gdf = gdf.copy()
 
@@ -230,9 +234,12 @@ def _change_line_endpoint(
         .values
     )
 
-    relevant_lines_mapped = relevant_lines.groupby(level=0)["geometry"].agg(LineString)
+    is_line = relevant_lines.groupby(level=0).size() > 1
+    relevant_lines_mapped = (
+        relevant_lines.loc[is_line].groupby(level=0)["geometry"].agg(LineString)
+    )
 
-    gdf.loc[is_relevant, "geometry"] = relevant_lines_mapped
+    gdf.loc[relevant_lines_mapped.index, "geometry"] = relevant_lines_mapped
 
     return gdf
 

@@ -32,7 +32,6 @@ try:
     from ..io.dapla_functions import read_geopandas
     from ..io.dapla_functions import write_geopandas
 
-    # from ..io.write_municipality_data import write_municipality_data
 except ImportError:
     pass
 
@@ -40,11 +39,8 @@ except ImportError:
 try:
     from dapla import read_pandas
     from dapla import write_pandas
-    from dapla.gcs import GCSFileSystem
 except ImportError:
-
-    class GCSFileSystem:
-        """Placeholder."""
+    pass
 
 
 class Parallel:
@@ -806,7 +802,11 @@ def _write_one_muni(
 
     if not len(gdf_muni):
         if write_empty:
-            gdf_muni = gdf_muni.drop(columns="geometry", errors="ignore")
+            try:
+                geom_col = gdf.geometry.name
+            except AttributeError:
+                geom_col = "geometry"
+            gdf_muni = gdf_muni.drop(columns=geom_col, errors="ignore")
             gdf_muni["geometry"] = None
             write_pandas(gdf_muni, out)
         return
@@ -834,7 +834,11 @@ def _write_one_muni_with_neighbors(
 
     if not len(gdf_neighbor):
         if write_empty:
-            gdf_neighbor = gdf_neighbor.drop(columns="geometry", errors="ignore")
+            try:
+                geom_col = gdf.geometry.name
+            except AttributeError:
+                geom_col = "geometry"
+            gdf_neighbor = gdf_neighbor.drop(columns=geom_col, errors="ignore")
             gdf_neighbor["geometry"] = None
             write_pandas(gdf_neighbor, out)
         return
@@ -880,7 +884,9 @@ def _fix_missing_muni_numbers(
         )
 
     try:
-        municipalities = municipalities[[muni_number_col, "geometry"]].to_crs(gdf.crs)
+        municipalities = municipalities[
+            [muni_number_col, municipalities.geometry.name]
+        ].to_crs(gdf.crs)
     except Exception as e:
         raise e.__class__(e, to_print) from e
 
@@ -967,10 +973,21 @@ def parallel_overlay(
 
 
 def _clean_intersection(
-    df1: GeoDataFrame, df2: GeoDataFrame, to_print: str = ""
+    df1: GeoDataFrame, df2: GeoDataFrame, to_print: str | None = None
 ) -> GeoDataFrame:
     print(to_print, "- intersection chunk len:", len(df1))
-    return clean_overlay(df1, df2, how="intersection")
+    cols_to_keep = df1.columns.union(df2.columns.difference({df2.geometry.name}))
+    df1["_range_idx"] = range(len(df1))
+    joined = df1.sjoin(df2, predicate="within", how="left")
+    within = joined.loc[joined["_range_idx"].notna(), cols_to_keep]
+    not_within = joined.loc[joined["_range_idx"].isna(), df1.columns]
+    return pd.concat(
+        [
+            within,
+            clean_overlay(not_within, df2, how="intersection"),
+        ],
+        ignore_index=True,
+    )
 
 
 def chunkwise(

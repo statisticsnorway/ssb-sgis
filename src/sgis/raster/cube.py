@@ -383,7 +383,7 @@ class DataCube:
 
         if grid is None:
             crs = get_common_crs(gdf)
-            total_bounds = shapely.unary_union(
+            total_bounds = shapely.union_all(
                 [shapely.box(*frame.total_bounds) for frame in gdf]
             )
             grid = make_grid(total_bounds, gridsize=tile_size, crs=crs)
@@ -595,7 +595,7 @@ class DataCube:
         """Spatially filter images by bounding box or geometry object."""
         other = to_shapely(other)
         cube = self.copy() if copy else self
-        cube.data = [raster for raster in self if raster.unary_union.intersects(other)]
+        cube.data = [raster for raster in self if raster.union_all().intersects(other)]
         return cube
 
     def clip(
@@ -971,7 +971,7 @@ class DataCube:
     @property
     def unary_union(self) -> Geometry:
         """Box polygon of the combined bounds of each image."""
-        return shapely.unary_union([shapely.box(*r.bounds) for r in self])
+        return shapely.union_all([shapely.box(*r.bounds) for r in self])
 
     @property
     def centroid(self) -> GeoSeries:

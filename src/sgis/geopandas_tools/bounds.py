@@ -18,7 +18,7 @@ from ..parallel.parallel import Parallel
 from .conversion import to_bbox
 from .conversion import to_gdf
 from .general import clean_clip
-from .general import is_bbox_like
+from .general import get_common_crs
 
 
 @dataclass
@@ -133,11 +133,7 @@ class Gridlooper:
             )
             results = self.parallelizer.map(func_with_clip, buffered_grid)
             if not self.gridbuffer or not self.clip:
-                return (
-                    results
-                    if not self.concat
-                    else pd.concat(results, ignore_index=True)
-                )
+                return self._return(results, args, kwargs)
             out = []
             for cell_res, unbuffered in zip(results, grid, strict=True):
                 out.append(
@@ -145,7 +141,7 @@ class Gridlooper:
                         cell_res, unbuffered, self.keep_geom_type
                     )
                 )
-            return out if not self.concat else pd.concat(out, ignore_index=True)
+            return self._return(out, args, kwargs)
 
         results = []
         for i, (unbuffered, buffered) in enumerate(
@@ -175,7 +171,18 @@ class Gridlooper:
             if self.verbose:
                 print(f"Done with {i+1} of {n} grid cells", end="\r")
 
-        return results if not self.concat else pd.concat(results, ignore_index=True)
+        return self._return(results, args, kwargs)
+
+    def _return(
+        self, results: list[Any], args: tuple[Any], kwargs: dict[str, Any]
+    ) -> list[Any] | GeoDataFrame:
+        if self.concat and len(results):
+            return pd.concat(results, ignore_index=True)
+        elif self.concat:
+            crs = get_common_crs(list(args) + list(kwargs.values()))
+            return GeoDataFrame({"geometry": []}, crs=crs)
+        else:
+            return results
 
 
 def gridloop(
@@ -650,6 +657,7 @@ def bounds_to_points(
     Examples:
     ---------
     >>> import sgis as sg
+    >>> from shapely.geometry import MultiPoint, Point
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
                                             geometry
@@ -690,16 +698,3 @@ def get_total_bounds(
                 else:
                     continue
     return min(xs), min(ys), max(xs), max(ys)
-
-
-def points_in_bounds(gdf: GeoDataFrame | GeoSeries, n2: int) -> GeoDataFrame:
-    """Get a GeoDataFrame of points within the bounds of the GeoDataFrame."""
-    if not isinstance(gdf, (GeoDataFrame | GeoSeries)) and is_bbox_like(gdf):
-        minx, miny, maxx, maxy = gdf
-    else:
-        minx, miny, maxx, maxy = gdf.total_bounds
-    xs = np.linspace(minx, maxx, num=n2)
-    ys = np.linspace(miny, maxy, num=n2)
-    x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")
-    coords = np.concatenate((x_coords.reshape(-1, 1), y_coords.reshape(-1, 1)), axis=1)
-    return to_gdf(coords, crs=gdf.crs)

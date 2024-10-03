@@ -21,9 +21,12 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from shapely import get_num_geometries
 
-from .general import _merge_geometries
+from ..parallel.parallel import Parallel
+from .general import _grouped_unary_union
 from .general import _parallel_unary_union
+from .general import _unary_union_for_notna
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper
 from .polygon_operations import get_grouped_centroids
@@ -186,6 +189,7 @@ def _dissolve(
     aggfunc: str = "first",
     grid_size: None | float = None,
     n_jobs: int = 1,
+    as_index: bool = True,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
 
@@ -193,6 +197,13 @@ def _dissolve(
         return gdf
 
     geom_col = gdf._geometry_column_name
+
+    gdf[geom_col] = gdf[geom_col].make_valid()
+
+    more_than_one = get_num_geometries(gdf.geometry.values) > 1
+    gdf.loc[more_than_one, geom_col] = gdf.loc[more_than_one, geom_col].apply(
+        _unary_union_for_notna
+    )
 
     by = dissolve_kwargs.pop("by", None)
 
@@ -207,7 +218,9 @@ def _dissolve(
         other_cols = list(gdf.columns.difference({geom_col} | set(by or {})))
 
     try:
-        is_one_hit = gdf.groupby(by, **dissolve_kwargs).transform("size") == 1
+        is_one_hit = (
+            gdf.groupby(by, as_index=True, **dissolve_kwargs).transform("size") == 1
+        )
     except IndexError:
         # if no rows when dropna=True
         original_by = [x for x in by]
@@ -216,16 +229,17 @@ def _dissolve(
             query &= gdf[col].notna()
         gdf = gdf.loc[query]
         assert not len(gdf), gdf
-        if not by_was_none and dissolve_kwargs.get("as_index", True):
+        if not by_was_none and as_index:
             try:
                 gdf = gdf.set_index(original_by)
             except Exception as e:
                 print(gdf)
                 print(original_by)
                 raise e
+
         return gdf
 
-    if not by_was_none and dissolve_kwargs.get("as_index", True):
+    if not by_was_none and as_index:
         one_hit = gdf[is_one_hit].set_index(by)
     else:
         one_hit = gdf[is_one_hit]
@@ -234,14 +248,21 @@ def _dissolve(
     if not len(many_hits):
         return GeoDataFrame(one_hit, geometry=geom_col, crs=gdf.crs)
 
-    dissolved = many_hits.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
+    dissolved = many_hits.groupby(by, as_index=True, **dissolve_kwargs)[other_cols].agg(
+        aggfunc
+    )
 
     # dissolved = gdf.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
 
     if n_jobs > 1:
         try:
             agged = _parallel_unary_union(
-                many_hits, n_jobs=n_jobs, by=by, grid_size=grid_size, **dissolve_kwargs
+                many_hits,
+                n_jobs=n_jobs,
+                by=by,
+                grid_size=grid_size,
+                as_index=True,
+                **dissolve_kwargs,
             )
             dissolved[geom_col] = agged
             return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
@@ -249,21 +270,55 @@ def _dissolve(
             print(e, dissolved, agged, many_hits)
             raise e
 
-    geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
-        lambda x: _merge_geometries(x, grid_size=grid_size)
-    )
+    # geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
+    #     lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+    # )
+    # print("\n\n\ngeomsagged\n", geoms_agged, geoms_agged.shape)
+    geoms_agged = _grouped_unary_union(many_hits, by, as_index=True, **dissolve_kwargs)
+    # print(geoms_agged, geoms_agged.shape)
 
-    if not dissolve_kwargs.get("as_index"):
-        try:
-            geoms_agged = geoms_agged[geom_col]
-        except KeyError:
-            pass
+    # if not as_index:
+    #     try:
+    #         geoms_agged = geoms_agged[geom_col]
+    #     except KeyError:
+    #         pass
 
     dissolved[geom_col] = geoms_agged
 
-    return GeoDataFrame(
-        pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs
-    )
+    if not as_index:
+        dissolved = dissolved.reset_index()
+    # else:
+    #     one_hit = one_hit.set
+    # dissolved = dissolved.reset_index()
+
+    # from ..maps.maps import explore, explore_locals
+    # from .conversion import to_gdf
+
+    # try:
+    #     explore(
+    #         dissolved=to_gdf(dissolved, 25833),
+    #         geoms_agged=to_gdf(geoms_agged, 25833),
+    #         gdf=gdf,
+    #         column="ARTYPE",
+    #     )
+    # except Exception:
+    #     explore(
+    #         dissolved=to_gdf(dissolved, 25833),
+    #         geoms_agged=to_gdf(geoms_agged, 25833),
+    #         gdf=gdf,
+    #     )
+
+    # from ..maps.maps import explore_locals
+    # from .conversion import to_gdf
+
+    # explore_locals()
+
+    try:
+        return GeoDataFrame(
+            pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs
+        )
+    except TypeError as e:
+        raise e.__class__(e, dissolved.index, one_hit.index) from e
 
 
 def diss(
@@ -358,7 +413,10 @@ def dissexp(
 
 
 def dissexp_by_cluster(
-    gdf: GeoDataFrame, predicate: str | None = None, n_jobs: int = 1, **dissolve_kwargs
+    gdf: GeoDataFrame,
+    predicate: str | None = "intersects",
+    n_jobs: int = 1,
+    **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Dissolves overlapping geometries through clustering with sjoin and networkx.
 
@@ -414,11 +472,13 @@ def diss_by_cluster(
 def _run_func_by_cluster(
     func: Callable,
     gdf: GeoDataFrame,
-    predicate: str | None = None,
+    predicate: str | None = "intersects",
     n_jobs: int = 1,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     is_geoseries = isinstance(gdf, GeoSeries)
+
+    processes = dissolve_kwargs.pop("processes", 1)
 
     by = dissolve_kwargs.pop("by", [])
     if isinstance(by, str):
@@ -432,22 +492,44 @@ def _run_func_by_cluster(
     def get_group_clusters(group: GeoDataFrame):
         """Adds cluster column. Applied to each group because much faster."""
         group = group.reset_index(drop=True)
-        group["_cluster"] = get_cluster_mapper(
-            group, predicate=predicate
-        )  # component_mapper
+        group["_cluster"] = get_cluster_mapper(group, predicate=predicate)
         group["_cluster"] = get_grouped_centroids(group, groupby="_cluster")
         return group
 
+    gdf = make_all_singlepart(gdf)
+
     if by:
-        dissolved = (
-            make_all_singlepart(gdf)
-            .groupby(by, group_keys=True, dropna=False, as_index=False)
-            .apply(get_group_clusters)
-            .pipe(func, by=["_cluster"] + by, n_jobs=n_jobs, **dissolve_kwargs)
-        )
+        if processes == 1:
+            gdf = gdf.groupby(by, group_keys=False, dropna=False, as_index=False).apply(
+                get_group_clusters
+            )
+        else:
+            gdf = pd.concat(
+                Parallel(processes, backend="loky").map(
+                    get_group_clusters,
+                    [
+                        gdf[lambda x: x[by].values == values]
+                        for values in np.unique(gdf[by].values)
+                    ],
+                ),
+            )
+        _by = ["_cluster"] + by
     else:
-        dissolved = get_group_clusters(make_all_singlepart(gdf)).pipe(
-            func, by="_cluster", n_jobs=n_jobs, **dissolve_kwargs
+        gdf = get_group_clusters(gdf)
+        _by = ["_cluster"]
+
+    if processes == 1:
+        dissolved = func(gdf, by=_by, n_jobs=n_jobs, **dissolve_kwargs)
+    else:
+        dissolved = pd.concat(
+            Parallel(processes, backend="loky").map(
+                func,
+                [
+                    gdf[gdf["_cluster"] == cluster]
+                    for cluster in gdf["_cluster"].unique()
+                ],
+                kwargs=dissolve_kwargs | {"n_jobs": n_jobs, "by": _by},
+            ),
         )
 
     if not by:

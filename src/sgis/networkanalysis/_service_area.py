@@ -5,6 +5,7 @@ from igraph import Graph
 from shapely import force_2d
 from shapely import reverse
 from shapely import unary_union
+from shapely import union_all
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
 from shapely.ops import nearest_points
@@ -113,7 +114,11 @@ def _service_area(
                 else:
                     snapped_origin: Point = nearest_points(
                         nodes_union,
-                        origins.loc[origins["temp_idx"] == idx, "geometry"].unary_union,
+                        union_all(
+                            origins.loc[
+                                origins["temp_idx"] == idx, "geometry"
+                            ].geometry.values
+                        ),
                     )[0]
 
                     within = sfilter(within, snapped_origin.buffer(0.01))

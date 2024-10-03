@@ -1,3 +1,5 @@
+import functools
+import itertools
 import numbers
 import warnings
 from collections.abc import Hashable
@@ -8,12 +10,14 @@ import joblib
 import numpy as np
 import pandas as pd
 import pyproj
+import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from geopandas.array import GeometryArray
 from geopandas.array import GeometryDtype
 from numpy.typing import NDArray
 from shapely import Geometry
+from shapely import extract_unique_points
 from shapely import get_coordinates
 from shapely import get_exterior_ring
 from shapely import get_interior_ring
@@ -22,15 +26,16 @@ from shapely import get_parts
 from shapely import linestrings
 from shapely import make_valid
 from shapely import points as shapely_points
-from shapely import unary_union
+from shapely import union_all
 from shapely.geometry import LineString
+from shapely.geometry import MultiPoint
 from shapely.geometry import Point
+from shapely.geometry import Polygon
 
-try:
-    import dask_geopandas
-except ImportError:
-    pass
-
+from .conversion import coordinate_array
+from .conversion import to_bbox
+from .conversion import to_gdf
+from .conversion import to_geoseries
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
@@ -38,7 +43,7 @@ from .geometry_types import to_single_geom_type
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
     return tuple(
-        gdf.loc[gdf.geom_type == geom_type] for geom_type in gdf.geom_type.unique()
+        gdf[gdf.geom_type == geom_type] for geom_type in gdf.geom_type.unique()
     )
 
 
@@ -385,35 +390,27 @@ def sort_small_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
 
 
 def make_lines_between_points(
-    arr1: NDArray[Point] | GeometryArray | GeoSeries,
-    arr2: NDArray[Point] | GeometryArray | GeoSeries,
+    *arrs: NDArray[Point] | GeometryArray | GeoSeries,
 ) -> NDArray[LineString]:
-    """Creates an array of linestrings from two arrays of points.
+    """Creates an array of linestrings from two or more arrays of points.
 
-    The operation is done rowwise.
+    The lines are created rowwise, meaning from arr0[0] to arr1[0], from arr0[1] to arr1[1]...
+    If more than two arrays are passed, e.g. three arrays,
+    the lines will go from arr0[0] via arr1[0] to arr2[0].
 
     Args:
-        arr1: GeometryArray og GeoSeries of points.
-        arr2: GeometryArray og GeoSeries of points of same length as arr1.
+        arrs: 1 dimensional arrays of point geometries.
+            All arrays must have the same shape.
+            Must be at least two arrays.
 
     Returns:
         A numpy array of linestrings.
 
-    Raises:
-        ValueError: If the arrays have unequal shape.
-
     """
-    if arr1.shape != arr2.shape:
-        raise ValueError("Arrays must have equal shape.")
-
-    coords: pd.DataFrame = pd.concat(
-        [
-            pd.DataFrame(get_coordinates(arr1), columns=["x", "y"]),
-            pd.DataFrame(get_coordinates(arr2), columns=["x", "y"]),
-        ]
-    ).sort_index()
-
-    return linestrings(coords.values, indices=coords.index)
+    coords = [get_coordinates(arr, return_index=False) for arr in arrs]
+    return linestrings(
+        np.concatenate([coords_arr[:, None, :] for coords_arr in coords], axis=1)
+    )
 
 
 def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
@@ -563,7 +560,9 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
         raise TypeError("gdf must be GeoDataFrame or GeoSeries")
 
     if any(gdf.geom_type.isin(["Point", "MultiPoint"]).any() for gdf in gdfs):
-        raise ValueError("Cannot convert points to lines.")
+        raise ValueError(
+            f"Cannot convert points to lines. {[gdf.geom_type.value_counts() for gdf in gdfs]}"
+        )
 
     def _shapely_geometry_to_lines(geom):
         """Get all lines from the exterior and interiors of a Polygon."""
@@ -587,7 +586,7 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
 
             lines += interior_rings
 
-        return unary_union(lines)
+        return union_all(lines)
 
     lines = []
     for gdf in gdfs:
@@ -677,6 +676,162 @@ def clean_clip(
     return gdf
 
 
+def extend_lines(arr1, arr2, distance) -> NDArray[LineString]:
+    if len(arr1) != len(arr2):
+        raise ValueError
+    if not len(arr1):
+        return arr1
+
+    arr1, arr2 = arr2, arr1  # TODO fix
+
+    coords1 = coordinate_array(arr1)
+    coords2 = coordinate_array(arr2)
+
+    dx = coords2[:, 0] - coords1[:, 0]
+    dy = coords2[:, 1] - coords1[:, 1]
+    len_xy = np.sqrt((dx**2.0) + (dy**2.0))
+    x = coords1[:, 0] + (coords1[:, 0] - coords2[:, 0]) / len_xy * distance
+    y = coords1[:, 1] + (coords1[:, 1] - coords2[:, 1]) / len_xy * distance
+
+    new_points = np.array([None for _ in range(len(arr1))])
+    new_points[~np.isnan(x)] = shapely.points(x[~np.isnan(x)], y[~np.isnan(x)])
+
+    new_points[~np.isnan(x)] = make_lines_between_points(
+        arr2[~np.isnan(x)], new_points[~np.isnan(x)]
+    )
+    return new_points
+
+
+def multipoints_to_line_segments_numpy(
+    points: GeoSeries | NDArray[MultiPoint] | MultiPoint,
+    cycle: bool = False,
+) -> list[LineString]:
+    try:
+        arr = get_parts(points.geometry.values)
+    except AttributeError:
+        arr = get_parts(points)
+
+    line_between_last_and_first = [LineString([arr[-1], arr[0]])] if cycle else []
+    return [
+        LineString([p0, p1]) for p0, p1 in itertools.pairwise(arr)
+    ] + line_between_last_and_first
+
+
+def multipoints_to_line_segments(
+    multipoints: GeoSeries | GeoDataFrame, cycle: bool = True  # to_next: bool = True,
+) -> GeoSeries | GeoDataFrame:
+
+    if not len(multipoints):
+        return multipoints
+
+    if isinstance(multipoints, GeoDataFrame):
+        df = multipoints.drop(columns=multipoints.geometry.name)
+        multipoints = multipoints.geometry
+        was_gdf = True
+    else:
+        multipoints = to_geoseries(multipoints)
+        was_gdf = False
+
+    multipoints = to_geoseries(multipoints)
+
+    segs = pd.Series(
+        [
+            multipoints_to_line_segments_numpy(geoms, cycle=cycle)
+            for geoms in multipoints
+        ],
+        index=multipoints.index,
+    ).explode()
+
+    segs = GeoSeries(segs, crs=multipoints.crs, name=multipoints.name)
+
+    if was_gdf:
+        return GeoDataFrame(df.join(segs), geometry=segs.name, crs=segs.crs)
+    else:
+        return segs
+
+
+def get_line_segments(
+    lines: GeoDataFrame | GeoSeries, extract_unique: bool = False, cycle=False
+) -> GeoDataFrame:
+    try:
+        assert lines.index.is_unique
+    except AttributeError:
+        pass
+
+    if isinstance(lines, GeoDataFrame):
+        df = lines.drop(columns=lines.geometry.name)
+        lines = lines.geometry
+        was_gdf = True
+    else:
+        lines = to_geoseries(lines)
+        was_gdf = False
+
+    partial_segs_func = functools.partial(
+        multipoints_to_line_segments_numpy, cycle=cycle
+    )
+    if extract_unique:
+        points = extract_unique_points(lines.geometry.values)
+        segs = pd.Series(
+            [partial_segs_func(geoms) for geoms in points],
+            index=lines.index,
+        ).explode()
+    else:
+        coords, indices = shapely.get_coordinates(lines, return_index=True)
+        points = GeoSeries(shapely.points(coords), index=indices)
+        index_mapper = {
+            i: idx
+            for i, idx in zip(
+                np.unique(indices), lines.index.drop_duplicates(), strict=True
+            )
+        }
+        points.index = points.index.map(index_mapper)
+
+        segs = points.groupby(level=0).agg(partial_segs_func).explode()
+    segs = GeoSeries(segs, crs=lines.crs, name=lines.name)
+
+    if was_gdf:
+        return GeoDataFrame(df.join(segs), geometry=segs.name, crs=lines.crs)
+    else:
+        return segs
+
+
+def get_index_right_columns(gdf: pd.DataFrame | pd.Series) -> list[str]:
+    """Get a list of what will be the resulting columns in an sjoin."""
+    if gdf.index.name is None and all(name is None for name in gdf.index.names):
+        if gdf.index.nlevels == 1:
+            return ["index_right"]
+        else:
+            return [f"index_right{i}" for i in range(gdf.index.nlevels)]
+    else:
+        return gdf.index.names
+
+
+def points_in_bounds(
+    gdf: GeoDataFrame | GeoSeries, gridsize: int | float
+) -> GeoDataFrame:
+    """Get a GeoDataFrame of points within the bounds of the GeoDataFrame."""
+    minx, miny, maxx, maxy = to_bbox(gdf)
+    try:
+        crs = gdf.crs
+    except AttributeError:
+        crs = None
+
+    xs = np.linspace(minx, maxx, num=int((maxx - minx) / gridsize))
+    ys = np.linspace(miny, maxy, num=int((maxy - miny) / gridsize))
+    x_coords, y_coords = np.meshgrid(xs, ys, indexing="ij")
+    coords = np.concatenate((x_coords.reshape(-1, 1), y_coords.reshape(-1, 1)), axis=1)
+    return to_gdf(coords, crs=crs)
+
+
+def points_in_polygons(
+    gdf: GeoDataFrame | GeoSeries, gridsize: int | float
+) -> GeoDataFrame:
+    index_right_col = get_index_right_columns(gdf)
+    out = points_in_bounds(gdf, gridsize).sjoin(gdf).set_index(index_right_col)
+    out.index.name = gdf.index.name
+    return out.sort_index()
+
+
 def _determine_geom_type_args(
     gdf: GeoDataFrame, geom_type: str | None, keep_geom_type: bool | None
 ) -> tuple[GeoDataFrame, str, bool]:
@@ -696,65 +851,93 @@ def _determine_geom_type_args(
     return gdf, geom_type, keep_geom_type
 
 
-def _merge_geometries(geoms: GeoSeries, grid_size=None) -> Geometry:
-    return make_valid(unary_union(geoms, grid_size=grid_size))
-
-
-def _parallel_unary_union(
-    gdf: GeoDataFrame, n_jobs: int = 1, by=None, grid_size=None, **kwargs
-) -> list[Geometry]:
+def _unary_union_for_notna(geoms, **kwargs):
     try:
-        geom_col = gdf._geometry_column_name
+        return make_valid(union_all(geoms, **kwargs))
+    except TypeError:
+        return union_all([geom for geom in geoms.dropna().values], **kwargs)
+
+
+def _grouped_unary_union(
+    df: GeoDataFrame | GeoSeries | pd.DataFrame | pd.Series,
+    by: str | list[str] | None = None,
+    level: int | None = None,
+    as_index: bool = True,
+    grid_size: float | int | None = None,
+    dropna: bool = False,
+    **kwargs,
+) -> GeoSeries | GeoDataFrame:
+    """Vectorized unary_union for groups.
+
+    Experimental. Messy code.
+    """
+    df = df.copy()
+    df_orig = df.copy()
+
+    try:
+        geom_col = df._geometry_column_name
     except AttributeError:
-        geom_col = "geometry"
-
-    if by is not None and not isinstance(by, str):
-        gdf = gdf.copy()
         try:
-            gdf["_by"] = gdf[by].astype(str).agg("-".join, axis=1)
+            geom_col = df.name
+            if geom_col is None:
+                geom_col = "geometry"
+        except AttributeError:
+            geom_col = "geometry"
+
+    if not len(df):
+        return GeoSeries(name=geom_col)
+
+    if isinstance(df, pd.Series):
+        df.name = geom_col
+        original_index = df.index
+        df = df.reset_index()
+        df.index = original_index
+
+    if isinstance(by, str):
+        by = [by]
+    elif by is None and level is None:
+        raise TypeError("You have to supply one of 'by' and 'level'")
+    elif by is None:
+        by = df.index.get_level_values(level)
+
+    cumcount = df.groupby(by, dropna=dropna).cumcount().values
+
+    def get_col_or_index(df, col: str) -> pd.Series | pd.Index:
+        try:
+            return df[col]
         except KeyError:
-            gdf["_by"] = by
-        by = "_by"
+            for i, name in enumerate(df.index.names):
+                if name == col:
+                    return df.index.get_level_values(i)
+        raise KeyError(col)
 
-    if gdf.crs is None:
-        gdf.crs = 25833
-        _was_none = True
-    else:
-        _was_none = False
+    try:
+        df.index = pd.MultiIndex.from_arrays(
+            [cumcount, *[get_col_or_index(df, col) for col in by]]
+        )
+    except KeyError:
+        df.index = pd.MultiIndex.from_arrays([cumcount, by])
 
-    if isinstance(gdf.index, pd.MultiIndex):
-        gdf = gdf.reset_index(drop=True)
+    # to wide format: each row will be one group to be merged to one geometry
+    try:
+        geoms_wide: pd.DataFrame = df[geom_col].unstack(level=0)
+    except Exception as e:
+        bb = [*by, geom_col]
+        raise e.__class__(e, f"by={by}", df_orig[bb], df[geom_col]) from e
+    geometries_2d: NDArray[Polygon | None] = geoms_wide.values
+    try:
+        geometries_2d = make_valid(geometries_2d)
+    except TypeError:
+        # make_valid doesn't like nan, so converting to None
+        # np.isnan doesn't accept geometry type, so using isinstance
+        np_isinstance = np.vectorize(isinstance)
+        geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
 
-    dissolved = (
-        dask_geopandas.from_geopandas(gdf, npartitions=n_jobs).dissolve(by).compute()
-    )
-    if _was_none:
-        dissolved.crs = None
+    unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
 
-    return dissolved.geometry
+    geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
 
-
-def _parallel_unary_union_geoseries(
-    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
-) -> list[Geometry]:
-    if ser.crs is None:
-        ser.crs = 25833
-        _was_none = True
-    else:
-        _was_none = False
-
-    if isinstance(ser.index, pd.MultiIndex):
-        ser = ser.reset_index(drop=True)
-
-    dissolved = (
-        dask_geopandas.from_geopandas(ser.to_frame("geometry"), npartitions=n_jobs)
-        .dissolve(**kwargs)
-        .compute()
-    )
-    if _was_none:
-        dissolved.crs = None
-
-    return dissolved.geometry
+    return geoms if as_index else geoms.reset_index()
 
 
 def _parallel_unary_union(
@@ -769,34 +952,10 @@ def _parallel_unary_union(
         delayed_operations = []
         for _, geoms in gdf.groupby(by, **kwargs)[geom_col]:
             delayed_operations.append(
-                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
+                joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
             )
 
         return parallel(delayed_operations)
-
-
-def _parallel_unary_union_geoseries(
-    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
-) -> list[Geometry]:
-
-    is_one_hit = ser.groupby(**kwargs).transform("size") == 1
-
-    one_hit = ser.loc[is_one_hit]
-    many_hits = ser.loc[~is_one_hit]
-
-    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
-        delayed_operations = []
-        for _, geoms in many_hits.groupby(**kwargs):
-            delayed_operations.append(
-                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
-            )
-
-        dissolved = pd.Series(
-            parallel(delayed_operations),
-            index=is_one_hit[lambda x: x is False].index.unique(),
-        )
-
-    return pd.concat([dissolved, one_hit]).sort_index().values
 
 
 def _parallel_unary_union_geoseries(
@@ -807,7 +966,7 @@ def _parallel_unary_union_geoseries(
         delayed_operations = []
         for _, geoms in ser.groupby(**kwargs):
             delayed_operations.append(
-                joblib.delayed(_merge_geometries)(geoms, grid_size=grid_size)
+                joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
             )
 
         return parallel(delayed_operations)

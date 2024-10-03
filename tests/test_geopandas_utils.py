@@ -77,11 +77,11 @@ def test_points_in_bounds():
 
     circle = sg.to_gdf([0, 0]).pipe(sg.buff, 1)
     box_ = sg.to_gdf(box(*circle.total_bounds))
-    points = sg.points_in_bounds(circle, 100)
-    assert len(points) == 10_000, len(points)
+    points = sg.points_in_bounds(circle, 1 / 100)
+    assert len(points) == 40_000, len(points)
 
     joined = points.sjoin(box_, how="inner")
-    assert len(joined) == 10_000, len(points)
+    assert len(joined) == 40_000, len(points)
 
 
 def test_area():
@@ -229,6 +229,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+    test_points_in_bounds()
     test_clean_clip()
     test_random_points_in_polygons()
     test_sort()

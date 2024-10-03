@@ -13,6 +13,7 @@ import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from pandas import DataFrame
+from pandas import MultiIndex
 from pandas import Series
 from sklearn.neighbors import NearestNeighbors
 
@@ -97,29 +98,32 @@ def get_neighbor_indices(
     ['a' 'a' 'b' 'b']
 
     """
+    if isinstance(gdf.index, MultiIndex) or isinstance(neighbors.index, MultiIndex):
+        raise ValueError("get_neighbor_indices not implemented for pandas.MultiIndex")
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
     if isinstance(neighbors, GeoSeries):
         neighbors = neighbors.to_frame()
+    else:
+        neighbors = neighbors[[neighbors._geometry_column_name]]
 
     # buffer and keep only geometry column
     if max_distance and predicate != "nearest":
-        gdf = gdf.buffer(max_distance).to_frame()
+        gdf = gdf.buffer(max_distance).to_frame("geometry")
     else:
-        gdf = gdf.geometry.to_frame()
+        gdf = gdf.geometry.to_frame("geometry")
+
+    neighbors.index.name = None
+    gdf.index.name = None
 
     if predicate == "nearest":
         max_distance = None if max_distance == 0 else max_distance
-        joined = gdf.sjoin_nearest(
-            neighbors, how="inner", max_distance=max_distance
-        ).rename(columns={"index_right": "neighbor_index"}, errors="raise")
+        joined = gdf.sjoin_nearest(neighbors, how="inner", max_distance=max_distance)
     else:
-        joined = gdf.sjoin(neighbors, how="inner", predicate=predicate).rename(
-            columns={"index_right": "neighbor_index"}, errors="raise"
-        )
+        joined = gdf.sjoin(neighbors, how="inner", predicate=predicate)
 
-    return joined["neighbor_index"]
+    return joined.rename(columns={"index_right": "neighbor_index"})["neighbor_index"]
 
 
 def get_neighbor_dfs(
@@ -469,6 +473,6 @@ def _get_edges(
     Returns:
       A 2d numpy array of edges (from-to indices).
     """
-    return np.array(
-        [[(i, neighbor) for neighbor in indices[i]] for i in range(len(gdf))]
-    )
+    row_indices = np.arange(len(indices)).reshape(-1, 1)
+
+    return np.stack((np.broadcast_to(row_indices, indices.shape), indices), axis=-1)

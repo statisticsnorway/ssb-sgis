@@ -1,14 +1,20 @@
 # %%
 
+import random
 import sys
 import timeit
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
+from shapely import extract_unique_points
+from shapely import unary_union
 
 src = str(Path(__file__).parent.parent) + "/src"
 
 sys.path.insert(0, src)
+
+from conftest import testgdf
 
 import sgis as sg
 
@@ -57,41 +63,91 @@ def test_dissexp_by_cluster():
         x=[np.random.choice([*"abc"]) for _ in range(100)],
         y=[np.random.choice([*"abc"]) for _ in range(100)],
     )
+    gdf.geometry = gdf.buffer(0.001)
 
-    for n_jobs in [
-        1,
-        3,
-    ]:
-        by_cluster = sg.dissexp_by_cluster(gdf, n_jobs=n_jobs)
-        regular = sg.dissexp(gdf, n_jobs=n_jobs)
-        assert len(by_cluster) == len(regular)
-        assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
+    for n_jobs in [1, 3]:
+        for processes in [1, 3]:
+            print(n_jobs, processes)
+            by_cluster = sg.dissexp_by_cluster(gdf, n_jobs=n_jobs)
+            regular = sg.dissexp(gdf, n_jobs=n_jobs)
+            assert len(by_cluster) == len(regular)
+            assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
-        assert list(sorted(by_cluster.columns)) == [
-            "geometry",
-            "x",
-            "y",
-        ], by_cluster.columns
+            assert list(sorted(by_cluster.columns)) == [
+                "geometry",
+                "x",
+                "y",
+            ], by_cluster.columns
 
-        assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
+            assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
 
-        diss = sg.diss_by_cluster(gdf, by="x", n_jobs=n_jobs)
-        assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
-        diss = sg.diss_by_cluster(gdf, by=["x", "y"], n_jobs=n_jobs)
-        assert list(diss.columns) == ["geometry"], diss.columns
-        diss = sg.diss_by_cluster(gdf, by=("y",), n_jobs=n_jobs)
-        assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+            diss = sg.diss_by_cluster(gdf, by="x", n_jobs=n_jobs, processes=processes)
+            assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area0 = [int(x) for x in diss.area]
+            else:
+                assert area0 == [int(x) for x in diss.area], (
+                    area0,
+                    [int(x) for x in diss.area],
+                )
 
-        diss = sg.dissexp_by_cluster(gdf, by="x", n_jobs=n_jobs)
-        assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
-        diss = sg.dissexp_by_cluster(gdf, by=["x", "y"], n_jobs=n_jobs)
-        assert list(diss.columns) == ["geometry"], diss.columns
-        diss = sg.dissexp_by_cluster(gdf, by=("y",), n_jobs=n_jobs)
-        assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+            diss = sg.diss_by_cluster(
+                gdf, by=["x", "y"], n_jobs=n_jobs, processes=processes
+            )
+            assert list(diss.columns) == ["geometry"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area1 = [int(x) for x in diss.area]
+            else:
+                assert area1 == [int(x) for x in diss.area], (
+                    area1,
+                    [int(x) for x in diss.area],
+                )
 
-        sg.buffdissexp_by_cluster(gdf, 0.1, n_jobs=n_jobs).pipe(sg.buff, 0.1).pipe(
-            sg.buffdissexp_by_cluster, 0.1, n_jobs=n_jobs
-        )
+            diss = sg.diss_by_cluster(
+                gdf, by=("y",), n_jobs=n_jobs, processes=processes
+            )
+            assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area2 = [int(x) for x in diss.area]
+            else:
+                assert area2 == [int(x) for x in diss.area], (
+                    area2,
+                    [int(x) for x in diss.area],
+                )
+
+            diss = sg.dissexp_by_cluster(
+                gdf, by="x", n_jobs=n_jobs, processes=processes
+            )
+            assert list(sorted(diss.columns)) == ["geometry", "y"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area3 = [int(x) for x in diss.area]
+            else:
+                assert area3 == [int(x) for x in diss.area], (
+                    area3,
+                    [int(x) for x in diss.area],
+                )
+
+            diss = sg.dissexp_by_cluster(
+                gdf, by=["x", "y"], n_jobs=n_jobs, processes=processes
+            )
+            assert list(diss.columns) == ["geometry"], diss.columns
+            diss = sg.dissexp_by_cluster(
+                gdf, by=("y",), n_jobs=n_jobs, processes=processes
+            )
+            assert list(sorted(diss.columns)) == ["geometry", "x"], diss.columns
+            if n_jobs == 1 and processes == 1:
+                area4 = [int(x) for x in diss.area]
+            else:
+                assert area4 == [int(x) for x in diss.area], (
+                    area4,
+                    [int(x) for x in diss.area],
+                )
+
+            sg.buffdissexp_by_cluster(
+                gdf, 0.1, n_jobs=n_jobs, processes=processes
+            ).pipe(sg.buff, 0.1).pipe(
+                sg.buffdissexp_by_cluster, 0.1, n_jobs=n_jobs, processes=processes
+            )
 
 
 def test_buffdissexp_by_cluster(gdf_fixture):
@@ -140,13 +196,21 @@ def test_buffdissexp(gdf_fixture):
 
         copy2 = copy2.loc[:, copy.columns]
 
-        assert copy.equals(copy2)
+        assert copy.equals(copy2), (
+            copy,
+            copy2,
+            sg.explore(
+                copy,
+                copy2,
+            ),
+        )
 
 
 def test_buffdiss(gdf_fixture):
     sg.buffdiss(gdf_fixture, 10)
 
     for distance in [1, 10, 100, 1000, 10000]:
+        print("distance", distance)
         copy = gdf_fixture.copy()
 
         # with geopandas
@@ -158,7 +222,23 @@ def test_buffdiss(gdf_fixture):
 
         copy2 = copy2.loc[:, copy.columns]
 
-        assert copy.equals(copy2)
+        assert copy.equals(copy2), (
+            copy,
+            copy2,
+            len(copy.geometry.apply(extract_unique_points).explode()),
+            len(copy2.geometry.apply(extract_unique_points).explode()),
+            sg.explore(
+                copy,
+                copy2,
+                copy_p=copy.assign(
+                    geometry=lambda x: extract_unique_points(x.geometry.values)
+                ).explode(),
+                copy2_p=copy2.assign(
+                    geometry=lambda x: extract_unique_points(x.geometry.values)
+                ).explode(),
+                # ,
+            ),
+        )
 
 
 def test_dissexp(gdf_fixture):
@@ -175,7 +255,14 @@ def test_dissexp(gdf_fixture):
 
     copy2 = copy2.loc[:, copy.columns]
 
-    assert copy.equals(copy2), (copy, copy2)
+    assert copy.equals(copy2), (
+        copy,
+        copy2,
+        sg.explore(
+            copy,
+            copy2,
+        ),
+    )
 
     gdf = sg.random_points(10).pipe(sg.buff, 1)
     gdf.index = [0, 0, 1, 1, 1, 2, 2, 1, 2, 3]
@@ -277,10 +364,43 @@ def test_dissexp_index():
     assert list(singlepart.index) == [0, 1, 2], singlepart
 
 
+def test_grouped_unary_union():
+    number = 5
+
+    df = sg.random_points(10000).pipe(sg.buff, 0.01)
+    df["col"] = [random.choice(list(range(250))) for _ in range(len(df))]
+
+    for _ in range(2):
+        dissolved = sg.geopandas_tools.general._grouped_unary_union(df, by="col")
+        dissolved2 = (
+            df.groupby("col")["geometry"].agg(lambda x: (unary_union(x))).make_valid()
+        )
+
+    assert dissolved.equals(dissolved2), (dissolved, dissolved2)
+
+    def grouped_unary_union():
+        return sg.geopandas_tools.general._grouped_unary_union(df, by="col")
+
+    def groupby_unary_union():
+        return df.groupby("col")["geometry"].agg(unary_union).make_valid()
+
+    times = {"grouped_unary_union": 0, "groupby_unary_union": 0}
+    for _ in range(2):
+        times["grouped_unary_union"] = timeit.timeit(grouped_unary_union, number=number)
+        times["groupby_unary_union"] = timeit.timeit(groupby_unary_union, number=number)
+
+    print(pd.Series(times).apply(lambda x: round(x, 1)))
+
+
 if __name__ == "__main__":
 
-    # not_test_dissexp_n_jobs()
-    test_dissexp_index()
-    test_buffdissexp_index()
+    # test_grouped_unary_union()
+    gdf_fixture = testgdf()
     test_dissexp_by_cluster()
+    test_buffdiss(gdf_fixture)
+    test_dissexp_index()
+    test_buffdissexp(gdf_fixture)
+    test_dissexp(gdf_fixture)
+    test_buffdissexp_index()
     test_dissexp_grid_size()
+    # not_test_dissexp_n_jobs()

@@ -1027,7 +1027,7 @@ class NetworkAnalysis:
 
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
-                    :, ["geometry"]
+                    :, [results.geometry.name]
                 ]
 
             results = results.reset_index()
@@ -1038,7 +1038,7 @@ class NetworkAnalysis:
             ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
             if len(missing):
-                missing["geometry"] = pd.NA
+                missing[results.geometry.name] = pd.NA
                 results = pd.concat([results, missing], ignore_index=True)
 
             results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -1151,7 +1151,7 @@ class NetworkAnalysis:
         if not all(results.geometry.isna()):
             if dissolve:
                 results = results.dissolve(by=["origin", self.rules.weight]).loc[
-                    :, ["geometry"]
+                    :, [results.geometry.name]
                 ]
             else:
                 results = results.dissolve(
@@ -1166,7 +1166,7 @@ class NetworkAnalysis:
             ].rename(columns={"temp_idx": "origin"})[["origin"]]
 
             if len(missing):
-                missing["geometry"] = pd.NA
+                missing[results.geometry.name] = pd.NA
                 results = pd.concat([results, missing], ignore_index=True)
 
             results["origin"] = results["origin"].map(self.origins.idx_dict)
@@ -1329,7 +1329,7 @@ class NetworkAnalysis:
                 df["cost_std"] = results[self.rules.weight].std()
 
         if fun == "service_area":
-            df["percent_missing"] = results["geometry"].isna().mean() * 100
+            df["percent_missing"] = results[results.geometry.name].isna().mean() * 100
         else:
             df["destinations_count"] = len(self.destinations.gdf)
 
@@ -1456,7 +1456,7 @@ class NetworkAnalysis:
         else:
             points = self.origins.gdf
 
-        points = points.drop_duplicates("geometry")
+        points = points.drop_duplicates(points.geometry.name)
 
         self.network.gdf["meters_"] = self.network.gdf.length
 
@@ -1573,7 +1573,7 @@ class NetworkAnalysis:
         This method is best stored in the NetworkAnalysis class,
         since the point classes are instantiated each time an analysis is run.
         """
-        if self.wkts[what] != [geom.wkt for geom in points.geometry]:
+        if not np.array_equal(self.wkts[what], points.geometry.to_wkt().values):
             return True
 
         if not all(x in self.graph.vs["name"] for x in list(points.temp_idx.values)):
@@ -1590,17 +1590,15 @@ class NetworkAnalysis:
         """
         self.wkts = {}
 
-        self.wkts["network"] = [geom.wkt for geom in self.network.gdf.geometry]
+        self.wkts["network"] = self.network.gdf.geometry.to_wkt().values
 
         if not hasattr(self, "origins"):
             return
 
-        self.wkts["origins"] = [geom.wkt for geom in self.origins.gdf.geometry]
+        self.wkts["origins"] = self.origins.gdf.geometry.to_wkt().values
 
         if self.destinations is not None:
-            self.wkts["destinations"] = [
-                geom.wkt for geom in self.destinations.gdf.geometry
-            ]
+            self.wkts["destinations"] = self.destinations.gdf.geometry.to_wkt().values
 
     @staticmethod
     def _sort_breaks(breaks: str | list | tuple | int | float) -> list[float | int]:

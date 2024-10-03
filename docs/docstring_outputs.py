@@ -54,7 +54,7 @@ def _raster() -> None:
     r2 = r.from_gdf(gdf, columns=["elevation", "elevation_x2"], res=20)
     print(r2)
 
-    small_circle = gdf.unary_union.centroid.buffer(50)
+    small_circle = gdf.union_all().centroid.buffer(50)
 
     r = sg.Raster.from_path(path_singleband).clip(small_circle, crop=True)
     print("clipped")

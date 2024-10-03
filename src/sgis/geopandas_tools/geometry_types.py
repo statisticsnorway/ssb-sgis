@@ -138,7 +138,7 @@ def to_single_geom_type(
 
 def _shapely_to_single_geom_type(geom: Geometry, geom_type: str) -> Geometry:
     parts = shapely.get_parts(geom)
-    return shapely.unary_union(
+    return shapely.union_all(
         [part for part in parts if geom_type.lower() in part.geom_type.lower()]
     )
 
