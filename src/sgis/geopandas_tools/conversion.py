@@ -275,11 +275,12 @@ def to_gdf(
 ) -> GeoDataFrame:
     """Converts geometry-like objects to a GeoDataFrame.
 
-    Constructs a GeoDataFrame from any geometry-like object (coordinates, wkt, wkb),
-    or any interable of such objects.
+    Constructs a GeoDataFrame from any geometry-like object
+    (coordinates, wkt, wkb, dict, string) or any interable of such objects.
 
-    Meant for convenience in testing and exploring, not for production code since it
-    introduces unnecessary overhead.
+    NOTE: The function is meant for convenience in testing and exploring,
+    not for production code since it introduces unnecessary overhead
+    and potential errors.
 
     If obj is a DataFrame or dictionary, geometries can be in one column/key or 2-3
     if coordiantes are in x and x (and z) columns. The column/key "geometry" is used
@@ -462,9 +463,25 @@ def to_gdf(
             if index is not None:
                 obj.index = index
             return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
-        # list etc.
         else:
-            obj = GeoSeries(_make_shapely_geoms(obj), index=index)
+            if isinstance(obj, str):
+                if (
+                    obj.replace(" ", "")
+                    .replace(",", "")
+                    .replace(".", "")
+                    .replace("(", "")
+                    .replace(")", "")
+                    .isnumeric()
+                ):
+                    # string of coordinates
+                    obj = eval(obj)
+                    obj = GeoSeries([_make_one_shapely_geom(obj)], index=index)
+                else:
+                    # wkt
+                    obj = GeoSeries([_make_one_shapely_geom(obj)], index=index)
+            else:
+                # list etc.
+                obj = GeoSeries(_make_shapely_geoms(obj), index=index)
             return GeoDataFrame(
                 {geom_col: obj}, geometry=geom_col, index=index, crs=crs, **kwargs
             )

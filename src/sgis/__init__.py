@@ -45,6 +45,7 @@ from .geopandas_tools.general import drop_inactive_geometry_columns
 from .geopandas_tools.general import get_common_crs
 from .geopandas_tools.general import get_grouped_centroids
 from .geopandas_tools.general import get_line_segments
+from .geopandas_tools.general import make_lines_between_points
 from .geopandas_tools.general import points_in_bounds
 from .geopandas_tools.general import random_points
 from .geopandas_tools.general import random_points_in_polygons
@@ -52,6 +53,7 @@ from .geopandas_tools.general import sort_large_first
 from .geopandas_tools.general import sort_long_first
 from .geopandas_tools.general import sort_short_first
 from .geopandas_tools.general import sort_small_first
+from .geopandas_tools.general import split_out_circles
 from .geopandas_tools.general import to_lines
 from .geopandas_tools.geocoding import address_to_coords
 from .geopandas_tools.geocoding import address_to_gdf
@@ -102,6 +104,7 @@ from .maps.tilesources import kartverket as kartverket_tiles
 from .maps.tilesources import xyz as xyztiles
 from .networkanalysis.closing_network_holes import close_network_holes
 from .networkanalysis.closing_network_holes import close_network_holes_to_deadends
+from .networkanalysis.closing_network_holes import get_k_closest_points_for_deadends
 from .networkanalysis.cutting_lines import cut_lines
 from .networkanalysis.cutting_lines import cut_lines_once
 from .networkanalysis.cutting_lines import split_lines_by_nearest_point

@@ -11,6 +11,8 @@ from geopandas import GeoSeries
 from shapely.geometry import Point
 
 from ..geopandas_tools.general import _push_geom_col
+from ..geopandas_tools.general import split_out_circles
+from ..geopandas_tools.geometry_types import make_all_singlepart
 
 
 def make_node_ids(
@@ -35,7 +37,7 @@ def make_node_ids(
     Note:
         The lines must be singlepart linestrings.
     """
-    gdf = gdf.explode(index_parts=False).explode(index_parts=False)
+    gdf = make_all_singlepart(gdf, ignore_index=True)
 
     if wkt:
         gdf = make_edge_wkt_cols(gdf)
@@ -153,6 +155,7 @@ def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
 def _prepare_make_edge_cols(
     lines: GeoDataFrame, strict: bool = False
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
+
     lines = lines.loc[lines.geom_type != "LinearRing"]
 
     if not (lines.geom_type == "LineString").all():
@@ -172,9 +175,7 @@ def _prepare_make_edge_cols(
     geom_col = lines._geometry_column_name
 
     # some LineStrings are in fact rings and must be removed manually
-    boundary = lines[geom_col].boundary
-    circles = boundary.loc[boundary.is_empty]
-    lines = lines[~lines.index.isin(circles.index)]
+    lines, _ = split_out_circles(lines)
 
     endpoints = lines[geom_col].boundary.explode(ignore_index=True)
 

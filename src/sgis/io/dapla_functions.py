@@ -11,6 +11,7 @@ import geopandas as gpd
 import joblib
 import pandas as pd
 import pyarrow
+import pyarrow.parquet as pq
 import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
@@ -18,6 +19,7 @@ from geopandas.io.arrow import _geopandas_to_arrow
 from pandas import DataFrame
 from pyarrow import ArrowInvalid
 
+from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.sfilter import sfilter
 
 PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
@@ -63,6 +65,7 @@ def read_geopandas(
     if not isinstance(gcs_path, (str | Path | os.PathLike)):
         kwargs |= {"file_system": file_system, "pandas_fallback": pandas_fallback}
 
+        cols = {}
         if mask is not None:
             if not isinstance(gcs_path, GeoSeries):
                 bounds_series: GeoSeries = get_bounds_series(
@@ -95,14 +98,23 @@ def read_geopandas(
                 paths = list(gcs_path)
 
         if threads is None:
-            threads = min(len(gcs_path), int(multiprocessing.cpu_count())) or 1
+            threads = min(len(paths), int(multiprocessing.cpu_count())) or 1
 
         # recursive read with threads
         with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:
             dfs: list[GeoDataFrame] = parallel(
                 joblib.delayed(read_geopandas)(x, **kwargs) for x in paths
             )
-        df = pd.concat(dfs)
+
+        if dfs:
+            df = pd.concat(dfs, ignore_index=True)
+            try:
+                df = GeoDataFrame(df)
+            except Exception as e:
+                print(e)
+        else:
+            df = GeoDataFrame(cols | {"geometry": []})
+
         if mask is not None:
             return sfilter(df, mask)
         return df
@@ -159,14 +171,14 @@ def _get_bounds_parquet(
 ) -> tuple[list[float], dict] | tuple[None, None]:
     with file_system.open(path) as f:
         try:
-            num_rows = pyarrow.parquet.read_metadata(f).num_rows
+            num_rows = pq.read_metadata(f).num_rows
         except ArrowInvalid as e:
             if not file_system.isfile(f):
                 return None, None
             raise ArrowInvalid(e, path) from e
         if not num_rows:
             return None, None
-        meta = pyarrow.parquet.read_schema(f).metadata
+        meta = pq.read_schema(f).metadata
     try:
         meta = json.loads(meta[b"geo"])["columns"]["geometry"]
     except KeyError as e:
@@ -182,7 +194,7 @@ def _get_bounds_parquet(
 
 def _get_columns(path: str | Path, file_system: dp.gcs.GCSFileSystem) -> pd.Index:
     with file_system.open(path) as f:
-        schema = pyarrow.parquet.read_schema(f)
+        schema = pq.read_schema(f)
         index_cols = _get_index_cols(schema)
         return pd.Index(schema.names).difference(index_cols)
 
@@ -266,17 +278,13 @@ def get_bounds_series(
             for path in paths
         )
     crss = {json.dumps(x[1]) for x in bounds}
-    crss = {
-        crs
-        for crs in crss
-        if not any(str(crs).lower() == txt for txt in ["none", "null"])
-    }
-    if not crss:
-        crs = None
-    elif len(crss) == 1:
-        crs = next(iter(crss))
-    else:
-        raise ValueError(f"crs mismatch: {crss}")
+    crs = get_common_crs(
+        [
+            crs
+            for crs in crss
+            if not any(str(crs).lower() == txt for txt in ["none", "null"])
+        ]
+    )
     return GeoSeries(
         [shapely.box(*bbox[0]) if bbox[0] is not None else None for bbox in bounds],
         index=paths,
@@ -355,7 +363,7 @@ def write_geopandas(
                 schema_version=None,
                 write_covering_bbox=write_covering_bbox,
             )
-            pyarrow.parquet.write_table(table, buffer, compression="snappy", **kwargs)
+            pq.write_table(table, buffer, compression="snappy", **kwargs)
         return
 
     layer = kwargs.pop("layer", None)

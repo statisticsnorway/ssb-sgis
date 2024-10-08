@@ -16,6 +16,7 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from jenkspy import jenks_breaks
 from mapclassify import classify
+from pandas.errors import PerformanceWarning
 from shapely import Geometry
 
 from ..geopandas_tools.conversion import to_gdf
@@ -41,6 +42,8 @@ except ImportError:
 warnings.filterwarnings(
     action="ignore", category=matplotlib.MatplotlibDeprecationWarning
 )
+warnings.filterwarnings(action="ignore", category=PerformanceWarning)
+
 pd.options.mode.chained_assignment = None
 
 

@@ -88,6 +88,7 @@ def get_common_crs(
         # hash values for same crs. Therefore, trying to
         actually_different = set()
         for x in truthy_crs:
+            x = pyproj.CRS(x)
             if x.to_string() in {j.to_string() for j in actually_different}:
                 continue
             actually_different.add(x)
@@ -674,6 +675,14 @@ def clean_clip(
         gdf = to_single_geom_type(gdf, geom_type)
 
     return gdf
+
+
+def split_out_circles(
+    lines: GeoDataFrame | GeoSeries,
+) -> tuple[GeoDataFrame | GeoSeries, GeoDataFrame | GeoSeries]:
+    boundaries = lines.geometry.boundary
+    is_circle = (~boundaries.is_empty).values
+    return lines.iloc[is_circle], lines.iloc[~is_circle]
 
 
 def extend_lines(arr1, arr2, distance) -> NDArray[LineString]:

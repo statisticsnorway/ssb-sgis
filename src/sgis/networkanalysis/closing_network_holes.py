@@ -3,15 +3,66 @@
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from pandas import DataFrame
-from shapely import shortest_line
 
 from ..geopandas_tools.conversion import coordinate_array
+from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from ..geopandas_tools.neighbors import k_nearest_neighbors
 from .nodes import make_edge_wkt_cols
 from .nodes import make_node_ids
+
+
+def get_k_closest_points_for_deadends(
+    lines: GeoDataFrame, k: int, max_distance: int
+) -> GeoDataFrame:
+
+    assert lines.index.is_unique
+    points = lines.extract_unique_points().explode(index_parts=False).sort_index()
+
+    points_grouper = points.groupby(level=0)
+    nodes = pd.concat(
+        [
+            points_grouper.nth(0),
+            points_grouper.nth(-1),
+        ]
+    )
+
+    def has_no_duplicated(nodes):
+        return nodes.isin(nodes.value_counts()[nodes.value_counts() == 1].index)
+
+    deadends = nodes[has_no_duplicated]
+
+    deadends.index = pd.MultiIndex.from_arrays([deadends.index, range(len(deadends))])
+    points.index = pd.MultiIndex.from_arrays([points.index, range(len(points))])
+
+    nearest = (
+        get_k_nearest_neighbors(
+            deadends,
+            points,
+            k=k * 25,
+        )
+        .loc[
+            lambda x: (
+                pd.Index([g[0] for g in x.index])
+                != pd.Index([g[0] for g in x["neighbor_index"]])
+            )
+            & (x["distance"] <= max_distance)
+        ]
+        # .loc[lambda x: ~x.index.get_level_values(0).duplicated()]
+        .groupby(level=0)
+        .apply(lambda x: x.head(k))
+    )
+
+    return GeoDataFrame(
+        {
+            "geometry": nearest["neighbor_index"].map(points),
+            "neighbor_index": nearest["neighbor_index"],
+        },
+        crs=lines.crs,
+    )
 
 
 def close_network_holes(
@@ -94,13 +145,22 @@ def close_network_holes(
     lines, nodes = make_node_ids(gdf)
 
     # remove duplicates of lines going both directions
-    lines["sorted"] = [
-        "_".join(sorted([s, t]))
-        for s, t in zip(lines["source"], lines["target"], strict=True)
+    lines["_sorted"] = [
+        "_".join(sorted([source, target])) + str(round(length, 4))
+        for source, target, length in zip(
+            lines["source"], lines["target"], lines.length, strict=True
+        )
     ]
 
+    lines = lines.drop_duplicates("_sorted").drop(columns="_sorted")
+
+    # new_lines, angles = _close_holes_all_lines(
     new_lines: GeoSeries = _close_holes_all_lines(
-        lines.drop_duplicates("sorted"), nodes, max_distance, max_angle, idx_start=1
+        lines,
+        nodes,
+        max_distance,
+        max_angle,
+        idx_start=1,
     )
 
     new_lines = gpd.GeoDataFrame(
@@ -126,15 +186,6 @@ def close_network_holes(
         )
 
     return pd.concat([lines, new_lines], ignore_index=True)
-
-
-def get_angle(array_a: np.ndarray, array_b: np.ndarray) -> np.ndarray:
-    dx = array_b[:, 0] - array_a[:, 0]
-    dy = array_b[:, 1] - array_a[:, 1]
-
-    angles_rad = np.arctan2(dx, dy)
-    angles_degrees = np.degrees(angles_rad)
-    return angles_degrees
 
 
 def close_network_holes_to_deadends(
@@ -221,7 +272,7 @@ def _close_holes_all_lines(
 ) -> GeoSeries:
     k = min(len(nodes), 50)
 
-    # make point gdf for the deadends and the other endpoint of the deadend lines
+    # make points for the deadends and the other endpoint of the deadend lines
     deadends_target = lines.loc[lines["n_target"] == 1].rename(
         columns={"target_wkt": "wkt", "source_wkt": "wkt_other_end"}
     )
@@ -251,6 +302,7 @@ def _close_holes_all_lines(
     # and endpoints of the new lines in lists, looping through the k neighbour points
     new_sources: list[str] = []
     new_targets: list[str] = []
+    # all_angles = []
     for i in np.arange(idx_start, k):
         # to break out of the loop if no new_targets that meet the condition are found
         len_now = len(new_sources)
@@ -270,8 +322,11 @@ def _close_holes_all_lines(
             deadends_other_end_array, deadends_array
         )
 
-        angles_difference = np.abs(
-            np.abs(angles_deadend_to_deadend_other_end) - np.abs(angles_deadend_to_node)
+        def get_angle_difference(angle1, angle2):
+            return np.abs((angle1 - angle2 + 180) % 360 - 180)
+
+        angles_difference = get_angle_difference(
+            angles_deadend_to_deadend_other_end, angles_deadend_to_node
         )
 
         angles_difference[
@@ -284,14 +339,18 @@ def _close_holes_all_lines(
         to_idx = indices[condition]
         to_wkt = nodes.iloc[to_idx]["wkt"]
 
+        # all_angles = all_angles + [
+        #     diff
+        #     for f, diff in zip(from_wkt, angles_difference[condition], strict=True)
+        #     if f not in new_sources
+        # ]
+
         # now add the wkts to the lists of new sources and targets. If the source
         # is already added, the new wks will not be added again
         new_targets = new_targets + [
             t for f, t in zip(from_wkt, to_wkt, strict=True) if f not in new_sources
         ]
-        new_sources = new_sources + [
-            f for f, _ in zip(from_wkt, to_wkt, strict=True) if f not in new_sources
-        ]
+        new_sources = new_sources + [f for f in from_wkt if f not in new_sources]
 
         # break out of the loop when no new new_targets meet the condition
         if len_now == len(new_sources):
@@ -300,7 +359,16 @@ def _close_holes_all_lines(
     # make GeoSeries with straight lines
     new_sources = gpd.GeoSeries.from_wkt(new_sources, crs=lines.crs)
     new_targets = gpd.GeoSeries.from_wkt(new_targets, crs=lines.crs)
-    return shortest_line(new_sources, new_targets)
+    return shapely.shortest_line(new_sources, new_targets)  # , all_angles
+
+
+def get_angle(array_a: np.ndarray, array_b: np.ndarray) -> np.ndarray:
+    dx = array_b[:, 0] - array_a[:, 0]
+    dy = array_b[:, 1] - array_a[:, 1]
+
+    angles_rad = np.arctan2(dx, dy)
+    angles_degrees = np.degrees(angles_rad)
+    return angles_degrees
 
 
 def _find_holes_deadends(
@@ -347,7 +415,7 @@ def _find_holes_deadends(
     to_geom = deadends.loc[to_idx, "geometry"].reset_index(drop=True)
 
     # GeoDataFrame with straight lines
-    new_lines = shortest_line(from_geom, to_geom)
+    new_lines = shapely.shortest_line(from_geom, to_geom)
     new_lines = gpd.GeoDataFrame({"geometry": new_lines}, geometry="geometry", crs=crs)
 
     return new_lines

@@ -167,7 +167,7 @@ def split_lines_by_nearest_point(
         indices=dists_source.index,
         pointmapper=pointmapper_source,
         change_what="first",
-    )  # i=0)
+    )
 
     # same for the lines where the target was split, but change the last coordinate
     splitted = _change_line_endpoint(
@@ -175,7 +175,7 @@ def split_lines_by_nearest_point(
         indices=dists_target.index,
         pointmapper=pointmapper_target,
         change_what="last",
-    )  # , i=-1)
+    )
 
     if splitted_col:
         splitted[splitted_col] = 1
