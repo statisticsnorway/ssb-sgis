@@ -666,7 +666,7 @@ class Explore(Map):
             if not len(gdf):
                 continue
 
-            gdf = self._to_single_geom_type(gdf)
+            gdf = self._to_single_geom_type(gdf.explode(index_parts=False))
             gdf = self._prepare_gdf_for_map(gdf)
 
             gjs = self._make_geojson(
@@ -737,7 +737,7 @@ class Explore(Map):
             if not len(gdf):
                 continue
 
-            gdf = self._to_single_geom_type(gdf)
+            gdf = self._to_single_geom_type(gdf.explode(index_parts=False))
             gdf = self._prepare_gdf_for_map(gdf)
 
             classified = self._classify_from_bins(gdf, bins=self.bins)

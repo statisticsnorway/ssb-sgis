@@ -9,10 +9,51 @@ from geopandas import GeoSeries
 from pandas import DataFrame
 
 from ..geopandas_tools.conversion import coordinate_array
+from ..geopandas_tools.general import get_line_segments
 from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from ..geopandas_tools.neighbors import k_nearest_neighbors
+from ..geopandas_tools.sfilter import sfilter
 from .nodes import make_edge_wkt_cols
 from .nodes import make_node_ids
+
+
+def get_nearest_point_for_deadends(
+    lines: GeoDataFrame, max_distance: int
+) -> GeoDataFrame:
+
+    assert lines.index.is_unique
+    points = lines.extract_unique_points().explode(index_parts=False).sort_index()
+
+    points_grouper = points.groupby(level=0)
+    nodes = pd.concat(
+        [
+            points_grouper.nth(0),
+            points_grouper.nth(-1),
+        ]
+    )
+
+    def has_no_duplicates(nodes):
+        return nodes.isin(nodes.value_counts()[nodes.value_counts() == 1].index)
+
+    deadends = nodes[has_no_duplicates].reset_index(drop=True)
+
+    deadends_buffered = deadends.buffer(max_distance).to_frame("geometry")
+
+    segs_by_deadends = (
+        sfilter(lines, deadends_buffered)
+        .pipe(get_line_segments)
+        .sjoin(deadends_buffered)
+    )
+
+    nearest_points = shapely.get_point(
+        shapely.shortest_line(
+            segs_by_deadends.geometry.values,
+            deadends.loc[segs_by_deadends["index_right"].values],
+        ),
+        0,
+    )
+
+    return GeoDataFrame({"geometry": nearest_points}, crs=lines.crs)
 
 
 def get_k_closest_points_for_deadends(
@@ -30,10 +71,28 @@ def get_k_closest_points_for_deadends(
         ]
     )
 
-    def has_no_duplicated(nodes):
+    def has_no_duplicates(nodes):
         return nodes.isin(nodes.value_counts()[nodes.value_counts() == 1].index)
 
-    deadends = nodes[has_no_duplicated]
+    deadends = nodes[has_no_duplicates]
+
+    deadends_buffered = deadends.buffer(max_distance)
+
+    segs_by_deadends = (
+        sfilter(lines, deadends_buffered)
+        .pipe(get_line_segments)
+        .pipe(sfilter, deadends_buffered)
+    )
+
+    nearest_points = shapely.get_point(
+        shapely.shortest_line(
+            segs_by_deadends.geometry.values,
+            shapely.union_all(deadends.geometry.values),
+        ),
+        0,
+    )
+
+    return GeoDataFrame({"geometry": nearest_points}, crs=lines.crs)
 
     deadends.index = pd.MultiIndex.from_arrays([deadends.index, range(len(deadends))])
     points.index = pd.MultiIndex.from_arrays([points.index, range(len(points))])
