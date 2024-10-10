@@ -17,8 +17,8 @@ from .nodes import make_edge_wkt_cols
 from .nodes import make_node_ids
 
 
-def get_nearest_point_for_deadends(
-    lines: GeoDataFrame, max_distance: int
+def get_k_nearest_points_for_deadends(
+    lines: GeoDataFrame, k: int, max_distance: int
 ) -> GeoDataFrame:
 
     assert lines.index.is_unique
@@ -43,6 +43,8 @@ def get_nearest_point_for_deadends(
         sfilter(lines, deadends_buffered)
         .pipe(get_line_segments)
         .sjoin(deadends_buffered)
+        .groupby(level=0)
+        .apply(lambda x: x.head(k))
     )
 
     nearest_points = shapely.get_point(
@@ -51,6 +53,18 @@ def get_nearest_point_for_deadends(
             deadends.loc[segs_by_deadends["index_right"].values],
         ),
         0,
+    )
+
+    from ..geopandas_tools.conversion import to_gdf
+    from ..maps.maps import explore
+
+    explore(
+        lines=to_gdf(lines, 25833),
+        nodes=to_gdf(nodes, 25833),
+        deadends=to_gdf(deadends, 25833),
+        deadends_buffered=to_gdf(deadends_buffered, 25833),
+        segs_by_deadends=to_gdf(segs_by_deadends, 25833),
+        nearest_points=to_gdf(nearest_points, 25833),
     )
 
     return GeoDataFrame({"geometry": nearest_points}, crs=lines.crs)
