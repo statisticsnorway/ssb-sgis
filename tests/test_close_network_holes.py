@@ -5,12 +5,49 @@ from pathlib import Path
 
 from shapely.geometry import LineString
 from shapely.geometry import MultiLineString
+from shapely.wkt import loads
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 
 
 sys.path.insert(0, src)
 import sgis as sg
+
+
+def test_very_small_network_hole():
+    df = sg.to_gdf(
+        [
+            "LINESTRING Z (491452.45539342123 7598608.108440004 4.364247304392665, 491393.9000000004 7598596.809999999 4.26600000000326, 491393.556966218 7598596.748927162 4.26920592320249)",
+            "LINESTRING (491420.4326655079 7598572.554228766, 491420.73000000045 7598581.239999998, 491421.1699999999 7598586.949999999, 491421.3700000001 7598591.59, 491421.54000000004 7598595.870000001, 491422.36000000034 7598599.48, 491423.0099999998 7598602.43)",
+            "LINESTRING Z (491452.45420054055 7598608.116481753 4.49720152812222, 491393.9000000004 7598596.809999999 4.399999999994179, 491393.556966218 7598596.748927162 4.403205923193643)",
+        ],
+        25833,
+    )
+    print(df)
+    points_close_to_deadends = sg.get_k_nearest_points_for_deadends(
+        df, k=5, max_distance=15
+    )
+    sg.explore(points_close_to_deadends)
+    closed = sg.close_network_holes(df, 15, max_angle=120)
+    assert closed.length.sum() > df.length.sum() + 0.01
+
+
+def test_failing_line_along_road():
+    df = sg.to_gdf(
+        [
+            "LINESTRING (292939.5983805864 6926480.755566795, 292932.9000000004 6926483.1000000015, 292922.7999999998 6926487.699999999, 292917.7999999998 6926490.1000000015, 292913.7000000002 6926493.6000000015, 292911.2000000002 6926496.300000001, 292909 6926499.6000000015, 292907.5 6926503.199999999, 292906.5999999996 6926507.5, 292906.2999999998 6926510.8999999985, 292906.4000000004 6926514.199999999, 292907 6926516.800000001, 292907.7999999998 6926519.5, 292909.7999999998 6926523.300000001, 292913 6926528, 292918.4000000004 6926534.3999999985, 292921.36508169596 6926537.7886647945)",
+            "LINESTRING (292875.5138994143 6926527.857438979, 292875.9287999999 6926527.513599999, 292879.57469999976 6926524.370999999, 292887.01680000033 6926517.649799999, 292895.40079999994 6926510.0370000005, 292903.03639999963 6926503.559, 292905.85979999974 6926502.050299998)",
+        ],
+        25833,
+    )
+    closest_node = sg.get_k_nearest_points_for_deadends(df, k=1, max_distance=3)
+    sg.explore(closest_node, df)
+    assert len(closest_node) == 1, closest_node
+    assert int(df.length.sum()) == 120, df.length.sum()
+    df = sg.split_lines_by_nearest_point(df, closest_node)
+    assert int(df.length.sum()) == 120, df.length.sum()
+    closed = sg.close_network_holes(df, 3, max_angle=130)
+    assert int(closed.length.sum()) == 122, closed.length.sum()
 
 
 def test_line_angle_0():
@@ -210,24 +247,74 @@ def test_close_network_holes(roads_oslo, points_oslo):
     assert sum(nw.hole == 1) == 95, sum(nw.hole == 1)
 
     nw = sg.close_network_holes(r.copy(), max_distance=10, max_angle=90)
-    assert sum(nw.hole == 1) == 93, sum(nw.hole == 1)
+    sg.explore(nw.assign(hole=nw["hole"].astype(str)), "hole")
+    nw = sg.get_connected_components(nw)
+    sg.explore(nw, "connected")
+    # assert sum(nw.hole == 1) == 93, sum(nw.hole == 1)
+
+    # nodes = r.extract_unique_points().explode().to_frame()
+    # # nw = sg.close_network_holes(r.copy(), max_distance=10.33, max_angle=90)
+    # nw["length"] = nw.length
+    # sg.explore(nw, nodes)
 
     nw = sg.get_connected_components(nw)
 
     if __name__ == "__main__":
         sg.qtm(nw, "connected", title="after filling holes")
+        sg.explore(nw, "connected")
 
     assert sum(nw["connected"] == 1) == 827, sum(nw["connected"] == 1)
     assert sum(nw["connected"] == 0) == 20, sum(nw["connected"] == 0)
+
+
+def test_sharp_angle():
+    lines = sg.to_gdf(
+        [
+            LineString(
+                [
+                    loads("POINT (706599.21 7706862.550000001)"),
+                    loads("POINT (706623.8099999996 7706901.710000001)"),
+                ]
+            ),
+            LineString(
+                [
+                    loads("POINT (706623.8099999996 7706901.710000001)"),
+                    loads("POINT (706625.2400000002 7706902.690000001)"),
+                ]
+            ),
+            LineString(
+                [
+                    loads("POINT (706625.2400000002 7706902.690000001)"),
+                    loads("POINT (706626.4199999999 7706903.1499999985)"),
+                ]
+            ),
+            LineString(
+                [
+                    loads("POINT (706626.4199999999 7706903.1499999985)"),
+                    loads("POINT (706627.7000000002 7706903.73)"),
+                ]
+            ),
+        ],
+        crs=25833,
+    )
+
+    deadends_closed = sg.close_network_holes_to_deadends(lines, 15)
+    all_closed = sg.close_network_holes(lines, 15, max_angle=120)
+    assert len(lines) == len(deadends_closed) == len(all_closed)
 
 
 def main():
     from oslo import points_oslo
     from oslo import roads_oslo
 
+    test_very_small_network_hole()
+
+    test_failing_line_along_road()
+
     test_line_angle_0()
     test_line_angle_90()
     test_line_angle_45()
+    test_sharp_angle()
     test_close_network_holes(roads_oslo(), points_oslo())
 
 

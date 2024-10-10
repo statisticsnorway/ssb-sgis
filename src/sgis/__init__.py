@@ -104,7 +104,6 @@ from .maps.tilesources import kartverket as kartverket_tiles
 from .maps.tilesources import xyz as xyztiles
 from .networkanalysis.closing_network_holes import close_network_holes
 from .networkanalysis.closing_network_holes import close_network_holes_to_deadends
-from .networkanalysis.closing_network_holes import get_k_closest_points_for_deadends
 from .networkanalysis.closing_network_holes import get_k_nearest_points_for_deadends
 from .networkanalysis.cutting_lines import cut_lines
 from .networkanalysis.cutting_lines import cut_lines_once

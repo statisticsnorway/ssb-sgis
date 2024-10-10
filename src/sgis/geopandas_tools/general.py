@@ -536,9 +536,7 @@ def polygons_to_lines(
     return gdf
 
 
-def to_lines(
-    *gdfs: GeoDataFrame, copy: bool = True, split: bool = True
-) -> GeoDataFrame:
+def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     """Makes lines out of one or more GeoDataFrames and splits them at intersections.
 
     The GeoDataFrames' geometries are converted to LineStrings, then unioned together
@@ -548,8 +546,6 @@ def to_lines(
     Args:
         *gdfs: one or more GeoDataFrames.
         copy: whether to take a copy of the incoming GeoDataFrames. Defaults to True.
-        split: If True (default), lines will be split at intersections if more than
-            one GeoDataFrame is passed as gdfs. Otherwise, a simple concat.
 
     Returns:
         A GeoDataFrame with singlepart line geometries and columns of all input
@@ -593,73 +589,71 @@ def to_lines(
     >>> lines["l"] = lines.length
     >>> sg.qtm(lines, "l")
     """
-    gdf = (
-        # pd.concat(gdfs)
-        pd.concat(df.assign(**{"_df_idx": i}) for i, df in enumerate(gdfs))
-        .pipe(make_all_singlepart, ignore_index=True)
-        .pipe(clean_geoms)
-    )
-    geom_col = gdf.geometry.name
+    if not all(isinstance(gdf, (GeoSeries, GeoDataFrame)) for gdf in gdfs):
+        raise TypeError("gdf must be GeoDataFrame or GeoSeries")
 
-    if not len(gdf):
-        return gdf.drop(columns="_df_idx")
-
-    index = pd.Index(range(len(gdf)))
-    geoms = gdf.geometry
-
-    if (geoms.geom_type == "Polygon").all():
-        geoms = polygons_to_lines(geoms, copy=copy)  # .explode(ignore_index=True)
-    elif (geoms.geom_type != "LineString").any():
-        raise ValueError("Point geometries not allowed in 'to_lines'.")
-
-    gdf.geometry.loc[:] = geoms
-
-    if not split:
-        return gdf
-
-    out = []
-    for i in gdf["_df_idx"].unique():
-        these = gdf[lambda x: x["_df_idx"] == i]
-        others = gdf.loc[lambda x: x["_df_idx"] != i, [geom_col]]
-        intersection_points = these.overlay(others, keep_geom_type=False).explode(
-            ignore_index=True
+    if any(gdf.geom_type.isin(["Point", "MultiPoint"]).any() for gdf in gdfs):
+        raise ValueError(
+            f"Cannot convert points to lines. {[gdf.geom_type.value_counts() for gdf in gdfs]}"
         )
-        splitted = _split_lines_by_points_along_line(
-            these, intersection_points, splitted_col=None
-        )
-        out.append(splitted)
 
-    return (
-        pd.concat(out, ignore_index=True)
-        .pipe(make_all_singlepart, ignore_index=True)
-        .drop(columns="_df_idx")
-    )
+    def _shapely_geometry_to_lines(geom):
+        """Get all lines from the exterior and interiors of a Polygon."""
+        # if lines (points are not allowed in this function)
+        if geom.area == 0:
+            return geom
 
-    unioned = GeoDataFrame({"geometry": [shapely.union_all(geoms.values)]}, crs=gdf.crs)
+        singlepart = get_parts(geom)
+        lines = []
+        for part in singlepart:
+            exterior_ring = shapely.get_exterior_ring(part)
+            lines.append(exterior_ring)
 
-    return make_all_singlepart(
-        gdf.overlay(unioned, keep_geom_type=True), ignore_index=True
-    )
-    results = []
-    for i, g1 in enumerate(geoms):
-        print()
-        print()
-        g2 = geoms[index.difference({i})]
-        if len(g2):
-            print(g1)
-            try:
-                g1 = shapely.ops.split(g1, shapely.union_all(g2))
-            except ValueError:
-                for g in g2:
-                    print(g1)
-                    try:
-                        g1 = shapely.union_all(shapely.ops.split(g1, g))
-                    except ValueError:
-                        pass
+            n_interior_rings = shapely.get_num_interior_rings(part)
+            if not (n_interior_rings):
+                continue
 
-        results.append(g1)
-    gdf.geometry = results
-    return make_all_singlepart(gdf, ignore_index=True)
+            interior_rings = [
+                LineString(shapely.get_interior_ring(part, n))
+                for n in range(n_interior_rings)
+            ]
+
+            lines += interior_rings
+
+        return union_all(lines)
+
+    lines = []
+    for gdf in gdfs:
+        if copy:
+            gdf = gdf.copy()
+
+        mapped = gdf.geometry.map(_shapely_geometry_to_lines)
+        try:
+            gdf.geometry = mapped
+        except AttributeError:
+            # geoseries
+            gdf.loc[:] = mapped
+
+        gdf = to_single_geom_type(gdf, "line")
+
+        lines.append(gdf)
+
+    if len(lines) == 1:
+        return lines[0]
+
+    if len(lines[0]) and len(lines[1]):
+        unioned = lines[0].overlay(lines[1], how="union", keep_geom_type=True)
+    else:
+        unioned = pd.concat([lines[0], lines[1]], ignore_index=True)
+
+    if len(lines) > 2:
+        for line_gdf in lines[2:]:
+            if len(line_gdf):
+                unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
+            else:
+                unioned = pd.concat([unioned, line_gdf], ignore_index=True)
+
+    return make_all_singlepart(unioned, ignore_index=True)
 
 
 def _split_lines_by_points_along_line(lines, points, splitted_col: str | None = None):

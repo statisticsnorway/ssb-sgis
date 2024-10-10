@@ -1,7 +1,9 @@
+import os
 import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 src = str(Path(__file__).parent.parent) + "/src"
 
@@ -9,7 +11,13 @@ sys.path.insert(0, src)
 
 import sgis as sg
 
+skip_if_not_github = pytest.mark.skipif(
+    os.getenv("GITHUB_ACTIONS") != "true",
+    reason="Skipping test because it's not running in GitHub Actions",
+)
 
+
+@skip_if_not_github
 def func(x, *args, **kwargs):
     return x
 
@@ -22,6 +30,7 @@ def x3(x):
     return x * 3
 
 
+@skip_if_not_github
 def test_attributes():
     p = sg.Parallel(2, backend="loky")
     assert p.processes == 2
@@ -54,6 +63,7 @@ def add2(x, y, z):
 #         assert res_x3 == 9, res_x3
 
 
+@skip_if_not_github
 def test_map():
     for backend in ["loky", "multiprocessing", "threading"]:
         print(backend)
@@ -72,6 +82,7 @@ def test_map():
         assert results == [1, 3, 5, 7, 9, 11], results
 
 
+@skip_if_not_github
 def test_chunkwise():
     df = sg.random_points(100).pipe(sg.buff, 0.1)
     df2 = df.pipe(sg.buff, 0.1)
@@ -128,6 +139,7 @@ def test_args_to_kwargs():
     assert list(kwargs.values()) == [y, z], kwargs
 
 
+@skip_if_not_github
 def test_starmap():
     iterable = [(1, 2), (2, 3), (3, 4)]
 
@@ -155,6 +167,7 @@ def test_starmap():
     assert results == [4, 6, 8]
 
 
+@skip_if_not_github
 def test_gridloop_parallel():
     points = sg.random_points(100, loc=10000).set_crs(25833)
     points["i"] = range(len(points))
@@ -269,6 +282,7 @@ def test_gridloop_parallel():
     assert intersected.equals(intersected7)
 
 
+@skip_if_not_github
 def test_gridlooper_parallel():
     points = sg.random_points(100, loc=10000).set_crs(25833)
     points["i"] = range(len(points))

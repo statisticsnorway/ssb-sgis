@@ -22,52 +22,58 @@ def get_k_nearest_points_for_deadends(
 ) -> GeoDataFrame:
 
     assert lines.index.is_unique
-    points = lines.extract_unique_points().explode(index_parts=False).sort_index()
+    lines = lines.assign(_range_idx_left=range(len(lines)))
+    points = (
+        lines.assign(
+            geometry=lambda x: x.extract_unique_points().values,
+            _range_idx_right=range(len(lines)),
+        )
+        .explode(index_parts=False)
+        .sort_index()
+    )
 
-    points_grouper = points.groupby(level=0)
+    points_grouper = points.groupby("_range_idx_right")["geometry"]
     nodes = pd.concat(
         [
             points_grouper.nth(0),
             points_grouper.nth(-1),
         ]
     )
+    nodes.index.name = "_range_idx_right"
+    nodes = nodes.reset_index()
 
     def has_no_duplicates(nodes):
-        return nodes.isin(nodes.value_counts()[nodes.value_counts() == 1].index)
+        counts = nodes.geometry.value_counts()
+        return nodes.geometry.isin(counts[counts == 1].index)
 
     deadends = nodes[has_no_duplicates].reset_index(drop=True)
 
-    deadends_buffered = deadends.buffer(max_distance).to_frame("geometry")
+    deadends_buffered = deadends.assign(geometry=lambda x: x.buffer(max_distance))
 
     segs_by_deadends = (
         sfilter(lines, deadends_buffered)
         .pipe(get_line_segments)
         .sjoin(deadends_buffered)
-        .groupby(level=0)
-        .apply(lambda x: x.head(k))
+        .loc[lambda x: x["_range_idx_left"] != x["_range_idx_right"]]
     )
 
-    nearest_points = shapely.get_point(
-        shapely.shortest_line(
-            segs_by_deadends.geometry.values,
-            deadends.loc[segs_by_deadends["index_right"].values],
-        ),
-        0,
+    lines_between = shapely.shortest_line(
+        segs_by_deadends.geometry.values,
+        deadends.loc[segs_by_deadends["index_right"].values].geometry.values,
+    )
+    segs_by_deadends.geometry.loc[:] = shapely.get_point(lines_between, 0)
+
+    length_mapper = dict(enumerate(shapely.length(lines_between)))
+    sorted_lengths = dict(
+        reversed(sorted(length_mapper.items(), key=lambda item: item[1]))
+    )
+    nearest_first = segs_by_deadends.iloc[list(sorted_lengths)]
+
+    k_nearest_per_deadend = nearest_first.geometry.groupby(level=0).apply(
+        lambda x: x.head(k)
     )
 
-    from ..geopandas_tools.conversion import to_gdf
-    from ..maps.maps import explore
-
-    explore(
-        lines=to_gdf(lines, 25833),
-        nodes=to_gdf(nodes, 25833),
-        deadends=to_gdf(deadends, 25833),
-        deadends_buffered=to_gdf(deadends_buffered, 25833),
-        segs_by_deadends=to_gdf(segs_by_deadends, 25833),
-        nearest_points=to_gdf(nearest_points, 25833),
-    )
-
-    return GeoDataFrame({"geometry": nearest_points}, crs=lines.crs)
+    return GeoDataFrame({"geometry": k_nearest_per_deadend.values}, crs=lines.crs)
 
 
 def get_k_closest_points_for_deadends(
