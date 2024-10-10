@@ -11,7 +11,8 @@ from geopandas import GeoSeries
 from shapely.geometry import Point
 
 from ..geopandas_tools.general import _push_geom_col
-from ..geopandas_tools.general import split_out_circles
+from ..geopandas_tools.general import make_edge_coords_cols
+from ..geopandas_tools.general import make_edge_wkt_cols
 from ..geopandas_tools.geometry_types import make_all_singlepart
 
 
@@ -94,111 +95,3 @@ def make_node_ids(
     gdf = _push_geom_col(gdf)
 
     return gdf, nodes
-
-
-def make_edge_coords_cols(gdf: GeoDataFrame) -> GeoDataFrame:
-    """Get the wkt of the first and last points of lines as columns.
-
-    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
-    columns, source_coords and target_coords, which are the x and y coordinates of the
-    first and last points of the LineStrings in a tuple. The lines all have to be
-
-    Args:
-        gdf (GeoDataFrame): the GeoDataFrame with the lines
-
-    Returns:
-        A GeoDataFrame with new columns 'source_coords' and 'target_coords'
-    """
-    try:
-        gdf, endpoints = _prepare_make_edge_cols_simple(gdf)
-    except ValueError:
-        gdf, endpoints = _prepare_make_edge_cols(gdf)
-
-    coords = [(geom.x, geom.y) for geom in endpoints.geometry]
-    gdf["source_coords"], gdf["target_coords"] = (
-        coords[0::2],
-        coords[1::2],
-    )
-
-    return gdf
-
-
-def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
-    """Get coordinate tuples of the first and last points of lines as columns.
-
-    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
-    columns, source_wkt and target_wkt, which are the WKT representations of the first
-    and last points of the LineStrings
-
-    Args:
-        gdf (GeoDataFrame): the GeoDataFrame with the lines
-
-    Returns:
-        A GeoDataFrame with new columns 'source_wkt' and 'target_wkt'
-    """
-    try:
-        gdf, endpoints = _prepare_make_edge_cols_simple(gdf)
-    except ValueError:
-        gdf, endpoints = _prepare_make_edge_cols(gdf)
-
-    wkt_geom = [
-        f"POINT ({x} {y})" for x, y in zip(endpoints.x, endpoints.y, strict=True)
-    ]
-    gdf["source_wkt"], gdf["target_wkt"] = (
-        wkt_geom[0::2],
-        wkt_geom[1::2],
-    )
-
-    return gdf
-
-
-def _prepare_make_edge_cols(
-    lines: GeoDataFrame, strict: bool = False
-) -> tuple[GeoDataFrame, GeoDataFrame]:
-
-    lines = lines.loc[lines.geom_type != "LinearRing"]
-
-    if not (lines.geom_type == "LineString").all():
-        multilinestring_error_message = (
-            "MultiLineStrings have more than two endpoints. "
-            "Try shapely.line_merge and/or explode() to get LineStrings. "
-            "Or use the Network class methods, where the lines are prepared correctly."
-        )
-        if (lines.geom_type == "MultiLinestring").any():
-            raise ValueError(multilinestring_error_message)
-        else:
-            raise ValueError(
-                "You have mixed geometries. Only lines are accepted. "
-                "Try using: to_single_geom_type(gdf, 'lines')."
-            )
-
-    geom_col = lines._geometry_column_name
-
-    # some LineStrings are in fact rings and must be removed manually
-    lines, _ = split_out_circles(lines)
-
-    endpoints = lines[geom_col].boundary.explode(ignore_index=True)
-
-    if len(lines) and len(endpoints) / len(lines) != 2:
-        raise ValueError(
-            "The lines should have only two endpoints each. "
-            "Try splitting multilinestrings with explode.",
-            lines[geom_col],
-        )
-
-    return lines, endpoints
-
-
-def _prepare_make_edge_cols_simple(
-    lines: GeoDataFrame,
-) -> tuple[GeoDataFrame, GeoDataFrame]:
-    """Faster version of _prepare_make_edge_cols."""
-    endpoints = lines[lines._geometry_column_name].boundary.explode(ignore_index=True)
-
-    if len(lines) and len(endpoints) / len(lines) != 2:
-        raise ValueError(
-            "The lines should have only two endpoints each. "
-            "Try splitting multilinestrings with explode."
-        )
-
-    return lines, endpoints
