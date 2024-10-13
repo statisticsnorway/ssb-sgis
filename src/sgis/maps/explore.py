@@ -22,6 +22,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import shapely
 import xyzservices
 from folium import plugins
 from geopandas import GeoDataFrame
@@ -464,9 +465,9 @@ class Explore(Map):
             pass
 
         try:
-            sample = to_gdf(to_shapely(sample)).explode(ignore_index=True)
+            sample = to_gdf(to_shapely(sample)).pipe(make_all_singlepart)
         except Exception:
-            sample = to_gdf(to_shapely(to_bbox(sample))).explode(ignore_index=True)
+            sample = to_gdf(to_shapely(to_bbox(sample))).pipe(make_all_singlepart)
 
         random_point = sample.sample_points(size=1)
 
@@ -666,7 +667,12 @@ class Explore(Map):
             if not len(gdf):
                 continue
 
-            gdf = self._to_single_geom_type(gdf.explode(index_parts=False))
+            gdf = self._to_single_geom_type(make_all_singlepart(gdf))
+
+            if not len(gdf):
+                continue
+
+            gdf.geometry = shapely.force_2d(gdf.geometry.values)
             gdf = self._prepare_gdf_for_map(gdf)
 
             gjs = self._make_geojson(
@@ -737,7 +743,12 @@ class Explore(Map):
             if not len(gdf):
                 continue
 
-            gdf = self._to_single_geom_type(gdf.explode(index_parts=False))
+            gdf = self._to_single_geom_type(make_all_singlepart(gdf))
+
+            if not len(gdf):
+                continue
+
+            gdf.geometry = shapely.force_2d(gdf.geometry.values)
             gdf = self._prepare_gdf_for_map(gdf)
 
             classified = self._classify_from_bins(gdf, bins=self.bins)
