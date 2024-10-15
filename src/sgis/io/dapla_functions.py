@@ -143,6 +143,10 @@ def read_geopandas(
                     raise e.__class__(
                         f"{e.__class__.__name__}: {e} for {df}." + more_txt
                     ) from e
+            except Exception as e:
+                raise e.__class__(
+                    f"{e.__class__.__name__}: {e} for {df}." + more_txt
+                ) from e
 
     else:
         with file_system.open(gcs_path, mode="rb") as file:
@@ -160,6 +164,10 @@ def read_geopandas(
                     raise e.__class__(
                         f"{e.__class__.__name__}: {e} for {df}. " + more_txt
                     ) from e
+            except Exception as e:
+                raise e.__class__(
+                    f"{e.__class__.__name__}: {e} for {df}." + more_txt
+                ) from e
 
     if mask is not None:
         return sfilter(df, mask)
