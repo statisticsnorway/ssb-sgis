@@ -24,7 +24,6 @@ from geopandas import GeoSeries
 from shapely import get_num_geometries
 
 from ..parallel.parallel import Parallel
-from .general import _grouped_unary_union
 from .general import _parallel_unary_union
 from .general import _unary_union_for_notna
 from .geometry_types import make_all_singlepart
@@ -270,11 +269,11 @@ def _dissolve(
             print(e, dissolved, agged, many_hits)
             raise e
 
-    # geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
-    #     lambda x: _unary_union_for_notna(x, grid_size=grid_size)
-    # )
+    geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
+        lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+    )
     # print("\n\n\ngeomsagged\n", geoms_agged, geoms_agged.shape)
-    geoms_agged = _grouped_unary_union(many_hits, by, as_index=True, **dissolve_kwargs)
+    # geoms_agged = _grouped_unary_union(many_hits, by, as_index=True, **dissolve_kwargs)
     # print(geoms_agged, geoms_agged.shape)
 
     # if not as_index:
