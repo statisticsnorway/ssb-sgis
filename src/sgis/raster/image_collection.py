@@ -6,6 +6,7 @@ import math
 import os
 import random
 import re
+import time
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
@@ -25,6 +26,7 @@ import rasterio
 from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from google.auth import exceptions
 from matplotlib.colors import LinearSegmentedColormap
 from rasterio.enums import MergeAlg
 from rtree.index import Index
@@ -132,9 +134,6 @@ if is_dapla():
     def _open_func(*args, **kwargs) -> GCSFile:
         return dp.FileClient.get_gcs_file_system().open(*args, **kwargs)
 
-    def _rm_file_func(*args, **kwargs) -> None:
-        return dp.FileClient.get_gcs_file_system().rm_file(*args, **kwargs)
-
     def _read_parquet_func(*args, **kwargs) -> list[str]:
         return dp.read_pandas(*args, **kwargs)
 
@@ -142,7 +141,6 @@ else:
     _ls_func = functools.partial(get_all_files, recursive=False)
     _open_func = open
     _glob_func = glob.glob
-    _rm_file_func = os.remove
     _read_parquet_func = pd.read_parquet
 
 TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
@@ -295,7 +293,7 @@ class ImageCollectionGroupBy:
 
 @dataclass(frozen=True)
 class BandMasking:
-    """Basically a frozen dict with forced keys."""
+    """Frozen dict with forced keys."""
 
     band_id: str
     values: tuple[int]
@@ -448,6 +446,8 @@ class _ImageBase:
 
 
 class _ImageBandBase(_ImageBase):
+    """Common parent class of Image and Band."""
+
     def intersects(self, other: GeoDataFrame | GeoSeries | Geometry) -> bool:
         if hasattr(other, "crs") and not pyproj.CRS(self.crs).equals(
             pyproj.CRS(other.crs)
@@ -495,13 +495,13 @@ class _ImageBandBase(_ImageBase):
     def level(self) -> str:
         return self._name_regex_searcher("level", self.image_patterns)
 
-    @property
-    def mint(self) -> float:
-        return disambiguate_timestamp(self.date, self.date_format)[0]
+    # @property
+    # def mint(self) -> float:
+    #     return disambiguate_timestamp(self.date, self.date_format)[0]
 
-    @property
-    def maxt(self) -> float:
-        return disambiguate_timestamp(self.date, self.date_format)[1]
+    # @property
+    # def maxt(self) -> float:
+    #     return disambiguate_timestamp(self.date, self.date_format)[1]
 
     def union_all(self) -> Polygon:
         try:
@@ -509,17 +509,17 @@ class _ImageBandBase(_ImageBase):
         except TypeError:
             return Polygon()
 
-    @property
-    def torch_bbox(self) -> BoundingBox:
-        bounds = GeoSeries([self.union_all()]).bounds
-        return BoundingBox(
-            minx=bounds.minx[0],
-            miny=bounds.miny[0],
-            maxx=bounds.maxx[0],
-            maxy=bounds.maxy[0],
-            mint=self.mint,
-            maxt=self.maxt,
-        )
+    # @property
+    # def torch_bbox(self) -> BoundingBox:
+    #     bounds = GeoSeries([self.union_all()]).bounds
+    #     return BoundingBox(
+    #         minx=bounds.minx[0],
+    #         miny=bounds.miny[0],
+    #         maxx=bounds.maxx[0],
+    #         maxy=bounds.maxy[0],
+    #         mint=self.mint,
+    #         maxt=self.maxt,
+    #     )
 
 
 class Band(_ImageBandBase):
@@ -945,6 +945,23 @@ class Band(_ImageBandBase):
                     dst.write_mask(self.values.mask)
 
         self._path = str(path)
+
+        # if write_metadata:
+        #     metadata_path = path.parent / (path.stem + "_metadata" + ".parquet")
+
+        #     metadata_df = pd.DataFrame(
+        #         {
+        #             "path": path,
+        #             "bounds": bounds,
+        #             "crs": crs,
+        #             "res": res,
+        #             "created": datetime.datetime.now(),
+        #         }
+        #         | metadata,
+        #         index=[0],
+        #     )
+        #     with file_system.open(metadata_path) as f:
+        #         metadata_df.to_parquet(f)
 
     def apply(self, func: Callable, **kwargs) -> "Band":
         """Apply a function to the array."""
@@ -1621,7 +1638,14 @@ class Image(_ImageBandBase):
     @property
     def bounds(self) -> tuple[int, int, int, int] | None:
         """Bounds of the Image (minx, miny, maxx, maxy)."""
-        return get_total_bounds([band.bounds for band in self])
+        try:
+            return get_total_bounds([band.bounds for band in self])
+        except exceptions.RefreshError:
+            bounds = []
+            for band in self:
+                time.sleep(0.1)
+                bounds.append(band.bounds)
+            return get_total_bounds(bounds)
 
     def to_gdf(self, column: str = "value") -> GeoDataFrame:
         """Convert the array to a GeoDataFrame of grid polygons and values."""
@@ -1825,21 +1849,6 @@ class ImageCollection(_ImageBase):
     def mask(self) -> np.ndarray:
         """4 dimensional numpy array."""
         return np.array([img.mask.values for img in self])
-
-    # def ndvi(
-    #     self, red_band: str, nir_band: str, copy: bool = True
-    # ) -> "ImageCollection":
-    #     # copied = self.copy() if copy else self
-
-    #     with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
-    #         ndvi_images = parallel(
-    #             joblib.delayed(_img_ndvi)(
-    #                 img, red_band=red_band, nir_band=nir_band, copy=False
-    #             )
-    #             for img in self
-    #         )
-
-    #     return ImageCollection(ndvi_images, single_banded=True)
 
     def groupby(self, by: str | list[str], **kwargs) -> ImageCollectionGroupBy:
         """Group the Collection by Image or Band attribute(s)."""
@@ -2516,7 +2525,10 @@ class ImageCollection(_ImageBase):
                         try:
                             value = self.metadata[band.path][key]
                         except KeyError:
-                            value = self.metadata[key][band.path]
+                            try:
+                                value = self.metadata[key][band.path]
+                            except KeyError:
+                                continue
                         setattr(band, f"_{key}", value)
 
         self._images = [img for img in self if len(img)]
@@ -2603,6 +2615,7 @@ class ImageCollection(_ImageBase):
         p: float = 0.95,
         ylim: tuple[float, float] | None = None,
         figsize: tuple[int] = (20, 8),
+        rounding: int = 3,
     ) -> None:
         """Plot each individual pixel in a dotplot for all dates.
 
@@ -2616,6 +2629,7 @@ class ImageCollection(_ImageBase):
             p: p-value for the confidence interval.
             ylim: Limits of the y-axis.
             figsize: Figure size as tuple (width, height).
+            rounding: rounding of title n
 
         """
         if by is None and all(band.band_id is not None for img in self for band in img):
@@ -2631,6 +2645,9 @@ class ImageCollection(_ImageBase):
 
         for group_values, subcollection in self.groupby(by):
             print("group_values:", *group_values)
+
+            if "date" in x_var and subcollection._should_be_sorted:
+                subcollection._images = list(sorted(subcollection._images))
 
             y = np.array([band.values for img in subcollection for band in img])
             if "date" in x_var and subcollection._should_be_sorted:
@@ -2685,6 +2702,10 @@ class ImageCollection(_ImageBase):
                     )[0]
                     predicted = np.array([intercept + coef * x for x in this_x])
 
+                    predicted_start = predicted[0]
+                    predicted_end = predicted[-1]
+                    predicted_change = predicted_end - predicted_start
+
                     # Degrees of freedom
                     dof = len(this_x) - 2
 
@@ -2708,8 +2729,6 @@ class ImageCollection(_ImageBase):
                     ci_lower = predicted - t_val * pred_stderr
                     ci_upper = predicted + t_val * pred_stderr
 
-                    rounding = int(np.log(1 / abs(coef)))
-
                     fig = plt.figure(figsize=figsize)
                     ax = fig.add_subplot(1, 1, 1)
 
@@ -2723,7 +2742,12 @@ class ImageCollection(_ImageBase):
                         alpha=0.2,
                         label=f"{int(alpha*100)}% CI",
                     )
-                    plt.title(f"Coefficient: {round(coef, rounding)}")
+                    plt.title(
+                        f"coef: {round(coef, int(np.log(1 / abs(coef))))}, "
+                        f"pred change: {round(predicted_change, rounding)}, "
+                        f"pred start: {round(predicted_start, rounding)}, "
+                        f"pred end: {round(predicted_end, rounding)}"
+                    )
                     plt.xlabel(x_var)
                     plt.ylabel(y_label)
                     plt.show()
@@ -3091,10 +3115,6 @@ def _get_dtype_max(dtype: str | type) -> int | float:
         return np.iinfo(dtype).max
     except ValueError:
         return np.finfo(dtype).max
-
-
-def _img_ndvi(img, **kwargs):
-    return Image([img.ndvi(**kwargs)])
 
 
 def _intesects(x, other) -> bool:
