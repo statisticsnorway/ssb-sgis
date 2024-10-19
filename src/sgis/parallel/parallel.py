@@ -704,11 +704,11 @@ def _write_municipality_data(
     )
 
     if municipalities is None:
-        muni_numbers = gdf[muni_number_col]
+        muni_numbers = gdf[muni_number_col].unique()
     elif not isinstance(municipalities, DataFrame):
-        muni_numbers = municipalities
+        muni_numbers = list(set(municipalities))
     else:
-        muni_numbers = municipalities[muni_number_col]
+        muni_numbers = municipalities[muni_number_col].unique()
 
     # hardcode this to threading for efficiency in io bound task
     Parallel(processes_in_clip, backend="threading").map(
@@ -952,7 +952,7 @@ def parallel_overlay(
     if len(df1) < max_rows_per_chunk:
         return clean_overlay(df1, df2, **kwargs)
 
-    n_chunks = len(df1) // max_rows_per_chunk
+    n_chunks = len(df1) // max_rows_per_chunk or 1
     chunks = np.array_split(np.arange(len(df1)), n_chunks)
 
     try:
