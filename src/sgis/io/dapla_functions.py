@@ -111,7 +111,9 @@ def read_geopandas(
             try:
                 df = GeoDataFrame(df)
             except Exception as e:
-                print(e)
+                if not pandas_fallback:
+                    print(e)
+                    raise e
         else:
             df = GeoDataFrame(cols | {"geometry": []})
 
@@ -144,9 +146,7 @@ def read_geopandas(
                         f"{e.__class__.__name__}: {e} for {df}." + more_txt
                     ) from e
             except Exception as e:
-                raise e.__class__(
-                    f"{e.__class__.__name__}: {e} for {df}." + more_txt
-                ) from e
+                raise e.__class__(f"{e.__class__.__name__}: {e} for {gcs_path}.") from e
 
     else:
         with file_system.open(gcs_path, mode="rb") as file:
