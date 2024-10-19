@@ -49,6 +49,12 @@ except ImportError:
     class GCSFileSystem:
         """Placeholder."""
 
+try:
+    from gcsfs.core import GCSFile
+except ImportError:
+
+    class GCSFile:
+        """Placeholder."""
 
 try:
     from rioxarray.exceptions import NoDataInBounds
@@ -63,42 +69,6 @@ except ImportError:
 
     class DataArray:
         """Placeholder."""
-
-
-try:
-    import torch
-except ImportError:
-    pass
-
-try:
-    from gcsfs.core import GCSFile
-except ImportError:
-
-    class GCSFile:
-        """Placeholder."""
-
-
-try:
-    from torchgeo.datasets.utils import disambiguate_timestamp
-except ImportError:
-
-    class torch:
-        """Placeholder."""
-
-        class Tensor:
-            """Placeholder to reference torch.Tensor."""
-
-
-try:
-    from torchgeo.datasets.utils import BoundingBox
-except ImportError:
-
-    class BoundingBox:
-        """Placeholder."""
-
-        def __init__(self, *args, **kwargs) -> None:
-            """Placeholder."""
-            raise ImportError("missing optional dependency 'torchgeo'")
 
 
 from ..geopandas_tools.bounds import get_total_bounds
@@ -143,7 +113,11 @@ else:
     _glob_func = glob.glob
     _read_parquet_func = pd.read_parquet
 
-TORCHGEO_RETURN_TYPE = dict[str, torch.Tensor | pyproj.CRS | BoundingBox]
+DATE_RANGES_TYPE = (
+    tuple[str | pd.Timestamp | None, str | pd.Timestamp | None]
+    | tuple[tuple[str | pd.Timestamp | None, str | pd.Timestamp | None], ...]
+)
+
 FILENAME_COL_SUFFIX = "_filename"
 DEFAULT_FILENAME_REGEX = r"""
     .*?
@@ -163,7 +137,6 @@ ALLOWED_INIT_KWARGS = [
     "band_class",
     "image_regexes",
     "filename_regexes",
-    "date_format",
     "cloud_cover_regexes",
     "bounds_regexes",
     "all_bands",
@@ -306,16 +279,17 @@ class BandMasking:
 class _ImageBase:
     image_regexes: ClassVar[str | None] = (DEFAULT_IMAGE_REGEX,)
     filename_regexes: ClassVar[str | tuple[str]] = (DEFAULT_FILENAME_REGEX,)
-    date_format: ClassVar[str] = "%Y%m%d"  # T%H%M%S"
     masking: ClassVar[BandMasking | None] = None
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, *, bbox, **kwargs) -> None:
 
         self._mask = None
         self._bounds = None
         self._merged = False
         self._from_array = False
         self._from_gdf = False
+
+        self._bbox = to_bbox(bbox) if bbox is not None else None
 
         if self.filename_regexes:
             if isinstance(self.filename_regexes, str):
@@ -455,6 +429,12 @@ class _ImageBandBase(_ImageBase):
             raise ValueError(f"crs mismatch: {self.crs} and {other.crs}")
         return self.union_all().intersects(to_shapely(other))
 
+    def union_all(self) -> Polygon:
+        try:
+            return box(*self.bounds)
+        except TypeError:
+            return Polygon()
+
     @property
     def mask_percentage(self) -> float:
         return self.mask.values.sum() / (self.mask.width * self.mask.height) * 100
@@ -494,32 +474,6 @@ class _ImageBandBase(_ImageBase):
     @property
     def level(self) -> str:
         return self._name_regex_searcher("level", self.image_patterns)
-
-    # @property
-    # def mint(self) -> float:
-    #     return disambiguate_timestamp(self.date, self.date_format)[0]
-
-    # @property
-    # def maxt(self) -> float:
-    #     return disambiguate_timestamp(self.date, self.date_format)[1]
-
-    def union_all(self) -> Polygon:
-        try:
-            return box(*self.bounds)
-        except TypeError:
-            return Polygon()
-
-    # @property
-    # def torch_bbox(self) -> BoundingBox:
-    #     bounds = GeoSeries([self.union_all()]).bounds
-    #     return BoundingBox(
-    #         minx=bounds.minx[0],
-    #         miny=bounds.miny[0],
-    #         maxx=bounds.maxx[0],
-    #         maxy=bounds.maxy[0],
-    #         mint=self.mint,
-    #         maxt=self.maxt,
-    #     )
 
 
 class Band(_ImageBandBase):
@@ -572,10 +526,9 @@ class Band(_ImageBandBase):
         **kwargs,
     ) -> None:
         """Band initialiser."""
-        super().__init__(**kwargs)
+        super().__init__(bbox=bbox, **kwargs)
 
         self._mask = mask
-        self._bbox = to_bbox(bbox) if bbox is not None else None
         self._values = None
         self._crs = None
         self.nodata = nodata
@@ -609,15 +562,6 @@ class Band(_ImageBandBase):
         self._name = name
         self._band_id = band_id
         self.processes = processes
-
-        # if self.filename_regexes:
-        #     if isinstance(self.filename_regexes, str):
-        #         self.filename_regexes = [self.filename_regexes]
-        #     self.filename_patterns = [
-        #         re.compile(pat, flags=re.VERBOSE) for pat in self.filename_regexes
-        #     ]
-        # else:
-        #     self.filename_patterns = None
 
     def __lt__(self, other: "Band") -> bool:
         """Makes Bands sortable by band_id."""
@@ -745,22 +689,16 @@ class Band(_ImageBandBase):
 
         bounds_was_none = bounds is None
 
-        try:
-            if not isinstance(self.values, np.ndarray):
-                raise ValueError()
-            has_array = True
-        except ValueError:  # also catches ArrayNotLoadedError
-            has_array = False
-
         # get common bounds of function argument 'bounds' and previously set bbox
-        if bounds is None and self._bbox is None:
-            bounds = None
-        elif bounds is not None and self._bbox is None:
-            bounds = to_shapely(bounds).intersection(self.union_all())
-        elif bounds is None and self._bbox is not None:
-            bounds = to_shapely(self._bbox).intersection(self.union_all())
-        else:
-            bounds = to_shapely(bounds).intersection(to_shapely(self._bbox))
+        bounds = _get_bounds(bounds, self._bbox)
+        # if bounds is None and self._bbox is None:
+        #     bounds = None
+        # elif bounds is not None and self._bbox is None:
+        #     bounds = to_shapely(bounds).intersection(self.union_all())
+        # elif bounds is None and self._bbox is not None:
+        #     bounds = to_shapely(self._bbox).intersection(self.union_all())
+        # else:
+        #     bounds = to_shapely(bounds).intersection(to_shapely(self._bbox))
 
         should_return_empty: bool = bounds is not None and bounds.area == 0
         if should_return_empty:
@@ -772,16 +710,13 @@ class Band(_ImageBandBase):
             self.transform = None
             return self
 
-        if has_array and bounds_was_none:
+        if self.has_array and bounds_was_none:
             return self
 
         # round down/up to integer to avoid precision trouble
         if bounds is not None:
-            #     bounds = to_bbox(bounds)
             minx, miny, maxx, maxy = to_bbox(bounds)
             bounds = (int(minx), int(miny), math.ceil(maxx), math.ceil(maxy))
-
-        boundless = False
 
         if indexes is None:
             indexes = 1
@@ -792,7 +727,7 @@ class Band(_ImageBandBase):
         # allow setting a fixed out_shape for the array, in order to make mask same shape as values
         out_shape = kwargs.pop("out_shape", None)
 
-        if has_array:
+        if self.has_array:
             self.values = _clip_loaded_array(
                 self.values, bounds, self.transform, self.crs, out_shape, **kwargs
             )
@@ -849,7 +784,7 @@ class Band(_ImageBandBase):
                         self._values = src.read(
                             indexes=indexes,
                             window=window,
-                            boundless=boundless,
+                            boundless=False,
                             out_shape=out_shape,
                             masked=masked,
                             **kwargs,
@@ -897,6 +832,15 @@ class Band(_ImageBandBase):
     def is_mask(self) -> bool:
         """True if the band_id is equal to the masking band_id."""
         return self.band_id == self.masking["band_id"]
+
+    @property
+    def is_loaded(self) -> bool:
+        try:
+            if not isinstance(self.values, np.ndarray):
+                raise ValueError()
+            return True
+        except ValueError:  # also catches ArrayNotLoadedError
+            return False
 
     def write(
         self, path: str | Path, driver: str = "GTiff", compress: str = "LZW", **kwargs
@@ -1323,14 +1267,12 @@ class Image(_ImageBandBase):
         **kwargs,
     ) -> None:
         """Image initialiser."""
-        super().__init__(**kwargs)
+        super().__init__(bbox=bbox, **kwargs)
 
         self.nodata = nodata
         self._res = res
         self._crs = crs
         self.file_system = file_system
-        self._bbox = to_bbox(bbox) if bbox is not None else None
-        # self._mask = _mask
         self.single_banded = single_banded
         self.processes = processes
         self._all_file_paths = all_file_paths
@@ -1407,6 +1349,23 @@ class Image(_ImageBandBase):
         """3 dimensional numpy array."""
         return np.array([band.values for band in self])
 
+    def load(
+        self,
+        bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
+        indexes: int | tuple[int] | None = None,
+        **kwargs,
+    ) -> "ImageCollection":
+        """Load all image Bands."""
+        # TODO need this method?
+        if all(band.has_array for band in self):  # TODO clip?
+            return self
+        if self.masking:
+            self.mask.load(bounds=bounds, indexes=indexes, **kwargs)
+        for band in self:
+            band.load(bounds=bounds, indexes=indexes, **kwargs)
+
+        return self
+
     def ndvi(self, red_band: str, nir_band: str, copy: bool = True) -> NDVIBand:
         """Calculate the NDVI for the Image."""
         copied = self.copy() if copy else self
@@ -1462,6 +1421,20 @@ class Image(_ImageBandBase):
             **self._common_init_kwargs,
         )
 
+    def to_xarray(self) -> DataArray:
+        """Convert the raster to  an xarray.DataArray."""
+        name = self.name or self.__class__.__name__.lower()
+        self.load()
+        coords = _generate_spatial_coords(self.transform, self.width, self.height)
+        dims = ["band", "y", "x"]
+        return xr.DataArray(
+            self.values,
+            coords=coords,
+            dims=dims,
+            name=name,
+            attrs={"crs": self.crs},
+        )
+
     @property
     def mask(self) -> Band | None:
         """Mask Band."""
@@ -1469,6 +1442,8 @@ class Image(_ImageBandBase):
             return self._mask
         if self.masking is None:
             return None
+
+        # now we load the mask
 
         mask_band_id = self.masking["band_id"]
         mask_paths = [path for path in self._df["file_path"] if mask_band_id in path]
@@ -1520,8 +1495,9 @@ class Image(_ImageBandBase):
     @property
     def bands(self) -> list[Band]:
         """The Image Bands."""
-        if self._bands is not None:
-            return self._bands
+        if self._bands is None:
+            raise ValueError("bands is None")
+        return self._bands
 
         # if self.masking:
         #     mask_band_id = self.masking["band_id"]
@@ -1784,7 +1760,7 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> None:
         """Initialiser."""
-        super().__init__(**kwargs)
+        super().__init__(bbox=bbox, **kwargs)
 
         self.nodata = nodata
         self.level = level
@@ -1792,7 +1768,6 @@ class ImageCollection(_ImageBase):
         self.processes = processes
         self.file_system = file_system
         self._res = res
-        self._bbox = to_bbox(bbox) if bbox is not None else None
         self._band_ids = None
         self.single_banded = single_banded
 
@@ -1912,7 +1887,10 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> Band:
         """Merge all areas and all bands to a single Band."""
-        bounds = to_bbox(bounds) if bounds is not None else self._bbox
+        bounds = _get_bounds(bounds, self._bbox)
+        if bounds is not None:
+            bounds = to_bbox(bounds)
+
         crs = self.crs
 
         if indexes is None:
@@ -1980,7 +1958,15 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> Image:
         """Merge all areas to a single tile, one band per band_id."""
-        bounds = to_bbox(bounds) if bounds is not None else self._bbox
+        # bounds = to_bbox(bounds) if bounds is not None else self._bbox
+        # bounds = (
+        #     to_bbox(to_shapely(bounds).intersection(to_shapely(self._bbox)))
+        #     if bounds is not None
+        #     else self._bbox
+        # )
+        bounds = _get_bounds(bounds, self._bbox)
+        if bounds is not None:
+            bounds = to_bbox(bounds)
         bounds = self.bounds if bounds is None else bounds
         out_bounds = bounds
         crs = self.crs
@@ -2040,7 +2026,7 @@ class ImageCollection(_ImageBase):
                 )
             )
 
-        # return self.image_class(
+        # return self.image_class( # TODO
         image = Image(
             bands,
             band_class=self.band_class,
@@ -2138,6 +2124,8 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> "ImageCollection":
         """Load all image Bands with threading."""
+        if all(band.has_array for img in self for band in img):  # TODO clip?
+            return self
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             if self.masking:
                 parallel(
@@ -2156,7 +2144,7 @@ class ImageCollection(_ImageBase):
 
         return self
 
-    def set_bbox(
+    def _set_bbox(
         self, bbox: GeoDataFrame | GeoSeries | Geometry | tuple[float]
     ) -> "ImageCollection":
         """Set the mask to be used to clip the images to."""
@@ -2165,11 +2153,12 @@ class ImageCollection(_ImageBase):
         if self._images is not None:
             for img in self._images:
                 img._bbox = self._bbox
-                if img._bands is not None:
-                    for band in img:
-                        band._bbox = self._bbox
-                        bounds = box(*band._bbox).intersection(box(*band.bounds))
-                        band._bounds = to_bbox(bounds) if not bounds.is_empty else None
+                if img._bands is None:
+                    continue
+                for band in img:
+                    band._bbox = self._bbox
+                    bounds = box(*band._bbox).intersection(box(*band.bounds))
+                    band._bounds = to_bbox(bounds) if not bounds.is_empty else None
 
         return self
 
@@ -2183,11 +2172,7 @@ class ImageCollection(_ImageBase):
         self,
         bands: str | list[str] | None = None,
         exclude_bands: str | list[str] | None = None,
-        date_ranges: (
-            tuple[str | None, str | None]
-            | tuple[tuple[str | None, str | None], ...]
-            | None
-        ) = None,
+        date_ranges: DATE_RANGES_TYPE,
         bbox: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
         intersects: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
         max_cloud_coverage: int | None = None,
@@ -2195,9 +2180,6 @@ class ImageCollection(_ImageBase):
     ) -> "ImageCollection":
         """Filter images and bands in the collection."""
         copied = self.copy() if copy else self
-
-        if isinstance(bbox, BoundingBox):
-            date_ranges = (bbox.mint, bbox.maxt)
 
         if date_ranges:
             copied = copied._filter_dates(date_ranges)
@@ -2210,11 +2192,11 @@ class ImageCollection(_ImageBase):
             ]
 
         if bbox is not None:
-            copied = copied._filter_bounds(bbox)
-            copied.set_bbox(bbox)
+            copied = copied.sfilter(bbox)
+            copied._set_bbox(bbox)
 
         if intersects is not None:
-            copied = copied._filter_bounds(intersects)
+            copied = copied.sfilter(intersects)
 
         if bands is not None:
             if isinstance(bands, str):
@@ -2242,9 +2224,7 @@ class ImageCollection(_ImageBase):
 
     def _filter_dates(
         self,
-        date_ranges: (
-            tuple[str | None, str | None] | tuple[tuple[str | None, str | None], ...]
-        ),
+        date_ranges: DATE_RANGES_TYPE,
     ) -> "ImageCollection":
         if not isinstance(date_ranges, (tuple, list)):
             raise TypeError(
@@ -2259,13 +2239,11 @@ class ImageCollection(_ImageBase):
         self.images = [
             img
             for img in self
-            if _date_is_within(
-                img.path, date_ranges, self.image_patterns, self.date_format
-            )
+            if _date_is_within(img.path, date_ranges, self.image_patterns)
         ]
         return self
 
-    def _filter_bounds(
+    def sfilter(
         self, other: GeoDataFrame | GeoSeries | Geometry | tuple
     ) -> "ImageCollection":
         if self._images is None:
@@ -2372,11 +2350,8 @@ class ImageCollection(_ImageBase):
         """Number of images."""
         return len(self.images)
 
-    def __getitem__(
-        self,
-        item: int | slice | Sequence[int | bool] | BoundingBox | Sequence[BoundingBox],
-    ) -> Image | TORCHGEO_RETURN_TYPE:
-        """Select one Image by integer index, or multiple Images by slice, list of int or torchgeo.BoundingBox."""
+    def __getitem__(self, item: int | slice | Sequence[int | bool]) -> Image:
+        """Select one Image by integer index, or multiple Images by slice, list of int."""
         if isinstance(item, int):
             return self.images[item]
 
@@ -2401,70 +2376,17 @@ class ImageCollection(_ImageBase):
             ]
             return copied
 
-        if not isinstance(item, BoundingBox) and not (
-            isinstance(item, Iterable)
-            and len(item)
-            and all(isinstance(x, BoundingBox) for x in item)
-        ):
-            copied = self.copy()
-            if callable(item):
-                item = [item(img) for img in copied]
+        copied = self.copy()
+        if callable(item):
+            item = [item(img) for img in copied]
 
-            # check for base bool and numpy bool
-            if all("bool" in str(type(x)) for x in item):
-                copied.images = [img for x, img in zip(item, copied, strict=True) if x]
+        # check for base bool and numpy bool
+        if all("bool" in str(type(x)) for x in item):
+            copied.images = [img for x, img in zip(item, copied, strict=True) if x]
 
-            else:
-                copied.images = [copied.images[i] for i in item]
-            return copied
-
-        if isinstance(item, BoundingBox):
-            date_ranges: tuple[str] = (item.mint, item.maxt)
-            data: torch.Tensor = numpy_to_torch(
-                np.array(
-                    [
-                        band.values
-                        for band in self.filter(
-                            bbox=item, date_ranges=date_ranges
-                        ).merge_by_band(bounds=item)
-                    ]
-                )
-            )
         else:
-            bboxes: list[Polygon] = [to_bbox(x) for x in item]
-            date_ranges: list[list[str, str]] = [(x.mint, x.maxt) for x in item]
-            data: torch.Tensor = torch.cat(
-                [
-                    numpy_to_torch(
-                        np.array(
-                            [
-                                band.values
-                                for band in self.filter(
-                                    bbox=bbox, date_ranges=date_range
-                                ).merge_by_band(bounds=bbox)
-                            ]
-                        )
-                    )
-                    for bbox, date_range in zip(bboxes, date_ranges, strict=True)
-                ]
-            )
-
-        crs = get_common_crs(self.images)
-
-        key = "image"  # if self.is_image else "mask"
-        sample = {key: data, "crs": crs, "bbox": item}
-
-        return sample
-
-    @property
-    def mint(self) -> float:
-        """Min timestamp of the images combined."""
-        return min(img.mint for img in self)
-
-    @property
-    def maxt(self) -> float:
-        """Max timestamp of the images combined."""
-        return max(img.maxt for img in self)
+            copied.images = [copied.images[i] for i in item]
+        return copied
 
     @property
     def band_ids(self) -> list[str]:
@@ -2563,28 +2485,6 @@ class ImageCollection(_ImageBase):
         self._images = list(new_value)
         if not all(isinstance(x, Image) for x in self._images):
             raise TypeError("images should be a sequence of Image.")
-
-    @property
-    def index(self) -> Index:
-        """Spatial index that makes torchgeo think this class is a RasterDataset."""
-        try:
-            if len(self) == len(self._index):
-                return self._index
-        except AttributeError:
-            self._index = Index(interleaved=False, properties=Property(dimension=3))
-
-            for i, img in enumerate(self.images):
-                if img.date:
-                    try:
-                        mint, maxt = disambiguate_timestamp(img.date, self.date_format)
-                    except (NameError, TypeError):
-                        mint, maxt = 0, 1
-                else:
-                    mint, maxt = 0, 1
-                # important: torchgeo has a different order of the bbox than shapely and geopandas
-                minx, miny, maxx, maxy = img.bounds
-                self._index.insert(i, (minx, maxx, miny, maxy, mint, maxt))
-            return self._index
 
     def __repr__(self) -> str:
         """String representation."""
@@ -2898,17 +2798,6 @@ def _get_images(
     return images
 
 
-def numpy_to_torch(array: np.ndarray) -> torch.Tensor:
-    """Convert numpy array to a pytorch tensor."""
-    # fix numpy dtypes which are not supported by pytorch tensors
-    if array.dtype == np.uint16:
-        array = array.astype(np.int32)
-    elif array.dtype == np.uint32:
-        array = array.astype(np.int64)
-
-    return torch.tensor(array)
-
-
 class _RegexError(ValueError):
     pass
 
@@ -3046,12 +2935,12 @@ def _get_first_group_match(pat: re.Pattern, text: str) -> dict[str, str]:
 
 def _date_is_within(
     path,
-    date_ranges: (
-        tuple[str | None, str | None] | tuple[tuple[str | None, str | None], ...] | None
-    ),
+    date_ranges: DATE_RANGES_TYPE,
     image_patterns: Sequence[re.Pattern],
-    date_format: str,
 ) -> bool:
+    if date_ranges is None:
+        return True
+
     for pat in image_patterns:
 
         try:
@@ -3063,41 +2952,22 @@ def _date_is_within(
     if date is None:
         return False
 
-    if date_ranges is None:
-        return True
+    date = pd.Timestamp(date)
 
-    if all(x is None or isinstance(x, (str, float)) for x in date_ranges):
+    if all(x is None or isinstance(x, str) for x in date_ranges):
         date_ranges = (date_ranges,)
-
-    if all(isinstance(x, float) for date_range in date_ranges for x in date_range):
-        date = disambiguate_timestamp(date, date_format)
-    else:
-        date = date[:8]
 
     for date_range in date_ranges:
         date_min, date_max = date_range
 
-        if isinstance(date_min, float) and isinstance(date_max, float):
-            if date[0] >= date_min + 0.0000001 and date[1] <= date_max - 0.0000001:
-                return True
-            continue
+        if date_min is not None:
+            date_min = pd.Timestamp(date_min)
+        if date_max is not None:
+            date_max = pd.Timestamp(date_max)
 
-        try:
-            date_min = date_min or "00000000"
-            date_max = date_max or "99999999"
-            if not (
-                isinstance(date_min, str)
-                and len(date_min) == 8
-                and isinstance(date_max, str)
-                and len(date_max) == 8
-            ):
-                raise ValueError()
-        except ValueError as err:
-            raise TypeError(
-                "date_ranges should be a tuple of two 8-charactered strings (start and end date)."
-                f"Got {date_range} of type {[type(x) for x in date_range]}"
-            ) from err
-        if date >= date_min and date <= date_max:
+        if (date_min is None or date >= date_min) and (
+            date_max is None or date <= date_max
+        ):
             return True
 
     return False
@@ -3134,6 +3004,17 @@ def _copy_and_add_df_parallel(
             img._bands = [band for band in img if band.band_id in band_ids]
 
     return (i, copied)
+
+
+def _get_bounds(bounds, bbox) -> None | Polygon:
+    if bounds is None and bbox is None:
+        return None
+    elif bounds is not None and bbox is None:
+        return to_shapely(bounds)  # .intersection(self.union_all())
+    elif bounds is None and bbox is not None:
+        return to_shapely(bbox)  # .intersection(self.union_all())
+    else:
+        return to_shapely(bounds).intersection(to_shapely(bbox))
 
 
 def _get_single_value(values: tuple):
@@ -3206,7 +3087,6 @@ class Sentinel2Config:
     ndvi_bands: ClassVar[list[str]] = config.SENTINEL2_NDVI_BANDS
     l2a_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L2A_BANDS
     l1c_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L1C_BANDS
-    date_format: ClassVar[str] = "%Y%m%d"  # T%H%M%S"
     masking: ClassVar[BandMasking] = BandMasking(
         band_id="SCL", values=(3, 8, 9, 10, 11)
     )
@@ -3218,7 +3098,6 @@ class Sentinel2CloudlessConfig(Sentinel2Config):
     image_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_IMAGE_REGEX,)
     filename_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_FILENAME_REGEX,)
     masking: ClassVar[None] = None
-    date_format: ClassVar[str] = "%Y%m%d"
     all_bands: ClassVar[list[str]] = [
         x.replace("B0", "B") for x in Sentinel2Config.all_bands
     ]
