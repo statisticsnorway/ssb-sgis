@@ -1143,6 +1143,25 @@ def _grouped_unary_union(
 
     Experimental. Messy code.
     """
+    try:
+        geom_col = df._geometry_column_name
+    except AttributeError:
+        try:
+            geom_col = df.name
+            if geom_col is None:
+                geom_col = "geometry"
+        except AttributeError:
+            geom_col = "geometry"
+
+    if isinstance(df, pd.Series):
+        return df.groupby(level=level, as_index=as_index, **kwargs).agg(
+            lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+        )
+
+    return df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
+        lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+    )
+
     df = df.copy()
     df_orig = df.copy()
 
