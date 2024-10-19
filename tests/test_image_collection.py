@@ -1,6 +1,6 @@
 # %%
-
 import inspect
+import re
 from collections.abc import Iterable
 from pathlib import Path
 from time import perf_counter
@@ -11,19 +11,6 @@ from geopandas import GeoSeries
 from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
 from shapely.geometry import Polygon
-
-try:
-    import torch
-    from lightning.pytorch import Trainer
-    from torch.utils.data import DataLoader
-    from torchgeo.datamodules import InriaAerialImageLabelingDataModule
-    from torchgeo.datasets import stack_samples
-    from torchgeo.datasets.utils import BoundingBox
-    from torchgeo.samplers import RandomBatchGeoSampler
-    from torchgeo.samplers import RandomGeoSampler
-    from torchgeo.trainers import SemanticSegmentationTask
-except ImportError:
-    pass
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -197,6 +184,31 @@ def test_explore():
     ], x
 
 
+def test_single_banded():
+    print("function:", inspect.currentframe().f_code.co_name)
+    collection = sg.ImageCollection(Path(testdata) / "ndvi", level=None, res=10)
+
+    assert len(collection) == 2, len(collection)
+    image_names = [img.name for img in collection]
+    assert image_names == ["copies", "ndvi"], image_names
+
+    single_banded = collection.explode()
+    assert len(single_banded) == 6, len(collection)
+    print([img.path for img in single_banded])
+    image_names = [img.name for img in single_banded]
+    assert image_names == [
+        "ndvi_T32VNM20170826_copy.tif",
+        "ndvi_T32VNM20230606_copy.tif",
+        "ndvi_T32VPM20230624_copy.tif",
+        "ndvi_T32VNM20170826.tif",
+        "ndvi_T32VNM20230606.tif",
+        "ndvi_T32VPM20230624.tif",
+    ], image_names
+
+    band_names = [band.name for img in single_banded for band in img]
+    assert band_names == image_names, band_names
+
+
 def test_ndvi():
     print("function:", inspect.currentframe().f_code.co_name)
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
@@ -310,6 +322,23 @@ def test_bbox():
     imgs = collection.filter(intersects=centroid)  # intersects=centroid)
     assert len(imgs) == 1, imgs
 
+    # same with indexing
+
+    no_imgs = collection[[img.intersects(Point(0, 0)) for img in collection]]
+    assert not len(no_imgs), no_imgs
+
+    centroid = collection[0].centroid
+    imgs = collection[[img.intersects(centroid) for img in collection]]
+    assert len(imgs) == 2, imgs
+
+    centroid = collection[1].centroid
+    imgs = collection[[img.intersects(centroid) for img in collection]]
+    assert len(imgs) == 2, imgs
+
+    centroid = collection[2].centroid
+    imgs = collection[[img.intersects(centroid) for img in collection]]
+    assert len(imgs) == 1, imgs
+
 
 def not_test_sample():
     print("function:", inspect.currentframe().f_code.co_name)
@@ -391,7 +420,6 @@ def not_test_sample():
     assert sample[2].date.startswith("2023")
 
 
-# @pytest.mark.skip(reason="This test takes forever on torchgeo bbox, need to investigate")
 def test_indexing():
     print("function:", inspect.currentframe().f_code.co_name)
     wrong_collection = sg.Sentinel2Collection(path_sentinel, level="L1C", res=10)
@@ -435,28 +463,6 @@ def test_indexing():
     assert isinstance((x := collection[0]["B02"]), sg.Band), x
 
     assert isinstance(collection[0]["B02"].load().values, np.ndarray)
-
-    # TODO temp
-    return
-
-    bounds = GeoSeries([collection[0].union_all()]).bounds
-    torchgeo_bbox = BoundingBox(
-        minx=bounds.minx[0],
-        miny=bounds.miny[0],
-        maxx=bounds.maxx[0],
-        maxy=bounds.maxy[0],
-        mint=collection.mint,
-        maxt=collection.maxt,
-    )
-    torchgeo_dict = collection[torchgeo_bbox]
-    assert isinstance(torchgeo_dict, dict), torchgeo_dict
-    assert isinstance(torchgeo_dict["image"], torch.Tensor), torchgeo_dict
-    assert isinstance(torchgeo_dict["bbox"], BoundingBox), torchgeo_dict
-
-    torchgeo_dict = collection[[torchgeo_bbox, torchgeo_bbox]]
-    assert isinstance(torchgeo_dict, dict), type(torchgeo_dict)
-    assert isinstance(torchgeo_dict["image"], torch.Tensor), torchgeo_dict["image"]
-    assert isinstance(torchgeo_dict["bbox"][0], BoundingBox), torchgeo_dict["bbox"]
 
 
 def test_sorting():
@@ -845,7 +851,8 @@ def test_groupby():
         assert isinstance(date, str), date
         assert date.startswith("20")
         assert isinstance(subcollection, sg.ImageCollection), type(subcollection)
-        assert len(subcollection.band_ids) in [12, 13], subcollection.band_ids
+        band_ids = list({band.band_id for img in subcollection for band in img})
+        assert len(band_ids) in [12, 13], band_ids
         for img in subcollection:
             assert isinstance(img, sg.Image), type(img)
             assert img.date == date
@@ -900,6 +907,13 @@ def test_groupby():
 def test_regexes():
     """Regex search should work even if some patterns give no matches."""
     print("function:", inspect.currentframe().f_code.co_name)
+
+    default_pat = re.compile(
+        sg.raster.image_collection.DEFAULT_FILENAME_REGEX, flags=re.VERBOSE
+    )
+    assert not re.search(default_pat, "ndvi")
+    assert re.search(default_pat, "ndvi.tif")
+
     orig_img_regexes = list(sg.Sentinel2Collection.image_regexes)
     orig_file_regexes = list(sg.Sentinel2Collection.filename_regexes)
 
@@ -985,7 +999,8 @@ def test_iteration():
     assert isinstance(collection, sg.Sentinel2Collection), type(collection)
     assert len(collection.images) == 3, len(collection.images)
 
-    assert len(collection.file_paths) == 36, len(collection.file_paths)
+    file_paths = list(sorted({band.path for img in collection for band in img}))
+    assert len(file_paths) == 36, len(file_paths)
     assert len(collection) == 3, len(collection)
 
     assert isinstance(collection.union_all(), MultiPolygon), collection.union_all()
@@ -1078,8 +1093,8 @@ def test_iteration_base_image_collection():
 
     assert len(collection.images) == 4, len(collection.images)
     assert len(collection) == 4, len(collection)
-    # assert len(collection.explode()) == 39, len(collection.explode())
-    assert len(collection.file_paths) == 55, len(collection.file_paths)
+    file_paths = list(sorted({band.path for img in collection for band in img}))
+    assert len(file_paths) == 55, len(file_paths)
 
     for img in collection:
         assert isinstance(img, sg.Image), type(img)
@@ -1139,88 +1154,41 @@ def test_convertion():
     assert (shape := from_gdf.values.shape) == (29, 29), shape
 
 
-def not_test_torch():
-    print("function:", inspect.currentframe().f_code.co_name)
-
+def test_to_xarray():
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
-    collection = collection
-    assert len(collection) == 3
     for img in collection:
-        assert len(img) == 12, len(img)
-
-    sampler = RandomGeoSampler(collection, size=16, length=10)
-    dataloader = DataLoader(
-        collection, batch_size=2, sampler=sampler, collate_fn=stack_samples
-    )
-
-    # Training loop
-    for batch in dataloader:
-        imgs = batch["image"]  # list of imgs
-        boxes = batch["boxes"]  # list of boxes
-        labels = batch["labels"]  # list of labels
-        masks = batch["masks"]  # list of masks
-        print(imgs)
-        assert len(imgs.shape) == 4, imgs.shape
-
-    sampler = RandomBatchGeoSampler(collection, size=16, length=10, batch_size=10)
-    dataloader = DataLoader(
-        collection, batch_size=2, sampler=sampler, collate_fn=stack_samples
-    )
-
-    # Training loop
-    for batch in dataloader:
-        images = batch["image"]  # list of images
-        boxes = batch["boxes"]  # list of boxes
-        labels = batch["labels"]  # list of labels
-        masks = batch["masks"]  # list of masks
-        print(images)
-        assert len(images.shape) == 4, images.shape
-
-    return
-
-    datamodule = InriaAerialImageLabelingDataModule(
-        # root=path_sentinel,
-        batch_size=64,
-        num_workers=6,
-    )
-    task = SemanticSegmentationTask(
-        model="unet",
-        backbone="resnet50",
-        weights=True,
-        in_channels=3,
-        num_classes=2,
-        loss="ce",
-        ignore_index=None,
-        lr=0.1,
-        patience=6,
-    )
-    trainer = Trainer(default_root_dir=path_sentinel)
-
-    trainer.fit(model=task, datamodule=datamodule)
+        for band in img:
+            band.load()
+            if band.mask_percentage == 0:
+                continue
+            xarr = band.to_xarray()
+            assert xarr.isnull().sum()
+            assert xarr.isnull().sum() == band.values.mask.sum()
 
 
 def main():
 
+    test_single_banded()
     test_regexes()
+    test_indexing()
+    test_bbox()
+    test_date_ranges()
+    test_to_xarray()
     test_convertion()
     test_masking()
-    test_with_mosaic()
-    test_bbox()
     test_buffer()
     test_iteration()
     test_ndvi()
     test_zonal()
     test_gradient()
-    test_groupby()
-    test_date_ranges()
-    not_test_torch()
     test_iteration_base_image_collection()
+    test_groupby()
     test_cloud()
+    test_with_mosaic()
     test_concat_image_collections()
     test_merge()
     not_test_sample()
-    test_indexing()
     not_test_sample()
     not_test_sample()
     not_test_sample()

@@ -4,9 +4,6 @@ config = {
 
 
 import sgis.raster.indices as indices
-from sgis.raster.raster import Raster
-from sgis.raster.raster import get_shape_from_bounds
-from sgis.raster.raster import get_transform_from_bounds
 
 from .geopandas_tools.bounds import Gridlooper
 from .geopandas_tools.bounds import bounds_to_points
@@ -121,8 +118,6 @@ from .networkanalysis.nodes import make_node_ids
 from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
 from .parallel.parallel import parallel_overlay
-from .raster.cube import DataCube
-from .raster.cube import concat_cubes
 from .raster.image_collection import Band
 from .raster.image_collection import Image
 from .raster.image_collection import ImageCollection

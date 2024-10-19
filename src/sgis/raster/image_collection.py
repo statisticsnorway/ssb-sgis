@@ -29,8 +29,6 @@ from geopandas import GeoSeries
 from google.auth import exceptions
 from matplotlib.colors import LinearSegmentedColormap
 from rasterio.enums import MergeAlg
-from rtree.index import Index
-from rtree.index import Property
 from scipy import stats
 from scipy.ndimage import binary_dilation
 from scipy.ndimage import binary_erosion
@@ -279,7 +277,7 @@ class BandMasking:
 
 
 class NoLevel:
-    pass
+    """Equivelant to None."""
 
 
 class _ImageBase:
@@ -287,7 +285,7 @@ class _ImageBase:
     filename_regexes: ClassVar[str | tuple[str]] = (DEFAULT_FILENAME_REGEX,)
     masking: ClassVar[BandMasking | None] = None
 
-    def __init__(self, *, bbox, **kwargs) -> None:
+    def __init__(self, *, bbox=None, **kwargs) -> None:
 
         self._mask = None
         self._bounds = None
@@ -462,8 +460,7 @@ class _ImageBandBase(_ImageBase):
             return self._name
         try:
             return Path(self.path).name
-        except (ValueError, AttributeError) as e:
-            raise e
+        except (ValueError, AttributeError):
             return None
 
     @name.setter
@@ -521,26 +518,28 @@ class Band(_ImageBandBase):
         res: int | None,
         crs: Any | None = None,
         bounds: tuple[float, float, float, float] | None = None,
-        cmap: str | None = None,
+        nodata: int | None = None,
+        mask: "Band | None" = None,
         file_system: GCSFileSystem | None = None,
         processes: int = 1,
         name: str | None = None,
         band_id: str | None = None,
-        mask: "Band | None" = None,
-        nodata: int | None = None,
-        bbox: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
+        cmap: str | None = None,
         **kwargs,
     ) -> None:
         """Band initialiser."""
-        super().__init__(bbox=bbox, **kwargs)
+        super().__init__(**kwargs)
+
+        if isinstance(data, (str | Path | os.PathLike)) and any(
+            arg is not None for arg in [crs, bounds]
+        ):
+            raise ValueError("Can only specify 'bounds' and 'crs' if data is an array.")
 
         self._mask = mask
         self._values = None
-        self._crs = None
         self.nodata = nodata
-
+        self._crs = crs
         bounds = to_bbox(bounds) if bounds is not None else None
-
         self._bounds = bounds
 
         if isinstance(data, np.ndarray):
@@ -693,23 +692,13 @@ class Band(_ImageBandBase):
 
         bounds_was_none = bounds is None
 
-        # get common bounds of function argument 'bounds' and previously set bbox
         bounds = _get_bounds(bounds, self._bbox)
-        # if bounds is None and self._bbox is None:
-        #     bounds = None
-        # elif bounds is not None and self._bbox is None:
-        #     bounds = to_shapely(bounds).intersection(self.union_all())
-        # elif bounds is None and self._bbox is not None:
-        #     bounds = to_shapely(self._bbox).intersection(self.union_all())
-        # else:
-        #     bounds = to_shapely(bounds).intersection(to_shapely(self._bbox))
 
         should_return_empty: bool = bounds is not None and bounds.area == 0
         if should_return_empty:
             self._values = np.array([])
             if self.mask is not None and not self.is_mask:
                 self._mask = self._mask.load()
-            # self._mask = np.ma.array([], [])
             self._bounds = None
             self.transform = None
             return self
@@ -823,9 +812,6 @@ class Band(_ImageBandBase):
             )
             mask_arr = self.mask.values
 
-            # if self.masking:
-            #     mask_arr = np.isin(mask_arr, self.masking["values"])
-
             self._values = np.ma.array(
                 self._values, mask=mask_arr, fill_value=self.nodata
             )
@@ -839,6 +825,7 @@ class Band(_ImageBandBase):
 
     @property
     def has_array(self) -> bool:
+        """Whether the array is loaded."""
         try:
             if not isinstance(self.values, np.ndarray):
                 raise ValueError()
@@ -1102,131 +1089,6 @@ class NDVIBand(Band):
     #     return get_cmap(arr)
 
 
-def get_cmap(arr: np.ndarray) -> LinearSegmentedColormap:
-
-    # blue = [[i / 10 + 0.1, i / 10 + 0.1, 1 - (i / 10) + 0.1] for i in range(11)][1:]
-    blue = [
-        [0.1, 0.1, 1.0],
-        [0.2, 0.2, 0.9],
-        [0.3, 0.3, 0.8],
-        [0.4, 0.4, 0.7],
-        [0.6, 0.6, 0.6],
-        [0.6, 0.6, 0.6],
-        [0.7, 0.7, 0.7],
-        [0.8, 0.8, 0.8],
-    ]
-    # gray = list(reversed([[i / 10 - 0.1, i / 10, i / 10 - 0.1] for i in range(11)][1:]))
-    gray = [
-        [0.6, 0.6, 0.6],
-        [0.6, 0.6, 0.6],
-        [0.6, 0.6, 0.6],
-        [0.6, 0.6, 0.6],
-        [0.6, 0.6, 0.6],
-        [0.4, 0.7, 0.4],
-        [0.3, 0.7, 0.3],
-        [0.2, 0.8, 0.2],
-    ]
-    # gray = [[0.6, 0.6, 0.6] for i in range(10)]
-    # green = [[0.2 + i/20, i / 10 - 0.1, + i/20] for i in range(11)][1:]
-    green = [
-        [0.25, 0.0, 0.05],
-        [0.3, 0.1, 0.1],
-        [0.35, 0.2, 0.15],
-        [0.4, 0.3, 0.2],
-        [0.45, 0.4, 0.25],
-        [0.5, 0.5, 0.3],
-        [0.55, 0.6, 0.35],
-        [0.7, 0.9, 0.5],
-    ]
-    green = [
-        [0.6, 0.6, 0.6],
-        [0.4, 0.7, 0.4],
-        [0.3, 0.8, 0.3],
-        [0.25, 0.4, 0.25],
-        [0.2, 0.5, 0.2],
-        [0.10, 0.7, 0.10],
-        [0, 0.9, 0],
-    ]
-
-    def get_start(arr):
-        min_value = np.min(arr)
-        if min_value < -0.75:
-            return 0
-        if min_value < -0.5:
-            return 1
-        if min_value < -0.25:
-            return 2
-        if min_value < 0:
-            return 3
-        if min_value < 0.25:
-            return 4
-        if min_value < 0.5:
-            return 5
-        if min_value < 0.75:
-            return 6
-        return 7
-
-    def get_stop(arr):
-        max_value = np.max(arr)
-        if max_value <= 0.05:
-            return 0
-        if max_value < 0.175:
-            return 1
-        if max_value < 0.25:
-            return 2
-        if max_value < 0.375:
-            return 3
-        if max_value < 0.5:
-            return 4
-        if max_value < 0.75:
-            return 5
-        return 6
-
-    cmap_name = "blue_gray_green"
-
-    start = get_start(arr)
-    stop = get_stop(arr)
-    blue = blue[start]
-    gray = gray[start]
-    # green = green[start]
-    green = green[stop]
-
-    # green[0] = np.arange(0, 1, 0.1)[::-1][stop]
-    # green[1] = np.arange(0, 1, 0.1)[stop]
-    # green[2] = np.arange(0, 1, 0.1)[::-1][stop]
-
-    print(green)
-    print(start, stop)
-    print("blue gray green")
-    print(blue)
-    print(gray)
-    print(green)
-
-    # Define the segments of the colormap
-    cdict = {
-        "red": [
-            (0.0, blue[0], blue[0]),
-            (0.3, gray[0], gray[0]),
-            (0.7, gray[0], gray[0]),
-            (1.0, green[0], green[0]),
-        ],
-        "green": [
-            (0.0, blue[1], blue[1]),
-            (0.3, gray[1], gray[1]),
-            (0.7, gray[1], gray[1]),
-            (1.0, green[1], green[1]),
-        ],
-        "blue": [
-            (0.0, blue[2], blue[2]),
-            (0.3, gray[2], gray[2]),
-            (0.7, gray[2], gray[2]),
-            (1.0, green[2], green[2]),
-        ],
-    }
-
-    return LinearSegmentedColormap(cmap_name, segmentdata=cdict, N=50)
-
-
 def median_as_int_and_minimum_dtype(arr: np.ndarray) -> np.ndarray:
     arr = np.median(arr, axis=0).astype(int)
     min_dtype = rasterio.dtypes.get_minimum_dtype(arr)
@@ -1243,21 +1105,19 @@ class Image(_ImageBandBase):
         self,
         data: str | Path | Sequence[Band],
         res: int | None = None,
-        crs: Any | None = None,
         file_system: GCSFileSystem | None = None,
         processes: int = 1,
         df: pd.DataFrame | None = None,
         all_file_paths: list[str] | None = None,
-        bbox: GeoDataFrame | GeoSeries | Geometry | tuple | None = None,
         nodata: int | None = None,
         **kwargs,
     ) -> None:
         """Image initialiser."""
-        super().__init__(bbox=bbox, **kwargs)
+        super().__init__(**kwargs)
 
         self.nodata = nodata
         self._res = res
-        self._crs = crs
+        self._crs = None
         self.file_system = file_system
         self.processes = processes
         self._all_file_paths = all_file_paths
@@ -1330,13 +1190,6 @@ class Image(_ImageBandBase):
         nir = copied[nir_band].load()
 
         arr: np.ndarray | np.ma.core.MaskedArray = ndvi(red.values, nir.values)
-
-        # if self.nodata is not None and not np.isnan(self.nodata):
-        #     try:
-        #         arr.data[arr.mask] = self.nodata
-        #         arr = arr.copy()
-        #     except AttributeError:
-        #         pass
 
         return NDVIBand(
             arr,
@@ -1482,11 +1335,7 @@ class Image(_ImageBandBase):
             self._bands = [
                 band
                 for band in self._bands
-                if any(
-                    # _get_first_group_match(pat, band.name)
-                    re.search(pat, band.name)
-                    for pat in self.filename_patterns
-                )
+                if any(re.search(pat, band.name) for pat in self.filename_patterns)
             ]
 
         if self.image_patterns:
@@ -1495,7 +1344,6 @@ class Image(_ImageBandBase):
                 for band in self._bands
                 if any(
                     re.search(pat, Path(band.path).parent.name)
-                    # _get_first_group_match(pat, Path(band.path).parent.name)
                     for pat in self.image_patterns
                 )
             ]
@@ -1684,12 +1532,11 @@ class ImageCollection(_ImageBase):
         processes: int = 1,
         file_system: GCSFileSystem | None = None,
         metadata: str | dict | pd.DataFrame | None = None,
-        bbox: Any | None = None,
         nodata: int | None = None,
         **kwargs,
     ) -> None:
         """Initialiser."""
-        super().__init__(bbox=bbox, **kwargs)
+        super().__init__(**kwargs)
 
         self.nodata = nodata
         self.level = level if not isinstance(level, NoLevel) else None
@@ -1799,10 +1646,13 @@ class ImageCollection(_ImageBase):
             img._bands = [func(band, **kwargs) for band in img]
         return self
 
+    def get_unique_band_ids(self) -> list[str]:
+        """Get a list of unique band_ids across all images."""
+        return list({band.band_id for img in self for band in img})
+
     def filter(
         self,
         bands: str | list[str] | None = None,
-        exclude_bands: str | list[str] | None = None,
         date_ranges: DATE_RANGES_TYPE = None,
         bbox: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
         intersects: GeoDataFrame | GeoSeries | Geometry | tuple[float] | None = None,
@@ -1823,11 +1673,11 @@ class ImageCollection(_ImageBase):
             ]
 
         if bbox is not None:
-            copied = copied.sfilter(bbox)
+            copied = copied._filter_bounds(bbox)
             copied._set_bbox(bbox)
 
         if intersects is not None:
-            copied = copied.sfilter(intersects)
+            copied = copied._filter_bounds(intersects)
 
         if bands is not None:
             if isinstance(bands, str):
@@ -1835,21 +1685,6 @@ class ImageCollection(_ImageBase):
             bands = set(bands)
             copied._band_ids = bands
             copied.images = [img[bands] for img in copied.images if bands in img]
-
-        if exclude_bands is not None:
-            if isinstance(exclude_bands, str):
-                exclude_bands = {exclude_bands}
-            else:
-                exclude_bands = set(exclude_bands)
-            include_bands: list[list[str]] = [
-                [band_id for band_id in img.band_ids if band_id not in exclude_bands]
-                for img in copied
-            ]
-            copied.images = [
-                img[bands]
-                for img, bands in zip(copied.images, include_bands, strict=False)
-                if bands
-            ]
 
         return copied
 
@@ -1933,12 +1768,6 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> Image:
         """Merge all areas to a single tile, one band per band_id."""
-        # bounds = to_bbox(bounds) if bounds is not None else self._bbox
-        # bounds = (
-        #     to_bbox(to_shapely(bounds).intersection(to_shapely(self._bbox)))
-        #     if bounds is not None
-        #     else self._bbox
-        # )
         bounds = _get_bounds(bounds, self._bbox)
         if bounds is not None:
             bounds = to_bbox(bounds)
@@ -2162,7 +1991,7 @@ class ImageCollection(_ImageBase):
         ]
         return self
 
-    def sfilter(
+    def _filter_bounds(
         self, other: GeoDataFrame | GeoSeries | Geometry | tuple
     ) -> "ImageCollection":
         if self._images is None:
@@ -2554,6 +2383,94 @@ class ImageCollection(_ImageBase):
                     plt.xlabel(x_var)
                     plt.ylabel(y_label)
                     plt.show()
+
+
+class Sentinel2Config:
+    """Holder of Sentinel 2 regexes, band_ids etc."""
+
+    image_regexes: ClassVar[str] = (config.SENTINEL2_IMAGE_REGEX,)
+    filename_regexes: ClassVar[str] = (
+        config.SENTINEL2_FILENAME_REGEX,
+        config.SENTINEL2_CLOUD_FILENAME_REGEX,
+    )
+    all_bands: ClassVar[list[str]] = list(config.SENTINEL2_BANDS)
+    rbg_bands: ClassVar[list[str]] = config.SENTINEL2_RBG_BANDS
+    ndvi_bands: ClassVar[list[str]] = config.SENTINEL2_NDVI_BANDS
+    l2a_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L2A_BANDS
+    l1c_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L1C_BANDS
+    masking: ClassVar[BandMasking] = BandMasking(
+        band_id="SCL", values=(3, 8, 9, 10, 11)
+    )
+
+
+class Sentinel2CloudlessConfig(Sentinel2Config):
+    """Holder of regexes, band_ids etc. for Sentinel 2 cloudless mosaic."""
+
+    image_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_IMAGE_REGEX,)
+    filename_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_FILENAME_REGEX,)
+    masking: ClassVar[None] = None
+    all_bands: ClassVar[list[str]] = [
+        x.replace("B0", "B") for x in Sentinel2Config.all_bands
+    ]
+    rbg_bands: ClassVar[list[str]] = [
+        x.replace("B0", "B") for x in Sentinel2Config.rbg_bands
+    ]
+    ndvi_bands: ClassVar[list[str]] = [
+        x.replace("B0", "B") for x in Sentinel2Config.ndvi_bands
+    ]
+
+
+class Sentinel2Band(Sentinel2Config, Band):
+    """Band with Sentinel2 specific name variables and regexes."""
+
+
+class Sentinel2Image(Sentinel2Config, Image):
+    """Image with Sentinel2 specific name variables and regexes."""
+
+    cloud_cover_regexes: ClassVar[tuple[str]] = config.CLOUD_COVERAGE_REGEXES
+    band_class: ClassVar[Sentinel2Band] = Sentinel2Band
+
+    def ndvi(
+        self,
+        red_band: str = Sentinel2Config.ndvi_bands[0],
+        nir_band: str = Sentinel2Config.ndvi_bands[1],
+        copy: bool = True,
+    ) -> NDVIBand:
+        """Calculate the NDVI for the Image."""
+        return super().ndvi(red_band=red_band, nir_band=nir_band, copy=copy)
+
+
+class Sentinel2Collection(Sentinel2Config, ImageCollection):
+    """ImageCollection with Sentinel2 specific name variables and path regexes."""
+
+    image_class: ClassVar[Sentinel2Image] = Sentinel2Image
+    band_class: ClassVar[Sentinel2Band] = Sentinel2Band
+
+    def __init__(self, data: str | Path | Sequence[Image], **kwargs) -> None:
+        """ImageCollection with Sentinel2 specific name variables and path regexes."""
+        if isinstance(kwargs.get("level"), NoLevel):
+            raise ValueError("Must specify level for Sentinel2Collection.")
+        super().__init__(data=data, **kwargs)
+
+
+class Sentinel2CloudlessBand(Sentinel2CloudlessConfig, Band):
+    """Band for cloudless mosaic with Sentinel2 specific name variables and regexes."""
+
+
+class Sentinel2CloudlessImage(Sentinel2CloudlessConfig, Sentinel2Image):
+    """Image for cloudless mosaic with Sentinel2 specific name variables and regexes."""
+
+    cloud_cover_regexes: ClassVar[None] = None
+    band_class: ClassVar[Sentinel2CloudlessBand] = Sentinel2CloudlessBand
+
+    ndvi = Sentinel2Image.ndvi
+
+
+class Sentinel2CloudlessCollection(Sentinel2CloudlessConfig, ImageCollection):
+    """ImageCollection with Sentinel2 specific name variables and regexes."""
+
+    image_class: ClassVar[Sentinel2CloudlessImage] = Sentinel2CloudlessImage
+    band_class: ClassVar[Sentinel2Band] = Sentinel2CloudlessBand
 
 
 def concat_image_collections(collections: Sequence[ImageCollection]) -> ImageCollection:
@@ -3000,88 +2917,126 @@ def array_buffer(arr: np.ndarray, distance: int) -> np.ndarray:
         return binary_erosion(arr, structure=structure).astype(dtype)
 
 
-class Sentinel2Config:
-    """Holder of Sentinel 2 regexes, band_ids etc."""
+def get_cmap(arr: np.ndarray) -> LinearSegmentedColormap:
 
-    image_regexes: ClassVar[str] = (config.SENTINEL2_IMAGE_REGEX,)
-    filename_regexes: ClassVar[str] = (
-        config.SENTINEL2_FILENAME_REGEX,
-        config.SENTINEL2_CLOUD_FILENAME_REGEX,
-    )
-    all_bands: ClassVar[list[str]] = list(config.SENTINEL2_BANDS)
-    rbg_bands: ClassVar[list[str]] = config.SENTINEL2_RBG_BANDS
-    ndvi_bands: ClassVar[list[str]] = config.SENTINEL2_NDVI_BANDS
-    l2a_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L2A_BANDS
-    l1c_bands: ClassVar[dict[str, int]] = config.SENTINEL2_L1C_BANDS
-    masking: ClassVar[BandMasking] = BandMasking(
-        band_id="SCL", values=(3, 8, 9, 10, 11)
-    )
-
-
-class Sentinel2CloudlessConfig(Sentinel2Config):
-    """Holder of regexes, band_ids etc. for Sentinel 2 cloudless mosaic."""
-
-    image_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_IMAGE_REGEX,)
-    filename_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_FILENAME_REGEX,)
-    masking: ClassVar[None] = None
-    all_bands: ClassVar[list[str]] = [
-        x.replace("B0", "B") for x in Sentinel2Config.all_bands
+    # blue = [[i / 10 + 0.1, i / 10 + 0.1, 1 - (i / 10) + 0.1] for i in range(11)][1:]
+    blue = [
+        [0.1, 0.1, 1.0],
+        [0.2, 0.2, 0.9],
+        [0.3, 0.3, 0.8],
+        [0.4, 0.4, 0.7],
+        [0.6, 0.6, 0.6],
+        [0.6, 0.6, 0.6],
+        [0.7, 0.7, 0.7],
+        [0.8, 0.8, 0.8],
     ]
-    rbg_bands: ClassVar[list[str]] = [
-        x.replace("B0", "B") for x in Sentinel2Config.rbg_bands
+    # gray = list(reversed([[i / 10 - 0.1, i / 10, i / 10 - 0.1] for i in range(11)][1:]))
+    gray = [
+        [0.6, 0.6, 0.6],
+        [0.6, 0.6, 0.6],
+        [0.6, 0.6, 0.6],
+        [0.6, 0.6, 0.6],
+        [0.6, 0.6, 0.6],
+        [0.4, 0.7, 0.4],
+        [0.3, 0.7, 0.3],
+        [0.2, 0.8, 0.2],
     ]
-    ndvi_bands: ClassVar[list[str]] = [
-        x.replace("B0", "B") for x in Sentinel2Config.ndvi_bands
+    # gray = [[0.6, 0.6, 0.6] for i in range(10)]
+    # green = [[0.2 + i/20, i / 10 - 0.1, + i/20] for i in range(11)][1:]
+    green = [
+        [0.25, 0.0, 0.05],
+        [0.3, 0.1, 0.1],
+        [0.35, 0.2, 0.15],
+        [0.4, 0.3, 0.2],
+        [0.45, 0.4, 0.25],
+        [0.5, 0.5, 0.3],
+        [0.55, 0.6, 0.35],
+        [0.7, 0.9, 0.5],
+    ]
+    green = [
+        [0.6, 0.6, 0.6],
+        [0.4, 0.7, 0.4],
+        [0.3, 0.8, 0.3],
+        [0.25, 0.4, 0.25],
+        [0.2, 0.5, 0.2],
+        [0.10, 0.7, 0.10],
+        [0, 0.9, 0],
     ]
 
+    def get_start(arr):
+        min_value = np.min(arr)
+        if min_value < -0.75:
+            return 0
+        if min_value < -0.5:
+            return 1
+        if min_value < -0.25:
+            return 2
+        if min_value < 0:
+            return 3
+        if min_value < 0.25:
+            return 4
+        if min_value < 0.5:
+            return 5
+        if min_value < 0.75:
+            return 6
+        return 7
 
-class Sentinel2Band(Sentinel2Config, Band):
-    """Band with Sentinel2 specific name variables and regexes."""
+    def get_stop(arr):
+        max_value = np.max(arr)
+        if max_value <= 0.05:
+            return 0
+        if max_value < 0.175:
+            return 1
+        if max_value < 0.25:
+            return 2
+        if max_value < 0.375:
+            return 3
+        if max_value < 0.5:
+            return 4
+        if max_value < 0.75:
+            return 5
+        return 6
 
+    cmap_name = "blue_gray_green"
 
-class Sentinel2Image(Sentinel2Config, Image):
-    """Image with Sentinel2 specific name variables and regexes."""
+    start = get_start(arr)
+    stop = get_stop(arr)
+    blue = blue[start]
+    gray = gray[start]
+    # green = green[start]
+    green = green[stop]
 
-    cloud_cover_regexes: ClassVar[tuple[str]] = config.CLOUD_COVERAGE_REGEXES
-    band_class: ClassVar[Sentinel2Band] = Sentinel2Band
+    # green[0] = np.arange(0, 1, 0.1)[::-1][stop]
+    # green[1] = np.arange(0, 1, 0.1)[stop]
+    # green[2] = np.arange(0, 1, 0.1)[::-1][stop]
 
-    def ndvi(
-        self,
-        red_band: str = Sentinel2Config.ndvi_bands[0],
-        nir_band: str = Sentinel2Config.ndvi_bands[1],
-        copy: bool = True,
-    ) -> NDVIBand:
-        """Calculate the NDVI for the Image."""
-        return super().ndvi(red_band=red_band, nir_band=nir_band, copy=copy)
+    print(green)
+    print(start, stop)
+    print("blue gray green")
+    print(blue)
+    print(gray)
+    print(green)
 
+    # Define the segments of the colormap
+    cdict = {
+        "red": [
+            (0.0, blue[0], blue[0]),
+            (0.3, gray[0], gray[0]),
+            (0.7, gray[0], gray[0]),
+            (1.0, green[0], green[0]),
+        ],
+        "green": [
+            (0.0, blue[1], blue[1]),
+            (0.3, gray[1], gray[1]),
+            (0.7, gray[1], gray[1]),
+            (1.0, green[1], green[1]),
+        ],
+        "blue": [
+            (0.0, blue[2], blue[2]),
+            (0.3, gray[2], gray[2]),
+            (0.7, gray[2], gray[2]),
+            (1.0, green[2], green[2]),
+        ],
+    }
 
-class Sentinel2Collection(Sentinel2Config, ImageCollection):
-    """ImageCollection with Sentinel2 specific name variables and regexes."""
-
-    image_class: ClassVar[Sentinel2Image] = Sentinel2Image
-    band_class: ClassVar[Sentinel2Band] = Sentinel2Band
-
-    def __init__(self, data: str | Path | Sequence[Image], **kwargs) -> None:
-        if isinstance(kwargs.get("level"), NoLevel):
-            raise ValueError("Must specify level for Sentinel2Collection.")
-        super().__init__(data=data, **kwargs)
-
-
-class Sentinel2CloudlessBand(Sentinel2CloudlessConfig, Band):
-    """Band for cloudless mosaic with Sentinel2 specific name variables and regexes."""
-
-
-class Sentinel2CloudlessImage(Sentinel2CloudlessConfig, Sentinel2Image):
-    """Image for cloudless mosaic with Sentinel2 specific name variables and regexes."""
-
-    cloud_cover_regexes: ClassVar[None] = None
-    band_class: ClassVar[Sentinel2CloudlessBand] = Sentinel2CloudlessBand
-
-    ndvi = Sentinel2Image.ndvi
-
-
-class Sentinel2CloudlessCollection(Sentinel2CloudlessConfig, ImageCollection):
-    """ImageCollection with Sentinel2 specific name variables and regexes."""
-
-    image_class: ClassVar[Sentinel2CloudlessImage] = Sentinel2CloudlessImage
-    band_class: ClassVar[Sentinel2Band] = Sentinel2CloudlessBand
+    return LinearSegmentedColormap(cmap_name, segmentdata=cdict, N=50)
