@@ -223,7 +223,9 @@ def is_single_geom_type(gdf: GeoDataFrame | GeoSeries) -> bool:
     return False
 
 
-def _get_geom_type(gdf):
+def _get_geom_type(
+    gdf: GeoDataFrame | GeoSeries | GeometryArray | np.ndarray,
+) -> np.ndarray:
     try:
         return GeometryArray(gdf.geometry.values).geom_type
     except AttributeError:
