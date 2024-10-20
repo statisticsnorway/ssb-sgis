@@ -26,7 +26,6 @@ import rasterio
 from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from google.auth import exceptions
 from matplotlib.colors import LinearSegmentedColormap
 from rasterio.enums import MergeAlg
 from scipy import stats
@@ -46,6 +45,17 @@ except ImportError:
 
     class GCSFileSystem:
         """Placeholder."""
+
+
+try:
+    from google.auth import exceptions
+except ImportError:
+
+    class exceptions:
+        """Placeholder."""
+
+        class RefreshError:
+            """Placeholder."""
 
 
 try:
