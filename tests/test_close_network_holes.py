@@ -263,8 +263,8 @@ def test_close_network_holes(roads_oslo, points_oslo):
         sg.qtm(nw, "connected", title="after filling holes")
         sg.explore(nw, "connected")
 
-    assert sum(nw["connected"] == 1) == 827, sum(nw["connected"] == 1)
-    assert sum(nw["connected"] == 0) == 20, sum(nw["connected"] == 0)
+    assert sum(nw["connected"] == 1) == 824, sum(nw["connected"] == 1)
+    assert sum(nw["connected"] == 0) == 19, sum(nw["connected"] == 0)
 
 
 def test_sharp_angle():

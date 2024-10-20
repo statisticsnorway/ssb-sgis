@@ -1154,12 +1154,16 @@ def _grouped_unary_union(
             geom_col = "geometry"
 
     if isinstance(df, pd.Series):
-        return df.groupby(level=level, as_index=as_index, **kwargs).agg(
-            lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+        return GeoSeries(
+            df.groupby(level=level, as_index=as_index, **kwargs).agg(
+                lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+            )
         )
 
-    return df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
-        lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+    return GeoSeries(
+        df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
+            lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+        )
     )
 
     df = df.copy()
