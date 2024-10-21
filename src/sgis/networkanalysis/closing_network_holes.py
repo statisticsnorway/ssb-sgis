@@ -10,7 +10,6 @@ from pandas import DataFrame
 
 from ..geopandas_tools.conversion import coordinate_array
 from ..geopandas_tools.general import get_line_segments
-from ..geopandas_tools.neighbors import get_k_nearest_neighbors
 from ..geopandas_tools.neighbors import k_nearest_neighbors
 from ..geopandas_tools.sfilter import sfilter
 from .nodes import make_edge_wkt_cols
@@ -74,74 +73,6 @@ def get_k_nearest_points_for_deadends(
     )
 
     return GeoDataFrame({"geometry": k_nearest_per_deadend.values}, crs=lines.crs)
-
-
-def get_k_closest_points_for_deadends(
-    lines: GeoDataFrame, k: int, max_distance: int
-) -> GeoDataFrame:
-
-    assert lines.index.is_unique
-    points = lines.extract_unique_points().explode(index_parts=False).sort_index()
-
-    points_grouper = points.groupby(level=0)
-    nodes = pd.concat(
-        [
-            points_grouper.nth(0),
-            points_grouper.nth(-1),
-        ]
-    )
-
-    def has_no_duplicates(nodes):
-        return nodes.isin(nodes.value_counts()[nodes.value_counts() == 1].index)
-
-    deadends = nodes[has_no_duplicates]
-
-    deadends_buffered = deadends.buffer(max_distance)
-
-    segs_by_deadends = (
-        sfilter(lines, deadends_buffered)
-        .pipe(get_line_segments)
-        .pipe(sfilter, deadends_buffered)
-    )
-
-    nearest_points = shapely.get_point(
-        shapely.shortest_line(
-            segs_by_deadends.geometry.values,
-            shapely.union_all(deadends.geometry.values),
-        ),
-        0,
-    )
-
-    return GeoDataFrame({"geometry": nearest_points}, crs=lines.crs)
-
-    deadends.index = pd.MultiIndex.from_arrays([deadends.index, range(len(deadends))])
-    points.index = pd.MultiIndex.from_arrays([points.index, range(len(points))])
-
-    nearest = (
-        get_k_nearest_neighbors(
-            deadends,
-            points,
-            k=k * 25,
-        )
-        .loc[
-            lambda x: (
-                pd.Index([g[0] for g in x.index])
-                != pd.Index([g[0] for g in x["neighbor_index"]])
-            )
-            & (x["distance"] <= max_distance)
-        ]
-        # .loc[lambda x: ~x.index.get_level_values(0).duplicated()]
-        .groupby(level=0)
-        .apply(lambda x: x.head(k))
-    )
-
-    return GeoDataFrame(
-        {
-            "geometry": nearest["neighbor_index"].map(points),
-            "neighbor_index": nearest["neighbor_index"],
-        },
-        crs=lines.crs,
-    )
 
 
 def close_network_holes(

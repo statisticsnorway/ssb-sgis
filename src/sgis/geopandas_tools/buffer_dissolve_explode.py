@@ -251,8 +251,6 @@ def _dissolve(
         aggfunc
     )
 
-    # dissolved = gdf.groupby(by, **dissolve_kwargs)[other_cols].agg(aggfunc)
-
     if n_jobs > 1:
         try:
             agged = _parallel_unary_union(
@@ -272,45 +270,11 @@ def _dissolve(
     geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
         lambda x: _unary_union_for_notna(x, grid_size=grid_size)
     )
-    # print("\n\n\ngeomsagged\n", geoms_agged, geoms_agged.shape)
-    # geoms_agged = _grouped_unary_union(many_hits, by, as_index=True, **dissolve_kwargs)
-    # print(geoms_agged, geoms_agged.shape)
-
-    # if not as_index:
-    #     try:
-    #         geoms_agged = geoms_agged[geom_col]
-    #     except KeyError:
-    #         pass
 
     dissolved[geom_col] = geoms_agged
 
     if not as_index:
         dissolved = dissolved.reset_index()
-    # else:
-    #     one_hit = one_hit.set
-    # dissolved = dissolved.reset_index()
-
-    # from ..maps.maps import explore, explore_locals
-    # from .conversion import to_gdf
-
-    # try:
-    #     explore(
-    #         dissolved=to_gdf(dissolved, 25833),
-    #         geoms_agged=to_gdf(geoms_agged, 25833),
-    #         gdf=gdf,
-    #         column="ARTYPE",
-    #     )
-    # except Exception:
-    #     explore(
-    #         dissolved=to_gdf(dissolved, 25833),
-    #         geoms_agged=to_gdf(geoms_agged, 25833),
-    #         gdf=gdf,
-    #     )
-
-    # from ..maps.maps import explore_locals
-    # from .conversion import to_gdf
-
-    # explore_locals()
 
     try:
         return GeoDataFrame(

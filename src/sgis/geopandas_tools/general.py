@@ -27,7 +27,6 @@ from shapely import union_all
 from shapely.geometry import LineString
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
-from shapely.geometry import Polygon
 
 from .conversion import coordinate_array
 from .conversion import to_bbox
@@ -617,8 +616,8 @@ def to_lines(
 
     out = []
     for i in gdf["_df_idx"].unique():
-        these = gdf[lambda x: x["_df_idx"] == i]
-        others = gdf.loc[lambda x: x["_df_idx"] != i, [geom_col]]
+        these = gdf[gdf["_df_idx"] == i]
+        others = gdf.loc[gdf["_df_idx"] != i, [geom_col]]
         intersection_points = these.overlay(others, keep_geom_type=False).explode(
             ignore_index=True
         )
@@ -834,9 +833,7 @@ def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
     return gdf
 
 
-def _prepare_make_edge_cols(
-    lines: GeoDataFrame, strict: bool = False
-) -> tuple[GeoDataFrame, GeoDataFrame]:
+def _prepare_make_edge_cols(lines: GeoDataFrame) -> tuple[GeoDataFrame, GeoDataFrame]:
 
     lines = lines.loc[lines.geom_type != "LinearRing"]
 
@@ -1165,74 +1162,6 @@ def _grouped_unary_union(
             lambda x: _unary_union_for_notna(x, grid_size=grid_size)
         )
     )
-
-    df = df.copy()
-    df_orig = df.copy()
-
-    try:
-        geom_col = df._geometry_column_name
-    except AttributeError:
-        try:
-            geom_col = df.name
-            if geom_col is None:
-                geom_col = "geometry"
-        except AttributeError:
-            geom_col = "geometry"
-
-    if not len(df):
-        return GeoSeries(name=geom_col)
-
-    if isinstance(df, pd.Series):
-        df.name = geom_col
-        original_index = df.index
-        df = df.reset_index()
-        df.index = original_index
-
-    if isinstance(by, str):
-        by = [by]
-    elif by is None and level is None:
-        raise TypeError("You have to supply one of 'by' and 'level'")
-    elif by is None:
-        by = df.index.get_level_values(level)
-
-    cumcount = df.groupby(by, dropna=dropna).cumcount().values
-
-    def get_col_or_index(df, col: str) -> pd.Series | pd.Index:
-        try:
-            return df[col]
-        except KeyError:
-            for i, name in enumerate(df.index.names):
-                if name == col:
-                    return df.index.get_level_values(i)
-        raise KeyError(col)
-
-    try:
-        df.index = pd.MultiIndex.from_arrays(
-            [cumcount, *[get_col_or_index(df, col) for col in by]]
-        )
-    except KeyError:
-        df.index = pd.MultiIndex.from_arrays([cumcount, by])
-
-    # to wide format: each row will be one group to be merged to one geometry
-    try:
-        geoms_wide: pd.DataFrame = df[geom_col].unstack(level=0)
-    except Exception as e:
-        bb = [*by, geom_col]
-        raise e.__class__(e, f"by={by}", df_orig[bb], df[geom_col]) from e
-    geometries_2d: NDArray[Polygon | None] = geoms_wide.values
-    try:
-        geometries_2d = make_valid(geometries_2d)
-    except TypeError:
-        # make_valid doesn't like nan, so converting to None
-        # np.isnan doesn't accept geometry type, so using isinstance
-        np_isinstance = np.vectorize(isinstance)
-        geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
-
-    unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
-
-    geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
-
-    return geoms if as_index else geoms.reset_index()
 
 
 def _parallel_unary_union(
