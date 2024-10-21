@@ -220,7 +220,7 @@ class Explore(Map):
         "OpenStreetMap",
         "dark",
         "norge_i_bilder",
-        "grunnkart",
+        # "grunnkart",
     )
 
     def __init__(
