@@ -12,9 +12,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pyproj
-import rasterio
 import shapely
-from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from numpy.typing import NDArray
@@ -22,7 +20,6 @@ from pandas.api.types import is_array_like
 from pandas.api.types import is_dict_like
 from pandas.api.types import is_list_like
 from pyproj import CRS
-from rasterio import features
 from shapely import Geometry
 from shapely import box
 from shapely import wkb
@@ -31,6 +28,20 @@ from shapely.errors import GEOSException
 from shapely.geometry import Point
 from shapely.geometry import shape
 from shapely.ops import unary_union
+
+try:
+    import rasterio
+    from rasterio import features
+except ImportError:
+    pass
+
+try:
+    from affine import Affine
+except ImportError:
+
+    class Affine:
+        """Placeholder."""
+
 
 try:
     from torchgeo.datasets.geo import RasterDataset
