@@ -118,6 +118,8 @@ from .networkanalysis.nodes import make_node_ids
 from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
 from .parallel.parallel import parallel_overlay
+from .parallel.parallel import parallel_overlay_rowwise
+from .parallel.parallel import parallel_sjoin
 from .raster.image_collection import Band
 from .raster.image_collection import Image
 from .raster.image_collection import ImageCollection
