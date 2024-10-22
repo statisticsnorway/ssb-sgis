@@ -10,6 +10,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from pandas.api.types import is_array_like
+
 try:
     import dapla as dp
 except ImportError:
@@ -672,48 +674,32 @@ class Parallel:
     def chunkwise(
         self,
         func: Callable,
-        df: GeoDataFrame,
+        iterable: Collection[Iterable[Any]],
         args: tuple | None = None,
         kwargs: dict | None = None,
         max_rows_per_chunk: int | None = None,
-        concat: bool = True,
-    ) -> GeoDataFrame:
+    ) -> Collection[Iterable[Any]]:
         """Run a function in parallel on chunks of a (Geo)DataFrame.
 
         Args:
             func: Function to run chunkwise. It should take
-                a (Geo)DataFrame as first argument.
-            df: (Geo)DataFrame to split in chunks and passed
+                (a chunk of) the iterable as first argument.
+            iterable: Iterable to split in chunks and passed
                 as first argument to 'func'.
             args: Positional arguments in 'func' after the DataFrame.
             kwargs: Additional keyword arguments in 'func'.
             max_rows_per_chunk: Alternatively decide number of chunks
                 by a maximum number of rows per chunk.
-            concat: Whether to use pd.concat on the results.
-                Defaults to True.
         """
-        args = args or ()
-        kwargs = kwargs or {}
-
-        if max_rows_per_chunk is None:
-            n_chunks: int = self.processes
-        elif max_rows_per_chunk is not None and len(df) < max_rows_per_chunk:
-            return func(df, *args, **kwargs)
-
-        chunks = np.array_split(np.arange(len(df)), n_chunks)
-
-        df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
-
-        out = self.map(
+        return chunkwise(
             func,
-            df_chunked,
+            iterable,
             args=args,
             kwargs=kwargs,
+            processes=self.processes,
+            max_rows_per_chunk=max_rows_per_chunk,
+            backend=self.backend,
         )
-        if concat:
-            return pd.concat(out, ignore_index=True)
-        else:
-            return out
 
     def _validate_execution(self, func: Callable) -> None:
         """Multiprocessing doesn't work with local variables in interactive interpreter.
@@ -1083,13 +1069,13 @@ def _fix_missing_muni_numbers(
 
 def chunkwise(
     func: Callable,
-    df: GeoDataFrame | pd.DataFrame,
-    max_rows_per_chunk: int | None = None,
+    iterable: Collection[Iterable[Any]],
     args: tuple | None = None,
     kwargs: dict | None = None,
     processes: int = 1,
+    max_rows_per_chunk: int | None = None,
     backend: str = "loky",
-) -> GeoDataFrame | pd.DataFrame:
+) -> Collection[Iterable[Any]]:
     """Run a function in parallel on chunks of a DataFrame.
 
     This method is used to process large (Geo)DataFrames in manageable pieces,
@@ -1098,11 +1084,11 @@ def chunkwise(
     Args:
         func: The function to apply to each chunk. This function must accept a DataFrame as
             its first argument and return a DataFrame.
-        df: The DataFrame to be chunked and processed.
-        max_rows_per_chunk: The maximum number of rows each chunk should contain.
+        iterable: Iterable to be chunked and processed.
         args: Additional positional arguments to pass to 'func'.
         kwargs: Keyword arguments to pass to 'func'.
         processes: The number of parallel jobs to run. Defaults to 1 (no parallel execution).
+        max_rows_per_chunk: The maximum number of rows each chunk should contain.
         backend: The backend to use for parallel execution (e.g., 'loky', 'multiprocessing').
 
     Returns:
@@ -1114,20 +1100,30 @@ def chunkwise(
     kwargs = kwargs or {}
 
     if max_rows_per_chunk is None:
-        n_chunks = len(df) // processes
+        n_chunks: int = processes
     else:
-        n_chunks = len(df) // max_rows_per_chunk
+        n_chunks: int = len(iterable) // max_rows_per_chunk
 
     if n_chunks <= 1:
-        return func(df, *args, **kwargs)
+        return func(iterable, *args, **kwargs)
 
-    chunks = np.array_split(np.arange(len(df)), n_chunks)
+    chunks = np.array_split(np.arange(len(iterable)), n_chunks)
 
-    df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
+    if hasattr(iterable, "iloc"):
+        iterable_chunked: list[pd.DataFrame | pd.Series] = [
+            iterable.iloc[chunk] for chunk in chunks
+        ]
+    elif is_array_like(iterable):
+        iterable_chunked: list[np.ndarray] = [iterable[chunk] for chunk in chunks]
+    else:
+        to_type: type = iterable.__class__
+        iterable_chunked: list[Iterable] = [
+            to_type(chunk) for chunk in np.array_split(list(iterable), n_chunks)
+        ]
 
     out = Parallel(processes, backend=backend).map(
         func,
-        df_chunked,
+        iterable_chunked,
         args=args,
         kwargs=kwargs,
     )

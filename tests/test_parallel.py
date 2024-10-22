@@ -93,32 +93,36 @@ def test_chunkwise():
     for backend in ["loky", "multiprocessing", "threading"]:
         print(backend)
 
-        res = (
-            sg.Parallel(2, backend=backend)
-            .chunkwise(sg.clean_overlay, df2, args=(df,))
-            .sort_values("_range_idx")
-        )
+        res = pd.concat(
+            sg.Parallel(2, backend=backend).chunkwise(
+                sg.clean_overlay, df2, args=(df,)
+            ),
+            ignore_index=True,
+        ).sort_values("_range_idx")
         assert res.equals(overlayed), (overlayed, res)
 
-        res = (
-            sg.Parallel(2, backend=backend)
-            .chunkwise(sg.clean_overlay, df2, kwargs=dict(df2=df))
-            .sort_values("_range_idx")
-        )
+        res = pd.concat(
+            sg.Parallel(2, backend=backend).chunkwise(
+                sg.clean_overlay, df2, kwargs=dict(df2=df)
+            ),
+            ignore_index=True,
+        ).sort_values("_range_idx")
         assert res.equals(overlayed), (overlayed, res)
 
-        res = (
-            sg.Parallel(2, backend=backend)
-            .chunkwise(sg.clean_overlay, df2, args=(df,), n_chunks=10)
-            .sort_values("_range_idx")
-        )
+        res = pd.concat(
+            sg.Parallel(2, backend=backend).chunkwise(
+                sg.clean_overlay, df2, args=(df,), n_chunks=10
+            ),
+            ignore_index=True,
+        ).sort_values("_range_idx")
         assert res.equals(overlayed), (overlayed, res)
 
-        res = (
-            sg.Parallel(2, backend=backend)
-            .chunkwise(sg.clean_overlay, df2, args=(df,), max_rows_per_chunk=10)
-            .sort_values("_range_idx")
-        )
+        res = pd.concat(
+            sg.Parallel(2, backend=backend).chunkwise(
+                sg.clean_overlay, df2, args=(df,), max_rows_per_chunk=10
+            ),
+            ignore_index=True,
+        ).sort_values("_range_idx")
         assert res.equals(overlayed), (overlayed, res)
 
 
