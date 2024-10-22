@@ -76,8 +76,8 @@ def parallel_overlay(
         A GeoDataFrame containing the result of the overlay operation.
     """
     return chunkwise(
-        df=df1,
-        func=_clean_overlay_with_print,
+        _clean_overlay_with_print,
+        df1,
         kwargs={
             "df2": df2,
             "to_print": to_print,
@@ -120,8 +120,8 @@ def parallel_overlay_rowwise(
         A GeoDataFrame containing the result of the overlay operation.
     """
     return chunkwise(
-        df=df1,
-        func=_clip_rowwise,
+        _clip_rowwise,
+        df1,
         kwargs={
             "df2": df2,
             "to_print": to_print,
@@ -163,8 +163,8 @@ def parallel_sjoin(
         A GeoDataFrame containing the result of the overlay operation.
     """
     return chunkwise(
-        df=df1,
-        func=_sjoin_within_first,
+        _sjoin_within_first,
+        df1,
         kwargs={
             "df2": df2,
             "to_print": to_print,
