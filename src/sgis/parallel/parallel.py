@@ -694,6 +694,9 @@ class Parallel:
             concat: Whether to use pd.concat on the results.
                 Defaults to True.
         """
+        args = args or ()
+        kwargs = kwargs or {}
+
         if max_rows_per_chunk is None and n_chunks is None:
             n_chunks: int = self.processes
         elif n_chunks is None:
@@ -1114,12 +1117,16 @@ def chunkwise(
             to each chunk of the original GeoDataFrame.
 
     """
+    args = args or ()
+    kwargs = kwargs or {}
+
+    if max_rows_per_chunk is None and n_chunks is None:
+        raise ValueError("Must specify either 'n_chunks' or 'max_rows_per_chunk'.")
     if max_rows_per_chunk is None:
         max_rows_per_chunk = len(df) // processes or 1
-    elif n_chunks is None:
-        max_rows_per_chunk = len(df) // n_chunks or 1
-    else:
-        raise ValueError("Must specify either 'n_chunks' or 'max_rows_per_chunk'.")
+    # elif n_chunks is None:
+    # n_chunks = len(df) // processes or 1
+    # else:
 
     if len(df) < max_rows_per_chunk:
         return func(df, *args, **kwargs)
