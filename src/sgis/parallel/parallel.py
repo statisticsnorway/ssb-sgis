@@ -222,10 +222,12 @@ def _clean_overlay_with_print(
     if how != "intersection":
         return clean_overlay(df1, df2, how=how, **kwargs)
 
-    cols_to_keep = df1.columns.union(df2.columns.difference({df2.geometry.name}))
+    df2 = df2.reset_index(drop=True)
     df2["_from_df2"] = 1
     joined = df1.sjoin(df2, predicate="within", how="left")
-    within = joined.loc[joined["_from_df2"].notna(), cols_to_keep]
+    within = joined.loc[joined["_from_df2"].notna()].drop(
+        columns=["_from_df2", "index_right"], errors="raise"
+    )
     not_within = joined.loc[joined["_from_df2"].isna(), df1.columns]
     return pd.concat(
         [
@@ -673,7 +675,6 @@ class Parallel:
         df: GeoDataFrame,
         args: tuple | None = None,
         kwargs: dict | None = None,
-        n_chunks: int | None = None,
         max_rows_per_chunk: int | None = None,
         concat: bool = True,
     ) -> GeoDataFrame:
@@ -682,13 +683,10 @@ class Parallel:
         Args:
             func: Function to run chunkwise. It should take
                 a (Geo)DataFrame as first argument.
-            df: (Geo)DataFrame to split in n_chunks and passed
+            df: (Geo)DataFrame to split in chunks and passed
                 as first argument to 'func'.
             args: Positional arguments in 'func' after the DataFrame.
             kwargs: Additional keyword arguments in 'func'.
-            n_chunks: Optionally set number of chunks to split
-                'df' into. Defaults to the 'processes' attribute
-                of the Parallel instance.
             max_rows_per_chunk: Alternatively decide number of chunks
                 by a maximum number of rows per chunk.
             concat: Whether to use pd.concat on the results.
@@ -697,10 +695,8 @@ class Parallel:
         args = args or ()
         kwargs = kwargs or {}
 
-        if max_rows_per_chunk is None and n_chunks is None:
+        if max_rows_per_chunk is None:
             n_chunks: int = self.processes
-        elif n_chunks is None:
-            n_chunks: int = len(df) // max_rows_per_chunk
         elif max_rows_per_chunk is not None and len(df) < max_rows_per_chunk:
             return func(df, *args, **kwargs)
 
@@ -1089,7 +1085,6 @@ def chunkwise(
     func: Callable,
     df: GeoDataFrame | pd.DataFrame,
     max_rows_per_chunk: int | None = None,
-    n_chunks: int | None = None,
     args: tuple | None = None,
     kwargs: dict | None = None,
     processes: int = 1,
@@ -1105,8 +1100,6 @@ def chunkwise(
             its first argument and return a DataFrame.
         df: The DataFrame to be chunked and processed.
         max_rows_per_chunk: The maximum number of rows each chunk should contain.
-        n_chunks: The exact number of chunks to divide the dataframe into. If None, it will be
-            calculated based on 'max_rows_per_chunk'.
         args: Additional positional arguments to pass to 'func'.
         kwargs: Keyword arguments to pass to 'func'.
         processes: The number of parallel jobs to run. Defaults to 1 (no parallel execution).
@@ -1120,19 +1113,13 @@ def chunkwise(
     args = args or ()
     kwargs = kwargs or {}
 
-    if max_rows_per_chunk is None and n_chunks is None:
-        raise ValueError("Must specify either 'n_chunks' or 'max_rows_per_chunk'.")
     if max_rows_per_chunk is None:
-        max_rows_per_chunk = len(df) // processes or 1
-    # elif n_chunks is None:
-    # n_chunks = len(df) // processes or 1
-    # else:
-
-    if len(df) < max_rows_per_chunk:
-        return func(df, *args, **kwargs)
-
-    if n_chunks is None:
+        n_chunks = len(df) // processes
+    else:
         n_chunks = len(df) // max_rows_per_chunk
+
+    if n_chunks <= 1:
+        return func(df, *args, **kwargs)
 
     chunks = np.array_split(np.arange(len(df)), n_chunks)
 
