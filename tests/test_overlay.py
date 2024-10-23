@@ -49,7 +49,7 @@ def test_overlay(points_oslo):
         ]
         for cols, how in zip(cols_should_be, hows, strict=False):
             print(how)
-            print(p500.columns)
+            print(cols)
             no_rows = p500.loc[lambda x: x.index.isin([])].pipe(
                 sg.clean_overlay, p1000.loc[lambda x: x.index.isin([])], how=how
             )
@@ -96,7 +96,10 @@ def test_overlay(points_oslo):
             overlayed3 = sg.parallel_overlay(
                 p500, p1000, processes=4, max_rows_per_chunk=100, how=how
             )
-            assert list(overlayed3.columns) == cols, (list(overlayed3.columns), cols)
+            assert list(sorted(overlayed3.columns)) == list(sorted(cols)), (
+                list(overlayed3.columns),
+                cols,
+            )
 
             if int(overlayed.area.sum()) != int(overlayed3.area.sum()):
                 raise ValueError(

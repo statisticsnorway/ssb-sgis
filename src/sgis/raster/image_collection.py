@@ -2617,22 +2617,23 @@ class Sentinel2Config:
     def _get_boa_add_offset_dict(self, xml_file: str) -> BandIdDict:
         pat = re.compile(
             r"""
-        <BOA_ADD_OFFSET\
-        band_id="(?P<band_id>\d+)"
-        >(?P<value>-?\d+)
-        </BOA_ADD_OFFSET>
-        """,
+    <BOA_ADD_OFFSET\s*
+    band_id="(?P<band_id>\d+)"\s*
+    >\s*(?P<value>-?\d+)\s*
+    </BOA_ADD_OFFSET>
+    """,
             flags=re.VERBOSE,
         )
+
         try:
-            return BandIdDict(
-                pd.DataFrame([x.groupdict() for x in re.finditer(pat, xml_file)])
-                .set_index("band_id")["value"]
-                .astype(int)
-                .to_dict()
-            )
+            matches = [x.groupdict() for x in re.finditer(pat, xml_file)]
         except (TypeError, AttributeError, KeyError) as e:
             raise _RegexError(f"Could not find boa_add_offset info from {pat}") from e
+        if not matches:
+            raise _RegexError(f"Could not find boa_add_offset info from {pat}")
+        return BandIdDict(
+            pd.DataFrame(matches).set_index("band_id")["value"].astype(int).to_dict()
+        )
 
 
 class Sentinel2CloudlessConfig(Sentinel2Config):

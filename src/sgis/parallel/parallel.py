@@ -75,18 +75,21 @@ def parallel_overlay(
     Returns:
         A GeoDataFrame containing the result of the overlay operation.
     """
-    return chunkwise(
-        _clean_overlay_with_print,
-        df1,
-        kwargs={
-            "df2": df2,
-            "to_print": to_print,
-            "how": how,
-        }
-        | kwargs,
-        processes=processes,
-        max_rows_per_chunk=max_rows_per_chunk,
-        backend=backend,
+    return pd.concat(
+        chunkwise(
+            _clean_overlay_with_print,
+            df1,
+            kwargs={
+                "df2": df2,
+                # "to_print": to_print,
+                "how": how,
+            }
+            | kwargs,
+            processes=processes,
+            max_rows_per_chunk=max_rows_per_chunk,
+            backend=backend,
+        ),
+        ignore_index=True,
     )
 
 
@@ -119,17 +122,20 @@ def parallel_overlay_rowwise(
     Returns:
         A GeoDataFrame containing the result of the overlay operation.
     """
-    return chunkwise(
-        _clip_rowwise,
-        df1,
-        kwargs={
-            "df2": df2,
-            "to_print": to_print,
-        }
-        | kwargs,
-        processes=processes,
-        max_rows_per_chunk=max_rows_per_chunk,
-        backend=backend,
+    return pd.concat(
+        chunkwise(
+            _clip_rowwise,
+            df1,
+            kwargs={
+                "df2": df2,
+                "to_print": to_print,
+            }
+            | kwargs,
+            processes=processes,
+            max_rows_per_chunk=max_rows_per_chunk,
+            backend=backend,
+        ),
+        ignore_index=True,
     )
 
 
@@ -162,17 +168,20 @@ def parallel_sjoin(
     Returns:
         A GeoDataFrame containing the result of the overlay operation.
     """
-    return chunkwise(
-        _sjoin_within_first,
-        df1,
-        kwargs={
-            "df2": df2,
-            "to_print": to_print,
-        }
-        | kwargs,
-        processes=processes,
-        max_rows_per_chunk=max_rows_per_chunk,
-        backend=backend,
+    return pd.concat(
+        chunkwise(
+            _sjoin_within_first,
+            df1,
+            kwargs={
+                "df2": df2,
+                "to_print": to_print,
+            }
+            | kwargs,
+            processes=processes,
+            max_rows_per_chunk=max_rows_per_chunk,
+            backend=backend,
+        ),
+        ignore_index=True,
     )
 
 
@@ -181,13 +190,18 @@ def _sjoin_within_first(
 ):
     if to_print:
         print(to_print, "- sjoin chunk len:", len(df1))
-    cols_to_keep = df1.columns.union(df2.columns.difference({df2.geometry.name}))
+
+    df2 = df2.reset_index(drop=True)
     df2["_from_df2"] = 1
+    df1["_range_idx"] = range(len(df1))
     joined = df1.sjoin(df2, predicate="within", how="left")
-    within = joined.loc[joined["_from_df2"].notna(), cols_to_keep]
-    if predicate == "within":
-        return within
-    not_within = joined.loc[joined["_from_df2"].isna(), df1.columns]
+    within = joined.loc[joined["_from_df2"].notna()].drop(
+        columns=["_from_df2", "_range_idx", "index_right"], errors="raise"
+    )
+    not_within = df1.loc[
+        df1["_range_idx"].isin(joined.loc[joined["_from_df2"].isna(), "_range_idx"])
+    ]
+
     return pd.concat(
         [
             within,
@@ -221,23 +235,7 @@ def _clean_overlay_with_print(
 ) -> GeoDataFrame:
     if to_print:
         print(to_print, f"- {how} chunk len:", len(df1))
-    if how != "intersection":
-        return clean_overlay(df1, df2, how=how, **kwargs)
-
-    df2 = df2.reset_index(drop=True)
-    df2["_from_df2"] = 1
-    joined = df1.sjoin(df2, predicate="within", how="left")
-    within = joined.loc[joined["_from_df2"].notna()].drop(
-        columns=["_from_df2", "index_right"], errors="raise"
-    )
-    not_within = joined.loc[joined["_from_df2"].isna(), df1.columns]
-    return pd.concat(
-        [
-            within,
-            clean_overlay(not_within, df2, how="intersection"),
-        ],
-        ignore_index=True,
-    )
+    return clean_overlay(df1, df2, how=how, **kwargs)
 
 
 class Parallel:
@@ -1092,8 +1090,7 @@ def chunkwise(
         backend: The backend to use for parallel execution (e.g., 'loky', 'multiprocessing').
 
     Returns:
-        GeoDataFrame: A GeoDataFrame resulting from concatenating the results of applying 'func'
-            to each chunk of the original GeoDataFrame.
+        Iterable of iterable.
 
     """
     args = args or ()
@@ -1105,7 +1102,7 @@ def chunkwise(
         n_chunks: int = len(iterable) // max_rows_per_chunk
 
     if n_chunks <= 1:
-        return func(iterable, *args, **kwargs)
+        return [func(iterable, *args, **kwargs)]
 
     chunks = np.array_split(np.arange(len(iterable)), n_chunks)
 
@@ -1121,13 +1118,12 @@ def chunkwise(
             to_type(chunk) for chunk in np.array_split(list(iterable), n_chunks)
         ]
 
-    out = Parallel(processes, backend=backend).map(
+    return Parallel(processes, backend=backend).map(
         func,
         iterable_chunked,
         args=args,
         kwargs=kwargs,
     )
-    return pd.concat(out, ignore_index=True)
 
 
 def _turn_args_into_kwargs(func: Callable, args: tuple, index_start: int) -> dict:

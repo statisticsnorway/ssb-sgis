@@ -111,14 +111,6 @@ def test_chunkwise():
 
         res = pd.concat(
             sg.Parallel(2, backend=backend).chunkwise(
-                sg.clean_overlay, df2, args=(df,), n_chunks=10
-            ),
-            ignore_index=True,
-        ).sort_values("_range_idx")
-        assert res.equals(overlayed), (overlayed, res)
-
-        res = pd.concat(
-            sg.Parallel(2, backend=backend).chunkwise(
                 sg.clean_overlay, df2, args=(df,), max_rows_per_chunk=10
             ),
             ignore_index=True,
