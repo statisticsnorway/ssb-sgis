@@ -1,5 +1,6 @@
 # %%
 import inspect
+import os
 import re
 from collections.abc import Iterable
 from pathlib import Path
@@ -21,6 +22,7 @@ sys.path.insert(0, src)
 
 
 import sgis as sg
+from sgis.raster.image_collection import BandIdDict
 
 path_sentinel = testdata + "/sentinel2"
 path_singleband = testdata + "/dtm_10.tif"
@@ -418,6 +420,117 @@ def not_test_sample():
     assert sample[0].date.startswith("2017")
     assert sample[1].date.startswith("2023")
     assert sample[2].date.startswith("2023")
+
+
+def test_collection_from_list_of_path():
+    paths = [Path(path_sentinel) / name for name in os.listdir(path_sentinel)]
+    collection = sg.Sentinel2Collection(
+        paths,
+        level="L2A",
+        res=10,
+    )
+    len(collection)  # trigger image creation
+    collection2 = sg.Sentinel2Collection(
+        path_sentinel,
+        level="L2A",
+        res=10,
+    )
+    len(collection2)  # trigger image creation
+
+    assert collection.equals(collection2)
+
+    collection3 = sg.Sentinel2Collection(
+        [sg.Sentinel2Image(path, res=10) for path in paths if "L2A" in str(path)],
+        level="L2A",
+        res=10,
+    )
+    len(collection3)  # trigger image creation
+
+    assert collection.equals(collection3)
+
+    collection4 = sg.Sentinel2Collection(
+        [
+            sg.Sentinel2Image(
+                [
+                    sg.Sentinel2Band(Path(path) / name, res=10)
+                    for name in os.listdir(path)
+                    if ".tif" in name and "SCL" not in name
+                ]
+            )
+            for path in paths
+            if "L2A" in str(path)
+        ],
+        level="L2A",
+        res=10,
+    )
+    len(collection4)  # trigger image creation
+
+    assert collection.equals(collection4)
+
+
+def test_metadata_attributes():
+    """Metadata attributes should be accessible through xml files for both Band, Image and Collection."""
+    print("function:", inspect.currentframe().f_code.co_name)
+
+    first_img_path = (
+        Path(path_sentinel)
+        / "S2A_MSIL2A_20230624T104621_N0509_R051_T32VPM_20230624T170454.SAFE"
+    )
+
+    img = sg.Sentinel2Image(first_img_path, res=10)
+    assert img.processing_baseline == "05.00", img.processing_baseline
+    assert int(img.cloud_coverage_percentage) == 25, img.cloud_coverage_percentage
+    assert img.is_refined is True, img.is_refined
+    assert isinstance(img.boa_add_offset, BandIdDict), img.boa_add_offset
+    assert len(img.boa_add_offset) == 13, (len(img.boa_add_offset), img.boa_add_offset)
+
+    band = sg.Sentinel2Band(
+        first_img_path / "T32VPM_20230624T104621_B02_10m_clipped.tif", res=10
+    )
+    assert band.processing_baseline == "05.00", band.processing_baseline
+    assert int(band.cloud_coverage_percentage) == 25, band.cloud_coverage_percentage
+    assert band.is_refined is True, band.is_refined
+    assert band.boa_add_offset == -1000, band.boa_add_offset
+
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+
+    for img in collection:
+        assert img.processing_baseline in [
+            "02.08",
+            "05.09",
+            "05.00",
+        ], img.processing_baseline
+        for band in img:
+            assert band.processing_baseline in [
+                "02.08",
+                "05.09",
+                "05.00",
+            ], band.processing_baseline
+
+            assert band.boa_add_offset in [-1000, None], band.boa_add_offset
+
+    assert (x := list(collection.processing_baseline)) == ["02.08", "05.09", "05.00"], x
+
+    assert (x := list(collection.is_refined)) == [False, True, True], x
+
+    assert (x := list(collection.cloud_coverage_percentage.fillna(0).astype(int))) == [
+        36,
+        0,
+        25,
+    ], x
+
+    only_high_cloud_percentage = collection[collection.cloud_coverage_percentage > 30]
+    assert len(only_high_cloud_percentage) == 1, len(only_high_cloud_percentage)
+
+    only_correct_processing_baseline = collection[
+        collection.processing_baseline.isin(["05.00", "05.10"])
+    ]
+    assert len(only_correct_processing_baseline) == 1, len(
+        only_correct_processing_baseline
+    )
+
+    only_refined = collection[collection.is_refined]
+    assert len(only_refined) == 2, len(only_refined)
 
 
 def test_indexing():
@@ -1169,9 +1282,11 @@ def test_to_xarray():
 
 def main():
 
-    test_single_banded()
-    test_regexes()
+    test_metadata_attributes()
+    test_collection_from_list_of_path()
     test_indexing()
+    test_regexes()
+    test_single_banded()
     test_bbox()
     test_date_ranges()
     test_to_xarray()

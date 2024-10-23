@@ -97,6 +97,12 @@ from .base import _get_shape_from_bounds
 from .base import _get_transform_from_bounds
 from .base import get_index_mapper
 from .indices import ndvi
+from .regex import _any_regex_matches
+from .regex import _extract_regex_match_from_string
+from .regex import _get_first_group_match
+from .regex import _get_non_optional_groups
+from .regex import _get_regexes_matches_for_df
+from .regex import _RegexError
 from .zonal import _aggregate
 from .zonal import _make_geometry_iterrows
 from .zonal import _no_overlap_df
@@ -147,12 +153,12 @@ ALLOWED_INIT_KWARGS = [
     "band_class",
     "image_regexes",
     "filename_regexes",
-    "cloud_cover_regexes",
     "bounds_regexes",
     "all_bands",
     "crs",
     "masking",
     "_merged",
+    "_add_metadata_attributes",
 ]
 
 
@@ -274,6 +280,35 @@ class ImageCollectionGroupBy:
         return f"{self.__class__.__name__}({len(self)})"
 
 
+def standardize_band_id(x: str) -> str:
+    return x.replace("B", "").replace("A", "").zfill(2)
+
+
+class BandIdDict(dict):
+    """Dict that tells the band initialiser to get the dict value of the band_id."""
+
+    def __init__(self, data: dict | None = None, **kwargs) -> None:
+        """Add dicts or kwargs."""
+        self._standardized_keys = {}
+        for key, value in ((data or {}) | kwargs).items():
+            setattr(self, key, value)
+            self._standardized_keys[standardize_band_id(key)] = value
+
+    def __len__(self) -> int:
+        """Number of items."""
+        return len({key for key in self.__dict__ if key != "_standardized_keys"})
+
+    def __getitem__(self, item: str) -> Any:
+        """Get dict value from key."""
+        try:
+            return getattr(self, item)
+        except AttributeError as e:
+            try:
+                return self._standardized_keys[standardize_band_id(item)]
+            except KeyError:
+                raise KeyError(item, self.__dict__) from e
+
+
 @dataclass(frozen=True)
 class BandMasking:
     """Frozen dict with forced keys."""
@@ -293,6 +328,7 @@ class NoLevel:
 class _ImageBase:
     image_regexes: ClassVar[str | None] = (DEFAULT_IMAGE_REGEX,)
     filename_regexes: ClassVar[str | tuple[str]] = (DEFAULT_FILENAME_REGEX,)
+    metadata_attributes: ClassVar[dict | None] = None
     masking: ClassVar[BandMasking | None] = None
 
     def __init__(self, *, bbox=None, **kwargs) -> None:
@@ -302,6 +338,7 @@ class _ImageBase:
         self._merged = False
         self._from_array = False
         self._from_gdf = False
+        self.metadata_attributes = self.metadata_attributes or {}
 
         self._bbox = to_bbox(bbox) if bbox is not None else None
 
@@ -431,6 +468,15 @@ class _ImageBase:
                 continue
         return copied
 
+    def equals(self, other) -> bool:
+        for key, value in self.__dict__.items():
+            if key.startswith("_"):
+                continue
+            if value != getattr(other, key):
+                print(key, value, getattr(other, key))
+                return False
+        return True
+
 
 class _ImageBandBase(_ImageBase):
     """Common parent class of Image and Band."""
@@ -488,6 +534,58 @@ class _ImageBandBase(_ImageBase):
     def level(self) -> str:
         return self._name_regex_searcher("level", self.image_patterns)
 
+    def _add_metadata_attributes(self):
+
+        missing_attributes = {}
+        for key, value in self.metadata_attributes.items():
+            if getattr(self, key) is None:
+                missing_attributes[key] = value
+
+        if not missing_attributes:
+            return
+
+        file_contents: list[str] = []
+        for path in self._all_file_paths:
+            if ".xml" not in path:
+                continue
+            with _open_func(path, "rb") as file:
+                file_contents.append(file.read().decode("utf-8"))
+
+        for key, value in missing_attributes.items():
+            results = None
+            for i, filetext in enumerate(file_contents):
+                if isinstance(value, str) and value in dir(self):
+                    method = getattr(self, value)
+                    try:
+                        results = method(filetext)
+                    except _RegexError as e:
+                        if i == len(self._all_file_paths) - 1:
+                            raise e
+                        continue
+                    if results is not None:
+                        break
+
+                if callable(value):
+                    try:
+                        results = value(filetext)
+                    except _RegexError as e:
+                        if i == len(self._all_file_paths) - 1:
+                            raise e
+                        continue
+                    if results is not None:
+                        break
+
+                try:
+                    results = _extract_regex_match_from_string(filetext, value)
+                except _RegexError as e:
+                    if i == len(self._all_file_paths) - 1:
+                        raise e
+
+            if isinstance(results, BandIdDict) and isinstance(self, Band):
+                results = results[self.band_id]
+
+            setattr(self, key, results)
+
 
 class Band(_ImageBandBase):
     """Band holding a single 2 dimensional array representing an image band."""
@@ -535,6 +633,7 @@ class Band(_ImageBandBase):
         name: str | None = None,
         band_id: str | None = None,
         cmap: str | None = None,
+        all_file_paths: list[str] | None = None,
         **kwargs,
     ) -> None:
         """Band initialiser."""
@@ -551,6 +650,10 @@ class Band(_ImageBandBase):
         self._crs = crs
         bounds = to_bbox(bounds) if bounds is not None else None
         self._bounds = bounds
+        self._all_file_paths = all_file_paths
+
+        for key in self.metadata_attributes:
+            setattr(self, key, None)
 
         if isinstance(data, np.ndarray):
             self.values = data
@@ -578,9 +681,33 @@ class Band(_ImageBandBase):
         self._band_id = band_id
         self.processes = processes
 
+        if (
+            kwargs.get("_add_metadata_attributes", True)
+            and self.metadata_attributes
+            and self.path is not None
+        ):
+            if self._all_file_paths is None:
+                self._all_file_paths = _get_all_file_paths(str(Path(self.path).parent))
+            self._add_metadata_attributes()
+
     def __lt__(self, other: "Band") -> bool:
         """Makes Bands sortable by band_id."""
         return self.band_id < other.band_id
+
+    # def __getattribute__(self, attr: str) -> Any:
+    #     # try:
+    #     #     value =
+    #     # except AttributeError:
+    #     #     value = None
+
+    #     if (
+    #         attr in (super().__getattribute__("metadata_attributes") or {})
+    #         and super().__getattribute__(attr) is None
+    #     ):
+    #         if self._all_file_paths is None:
+    #             self._all_file_paths = _get_all_file_paths(str(Path(self.path).parent))
+    #         self._add_metadata_attributes()
+    #     return super().__getattribute__(attr)
 
     @property
     def values(self) -> np.ndarray:
@@ -1108,7 +1235,6 @@ def median_as_int_and_minimum_dtype(arr: np.ndarray) -> np.ndarray:
 class Image(_ImageBandBase):
     """Image consisting of one or more Bands."""
 
-    cloud_cover_regexes: ClassVar[tuple[str] | None] = None
     band_class: ClassVar[Band] = Band
 
     def __init__(
@@ -1118,8 +1244,8 @@ class Image(_ImageBandBase):
         file_system: GCSFileSystem | None = None,
         processes: int = 1,
         df: pd.DataFrame | None = None,
-        all_file_paths: list[str] | None = None,
         nodata: int | None = None,
+        all_file_paths: list[str] | None = None,
         **kwargs,
     ) -> None:
         """Image initialiser."""
@@ -1130,7 +1256,6 @@ class Image(_ImageBandBase):
         self._crs = None
         self.file_system = file_system
         self.processes = processes
-        self._all_file_paths = all_file_paths
 
         if hasattr(data, "__iter__") and all(isinstance(x, Band) for x in data):
             self._bands = list(data)
@@ -1148,14 +1273,23 @@ class Image(_ImageBandBase):
             raise TypeError("'data' must be string, Path-like or a sequence of Band.")
 
         self._bands = None
-        self._path = str(data).rstrip("/").rstrip(r"\"")
+        self._path = _fix_path(data)  # str(data).rstrip("/").rstrip(r"\"")
+
+        if all_file_paths is None and self.path:
+            self._all_file_paths = _get_all_file_paths(self.path)
+        elif self.path:
+            self._all_file_paths = [
+                x for x in all_file_paths if self.path in _fix_path(x)
+            ]
+        else:
+            self._all_file_paths = None
 
         if df is None:
-            file_paths = _get_all_file_paths(self.path)
+            # file_paths = _get_all_file_paths(self.path)
 
-            if not file_paths:
-                file_paths = [self.path]
-            df = self._create_metadata_df(file_paths)
+            if not self._all_file_paths:
+                self._all_file_paths = [self.path]
+            df = self._create_metadata_df(self._all_file_paths)
 
         df["image_path"] = df["image_path"].astype(str)
 
@@ -1173,20 +1307,13 @@ class Image(_ImageBandBase):
 
         df = df.loc[lambda x: x["image_path"] == _fix_path(self.path)]
 
-        if self.cloud_cover_regexes:
-            if all_file_paths is None:
-                file_paths = _ls_func(self.path)
-            else:
-                file_paths = [path for path in all_file_paths if self.name in path]
-            self.cloud_coverage_percentage = float(
-                _get_regex_match_from_xml_in_local_dir(
-                    file_paths, regexes=self.cloud_cover_regexes
-                )
-            )
-        else:
-            self.cloud_coverage_percentage = None
-
         self._df = df
+
+        for key in self.metadata_attributes:
+            setattr(self, key, None)
+
+        if self.metadata_attributes:
+            self._add_metadata_attributes()
 
     @property
     def values(self) -> np.ndarray:
@@ -1277,6 +1404,7 @@ class Image(_ImageBandBase):
             )
         self._mask = self.band_class(
             mask_paths[0],
+            _add_metadata_attributes=False,
             **self._common_init_kwargs,
         )
 
@@ -1322,6 +1450,7 @@ class Image(_ImageBandBase):
             self.band_class(
                 path,
                 mask=self.mask,
+                _add_metadata_attributes=False,
                 **self._common_init_kwargs,
             )
             for path in (self._df["file_path"])
@@ -1360,6 +1489,18 @@ class Image(_ImageBandBase):
 
         if self._should_be_sorted:
             self._bands = list(sorted(self._bands))
+
+        for key in self.metadata_attributes:
+            for band in self:
+                value = getattr(self, key)
+                if value is None:
+                    continue
+                if isinstance(value, BandIdDict):
+                    try:
+                        value = value[band.band_id]
+                    except KeyError:
+                        continue
+                setattr(band, key, value)
 
         return self._bands
 
@@ -1533,10 +1674,11 @@ class ImageCollection(_ImageBase):
 
     image_class: ClassVar[Image] = Image
     band_class: ClassVar[Band] = Band
+    _metadata_attribute_collection_type: ClassVar[type] = pd.Series
 
     def __init__(
         self,
-        data: str | Path | Sequence[Image],
+        data: str | Path | Sequence[Image] | Sequence[str | Path],
         res: int,
         level: str | None = NoLevel,
         processes: int = 1,
@@ -1564,10 +1706,22 @@ class ImageCollection(_ImageBase):
         else:
             self.metadata = metadata
 
-        if hasattr(data, "__iter__") and all(isinstance(x, Image) for x in data):
+        if hasattr(data, "__iter__") and not isinstance(data, str):
             self._path = None
-            self.images = [x.copy() for x in data]
-            return
+            if all(isinstance(x, Image) for x in data):
+                self.images = [x.copy() for x in data]
+                return
+            elif all(isinstance(x, (str | Path | os.PathLike)) for x in data):
+                self._all_file_paths = list(
+                    itertools.chain.from_iterable(
+                        _get_all_file_paths(str(path)) for path in data
+                    )
+                )
+
+                self._df = self._create_metadata_df([str(x) for x in data])
+                self._images = None
+                return
+
         else:
             self._images = None
 
@@ -1836,6 +1990,7 @@ class ImageCollection(_ImageBase):
                     bounds=out_bounds,
                     crs=crs,
                     band_id=band_id,
+                    _add_metadata_attributes=False,
                     **self._common_init_kwargs,
                 )
             )
@@ -2106,6 +2261,14 @@ class ImageCollection(_ImageBase):
         """Number of images."""
         return len(self.images)
 
+    def __getattr__(self, attr: str) -> Any:
+        """Make iterable of metadata_attribute."""
+        if attr in (self.metadata_attributes or {}):
+            return self._metadata_attribute_collection_type(
+                [getattr(img, attr) for img in self]
+            )
+        return super().__getattribute__(attr)
+
     def __getitem__(self, item: int | slice | Sequence[int | bool]) -> Image:
         """Select one Image by integer index, or multiple Images by slice, list of int."""
         if isinstance(item, int):
@@ -2183,9 +2346,10 @@ class ImageCollection(_ImageBase):
                 image._bands = [band for band in image if band.band_id is not None]
 
         if self.metadata is not None:
+            attributes_to_add = ["crs", "bounds"] + list(self.metadata_attributes)
             for img in self:
                 for band in img:
-                    for key in ["crs", "bounds"]:
+                    for key in attributes_to_add:
                         try:
                             value = self.metadata[band.path][key]
                         except KeyError:
@@ -2193,7 +2357,10 @@ class ImageCollection(_ImageBase):
                                 value = self.metadata[key][band.path]
                             except KeyError:
                                 continue
-                        setattr(band, f"_{key}", value)
+                        try:
+                            setattr(band, key, value)
+                        except Exception:
+                            setattr(band, f"_{key}", value)
 
         self._images = [img for img in self if len(img)]
 
@@ -2395,6 +2562,17 @@ class ImageCollection(_ImageBase):
                     plt.show()
 
 
+def _get_all_regex_matches(xml_file: str, regexes: tuple[str]) -> tuple[str]:
+    for regex in regexes:
+        try:
+            return re.search(regex, xml_file)
+        except (TypeError, AttributeError):
+            continue
+    raise ValueError(
+        f"Could not find processing_baseline info from {regexes} in {xml_file}"
+    )
+
+
 class Sentinel2Config:
     """Holder of Sentinel 2 regexes, band_ids etc."""
 
@@ -2403,6 +2581,19 @@ class Sentinel2Config:
         config.SENTINEL2_FILENAME_REGEX,
         config.SENTINEL2_CLOUD_FILENAME_REGEX,
     )
+    metadata_attributes: ClassVar[
+        dict[str, Callable | functools.partial | tuple[str]]
+    ] = {
+        "processing_baseline": functools.partial(
+            _extract_regex_match_from_string,
+            regexes=(r"<PROCESSING_BASELINE>(.*?)</PROCESSING_BASELINE>",),
+        ),
+        "cloud_coverage_percentage": "_get_cloud_coverage_percentage",
+        "is_refined": functools.partial(
+            _any_regex_matches, regexes=(r'<Image_Refining flag="REFINED">',)
+        ),
+        "boa_add_offset": "_get_boa_add_offset_dict",
+    }
     all_bands: ClassVar[list[str]] = list(config.SENTINEL2_BANDS)
     rbg_bands: ClassVar[list[str]] = config.SENTINEL2_RBG_BANDS
     ndvi_bands: ClassVar[list[str]] = config.SENTINEL2_NDVI_BANDS
@@ -2411,6 +2602,37 @@ class Sentinel2Config:
     masking: ClassVar[BandMasking] = BandMasking(
         band_id="SCL", values=(3, 8, 9, 10, 11)
     )
+
+    def _get_cloud_coverage_percentage(self, xml_file: str) -> float:
+        return float(
+            _extract_regex_match_from_string(
+                xml_file,
+                (
+                    r"<Cloud_Coverage_Assessment>([\d.]+)</Cloud_Coverage_Assessment>",
+                    r"<CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>([\d.]+)</CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>",
+                ),
+            )
+        )
+
+    def _get_boa_add_offset_dict(self, xml_file: str) -> BandIdDict:
+        pat = re.compile(
+            r"""
+        <BOA_ADD_OFFSET\
+        band_id="(?P<band_id>\d+)"
+        >(?P<value>-?\d+)
+        </BOA_ADD_OFFSET>
+        """,
+            flags=re.VERBOSE,
+        )
+        try:
+            return BandIdDict(
+                pd.DataFrame([x.groupdict() for x in re.finditer(pat, xml_file)])
+                .set_index("band_id")["value"]
+                .astype(int)
+                .to_dict()
+            )
+        except (TypeError, AttributeError, KeyError) as e:
+            raise _RegexError(f"Could not find boa_add_offset info from {pat}") from e
 
 
 class Sentinel2CloudlessConfig(Sentinel2Config):
@@ -2437,7 +2659,6 @@ class Sentinel2Band(Sentinel2Config, Band):
 class Sentinel2Image(Sentinel2Config, Image):
     """Image with Sentinel2 specific name variables and regexes."""
 
-    cloud_cover_regexes: ClassVar[tuple[str]] = config.CLOUD_COVERAGE_REGEXES
     band_class: ClassVar[Sentinel2Band] = Sentinel2Band
 
     def ndvi(
@@ -2458,7 +2679,8 @@ class Sentinel2Collection(Sentinel2Config, ImageCollection):
 
     def __init__(self, data: str | Path | Sequence[Image], **kwargs) -> None:
         """ImageCollection with Sentinel2 specific name variables and path regexes."""
-        if isinstance(kwargs.get("level"), NoLevel):
+        level = kwargs.get("level", NoLevel)
+        if isinstance(level, type) and isinstance(level(), NoLevel):
             raise ValueError("Must specify level for Sentinel2Collection.")
         super().__init__(data=data, **kwargs)
 
@@ -2470,7 +2692,6 @@ class Sentinel2CloudlessBand(Sentinel2CloudlessConfig, Band):
 class Sentinel2CloudlessImage(Sentinel2CloudlessConfig, Sentinel2Image):
     """Image for cloudless mosaic with Sentinel2 specific name variables and regexes."""
 
-    cloud_cover_regexes: ClassVar[None] = None
     band_class: ClassVar[Sentinel2CloudlessBand] = Sentinel2CloudlessBand
 
     ndvi = Sentinel2Image.ndvi
@@ -2591,6 +2812,29 @@ def _clip_loaded_array(
         return np.array([])
 
 
+def _fix_path(path: str) -> str:
+    return (
+        str(path).replace("\\", "/").replace(r"\"", "/").replace("//", "/").rstrip("/")
+    )
+
+
+def _get_all_file_paths(path: str) -> list[str]:
+    if is_dapla():
+        return list(sorted(set(_glob_func(path + "/**"))))
+    else:
+        return list(
+            sorted(
+                set(
+                    _glob_func(path + "/**")
+                    + _glob_func(path + "/**/**")
+                    + _glob_func(path + "/**/**/**")
+                    + _glob_func(path + "/**/**/**/**")
+                    + _glob_func(path + "/**/**/**/**/**")
+                )
+            )
+        )
+
+
 def _get_images(
     image_paths: list[str],
     *,
@@ -2628,10 +2872,6 @@ def _get_images(
     return images
 
 
-class _RegexError(ValueError):
-    pass
-
-
 class ArrayNotLoadedError(ValueError):
     """Arrays are not loaded."""
 
@@ -2658,132 +2898,6 @@ class PathlessImageError(ValueError):
             f"{self.instance.__class__.__name__} instances {what} "
             "have no 'path' until they are written to file."
         )
-
-
-def _get_regex_match_from_xml_in_local_dir(
-    paths: list[str], regexes: str | tuple[str]
-) -> str | dict[str, str]:
-    for i, path in enumerate(paths):
-        if ".xml" not in path:
-            continue
-        with _open_func(path, "rb") as file:
-            filebytes: bytes = file.read()
-            try:
-                return _extract_regex_match_from_string(
-                    filebytes.decode("utf-8"), regexes
-                )
-            except _RegexError as e:
-                if i == len(paths) - 1:
-                    raise e
-
-
-def _extract_regex_match_from_string(
-    xml_file: str, regexes: tuple[str | re.Pattern]
-) -> str | dict[str, str]:
-    if all(isinstance(x, str) for x in regexes):
-        for regex in regexes:
-            try:
-                return re.search(regex, xml_file).group(1)
-            except (TypeError, AttributeError):
-                continue
-        raise _RegexError()
-
-    out = {}
-    for regex in regexes:
-        try:
-            matches = re.search(regex, xml_file)
-            out |= matches.groupdict()
-        except (TypeError, AttributeError):
-            continue
-    if not out:
-        raise _RegexError()
-    return out
-
-
-def _fix_path(path: str) -> str:
-    return (
-        str(path).replace("\\", "/").replace(r"\"", "/").replace("//", "/").rstrip("/")
-    )
-
-
-def _get_all_file_paths(path: str) -> list[str]:
-    if is_dapla():
-        return list(sorted(set(_glob_func(path + "/**"))))
-    else:
-        return list(
-            sorted(
-                set(
-                    _glob_func(path + "/**")
-                    + _glob_func(path + "/**/**")
-                    + _glob_func(path + "/**/**/**")
-                    + _glob_func(path + "/**/**/**/**")
-                    + _glob_func(path + "/**/**/**/**/**")
-                )
-            )
-        )
-
-
-def _get_regexes_matches_for_df(
-    df, match_col: str, patterns: Sequence[re.Pattern]
-) -> pd.DataFrame:
-    if not len(df):
-        return df
-
-    non_optional_groups = list(
-        set(
-            itertools.chain.from_iterable(
-                [_get_non_optional_groups(pat) for pat in patterns]
-            )
-        )
-    )
-
-    if not non_optional_groups:
-        return df
-
-    assert df.index.is_unique
-    keep = []
-    for pat in patterns:
-        for i, row in df[match_col].items():
-            matches = _get_first_group_match(pat, row)
-            if all(group in matches for group in non_optional_groups):
-                keep.append(i)
-
-    return df.loc[keep]
-
-
-def _get_non_optional_groups(pat: re.Pattern | str) -> list[str]:
-    return [
-        x
-        for x in [
-            _extract_group_name(group)
-            for group in pat.pattern.split("\n")
-            if group
-            and not group.replace(" ", "").startswith("#")
-            and not group.replace(" ", "").split("#")[0].endswith("?")
-        ]
-        if x is not None
-    ]
-
-
-def _extract_group_name(txt: str) -> str | None:
-    try:
-        return re.search(r"\(\?P<(\w+)>", txt)[1]
-    except TypeError:
-        return None
-
-
-def _get_first_group_match(pat: re.Pattern, text: str) -> dict[str, str]:
-    groups = pat.groupindex.keys()
-    all_matches: dict[str, str] = {}
-    for x in pat.findall(text):
-        if not x:
-            continue
-        if isinstance(x, str):
-            x = [x]
-        for group, value in zip(groups, x, strict=True):
-            if value and group not in all_matches:
-                all_matches[group] = value
-    return all_matches
 
 
 def _date_is_within(
