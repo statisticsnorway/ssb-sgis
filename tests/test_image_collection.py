@@ -1,6 +1,7 @@
 # %%
 import inspect
 import os
+import platform
 import re
 from collections.abc import Iterable
 from pathlib import Path
@@ -28,6 +29,12 @@ from sgis.raster.image_collection import BandIdDict
 path_sentinel = testdata + "/sentinel2"
 path_singleband = testdata + "/dtm_10.tif"
 path_two_bands = testdata + "/dtm_10_two_bands.tif"
+
+
+skip_if_github_and_not_linux = pytest.mark.skipif(
+    os.getenv("GITHUB_ACTIONS") == "true" and platform.system().lower() != "linux",
+    reason="Skipping test because it's not running in GitHub Actions",
+)
 
 
 def test_zonal():
@@ -212,6 +219,7 @@ def test_single_banded():
     assert band_names == image_names, band_names
 
 
+@skip_if_github_and_not_linux
 def test_plot_pixels():
     print("function:", inspect.currentframe().f_code.co_name)
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
