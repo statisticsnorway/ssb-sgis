@@ -75,9 +75,13 @@ except ImportError:
 try:
     import xarray as xr
     from xarray import DataArray
+    from xarray import Dataset
 except ImportError:
 
     class DataArray:
+        """Placeholder."""
+
+    class Dataset:
         """Placeholder."""
 
 
@@ -339,6 +343,7 @@ class _ImageBase:
         self._from_array = False
         self._from_gdf = False
         self.metadata_attributes = self.metadata_attributes or {}
+        self._path = None
 
         self._bbox = to_bbox(bbox) if bbox is not None else None
 
@@ -1318,7 +1323,11 @@ class Image(_ImageBandBase):
     @property
     def values(self) -> np.ndarray:
         """3 dimensional numpy array."""
-        return np.array([band.values for band in self])
+        values = [band.values for band in self]
+        if self.mask is not None:
+            mask = [band.mask.values for band in self]
+            return np.ma.array(values, mask=mask, fill_value=self.nodata)
+        return np.array(values)
 
     def ndvi(self, red_band: str, nir_band: str, copy: bool = True) -> NDVIBand:
         """Calculate the NDVI for the Image."""
@@ -1371,7 +1380,6 @@ class Image(_ImageBandBase):
     def to_xarray(self) -> DataArray:
         """Convert the raster to  an xarray.DataArray."""
         name = self.name or self.__class__.__name__.lower()
-        self.load()
         coords = _generate_spatial_coords(
             self[0].transform, self[0].width, self[0].height
         )
@@ -1706,6 +1714,10 @@ class ImageCollection(_ImageBase):
         else:
             self.metadata = metadata
 
+        self._df = None
+        self._all_file_paths = None
+        self._images = None
+
         if hasattr(data, "__iter__") and not isinstance(data, str):
             self._path = None
             if all(isinstance(x, Image) for x in data):
@@ -1717,13 +1729,8 @@ class ImageCollection(_ImageBase):
                         _get_all_file_paths(str(path)) for path in data
                     )
                 )
-
                 self._df = self._create_metadata_df([str(x) for x in data])
-                self._images = None
                 return
-
-        else:
-            self._images = None
 
         if not isinstance(data, (str | Path | os.PathLike)):
             raise TypeError("'data' must be string, Path-like or a sequence of Image.")
@@ -1742,6 +1749,12 @@ class ImageCollection(_ImageBase):
     @property
     def values(self) -> np.ndarray:
         """4 dimensional numpy array."""
+        if isinstance(self[0].values, np.ma.core.MaskedArray):
+            return np.ma.array([img.values for img in self])
+        # values = [img.values for img in self]
+        # if self.mask is not None:
+        #     return np.ma.array(values, mask=self.mask.values, fill_value=self.nodata)
+        # return np.array(values)
         return np.array([img.values for img in self])
 
     @property
@@ -1801,7 +1814,10 @@ class ImageCollection(_ImageBase):
         ]
         for img in copied:
             assert len(img) == 1
-            img._path = img[0].path
+            try:
+                img._path = img[0].path
+            except PathlessImageError:
+                pass
         return copied
 
     def apply(self, func: Callable, **kwargs) -> "ImageCollection":
@@ -2149,11 +2165,7 @@ class ImageCollection(_ImageBase):
                 "Cannot set date_ranges when the class's image_regexes attribute is None"
             )
 
-        self.images = [
-            img
-            for img in self
-            if _date_is_within(img.path, date_ranges, self.image_patterns)
-        ]
+        self.images = [img for img in self if _date_is_within(img.date, date_ranges)]
         return self
 
     def _filter_bounds(
@@ -2177,6 +2189,38 @@ class ImageCollection(_ImageBase):
         ]
         return self
 
+    def to_xarray(self, **kwargs) -> DataArray:
+        """Convert the raster to  an xarray.DataArray."""
+        # arrs = []
+        # for img in self:
+        #     for band in img:
+        #         arr = band.load(**kwargs).values
+        #         arrs.append(arr)
+
+        # n_images = len(self)
+        # n_bands = len(img)
+        # height, width = arr.shape
+
+        # arr_4d = np.array(arrs).reshape(n_images, n_bands, height, width)
+
+        try:
+            name = Path(self.path).stem
+        except TypeError:
+            name = self.__class__.__name__.lower()
+
+        first_band = self[0][0]
+        coords = _generate_spatial_coords(
+            first_band.transform, first_band.width, first_band.height
+        )
+        dims = ["image", "band", "y", "x"]
+        return xr.DataArray(
+            self.values,
+            coords=coords,
+            dims=dims,
+            name=name,
+            attrs={"crs": self.crs},
+        )
+
     def to_gdfs(self, column: str = "value") -> dict[str, GeoDataFrame]:
         """Convert each band in each Image to a GeoDataFrame."""
         out = {}
@@ -2189,7 +2233,7 @@ class ImageCollection(_ImageBase):
                 except AttributeError:
                     name = f"{self.__class__.__name__}({i})"
 
-                band.load()
+                # band.load()
 
                 if name not in out:
                     out[name] = band.to_gdf(column=column)
@@ -2448,9 +2492,9 @@ class ImageCollection(_ImageBase):
 
         alpha = 1 - p
 
-        for img in self:
-            for band in img:
-                band.load()
+        # for img in self:
+        #     for band in img:
+        #         band.load()
 
         for group_values, subcollection in self.groupby(by):
             print("group_values:", *group_values)
@@ -2902,20 +2946,11 @@ class PathlessImageError(ValueError):
 
 
 def _date_is_within(
-    path,
+    date: str | None,
     date_ranges: DATE_RANGES_TYPE,
-    image_patterns: Sequence[re.Pattern],
 ) -> bool:
     if date_ranges is None:
         return True
-
-    for pat in image_patterns:
-
-        try:
-            date = _get_first_group_match(pat, Path(path).name)["date"]
-            break
-        except KeyError:
-            date = None
 
     if date is None:
         return False

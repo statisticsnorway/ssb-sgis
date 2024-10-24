@@ -8,6 +8,7 @@ from time import perf_counter
 
 import numpy as np
 import pytest
+import xarray as xr
 from geopandas import GeoSeries
 from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
@@ -209,6 +210,14 @@ def test_single_banded():
 
     band_names = [band.name for img in single_banded for band in img]
     assert band_names == image_names, band_names
+
+
+def test_plot_pixels():
+    print("function:", inspect.currentframe().f_code.co_name)
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    collection = collection.filter(bbox=collection[0].centroid.buffer(10))
+    collection.load()
+    collection.plot_pixels()
 
 
 def test_ndvi():
@@ -603,13 +612,52 @@ def test_sorting():
 
 def test_masking():
 
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    collection.load()
+    for i, img in enumerate(collection):
+        assert isinstance(img.values, np.ma.core.MaskedArray)
+        assert isinstance(collection.values[i], np.ma.core.MaskedArray)
+        print(img.values.data)
+        print(img.values.mask)
+        print(collection.values[i].data)
+        print(collection.values[i].mask)
+        assert np.array_equal(img.values.data, collection.values[i].data), (
+            img.values.data,
+            collection.values[i].data,
+        )
+        assert np.array_equal(img.values.data, collection.values.data[i]), (
+            img.values.data,
+            collection.values.data[i],
+        )
+
+        assert np.array_equal(img.values.mask, collection.values[i].mask), (
+            img.values.mask,
+            collection.values[i].mask,
+        )
+        assert np.array_equal(img.values.mask, collection.values.mask[i]), (
+            img.values.mask,
+            collection.values.mask[i],
+        )
+
+        assert np.array_equal(img.values, collection.values[i]), (
+            img.values,
+            collection.values[i],
+        )
+
+        for j, band in enumerate(img):
+            assert isinstance(band.values, np.ma.core.MaskedArray)
+            assert isinstance(collection.values[i][j], np.ma.core.MaskedArray)
+            assert np.array_equal(band.values, collection.values[i][j]), (
+                band.values,
+                collection.values[i][j],
+            )
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=20)
 
     img = collection[2]
 
-    (
-        img.mask.load().values
-    )  # .apply(lambda arr: np.isin(arr, img.masking["values"])).values)
+    (img.mask.load().values)
+    # .apply(lambda arr: np.isin(arr, img.masking["values"])).values)
     # for band in img:
     #     print(band.band_id)
     #     band.load()
@@ -660,6 +708,15 @@ def test_masking():
 
     collection.load()
 
+    assert isinstance(collection.values, np.ma.core.MaskedArray), type(
+        collection.values
+    )
+
+    for img in collection:
+        assert isinstance(img.values, np.ma.core.MaskedArray), type(img.values)
+        for band in img:
+            assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
+
     collection_with_little_mask = collection[
         lambda img: img.mask_percentage
         < 0.1  # mask.values.sum() < img.mask.width * img.mask.height * 0.90
@@ -696,6 +753,7 @@ def test_masking():
             assert isinstance(band.values, np.ma.core.MaskedArray)
 
     collection = sg.ImageCollection(path_sentinel, level=None, res=20)
+
     assert collection.masking is None
     assert len(collection)
     for img in collection:
@@ -1268,34 +1326,59 @@ def test_convertion():
 
 
 def test_to_xarray():
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     for img in collection:
         for band in img:
             band.load()
             if band.mask_percentage == 0:
                 continue
             xarr = band.to_xarray()
-            assert xarr.isnull().sum()
-            assert xarr.isnull().sum() == band.values.mask.sum()
+            assert xarr.shape == (299, 299), xarr.shape
+            assert xarr.isnull().sum(), band.values.mask.sum()
+            assert xarr.isnull().sum() == band.values.mask.sum(), (
+                xarr.isnull().sum(),
+                band.values.mask.sum(),
+            )
+
+    for img in collection:
+        xarr = img.to_xarray()
+        assert xarr.shape == (12, 299, 299), xarr.shape
+        assert xarr.isnull().sum(), img.values.mask.sum()
+        assert xarr.isnull().sum() == img.values.mask.sum(), (
+            xarr.isnull().sum(),
+            img.values.mask.sum(),
+        )
+
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+
+    collection.load()
+
+    xarr = collection.to_xarray()
+    print(xarr)
+    assert isinstance(xarr, xr.DataArray)
+    assert xarr.shape == (3, 12, 299, 299), xarr.shape
+    assert xarr.isnull().sum()
+    assert xarr.isnull().sum() == collection.values.mask.sum()
 
 
 def main():
 
+    test_masking()
+    test_to_xarray()
     test_metadata_attributes()
     test_collection_from_list_of_path()
     test_indexing()
     test_regexes()
-    test_single_banded()
-    test_bbox()
     test_date_ranges()
-    test_to_xarray()
+    test_bbox()
+    test_single_banded()
     test_convertion()
-    test_masking()
     test_buffer()
     test_iteration()
     test_ndvi()
     test_zonal()
+    test_plot_pixels()
     test_gradient()
     test_iteration_base_image_collection()
     test_groupby()
