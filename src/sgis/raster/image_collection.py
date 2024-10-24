@@ -2116,13 +2116,13 @@ class ImageCollection(_ImageBase):
         ):
             return self
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
-            if self.masking:
-                parallel(
-                    joblib.delayed(_load_band)(
-                        img.mask, bounds=bounds, indexes=indexes, **kwargs
-                    )
-                    for img in self
-                )
+            # if self.masking:
+            #     parallel(
+            #         joblib.delayed(_load_band)(
+            #             img.mask, bounds=bounds, indexes=indexes, **kwargs
+            #         )
+            #         for img in self
+            #     )
             parallel(
                 joblib.delayed(_load_band)(
                     band, bounds=bounds, indexes=indexes, **kwargs

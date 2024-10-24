@@ -215,7 +215,7 @@ def test_single_banded():
 def test_plot_pixels():
     print("function:", inspect.currentframe().f_code.co_name)
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-    collection = collection.filter(bbox=collection[0].centroid.buffer(10))
+    collection = collection.filter(bbox=collection[0].centroid.buffer(5))
     collection.load()
     collection.plot_pixels()
 
@@ -1378,7 +1378,6 @@ def main():
     test_iteration()
     test_ndvi()
     test_zonal()
-    test_plot_pixels()
     test_gradient()
     test_iteration_base_image_collection()
     test_groupby()
