@@ -25,14 +25,12 @@ def make_all_singlepart(
         A GeoDataFrame of singlepart geometries.
     """
     # only explode if nessecary
-    if (
-        index_parts or ignore_index
-    ):  # and not gdf.index.equals(pd.Index(range(len(gdf)))):
+    if index_parts or ignore_index:
         gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
 
-    while not gdf.geom_type.isin(
-        ["Polygon", "Point", "LineString", "LinearRing"]
-    ).all():
+    while not np.all(
+        np.isin(_get_geom_types(gdf), ["Polygon", "Point", "LineString", "LinearRing"])
+    ):
         gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
 
     return gdf
@@ -114,22 +112,24 @@ def to_single_geom_type(
         raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
 
     # explode collections to single-typed geometries
-    collections = gdf.geom_type == "GeometryCollection"
+    collections = _get_geom_types(gdf) == "GeometryCollection"
     if collections.any():
         collections = make_all_singlepart(gdf[collections], ignore_index=ignore_index)
 
         gdf = pd.concat([gdf, collections], ignore_index=ignore_index)
 
     if "poly" in geom_type:
-        is_polygon = gdf.geom_type.isin(["Polygon", "MultiPolygon"])
+        is_polygon = np.isin(_get_geom_types(gdf), ["Polygon", "MultiPolygon"])
         if not is_polygon.all():
             gdf = gdf.loc[is_polygon]
     elif "line" in geom_type:
-        is_line = gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])
+        is_line = np.isin(
+            _get_geom_types(gdf), ["LineString", "MultiLineString", "LinearRing"]
+        )
         if not is_line.all():
             gdf = gdf.loc[is_line]
     else:
-        is_point = gdf.geom_type.isin(["Point", "MultiPoint"])
+        is_point = np.isin(_get_geom_types(gdf), ["Point", "MultiPoint"])
         if not is_point.all():
             gdf = gdf.loc[is_point]
 
@@ -168,22 +168,20 @@ def get_geom_type(gdf: GeoDataFrame | GeoSeries) -> str:
     polys = ["Polygon", "MultiPolygon", None]
     lines = ["LineString", "MultiLineString", "LinearRing", None]
     points = ["Point", "MultiPoint", None]
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
-        if isinstance(gdf, Geometry):
-            if gdf.geom_type in polys:
-                return "polygon"
-            if gdf.geom_type in lines:
-                return "line"
-            if gdf.geom_type in points:
-                return "point"
-            return "mixed"
-        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
+    if isinstance(gdf, Geometry):
+        if gdf.geom_type in polys:
+            return "polygon"
+        if gdf.geom_type in lines:
+            return "line"
+        if gdf.geom_type in points:
+            return "point"
+        return "mixed"
 
-    if (gdf.geom_type.isin(polys)).all():
+    if np.all(np.isin(_get_geom_types(gdf), polys)):
         return "polygon"
-    if (gdf.geom_type.isin(lines)).all():
+    if np.all(np.isin(_get_geom_types(gdf), lines)):
         return "line"
-    if (gdf.geom_type.isin(points)).all():
+    if np.all(np.isin(_get_geom_types(gdf), points)):
         return "point"
     return "mixed"
 
@@ -213,14 +211,21 @@ def is_single_geom_type(gdf: GeoDataFrame | GeoSeries) -> bool:
     >>> is_single_geom_type(gdf)
     True
     """
-    if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
-        raise TypeError(f"'gdf' should be GeoDataFrame or GeoSeries, got {type(gdf)}")
+    return (
+        np.all(np.isin(_get_geom_types(gdf), ["Polygon", "MultiPolygon"]))
+        or np.all(
+            np.isin(
+                _get_geom_types(gdf), ["LineString", "MultiLineString", "LinearRing"]
+            )
+        )
+        or np.all(np.isin(_get_geom_types(gdf), ["Point", "MultiPoint"]))
+    )
 
-    if all(gdf.geom_type.isin(["Polygon", "MultiPolygon"])):
-        return True
-    if all(gdf.geom_type.isin(["LineString", "MultiLineString", "LinearRing"])):
-        return True
-    if all(gdf.geom_type.isin(["Point", "MultiPoint"])):
-        return True
 
-    return False
+def _get_geom_types(
+    gdf: GeoDataFrame | GeoSeries | GeometryArray | np.ndarray,
+) -> np.ndarray:
+    try:
+        return GeometryArray(gdf.geometry.values).geom_type
+    except AttributeError:
+        return getattr(GeometryArray(gdf, "geom_type"))

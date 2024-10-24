@@ -91,6 +91,11 @@ def get_component_size(gdf: GeoDataFrame) -> GeoDataFrame:
     3          346
     Name: count, dtype: int64
     """
+    if not len(gdf):
+        gdf["component_index"] = None
+        gdf["component_size"] = None
+        return gdf
+
     gdf, _ = make_node_ids(gdf)
 
     edges = [
@@ -109,6 +114,7 @@ def get_component_size(gdf: GeoDataFrame) -> GeoDataFrame:
             for idx in component
         },
     ).transpose()
+
     mapper.columns = ["component_index", "component_size"]
 
     gdf["component_index"] = gdf["source"].map(mapper["component_index"])

@@ -5,6 +5,7 @@ import sys
 import timeit
 from pathlib import Path
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 from shapely import extract_unique_points
@@ -241,6 +242,11 @@ def test_buffdiss(gdf_fixture):
         )
 
 
+def test_diss():
+    df = sg.diss(gpd.GeoDataFrame({"geometry": []}))
+    assert not len(df)
+
+
 def test_dissexp(gdf_fixture):
     sg.dissexp(gdf_fixture, ignore_index=True)
 
@@ -395,6 +401,7 @@ def test_grouped_unary_union():
 if __name__ == "__main__":
 
     # test_grouped_unary_union()
+    test_diss()
     gdf_fixture = testgdf()
     test_dissexp_by_cluster()
     test_buffdiss(gdf_fixture)

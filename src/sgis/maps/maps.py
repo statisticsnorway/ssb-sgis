@@ -389,7 +389,6 @@ def samplemap(
 
         sample = sample.clip(mask).explode(ignore_index=True).sample(1)
 
-    print(locals())
     random_point = sample.sample_points(size=1)
 
     try:

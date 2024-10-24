@@ -10,6 +10,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from pandas.api.types import is_array_like
+
 try:
     import dapla as dp
 except ImportError:
@@ -41,6 +43,199 @@ try:
     from dapla import write_pandas
 except ImportError:
     pass
+
+
+def parallel_overlay(
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
+    processes: int,
+    how: str = "intersection",
+    max_rows_per_chunk: int | None = None,
+    backend: str = "loky",
+    to_print: str | None = None,
+    **kwargs,
+) -> GeoDataFrame:
+    """Perform spatial overlay operations on two GeoDataFrames in parallel.
+
+    This function splits the first GeoDataFrame into chunks, processes each chunk in parallel using the specified
+    overlay operation with the second GeoDataFrame, and then concatenates the results.
+
+    Note that this function is most useful if df2 has few and simple geometries.
+
+    Args:
+        df1: The first GeoDataFrame for the overlay operation.
+        df2: The second GeoDataFrame for the overlay operation.
+        how: Type of overlay operation ('intersection', 'union', etc.).
+        processes: Number of parallel processes to use.
+        max_rows_per_chunk: Maximum number of rows per chunk for processing. This helps manage memory usage.
+        backend: The parallelization backend to use ('loky', 'multiprocessing', 'threading').
+        to_print: Optional text to print to see progression.
+        **kwargs: Additional keyword arguments to pass to the overlay function.
+
+    Returns:
+        A GeoDataFrame containing the result of the overlay operation.
+    """
+    return pd.concat(
+        chunkwise(
+            _clean_overlay_with_print,
+            df1,
+            kwargs={
+                "df2": df2,
+                # "to_print": to_print,
+                "how": how,
+            }
+            | kwargs,
+            processes=processes,
+            max_rows_per_chunk=max_rows_per_chunk,
+            backend=backend,
+        ),
+        ignore_index=True,
+    )
+
+
+def parallel_overlay_rowwise(
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
+    processes: int,
+    max_rows_per_chunk: int | None = None,
+    backend: str = "loky",
+    to_print: str | None = None,
+    **kwargs,
+) -> GeoDataFrame:
+    """Perform spatial clip on two GeoDataFrames in parallel.
+
+    This function splits the first GeoDataFrame into chunks, processes each chunk in parallel using the specified
+    overlay operation with the second GeoDataFrame, and then concatenates the results.
+
+    Note that this function is most useful if df2 has few and simple geometries.
+
+    Args:
+        df1: The first GeoDataFrame for the overlay operation.
+        df2: The second GeoDataFrame for the overlay operation.
+        how: Type of overlay operation ('intersection', 'union', etc.).
+        processes: Number of parallel processes to use.
+        max_rows_per_chunk: Maximum number of rows per chunk for processing. This helps manage memory usage.
+        backend: The parallelization backend to use ('loky', 'multiprocessing', 'threading').
+        to_print: Optional text to print to see progression.
+        **kwargs: Additional keyword arguments to pass to the overlay function.
+
+    Returns:
+        A GeoDataFrame containing the result of the overlay operation.
+    """
+    return pd.concat(
+        chunkwise(
+            _clip_rowwise,
+            df1,
+            kwargs={
+                "df2": df2,
+                "to_print": to_print,
+            }
+            | kwargs,
+            processes=processes,
+            max_rows_per_chunk=max_rows_per_chunk,
+            backend=backend,
+        ),
+        ignore_index=True,
+    )
+
+
+def parallel_sjoin(
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
+    processes: int,
+    max_rows_per_chunk: int | None = None,
+    backend: str = "loky",
+    to_print: str | None = None,
+    **kwargs,
+) -> GeoDataFrame:
+    """Perform spatial clip on two GeoDataFrames in parallel.
+
+    This function splits the first GeoDataFrame into chunks, processes each chunk in parallel using the specified
+    overlay operation with the second GeoDataFrame, and then concatenates the results.
+
+    Note that this function is most useful if df2 has few and simple geometries.
+
+    Args:
+        df1: The first GeoDataFrame for the overlay operation.
+        df2: The second GeoDataFrame for the overlay operation.
+        how: Type of overlay operation ('intersection', 'union', etc.).
+        processes: Number of parallel processes to use.
+        max_rows_per_chunk: Maximum number of rows per chunk for processing. This helps manage memory usage.
+        backend: The parallelization backend to use ('loky', 'multiprocessing', 'threading').
+        to_print: Optional text to print to see progression.
+        **kwargs: Additional keyword arguments to pass to the overlay function.
+
+    Returns:
+        A GeoDataFrame containing the result of the overlay operation.
+    """
+    return pd.concat(
+        chunkwise(
+            _sjoin_within_first,
+            df1,
+            kwargs={
+                "df2": df2,
+                "to_print": to_print,
+            }
+            | kwargs,
+            processes=processes,
+            max_rows_per_chunk=max_rows_per_chunk,
+            backend=backend,
+        ),
+        ignore_index=True,
+    )
+
+
+def _sjoin_within_first(
+    df1, df2, to_print: str | None = None, predicate: str = "intersects", **kwargs
+):
+    if to_print:
+        print(to_print, "- sjoin chunk len:", len(df1))
+
+    df2 = df2.reset_index(drop=True)
+    df2["_from_df2"] = 1
+    df1["_range_idx"] = range(len(df1))
+    joined = df1.sjoin(df2, predicate="within", how="left")
+    within = joined.loc[joined["_from_df2"].notna()].drop(
+        columns=["_from_df2", "_range_idx", "index_right"], errors="raise"
+    )
+    not_within = df1.loc[
+        df1["_range_idx"].isin(joined.loc[joined["_from_df2"].isna(), "_range_idx"])
+    ]
+
+    return pd.concat(
+        [
+            within,
+            not_within.sjoin(df2, predicate=predicate, **kwargs),
+        ],
+        ignore_index=True,
+    )
+
+
+def _clip_rowwise(df1, df2, to_print: str | None = None):
+    geom_col = df2.geometry.name
+
+    def clip_by_one_row(i):
+        this: pd.Series = df2.iloc[i]
+        clipped = df1.clip(this[geom_col])
+        without_geom_col = this.drop(geom_col)
+        clipped.loc[:, without_geom_col.index] = without_geom_col.values
+        if to_print:
+            print(i, to_print, len(clipped))
+        return clipped
+
+    return pd.concat([clip_by_one_row(i) for i in range(len(df2))], ignore_index=True)
+
+
+def _clean_overlay_with_print(
+    df1: GeoDataFrame,
+    df2: GeoDataFrame,
+    how: str = "intersection",
+    to_print: str | None = None,
+    **kwargs,
+) -> GeoDataFrame:
+    if to_print:
+        print(to_print, f"- {how} chunk len:", len(df1))
+    return clean_overlay(df1, df2, how=how, **kwargs)
 
 
 class Parallel:
@@ -398,9 +593,7 @@ class Parallel:
         muni_number_col: str = "KOMMUNENR",
         strict: bool = False,
         write_empty: bool = False,
-        clip: bool = True,
-        max_rows_per_chunk: int = 150_000,
-        processes_in_clip: int = 1,
+        id_assign_func: Callable | functools.partial = clean_overlay,
         verbose: bool = True,
     ) -> None:
         """Split multiple datasets into municipalities and write as separate files.
@@ -409,6 +602,7 @@ class Parallel:
         Each dataset in 'in_data' is intersected with 'municipalities'
         in parallel. The intersections themselves can also be run in parallel
         with the 'processes_in_clip' argument.
+
 
         Args:
             in_data: Dictionary with dataset names as keys and file paths or
@@ -435,10 +629,8 @@ class Parallel:
                 not have to have the same length as 'in_data'.
             write_empty: If False (default), municipalities with no data will be skipped.
                 If True, an empty parquet file will be written.
-            clip: If True (default), the data will be clipped. If False, the data will
-                be spatial joined.
-            max_rows_per_chunk: Number of rows per data chunk for processing.
-            processes_in_clip: Number of parallel processes for data clipping.
+            id_assign_func: Function to assign ids (e.g. municipality number) to
+                the dataframe for missing values.
             verbose: Whether to print during execution.
 
         """
@@ -448,11 +640,9 @@ class Parallel:
             "muni_number_col": muni_number_col,
             "write_empty": write_empty,
             "with_neighbors": with_neighbors,
-            "clip": clip,
-            "max_rows_per_chunk": max_rows_per_chunk,
-            "processes_in_clip": processes_in_clip,
             "strict": strict,
             "verbose": verbose,
+            "id_assign_func": id_assign_func,
         }
 
         if isinstance(out_data, (str, Path)):
@@ -482,51 +672,32 @@ class Parallel:
     def chunkwise(
         self,
         func: Callable,
-        df: GeoDataFrame,
+        iterable: Collection[Iterable[Any]],
         args: tuple | None = None,
         kwargs: dict | None = None,
-        n_chunks: int | None = None,
         max_rows_per_chunk: int | None = None,
-        concat: bool = True,
-    ) -> GeoDataFrame:
+    ) -> Collection[Iterable[Any]]:
         """Run a function in parallel on chunks of a (Geo)DataFrame.
 
         Args:
             func: Function to run chunkwise. It should take
-                a (Geo)DataFrame as first argument.
-            df: (Geo)DataFrame to split in n_chunks and passed
+                (a chunk of) the iterable as first argument.
+            iterable: Iterable to split in chunks and passed
                 as first argument to 'func'.
             args: Positional arguments in 'func' after the DataFrame.
             kwargs: Additional keyword arguments in 'func'.
-            n_chunks: Optionally set number of chunks to split
-                'df' into. Defaults to the 'processes' attribute
-                of the Parallel instance.
             max_rows_per_chunk: Alternatively decide number of chunks
                 by a maximum number of rows per chunk.
-            concat: Whether to use pd.concat on the results.
-                Defaults to True.
         """
-        if max_rows_per_chunk is None and n_chunks is None:
-            n_chunks: int = self.processes
-        elif n_chunks is None:
-            n_chunks: int = len(df) // max_rows_per_chunk
-        elif max_rows_per_chunk is not None and len(df) < max_rows_per_chunk:
-            return func(df, *args, **kwargs)
-
-        chunks = np.array_split(np.arange(len(df)), n_chunks)
-
-        df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
-
-        out = self.map(
+        return chunkwise(
             func,
-            df_chunked,
+            iterable,
             args=args,
             kwargs=kwargs,
+            processes=self.processes,
+            max_rows_per_chunk=max_rows_per_chunk,
+            backend=self.backend,
         )
-        if concat:
-            return pd.concat(out, ignore_index=True)
-        else:
-            return out
 
     def _validate_execution(self, func: Callable) -> None:
         """Multiprocessing doesn't work with local variables in interactive interpreter.
@@ -594,9 +765,7 @@ def write_municipality_data(
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
-    clip: bool = True,
-    max_rows_per_chunk: int = 150_000,
-    processes_in_clip: int = 1,
+    id_assign_func: Callable = clean_overlay,
     strict: bool = True,
     verbose: bool = True,
 ) -> None:
@@ -621,6 +790,8 @@ def write_municipality_data(
         processes_in_clip: Number of processes to use for clipping.
         strict: If True (default) and the data has a municipality column,
             all municipality numbers in 'data' must be present in 'municipalities'.
+        id_assign_func: Function to assign ids (e.g. municipality number) to
+            the dataframe for missing values.
         verbose: Whether to print during execution.
 
     Returns:
@@ -639,10 +810,8 @@ def write_municipality_data(
         file_type=file_type,
         func=func,
         write_empty=write_empty,
-        clip=clip,
-        max_rows_per_chunk=max_rows_per_chunk,
-        processes_in_clip=processes_in_clip,
         strict=strict,
+        id_assign_func=id_assign_func,
         verbose=verbose,
     )
 
@@ -675,11 +844,10 @@ def _write_municipality_data(
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
-    clip: bool = True,
-    max_rows_per_chunk: int = 150_000,
-    processes_in_clip: int = 1,
+    processes: int = 1,
     strict: bool = True,
     verbose: bool = True,
+    id_assign_func: Callable = clean_overlay,
 ) -> None:
     if verbose:
         to_print = out_folder
@@ -696,22 +864,21 @@ def _write_municipality_data(
         gdf,
         municipalities,
         muni_number_col,
-        clip,
-        max_rows_per_chunk,
-        processes_in_clip=processes_in_clip,
         strict=strict,
-        to_print=to_print,
+        id_assign_func=id_assign_func,
     )
 
     if municipalities is None:
-        muni_numbers = gdf[muni_number_col]
+        muni_numbers = gdf[muni_number_col].unique()
     elif not isinstance(municipalities, DataFrame):
-        muni_numbers = municipalities
+        muni_numbers = set(municipalities)
     else:
-        muni_numbers = municipalities[muni_number_col]
+        muni_numbers = municipalities[muni_number_col].unique()
+
+    muni_numbers = list(sorted(muni_numbers))
 
     # hardcode this to threading for efficiency in io bound task
-    Parallel(processes_in_clip, backend="threading").map(
+    Parallel(processes, backend="threading").map(
         _write_one_muni,
         muni_numbers,
         kwargs=dict(
@@ -733,11 +900,10 @@ def _write_neighbor_municipality_data(
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
-    clip: bool = True,
-    max_rows_per_chunk: int = 150_000,
-    processes_in_clip: int = 1,
+    processes: int = 1,
     strict: bool = True,
     verbose: bool = True,
+    id_assign_func: Callable = clean_overlay,
 ) -> None:
     if verbose:
         to_print = out_folder
@@ -754,11 +920,8 @@ def _write_neighbor_municipality_data(
         gdf,
         municipalities,
         muni_number_col,
-        clip,
-        max_rows_per_chunk,
-        processes_in_clip,
         strict=strict,
-        to_print=to_print,
+        id_assign_func=id_assign_func,
     )
 
     if municipalities.index.name != muni_number_col:
@@ -769,7 +932,7 @@ def _write_neighbor_municipality_data(
     )
 
     # hardcode this to threading for efficiency in io bound task
-    Parallel(processes_in_clip, backend="threading").map(
+    Parallel(processes, backend="threading").map(
         _write_one_muni_with_neighbors,
         municipalities.index,
         kwargs=dict(
@@ -850,11 +1013,8 @@ def _fix_missing_muni_numbers(
     gdf: GeoDataFrame,
     municipalities: GeoDataFrame,
     muni_number_col: str,
-    clip: bool,
-    max_rows_per_chunk: int,
-    processes_in_clip: int,
     strict: bool,
-    to_print: str,
+    id_assign_func: Callable,
 ) -> GeoDataFrame:
     if muni_number_col in gdf and gdf[muni_number_col].notna().all():
         if municipalities is None:
@@ -883,123 +1043,37 @@ def _fix_missing_muni_numbers(
             "GeoDataFrame to clip the geometries by."
         )
 
-    try:
-        municipalities = municipalities[
-            [muni_number_col, municipalities.geometry.name]
-        ].to_crs(gdf.crs)
-    except Exception as e:
-        raise e.__class__(e, to_print) from e
+    municipalities = municipalities[
+        [muni_number_col, municipalities.geometry.name]
+    ].to_crs(gdf.crs)
 
     if muni_number_col in gdf and gdf[muni_number_col].isna().any():
         notna = gdf[gdf[muni_number_col].notna()]
 
         isna = gdf[gdf[muni_number_col].isna()].drop(muni_number_col, axis=1)
 
-        if not clip:
-            notna_anymore = isna.sjoin(municipalities).drop(columns="index_right")
-        else:
-            notna_anymore = parallel_overlay(
-                isna,
-                municipalities[[muni_number_col, municipalities._geometry_column_name]],
-                processes=processes_in_clip,
-                max_rows_per_chunk=max_rows_per_chunk,
-                to_print=to_print,
-            )
+        notna_anymore = id_assign_func(
+            isna,
+            municipalities[[muni_number_col, municipalities._geometry_column_name]],
+        )
 
         return pd.concat([notna, notna_anymore], ignore_index=True)
 
-    if not clip:
-        return gdf.sjoin(municipalities).drop(columns="index_right")
-    else:
-        return parallel_overlay(
-            gdf,
-            municipalities[[muni_number_col, municipalities._geometry_column_name]],
-            processes=processes_in_clip,
-            max_rows_per_chunk=max_rows_per_chunk,
-            to_print=to_print,
-        )
-
-
-def parallel_overlay(
-    df1: GeoDataFrame,
-    df2: GeoDataFrame,
-    processes: int,
-    max_rows_per_chunk: int,
-    backend: str = "loky",
-    to_print: str | None = None,
-    **kwargs,
-) -> GeoDataFrame:
-    """Perform spatial overlay operations on two GeoDataFrames in parallel.
-
-    This function splits the first GeoDataFrame into chunks, processes each chunk in parallel using the specified
-    overlay operation with the second GeoDataFrame, and then concatenates the results.
-
-    Note that this function is most useful if df2 has few and simple geometries.
-
-    Args:
-        df1: The first GeoDataFrame for the overlay operation.
-        df2: The second GeoDataFrame for the overlay operation.
-        how: Type of overlay operation ('intersection', 'union', etc.).
-        processes: Number of parallel processes to use.
-        max_rows_per_chunk: Maximum number of rows per chunk for processing. This helps manage memory usage.
-        backend: The parallelization backend to use ('loky', 'multiprocessing', 'threading').
-        to_print: Optional text to print to see progression.
-        **kwargs: Additional keyword arguments to pass to the overlay function.
-
-    Returns:
-        A GeoDataFrame containing the result of the overlay operation.
-    """
-    if len(df1) < max_rows_per_chunk:
-        return clean_overlay(df1, df2, **kwargs)
-
-    n_chunks = len(df1) // max_rows_per_chunk
-    chunks = np.array_split(np.arange(len(df1)), n_chunks)
-
-    try:
-        x_mapper = dict(enumerate(df1.centroid))
-        sorted_xs = dict(reversed(sorted(x_mapper.items(), key=lambda item: item[1])))
-        df1 = df1.iloc[list(sorted_xs)]
-    except TypeError:
-        pass
-
-    df1_chunked: list[GeoDataFrame] = [df1.iloc[chunk] for chunk in chunks]
-
-    out = Parallel(processes, backend=backend).map(
-        _clean_intersection,
-        df1_chunked,
-        args=(df2, to_print) if to_print else (df2,),
-    )
-    return pd.concat(out, ignore_index=True)
-
-
-def _clean_intersection(
-    df1: GeoDataFrame, df2: GeoDataFrame, to_print: str | None = None
-) -> GeoDataFrame:
-    print(to_print, "- intersection chunk len:", len(df1))
-    cols_to_keep = df1.columns.union(df2.columns.difference({df2.geometry.name}))
-    df1["_range_idx"] = range(len(df1))
-    joined = df1.sjoin(df2, predicate="within", how="left")
-    within = joined.loc[joined["_range_idx"].notna(), cols_to_keep]
-    not_within = joined.loc[joined["_range_idx"].isna(), df1.columns]
-    return pd.concat(
-        [
-            within,
-            clean_overlay(not_within, df2, how="intersection"),
-        ],
-        ignore_index=True,
+    return id_assign_func(
+        gdf,
+        municipalities[[muni_number_col, municipalities._geometry_column_name]],
     )
 
 
 def chunkwise(
     func: Callable,
-    df: GeoDataFrame | pd.DataFrame,
-    max_rows_per_chunk: int = 150_000,
-    n_chunks: int | None = None,
+    iterable: Collection[Iterable[Any]],
     args: tuple | None = None,
     kwargs: dict | None = None,
-    n_jobs: int = 1,
+    processes: int = 1,
+    max_rows_per_chunk: int | None = None,
     backend: str = "loky",
-) -> GeoDataFrame | pd.DataFrame:
+) -> Collection[Iterable[Any]]:
     """Run a function in parallel on chunks of a DataFrame.
 
     This method is used to process large (Geo)DataFrames in manageable pieces,
@@ -1008,37 +1082,48 @@ def chunkwise(
     Args:
         func: The function to apply to each chunk. This function must accept a DataFrame as
             its first argument and return a DataFrame.
-        df: The DataFrame to be chunked and processed.
-        max_rows_per_chunk: The maximum number of rows each chunk should contain.
-        n_chunks: The exact number of chunks to divide the dataframe into. If None, it will be
-            calculated based on 'max_rows_per_chunk'.
+        iterable: Iterable to be chunked and processed.
         args: Additional positional arguments to pass to 'func'.
         kwargs: Keyword arguments to pass to 'func'.
-        n_jobs: The number of parallel jobs to run. Defaults to 1 (no parallel execution).
+        processes: The number of parallel jobs to run. Defaults to 1 (no parallel execution).
+        max_rows_per_chunk: The maximum number of rows each chunk should contain.
         backend: The backend to use for parallel execution (e.g., 'loky', 'multiprocessing').
 
     Returns:
-        GeoDataFrame: A GeoDataFrame resulting from concatenating the results of applying 'func'
-            to each chunk of the original GeoDataFrame.
+        Iterable of iterable.
 
     """
-    if len(df) < max_rows_per_chunk:
-        return func(df, *args, **kwargs)
+    args = args or ()
+    kwargs = kwargs or {}
 
-    if n_chunks is None:
-        n_chunks = len(df) // max_rows_per_chunk
+    if max_rows_per_chunk is None:
+        n_chunks: int = processes
+    else:
+        n_chunks: int = len(iterable) // max_rows_per_chunk
 
-    chunks = np.array_split(np.arange(len(df)), n_chunks)
+    if n_chunks <= 1:
+        return [func(iterable, *args, **kwargs)]
 
-    df_chunked: list[GeoDataFrame] = [df.iloc[chunk] for chunk in chunks]
+    chunks = np.array_split(np.arange(len(iterable)), n_chunks)
 
-    out = Parallel(n_jobs, backend=backend).map(
+    if hasattr(iterable, "iloc"):
+        iterable_chunked: list[pd.DataFrame | pd.Series] = [
+            iterable.iloc[chunk] for chunk in chunks
+        ]
+    elif is_array_like(iterable):
+        iterable_chunked: list[np.ndarray] = [iterable[chunk] for chunk in chunks]
+    else:
+        to_type: type = iterable.__class__
+        iterable_chunked: list[Iterable] = [
+            to_type(chunk) for chunk in np.array_split(list(iterable), n_chunks)
+        ]
+
+    return Parallel(processes, backend=backend).map(
         func,
-        df_chunked,
+        iterable_chunked,
         args=args,
         kwargs=kwargs,
     )
-    return pd.concat(out, ignore_index=True)
 
 
 def _turn_args_into_kwargs(func: Callable, args: tuple, index_start: int) -> dict:

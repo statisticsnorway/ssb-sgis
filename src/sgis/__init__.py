@@ -4,9 +4,6 @@ config = {
 
 
 import sgis.raster.indices as indices
-from sgis.raster.raster import Raster
-from sgis.raster.raster import get_shape_from_bounds
-from sgis.raster.raster import get_transform_from_bounds
 
 from .geopandas_tools.bounds import Gridlooper
 from .geopandas_tools.bounds import bounds_to_points
@@ -45,6 +42,7 @@ from .geopandas_tools.general import drop_inactive_geometry_columns
 from .geopandas_tools.general import get_common_crs
 from .geopandas_tools.general import get_grouped_centroids
 from .geopandas_tools.general import get_line_segments
+from .geopandas_tools.general import make_lines_between_points
 from .geopandas_tools.general import points_in_bounds
 from .geopandas_tools.general import random_points
 from .geopandas_tools.general import random_points_in_polygons
@@ -52,6 +50,7 @@ from .geopandas_tools.general import sort_large_first
 from .geopandas_tools.general import sort_long_first
 from .geopandas_tools.general import sort_short_first
 from .geopandas_tools.general import sort_small_first
+from .geopandas_tools.general import split_out_circles
 from .geopandas_tools.general import to_lines
 from .geopandas_tools.geocoding import address_to_coords
 from .geopandas_tools.geocoding import address_to_gdf
@@ -102,6 +101,7 @@ from .maps.tilesources import kartverket as kartverket_tiles
 from .maps.tilesources import xyz as xyztiles
 from .networkanalysis.closing_network_holes import close_network_holes
 from .networkanalysis.closing_network_holes import close_network_holes_to_deadends
+from .networkanalysis.closing_network_holes import get_k_nearest_points_for_deadends
 from .networkanalysis.cutting_lines import cut_lines
 from .networkanalysis.cutting_lines import cut_lines_once
 from .networkanalysis.cutting_lines import split_lines_by_nearest_point
@@ -118,8 +118,8 @@ from .networkanalysis.nodes import make_node_ids
 from .networkanalysis.traveling_salesman import traveling_salesman_problem
 from .parallel.parallel import Parallel
 from .parallel.parallel import parallel_overlay
-from .raster.cube import DataCube
-from .raster.cube import concat_cubes
+from .parallel.parallel import parallel_overlay_rowwise
+from .parallel.parallel import parallel_sjoin
 from .raster.image_collection import Band
 from .raster.image_collection import Image
 from .raster.image_collection import ImageCollection

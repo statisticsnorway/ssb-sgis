@@ -19,9 +19,6 @@ from numpy.typing import NDArray
 from shapely import Geometry
 from shapely import extract_unique_points
 from shapely import get_coordinates
-from shapely import get_exterior_ring
-from shapely import get_interior_ring
-from shapely import get_num_interior_rings
 from shapely import get_parts
 from shapely import linestrings
 from shapely import make_valid
@@ -30,7 +27,6 @@ from shapely import union_all
 from shapely.geometry import LineString
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
-from shapely.geometry import Polygon
 
 from .conversion import coordinate_array
 from .conversion import to_bbox
@@ -39,6 +35,8 @@ from .conversion import to_geoseries
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
+from .neighbors import get_k_nearest_neighbors
+from .sfilter import sfilter_split
 
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
@@ -88,6 +86,7 @@ def get_common_crs(
         # hash values for same crs. Therefore, trying to
         actually_different = set()
         for x in truthy_crs:
+            x = pyproj.CRS(x)
             if x.to_string() in {j.to_string() for j in actually_different}:
                 continue
             actually_different.add(x)
@@ -503,7 +502,42 @@ def random_points_in_polygons(gdf: GeoDataFrame, n: int, seed=None) -> GeoDataFr
     )
 
 
-def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
+def polygons_to_lines(
+    gdf: GeoDataFrame | GeoSeries, copy: bool = True
+) -> GeoDataFrame | GeoSeries:
+    if not len(gdf):
+        return gdf
+    if not (gdf.geom_type == "Polygon").all():
+        raise ValueError("geometries must be singlepart polygons")
+    if copy:
+        gdf = gdf.copy()
+    geoms = gdf.geometry.values
+    exterior_coords, exterior_indices = shapely.get_coordinates(
+        shapely.get_exterior_ring(geoms), return_index=True
+    )
+    exteriors = shapely.linestrings(exterior_coords, indices=exterior_indices)
+    max_rings: int = np.max(shapely.get_num_interior_rings(geoms))
+
+    interiors = [
+        [LineString(shapely.get_interior_ring(geom, j)) for j in range(max_rings)]
+        for i, geom in enumerate(geoms)
+    ]
+
+    lines = shapely.union_all(
+        np.array(
+            [[ext, *int_] for ext, int_ in zip(exteriors, interiors, strict=True)]
+        ),
+        axis=1,
+    )
+
+    gdf.geometry.loc[:] = lines
+
+    return gdf
+
+
+def to_lines(
+    *gdfs: GeoDataFrame, copy: bool = True, split: bool = True
+) -> GeoDataFrame:
     """Makes lines out of one or more GeoDataFrames and splits them at intersections.
 
     The GeoDataFrames' geometries are converted to LineStrings, then unioned together
@@ -513,6 +547,8 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     Args:
         *gdfs: one or more GeoDataFrames.
         copy: whether to take a copy of the incoming GeoDataFrames. Defaults to True.
+        split: If True (default), lines will be split at intersections if more than
+            one GeoDataFrame is passed as gdfs. Otherwise, a simple concat.
 
     Returns:
         A GeoDataFrame with singlepart line geometries and columns of all input
@@ -556,70 +592,295 @@ def to_lines(*gdfs: GeoDataFrame, copy: bool = True) -> GeoDataFrame:
     >>> lines["l"] = lines.length
     >>> sg.qtm(lines, "l")
     """
-    if not all(isinstance(gdf, (GeoSeries, GeoDataFrame)) for gdf in gdfs):
-        raise TypeError("gdf must be GeoDataFrame or GeoSeries")
+    gdf = (
+        pd.concat(df.assign(**{"_df_idx": i}) for i, df in enumerate(gdfs))
+        .pipe(make_all_singlepart, ignore_index=True)
+        .pipe(clean_geoms)
+    )
+    geom_col = gdf.geometry.name
 
-    if any(gdf.geom_type.isin(["Point", "MultiPoint"]).any() for gdf in gdfs):
+    if not len(gdf):
+        return gdf.drop(columns="_df_idx")
+
+    geoms = gdf.geometry
+
+    if (geoms.geom_type == "Polygon").all():
+        geoms = polygons_to_lines(geoms, copy=copy)
+    elif (geoms.geom_type != "LineString").any():
+        raise ValueError("Point geometries not allowed in 'to_lines'.")
+
+    gdf.geometry.loc[:] = geoms
+
+    if not split:
+        return gdf
+
+    out = []
+    for i in gdf["_df_idx"].unique():
+        these = gdf[gdf["_df_idx"] == i]
+        others = gdf.loc[gdf["_df_idx"] != i, [geom_col]]
+        intersection_points = these.overlay(others, keep_geom_type=False).explode(
+            ignore_index=True
+        )
+        points = intersection_points[intersection_points.geom_type == "Point"]
+        lines = intersection_points[intersection_points.geom_type == "LineString"]
+        splitted = _split_lines_by_points_along_line(these, points, splitted_col=None)
+        out.append(splitted)
+        out.append(lines)
+
+    return (
+        pd.concat(out, ignore_index=True)
+        .pipe(make_all_singlepart, ignore_index=True)
+        .drop(columns="_df_idx")
+    )
+
+
+def _split_lines_by_points_along_line(lines, points, splitted_col: str | None = None):
+    precision = 1e-5
+    # find the lines that were snapped to (or are very close because of float rounding)
+    points_buff = points.buffer(precision, resolution=16).to_frame("geometry")
+    relevant_lines, the_other_lines = sfilter_split(lines, points_buff)
+
+    if not len(relevant_lines):
+        if splitted_col:
+            return lines.assign(**{splitted_col: 0})
+        return lines
+
+    # need consistent coordinate dimensions later
+    # (doing it down here to not overwrite the original data)
+    relevant_lines.geometry = shapely.force_2d(relevant_lines.geometry)
+    points.geometry = shapely.force_2d(points.geometry)
+
+    # split the lines with buffer + difference, since shaply.split usually doesn't work
+    # relevant_lines["_idx"] = range(len(relevant_lines))
+    splitted = relevant_lines.overlay(points_buff, how="difference").explode(
+        ignore_index=True
+    )
+
+    # linearrings (maybe coded as linestrings) that were not split,
+    # do not have edges and must be added in the end
+    boundaries = splitted.geometry.boundary
+    circles = splitted[boundaries.is_empty]
+    splitted = splitted[~boundaries.is_empty]
+
+    if not len(splitted):
+        return pd.concat([the_other_lines, circles], ignore_index=True)
+
+    # the endpoints of the new lines are now sligtly off. Using get_k_nearest_neighbors
+    # to get the exact snapped point coordinates, . This will map the sligtly
+    # wrong line endpoints with the point the line was split by.
+
+    points["point_coords"] = [(geom.x, geom.y) for geom in points.geometry]
+
+    # get line endpoints as columns (source_coords and target_coords)
+    splitted = make_edge_coords_cols(splitted)
+
+    splitted_source = to_gdf(splitted["source_coords"], crs=lines.crs)
+    splitted_target = to_gdf(splitted["target_coords"], crs=lines.crs)
+
+    def get_nearest(splitted: GeoDataFrame, points: GeoDataFrame) -> pd.DataFrame:
+        """Find the nearest snapped point for each source and target of the lines."""
+        return get_k_nearest_neighbors(splitted, points, k=1).loc[
+            lambda x: x["distance"] <= precision * 2
+        ]
+
+    # points = points.set_index("point_coords")
+    points.index = points.geometry
+    dists_source = get_nearest(splitted_source, points)
+    dists_target = get_nearest(splitted_target, points)
+
+    # neighbor_index: point coordinates as tuple
+    pointmapper_source: pd.Series = dists_source["neighbor_index"]
+    pointmapper_target: pd.Series = dists_target["neighbor_index"]
+
+    # now, we can replace the source/target coordinate with the coordinates of
+    # the snapped points.
+
+    splitted = _change_line_endpoint(
+        splitted,
+        indices=dists_source.index,
+        pointmapper=pointmapper_source,
+        change_what="first",
+    )
+
+    # same for the lines where the target was split, but change the last coordinate
+    splitted = _change_line_endpoint(
+        splitted,
+        indices=dists_target.index,
+        pointmapper=pointmapper_target,
+        change_what="last",
+    )
+
+    if splitted_col:
+        splitted[splitted_col] = 1
+
+    return pd.concat([the_other_lines, splitted, circles], ignore_index=True).drop(
+        ["source_coords", "target_coords"], axis=1
+    )
+
+
+def _change_line_endpoint(
+    gdf: GeoDataFrame,
+    indices: pd.Index,
+    pointmapper: pd.Series,
+    change_what: str | int,
+) -> GeoDataFrame:
+    """Modify the endpoints of selected lines in a GeoDataFrame based on an index mapping.
+
+    This function updates the geometry of specified line features within a GeoDataFrame,
+    changing either the first or last point of each line to new coordinates provided by a mapping.
+    It is typically used in scenarios where line endpoints need to be adjusted to new locations,
+    such as in network adjustments or data corrections.
+
+    Args:
+        gdf: A GeoDataFrame containing line geometries.
+        indices: An Index object identifying the rows in the GeoDataFrame whose endpoints will be changed.
+        pointmapper: A Series mapping from the index of lines to new point geometries.
+        change_what: Specifies which endpoint of the line to change. Accepts 'first' or 0 for the
+            starting point, and 'last' or -1 for the ending point.
+
+    Returns:
+        A GeoDataFrame with the specified line endpoints updated according to the pointmapper.
+
+    Raises:
+        ValueError: If `change_what` is not one of the accepted values ('first', 'last', 0, -1).
+    """
+    assert gdf.index.is_unique
+
+    if change_what == "first" or change_what == 0:
+        keep = "first"
+    elif change_what == "last" or change_what == -1:
+        keep = "last"
+    else:
         raise ValueError(
-            f"Cannot convert points to lines. {[gdf.geom_type.value_counts() for gdf in gdfs]}"
+            f"change_what should be 'first' or 'last' or 0 or -1. Got {change_what}"
         )
 
-    def _shapely_geometry_to_lines(geom):
-        """Get all lines from the exterior and interiors of a Polygon."""
-        # if lines (points are not allowed in this function)
-        if geom.area == 0:
-            return geom
+    is_relevant = gdf.index.isin(indices)
+    relevant_lines = gdf.loc[is_relevant]
 
-        singlepart = get_parts(geom)
-        lines = []
-        for part in singlepart:
-            exterior_ring = get_exterior_ring(part)
-            lines.append(exterior_ring)
+    relevant_lines.geometry = extract_unique_points(relevant_lines.geometry)
+    relevant_lines = relevant_lines.explode(index_parts=False)
 
-            n_interior_rings = get_num_interior_rings(part)
-            if not (n_interior_rings):
-                continue
+    relevant_lines.loc[lambda x: ~x.index.duplicated(keep=keep), "geometry"] = (
+        relevant_lines.loc[lambda x: ~x.index.duplicated(keep=keep)]
+        .index.map(pointmapper)
+        .values
+    )
 
-            interior_rings = [
-                LineString(get_interior_ring(part, n)) for n in range(n_interior_rings)
-            ]
+    is_line = relevant_lines.groupby(level=0).size() > 1
+    relevant_lines_mapped = (
+        relevant_lines.loc[is_line].groupby(level=0)["geometry"].agg(LineString)
+    )
 
-            lines += interior_rings
+    gdf.loc[relevant_lines_mapped.index, "geometry"] = relevant_lines_mapped
 
-        return union_all(lines)
+    return gdf
 
-    lines = []
-    for gdf in gdfs:
-        if copy:
-            gdf = gdf.copy()
 
-        mapped = gdf.geometry.map(_shapely_geometry_to_lines)
-        try:
-            gdf.geometry = mapped
-        except AttributeError:
-            # geoseries
-            gdf.loc[:] = mapped
+def make_edge_coords_cols(gdf: GeoDataFrame) -> GeoDataFrame:
+    """Get the wkt of the first and last points of lines as columns.
 
-        gdf = to_single_geom_type(gdf, "line")
+    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
+    columns, source_coords and target_coords, which are the x and y coordinates of the
+    first and last points of the LineStrings in a tuple. The lines all have to be
 
-        lines.append(gdf)
+    Args:
+        gdf (GeoDataFrame): the GeoDataFrame with the lines
 
-    if len(lines) == 1:
-        return lines[0]
+    Returns:
+        A GeoDataFrame with new columns 'source_coords' and 'target_coords'
+    """
+    try:
+        gdf, endpoints = _prepare_make_edge_cols_simple(gdf)
+    except ValueError:
+        gdf, endpoints = _prepare_make_edge_cols(gdf)
 
-    if len(lines[0]) and len(lines[1]):
-        unioned = lines[0].overlay(lines[1], how="union", keep_geom_type=True)
-    else:
-        unioned = pd.concat([lines[0], lines[1]], ignore_index=True)
+    coords = [(geom.x, geom.y) for geom in endpoints.geometry]
+    gdf["source_coords"], gdf["target_coords"] = (
+        coords[0::2],
+        coords[1::2],
+    )
 
-    if len(lines) > 2:
-        for line_gdf in lines[2:]:
-            if len(line_gdf):
-                unioned = unioned.overlay(line_gdf, how="union", keep_geom_type=True)
-            else:
-                unioned = pd.concat([unioned, line_gdf], ignore_index=True)
+    return gdf
 
-    return make_all_singlepart(unioned, ignore_index=True)
+
+def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
+    """Get coordinate tuples of the first and last points of lines as columns.
+
+    It takes a GeoDataFrame of LineStrings and returns a GeoDataFrame with two new
+    columns, source_wkt and target_wkt, which are the WKT representations of the first
+    and last points of the LineStrings
+
+    Args:
+        gdf (GeoDataFrame): the GeoDataFrame with the lines
+
+    Returns:
+        A GeoDataFrame with new columns 'source_wkt' and 'target_wkt'
+    """
+    try:
+        gdf, endpoints = _prepare_make_edge_cols_simple(gdf)
+    except ValueError:
+        gdf, endpoints = _prepare_make_edge_cols(gdf)
+
+    wkt_geom = [
+        f"POINT ({x} {y})" for x, y in zip(endpoints.x, endpoints.y, strict=True)
+    ]
+    gdf["source_wkt"], gdf["target_wkt"] = (
+        wkt_geom[0::2],
+        wkt_geom[1::2],
+    )
+
+    return gdf
+
+
+def _prepare_make_edge_cols(lines: GeoDataFrame) -> tuple[GeoDataFrame, GeoDataFrame]:
+
+    lines = lines.loc[lines.geom_type != "LinearRing"]
+
+    if not (lines.geom_type == "LineString").all():
+        multilinestring_error_message = (
+            "MultiLineStrings have more than two endpoints. "
+            "Try shapely.line_merge and/or explode() to get LineStrings. "
+            "Or use the Network class methods, where the lines are prepared correctly."
+        )
+        if (lines.geom_type == "MultiLinestring").any():
+            raise ValueError(multilinestring_error_message)
+        else:
+            raise ValueError(
+                "You have mixed geometries. Only lines are accepted. "
+                "Try using: to_single_geom_type(gdf, 'lines')."
+            )
+
+    geom_col = lines._geometry_column_name
+
+    # some LineStrings are in fact rings and must be removed manually
+    lines, _ = split_out_circles(lines)
+
+    endpoints = lines[geom_col].boundary.explode(ignore_index=True)
+
+    if len(lines) and len(endpoints) / len(lines) != 2:
+        raise ValueError(
+            "The lines should have only two endpoints each. "
+            "Try splitting multilinestrings with explode.",
+            lines[geom_col],
+        )
+
+    return lines, endpoints
+
+
+def _prepare_make_edge_cols_simple(
+    lines: GeoDataFrame,
+) -> tuple[GeoDataFrame, GeoDataFrame]:
+    """Faster version of _prepare_make_edge_cols."""
+    endpoints = lines[lines._geometry_column_name].boundary.explode(ignore_index=True)
+
+    if len(lines) and len(endpoints) / len(lines) != 2:
+        raise ValueError(
+            "The lines should have only two endpoints each. "
+            "Try splitting multilinestrings with explode."
+        )
+
+    return lines, endpoints
 
 
 def clean_clip(
@@ -674,6 +935,14 @@ def clean_clip(
         gdf = to_single_geom_type(gdf, geom_type)
 
     return gdf
+
+
+def split_out_circles(
+    lines: GeoDataFrame | GeoSeries,
+) -> tuple[GeoDataFrame | GeoSeries, GeoDataFrame | GeoSeries]:
+    boundaries = lines.geometry.boundary
+    is_circle = (~boundaries.is_empty).values
+    return lines.iloc[is_circle], lines.iloc[~is_circle]
 
 
 def extend_lines(arr1, arr2, distance) -> NDArray[LineString]:
@@ -871,9 +1140,6 @@ def _grouped_unary_union(
 
     Experimental. Messy code.
     """
-    df = df.copy()
-    df_orig = df.copy()
-
     try:
         geom_col = df._geometry_column_name
     except AttributeError:
@@ -884,60 +1150,18 @@ def _grouped_unary_union(
         except AttributeError:
             geom_col = "geometry"
 
-    if not len(df):
-        return GeoSeries(name=geom_col)
-
     if isinstance(df, pd.Series):
-        df.name = geom_col
-        original_index = df.index
-        df = df.reset_index()
-        df.index = original_index
-
-    if isinstance(by, str):
-        by = [by]
-    elif by is None and level is None:
-        raise TypeError("You have to supply one of 'by' and 'level'")
-    elif by is None:
-        by = df.index.get_level_values(level)
-
-    cumcount = df.groupby(by, dropna=dropna).cumcount().values
-
-    def get_col_or_index(df, col: str) -> pd.Series | pd.Index:
-        try:
-            return df[col]
-        except KeyError:
-            for i, name in enumerate(df.index.names):
-                if name == col:
-                    return df.index.get_level_values(i)
-        raise KeyError(col)
-
-    try:
-        df.index = pd.MultiIndex.from_arrays(
-            [cumcount, *[get_col_or_index(df, col) for col in by]]
+        return GeoSeries(
+            df.groupby(level=level, as_index=as_index, **kwargs).agg(
+                lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+            )
         )
-    except KeyError:
-        df.index = pd.MultiIndex.from_arrays([cumcount, by])
 
-    # to wide format: each row will be one group to be merged to one geometry
-    try:
-        geoms_wide: pd.DataFrame = df[geom_col].unstack(level=0)
-    except Exception as e:
-        bb = [*by, geom_col]
-        raise e.__class__(e, f"by={by}", df_orig[bb], df[geom_col]) from e
-    geometries_2d: NDArray[Polygon | None] = geoms_wide.values
-    try:
-        geometries_2d = make_valid(geometries_2d)
-    except TypeError:
-        # make_valid doesn't like nan, so converting to None
-        # np.isnan doesn't accept geometry type, so using isinstance
-        np_isinstance = np.vectorize(isinstance)
-        geometries_2d[np_isinstance(geometries_2d, Geometry) == False] = None
-
-    unioned = make_valid(union_all(geometries_2d, axis=1, **kwargs))
-
-    geoms = GeoSeries(unioned, name=geom_col, index=geoms_wide.index)
-
-    return geoms if as_index else geoms.reset_index()
+    return GeoSeries(
+        df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
+            lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+        )
+    )
 
 
 def _parallel_unary_union(
