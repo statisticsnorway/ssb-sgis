@@ -712,10 +712,16 @@ def test_masking():
         collection.values
     )
 
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=20)
+    collection.load()
+
     for img in collection:
         assert isinstance(img.values, np.ma.core.MaskedArray), type(img.values)
+        print("0", img.mask.has_array)
         for band in img:
             assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
+            print("1", band.has_array)
+            print("2", band.mask.has_array)
 
     collection_with_little_mask = collection[
         lambda img: img.mask_percentage

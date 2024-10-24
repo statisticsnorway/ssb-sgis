@@ -657,6 +657,8 @@ class Band(_ImageBandBase):
         self._bounds = bounds
         self._all_file_paths = all_file_paths
 
+        self._image = None
+
         for key in self.metadata_attributes:
             setattr(self, key, None)
 
@@ -843,6 +845,10 @@ class Band(_ImageBandBase):
                 self._mask = self._mask.load()
             self._bounds = None
             self.transform = None
+            try:
+                self._image._mask = self._mask
+            except AttributeError:
+                pass
             return self
 
         if self.has_array and bounds_was_none:
@@ -957,6 +963,11 @@ class Band(_ImageBandBase):
             self._values = np.ma.array(
                 self._values, mask=mask_arr, fill_value=self.nodata
             )
+
+        try:
+            self._image._mask = self._mask
+        except AttributeError:
+            pass
 
         return self
 
@@ -1396,6 +1407,11 @@ class Image(_ImageBandBase):
     def mask(self) -> Band | None:
         """Mask Band."""
         if self._mask is not None:
+            # if not self._mask.has_array:
+            #     try:
+            #         self._mask.values = self[0]._mask.values
+            #     except Exception:
+            #         pass
             return self._mask
         if self.masking is None:
             return None
@@ -1509,6 +1525,9 @@ class Image(_ImageBandBase):
                     except KeyError:
                         continue
                 setattr(band, key, value)
+
+        for band in self:
+            band._image = self
 
         return self._bands
 
@@ -1751,10 +1770,6 @@ class ImageCollection(_ImageBase):
         """4 dimensional numpy array."""
         if isinstance(self[0].values, np.ma.core.MaskedArray):
             return np.ma.array([img.values for img in self])
-        # values = [img.values for img in self]
-        # if self.mask is not None:
-        #     return np.ma.array(values, mask=self.mask.values, fill_value=self.nodata)
-        # return np.array(values)
         return np.array([img.values for img in self])
 
     @property
@@ -2116,13 +2131,6 @@ class ImageCollection(_ImageBase):
         ):
             return self
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
-            # if self.masking:
-            #     parallel(
-            #         joblib.delayed(_load_band)(
-            #             img.mask, bounds=bounds, indexes=indexes, **kwargs
-            #         )
-            #         for img in self
-            #     )
             parallel(
                 joblib.delayed(_load_band)(
                     band, bounds=bounds, indexes=indexes, **kwargs
