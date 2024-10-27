@@ -368,9 +368,10 @@ def main():
     from oslo import points_oslo
     from oslo import roads_oslo
 
+    test_image_collection()
+    ssss
     # test_torch()
     test_explore(points_oslo(), roads_oslo())
-    test_image_collection()
     # not_test_explore(points_oslo(), roads_oslo())
 
 

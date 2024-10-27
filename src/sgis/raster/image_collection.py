@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from typing import ClassVar
 
+from pandas.api.types import is_array_like
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -67,6 +68,7 @@ except ImportError:
 
 
 try:
+    import rioxarray
     from rioxarray.exceptions import NoDataInBounds
     from rioxarray.merge import merge_arrays
     from rioxarray.rioxarray import _generate_spatial_coords
@@ -89,6 +91,7 @@ from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.conversion import to_bbox
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.conversion import to_shapely
+from ..geopandas_tools.conversion import to_geoseries
 from ..geopandas_tools.general import get_common_crs
 from ..helpers import get_all_files
 from ..helpers import get_numpy_func
@@ -160,6 +163,7 @@ ALLOWED_INIT_KWARGS = [
     "bounds_regexes",
     "all_bands",
     "crs",
+    "backend",
     "masking",
     "_merged",
     "_add_metadata_attributes",
@@ -216,7 +220,6 @@ class ImageCollectionGroupBy:
 
         collection = ImageCollection(
             images,
-            # TODO band_class?
             level=self.collection.level,
             **self.collection._common_init_kwargs,
         )
@@ -254,7 +257,6 @@ class ImageCollectionGroupBy:
 
         image = Image(
             bands,
-            # TODO band_class?
             **self.collection._common_init_kwargs,
         )
         image._merged = True
@@ -288,29 +290,40 @@ def standardize_band_id(x: str) -> str:
     return x.replace("B", "").replace("A", "").zfill(2)
 
 
-class BandIdDict(dict):
-    """Dict that tells the band initialiser to get the dict value of the band_id."""
+class BandIdDict:
+    """Dict-like that tells the band initialiser to get the dict value of the band_id."""
 
     def __init__(self, data: dict | None = None, **kwargs) -> None:
         """Add dicts or kwargs."""
+        self._keys = {}
         self._standardized_keys = {}
         for key, value in ((data or {}) | kwargs).items():
-            setattr(self, key, value)
+            self._keys[key] = value
             self._standardized_keys[standardize_band_id(key)] = value
+
+    def __str__(self) -> str:
+        dict_ = {k: v for k, v in self._keys.items()}
+        return f"{self.__class__.__name__}({dict_})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
     def __len__(self) -> int:
         """Number of items."""
-        return len({key for key in self.__dict__ if key != "_standardized_keys"})
+        return len(self._keys)
+
+    def __iter__(self):
+        return iter({x for x in self._keys.values()})
 
     def __getitem__(self, item: str) -> Any:
         """Get dict value from key."""
         try:
-            return getattr(self, item)
-        except AttributeError as e:
+            return self._keys[item]
+        except KeyError as e:
             try:
                 return self._standardized_keys[standardize_band_id(item)]
             except KeyError:
-                raise KeyError(item, self.__dict__) from e
+                raise KeyError(item, self._keys) from e
 
 
 @dataclass(frozen=True)
@@ -382,6 +395,7 @@ class _ImageBase:
             "res": self.res,
             "bbox": self._bbox,
             "nodata": self.nodata,
+            "backend": self.backend,
         }
 
     @property
@@ -596,6 +610,7 @@ class Band(_ImageBandBase):
     """Band holding a single 2 dimensional array representing an image band."""
 
     cmap: ClassVar[str | None] = None
+    backend: str = "numpy"
 
     @classmethod
     def from_gdf(
@@ -725,11 +740,32 @@ class Band(_ImageBandBase):
 
     @values.setter
     def values(self, new_val):
-        if not isinstance(new_val, np.ndarray):
-            raise TypeError(
-                f"{self.__class__.__name__} 'values' must be np.ndarray. Got {type(new_val)}"
-            )
-        self._values = new_val
+        if (
+            self.backend == "numpy"
+            and isinstance(new_val, np.ndarray)
+            or self.backend == "xarray"
+            and isinstance(new_val, xr.DataArray)
+        ):
+            self._values = new_val
+            return
+
+        if self.backend == "numpy":
+            self._values = self._to_numpy(new_val)
+
+        if self.backend == "xarray":
+            # if not is_array_like(new_val):
+            # if self.mask is None:
+            #     new_val = np.array(new_val)
+            # else:
+            #     new_val = np.ma.array(new_val, mask=self.mask.values)
+            if isinstance(new_val, np.ndarray):
+                new_val = to_xarray(
+                    new_val,
+                    crs=self.crs,
+                    transform=self.transform,
+                    name=self.name or self.__class__.__name__(),
+                )
+            self._values = new_val
 
     @property
     def mask(self) -> "Band":
@@ -820,6 +856,28 @@ class Band(_ImageBandBase):
         df[column] = f"smallest_{n}"
         return df
 
+    def clip(
+        self, mask: GeoDataFrame | GeoSeries | Polygon | MultiPolygon, **kwargs
+    ) -> "Band":
+        # if self.backend == "numpy" and self.mask is not None and not self.is_mask:
+        #     self.mask.values = _clip_xarray(
+        #         self.mask.to_xarray(),
+        #         mask,
+        #         self.crs,
+        #         **kwargs,
+        #     )
+
+        values = _clip_xarray(
+            self.to_xarray(),
+            mask,
+            self.crs,
+            **kwargs,
+        )
+        self._bounds = to_bbox(mask)
+        self.transform = _get_transform_from_bounds(self._bounds, values.shape)
+        self.values = values
+        return self
+
     def load(
         self,
         bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
@@ -836,7 +894,7 @@ class Band(_ImageBandBase):
 
         bounds_was_none = bounds is None
 
-        bounds = _get_bounds(bounds, self._bbox)
+        bounds = _get_bounds(bounds, self._bbox, self.union_all())
 
         should_return_empty: bool = bounds is not None and bounds.area == 0
         if should_return_empty:
@@ -845,10 +903,9 @@ class Band(_ImageBandBase):
                 self._mask = self._mask.load()
             self._bounds = None
             self.transform = None
-            try:
-                self._image._mask = self._mask
-            except AttributeError:
-                pass
+            self.values = self._values
+            self._assign_from_band_to_image()
+
             return self
 
         if self.has_array and bounds_was_none:
@@ -857,7 +914,8 @@ class Band(_ImageBandBase):
         # round down/up to integer to avoid precision trouble
         if bounds is not None:
             minx, miny, maxx, maxy = to_bbox(bounds)
-            bounds = (int(minx), int(miny), math.ceil(maxx), math.ceil(maxy))
+            # bounds = (int(minx), int(miny), math.ceil(maxx), math.ceil(maxy))
+            bounds = minx, miny, maxx, maxy
 
         if indexes is None:
             indexes = 1
@@ -869,107 +927,116 @@ class Band(_ImageBandBase):
         out_shape = kwargs.pop("out_shape", None)
 
         if self.has_array:
-            self.values = _clip_loaded_array(
-                self.values, bounds, self.transform, self.crs, out_shape, **kwargs
+            raise ValueError(
+                "Cannot re-load array with different bounds. "
+                "Use .copy() to read with different bounds. "
+                "Or .clip(mask) to clip."
             )
-            self._bounds = bounds
-            self.transform = _get_transform_from_bounds(self._bounds, self.values.shape)
+        with opener(self.path, file_system=self.file_system) as f:
+            with rasterio.open(f, nodata=self.nodata) as src:
+                self._res = int(src.res[0]) if not self.res else self.res
 
-        else:
-            with opener(self.path, file_system=self.file_system) as f:
-                with rasterio.open(f, nodata=self.nodata) as src:
-                    self._res = int(src.res[0]) if not self.res else self.res
-
-                    if self.nodata is None or np.isnan(self.nodata):
-                        self.nodata = src.nodata
-                    else:
-                        dtype_min_value = _get_dtype_min(src.dtypes[0])
-                        dtype_max_value = _get_dtype_max(src.dtypes[0])
-                        if (
-                            self.nodata > dtype_max_value
-                            or self.nodata < dtype_min_value
-                        ):
-                            src._dtypes = tuple(
-                                rasterio.dtypes.get_minimum_dtype(self.nodata)
-                                for _ in range(len(_indexes))
-                            )
-
-                    if bounds is None:
-                        if self._res != int(src.res[0]):
-                            if out_shape is None:
-                                out_shape = _get_shape_from_bounds(
-                                    to_bbox(src.bounds), self.res, indexes
-                                )
-                            self.transform = _get_transform_from_bounds(
-                                to_bbox(src.bounds), shape=out_shape
-                            )
-                        else:
-                            self.transform = src.transform
-
-                        self._values = src.read(
-                            indexes=indexes,
-                            out_shape=out_shape,
-                            masked=masked,
-                            **kwargs,
-                        )
-                    else:
-                        window = rasterio.windows.from_bounds(
-                            *bounds, transform=src.transform
+                if self.nodata is None or np.isnan(self.nodata):
+                    self.nodata = src.nodata
+                else:
+                    dtype_min_value = _get_dtype_min(src.dtypes[0])
+                    dtype_max_value = _get_dtype_max(src.dtypes[0])
+                    if self.nodata > dtype_max_value or self.nodata < dtype_min_value:
+                        src._dtypes = tuple(
+                            rasterio.dtypes.get_minimum_dtype(self.nodata)
+                            for _ in range(len(_indexes))
                         )
 
+                if bounds is None:
+                    if self._res != int(src.res[0]):
                         if out_shape is None:
                             out_shape = _get_shape_from_bounds(
-                                bounds, self.res, indexes
+                                to_bbox(src.bounds), self.res, indexes
                             )
-
-                        self._values = src.read(
-                            indexes=indexes,
-                            window=window,
-                            boundless=False,
-                            out_shape=out_shape,
-                            masked=masked,
-                            **kwargs,
+                        self.transform = _get_transform_from_bounds(
+                            to_bbox(src.bounds), shape=out_shape
                         )
+                    else:
+                        self.transform = src.transform
 
-                        assert out_shape == self._values.shape, (
-                            out_shape,
-                            self._values.shape,
-                        )
+                    values = src.read(
+                        indexes=indexes,
+                        out_shape=out_shape,
+                        masked=masked,
+                        **kwargs,
+                    )
+                else:
+                    window = rasterio.windows.from_bounds(
+                        *bounds, transform=src.transform
+                    )
 
+                    if out_shape is None:
+                        out_shape = _get_shape_from_bounds(bounds, self.res, indexes)
+
+                    values = src.read(
+                        indexes=indexes,
+                        window=window,
+                        boundless=False,
+                        out_shape=out_shape,
+                        masked=masked,
+                        **kwargs,
+                    )
+
+                    assert out_shape == values.shape, (
+                        out_shape,
+                        values.shape,
+                    )
+
+                    width, height = values.shape[-2:]
+
+                    if width and height:
                         self.transform = rasterio.transform.from_bounds(
-                            *bounds, self.width, self.height
+                            *bounds, width, height
                         )
-                        self._bounds = bounds
 
-                    if self.nodata is not None and not np.isnan(self.nodata):
-                        if isinstance(self.values, np.ma.core.MaskedArray):
-                            self.values.data[self.values.data == src.nodata] = (
-                                self.nodata
-                            )
-                        else:
-                            self.values[self.values == src.nodata] = self.nodata
+                if self.nodata is not None and not np.isnan(self.nodata):
+                    if isinstance(values, np.ma.core.MaskedArray):
+                        values.data[values.data == src.nodata] = self.nodata
+                    else:
+                        values[values == src.nodata] = self.nodata
 
         if self.masking and self.is_mask:
-            self.values = np.isin(self.values, self.masking["values"])
+            values = np.isin(values, self.masking["values"])
 
-        elif self.mask is not None and not isinstance(
-            self.values, np.ma.core.MaskedArray
-        ):
+        elif self.mask is not None and not isinstance(values, np.ma.core.MaskedArray):
             self.mask = self.mask.copy().load(
                 bounds=bounds, indexes=indexes, out_shape=out_shape, **kwargs
             )
             mask_arr = self.mask.values
 
-            self._values = np.ma.array(
-                self._values, mask=mask_arr, fill_value=self.nodata
-            )
+            values = np.ma.array(values, mask=mask_arr, fill_value=self.nodata)
 
+        if bounds is not None:
+            self._bounds = to_bbox(bounds)
+
+        self._values = values
+        # trigger the setter
+        self.values = values
+
+        self._assign_from_band_to_image()
+
+        # for k, v in locals().items():
+        #     print()
+        #     print(k)
+        #     print(v)
+
+        return self
+
+    def _assign_from_band_to_image(self):
         try:
             self._image._mask = self._mask
         except AttributeError:
             pass
 
-        return self
+        try:
+            self._image._bounds = self._bounds
+        except AttributeError:
+            pass
 
     @property
     def is_mask(self) -> bool:
@@ -980,7 +1047,7 @@ class Band(_ImageBandBase):
     def has_array(self) -> bool:
         """Whether the array is loaded."""
         try:
-            if not isinstance(self.values, np.ndarray):
+            if not isinstance(self.values, (np.ndarray | xr.DataArray)):
                 raise ValueError()
             return True
         except ValueError:  # also catches ArrayNotLoadedError
@@ -1200,22 +1267,43 @@ class Band(_ImageBandBase):
         )
 
     def to_xarray(self) -> DataArray:
-        """Convert the raster to  an xarray.DataArray."""
-        name = self.name or self.__class__.__name__.lower()
-        coords = _generate_spatial_coords(self.transform, self.width, self.height)
-        if len(self.values.shape) == 2:
-            dims = ["y", "x"]
-        elif len(self.values.shape) == 3:
-            dims = ["band", "y", "x"]
-        else:
-            raise ValueError("Array must be 2 or 3 dimensional.")
-        return xr.DataArray(
+        """Convert the raster to an xarray.DataArray."""
+        if self.backend == "xarray":
+            return self.values
+        return to_xarray(
             self.values,
-            coords=coords,
-            dims=dims,
-            name=name,
-            attrs={"crs": self.crs},
+            transform=self.transform,
+            crs=self.crs,
+            name=self.name or self.__class__.__name__.lower(),
         )
+
+    def to_numpy(self) -> np.ndarray | np.ma.core.MaskedArray:
+        """Convert the raster to a numpy.ndarray."""
+        return self._to_numpy(self.values).copy()
+
+    def _to_numpy(
+        self, arr: np.ndarray | xr.DataArray, masked: bool = True
+    ) -> np.ndarray | np.ma.core.MaskedArray:
+        if not isinstance(arr, np.ndarray):
+            if masked:
+                try:
+                    mask_arr = arr.isnull().values
+                except AttributeError:
+                    mask_arr = np.full(arr.shape, False)
+            try:
+                arr = arr.to_numpy()
+            except AttributeError:
+                arr = arr.values
+        if not isinstance(arr, np.ndarray):
+            arr = np.array(arr)
+        if (
+            masked
+            and self.mask is not None
+            and not self.is_mask
+            and not isinstance(arr, np.ma.core.MaskedArray)
+        ):
+            arr = np.ma.array(arr, mask=mask_arr, fill_value=self.nodata)
+        return arr
 
     def __repr__(self) -> str:
         """String representation."""
@@ -1252,6 +1340,7 @@ class Image(_ImageBandBase):
     """Image consisting of one or more Bands."""
 
     band_class: ClassVar[Band] = Band
+    backend: str = "numpy"
 
     def __init__(
         self,
@@ -1335,6 +1424,8 @@ class Image(_ImageBandBase):
     def values(self) -> np.ndarray:
         """3 dimensional numpy array."""
         values = [band.values for band in self]
+        if self.backend == "xarray":
+            return xr.DataArray(values, dims=["band", *self[0].values.dims])
         if self.mask is not None:
             mask = [band.mask.values for band in self]
             return np.ma.array(values, mask=mask, fill_value=self.nodata)
@@ -1390,17 +1481,14 @@ class Image(_ImageBandBase):
 
     def to_xarray(self) -> DataArray:
         """Convert the raster to  an xarray.DataArray."""
-        name = self.name or self.__class__.__name__.lower()
-        coords = _generate_spatial_coords(
-            self[0].transform, self[0].width, self[0].height
-        )
-        dims = ["band", "y", "x"]
-        return xr.DataArray(
+        if self.backend == "xarray":
+            return self.values
+
+        return to_xarray(
             self.values,
-            coords=coords,
-            dims=dims,
-            name=name,
-            attrs={"crs": self.crs},
+            transform=self[0].transform,
+            crs=self.crs,
+            name=self.name or self.__class__.__name__.lower(),
         )
 
     @property
@@ -1702,6 +1790,7 @@ class ImageCollection(_ImageBase):
     image_class: ClassVar[Image] = Image
     band_class: ClassVar[Band] = Band
     _metadata_attribute_collection_type: ClassVar[type] = pd.Series
+    backend: str = "numpy"
 
     def __init__(
         self,
@@ -1892,7 +1981,7 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> Band:
         """Merge all areas and all bands to a single Band."""
-        bounds = _get_bounds(bounds, self._bbox)
+        bounds = _get_bounds(bounds, self._bbox, self.union_all())
         if bounds is not None:
             bounds = to_bbox(bounds)
 
@@ -1930,14 +2019,14 @@ class ImageCollection(_ImageBase):
                 **kwargs,
             )
 
-        if isinstance(indexes, int) and len(arr.shape) == 3 and arr.shape[0] == 1:
-            arr = arr[0]
+            if isinstance(indexes, int) and len(arr.shape) == 3 and arr.shape[0] == 1:
+                arr = arr[0]
 
-        if method == "mean":
-            if as_int:
-                arr = arr // len(datasets)
-            else:
-                arr = arr / len(datasets)
+            if method == "mean":
+                if as_int:
+                    arr = arr // len(datasets)
+                else:
+                    arr = arr / len(datasets)
 
         if bounds is None:
             bounds = self.bounds
@@ -1963,7 +2052,7 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> Image:
         """Merge all areas to a single tile, one band per band_id."""
-        bounds = _get_bounds(bounds, self._bbox)
+        bounds = _get_bounds(bounds, self._bbox, self.union_all())
         if bounds is not None:
             bounds = to_bbox(bounds)
         bounds = self.bounds if bounds is None else bounds
@@ -2061,10 +2150,13 @@ class ImageCollection(_ImageBase):
             arr = np.array(
                 [
                     (
-                        band.load(
-                            bounds=(_bounds if _bounds is not None else None),
-                            **kwargs,
-                        )
+                        # band.load(
+                        #     bounds=(_bounds if _bounds is not None else None),
+                        #     **kwargs,
+                        # )
+                        # if not band.has_array
+                        # else
+                        band
                     ).values
                     for img in collection
                     for band in img
@@ -2130,11 +2222,39 @@ class ImageCollection(_ImageBase):
             and all(band.has_array for img in self for band in img)
         ):
             return self
+
+        if self.processes == 1:
+            for img in self:
+                for band in img:
+                    band.load(bounds=bounds, indexes=indexes, **kwargs)
+            return self
+
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             parallel(
                 joblib.delayed(_load_band)(
                     band, bounds=bounds, indexes=indexes, **kwargs
                 )
+                for img in self
+                for band in img
+            )
+
+        return self
+
+    def clip(
+        self,
+        mask: Geometry | GeoDataFrame | GeoSeries,
+        **kwargs,
+    ) -> "ImageCollection":
+        """Clip all image Bands with 'loky'."""
+        if self.processes == 1:
+            for img in self:
+                for band in img:
+                    band.clip(mask, **kwargs)
+            return self
+
+        with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
+            parallel(
+                joblib.delayed(_clip_band)(band, mask, **kwargs)
                 for img in self
                 for band in img
             )
@@ -2197,37 +2317,63 @@ class ImageCollection(_ImageBase):
         ]
         return self
 
-    def to_xarray(self, **kwargs) -> DataArray:
-        """Convert the raster to  an xarray.DataArray."""
-        # arrs = []
-        # for img in self:
-        #     for band in img:
-        #         arr = band.load(**kwargs).values
-        #         arrs.append(arr)
+    def to_xarray(
+        self,
+        by: str | Sequence[str] | None = None,
+        **kwargs,
+    ) -> Dataset:
+        """Convert the raster to  an xarray.Dataset.
 
-        # n_images = len(self)
-        # n_bands = len(img)
-        # height, width = arr.shape
+        Images are converted to 2d arrays for each unique bounds.
+        The spatial dimensions will be labeled "x" and "y". The third
+        dimension defaults to "date" if all images have date attributes.
+        Otherwise defaults to the image name.
 
-        # arr_4d = np.array(arrs).reshape(n_images, n_bands, height, width)
+        Args:
+            by: Attribute to use as third dimensionDefaults to "date" if all images have none-None dates.
+                Otherwise, names are used.
+        """
 
-        try:
-            name = Path(self.path).stem
-        except TypeError:
-            name = self.__class__.__name__.lower()
+        if any(not band.has_array for img in self for band in img):
+            raise ValueError("Arrays must be loaded.")
 
-        first_band = self[0][0]
-        coords = _generate_spatial_coords(
-            first_band.transform, first_band.width, first_band.height
-        )
-        dims = ["image", "band", "y", "x"]
-        return xr.DataArray(
-            self.values,
-            coords=coords,
-            dims=dims,
-            name=name,
-            attrs={"crs": self.crs},
-        )
+        if by is None:
+            if all(img.date for img in self):
+                by = ["date"]
+            elif not pd.Index([img.name for img in self]).is_unique:
+                raise ValueError("Images must have unique names.")
+            else:
+                by = ["name"]
+        elif isinstance(by, str):
+            by = [by]
+
+        xarrs: dict[str, xr.DataArray] = {}
+        for bounds, collection in self.groupby(["bounds"]):
+            try:
+                name = Path(collection.path).stem
+            except TypeError:
+                name = collection.__class__.__name__.lower()
+
+            first_band = collection[0][0]
+            coords = _generate_spatial_coords(
+                first_band.transform, first_band.width, first_band.height
+            )
+            coords["band_id"] = [
+                band.band_id or i for i, band in enumerate(collection[0])
+            ]
+            for attr in by:
+                coords[attr] = [getattr(img, attr) for img in collection]
+            dims = [*by, "band_id", "y", "x"]
+            xarrs[bounds] = xr.DataArray(
+                collection.values,
+                coords=coords,
+                dims=dims,
+                name=name,
+                attrs={"crs": collection.crs},
+                **kwargs,
+            )
+
+        return xr.Dataset(xarrs)
 
     def to_gdfs(self, column: str = "value") -> dict[str, GeoDataFrame]:
         """Convert each band in each Image to a GeoDataFrame."""
@@ -2836,29 +2982,28 @@ def _slope_2d(array: np.ndarray, res: int, degrees: int) -> np.ndarray:
     return degrees
 
 
-def _clip_loaded_array(
-    arr: np.ndarray,
-    bounds: tuple[int, int, int, int],
-    transform: Affine,
+def _clip_xarray(
+    xarr: xr.DataArray,
+    mask: tuple[int, int, int, int],
     crs: Any,
-    out_shape: tuple[int, int],
+    # out_shape: tuple[int, int],
     **kwargs,
-) -> np.ndarray:
+) -> xr.DataArray:
     # xarray needs a numpy array of polygons
-    bounds_arr: np.ndarray = GeoSeries([to_shapely(bounds)]).values
+    mask_arr: np.ndarray = to_geoseries(mask).values
     try:
-
-        while out_shape != arr.shape:
-            arr = (
-                to_xarray(
-                    arr,
-                    transform=transform,
-                    crs=crs,
-                )
-                .rio.clip(bounds_arr, crs=crs, **kwargs)
-                .to_numpy()
-            )
-            # bounds_arr = bounds_arr.buffer(0.0000001)
+        return xarr.rio.clip(
+            mask_arr,
+            crs=xarr.crs,
+            **kwargs,
+        )  # .to_numpy()
+        # while out_shape != arr.shape:
+        #     arr = xarr.rio.clip(
+        #         mask_arr,
+        #         crs=xarr.crs,
+        #         **kwargs,
+        #     ).to_numpy()
+        # mask_arr = mask_arr.buffer(0.0000001)
         return arr
 
     except NoDataInBounds:
@@ -3017,13 +3162,13 @@ def _copy_and_add_df_parallel(
     return (i, copied)
 
 
-def _get_bounds(bounds, bbox) -> None | Polygon:
+def _get_bounds(bounds, bbox, band_bounds: Polygon) -> None | Polygon:
     if bounds is None and bbox is None:
         return None
     elif bounds is not None and bbox is None:
-        return to_shapely(bounds)  # .intersection(self.union_all())
+        return to_shapely(bounds).intersection(band_bounds)
     elif bounds is None and bbox is not None:
-        return to_shapely(bbox)  # .intersection(self.union_all())
+        return to_shapely(bbox).intersection(band_bounds)
     else:
         return to_shapely(bounds).intersection(to_shapely(bbox))
 
@@ -3044,6 +3189,10 @@ def _load_band(band: Band, **kwargs) -> None:
     band.load(**kwargs)
 
 
+def _clip_band(band: Band, mask, **kwargs) -> None:
+    band.clip(mask, **kwargs)
+
+
 def _merge_by_band(collection: ImageCollection, **kwargs) -> Image:
     return collection.merge_by_band(**kwargs)
 
@@ -3053,7 +3202,7 @@ def _merge(collection: ImageCollection, **kwargs) -> Band:
 
 
 def _zonal_one_pair(i: int, poly: Polygon, band: Band, aggfunc, array_func, func_names):
-    clipped = band.copy().load(bounds=poly)
+    clipped = band.copy().clip(poly)
     if not np.size(clipped.values):
         return _no_overlap_df(func_names, i, date=band.date)
     return _aggregate(clipped.values, array_func, aggfunc, func_names, band.date, i)

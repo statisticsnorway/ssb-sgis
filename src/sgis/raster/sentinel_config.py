@@ -56,8 +56,8 @@ SENTINEL2_MOSAIC_IMAGE_REGEX = r"""
 
 # multiple regex searches because there are different xml files with same info, but different naming
 CLOUD_COVERAGE_REGEXES: tuple[str] = (
-    r"<Cloud_Coverage_Assessment>([\d.]+)</Cloud_Coverage_Assessment>",
-    r"<CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>([\d.]+)</CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>",
+    r"<Cloud_Coverage_Assessment>([\d]+(?:\.\d+)?(?:[eE][+-]?\d+)?)</Cloud_Coverage_Assessment>",
+    r"<CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>([\d]+(?:\.\d+)?(?:[eE][+-]?\d+)?)</CLOUDY_PIXEL_OVER_LAND_PERCENTAGE>",
 )
 
 BOA_QUANTIFICATION_VALUE_REGEXES: tuple[str] = (
