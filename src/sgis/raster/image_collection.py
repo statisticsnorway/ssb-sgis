@@ -363,7 +363,7 @@ class _ImageBase:
     metadata_attributes: ClassVar[dict | None] = None
     masking: ClassVar[BandMasking | None] = None
 
-    def __init__(self, *, bbox=None, **kwargs) -> None:
+    def __init__(self, *, metadata=None, bbox=None, **kwargs) -> None:
 
         self._mask = None
         self._bounds = None
@@ -374,6 +374,8 @@ class _ImageBase:
         self._path = None
 
         self._bbox = to_bbox(bbox) if bbox is not None else None
+
+        self.metadata = self._metadata_to_nested_dict(metadata)
 
         if self.filename_regexes:
             if isinstance(self.filename_regexes, str):
@@ -402,6 +404,26 @@ class _ImageBase:
                     f"{self.__class__.__name__} got an unexpected keyword argument '{key}'"
                 )
 
+    @staticmethod
+    def _metadata_to_nested_dict(
+        metadata: str | Path | os.PathLike | dict | pd.DataFrame | None,
+    ) -> dict[str, dict[str, Any]] | None:
+        if metadata is None:
+            return None
+        if isinstance(metadata, (str | Path | os.PathLike)):
+            metadata = _read_parquet_func(metadata)
+
+        if isinstance(metadata, pd.DataFrame):
+            # to nested dict because pandas indexing gives rare KeyError with long strings
+            metadata = {
+                _fix_path(path): {attr: value for attr, value in row.items()}
+                for path, row in metadata.iterrows()
+            }
+        elif is_dict_like(metadata):
+            metadata = {_fix_path(path): value for path, value in metadata.items()}
+
+        return metadata
+
     @property
     def _common_init_kwargs(self) -> dict:
         return {
@@ -411,6 +433,7 @@ class _ImageBase:
             "bbox": self._bbox,
             "nodata": self.nodata,
             "backend": self.backend,
+            "metadata": self.metadata,
         }
 
     @property
@@ -593,22 +616,30 @@ class _ImageBandBase(_ImageBase):
     def level(self) -> str:
         return self._name_regex_searcher("level", self.image_patterns)
 
-    def _get_metadata_attributes(self) -> dict:
+    def _get_metadata_attributes(self, metadata_attributes: dict) -> dict:
 
         missing_metadata_attributes = {
             key: value
-            for key, value in self.metadata_attributes.items()
-            if getattr(self, key) is None
+            for key, value in metadata_attributes.items()
+            if not hasattr(self, key) or getattr(self, key) is None
         }
 
         nonmissing_metadata_attributes = {
             key: getattr(self, key)
-            for key, value in self.metadata_attributes.items()
+            for key in metadata_attributes
             if key not in missing_metadata_attributes
         }
 
         if not missing_metadata_attributes:
             return nonmissing_metadata_attributes
+
+        if not nonmissing_metadata_attributes:
+            print(missing_metadata_attributes)
+            print(nonmissing_metadata_attributes)
+            print(self)
+            print(self.metadata)
+            print(self.metadata[self.path])
+            sssssss
 
         file_contents: list[str] = []
         for path in self._all_file_paths:
@@ -724,7 +755,6 @@ class Band(_ImageBandBase):
         bounds: tuple[float, float, float, float] | None = None,
         nodata: int | None = None,
         mask: "Band | None" = None,
-        # file_system: GCSFileSystem | None = None,
         processes: int = 1,
         name: str | None = None,
         band_id: str | None = None,
@@ -742,6 +772,7 @@ class Band(_ImageBandBase):
             data = kwargs.pop("path")
 
         add_metadata_attributes = kwargs.pop("add_metadata_attributes", True)
+        add_metadata_attributes = True
 
         super().__init__(**kwargs)
 
@@ -759,9 +790,6 @@ class Band(_ImageBandBase):
         self._all_file_paths = all_file_paths
 
         self._image = None
-
-        for key in self.metadata_attributes:
-            setattr(self, key, None)
 
         if isinstance(data, np.ndarray):
             if self._bounds is None:
@@ -782,10 +810,14 @@ class Band(_ImageBandBase):
         self._res = res
         if cmap is not None:
             self.cmap = cmap
-        # self.file_system = file_system
         self._name = name
         self._band_id = band_id
         self.processes = processes
+
+        if self.path is not None and self.metadata is not None:
+            self.metadata = {
+                key: value for key, value in self.metadata.items() if key == self.path
+            }
 
         if self._all_file_paths:
             self._all_file_paths = {_fix_path(path) for path in self._all_file_paths}
@@ -794,14 +826,21 @@ class Band(_ImageBandBase):
                 path for path in self._all_file_paths if parent in path
             }
 
-        if (
+        if self.metadata:
+            for key in self.metadata_attributes:
+                value = self.metadata[self.path][key]
+                setattr(self, key, value)
+        elif (
             add_metadata_attributes
             and self.metadata_attributes
             and self.path is not None
+            and not self.is_mask
         ):
             if self._all_file_paths is None:
                 self._all_file_paths = _get_all_file_paths(str(Path(self.path).parent))
-            for key, value in self._get_metadata_attributes().items():
+            for key, value in self._get_metadata_attributes(
+                self.metadata_attributes
+            ).items():
                 setattr(self, key, value)
 
     def __lt__(self, other: "Band") -> bool:
@@ -1120,6 +1159,20 @@ class Band(_ImageBandBase):
         self._assign_from_band_to_image()
 
         return self
+
+    # def __getattr__(self, name: str) -> Any:
+    #     if name in self.metadata_attributes:
+    #         metadata_attributes = self._get_metadata_attributes(
+    #             {
+    #                 key: value
+    #                 for key, value in self.metadata_attributes.items()
+    #                 if key == name
+    #             }
+    #         )
+    #         for key, value in metadata_attributes.items():
+    #             setattr(self, key, value)
+    #         return metadata_attributes[name]
+    #     raise AttributeError(name)
 
     def _assign_from_band_to_image(self):
         try:
@@ -1460,6 +1513,7 @@ class Image(_ImageBandBase):
             data = kwargs.pop("bands")
 
         add_metadata_attributes = kwargs.pop("add_metadata_attributes", True)
+        add_metadata_attributes = True
 
         super().__init__(**kwargs)
 
@@ -1480,6 +1534,18 @@ class Image(_ImageBandBase):
                     raise ValueError(f"Different resolutions for the bands: {res}")
             else:
                 self._res = res
+            if add_metadata_attributes:
+                for key in self.metadata_attributes:
+                    band_values = {
+                        getattr(band, key) for band in self if hasattr(band, key)
+                    }
+                    band_values = {x for x in band_values if x is not None}
+                    if len(band_values) > 1:
+                        raise ValueError(
+                            f"Different {key} values in bands: {band_values}"
+                        )
+                    elif len(band_values):
+                        setattr(self, key, next(iter(band_values)))
             return
 
         if not isinstance(data, (str | Path | os.PathLike)):
@@ -1487,6 +1553,11 @@ class Image(_ImageBandBase):
 
         self._bands = None
         self._path = _fix_path(data)
+
+        if self.path is not None and self.metadata is not None:
+            self.metadata = {
+                key: value for key, value in self.metadata.items() if self.path in key
+            }
 
         if all_file_paths is None and self.path:
             self._all_file_paths = _get_all_file_paths(self.path)
@@ -1519,11 +1590,21 @@ class Image(_ImageBandBase):
 
         self._df = df
 
-        for key in self.metadata_attributes:
-            setattr(self, key, None)
+        # for key in self.metadata_attributes:
+        #     getattr(self, key)
+        # setattr(self, key, None)
+        if self.metadata:
+            for key in self.metadata_attributes:
+                value = self.metadata[self.path][key]
+                setattr(self, key, value)
 
-        if add_metadata_attributes:  # and self.metadata_attributes:
-            for key, value in self._get_metadata_attributes().items():
+        elif add_metadata_attributes:  # and self.metadata_attributes:
+            # for key in self.metadata_attributes:
+            #     getattr(self, key)
+
+            for key, value in self._get_metadata_attributes(
+                self.metadata_attributes
+            ).items():
                 setattr(self, key, value)
 
     def copy(self) -> "Image":
@@ -1757,12 +1838,8 @@ class Image(_ImageBandBase):
 
         for key in self.metadata_attributes:
             for band in self:
-                if (
-                    getattr(band, key) is not None
-                    or (value := getattr(self, key)) is None
-                ):
-                    continue
-                setattr(band, key, value)
+                if not hasattr(band, key) and (value := getattr(self, key)) is not None:
+                    setattr(band, key, value)
 
         # for band in self:
         #     band._image = self
@@ -1954,7 +2031,7 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> None:
         """Initialiser."""
-        super().__init__(**kwargs)
+        super().__init__(metadata=metadata, **kwargs)
 
         if callable(level) and isinstance(level(), None_):
             level = None
@@ -1966,29 +2043,10 @@ class ImageCollection(_ImageBase):
         self._crs = None
         # self._band_ids = bands
 
-        if metadata is not None and isinstance(metadata, (str | Path | os.PathLike)):
-            self.metadata = _read_parquet_func(metadata)
-        else:
-            self.metadata = metadata
-
-        if self.metadata is not None and isinstance(self.metadata, pd.DataFrame):
-            # to nested dict because pandas indexing gives rare KeyError with long strings
-            self.metadata = {
-                _fix_path(path): {attr: value for attr, value in row.items()}
-                for path, row in self.metadata.iterrows()
-            }
-        elif self.metadata is not None and is_dict_like(metadata):
-            self.metadata = {
-                _fix_path(path): value for path, value in self.metadata.items()
-            }
-
         self._df = None
         self._all_file_paths = None
         self._images = None
 
-        # if isinstance(data, dict):
-        #     band_paths = set(itertools.chain.from_iterable(data.values()))
-        #     self._df = self._create_metadata_df(band_paths)
         if hasattr(data, "__iter__") and not isinstance(data, str):
             self._path = None
             if all(isinstance(x, Image) for x in data):
@@ -2770,9 +2828,12 @@ class ImageCollection(_ImageBase):
             masking=self.masking,
             **self._common_init_kwargs,
         )
+
+        print("images 000")
         if self.masking is not None:
             images = []
             for image in self._images:
+                # TODO why this loop?
                 try:
                     if not isinstance(image.mask, Band):
                         raise ValueError()
@@ -2784,41 +2845,47 @@ class ImageCollection(_ImageBase):
             for image in self._images:
                 image._bands = [band for band in image if band.band_id is not None]
 
+        print("images 111")
+
         self._images = [img for img in self if len(img)]
+        print("images 222")
 
-        def _add_metadata_attributes(obj: Band | Image, attributes_to_add):
-            for key in attributes_to_add:
-                try:
-                    value = self.metadata[obj.path][key]
-                except KeyError as e:
-                    try:
-                        value = self.metadata[key][obj.path]
-                    except KeyError as e2:
-                        print(obj.path)
-                        raise e from e2
-                        continue
-                try:
-                    setattr(obj, key, value)
-                except Exception:
-                    setattr(obj, f"_{key}", value)
+        # def _add_metadata_attributes_from_dict(obj: Band | Image, attributes_to_add):
+        #     for key in attributes_to_add:
+        #         try:
+        #             value = self.metadata[obj.path][key]
+        #         except KeyError as e:
+        #             raise KeyError(e, obj.path)
+        #             continue
+        #         try:
+        #             setattr(obj, key, value)
+        #         except Exception:
+        #             setattr(obj, f"_{key}", value)
 
-        if self.metadata is not None:
-            attributes_to_add = {"crs", "bounds"}
-            for img in self._images:
-                _add_metadata_attributes(
-                    img, attributes_to_add | set(img.metadata_attributes)
-                )
-                for band in img:
-                    _add_metadata_attributes(
-                        band, attributes_to_add | set(band.metadata_attributes)
-                    )
+        # if self.metadata is not None:
+        #     attributes_to_add = {"crs", "bounds"}
+        #     for img in self._images:
+        #         _add_metadata_attributes_from_dict(
+        #             img, attributes_to_add | set(img.metadata_attributes)
+        #         )
+        #         for band in img:
+        #             _add_metadata_attributes_from_dict(
+        #                 band, attributes_to_add | set(band.metadata_attributes)
+        #             )
 
-        if self.metadata_attributes:
+        print("images 3333")
+
+        if 0 and self.metadata_attributes:
             # delayed_tasks = []
             for img in self._images:
-                if any(getattr(img, key) is None for key in img.metadata_attributes):
+                if img.path not in self.metadata:  # any(
+                    # if any(getattr(img, key) is None for key in img.metadata_attributes):
                     # delayed_tasks.append(joblib.delayed(_get_metadata_attributes)(img))
-                    img._get_metadata_attributes()
+                    for key, value in img._get_metadata_attributes(
+                        img.metadata_attributes
+                    ).items():
+                        setattr(img, key, value)
+
                 for band in img:
                     if band.path not in self.metadata:  # any(
                         #     getattr(band, key) is None for key in band.metadata_attributes
@@ -2826,25 +2893,29 @@ class ImageCollection(_ImageBase):
                         # delayed_tasks.append(
                         #     joblib.delayed(_get_metadata_attributes)(band)
                         # )
-                        band._get_metadata_attributes()
+                        for key, value in band._get_metadata_attributes(
+                            band.metadata_attributes
+                        ).items():
+                            setattr(band, key, value)
 
-            # with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
-            #     results = parallel(delayed_tasks)
+        # with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
+        #     results = parallel(delayed_tasks)
 
-            # i = 0
-            # for img in self._images:
-            #     metadata_attributes = results[i]
-            #     for k, v in metadata_attributes.items():
-            #         setattr(img, k, v)
-            #     i += 1
-            #     for band in img:
-            #         metadata_attributes = results[i]
-            #         for k, v in metadata_attributes.items():
-            #             setattr(band, k, v)
-            #         i += 1
+        # i = 0
+        # for img in self._images:
+        #     metadata_attributes = results[i]
+        #     for k, v in metadata_attributes.items():
+        #         setattr(img, k, v)
+        #     i += 1
+        #     for band in img:
+        #         metadata_attributes = results[i]
+        #         for k, v in metadata_attributes.items():
+        #             setattr(band, k, v)
+        #         i += 1
 
         if self._should_be_sorted:
             self._images = list(sorted(self._images))
+        print("images 555")
 
         return self._images
 
@@ -3555,7 +3626,7 @@ def _merge(collection: ImageCollection, **kwargs) -> Band:
 
 
 def _get_metadata_attributes(img_or_band) -> dict:
-    return img_or_band._get_metadata_attributes()
+    return img_or_band._get_metadata_attributes(img_or_band.metadata_attributes)
 
 
 def _zonal_one_pair(i: int, poly: Polygon, band: Band, aggfunc, array_func, func_names):
@@ -3589,6 +3660,14 @@ def array_buffer(arr: np.ndarray, distance: int) -> np.ndarray:
     elif distance < 0:
 
         return binary_erosion(arr, structure=structure).astype(dtype)
+
+
+def hasattr(obj: Any, attr: str) -> bool:
+    try:
+        obj.__getattribute__(attr)
+        return True
+    except AttributeError:
+        return False
 
 
 def get_cmap(arr: np.ndarray) -> LinearSegmentedColormap:
