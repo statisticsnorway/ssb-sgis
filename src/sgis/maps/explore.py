@@ -194,8 +194,6 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
             gpd.GeoSeries(box(*band.bounds), crs=band.crs).to_crs(4326).geometry.values
         ).bounds
     )
-    # if np.max(arr) > 0:
-    #     arr = arr / 255
     try:
         raster_data_dict["cmap"] = band.get_cmap(arr)
     except Exception:
@@ -533,8 +531,6 @@ class Explore(Map):
                 arr = arr.data
             if "bool" in str(arr.dtype):
                 arr = np.where(arr, 1, 0)
-            # if np.max(arr[~np.isnan(arr)]) > 255:
-            #     arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
             try:
                 arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
             except Exception:

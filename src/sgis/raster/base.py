@@ -105,10 +105,6 @@ def _array_to_geojson_loop(array, transform, mask, processes):
             )
 
 
-def _value_geom_pair(value, geom):
-    return (value, shape(geom))
-
-
 def _gdf_to_arr(
     gdf: GeoDataFrame,
     res: int | float,
@@ -178,41 +174,6 @@ def _gdf_to_arr(
     )
 
 
-def _gdf_to_geojson_with_col(gdf: GeoDataFrame, values: np.ndarray) -> list[dict]:
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning)
-        return [
-            (feature["geometry"], val)
-            for val, feature in zip(
-                values, json.loads(gdf.to_json())["features"], strict=False
-            )
-        ]
-
-
-def _shapely_to_raster(
-    geometry: Geometry,
-    res: int | float,
-    fill: int = 0,
-    all_touched: bool = False,
-    merge_alg: Callable = MergeAlg.replace,
-    default_value: int = 1,
-    dtype: Any | None = None,
-) -> np.array:
-    shape = _get_shape_from_bounds(geometry.bounds, res=res, indexes=1)
-    transform = _get_transform_from_bounds(geometry.bounds, shape)
-
-    return features.rasterize(
-        [(geometry, default_value)],
-        out_shape=shape,
-        transform=transform,
-        fill=fill,
-        all_touched=all_touched,
-        merge_alg=merge_alg,
-        default_value=default_value,
-        dtype=dtype,
-    )
-
-
 @contextmanager
 def memfile_from_array(array: np.ndarray, **profile) -> rasterio.MemoryFile:
     """Yield a memory file from a numpy array."""
@@ -228,33 +189,3 @@ def get_index_mapper(df: pd.DataFrame) -> tuple[dict[int, int], str]:
     idx_mapper = dict(enumerate(df.index))
     idx_name = df.index.name
     return idx_mapper, idx_name
-
-
-NESSECARY_META = [
-    "path",
-    "type",
-    "bounds",
-    "crs",
-]
-
-PROFILE_ATTRS = [
-    "driver",
-    "dtype",
-    "nodata",
-    "crs",
-    "height",
-    "width",
-    "blockysize",
-    "blockxsize",
-    "tiled",
-    "compress",
-    "interleave",
-    "count",  # TODO: this should be based on band_index / array depth, so will have no effect
-    "indexes",  # TODO
-]
-
-ALLOWED_KEYS = (
-    NESSECARY_META
-    + PROFILE_ATTRS
-    + ["array", "res", "transform", "name", "date", "regex"]
-)

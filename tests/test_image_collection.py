@@ -9,7 +9,6 @@ from time import perf_counter
 
 import numpy as np
 import pytest
-import xarray as xr
 from geopandas import GeoSeries
 from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
@@ -1370,6 +1369,8 @@ def test_convertion():
 
 @print_function_name
 def test_to_xarray():
+    import xarray as xr
+
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     collection.load()
@@ -1470,6 +1471,7 @@ def test_numpy_as_backend():
 
 @print_function_name
 def test_xarray_as_backend():
+    import xarray as xr
 
     collection = sg.Sentinel2Collection(
         path_sentinel, level="L2A", res=10, backend="xarray"
