@@ -825,17 +825,13 @@ class Band(_ImageBandBase):
 
         if self.metadata:
             metadata = self.metadata[self.path]
-            for key,value in metadata.items():
+            for key, value in metadata.items():
                 if key in dir(self):
                     setattr(self, f"_{key}", value)
                 else:
                     setattr(self, key, value)
 
-        elif (
-            self.metadata_attributes
-            and self.path is not None
-            and not self.is_mask
-        ):
+        elif self.metadata_attributes and self.path is not None and not self.is_mask:
             if self._all_file_paths is None:
                 self._all_file_paths = _get_all_file_paths(str(Path(self.path).parent))
             for key, value in self._get_metadata_attributes(
@@ -1537,9 +1533,7 @@ class Image(_ImageBandBase):
                 }
                 band_values = {x for x in band_values if x is not None}
                 if len(band_values) > 1:
-                    raise ValueError(
-                        f"Different {key} values in bands: {band_values}"
-                    )
+                    raise ValueError(f"Different {key} values in bands: {band_values}")
                 elif len(band_values):
                     try:
                         setattr(self, key, next(iter(band_values)))
@@ -1594,13 +1588,13 @@ class Image(_ImageBandBase):
         # setattr(self, key, None)
         if self.metadata:
             metadata = self.metadata[self.path]
-            for key,value in metadata.items():
+            for key, value in metadata.items():
                 if key in dir(self):
                     setattr(self, f"_{key}", value)
                 else:
                     setattr(self, key, value)
 
-        else:# add_metadata_attributes:  # and self.metadata_attributes:
+        else:  # add_metadata_attributes:  # and self.metadata_attributes:
             # for key in self.metadata_attributes:
             #     getattr(self, key)
 
@@ -2850,10 +2844,6 @@ class ImageCollection(_ImageBase):
 
         if self._should_be_sorted:
             self._images = list(sorted(self._images))
-
-        for img in self:
-            for band in img:
-                assert band._crs is
 
         return self._images
 
