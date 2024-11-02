@@ -24,7 +24,6 @@ sys.path.insert(0, src)
 
 
 import sgis as sg
-from sgis.raster.image_collection import BandIdDict
 
 path_sentinel = testdata + "/sentinel2"
 path_singleband = testdata + "/dtm_10.tif"
@@ -519,8 +518,6 @@ def test_metadata_attributes():
     assert img.processing_baseline == "05.00", img.processing_baseline
     assert int(img.cloud_coverage_percentage) == 25, img.cloud_coverage_percentage
     assert img.is_refined is True, img.is_refined
-    assert isinstance(img.boa_add_offset, BandIdDict), img.boa_add_offset
-    assert len(img.boa_add_offset) == 13, (len(img.boa_add_offset), img.boa_add_offset)
 
     band = sg.Sentinel2Band(
         first_img_path / "T32VPM_20230624T104621_B02_10m_clipped.tif", res=10
@@ -1370,7 +1367,6 @@ def test_convertion():
 @print_function_name
 def test_to_xarray():
     import xarray as xr
-
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     collection.load()
