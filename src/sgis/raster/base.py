@@ -105,6 +105,10 @@ def _array_to_geojson_loop(array, transform, mask, processes):
             )
 
 
+def _value_geom_pair(value, geom):
+    return (value, shape(geom))
+
+
 def _gdf_to_arr(
     gdf: GeoDataFrame,
     res: int | float,
@@ -172,6 +176,17 @@ def _gdf_to_arr(
         default_value=default_value,
         dtype=dtype,
     )
+
+
+def _gdf_to_geojson_with_col(gdf: GeoDataFrame, values: np.ndarray) -> list[dict]:
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        return [
+            (feature["geometry"], val)
+            for val, feature in zip(
+                values, json.loads(gdf.to_json())["features"], strict=False
+            )
+        ]
 
 
 @contextmanager
