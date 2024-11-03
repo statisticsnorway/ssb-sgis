@@ -671,16 +671,17 @@ def test_sorting():
 @print_function_name
 def test_masking():
 
-    load_counter = sg.raster.image_collection._load_counter
-    assert load_counter == sg.raster.image_collection._load_counter
+    n_loads = sg.raster.image_collection._load_counter
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     collection.load()
-    assert (
-        sg.raster.image_collection._load_counter == 39
-    ), sg.raster.image_collection._load_counter
+    assert sg.raster.image_collection._load_counter == 39 + n_loads, (
+        sg.raster.image_collection._load_counter + n_loads
+    )
     assert (
         sg.raster.image_collection._load_counter
-        == len({band for img in collection for band in img}) + 3  # three masks
+        == len({band for img in collection for band in img})
+        + 3
+        + n_loads  # three masks
     ), sg.raster.image_collection._load_counter
 
     for i, img in enumerate(collection):
@@ -734,13 +735,13 @@ def test_masking():
     assert len(mask_addresses) == 1, mask_addresses
 
     assert (
-        sg.raster.image_collection._load_counter == 39
+        sg.raster.image_collection._load_counter == 39 + n_loads
     ), sg.raster.image_collection._load_counter
 
     img.mask = img.mask.load()
 
     assert (
-        sg.raster.image_collection._load_counter == 40
+        sg.raster.image_collection._load_counter == 40 + n_loads
     ), sg.raster.image_collection._load_counter
 
     mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
@@ -757,7 +758,7 @@ def test_masking():
 
     # should only load bands, not masks
     assert (
-        sg.raster.image_collection._load_counter == 52
+        sg.raster.image_collection._load_counter == 52 + n_loads
     ), sg.raster.image_collection._load_counter
 
     mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
@@ -1657,8 +1658,8 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 def main():
     # write_metadata_df([testdata], 1, band_endswith="m_clipped.tif")
-    test_masking()
     test_metadata_attributes()
+    test_masking()
     test_numpy_as_backend()
     test_xarray_as_backend()
     test_bbox()
