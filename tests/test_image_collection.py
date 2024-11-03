@@ -43,7 +43,7 @@ skip_if_github_and_not_linux = pytest.mark.skipif(
 
 def print_function_name(func):
     def wrapper(*args, **kwargs):
-        print(f"Calling function: {func.__name__} {args or ""} {kwargs or ""}")
+        print(f'Calling function: {func.__name__} {args or ""} {kwargs or ""}')
         result = func(*args, **kwargs)
         print(f"Function {func.__name__} finished.")
         return result
@@ -1675,8 +1675,8 @@ def main():
     test_iteration_base_image_collection()
     test_groupby()
     test_cloud()
-    test_with_mosaic()
     test_concat_image_collections()
+    test_with_mosaic()
     test_merge()
     test_zonal()
     not_test_to_xarray()

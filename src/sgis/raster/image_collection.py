@@ -11,6 +11,7 @@ from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
 from collections.abc import Sequence
+from collections.abc import Iterator
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,49 +177,10 @@ ALLOWED_INIT_KWARGS = [
 _load_counter: int = 0
 
 
-# def get_image_and_band_dict(
-#     root: str | Path | os.PathLike,
-#     image_path_contains: str | Sequence[str] | None = None,
-#     band_path_contains: str | Sequence[str] | None = None,
-# ) -> dict[str, set[str]]:
-#     def get_child_paths(path) -> set[str]:
-#         return set(_ls_func(path))
-
-#     # Execute the tasks in parallel
-#     with ThreadPoolExecutor() as executor:
-#         paths_with_children = {
-#             path: child_paths
-#             for item in _ls_func(root)
-#             for path, child_paths in executor.map(get_child_paths, [item])
-#         }
-
-#     if image_path_contains:
-#         if isinstance(image_path_contains, str):
-#             image_path_contains = {image_path_contains}
-#         paths_with_children = {
-#             img_path: band_paths
-#             for img_path, band_paths in paths_with_children
-#             if all(
-#                 any(splitted in img_path for splitted in txt.split("|")) in img_path
-#                 for txt in image_path_contains
-#             )
-#         }
-#     if band_path_contains:
-#         if isinstance(band_path_contains, str):
-#             band_path_contains = {band_path_contains}
-#         paths_with_children = {
-#             img_path: {
-#                 path
-#                 for path in band_paths
-#                 if all(
-#                     any(splitted in path for splitted in txt.split("|")) in k
-#                     for txt in band_path_contains
-#                 )
-#             }
-#             for img_path, band_paths in paths_with_children
-#         }
-
-#     return paths_with_children
+def _get_child_paths_threaded(data: Sequence[str]) -> set[str]:
+    with ThreadPoolExecutor() as executor:
+        all_paths: Iterator[set[str]] = executor.map(_ls_func, data)
+    return set(itertools.chain.from_iterable(all_paths))
 
 
 class ImageCollectionGroupBy:
@@ -337,10 +299,6 @@ class ImageCollectionGroupBy:
         return f"{self.__class__.__name__}({len(self)})"
 
 
-def standardize_band_id(x: str) -> str:
-    return x.replace("B", "").replace("A", "").zfill(2)
-
-
 @dataclass(frozen=True)
 class BandMasking:
     """Frozen dict with forced keys."""
@@ -438,7 +396,6 @@ class _ImageBase:
     @property
     def _common_init_kwargs(self) -> dict:
         return {
-            # "file_system": self.file_system,
             "processes": self.processes,
             "res": self.res,
             "bbox": self._bbox,
@@ -504,13 +461,6 @@ class _ImageBase:
         df = pd.DataFrame({"file_path": list(file_paths)})
 
         df["file_name"] = df["file_path"].apply(lambda x: Path(x).name)
-
-        # if self._band_ids is not None:
-        #     if isinstance(self._band_ids, str):
-        #         band_ids = self._band_ids
-        #     else:
-        #         band_ids: str = "|".join(self._band_ids)
-        #     df = df[df["file_name"].str.contains(band_ids)]
 
         df["image_path"] = df["file_path"].apply(
             lambda x: _fix_path(str(Path(x).parent))
@@ -939,7 +889,6 @@ class Band(_ImageBandBase):
 
     def _add_crs_and_bounds(self) -> None:
         with opener(self.path) as file:
-            # with opener(self.path, file_system=self.file_system) as file:
             with rasterio.open(file) as src:
                 self._bounds = to_bbox(src.bounds)
                 self._crs = src.crs
@@ -1013,16 +962,15 @@ class Band(_ImageBandBase):
             self._bounds = None
             self.transform = None
             self.values = self._values
-            self._assign_from_band_to_image()
 
             return self
 
         if self.has_array and bounds_was_none:
             return self
 
-        # round down/up to integer to avoid precision trouble
         if bounds is not None:
             minx, miny, maxx, maxy = to_bbox(bounds)
+            ## round down/up to integer to avoid precision trouble
             # bounds = (int(minx), int(miny), math.ceil(maxx), math.ceil(maxy))
             bounds = minx, miny, maxx, maxy
 
@@ -1135,30 +1083,7 @@ class Band(_ImageBandBase):
         # trigger the setter
         self.values = values
 
-        self._assign_from_band_to_image()
-
         return self
-
-    def _assign_from_band_to_image(self):
-        try:
-            self._image._mask = self._mask
-        except AttributeError:
-            pass
-
-        try:
-            self._image._bounds = self._bounds
-        except AttributeError:
-            pass
-
-        try:
-            self._image._mask = self._mask
-        except AttributeError:
-            pass
-
-        try:
-            self._image._bounds = self._bounds
-        except AttributeError:
-            pass
 
     @property
     def is_mask(self) -> bool:
@@ -1490,7 +1415,6 @@ class Image(_ImageBandBase):
 
         self.nodata = nodata
         self.processes = processes
-        # self._band_ids = bands
         self._crs = None
         self._bands = None
 
@@ -1662,11 +1586,11 @@ class Image(_ImageBandBase):
             return self._mask
 
         elif self._bands is not None and all(band.mask is not None for band in self):
-            # if len({id(band.mask) for band in self}) > 1:
-            #     raise ValueError(
-            #         "Image bands must have same mask.",
-            #         {id(band.mask) for band in self},
-            #     ) # TODO
+            if len({id(band.mask) for band in self}) > 1:
+                raise ValueError(
+                    "Image bands must have same mask.",
+                    {id(band.mask) for band in self},
+                )  # TODO
             self._mask = next(
                 iter([band.mask for band in self if band.mask is not None])
             )
@@ -1775,20 +1699,19 @@ class Image(_ImageBandBase):
         if self._should_be_sorted:
             self._bands = list(sorted(self._bands))
 
-        for key in self.metadata_attributes:
-            for band in self:
-                if not hasattr(band, key) and (value := getattr(self, key)) is not None:
-                    setattr(band, key, value)
-
         return self._bands
 
     @property
     def _should_be_sorted(self) -> bool:
         sort_groups = ["band", "band_id"]
-        return self.filename_patterns and any(
-            group in _get_non_optional_groups(pat)
-            for group in sort_groups
-            for pat in self.filename_patterns
+        return (
+            self.filename_patterns
+            and any(
+                group in _get_non_optional_groups(pat)
+                for group in sort_groups
+                for pat in self.filename_patterns
+            )
+            or all(band.band_id is not None for band in self)
         )
 
     @property
@@ -1984,11 +1907,8 @@ class ImageCollection(_ImageBase):
                 self.images = [x.copy() for x in data]
                 return
             elif all(isinstance(x, (str | Path | os.PathLike)) for x in data):
-                self._all_file_paths = set(
-                    itertools.chain.from_iterable(
-                        _get_all_file_paths(str(path)) for path in data
-                    )
-                )
+                # adding band paths (asuming 'data' is a sequence of image paths)
+                self._all_file_paths = _get_child_paths_threaded(data) | set(data)
                 self._df = self._create_metadata_df(self._all_file_paths)
                 return
 
@@ -2339,7 +2259,7 @@ class ImageCollection(_ImageBase):
         return merged.to_numpy()
 
     def sort_images(self, ascending: bool = True) -> "ImageCollection":
-        """Sort Images by date."""
+        """Sort Images by date, then file path if date attribute is missing."""
         self._images = (
             list(sorted([img for img in self if img.date is not None]))
             + sorted(
@@ -2761,7 +2681,7 @@ class ImageCollection(_ImageBase):
                 and sort_group in _get_non_optional_groups(pat)
                 for pat in self.image_patterns
             )
-            or all(img.date is not None for img in self)
+            or all(getattr(img, sort_group) is not None for img in self)
         )
 
     @images.setter
