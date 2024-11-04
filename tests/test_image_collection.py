@@ -529,7 +529,8 @@ def _test_metadata_attributes(metadata_from_xml: bool):
     """Metadata attributes should be accessible through xml files for both Band, Image and Collection."""
 
     if metadata_from_xml:
-        metadata = pd.read_parquet(metadata_df_path)
+        metadata = get_metadata_df([testdata], 1, band_endswith="m_clipped.tif")
+        # metadata = pd.read_parquet(metadata_df_path)
     else:
         metadata = None
 
@@ -1562,30 +1563,21 @@ def test_xarray_as_backend():
             assert np.array_equal(band.to_numpy(), arr)
 
 
-def write_metadata_df(
+def get_metadata_df(
     root_dirs: list[str],
     processes: int,
     band_endswith: str = ".tif",
-):
-    """Save Sentine2 metadata in parquet file to avoid slow read of each image.
+) -> pd.DataFrame:
+    """get Sentine2 metadata to use to set attributes on Images and Bands.
 
-    The parquet file is basically a nested dict.
-    Column index is band path, row index is metadata attribute (band, crs).
+    This file should be written to disc, but that won't work on github action.
     """
     all_relevant_file_paths = set()
     for root in root_dirs:
         root = str(root).rstrip("/")
         for file_path in sg.helpers.get_all_files(root):
-            # relevant_files = [
-            #     x for x in os.listdir(folder) if x.endswith(band_endswith)
-            # ]
-            # if not relevant_files:
-            #     continue
-            # for file_name in relevant_files:
-            # file_path = str(Path(folder) / file_name)
             if file_path.endswith(band_endswith):
                 all_relevant_file_paths.add(file_path)
-                # if file_path.endswith(band_endswith):
                 parent = str(Path(file_path).parent)
                 all_relevant_file_paths.add(parent)
 
@@ -1602,7 +1594,8 @@ def write_metadata_df(
 
     df = df.loc[lambda x: x.index.notna()]
 
-    df.to_parquet(metadata_df_path)
+    # df.to_parquet(metadata_df_path)
+    return df
 
 
 def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
@@ -1657,7 +1650,6 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
-    # write_metadata_df([testdata], 1, band_endswith="m_clipped.tif")
     test_metadata_attributes()
     test_masking()
     test_numpy_as_backend()
