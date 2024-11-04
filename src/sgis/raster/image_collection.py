@@ -1456,7 +1456,10 @@ class Image(_ImageBandBase):
             }
 
         if self.metadata:
-            metadata = self.metadata[self.path]
+            try:
+                metadata = self.metadata[self.path]
+            except KeyError:
+                metadata = {}
             for key, value in metadata.items():
                 if key in dir(self):
                     setattr(self, f"_{key}", value)
@@ -1596,7 +1599,7 @@ class Image(_ImageBandBase):
             )
         elif not mask_paths:
             raise ValueError(
-                f"No file_paths match mask band_id {mask_band_id} for {self.path}"
+                f"No file_paths match mask band_id {mask_band_id} for {self.path} among "
                 + str([Path(x).name for x in _ls_func(self.path)])
             )
 
@@ -3213,9 +3216,8 @@ def _get_images(
     masking: BandMasking | None,
     **kwargs,
 ) -> list[Image]:
-
     with joblib.Parallel(n_jobs=processes, backend="threading") as parallel:
-        images = parallel(
+        images: list[Image] = parallel(
             joblib.delayed(image_class)(
                 path,
                 df=df,
