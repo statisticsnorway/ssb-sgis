@@ -3042,7 +3042,7 @@ class Sentinel2Band(Sentinel2Config, Band):
                 band_id = band_id.replace(txt, "")
                 try:
                     return dict_[band_id]
-                except KeyError as e:
+                except KeyError:
                     continue
             raise KeyError(self.band_id, dict_)
 
@@ -3168,16 +3168,7 @@ def _clip_xarray(
             mask_arr,
             crs=crs,
             **kwargs,
-        )  # .to_numpy()
-        # while out_shape != arr.shape:
-        #     arr = xarr.rio.clip(
-        #         mask_arr,
-        #         crs=xarr.crs,
-        #         **kwargs,
-        #     ).to_numpy()
-        # mask_arr = mask_arr.buffer(0.0000001)
-        return arr
-
+        )
     except NoDataInBounds:
         return np.array([])
 
@@ -3403,14 +3394,6 @@ def array_buffer(arr: np.ndarray, distance: int) -> np.ndarray:
     elif distance < 0:
 
         return binary_erosion(arr, structure=structure).astype(dtype)
-
-
-def hasattr(obj: Any, attr: str) -> bool:
-    try:
-        obj.__getattribute__(attr)
-        return True
-    except AttributeError:
-        return False
 
 
 def get_cmap(arr: np.ndarray) -> LinearSegmentedColormap:
