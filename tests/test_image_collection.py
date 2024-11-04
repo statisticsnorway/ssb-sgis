@@ -1,5 +1,4 @@
 # %%
-import inspect
 import os
 import platform
 import re
@@ -8,15 +7,15 @@ from pathlib import Path
 from time import perf_counter
 
 import numpy as np
+import pandas as pd
+import pyproj
 import pytest
 from geopandas import GeoSeries
+from pyproj.exceptions import CRSError
+from rasterio.errors import RasterioIOError
 from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
 from shapely.geometry import Polygon
-import pandas as pd
-from rasterio.errors import RasterioIOError
-from pyproj.exceptions import CRSError
-import pyproj
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -527,7 +526,6 @@ def test_metadata_attributes():
 @print_function_name
 def _test_metadata_attributes(metadata_from_xml: bool):
     """Metadata attributes should be accessible through xml files for both Band, Image and Collection."""
-
     if metadata_from_xml:
         metadata = get_metadata_df([testdata], 1, band_endswith="m_clipped.tif")
         # metadata = pd.read_parquet(metadata_df_path)
@@ -1184,7 +1182,6 @@ def test_groupby():
 @print_function_name
 def test_regexes():
     """Regex search should work even if some patterns give no matches."""
-
     default_pat = re.compile(
         sg.raster.image_collection.DEFAULT_FILENAME_REGEX, flags=re.VERBOSE
     )
@@ -1565,7 +1562,7 @@ def get_metadata_df(
     processes: int,
     band_endswith: str = ".tif",
 ) -> pd.DataFrame:
-    """get Sentine2 metadata to use to set attributes on Images and Bands.
+    """Get Sentine2 metadata to use to set attributes on Images and Bands.
 
     This file should be written to disc, but that won't work on github action.
     """

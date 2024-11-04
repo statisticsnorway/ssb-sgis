@@ -2,7 +2,6 @@ import datetime
 import functools
 import glob
 import itertools
-import math
 import os
 import random
 import re
@@ -11,15 +10,13 @@ from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
 from collections.abc import Sequence
-from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from typing import ClassVar
-from concurrent.futures import ThreadPoolExecutor
 
-from pandas.api.types import is_array_like, is_dict_like
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -30,6 +27,7 @@ from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from matplotlib.colors import LinearSegmentedColormap
+from pandas.api.types import is_dict_like
 from rasterio.enums import MergeAlg
 from scipy import stats
 from scipy.ndimage import binary_dilation
@@ -91,13 +89,12 @@ except ImportError:
 from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.conversion import to_bbox
 from ..geopandas_tools.conversion import to_gdf
-from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.conversion import to_geoseries
-from ..parallel.parallel import Parallel
+from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
+from ..helpers import _fix_path
 from ..helpers import get_all_files
 from ..helpers import get_numpy_func
-from ..helpers import _fix_path
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
 from . import sentinel_config as config
@@ -107,7 +104,6 @@ from .base import _get_shape_from_bounds
 from .base import _get_transform_from_bounds
 from .base import get_index_mapper
 from .indices import ndvi
-from .regex import _any_regex_matches
 from .regex import _extract_regex_match_from_string
 from .regex import _get_first_group_match
 from .regex import _get_non_optional_groups
@@ -446,7 +442,7 @@ class _ImageBase:
         if not any(group in _get_non_optional_groups(pat) for pat in patterns):
             return None
         band_text = (
-            f" or {str(Path(self.path).parent.name)}" if isinstance(self, Band) else ""
+            f" or {Path(self.path).parent.name!s}" if isinstance(self, Band) else ""
         )
         raise ValueError(
             f"Couldn't find group '{group}' in name {self.name}{band_text} with regex patterns {patterns}"
@@ -938,7 +934,6 @@ class Band(_ImageBandBase):
 
         The array is stored in the 'values' property.
         """
-
         global _load_counter
         _load_counter += 1
 
@@ -2427,7 +2422,6 @@ class ImageCollection(_ImageBase):
         dimension defaults to "date" if all images have date attributes.
         Otherwise defaults to the image name.
         """
-
         if any(not band.has_array for img in self for band in img):
             raise ValueError("Arrays must be loaded.")
 
@@ -3036,7 +3030,7 @@ class Sentinel2Band(Sentinel2Config, Band):
 
         try:
             return dict_[self.band_id]
-        except KeyError:
+        except KeyError as e:
             band_id = self.band_id.upper()
             for txt in ["B0", "B", "A"]:
                 band_id = band_id.replace(txt, "")
@@ -3044,7 +3038,7 @@ class Sentinel2Band(Sentinel2Config, Band):
                     return dict_[band_id]
                 except KeyError:
                     continue
-            raise KeyError(self.band_id, dict_)
+            raise KeyError(self.band_id, dict_) from e
 
 
 class Sentinel2Image(Sentinel2Config, Image):
@@ -3158,7 +3152,6 @@ def _clip_xarray(
     xarr: DataArray,
     mask: tuple[int, int, int, int],
     crs: Any,
-    # out_shape: tuple[int, int],
     **kwargs,
 ) -> DataArray:
     # xarray needs a numpy array of polygons
