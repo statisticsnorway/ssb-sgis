@@ -70,7 +70,6 @@ except ImportError:
 
 
 try:
-    import rioxarray
     from rioxarray.exceptions import NoDataInBounds
     from rioxarray.merge import merge_arrays
     from rioxarray.rioxarray import _generate_spatial_coords
@@ -134,14 +133,11 @@ if is_dapla():
     def _read_parquet_func(*args, **kwargs) -> list[str]:
         return dp.read_pandas(*args, **kwargs)
 
-    get_file_system_func = dp.FileClient.get_gcs_file_system
-
 else:
     _ls_func = functools.partial(get_all_files, recursive=False)
     _open_func = open
     _glob_func = glob.glob
     _read_parquet_func = pd.read_parquet
-    get_file_system_func = lambda: None
 
 DATE_RANGES_TYPE = (
     tuple[str | pd.Timestamp | None, str | pd.Timestamp | None]
@@ -421,7 +417,7 @@ class _ImageBase:
         """Centerpoint of the object."""
         return self.union_all().centroid
 
-    def assign(self, **kwargs) -> "Self":
+    def assign(self, **kwargs) -> "_ImageBase":
         for key, value in kwargs.items():
             try:
                 setattr(self, key, value)
@@ -918,6 +914,7 @@ class Band(_ImageBandBase):
     def clip(
         self, mask: GeoDataFrame | GeoSeries | Polygon | MultiPolygon, **kwargs
     ) -> "Band":
+        """Clip band values to geometry mask."""
         values = _clip_xarray(
             self.to_xarray(),
             mask,
@@ -2421,7 +2418,6 @@ class ImageCollection(_ImageBase):
 
     def to_xarray(
         self,
-        # by: str | Sequence[str] | None = None,
         **kwargs,
     ) -> Dataset:
         """Convert the raster to  an xarray.Dataset.
@@ -2430,10 +2426,6 @@ class ImageCollection(_ImageBase):
         The spatial dimensions will be labeled "x" and "y". The third
         dimension defaults to "date" if all images have date attributes.
         Otherwise defaults to the image name.
-
-        Args:
-            by: Attribute to use as third dimensionDefaults to "date" if all images have none-None dates.
-                Otherwise, names are used.
         """
 
         if any(not band.has_array for img in self for band in img):

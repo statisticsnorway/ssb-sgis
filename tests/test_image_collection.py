@@ -685,7 +685,7 @@ def test_masking():
         + n_loads  # three masks
     ), sg.raster.image_collection._load_counter
 
-    for i, img in enumerate(collection):
+    for img in collection:
         # assert isinstance(img.values, np.ma.core.MaskedArray)
         # assert isinstance(collection.values[i], np.ma.core.MaskedArray)
         # print(img.values.data)
@@ -715,7 +715,7 @@ def test_masking():
         #     collection.values[i],
         # )
 
-        for j, band in enumerate(img):
+        for band in img:
             assert isinstance(band.values, np.ma.core.MaskedArray)
             # assert isinstance(collection.values[i][j], np.ma.core.MaskedArray)
             # assert np.array_equal(band.values, collection.values[i][j]), (
@@ -1435,11 +1435,8 @@ def not_test_to_xarray():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     collection.load()
-    for i, img in enumerate(collection):
+    for img in collection:
         xarr = img.to_xarray()
-        # if i == 2:
-        #     print("skipping zero-masked image", img.mask_percentage)
-        #     continue
         assert xarr.shape == (12, 299, 299), xarr.shape
         assert xarr.isnull().sum(), img.values.mask.sum()
         assert xarr.isnull().sum() == img.values.mask.sum(), (
