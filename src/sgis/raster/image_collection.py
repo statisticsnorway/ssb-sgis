@@ -1589,7 +1589,7 @@ class Image(_ImageBandBase):
             return self._mask
 
         mask_band_id = self.masking["band_id"]
-        mask_paths = [path for path in self._df["file_path"] if mask_band_id in path]
+        mask_paths = [path for path in self._all_file_paths if mask_band_id in path]
         if len(mask_paths) > 1:
             raise ValueError(
                 f"Multiple file_paths match mask band_id {mask_band_id} for {self.path}"
@@ -1878,6 +1878,10 @@ class ImageCollection(_ImageBase):
         **kwargs,
     ) -> None:
         """Initialiser."""
+        if data is not None and kwargs.get("root"):
+            root = _fix_path(kwargs.pop("root"))
+            data = [f"{root}/{name}" for name in data]
+
         super().__init__(metadata=metadata, **kwargs)
 
         if callable(level) and isinstance(level(), None_):
@@ -2003,12 +2007,6 @@ class ImageCollection(_ImageBase):
         """Filter images and bands in the collection."""
         copied = self.copy() if copy else self
 
-        if bands is not None:
-            if isinstance(bands, str):
-                bands = [bands]
-            bands = set(bands)
-            copied.images = [img[bands] for img in copied.images if bands in img]
-
         if date_ranges:
             copied = copied._filter_dates(date_ranges)
 
@@ -2025,6 +2023,12 @@ class ImageCollection(_ImageBase):
 
         if intersects is not None:
             copied = copied._filter_bounds(intersects)
+
+        if bands is not None:
+            if isinstance(bands, str):
+                bands = [bands]
+            bands = set(bands)
+            copied.images = [img[bands] for img in copied.images if bands in img]
 
         return copied
 
@@ -2678,15 +2682,18 @@ class ImageCollection(_ImageBase):
 
     def __repr__(self) -> str:
         """String representation."""
+        root = ""
         if self.path is not None:
             data = f"'{self.path}'"
         elif all(img.path is not None for img in self):
             data = [img.path for img in self]
+            parents = {str(Path(path).parent) for path in data}
+            if len(parents) == 1:
+                data = [Path(path).name for path in data]
+                root = f" root='{next(iter(parents))}',"
         else:
             data = [img for img in self]
-        return (
-            f"{self.__class__.__name__}({data}, res={self.res}, level='{self.level}')"
-        )
+        return f"{self.__class__.__name__}({data},{root} res={self.res}, level='{self.level}')"
 
     def union_all(self) -> Polygon | MultiPolygon:
         """(Multi)Polygon representing the union of all image bounds."""
