@@ -1881,6 +1881,9 @@ class ImageCollection(_ImageBase):
         if data is not None and kwargs.get("root"):
             root = _fix_path(kwargs.pop("root"))
             data = [f"{root}/{name}" for name in data]
+            _from_root = True
+        else:
+            _from_root = False
 
         super().__init__(metadata=metadata, **kwargs)
 
@@ -1904,7 +1907,14 @@ class ImageCollection(_ImageBase):
                 return
             elif all(isinstance(x, (str | Path | os.PathLike)) for x in data):
                 # adding band paths (asuming 'data' is a sequence of image paths)
-                self._all_file_paths = _get_child_paths_threaded(data) | set(data)
+                try:
+                    self._all_file_paths = _get_child_paths_threaded(data) | set(data)
+                except FileNotFoundError as e:
+                    if _from_root:
+                        raise TypeError(
+                            "When passing 'root', 'data' must be a sequence of image names that have 'root' as parent path."
+                        ) from e
+                    raise e
                 self._df = self._create_metadata_df(self._all_file_paths)
                 return
 
@@ -3204,7 +3214,7 @@ def _get_images(
     **kwargs,
 ) -> list[Image]:
 
-    with joblib.Parallel(n_jobs=processes, backend="loky") as parallel:
+    with joblib.Parallel(n_jobs=processes, backend="threading") as parallel:
         images = parallel(
             joblib.delayed(image_class)(
                 path,
