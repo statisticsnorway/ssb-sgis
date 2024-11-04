@@ -194,8 +194,6 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
             gpd.GeoSeries(box(*band.bounds), crs=band.crs).to_crs(4326).geometry.values
         ).bounds
     )
-    # if np.max(arr) > 0:
-    #     arr = arr / 255
     try:
         raster_data_dict["cmap"] = band.get_cmap(arr)
     except Exception:
@@ -533,8 +531,6 @@ class Explore(Map):
                 arr = arr.data
             if "bool" in str(arr.dtype):
                 arr = np.where(arr, 1, 0)
-            # if np.max(arr[~np.isnan(arr)]) > 255:
-            #     arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
             try:
                 arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
             except Exception:
@@ -1182,28 +1178,17 @@ class Explore(Map):
                 break
 
             crs = red_band.crs
-
-            bounds: tuple = (
-                _any_to_bbox_crs4326(mask, crs)
-                if mask is not None
-                else (
-                    union_all(
-                        gpd.GeoSeries(box(*red_band.bounds), crs=crs)
-                        .to_crs(4326)
-                        .geometry.values
-                    ).bounds
-                )
-            )
+            bounds = to_bbox(to_gdf(red_band.bounds, crs).to_crs(4326))
 
             red_band = red_band.values
             blue_band = blue_band.values
             green_band = green_band.values
 
-            if red_band.shape[0] == 0:
-                continue
-            if blue_band.shape[0] == 0:
-                continue
-            if green_band.shape[0] == 0:
+            if (
+                red_band.shape[0] == 0
+                or blue_band.shape[0] == 0
+                or green_band.shape[0] == 0
+            ):
                 continue
 
             # to 3d array in shape (x, y, 3)
@@ -1268,16 +1253,10 @@ def _determine_label(
         )
         if does_not_have_generic_name:
             return obj_name
-    # try:
-    #     if obj.tile and obj.date:
-    #         name = f"{obj.tile}_{obj.date[:8]}"
-    # except (ValueError, AttributeError):
-    #     name = None
-
     try:
         # Images/Bands/Collections constructed from arrays have no path stems
-        if obj.stem:
-            name = obj.stem
+        if obj.name:
+            name = obj.name
         else:
             name = str(obj)[:23]
     except (AttributeError, ValueError):

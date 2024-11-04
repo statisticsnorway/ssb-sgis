@@ -14,7 +14,11 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from jenkspy import jenks_breaks
+
+try:
+    from jenkspy import jenks_breaks
+except ImportError:
+    pass
 from mapclassify import classify
 from pandas.errors import PerformanceWarning
 from shapely import Geometry

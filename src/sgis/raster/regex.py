@@ -32,15 +32,20 @@ class _RegexError(ValueError):
     pass
 
 
-def _any_regex_matches(xml_file: str, regexes: tuple[str]) -> bool:
+def _any_regex_matches(xml_file: str, regexes: tuple[str]) -> bool | None:
+    n_matches = 0
     for regex in regexes:
         try:
             if bool(re.search(regex, xml_file)):
                 return True
+            n_matches += 1
         except (TypeError, AttributeError):
             continue
 
-    return False
+    if not n_matches:
+        return None
+    else:
+        return False
 
 
 def _get_regex_match_from_xml_in_local_dir(

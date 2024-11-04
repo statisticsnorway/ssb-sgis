@@ -130,6 +130,12 @@ def in_jupyter() -> bool:
         return False
 
 
+def _fix_path(path: str) -> str:
+    return (
+        str(path).replace("\\", "/").replace(r"\"", "/").replace("//", "/").rstrip("/")
+    )
+
+
 def get_all_files(root: str, recursive: bool = True) -> list[str]:
     """Fetch all files in a directory.
 
@@ -141,11 +147,11 @@ def get_all_files(root: str, recursive: bool = True) -> list[str]:
         A list of file paths.
     """
     if not recursive:
-        return [path for path in glob.glob(str(Path(root)) + "/**")]
+        return [_fix_path(path) for path in glob.glob(str(Path(root)) + "/**")]
     paths = []
     for root_dir, _, files in os.walk(root):
         for file in files:
-            path = os.path.join(root_dir, file)
+            path = _fix_path(os.path.join(root_dir, file))
             paths.append(path)
     return paths
 

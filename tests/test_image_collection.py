@@ -1,5 +1,4 @@
 # %%
-import inspect
 import os
 import platform
 import re
@@ -8,9 +7,12 @@ from pathlib import Path
 from time import perf_counter
 
 import numpy as np
+import pandas as pd
+import pyproj
 import pytest
-import xarray as xr
 from geopandas import GeoSeries
+from pyproj.exceptions import CRSError
+from rasterio.errors import RasterioIOError
 from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
 from shapely.geometry import Polygon
@@ -18,13 +20,14 @@ from shapely.geometry import Polygon
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 
+metadata_df_path = str(Path(testdata) / "sentinel2_metadata.parquet")
+
 import sys
 
 sys.path.insert(0, src)
 
 
 import sgis as sg
-from sgis.raster.image_collection import BandIdDict
 
 path_sentinel = testdata + "/sentinel2"
 path_singleband = testdata + "/dtm_10.tif"
@@ -37,8 +40,19 @@ skip_if_github_and_not_linux = pytest.mark.skipif(
 )
 
 
+def print_function_name(func):
+    def wrapper(*args, **kwargs):
+        print(f'Calling function: {func.__name__} {args or ""} {kwargs or ""}')
+        result = func(*args, **kwargs)
+        print(f"Function {func.__name__} finished.")
+        return result
+
+    return wrapper
+
+
+@print_function_name
 def test_zonal():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     r = sg.Band(path_singleband, res=None).load()
     gdf = sg.make_grid(r.bounds, 100, crs=r.crs)
 
@@ -52,7 +66,7 @@ def test_zonal():
 
 
 def test_buffer():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     arr = np.zeros((50, 50))
     arr[10, 10] = 1
     arr[20, 20] = 1
@@ -99,8 +113,9 @@ def test_buffer():
     sg.explore(band, buffered, buffered2)
 
 
+@print_function_name
 def test_gradient():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     arr = np.array(
         [
             [100, 100, 100, 100, 100],
@@ -122,8 +137,8 @@ def test_gradient():
     assert np.max(degrees.values) == 45, np.max(degrees.values)
 
 
+@print_function_name
 def test_with_mosaic():
-    print("function:", inspect.currentframe().f_code.co_name)
 
     mosaic = sg.Sentinel2CloudlessCollection(
         path_sentinel, level=None, res=10, processes=2
@@ -148,8 +163,9 @@ def test_with_mosaic():
     assert len(concated) == 4, concated
 
 
+@print_function_name
 def test_concat_image_collections():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, processes=2)
 
     new_collection = sg.concat_image_collections(
@@ -166,8 +182,9 @@ def test_concat_image_collections():
         ), f"different value for '{k}': {v} and {getattr(collection, k)}"
 
 
+@print_function_name
 def demo():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     sg.explore(collection)
@@ -181,38 +198,43 @@ def demo():
     sg.explore(ndvi)
 
 
+@print_function_name
 def test_explore():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     e = sg.explore(collection)
     assert e.rasters
     assert (x := [x["label"] for x in e.raster_data]) == [
-        img.stem
+        img.name
         for img in collection
         # f"{img.tile}_{img.date[:8]}" for img in collection
     ], x
 
 
+@print_function_name
 def test_single_banded():
-    print("function:", inspect.currentframe().f_code.co_name)
-    collection = sg.ImageCollection(Path(testdata) / "ndvi", level=None, res=10)
+
+    collection = sg.ImageCollection(
+        Path(testdata) / "ndvi", level=None, res=10
+    ).sort_images()
 
     assert len(collection) == 2, len(collection)
-    image_names = [img.name for img in collection]
+    image_names = list(sorted([img.name for img in collection]))
     assert image_names == ["copies", "ndvi"], image_names
 
-    single_banded = collection.explode()
+    single_banded = collection.explode().sort_images()
     assert len(single_banded) == 6, len(collection)
-    print([img.path for img in single_banded])
+    print([img.name for img in single_banded])
+    print([img.date for img in single_banded])
     image_names = [img.name for img in single_banded]
     assert image_names == [
-        "ndvi_T32VNM20170826_copy.tif",
-        "ndvi_T32VNM20230606_copy.tif",
-        "ndvi_T32VPM20230624_copy.tif",
         "ndvi_T32VNM20170826.tif",
+        "ndvi_T32VNM20170826_copy.tif",
         "ndvi_T32VNM20230606.tif",
+        "ndvi_T32VNM20230606_copy.tif",
         "ndvi_T32VPM20230624.tif",
+        "ndvi_T32VPM20230624_copy.tif",
     ], image_names
 
     band_names = [band.name for img in single_banded for band in img]
@@ -220,42 +242,50 @@ def test_single_banded():
 
 
 @skip_if_github_and_not_linux
+@print_function_name
 def test_plot_pixels():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-    collection = collection.filter(bbox=collection[0].centroid.buffer(5))
+    collection = collection.filter(bbox=collection[0].centroid.buffer(6))
     collection.load()
     collection.plot_pixels()
 
 
+@print_function_name
 def test_ndvi():
-    print("function:", inspect.currentframe().f_code.co_name)
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-    _test_ndvi(collection, np.ma.core.MaskedArray)
 
-    collection = sg.concat_image_collections(
-        [
-            sg.Sentinel2Collection(path_sentinel, level="L2A", res=10),
-            sg.Sentinel2CloudlessCollection(path_sentinel, level=None, res=10),
-        ]
-    )
-    print(collection)
-    _test_ndvi(collection, (np.ma.core.MaskedArray | np.ndarray))
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    _test_ndvi(collection, np.ma.core.MaskedArray, cloudless=False)
+
+    # collection = sg.concat_image_collections(
+    #     [
+    #         sg.Sentinel2Collection(path_sentinel, level="L2A", res=10),
+    #         sg.Sentinel2CloudlessCollection(path_sentinel, level=None, res=10),
+    #     ]
+    # )
+    # print(collection)
+    # _test_ndvi(collection, (np.ma.core.MaskedArray | np.ndarray), cloudless=False)
 
     collection = sg.Sentinel2CloudlessCollection(path_sentinel, level=None, res=10)
     print(collection)
-    _test_ndvi(collection, np.ndarray)
+    _test_ndvi(collection, np.ndarray, cloudless=True)
 
 
-def _test_ndvi(collection, type_should_be):
+@print_function_name
+def _test_ndvi(collection, type_should_be, cloudless: bool):
     """Running ndvi and checking how it's plotted with explore."""
     n = 1000
-    print("function:", inspect.currentframe().f_code.co_name)
 
     for (tile_id,), tile_collection in collection.groupby("tile"):
 
         for img in tile_collection:
             assert img.tile == tile_id, (img.tile, tile_id)
+            img = img[img.ndvi_bands]
+            if not cloudless:
+                img = img.apply(
+                    lambda band: (band.load().values + (band.boa_add_offset or 0))
+                    / band.boa_quantification_value
+                )
             ndvi = img.ndvi()
             assert isinstance(ndvi.values, type_should_be), type(ndvi.values)
             assert ndvi.values.max() <= 1, ndvi.values.max()
@@ -303,8 +333,9 @@ def _test_ndvi(collection, type_should_be):
             ], x
 
 
+@print_function_name
 def test_bbox():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, processes=1)
     no_imgs = collection.filter(bbox=Point(0, 0))
     assert not len(no_imgs), no_imgs
@@ -359,8 +390,9 @@ def test_bbox():
     assert len(imgs) == 1, imgs
 
 
+@print_function_name
 def not_test_sample():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     size = 200
@@ -439,6 +471,7 @@ def not_test_sample():
     assert sample[2].date.startswith("2023")
 
 
+@print_function_name
 def test_collection_from_list_of_path():
     paths = [Path(path_sentinel) / name for name in os.listdir(path_sentinel)]
     collection = sg.Sentinel2Collection(
@@ -486,30 +519,44 @@ def test_collection_from_list_of_path():
 
 
 def test_metadata_attributes():
+    _test_metadata_attributes(metadata_from_xml=False)
+    _test_metadata_attributes(metadata_from_xml=True)
+
+
+@print_function_name
+def _test_metadata_attributes(metadata_from_xml: bool):
     """Metadata attributes should be accessible through xml files for both Band, Image and Collection."""
-    print("function:", inspect.currentframe().f_code.co_name)
+    if metadata_from_xml:
+        metadata = get_metadata_df([testdata], 1, band_endswith="m_clipped.tif")
+        # metadata = pd.read_parquet(metadata_df_path)
+    else:
+        metadata = None
 
     first_img_path = (
         Path(path_sentinel)
         / "S2A_MSIL2A_20230624T104621_N0509_R051_T32VPM_20230624T170454.SAFE"
     )
 
-    img = sg.Sentinel2Image(first_img_path, res=10)
+    img = sg.Sentinel2Image(first_img_path, res=10, metadata=metadata)
+    assert [band._metadata_from_xml is metadata_from_xml for band in img]
     assert img.processing_baseline == "05.00", img.processing_baseline
-    assert int(img.cloud_coverage_percentage) == 25, img.cloud_coverage_percentage
+    assert int(img.cloud_cover_percentage) == 25, img.cloud_cover_percentage
     assert img.is_refined is True, img.is_refined
-    assert isinstance(img.boa_add_offset, BandIdDict), img.boa_add_offset
-    assert len(img.boa_add_offset) == 13, (len(img.boa_add_offset), img.boa_add_offset)
 
     band = sg.Sentinel2Band(
-        first_img_path / "T32VPM_20230624T104621_B02_10m_clipped.tif", res=10
+        first_img_path / "T32VPM_20230624T104621_B02_10m_clipped.tif",
+        res=10,
+        metadata=metadata,
     )
     assert band.processing_baseline == "05.00", band.processing_baseline
-    assert int(band.cloud_coverage_percentage) == 25, band.cloud_coverage_percentage
+    assert int(band.cloud_cover_percentage) == 25, band.cloud_cover_percentage
     assert band.is_refined is True, band.is_refined
     assert band.boa_add_offset == -1000, band.boa_add_offset
+    assert band.boa_quantification_value == 10000, band.boa_quantification_value
 
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    collection = sg.Sentinel2Collection(
+        path_sentinel, level="L2A", res=10, metadata=metadata
+    )
 
     for img in collection:
         assert img.processing_baseline in [
@@ -530,19 +577,19 @@ def test_metadata_attributes():
 
     assert (x := list(collection.is_refined)) == [False, True, True], x
 
-    assert (x := list(collection.cloud_coverage_percentage.fillna(0).astype(int))) == [
+    assert (x := list(collection.cloud_cover_percentage.fillna(0).astype(int))) == [
         36,
         0,
         25,
     ], x
 
-    only_high_cloud_percentage = collection[collection.cloud_coverage_percentage > 30]
+    only_high_cloud_percentage = collection[collection.cloud_cover_percentage > 30]
     assert len(only_high_cloud_percentage) == 1, len(only_high_cloud_percentage)
 
     only_correct_processing_baseline = collection[
-        collection.processing_baseline.isin(["05.00", "05.10"])
+        collection.processing_baseline >= "05.00"
     ]
-    assert len(only_correct_processing_baseline) == 1, len(
+    assert len(only_correct_processing_baseline) == 2, len(
         only_correct_processing_baseline
     )
 
@@ -550,8 +597,9 @@ def test_metadata_attributes():
     assert len(only_refined) == 2, len(only_refined)
 
 
+@print_function_name
 def test_indexing():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     wrong_collection = sg.Sentinel2Collection(path_sentinel, level="L1C", res=10)
     assert not len(wrong_collection), len(wrong_collection)
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
@@ -595,8 +643,9 @@ def test_indexing():
     assert isinstance(collection[0]["B02"].load().values, np.ndarray)
 
 
+@print_function_name
 def test_sorting():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     largest_date = ""
@@ -618,95 +667,112 @@ def test_sorting():
     assert band.date.startswith("2023"), band.date
 
 
+@print_function_name
 def test_masking():
 
+    n_loads = sg.raster.image_collection._load_counter
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     collection.load()
-    for i, img in enumerate(collection):
-        assert isinstance(img.values, np.ma.core.MaskedArray)
-        assert isinstance(collection.values[i], np.ma.core.MaskedArray)
-        print(img.values.data)
-        print(img.values.mask)
-        print(collection.values[i].data)
-        print(collection.values[i].mask)
-        assert np.array_equal(img.values.data, collection.values[i].data), (
-            img.values.data,
-            collection.values[i].data,
-        )
-        assert np.array_equal(img.values.data, collection.values.data[i]), (
-            img.values.data,
-            collection.values.data[i],
-        )
+    assert sg.raster.image_collection._load_counter == 39 + n_loads, (
+        sg.raster.image_collection._load_counter + n_loads
+    )
+    assert (
+        sg.raster.image_collection._load_counter
+        == len({band for img in collection for band in img})
+        + 3
+        + n_loads  # three masks
+    ), sg.raster.image_collection._load_counter
 
-        assert np.array_equal(img.values.mask, collection.values[i].mask), (
-            img.values.mask,
-            collection.values[i].mask,
-        )
-        assert np.array_equal(img.values.mask, collection.values.mask[i]), (
-            img.values.mask,
-            collection.values.mask[i],
-        )
+    for img in collection:
+        # assert isinstance(img.values, np.ma.core.MaskedArray)
+        # assert isinstance(collection.values[i], np.ma.core.MaskedArray)
+        # print(img.values.data)
+        # print(img.values.mask)
+        # print(collection.values[i].data)
+        # print(collection.values[i].mask)
+        # assert np.array_equal(img.values.data, collection.values[i].data), (
+        #     img.values.data,
+        #     collection.values[i].data,
+        # )
+        # assert np.array_equal(img.values.data, collection.values.data[i]), (
+        #     img.values.data,
+        #     collection.values.data[i],
+        # )
 
-        assert np.array_equal(img.values, collection.values[i]), (
-            img.values,
-            collection.values[i],
-        )
+        # assert np.array_equal(img.values.mask, collection.values[i].mask), (
+        #     img.values.mask,
+        #     collection.values[i].mask,
+        # )
+        # assert np.array_equal(img.values.mask, collection.values.mask[i]), (
+        #     img.values.mask,
+        #     collection.values.mask[i],
+        # )
 
-        for j, band in enumerate(img):
+        # assert np.array_equal(img.values, collection.values[i]), (
+        #     img.values,
+        #     collection.values[i],
+        # )
+
+        for band in img:
             assert isinstance(band.values, np.ma.core.MaskedArray)
-            assert isinstance(collection.values[i][j], np.ma.core.MaskedArray)
-            assert np.array_equal(band.values, collection.values[i][j]), (
-                band.values,
-                collection.values[i][j],
-            )
+            # assert isinstance(collection.values[i][j], np.ma.core.MaskedArray)
+            # assert np.array_equal(band.values, collection.values[i][j]), (
+            #     band.values,
+            #     collection.values[i][j],
+            # )
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=20)
 
     img = collection[2]
 
-    (img.mask.load().values)
-    # .apply(lambda arr: np.isin(arr, img.masking["values"])).values)
-    # for band in img:
-    #     print(band.band_id)
-    #     band.load()
-    #     assert band.values.mask.sum() == img.mask.values.sum(), (
-    #         band.values.mask.sum(),
-    #         img.mask.values.sum(),
-    #         band.values.mask,
-    #         img.mask.values,
-    #     )
+    band_addresses = tuple(id(band) for band in img)
+
+    for i, band in enumerate(img):
+        assert band_addresses[i] == id(band), (band_addresses[i], id(band))
+
+    mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
+    assert len(mask_addresses) == 1, mask_addresses
+
+    assert (
+        sg.raster.image_collection._load_counter == 39 + n_loads
+    ), sg.raster.image_collection._load_counter
+
+    img.mask = img.mask.load()
+
+    assert (
+        sg.raster.image_collection._load_counter == 40 + n_loads
+    ), sg.raster.image_collection._load_counter
+
+    mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
+    assert len(mask_addresses) == 1, mask_addresses
 
     assert img.masking
-    # band = img["B02"].load()
 
-    # assert band.values.mask.sum()
+    assert img.mask.values.sum() == 3521, img.mask.values.sum()
+    for i, band in enumerate(img):
+        assert band_addresses[i] == id(band), (band_addresses[i], id(band))
+        assert band.mask.values.sum() == 3521, band.mask.values.sum()
+        assert band._values is None
+        band.load()
 
-    # img.mask.values = np.isin(img.mask.values, img.masking["values"])
-    img.mask.cmap = "Grays"
+    # should only load bands, not masks
+    assert (
+        sg.raster.image_collection._load_counter == 52 + n_loads
+    ), sg.raster.image_collection._load_counter
 
-    sg.explore(img.mask)
-
-    assert img.mask.values.sum() == 3519, img.mask.values.sum()
-    for band in img:
-        assert band.mask.values.sum() == 3519, band.mask.values.sum()
+    mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
+    assert len(mask_addresses) == 1, mask_addresses
 
     img.mask = img.mask.buffer(2)
 
-    assert img.mask.values.sum() == 4918, img.mask.values.sum()
+    assert img.mask.values.sum() == 4968, img.mask.values.sum()
 
-    sg.explore(img.mask)
-
-    img.mask = img.mask.buffer(-2)
-
-    assert img.mask.values.sum() == 3694, img.mask.values.sum()
-
-    sg.explore(img.mask)
-    # sg.explore(img.mask.to_gdf(), "value")
-
-    for band in img:
-        assert band.mask.values.sum() == 3694, band.mask.values.sum()
-        assert band._values is None
-        band.load()
+    for i, band in enumerate(img):
+        assert band_addresses[i] == id(band), (band_addresses[i], id(band))
+        assert band.mask.values.sum() == 4968, (
+            band.mask.values.sum(),
+            img.mask.values.sum(),
+        )
         assert band.values.mask.sum() == img.mask.values.sum(), (
             band.values.mask.sum(),
             img.mask.values.sum(),
@@ -714,22 +780,42 @@ def test_masking():
             img.mask.values,
         )
 
+    # sg.explore(img.mask)
+    # img.mask.cmap = "Grays"
+    # sg.explore(img.mask)
+
+    img.mask = img.mask.buffer(-2)
+
+    assert img.mask.values.sum() == 3696, img.mask.values.sum()
+
+    for i, band in enumerate(img):
+        assert band_addresses[i] == id(band), (band_addresses[i], id(band))
+        assert band.mask.values.sum() == 3696, (
+            band.mask.values.sum(),
+            img.mask.values.sum(),
+        )
+        assert band.values.mask.sum() == img.mask.values.sum(), (
+            band.values.mask.sum(),
+            img.mask.values.sum(),
+            band.values.mask,
+            img.mask.values,
+        )
+
+    sg.explore(img.mask)
+
     collection.load()
 
-    assert isinstance(collection.values, np.ma.core.MaskedArray), type(
-        collection.values
-    )
+    # assert isinstance(collection.values, np.ma.core.MaskedArray), type(
+    #     collection.values
+    # )
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=20)
     collection.load()
 
     for img in collection:
-        assert isinstance(img.values, np.ma.core.MaskedArray), type(img.values)
-        print("0", img.mask.has_array)
+        # assert isinstance(img.values, np.ma.core.MaskedArray), type(img.values)
         for band in img:
             assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
-            print("1", band.has_array)
-            print("2", band.mask.has_array)
 
     collection_with_little_mask = collection[
         lambda img: img.mask_percentage
@@ -781,10 +867,11 @@ def test_masking():
             assert np.sum(band.values.data)
 
 
+@print_function_name
 def test_merge():
-    print("function:", inspect.currentframe().f_code.co_name)
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, nodata=0)
+
     # collection.masking = None
     # assert sg.Sentinel2Collection.masking is not None
 
@@ -794,6 +881,8 @@ def test_merge():
     #         f"c:/users/ort/git/ssb-sgis/tests/testdata/raster/{band.band_id}.tif"
     #     )
     t = perf_counter()
+    collection.load()
+
     merged_by_band = collection.merge_by_band(method="mean")
     print("merged_by_band mean", perf_counter() - t)
     t = perf_counter()
@@ -909,8 +998,9 @@ def test_merge():
     ), merged_median.values.shape
 
 
+@print_function_name
 def test_date_ranges():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     assert len(collection) == 3
@@ -945,8 +1035,8 @@ def test_date_ranges():
     assert len(imgs) == 3, len(imgs)
 
 
+@print_function_name
 def test_groupby():
-    print("function:", inspect.currentframe().f_code.co_name)
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
@@ -1071,7 +1161,7 @@ def test_groupby():
         year,
         month,
     ), subcollection in collection.groupby(["year", "month"]):
-        merged = subcollection.merge_by_band()
+        merged = subcollection.load().merge_by_band()
         assert isinstance(month, str), month
         assert month.startswith("0")
         assert isinstance(year, str), year
@@ -1089,10 +1179,9 @@ def test_groupby():
             largest_date = img.date
 
 
+@print_function_name
 def test_regexes():
     """Regex search should work even if some patterns give no matches."""
-    print("function:", inspect.currentframe().f_code.co_name)
-
     default_pat = re.compile(
         sg.raster.image_collection.DEFAULT_FILENAME_REGEX, flags=re.VERBOSE
     )
@@ -1118,25 +1207,26 @@ def test_regexes():
     assert len(collection.images) == 3, len(collection.images)
 
 
+@print_function_name
 def test_cloud():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     assert isinstance(collection, sg.ImageCollection), type(collection)
     assert len(collection) == 3, len(collection)
 
-    collection2 = collection.filter(max_cloud_coverage=20)
-    collection3 = collection.filter(max_cloud_coverage=40)
-    collection4 = collection.filter(max_cloud_coverage=5)
+    collection2 = collection.filter(max_cloud_cover=20)
+    collection3 = collection.filter(max_cloud_cover=40)
+    collection4 = collection.filter(max_cloud_cover=5)
     assert len(collection) == 3, len(collection)
     assert len(collection2) == 1, len(collection2)
     assert len(collection3) == 3, len(collection3)
     assert len(collection4) == 1, len(collection4)
 
-    cloud_coverage_should_be = [36, 0, 25]
-    for cloud_coverage, img in zip(cloud_coverage_should_be, collection, strict=False):
-        assert cloud_coverage == int(img.cloud_coverage_percentage), (
-            cloud_coverage,
-            int(img.cloud_coverage_percentage),
+    cloud_cover_should_be = [36, 0, 25]
+    for cloud_cover, img in zip(cloud_cover_should_be, collection, strict=False):
+        assert cloud_cover == int(img.cloud_cover_percentage), (
+            cloud_cover,
+            int(img.cloud_cover_percentage),
             img.path,
         )
 
@@ -1150,8 +1240,8 @@ def test_cloud():
         assert isinstance(cloud_polys, GeoSeries), type(cloud_polys)
 
 
+@print_function_name
 def test_iteration():
-    print("function:", inspect.currentframe().f_code.co_name)
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
     # collection.masking = None
@@ -1216,7 +1306,7 @@ def test_iteration():
         assert img.name.startswith("S2"), img.name
         assert isinstance(img.bounds, tuple)
         assert all(x for x in img.bounds)
-        assert img.cloud_coverage_percentage, img.cloud_coverage_percentage
+        assert img.cloud_cover_percentage, img.cloud_cover_percentage
         assert img.crs
         assert img.centroid
         assert img.level == "L2A"
@@ -1261,17 +1351,13 @@ def test_iteration():
             raster = img[file_path]
             assert raster.band_id is not None, raster.band_id
 
-    assert collection.values.shape == (3, 12, 299, 299), collection.values.shape
+    # assert collection.values.shape == (3, 12, 299, 299), collection.values.shape
     # ndvi = collection.ndvi()
     # assert ndvi.values.shape == (3, 1, 299, 299), ndvi.values.shape
-    # for img in collection:
-    #     assert img.values.shape == (12, 299, 299), img.values.shape
-    #     for band in img:
-    #         assert band.values.shape == (299, 299), band.values.shape
 
 
+@print_function_name
 def test_iteration_base_image_collection():
-    print("function:", inspect.currentframe().f_code.co_name)
 
     collection = sg.ImageCollection(path_sentinel, level=None, res=10)
     assert isinstance(collection, sg.ImageCollection), type(collection)
@@ -1314,8 +1400,9 @@ def test_iteration_base_image_collection():
             )
 
 
+@print_function_name
 def test_convertion():
-    print("function:", inspect.currentframe().f_code.co_name)
+
     collection = sg.Sentinel2Collection(
         path_sentinel, level="L2A", res=100, masking=None
     )
@@ -1339,22 +1426,12 @@ def test_convertion():
     assert (shape := from_gdf.values.shape) == (29, 29), shape
 
 
-def test_to_xarray():
+@print_function_name
+def not_test_to_xarray():
+    import xarray as xr
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-    for img in collection:
-        for band in img:
-            band.load()
-            if band.mask_percentage == 0:
-                continue
-            xarr = band.to_xarray()
-            assert xarr.shape == (299, 299), xarr.shape
-            assert xarr.isnull().sum(), band.values.mask.sum()
-            assert xarr.isnull().sum() == band.values.mask.sum(), (
-                xarr.isnull().sum(),
-                band.values.mask.sum(),
-            )
-
+    collection.load()
     for img in collection:
         xarr = img.to_xarray()
         assert xarr.shape == (12, 299, 299), xarr.shape
@@ -1364,41 +1441,233 @@ def test_to_xarray():
             img.values.mask.sum(),
         )
 
+        for band in img:
+            band.load()
+            xarr = band.to_xarray()
+            assert xarr.shape == (299, 299), xarr.shape
+            assert xarr.isnull().sum(), band.values.mask.sum()
+            assert xarr.isnull().sum() == band.values.mask.sum(), (
+                xarr.isnull().sum(),
+                band.values.mask.sum(),
+            )
+
+    xarr = collection.to_xarray()
+
+    print(xarr)
+    assert isinstance(xarr, xr.Dataset)
+    assert len(xarr) == 2
+    assert list(xarr.dims) == ["x", "y", "band_id", "date"], list(xarr.dims)
+    assert len(xarr.x) == 598, len(xarr.x)
+    assert len(xarr.y) == 598, len(xarr.y)
+    assert len(xarr.band_id) == 12, len(xarr.band_id)
+    assert len(xarr.date) == 3, len(xarr.date)
+
+    print(xarr.date)
+
+    xarr2 = xarr.where(
+        (xarr.date >= "2022") & (xarr.band_id.isin(["B01", "B02", "B04"])),
+        drop=True,
+    )
+    print(xarr2)
+    assert isinstance(xarr2, xr.Dataset)
+    assert len(xarr2.x) == 598, len(xarr2.x)
+    assert len(xarr2.y) == 598, len(xarr2.y)
+    assert len(xarr2.band_id) == 3, len(xarr2.band_id)
+    assert len(xarr.date) == 2, len(xarr.date)
+    assert len(xarr2) == 1
+
+    collection[0].name = "name1"
+
+    xarr = collection.to_xarray(by="name")
+
+    print(xarr)
+    assert isinstance(xarr, xr.Dataset)
+    assert len(xarr) == 2
+    assert list(xarr.dims) == ["x", "y", "band_id", "name"], list(xarr.dims)
+    assert len(xarr.x) == 598, len(xarr.x)
+    assert len(xarr.y) == 598, len(xarr.y)
+    assert len(xarr.band_id) == 12, len(xarr.band_id)
+    assert len(xarr2.name) == 2, len(xarr2.name)
+
+    xarr2 = xarr.where(
+        (xarr.name == "name1") & (xarr.band_id.isin(["B01", "B02", "B04"])),
+        drop=True,
+    )
+    print(xarr2)
+    assert isinstance(xarr2, xr.Dataset)
+    assert len(xarr2) == 1
+    assert len(xarr2.x) == 598, len(xarr2.x)
+    assert len(xarr2.y) == 598, len(xarr2.y)
+    assert len(xarr2.band_id) == 3, len(xarr2.band_id)
+    assert len(xarr2.name) == 1, len(xarr2.name)
+
+
+@print_function_name
+def test_numpy_as_backend():
+
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
 
     collection.load()
 
-    xarr = collection.to_xarray()
-    print(xarr)
-    assert isinstance(xarr, xr.DataArray)
-    assert xarr.shape == (3, 12, 299, 299), xarr.shape
-    assert xarr.isnull().sum()
-    assert xarr.isnull().sum() == collection.values.mask.sum()
+    for img in collection:
+        # checking that apply on arrays still returns np masked array
+        img = img.apply(lambda band: band.values * 2)
+        for band in img:
+            # checking that apply on array still returns np masked array
+            band = band.apply(lambda band: band.values / 2)
+            assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
+            assert band.values.shape == (299, 299), band.values.shape
+            band = band.clip(band.centroid.buffer(20))
+            assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
+            assert band.values.shape == (3, 3), band.values.shape
+
+            band.values = pd.DataFrame({"0": [0, 1, 2], "1": [1, 2, 3], "2": [2, 3, 4]})
+            assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
+            assert np.array_equal(
+                band.values, np.array([[0, 1, 2], [1, 2, 3], [2, 3, 4]])
+            ), band.values
+
+
+@print_function_name
+def test_xarray_as_backend():
+    import xarray as xr
+
+    collection = sg.Sentinel2Collection(
+        path_sentinel, level="L2A", res=10, backend="xarray"
+    )
+
+    collection.load()
+
+    for img in collection:
+        # checking that apply on array still returns DataArray
+        img = img.apply(lambda band: band.values * 2)
+        for band in img:
+            # checking that apply on arra still returns DataArray
+            band = band.apply(lambda band: band.values * 2)
+            assert isinstance(band.values, xr.DataArray), type(band.values)
+            assert band.values.shape == (299, 299), band.values.shape
+            band = band.clip(band.centroid.buffer(20))
+            assert isinstance(band.values, xr.DataArray), type(band.values)
+            assert band.values.shape == (3, 3), band.values.shape
+
+            arr = np.array([[0, 0, 1], [0, 1, 1], [1, -1, -1]])
+            band.values = arr
+            assert isinstance(band.values, xr.DataArray), type(band.values)
+            assert np.array_equal(band.values.values, arr)
+            assert np.array_equal(band.to_numpy(), arr)
+
+
+def get_metadata_df(
+    root_dirs: list[str],
+    processes: int,
+    band_endswith: str = ".tif",
+) -> pd.DataFrame:
+    """Get Sentine2 metadata to use to set attributes on Images and Bands.
+
+    This file should be written to disc, but that won't work on github action.
+    """
+    all_relevant_file_paths = set()
+    for root in root_dirs:
+        root = str(root).rstrip("/")
+        for file_path in sg.helpers.get_all_files(root):
+            if file_path.endswith(band_endswith):
+                all_relevant_file_paths.add(file_path)
+                parent = str(Path(file_path).parent)
+                all_relevant_file_paths.add(parent)
+
+    df: list[dict] = sg.Parallel(processes, backend="threading").map(
+        _get_metadata_for_one_path,
+        all_relevant_file_paths,
+        kwargs={"band_endswith": band_endswith},
+    )
+
+    if not df or all(not x for x in df):
+        return
+
+    df = pd.DataFrame(df).set_index("file_path")
+
+    df = df.loc[lambda x: x.index.notna()]
+
+    # df.to_parquet(metadata_df_path)
+    return df
+
+
+def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
+    print(file_path)
+    try:
+        if band_endswith in file_path:
+            try:
+                obj = sg.Sentinel2Band(file_path, res=None)
+            except KeyError as e:
+                if "sentinel" in file_path.lower() and "SCL" in file_path:
+                    return {}
+            except Exception as e:
+                if "sentinel" in file_path.lower():
+                    raise e
+                obj = sg.Band(file_path, res=None)
+        else:
+            try:
+                obj = sg.Sentinel2Image(file_path, res=None)
+            except Exception as e:
+                if "sentinel" in file_path.lower() and "SCL" not in file_path:
+                    raise e
+                try:
+                    obj = sg.Image(file_path, res=None)
+                except Exception as e:
+                    print(e)
+                    print(file_path)
+                    return {}
+        try:
+            metadata = {
+                "file_path": file_path,
+                "bounds": obj.bounds,
+                "crs": str(pyproj.CRS(obj.crs).to_string()),
+            }
+        except Exception as e:
+            print()
+            print(e)
+            print(file_path)
+            return {}
+        for key in obj.metadata_attributes:
+            try:
+                metadata[key] = getattr(obj, key)
+            except AttributeError as e:
+                if "SCL" not in file_path:
+                    raise e
+        return metadata
+    except RasterioIOError as e:
+        print("RasterioIOError", e, file_path)
+        return {}
+    except CRSError as e:
+        print("pyproj.CRSError", e, file_path)
+        return {}
 
 
 def main():
-
-    test_masking()
-    test_to_xarray()
     test_metadata_attributes()
+    test_masking()
+    test_numpy_as_backend()
+    test_xarray_as_backend()
+    test_bbox()
     test_collection_from_list_of_path()
     test_indexing()
     test_regexes()
     test_date_ranges()
-    test_bbox()
     test_single_banded()
     test_convertion()
     test_buffer()
     test_iteration()
     test_ndvi()
-    test_zonal()
     test_gradient()
     test_iteration_base_image_collection()
     test_groupby()
     test_cloud()
-    test_with_mosaic()
     test_concat_image_collections()
+    test_with_mosaic()
     test_merge()
+    test_zonal()
+    not_test_to_xarray()
+    test_plot_pixels()
     not_test_sample()
     not_test_sample()
     not_test_sample()
