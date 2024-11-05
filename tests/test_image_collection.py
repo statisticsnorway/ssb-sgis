@@ -297,7 +297,7 @@ def _test_ndvi(collection, type_should_be, cloudless: bool):
             # assert (ndvi.cmap) == "Greens"
 
             print("explore ndvi, masking=", img.masking)
-            gdf = ndvi.to_gdf()
+            gdf = ndvi.to_geopandas()
             gdf_sample = gdf.sample(min(n, len(gdf)))
             e = sg.explore(ndvi, gdf_sample=gdf_sample, column="value")
 
@@ -401,7 +401,7 @@ def not_test_sample():
         for img in collection.sample(1, size=size):
             for band in img:
                 band.load()
-                print(band.to_gdf().pipe(sg.sort_small_first).geometry.area.sum())
+                print(band.to_geopandas().pipe(sg.sort_small_first).geometry.area.sum())
         e = sg.explore(collection.sample(1, size=size))
 
     # low buffer resolution means the area won't be exactly this
@@ -423,7 +423,7 @@ def not_test_sample():
 
     print("as gdfs")
     e = sg.explore(
-        collection.sample(1, size=size).load().to_gdfs(),
+        collection.sample(1, size=size).load().to_geopandas(),
         column="value",
         return_explorer=True,
     )
@@ -976,7 +976,7 @@ def test_merge():
     sg.explore(merged_by_year)
     sg.explore(grouped_by_year_merged_by_band)
     sg.explore(merged_by_band)
-    df = merged_by_band.to_gdf()
+    df = merged_by_band.to_geopandas()
     assert (bounds := tuple(int(x) for x in df.total_bounds)) == (
         569631,
         6657859,
@@ -1235,7 +1235,7 @@ def test_cloud():
         # assert np.sum(cloud_band)
         assert isinstance(cloud_band, sg.Band), cloud_band
         assert cloud_band.values.shape == (299, 299), cloud_band.values.shape
-        cloud_polys = img.mask.to_gdf().geometry
+        cloud_polys = img.mask.to_geopandas().geometry
         sg.explore(cloud_polys)
         assert isinstance(cloud_polys, GeoSeries), type(cloud_polys)
 
@@ -1414,10 +1414,10 @@ def test_convertion():
     _from_array = sg.Band(arr, res=band.res, crs=band.crs, bounds=band.bounds)
     assert (shape := _from_array.values.shape) == (29, 29), shape
 
-    gdf = band.to_gdf(column="val")
+    gdf = band.to_geopandas(column="val")
     from_gdf = sg.Band.from_gdf(gdf, res=band.res)
 
-    e = sg.explore(from_gdf=from_gdf.to_gdf(), band=band.to_gdf(), gdf=gdf)
+    e = sg.explore(from_gdf=from_gdf.to_geopandas(), band=band.to_geopandas(), gdf=gdf)
     assert len(e._gdfs) == 3
     assert all(len(gdf) == 837 for gdf in e._gdfs), [len(gdf) for gdf in e._gdfs]
     assert all(int(gdf.area.sum()) == 898_5540 for gdf in e._gdfs), [

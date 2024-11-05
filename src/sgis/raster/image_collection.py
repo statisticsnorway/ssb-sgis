@@ -322,7 +322,7 @@ class _ImageBase:
         self._bounds = None
         self._merged = False
         self._from_array = False
-        self._from_gdf = False
+        self._from_geopandas = False
         self.metadata_attributes = self.metadata_attributes or {}
         self._path = None
         self._metadata_from_xml = False
@@ -674,7 +674,7 @@ class Band(_ImageBandBase):
     backend: str = "numpy"
 
     @classmethod
-    def from_gdf(
+    def from_geopandas(
         cls,
         gdf: GeoDataFrame | GeoSeries,
         res: int,
@@ -698,7 +698,7 @@ class Band(_ImageBandBase):
         )
 
         obj = cls(arr, res=res, crs=gdf.crs, bounds=gdf.total_bounds, **kwargs)
-        obj._from_gdf = True
+        obj._from_geopandas = True
         return obj
 
     def __init__(
@@ -905,7 +905,7 @@ class Band(_ImageBandBase):
         copied = self.copy()
         value_must_be_at_least = np.sort(np.ravel(copied.values))[-n] - (precision or 0)
         copied._values = np.where(copied.values >= value_must_be_at_least, 1, 0)
-        df = copied.to_gdf(column).loc[lambda x: x[column] == 1]
+        df = copied.to_geopandas(column).loc[lambda x: x[column] == 1]
         df[column] = f"largest_{n}"
         return df
 
@@ -916,7 +916,7 @@ class Band(_ImageBandBase):
         copied = self.copy()
         value_must_be_at_least = np.sort(np.ravel(copied.values))[n] - (precision or 0)
         copied._values = np.where(copied.values <= value_must_be_at_least, 1, 0)
-        df = copied.to_gdf(column).loc[lambda x: x[column] == 1]
+        df = copied.to_geopandas(column).loc[lambda x: x[column] == 1]
         df[column] = f"smallest_{n}"
         return df
 
@@ -1299,7 +1299,7 @@ class Band(_ImageBandBase):
             dropna=dropna,
         )
 
-    def to_gdf(self, column: str = "value") -> GeoDataFrame:
+    def to_geopandas(self, column: str = "value") -> GeoDataFrame:
         """Create a GeoDataFrame from the image Band.
 
         Args:
@@ -1783,10 +1783,10 @@ class Image(_ImageBandBase):
                 bounds.append(band.bounds)
             return get_total_bounds(bounds)
 
-    def to_gdf(self, column: str = "value") -> GeoDataFrame:
+    def to_geopandas(self, column: str = "value") -> GeoDataFrame:
         """Convert the array to a GeoDataFrame of grid polygons and values."""
         return pd.concat(
-            [band.to_gdf(column=column) for band in self], ignore_index=True
+            [band.to_geopandas(column=column) for band in self], ignore_index=True
         )
 
     def sample(
@@ -2524,7 +2524,7 @@ class ImageCollection(_ImageBase):
         return xr.combine_by_coords(list(xarrs.values()))
         # return Dataset(xarrs)
 
-    def to_gdfs(self, column: str = "value") -> dict[str, GeoDataFrame]:
+    def to_geopandas(self, column: str = "value") -> dict[str, GeoDataFrame]:
         """Convert each band in each Image to a GeoDataFrame."""
         out = {}
         i = 0
@@ -2537,7 +2537,7 @@ class ImageCollection(_ImageBase):
                     name = f"{self.__class__.__name__}({i})"
 
                 if name not in out:
-                    out[name] = band.to_gdf(column=column)
+                    out[name] = band.to_geopandas(column=column)
         return out
 
     def sample(self, n: int = 1, size: int = 500) -> "ImageCollection":
@@ -3290,7 +3290,7 @@ class PathlessImageError(ValueError):
             what = "that have been merged"
         elif self.instance._from_array:
             what = "from arrays"
-        elif self.instance._from_gdf:
+        elif self.instance._from_geopandas:
             what = "from GeoDataFrames"
         else:
             raise ValueError(self.instance)
