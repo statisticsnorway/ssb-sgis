@@ -94,7 +94,7 @@ def is_method(obj: Any, attr: str) -> bool:
     if isinstance(obj, type):
         return inspect.ismethod(getattr(obj, attr, None))
     else:
-        return inspect.ismethod(getattr(obj, attr, None))
+        return inspect.ismethod(getattr(obj.__class__, attr, None))
 
 
 def dict_zip_intersection(*dicts: dict) -> Generator[tuple[Any, ...], None, None]:
