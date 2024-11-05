@@ -1415,15 +1415,17 @@ def test_convertion():
     assert (shape := _from_array.values.shape) == (29, 29), shape
 
     gdf = band.to_geopandas(column="val")
-    from_gdf = sg.Band.from_gdf(gdf, res=band.res)
+    from_geopandas = sg.Band.from_geopandas(gdf, res=band.res)
 
-    e = sg.explore(from_gdf=from_gdf.to_geopandas(), band=band.to_geopandas(), gdf=gdf)
+    e = sg.explore(
+        from_geopandas=from_geopandas.to_geopandas(), band=band.to_geopandas(), gdf=gdf
+    )
     assert len(e._gdfs) == 3
     assert all(len(gdf) == 837 for gdf in e._gdfs), [len(gdf) for gdf in e._gdfs]
     assert all(int(gdf.area.sum()) == 898_5540 for gdf in e._gdfs), [
         int(gdf.area.sum()) for gdf in e._gdfs
     ]
-    assert (shape := from_gdf.values.shape) == (29, 29), shape
+    assert (shape := from_geopandas.values.shape) == (29, 29), shape
 
 
 @print_function_name
