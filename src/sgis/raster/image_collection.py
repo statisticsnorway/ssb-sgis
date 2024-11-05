@@ -95,6 +95,8 @@ from ..geopandas_tools.general import get_common_crs
 from ..helpers import _fix_path
 from ..helpers import get_all_files
 from ..helpers import get_numpy_func
+from ..helpers import is_property
+from ..helpers import is_method
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
 from . import sentinel_config as config
@@ -164,6 +166,7 @@ ALLOWED_INIT_KWARGS = [
     "backend",
     "masking",
     "_merged",
+    "date",
 ]
 
 _load_counter: int = 0
@@ -348,12 +351,18 @@ class _ImageBase:
             self.image_patterns = ()
 
         for key, value in kwargs.items():
+            error_obj = ValueError(
+                f"{self.__class__.__name__} got an unexpected keyword argument '{key}'"
+            )
             if key in ALLOWED_INIT_KWARGS and key in dir(self):
-                setattr(self, key, value)
+                if is_property(self, key):
+                    setattr(self, f"_{key}", value)
+                elif is_method(self, key):
+                    raise error_obj
+                else:
+                    setattr(self, key, value)
             else:
-                raise ValueError(
-                    f"{self.__class__.__name__} got an unexpected keyword argument '{key}'"
-                )
+                raise error_obj
 
     @staticmethod
     def _metadata_to_nested_dict(
@@ -367,6 +376,7 @@ class _ImageBase:
         if isinstance(metadata, pd.DataFrame):
 
             def is_scalar(x) -> bool:
+                """Check if scalar because 'truth value of Series is ambigous'."""
                 return not hasattr(x, "__len__") or len(x) <= 1
 
             def na_to_none(x) -> None:

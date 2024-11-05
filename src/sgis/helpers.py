@@ -156,6 +156,20 @@ def get_all_files(root: str, recursive: bool = True) -> list[str]:
     return paths
 
 
+def is_property(obj: Any, attr: str) -> bool:
+    if isinstance(obj, type):
+        return isinstance(getattr(obj, attr), property)
+    else:
+        return isinstance(getattr(obj.__class__, attr), property)
+
+
+def is_method(obj: Any, attr: str) -> bool:
+    if isinstance(obj, type):
+        return inspect.ismethod(getattr(obj, attr, None))
+    else:
+        return inspect.ismethod(getattr(obj, attr, None))
+
+
 def return_two_vals(
     vals: tuple[str, str] | list[str] | str | int | float
 ) -> tuple[str | int | float, str | int | float]:
