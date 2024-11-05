@@ -331,24 +331,8 @@ class _ImageBase:
 
         self.metadata = self._metadata_to_nested_dict(metadata)
 
-        if self.filename_regexes:
-            if isinstance(self.filename_regexes, str):
-                self.filename_regexes = (self.filename_regexes,)
-            self.filename_patterns = [
-                re.compile(regexes, flags=re.VERBOSE)
-                for regexes in self.filename_regexes
-            ]
-        else:
-            self.filename_patterns = ()
-
-        if self.image_regexes:
-            if isinstance(self.image_regexes, str):
-                self.image_regexes = (self.image_regexes,)
-            self.image_patterns = [
-                re.compile(regexes, flags=re.VERBOSE) for regexes in self.image_regexes
-            ]
-        else:
-            self.image_patterns = ()
+        self.image_patterns = self._compile_regexes("image_regexes")
+        self.filename_patterns = self._compile_regexes("filename_regexes")
 
         for key, value in kwargs.items():
             error_obj = ValueError(
@@ -363,6 +347,14 @@ class _ImageBase:
                     setattr(self, key, value)
             else:
                 raise error_obj
+
+    def _compile_regexes(self, regex_attr: str) -> tuple[re.Pattern]:
+        regexes = getattr(self, regex_attr)
+        if regexes:
+            if isinstance(regexes, str):
+                regexes = (regexes,)
+            return tuple(re.compile(regexes, flags=re.VERBOSE) for regexes in regexes)
+        return ()
 
     @staticmethod
     def _metadata_to_nested_dict(
@@ -934,17 +926,6 @@ class Band(_ImageBandBase):
         """Clip band values to geometry mask."""
         if not self.height or not self.width:
             return self
-        # if self.mask is not None:
-        #     band_mask = self.mask._clip_xarray(
-        #         self.mask.to_xarray(),
-        #         mask,
-        #         crs=self.mask.crs,
-        #         **kwargs,
-        #     )
-        # elif isinstance(self.values, mask.)
-        # else:
-        #     ssss
-        #     band_mask = None
 
         values = _clip_xarray(
             self.to_xarray(),
@@ -954,7 +935,6 @@ class Band(_ImageBandBase):
         )
         self._bounds = to_bbox(mask)
         self.transform = _get_transform_from_bounds(self._bounds, values.shape)
-        # self._mask = band_mask
         self.values = values
         return self
 
