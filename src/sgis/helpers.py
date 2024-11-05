@@ -72,19 +72,29 @@ def to_numpy_func(text: str) -> Callable:
     raise ValueError
 
 
-def is_property(obj: object, attribute: str) -> bool:
+def is_property(obj: object, attr: str) -> bool:
     """Determine if a class attribute is a property.
 
     Args:
         obj: The object to check.
-        attribute: The attribute name to check on the object.
+        attr: The attribute name to check on the object.
 
     Returns:
         True if the attribute is a property, False otherwise.
     """
-    return hasattr(obj.__class__, attribute) and isinstance(
-        getattr(obj.__class__, attribute), property
-    )
+    if not hasattr(obj.__class__, attr):
+        return False
+    if isinstance(obj, type):
+        return isinstance(getattr(obj, attr), property)
+    else:
+        return isinstance(getattr(obj.__class__, attr), property)
+
+
+def is_method(obj: Any, attr: str) -> bool:
+    if isinstance(obj, type):
+        return inspect.ismethod(getattr(obj, attr, None))
+    else:
+        return inspect.ismethod(getattr(obj, attr, None))
 
 
 def dict_zip_intersection(*dicts: dict) -> Generator[tuple[Any, ...], None, None]:
@@ -154,20 +164,6 @@ def get_all_files(root: str, recursive: bool = True) -> list[str]:
             path = _fix_path(os.path.join(root_dir, file))
             paths.append(path)
     return paths
-
-
-def is_property(obj: Any, attr: str) -> bool:
-    if isinstance(obj, type):
-        return isinstance(getattr(obj, attr), property)
-    else:
-        return isinstance(getattr(obj.__class__, attr), property)
-
-
-def is_method(obj: Any, attr: str) -> bool:
-    if isinstance(obj, type):
-        return inspect.ismethod(getattr(obj, attr, None))
-    else:
-        return inspect.ismethod(getattr(obj, attr, None))
 
 
 def return_two_vals(

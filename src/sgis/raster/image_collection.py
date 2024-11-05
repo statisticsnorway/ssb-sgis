@@ -95,8 +95,8 @@ from ..geopandas_tools.general import get_common_crs
 from ..helpers import _fix_path
 from ..helpers import get_all_files
 from ..helpers import get_numpy_func
-from ..helpers import is_property
 from ..helpers import is_method
+from ..helpers import is_property
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
 from . import sentinel_config as config
@@ -641,25 +641,30 @@ class _ImageBandBase(_ImageBase):
 
     def _to_xarray(self, array: np.ndarray, transform: Affine) -> DataArray:
         """Convert the raster to  an xarray.DataArray."""
-        if len(array.shape) == 2:
-            height, width = array.shape
-            dims = ["y", "x"]
-        elif len(array.shape) == 3:
-            height, width = array.shape[1:]
-            dims = ["band", "y", "x"]
-        else:
-            raise ValueError(
-                f"Array should be 2 or 3 dimensional. Got shape {array.shape}"
-            )
-
-        coords = _generate_spatial_coords(transform, width, height)
-
         attrs = {"crs": self.crs}
         for attr in set(self.metadata_attributes).union({"date"}):
             try:
                 attrs[attr] = getattr(self, attr)
             except Exception:
                 pass
+
+        if len(array.shape) == 2:
+            height, width = array.shape
+            dims = ["y", "x"]
+        elif len(array.shape) == 3:
+            height, width = array.shape[1:]
+            dims = ["band", "y", "x"]
+        elif not any(dim for dim in array.shape):
+            DataArray(
+                name=self.name or self.__class__.__name__,
+                attrs=attrs,
+            )
+        else:
+            raise ValueError(
+                f"Array should be 2 or 3 dimensional. Got shape {array.shape}"
+            )
+
+        coords = _generate_spatial_coords(transform, width, height)
 
         return DataArray(
             array,
@@ -849,12 +854,18 @@ class Band(_ImageBandBase):
     @property
     def height(self) -> int:
         """Pixel heigth of the image band."""
-        return self.values.shape[-2]
+        try:
+            return self.values.shape[-2]
+        except IndexError:
+            return 0
 
     @property
     def width(self) -> int:
         """Pixel width of the image band."""
-        return self.values.shape[-1]
+        try:
+            return self.values.shape[-1]
+        except IndexError:
+            return 0
 
     @property
     def tile(self) -> str:
@@ -921,6 +932,20 @@ class Band(_ImageBandBase):
         self, mask: GeoDataFrame | GeoSeries | Polygon | MultiPolygon, **kwargs
     ) -> "Band":
         """Clip band values to geometry mask."""
+        if not self.height or not self.width:
+            return self
+        # if self.mask is not None:
+        #     band_mask = self.mask._clip_xarray(
+        #         self.mask.to_xarray(),
+        #         mask,
+        #         crs=self.mask.crs,
+        #         **kwargs,
+        #     )
+        # elif isinstance(self.values, mask.)
+        # else:
+        #     ssss
+        #     band_mask = None
+
         values = _clip_xarray(
             self.to_xarray(),
             mask,
@@ -929,6 +954,7 @@ class Band(_ImageBandBase):
         )
         self._bounds = to_bbox(mask)
         self.transform = _get_transform_from_bounds(self._bounds, values.shape)
+        # self._mask = band_mask
         self.values = values
         return self
 
@@ -988,7 +1014,6 @@ class Band(_ImageBandBase):
         if self.has_array and [int(x) for x in bounds] != [int(x) for x in self.bounds]:
             print(self)
             print(self.mask)
-            print(self.mask.values.shape)
             print(self.values.shape)
             print([int(x) for x in bounds], [int(x) for x in self.bounds])
             raise ValueError(
@@ -1338,17 +1363,35 @@ class Band(_ImageBandBase):
         self, arr: np.ndarray | DataArray, masked: bool = True
     ) -> np.ndarray | np.ma.core.MaskedArray:
         if not isinstance(arr, np.ndarray):
+            mask_arr = None
             if masked:
+                # if self.mask is not None:
+                #     print(self.mask.values.shape, arr.shape)
+                # if self.mask is not None and self.mask.values.shape == arr.shape:
+                #     print("hei", self.mask.values.sum())
+                #     mask_arr = self.mask.values
+                # else:
+                #     mask_arr = np.full(arr.shape, False)
+                # try:
+                #     print("hei222", arr.isnull().values.sum())
+                #     mask_arr |= arr.isnull().values
+                # except AttributeError:
+                #     pass
+                # mask_arr = np.full(arr.shape, False)
                 try:
                     mask_arr = arr.isnull().values
                 except AttributeError:
-                    mask_arr = np.full(arr.shape, False)
+                    pass
             try:
                 arr = arr.to_numpy()
             except AttributeError:
                 arr = arr.values
+            if mask_arr is not None:
+                arr = np.ma.array(arr, mask=mask_arr, fill_value=self.nodata)
+
         if not isinstance(arr, np.ndarray):
             arr = np.array(arr)
+
         if (
             masked
             and self.mask is not None
