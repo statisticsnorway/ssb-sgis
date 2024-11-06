@@ -3,45 +3,27 @@ from xyzservices import TileProvider
 from xyzservices import providers
 
 kartverket = Bunch(
-    norgeskart=TileProvider(
-        name="Norgeskart",
-        url="https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=norgeskart_bakgrunn&zoom={z}&x={x}&y={y}",
-        attribution="© Kartverket",
-        html_attribution='&copy; <a href="https://kartverket.no">Kartverket</a>',
-    ),
-    bakgrunnskart_forenklet=TileProvider(
-        name="Norgeskart forenklet",
-        url="https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=bakgrunnskart_forenklet&zoom={z}&x={x}&y={y}",
-        attribution="© Kartverket",
-        html_attribution='&copy; <a href="https://kartverket.no">Kartverket</a>',
-    ),
-    norges_grunnkart=TileProvider(
-        name="Norges grunnkart",
-        url="https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=norges_grunnkart&zoom={z}&x={x}&y={y}",
-        attribution="© Kartverket",
-        html_attribution='&copy; <a href="https://kartverket.no">Kartverket</a>',
-    ),
-    norges_grunnkart_gråtone=TileProvider(
-        name="Norges grunnkart gråtone",
-        url="https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=norges_grunnkart_graatone&zoom={z}&x={x}&y={y}",
-        attribution="© Kartverket",
-        html_attribution='&copy; <a href="https://kartverket.no">Kartverket</a>',
-    ),
-    n50=TileProvider(
-        name="N5 til N50 kartdata",
-        url="https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=kartdata3&zoom={z}&x={x}&y={y}",
+    topo=TileProvider(
+        name="Topografisk norgeskart",
+        url="https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png",
         attribution="© Kartverket",
         html_attribution='&copy; <a href="https://kartverket.no">Kartverket</a>',
     ),
     topogråtone=TileProvider(
         name="Topografisk norgeskart gråtone",
-        url="https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=topo4graatone&zoom={z}&x={x}&y={y}",
+        url="https://cache.kartverket.no/v1/wmts/1.0.0/topograatone/default/webmercator/{z}/{y}/{x}.png",
         attribution="© Kartverket",
         html_attribution='&copy; <a href="https://kartverket.no">Kartverket</a>',
     ),
     toporaster=TileProvider(
         name="Topografisk raster",
-        url="https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=toporaster4&zoom={z}&x={x}&y={y}",
+        url="https://cache.kartverket.no/v1/wmts/1.0.0/toporaster/default/webmercator/{z}/{y}/{x}.png",
+        attribution="© Kartverket",
+        html_attribution='&copy; <a href="https://kartverket.no">Kartverket</a>',
+    ),
+    sjøkart=TileProvider(
+        name="Sjøkart",
+        url="https://cache.kartverket.no/v1/wmts/1.0.0/sjokartraster/default/webmercator/{z}/{y}/{x}.png",
         attribution="© Kartverket",
         html_attribution='&copy; <a href="https://kartverket.no">Kartverket</a>',
     ),

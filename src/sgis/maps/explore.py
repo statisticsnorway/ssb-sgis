@@ -144,8 +144,8 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
         "openstreetmap": folium.TileLayer(
             "OpenStreetMap", min_zoom=0, max_zoom=max_zoom
         ),
-        "grunnkart": kartverket.norges_grunnkart,
-        "gråtone": kartverket.norges_grunnkart_gråtone,
+        "grunnkart": kartverket.topo,
+        "gråtone": kartverket.topogråtone,
         "norge_i_bilder": kartverket.norge_i_bilder,
         "dark": xyz.CartoDB.DarkMatter,
         "voyager": xyz.CartoDB.Voyager,
@@ -214,11 +214,11 @@ class Explore(Map):
     """Class for displaying and saving html maps of multiple GeoDataFrames."""
 
     # class attribute that can be overridden locally
-    tiles: ClassVar[tuple[str]] = (
-        "OpenStreetMap",
-        "dark",
+    tiles: ClassVar[tuple[str, ...]] = (
+        "grunnkart",
         "norge_i_bilder",
-        # "grunnkart",
+        "dark",
+        "OpenStreetMap",
     )
 
     def __init__(
