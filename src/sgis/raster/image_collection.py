@@ -95,6 +95,8 @@ from ..geopandas_tools.general import get_common_crs
 from ..helpers import _fix_path
 from ..helpers import get_all_files
 from ..helpers import get_numpy_func
+from ..helpers import is_method
+from ..helpers import is_property
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
 from . import sentinel_config as config
@@ -164,6 +166,7 @@ ALLOWED_INIT_KWARGS = [
     "backend",
     "masking",
     "_merged",
+    "date",
 ]
 
 _load_counter: int = 0
@@ -319,7 +322,7 @@ class _ImageBase:
         self._bounds = None
         self._merged = False
         self._from_array = False
-        self._from_gdf = False
+        self._from_geopandas = False
         self.metadata_attributes = self.metadata_attributes or {}
         self._path = None
         self._metadata_from_xml = False
@@ -328,32 +331,30 @@ class _ImageBase:
 
         self.metadata = self._metadata_to_nested_dict(metadata)
 
-        if self.filename_regexes:
-            if isinstance(self.filename_regexes, str):
-                self.filename_regexes = (self.filename_regexes,)
-            self.filename_patterns = [
-                re.compile(regexes, flags=re.VERBOSE)
-                for regexes in self.filename_regexes
-            ]
-        else:
-            self.filename_patterns = ()
-
-        if self.image_regexes:
-            if isinstance(self.image_regexes, str):
-                self.image_regexes = (self.image_regexes,)
-            self.image_patterns = [
-                re.compile(regexes, flags=re.VERBOSE) for regexes in self.image_regexes
-            ]
-        else:
-            self.image_patterns = ()
+        self.image_patterns = self._compile_regexes("image_regexes")
+        self.filename_patterns = self._compile_regexes("filename_regexes")
 
         for key, value in kwargs.items():
+            error_obj = ValueError(
+                f"{self.__class__.__name__} got an unexpected keyword argument '{key}'"
+            )
             if key in ALLOWED_INIT_KWARGS and key in dir(self):
-                setattr(self, key, value)
+                if is_property(self, key):
+                    setattr(self, f"_{key}", value)
+                elif is_method(self, key):
+                    raise error_obj
+                else:
+                    setattr(self, key, value)
             else:
-                raise ValueError(
-                    f"{self.__class__.__name__} got an unexpected keyword argument '{key}'"
-                )
+                raise error_obj
+
+    def _compile_regexes(self, regex_attr: str) -> tuple[re.Pattern]:
+        regexes = getattr(self, regex_attr)
+        if regexes:
+            if isinstance(regexes, str):
+                regexes = (regexes,)
+            return tuple(re.compile(regexes, flags=re.VERBOSE) for regexes in regexes)
+        return ()
 
     @staticmethod
     def _metadata_to_nested_dict(
@@ -367,6 +368,7 @@ class _ImageBase:
         if isinstance(metadata, pd.DataFrame):
 
             def is_scalar(x) -> bool:
+                """Check if scalar because 'truth value of Series is ambigous'."""
                 return not hasattr(x, "__len__") or len(x) <= 1
 
             def na_to_none(x) -> None:
@@ -631,25 +633,30 @@ class _ImageBandBase(_ImageBase):
 
     def _to_xarray(self, array: np.ndarray, transform: Affine) -> DataArray:
         """Convert the raster to  an xarray.DataArray."""
-        if len(array.shape) == 2:
-            height, width = array.shape
-            dims = ["y", "x"]
-        elif len(array.shape) == 3:
-            height, width = array.shape[1:]
-            dims = ["band", "y", "x"]
-        else:
-            raise ValueError(
-                f"Array should be 2 or 3 dimensional. Got shape {array.shape}"
-            )
-
-        coords = _generate_spatial_coords(transform, width, height)
-
         attrs = {"crs": self.crs}
         for attr in set(self.metadata_attributes).union({"date"}):
             try:
                 attrs[attr] = getattr(self, attr)
             except Exception:
                 pass
+
+        if len(array.shape) == 2:
+            height, width = array.shape
+            dims = ["y", "x"]
+        elif len(array.shape) == 3:
+            height, width = array.shape[1:]
+            dims = ["band", "y", "x"]
+        elif not any(dim for dim in array.shape):
+            DataArray(
+                name=self.name or self.__class__.__name__,
+                attrs=attrs,
+            )
+        else:
+            raise ValueError(
+                f"Array should be 2 or 3 dimensional. Got shape {array.shape}"
+            )
+
+        coords = _generate_spatial_coords(transform, width, height)
 
         return DataArray(
             array,
@@ -667,7 +674,7 @@ class Band(_ImageBandBase):
     backend: str = "numpy"
 
     @classmethod
-    def from_gdf(
+    def from_geopandas(
         cls,
         gdf: GeoDataFrame | GeoSeries,
         res: int,
@@ -691,7 +698,7 @@ class Band(_ImageBandBase):
         )
 
         obj = cls(arr, res=res, crs=gdf.crs, bounds=gdf.total_bounds, **kwargs)
-        obj._from_gdf = True
+        obj._from_geopandas = True
         return obj
 
     def __init__(
@@ -839,12 +846,18 @@ class Band(_ImageBandBase):
     @property
     def height(self) -> int:
         """Pixel heigth of the image band."""
-        return self.values.shape[-2]
+        try:
+            return self.values.shape[-2]
+        except IndexError:
+            return 0
 
     @property
     def width(self) -> int:
         """Pixel width of the image band."""
-        return self.values.shape[-1]
+        try:
+            return self.values.shape[-1]
+        except IndexError:
+            return 0
 
     @property
     def tile(self) -> str:
@@ -892,7 +905,7 @@ class Band(_ImageBandBase):
         copied = self.copy()
         value_must_be_at_least = np.sort(np.ravel(copied.values))[-n] - (precision or 0)
         copied._values = np.where(copied.values >= value_must_be_at_least, 1, 0)
-        df = copied.to_gdf(column).loc[lambda x: x[column] == 1]
+        df = copied.to_geopandas(column).loc[lambda x: x[column] == 1]
         df[column] = f"largest_{n}"
         return df
 
@@ -903,7 +916,7 @@ class Band(_ImageBandBase):
         copied = self.copy()
         value_must_be_at_least = np.sort(np.ravel(copied.values))[n] - (precision or 0)
         copied._values = np.where(copied.values <= value_must_be_at_least, 1, 0)
-        df = copied.to_gdf(column).loc[lambda x: x[column] == 1]
+        df = copied.to_geopandas(column).loc[lambda x: x[column] == 1]
         df[column] = f"smallest_{n}"
         return df
 
@@ -911,6 +924,9 @@ class Band(_ImageBandBase):
         self, mask: GeoDataFrame | GeoSeries | Polygon | MultiPolygon, **kwargs
     ) -> "Band":
         """Clip band values to geometry mask."""
+        if not self.height or not self.width:
+            return self
+
         values = _clip_xarray(
             self.to_xarray(),
             mask,
@@ -978,7 +994,6 @@ class Band(_ImageBandBase):
         if self.has_array and [int(x) for x in bounds] != [int(x) for x in self.bounds]:
             print(self)
             print(self.mask)
-            print(self.mask.values.shape)
             print(self.values.shape)
             print([int(x) for x in bounds], [int(x) for x in self.bounds])
             raise ValueError(
@@ -1284,7 +1299,7 @@ class Band(_ImageBandBase):
             dropna=dropna,
         )
 
-    def to_gdf(self, column: str = "value") -> GeoDataFrame:
+    def to_geopandas(self, column: str = "value") -> GeoDataFrame:
         """Create a GeoDataFrame from the image Band.
 
         Args:
@@ -1328,17 +1343,35 @@ class Band(_ImageBandBase):
         self, arr: np.ndarray | DataArray, masked: bool = True
     ) -> np.ndarray | np.ma.core.MaskedArray:
         if not isinstance(arr, np.ndarray):
+            mask_arr = None
             if masked:
+                # if self.mask is not None:
+                #     print(self.mask.values.shape, arr.shape)
+                # if self.mask is not None and self.mask.values.shape == arr.shape:
+                #     print("hei", self.mask.values.sum())
+                #     mask_arr = self.mask.values
+                # else:
+                #     mask_arr = np.full(arr.shape, False)
+                # try:
+                #     print("hei222", arr.isnull().values.sum())
+                #     mask_arr |= arr.isnull().values
+                # except AttributeError:
+                #     pass
+                # mask_arr = np.full(arr.shape, False)
                 try:
                     mask_arr = arr.isnull().values
                 except AttributeError:
-                    mask_arr = np.full(arr.shape, False)
+                    pass
             try:
                 arr = arr.to_numpy()
             except AttributeError:
                 arr = arr.values
+            if mask_arr is not None:
+                arr = np.ma.array(arr, mask=mask_arr, fill_value=self.nodata)
+
         if not isinstance(arr, np.ndarray):
             arr = np.array(arr)
+
         if (
             masked
             and self.mask is not None
@@ -1750,10 +1783,10 @@ class Image(_ImageBandBase):
                 bounds.append(band.bounds)
             return get_total_bounds(bounds)
 
-    def to_gdf(self, column: str = "value") -> GeoDataFrame:
+    def to_geopandas(self, column: str = "value") -> GeoDataFrame:
         """Convert the array to a GeoDataFrame of grid polygons and values."""
         return pd.concat(
-            [band.to_gdf(column=column) for band in self], ignore_index=True
+            [band.to_geopandas(column=column) for band in self], ignore_index=True
         )
 
     def sample(
@@ -2491,7 +2524,7 @@ class ImageCollection(_ImageBase):
         return xr.combine_by_coords(list(xarrs.values()))
         # return Dataset(xarrs)
 
-    def to_gdfs(self, column: str = "value") -> dict[str, GeoDataFrame]:
+    def to_geopandas(self, column: str = "value") -> dict[str, GeoDataFrame]:
         """Convert each band in each Image to a GeoDataFrame."""
         out = {}
         i = 0
@@ -2504,7 +2537,7 @@ class ImageCollection(_ImageBase):
                     name = f"{self.__class__.__name__}({i})"
 
                 if name not in out:
-                    out[name] = band.to_gdf(column=column)
+                    out[name] = band.to_geopandas(column=column)
         return out
 
     def sample(self, n: int = 1, size: int = 500) -> "ImageCollection":
@@ -3257,7 +3290,7 @@ class PathlessImageError(ValueError):
             what = "that have been merged"
         elif self.instance._from_array:
             what = "from arrays"
-        elif self.instance._from_gdf:
+        elif self.instance._from_geopandas:
             what = "from GeoDataFrames"
         else:
             raise ValueError(self.instance)
