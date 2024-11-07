@@ -677,8 +677,10 @@ class Band(_ImageBandBase):
     def from_geopandas(
         cls,
         gdf: GeoDataFrame | GeoSeries,
-        res: int,
         *,
+        res: int | None = None,
+        out_shape: tuple[int, int] | None = None,
+        bounds: Any | None = None,
         fill: int = 0,
         all_touched: bool = False,
         merge_alg: Callable = MergeAlg.replace,
@@ -687,17 +689,24 @@ class Band(_ImageBandBase):
         **kwargs,
     ) -> None:
         """Create Band from a GeoDataFrame."""
-        arr: np.ndarray = _gdf_to_arr(
+        if bounds is not None:
+            bounds = to_bbox(bounds)
+
+        res, arr = _gdf_to_arr(
             gdf,
             res=res,
+            bounds=bounds,
             fill=fill,
             all_touched=all_touched,
             merge_alg=merge_alg,
             default_value=default_value,
             dtype=dtype,
+            out_shape=out_shape,
         )
+        if bounds is None:
+            bounds = gdf.total_bounds
 
-        obj = cls(arr, res=res, crs=gdf.crs, bounds=gdf.total_bounds, **kwargs)
+        obj = cls(arr, res=res, crs=gdf.crs, bounds=bounds, **kwargs)
         obj._from_geopandas = True
         return obj
 
@@ -807,6 +816,13 @@ class Band(_ImageBandBase):
 
     @values.setter
     def values(self, new_val):
+        if self._values is not None:
+            was_missing = self._values == self.nodata
+            try:
+                was_missing = was_missing.data
+                was_missing |= self._values.mask
+            except AttributeError:
+                pass
         if self.backend == "numpy" and isinstance(new_val, np.ndarray):
             self._values = new_val
             return
@@ -926,6 +942,31 @@ class Band(_ImageBandBase):
         """Clip band values to geometry mask."""
         if not self.height or not self.width:
             return self
+
+        # mask_array: np.ndarray = Band.from_geopandas(
+        #     to_gdf(mask)[["geometry"]],
+        #     res=self.res,
+        #     bounds=self.bounds,
+        #     default_value=1,
+        #     fill=0,
+        # ).values
+
+        # is_not_polygon = mask_array == 0
+
+        # print(np.sum(is_not_polygon) / np.sum(np.isin(mask_array, [0, 1])))
+        # print(np.sum(is_not_polygon) / np.sum(np.isin(mask_array, [0, 1])))
+        # print(np.sum(is_not_polygon) / np.sum(np.isin(mask_array, [0, 1])))
+        # print(np.sum(is_not_polygon) / np.sum(np.isin(mask_array, [0, 1])))
+
+        # if self.nodata:
+        #     self.values[is_not_polygon] = self.nodata
+        # if isinstance(self.values, np.ma.core.MaskedArray):
+        #     new_band_mask = self.values.mask | is_not_polygon
+        #     self.values = np.ma.array(
+        #         self.values.data, mask=new_band_mask, fill_value=self.nodata
+        #     )
+
+        # return self
 
         values = _clip_xarray(
             self.to_xarray(),
@@ -1138,7 +1179,6 @@ class Band(_ImageBandBase):
             "width": self.width,
         } | kwargs
 
-        # with opener(path, "wb", file_system=self.file_system) as f:
         with opener(path, "wb", file_system=file_system) as f:
             with rasterio.open(f, "w", **profile) as dst:
 
@@ -1422,6 +1462,7 @@ class Image(_ImageBandBase):
         self,
         data: str | Path | Sequence[Band] | None = None,
         res: int | None = None,
+        mask: "Band | None" = None,
         processes: int = 1,
         df: pd.DataFrame | None = None,
         nodata: int | None = None,
@@ -1442,12 +1483,18 @@ class Image(_ImageBandBase):
         self.processes = processes
         self._crs = None
         self._bands = None
+        self._mask = mask
+
+        if isinstance(data, Band):
+            data = [data]
 
         if hasattr(data, "__iter__") and all(isinstance(x, Band) for x in data):
             self._construct_image_from_bands(data, res)
             return
         elif not isinstance(data, (str | Path | os.PathLike)):
-            raise TypeError("'data' must be string, Path-like or a sequence of Band.")
+            raise TypeError(
+                f"'data' must be string, Path-like or a sequence of Band. Got {data}"
+            )
 
         self._res = res
         self._path = _fix_path(data)
@@ -1948,9 +1995,13 @@ class ImageCollection(_ImageBase):
                 except FileNotFoundError as e:
                     if _from_root:
                         raise TypeError(
-                            "When passing 'root', 'data' must be a sequence of image names that have 'root' as parent path."
+                            "When passing 'root', 'data' must be a sequence of image file names that have 'root' as parent path."
                         ) from e
                     raise e
+                if self.level:
+                    self._all_file_paths = [
+                        path for path in self._all_file_paths if self.level in path
+                    ]
                 self._df = self._create_metadata_df(self._all_file_paths)
                 return
 
@@ -1968,7 +2019,9 @@ class ImageCollection(_ImageBase):
 
         self._df = self._create_metadata_df(self._all_file_paths)
 
-    def groupby(self, by: str | list[str], **kwargs) -> ImageCollectionGroupBy:
+    def groupby(
+        self, by: str | list[str], copy: bool = True, **kwargs
+    ) -> ImageCollectionGroupBy:
         """Group the Collection by Image or Band attribute(s)."""
         df = pd.DataFrame(
             [(i, img) for i, img in enumerate(self) for _ in img],
@@ -1995,7 +2048,7 @@ class ImageCollection(_ImageBase):
             return ImageCollectionGroupBy(
                 sorted(
                     parallel(
-                        joblib.delayed(_copy_and_add_df_parallel)(i, group, self)
+                        joblib.delayed(_copy_and_add_df_parallel)(i, group, self, copy)
                         for i, group in df.groupby(by, **kwargs)
                     )
                 ),
@@ -2329,17 +2382,6 @@ class ImageCollection(_ImageBase):
         ):
             return self
 
-        # if self.processes == 1:
-        #     for img in self:
-        #         for band in img:
-        #             band.load(
-        #                 bounds=bounds,
-        #                 indexes=indexes,
-        #                 file_system=file_system,
-        #                 **kwargs,
-        #             )
-        #     return self
-
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             if self.masking:
                 parallel(
@@ -2355,11 +2397,6 @@ class ImageCollection(_ImageBase):
                 for img in self:
                     for band in img:
                         band._mask = img.mask
-
-                # print({img.mask.has_array for img in self })
-                # print({band.mask.has_array for img in self for band in img})
-
-            # with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
 
             parallel(
                 joblib.delayed(_load_band)(
@@ -2378,23 +2415,65 @@ class ImageCollection(_ImageBase):
     def clip(
         self,
         mask: Geometry | GeoDataFrame | GeoSeries,
+        keep_bounds: bool = False,
+        copy: bool = True,
         **kwargs,
     ) -> "ImageCollection":
         """Clip all image Bands with 'loky'."""
-        if self.processes == 1:
-            for img in self:
-                for band in img:
-                    band.clip(mask, **kwargs)
-            return self
+        copied = self.copy() if copy else self
 
-        with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
-            parallel(
-                joblib.delayed(_clip_band)(band, mask, **kwargs)
-                for img in self
+        if not keep_bounds:
+            with joblib.Parallel(n_jobs=copied.processes, backend="loky") as parallel:
+                parallel(
+                    joblib.delayed(_clip_band)(band, mask, **kwargs)
+                    for img in copied
+                    for band in img
+                )
+
+        common_band_from_geopandas_kwargs = dict(
+            gdf=to_gdf(mask)[["geometry"]],
+            # res=copied.res,
+            default_value=1,
+            fill=0,
+        )
+        for bounds in {tuple(int(x) for x in img.bounds) for img in copied}:
+            shapes = {
+                band.values.shape
+                for img in copied
                 for band in img
-            )
+                if tuple(int(x) for x in img.bounds) == bounds
+            }
+            if not len(shapes) == 1:
+                raise ValueError(f"Different shapes: {shapes}")
 
-        return self
+            mask_array: np.ndarray = Band.from_geopandas(
+                **common_band_from_geopandas_kwargs,
+                out_shape=next(iter(shapes)),
+                bounds=bounds,
+            ).values
+
+            is_not_polygon = mask_array == 0
+
+            for img in copied:
+                if tuple(int(x) for x in img.bounds) != bounds:
+                    continue
+                if img.mask is not None:
+                    is_not_polygon |= img.mask.values
+                    img.mask.values = is_not_polygon
+
+                for band in img:
+                    if img.mask is not None:
+                        band._mask = img.mask
+                    if band.mask is not None:
+                        band.mask.values |= is_not_polygon
+                    if isinstance(band.values, np.ma.core.MaskedArray):
+                        band._values.mask |= is_not_polygon
+                    else:
+                        band._values = np.ma.array(
+                            band.values, mask=is_not_polygon, fill_value=self.nodata
+                        )
+
+        return copied
 
     def _set_bbox(
         self, bbox: GeoDataFrame | GeoSeries | Geometry | tuple[float]
@@ -2722,9 +2801,62 @@ class ImageCollection(_ImageBase):
 
     @images.setter
     def images(self, new_value: list["Image"]) -> list["Image"]:
-        self._images = list(new_value)
-        if not all(isinstance(x, Image) for x in self._images):
+        new_value = list(new_value)
+        if not new_value:
+            self._images = new_value
+            return
+        if all(isinstance(x, Band) for x in new_value):
+            if len(new_value) != len(self):
+                raise ValueError("'images' must have same length as number of images.")
+            new_images = []
+            for i, img in enumerate(self):
+                img._bands = [new_value[i]]
+                new_images.append(img)
+            self._images = new_images
+            return
+        if not all(isinstance(x, Image) for x in new_value):
             raise TypeError("images should be a sequence of Image.")
+        self._images = new_value
+
+    @property
+    def values(self) -> np.ndarray:
+        """The numpy array, if loaded."""
+        if self._values is None:
+            raise ArrayNotLoadedError("array is not loaded.")
+        return self._values
+
+    @values.setter
+    def values(self, new_val):
+        if self._values is not None:
+            was_missing = self._values == self.nodata
+            try:
+                was_missing = was_missing.data
+                was_missing |= self._values.mask
+            except AttributeError:
+                pass
+        if self.backend == "numpy" and isinstance(new_val, np.ndarray):
+            self._values = new_val
+            return
+        elif self.backend == "xarray" and isinstance(new_val, DataArray):
+            # attrs can dissappear, so doing a union
+            attrs = self._values.attrs | new_val.attrs
+            self._values = new_val
+            self._values.attrs = attrs
+            return
+
+        if self.backend == "numpy":
+            self._values = self._to_numpy(new_val)
+        if self.backend == "xarray":
+            if not isinstance(self._values, DataArray):
+                self._values = self._to_xarray(
+                    new_val,
+                    transform=self.transform,
+                )
+
+            elif isinstance(new_val, np.ndarray):
+                self._values.values = new_val
+            else:
+                self._values = new_val
 
     def __repr__(self) -> str:
         """String representation."""
@@ -3351,11 +3483,12 @@ def _intesects(x, other) -> bool:
 
 
 def _copy_and_add_df_parallel(
-    i: tuple[Any, ...], group: pd.DataFrame, self: ImageCollection
+    i: tuple[Any, ...], group: pd.DataFrame, self: ImageCollection, copy: bool
 ) -> tuple[tuple[Any], ImageCollection]:
-    copied = self.copy()
+    copied = self.copy() if copy else self
     copied.images = [
-        img.copy() for img in group.drop_duplicates("_image_idx")["_image_instance"]
+        img.copy() if copy else img
+        for img in group.drop_duplicates("_image_idx")["_image_instance"]
     ]
     if "band_id" in group:
         band_ids = set(group["band_id"].values)
