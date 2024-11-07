@@ -1991,7 +1991,9 @@ class ImageCollection(_ImageBase):
             elif all(isinstance(x, (str | Path | os.PathLike)) for x in data):
                 # adding band paths (asuming 'data' is a sequence of image paths)
                 try:
-                    self._all_file_paths = _get_child_paths_threaded(data) | set(data)
+                    self._all_file_paths = _get_child_paths_threaded(data) | {
+                        _fix_path(x) for x in data
+                    }
                 except FileNotFoundError as e:
                     if _from_root:
                         raise TypeError(
