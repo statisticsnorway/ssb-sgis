@@ -622,6 +622,8 @@ def test_indexing():
     band = collection[0]["B02"]
     assert isinstance(band, sg.Band)
     assert band.date.startswith("2017"), band.date
+    assert (x := band.load().value_counts()).sum() == 84571, (x, x.sum())
+    assert (x := band.value_counts()).max() == 341, (x, x.sum())
 
     arr = collection[0]["B02"].load().values
     assert isinstance(arr, np.ndarray)
@@ -903,8 +905,6 @@ def test_merge():
     print()
     print()
     assert len(merged_by_band) == 12, len(merged_by_band)
-
-    return
 
     # loop through each individual image to check the maths
     for ((tile, date), date_group), (img) in zip(

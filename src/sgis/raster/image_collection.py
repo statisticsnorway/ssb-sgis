@@ -807,6 +807,14 @@ class Band(_ImageBandBase):
         """Makes Bands sortable by band_id."""
         return self.band_id < other.band_id
 
+    def value_counts(self) -> pd.Series:
+        try:
+            values = self.values.data[self.values.mask == False]
+        except AttributeError:
+            values = self.values
+        unique_values, counts = np.unique(values, return_counts=True)
+        return pd.Series(counts, index=unique_values).sort_values(ascending=False)
+
     @property
     def values(self) -> np.ndarray:
         """The numpy array, if loaded."""
@@ -1167,10 +1175,16 @@ class Band(_ImageBandBase):
         if self.crs is None:
             raise ValueError("Cannot write None crs to image.")
 
+        if self.nodata:
+            values_with_nodata = np.concatenate(
+                [self.values.flatten(), np.array([self.nodata])]
+            )
+        else:
+            values_with_nodata = self.values
         profile = {
             "driver": driver,
             "compress": compress,
-            "dtype": rasterio.dtypes.get_minimum_dtype(self.values),
+            "dtype": rasterio.dtypes.get_minimum_dtype(values_with_nodata),
             "crs": self.crs,
             "transform": self.transform,
             "nodata": self.nodata,
@@ -2819,46 +2833,6 @@ class ImageCollection(_ImageBase):
         if not all(isinstance(x, Image) for x in new_value):
             raise TypeError("images should be a sequence of Image.")
         self._images = new_value
-
-    @property
-    def values(self) -> np.ndarray:
-        """The numpy array, if loaded."""
-        if self._values is None:
-            raise ArrayNotLoadedError("array is not loaded.")
-        return self._values
-
-    @values.setter
-    def values(self, new_val):
-        if self._values is not None:
-            was_missing = self._values == self.nodata
-            try:
-                was_missing = was_missing.data
-                was_missing |= self._values.mask
-            except AttributeError:
-                pass
-        if self.backend == "numpy" and isinstance(new_val, np.ndarray):
-            self._values = new_val
-            return
-        elif self.backend == "xarray" and isinstance(new_val, DataArray):
-            # attrs can dissappear, so doing a union
-            attrs = self._values.attrs | new_val.attrs
-            self._values = new_val
-            self._values.attrs = attrs
-            return
-
-        if self.backend == "numpy":
-            self._values = self._to_numpy(new_val)
-        if self.backend == "xarray":
-            if not isinstance(self._values, DataArray):
-                self._values = self._to_xarray(
-                    new_val,
-                    transform=self.transform,
-                )
-
-            elif isinstance(new_val, np.ndarray):
-                self._values.values = new_val
-            else:
-                self._values = new_val
 
     def __repr__(self) -> str:
         """String representation."""
