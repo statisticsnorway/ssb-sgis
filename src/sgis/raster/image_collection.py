@@ -163,7 +163,6 @@ ALLOWED_INIT_KWARGS = [
     "filename_regexes",
     "all_bands",
     "crs",
-    "backend",
     "masking",
     "_merged",
     "date",
@@ -394,7 +393,6 @@ class _ImageBase:
             "res": self.res,
             "bbox": self._bbox,
             "nodata": self.nodata,
-            "backend": self.backend,
             "metadata": self.metadata,
         }
 
@@ -531,9 +529,9 @@ class _ImageBandBase(_ImageBase):
         except TypeError:
             return Polygon()
 
-    @property
-    def mask_percentage(self) -> float:
-        return self.mask.values.sum() / (self.mask.width * self.mask.height) * 100
+    # @property
+    # def mask_percentage(self) -> float:
+    #     return self.values.mask.sum() / (self.width * self.height) * 100
 
     @property
     def year(self) -> str:
@@ -671,7 +669,6 @@ class Band(_ImageBandBase):
     """Band holding a single 2 dimensional array representing an image band."""
 
     cmap: ClassVar[str | None] = None
-    backend: str = "numpy"
 
     @classmethod
     def from_geopandas(
@@ -831,34 +828,15 @@ class Band(_ImageBandBase):
                 was_missing |= self._values.mask
             except AttributeError:
                 pass
-        if self.backend == "numpy" and isinstance(new_val, np.ndarray):
+        if isinstance(new_val, np.ndarray):
             self._values = new_val
             return
-        elif self.backend == "xarray" and isinstance(new_val, DataArray):
-            # attrs can dissappear, so doing a union
-            attrs = self._values.attrs | new_val.attrs
-            self._values = new_val
-            self._values.attrs = attrs
-            return
+        self._values = self._to_numpy(new_val)
 
-        if self.backend == "numpy":
-            self._values = self._to_numpy(new_val)
-        if self.backend == "xarray":
-            if not isinstance(self._values, DataArray):
-                self._values = self._to_xarray(
-                    new_val,
-                    transform=self.transform,
-                )
-
-            elif isinstance(new_val, np.ndarray):
-                self._values.values = new_val
-            else:
-                self._values = new_val
-
-    @property
-    def mask(self) -> "Band":
-        """Mask Band."""
-        return self._mask
+    # @property
+    # def mask(self) -> "Band":
+    #     """Mask Band."""
+    #     return self._mask
 
     @property
     def band_id(self) -> str:
@@ -991,7 +969,7 @@ class Band(_ImageBandBase):
         self,
         bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
         indexes: int | tuple[int] | None = None,
-        masked: bool | None = None,
+        masked: bool = True,  # | None = None,
         file_system=None,
         **kwargs,
     ) -> "Band":
@@ -1002,8 +980,11 @@ class Band(_ImageBandBase):
         global _load_counter
         _load_counter += 1
 
-        if masked is None:
-            masked = True if self.mask is None else False
+        masking = kwargs.pop("masking", self.masking)
+
+        # if masked is None:
+        #     masked = True if self.masking is None else False
+        # masked = True if self.mask is None else False
 
         bounds_was_none = bounds is None
 
@@ -1012,12 +993,13 @@ class Band(_ImageBandBase):
         should_return_empty: bool = bounds is not None and bounds.area == 0
         if should_return_empty:
             self._values = np.array([])
-            if self.mask is not None and not self.is_mask:
-                self._mask = self._mask.load(
-                    bounds=bounds, indexes=indexes, file_system=file_system
-                )
+            # if self.mask is not None and not self.is_mask:
+            #     self._mask = self._mask.load(
+            #         bounds=bounds, indexes=indexes, file_system=file_system
+            #     )
             self._bounds = None
             self.transform = None
+            # activate setter
             self.values = self._values
 
             return self
@@ -1042,7 +1024,6 @@ class Band(_ImageBandBase):
 
         if self.has_array and [int(x) for x in bounds] != [int(x) for x in self.bounds]:
             print(self)
-            print(self.mask)
             print(self.values.shape)
             print([int(x) for x in bounds], [int(x) for x in self.bounds])
             raise ValueError(
@@ -1119,18 +1100,22 @@ class Band(_ImageBandBase):
                     else:
                         values[values == src.nodata] = self.nodata
 
-        if self.masking and self.is_mask:
-            values = np.isin(values, list(self.masking["values"]))
+        # if self.masking and self.is_mask:
+        #     values = np.isin(values, list(self.masking["values"]))
 
-        elif self.mask is not None and not isinstance(values, np.ma.core.MaskedArray):
-
-            if not self.mask.has_array:
-                self._mask = self.mask.load(
-                    bounds=bounds, indexes=indexes, out_shape=out_shape, **kwargs
-                )
-            mask_arr = self.mask.values
+        # elif self.mask is not None and not isinstance(values, np.ma.core.MaskedArray):
+        if masking and self.masking and not isinstance(values, np.ma.core.MaskedArray):
+            mask_arr = _read_mask_array(self, bounds=bounds)
+            # if not self.mask.has_array:
+            #     self._mask = self.mask.load(
+            #         bounds=bounds, indexes=indexes, out_shape=out_shape, **kwargs
+            #     )
+            # mask_arr = self.mask.values
 
             values = np.ma.array(values, mask=mask_arr, fill_value=self.nodata)
+        elif masking and self.masking and isinstance(values, np.ma.core.MaskedArray):
+            mask_arr = _read_mask_array(self, bounds=bounds)
+            values.mask |= mask_arr
 
         if bounds is not None:
             self._bounds = to_bbox(bounds)
@@ -1382,8 +1367,6 @@ class Band(_ImageBandBase):
 
     def to_xarray(self) -> DataArray:
         """Convert the raster to an xarray.DataArray."""
-        if self.backend == "xarray":
-            return self.values
         return self._to_xarray(
             self.values,
             transform=self.transform,
@@ -1429,7 +1412,7 @@ class Band(_ImageBandBase):
 
         if (
             masked
-            and self.mask is not None
+            # and self.mask is not None
             and not self.is_mask
             and not isinstance(arr, np.ma.core.MaskedArray)
         ):
@@ -1471,7 +1454,6 @@ class Image(_ImageBandBase):
     """Image consisting of one or more Bands."""
 
     band_class: ClassVar[Band] = Band
-    backend: str = "numpy"
 
     def __init__(
         self,
@@ -1620,7 +1602,7 @@ class Image(_ImageBandBase):
             arr,
             bounds=red.bounds,
             crs=red.crs,
-            mask=red.mask,
+            # mask=red.mask,
             **red._common_init_kwargs,
         )
 
@@ -1652,80 +1634,77 @@ class Image(_ImageBandBase):
             brightness,
             bounds=red.bounds,
             crs=self.crs,
-            mask=self.mask,
+            # mask=self.mask,
             **self._common_init_kwargs,
         )
 
     def to_xarray(self) -> DataArray:
         """Convert the raster to  an xarray.DataArray."""
-        if self.backend == "xarray":
-            return self.values
-
         return self._to_xarray(
             np.array([band.values for band in self]),
             transform=self[0].transform,
         )
 
-    @property
-    def mask(self) -> Band | None:
-        """Mask Band."""
-        if self.masking is None:
-            return None
+    # @property
+    # def mask(self) -> Band | None:
+    #     """Mask Band."""
+    #     if self.masking is None:
+    #         return None
 
-        elif self._mask is not None:
-            return self._mask
+    #     elif self._mask is not None:
+    #         return self._mask
 
-        elif self._bands is not None and all(band.mask is not None for band in self):
-            if len({id(band.mask) for band in self}) > 1:
-                raise ValueError(
-                    "Image bands must have same mask.",
-                    {id(band.mask) for band in self},
-                )  # TODO
-            self._mask = next(
-                iter([band.mask for band in self if band.mask is not None])
-            )
-            return self._mask
+    #     elif self._bands is not None and all(band.mask is not None for band in self):
+    #         if len({id(band.mask) for band in self}) > 1:
+    #             raise ValueError(
+    #                 "Image bands must have same mask.",
+    #                 {id(band.mask) for band in self},
+    #             )  # TODO
+    #         self._mask = next(
+    #             iter([band.mask for band in self if band.mask is not None])
+    #         )
+    #         return self._mask
 
-        mask_band_id = self.masking["band_id"]
-        mask_paths = [path for path in self._all_file_paths if mask_band_id in path]
-        if len(mask_paths) > 1:
-            raise ValueError(
-                f"Multiple file_paths match mask band_id {mask_band_id} for {self.path}"
-            )
-        elif not mask_paths:
-            raise ValueError(
-                f"No file_paths match mask band_id {mask_band_id} for {self.path} among "
-                + str([Path(x).name for x in _ls_func(self.path)])
-            )
+    #     mask_band_id = self.masking["band_id"]
+    #     mask_paths = [path for path in self._all_file_paths if mask_band_id in path]
+    #     if len(mask_paths) > 1:
+    #         raise ValueError(
+    #             f"Multiple file_paths match mask band_id {mask_band_id} for {self.path}"
+    #         )
+    #     elif not mask_paths:
+    #         raise ValueError(
+    #             f"No file_paths match mask band_id {mask_band_id} for {self.path} among "
+    #             + str([Path(x).name for x in _ls_func(self.path)])
+    #         )
 
-        self._mask = self.band_class(
-            mask_paths[0],
-            **self._common_init_kwargs,
-        )
-        if self._bands is not None:
-            for band in self:
-                band._mask = self._mask
-        return self._mask
+    #     self._mask = self.band_class(
+    #         mask_paths[0],
+    #         **self._common_init_kwargs,
+    #     )
+    #     if self._bands is not None:
+    #         for band in self:
+    #             band._mask = self._mask
+    #     return self._mask
 
-    @mask.setter
-    def mask(self, values: Band | None) -> None:
-        if values is None:
-            self._mask = None
-            for band in self:
-                band._mask = None
-            return
-        if not isinstance(values, Band):
-            raise TypeError(f"mask must be Band. Got {type(values)}")
-        self._mask = values
-        mask_arr = self._mask.values
-        for band in self:
-            band._mask = self._mask
-            try:
-                band.values = np.ma.array(
-                    band.values.data, mask=mask_arr, fill_value=band.nodata
-                )
-            except _ArrayNotLoadedError:
-                pass
+    # @mask.setter
+    # def mask(self, values: Band | None) -> None:
+    #     if values is None:
+    #         self._mask = None
+    #         for band in self:
+    #             band._mask = None
+    #         return
+    #     if not isinstance(values, Band):
+    #         raise TypeError(f"mask must be Band. Got {type(values)}")
+    #     self._mask = values
+    #     mask_arr = self._mask.values
+    #     for band in self:
+    #         band._mask = self._mask
+    #         try:
+    #             band.values = np.ma.array(
+    #                 band.values.data, mask=mask_arr, fill_value=band.nodata
+    #             )
+    #         except _ArrayNotLoadedError:
+    #             pass
 
     @property
     def band_ids(self) -> list[str]:
@@ -1749,12 +1728,12 @@ class Image(_ImageBandBase):
         else:
             paths = self._df["file_path"]
 
-        mask = self.mask
+        # mask = self.mask
 
         self._bands = [
             self.band_class(
                 path,
-                mask=mask,
+                # mask=mask,
                 all_file_paths=self._all_file_paths,
                 **self._common_init_kwargs,
             )
@@ -1963,7 +1942,6 @@ class ImageCollection(_ImageBase):
     image_class: ClassVar[Image] = Image
     band_class: ClassVar[Band] = Band
     _metadata_attribute_collection_type: ClassVar[type] = pd.Series
-    backend: str = "numpy"
 
     def __init__(
         self,
@@ -2212,7 +2190,7 @@ class ImageCollection(_ImageBase):
             arr,
             bounds=bounds,
             crs=crs,
-            mask=self.mask,
+            # mask=self.mask,
             **self._common_init_kwargs,
         )
 
@@ -2401,9 +2379,9 @@ class ImageCollection(_ImageBase):
 
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             if self.masking:
-                masks = parallel(
-                    joblib.delayed(_load_band)(
-                        img.mask,
+                masks: list[np.ndarray] = parallel(
+                    joblib.delayed(_read_mask_array)(
+                        img,
                         bounds=bounds,
                         indexes=indexes,
                         file_system=file_system,
@@ -2421,16 +2399,22 @@ class ImageCollection(_ImageBase):
                     bounds=bounds,
                     indexes=indexes,
                     file_system=file_system,
+                    masking=None,
                     **kwargs,
                 )
-                for img, mask in zip(self, masks, strict=True)
+                for img in self
                 for band in img
             )
 
         if self.masking:
             for img, mask_array in zip(self, masks, strict=True):
                 for band in img:
-                    band.values.mask = mask_array
+                    if isinstance(band.values, np.ma.core.MaskedArray):
+                        band.values.mask |= mask_array
+                    else:
+                        band.values = np.ma.array(
+                            band.values, mask=mask_array, fill_value=self.nodata
+                        )
 
         return self
 
@@ -2468,7 +2452,7 @@ class ImageCollection(_ImageBase):
             print(img.bounds)
             print(img[0].bounds)
             print(img[0].values.shape)
-            setattr(img, "_rounded_bounds", tuple(int(x) for x in img.bounds))
+            img._rounded_bounds = tuple(int(x) for x in img.bounds)
 
         for bounds in {img._rounded_bounds for img in copied}:
             shapes = {
@@ -2521,17 +2505,17 @@ class ImageCollection(_ImageBase):
         if self._images is not None:
             for img in self._images:
                 img._bbox = self._bbox
-                if img.mask is not None:
-                    img.mask._bbox = self._bbox
+                # if img.mask is not None:
+                #     img.mask._bbox = self._bbox
                 if img.bands is None:
                     continue
                 for band in img:
                     band._bbox = self._bbox
                     bounds = box(*band._bbox).intersection(box(*band.bounds))
                     band._bounds = to_bbox(bounds) if not bounds.is_empty else None
-                    if band.mask is not None:
-                        band.mask._bbox = self._bbox
-                        band.mask._bounds = band._bounds
+                    # if band.mask is not None:
+                    #     band.mask._bbox = self._bbox
+                    #     band.mask._bounds = band._bounds
 
         return self
 
@@ -2794,20 +2778,21 @@ class ImageCollection(_ImageBase):
             **self._common_init_kwargs,
         )
 
-        if self.masking is not None:
-            images = []
-            for image in self._images:
-                # TODO why this loop?
-                try:
-                    if not isinstance(image.mask, Band):
-                        raise ValueError()
-                    images.append(image)
-                except ValueError as e:
-                    raise e
-                    continue
-            self._images = images
-            for image in self._images:
-                image._bands = [band for band in image if band.band_id is not None]
+        # if self.masking is not None:
+        # images = []
+        # for image in self._images:
+        #     # TODO why this loop?
+        #     try:
+        #         if not isinstance(image.mask, Band):
+        #             raise ValueError()
+        #         images.append(image)
+        #     except ValueError as e:
+        #         raise e
+        #         continue
+        # self._images = images
+
+        # for image in self._images:
+        #     image._bands = [band for band in image if band.band_id is not None]
 
         self._images = [img for img in self if len(img)]
 
@@ -3513,6 +3498,27 @@ def _get_single_value(values: tuple):
 def _open_raster(path: str | Path) -> rasterio.io.DatasetReader:
     with opener(path) as file:
         return rasterio.open(file)
+
+
+def _read_mask_array(self: Band | Image, **kwargs) -> np.ndarray:
+    mask_band_id = self.masking["band_id"]
+    mask_paths = [path for path in self._all_file_paths if mask_band_id in path]
+    if len(mask_paths) > 1:
+        raise ValueError(
+            f"Multiple file_paths match mask band_id {mask_band_id} for {self.path}"
+        )
+    elif not mask_paths:
+        raise ValueError(
+            f"No file_paths match mask band_id {mask_band_id} for {self.path} among "
+            + str([Path(x).name for x in _ls_func(self.path)])
+        )
+
+    band = Band(
+        next(iter(mask_paths)),
+        **self._common_init_kwargs,
+    )
+    band.load(**kwargs)
+    return np.isin(band.values, list(self.masking["values"]))
 
 
 def _load_band(band: Band, **kwargs) -> Band:

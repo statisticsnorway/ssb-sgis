@@ -1542,7 +1542,7 @@ def test_clip():
 
     clipped = collection.clip(mask)
     assert len(clipped) == 2, len(clipped)
-    for img, sum_should_be in zip(clipped, [87310, 87310]):
+    for img, sum_should_be in zip(clipped, [87310, 87310], strict=False):
         assert len(img) == 1
         shape = next(iter(img)).values.shape
         assert shape == (19, 19), shape
@@ -1552,7 +1552,7 @@ def test_clip():
 
     clipped = collection.clip(mask, keep_bounds=True)
     assert len(clipped) == 3, len(clipped)
-    for img, sum_should_be in zip(clipped, [0, 87310, 87310]):
+    for img, sum_should_be in zip(clipped, [0, 87310, 87310], strict=False):
         assert len(img) == 1
         shape = next(iter(img)).values.shape
         assert shape == (299, 299), shape
@@ -1676,9 +1676,9 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
-    test_clip()
+    # test_clip()
     test_metadata_attributes()
-    test_masking()
+    # test_masking()
     test_numpy_as_backend()
     test_xarray_as_backend()
     test_bbox()
