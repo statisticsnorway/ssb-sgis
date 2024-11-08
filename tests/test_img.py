@@ -1531,6 +1531,36 @@ def test_numpy_as_backend():
 
 
 @print_function_name
+def test_clip():
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10).filter(
+        bands=["B02"]
+    )
+
+    collection.load()
+
+    mask = collection[0].centroid.buffer(100)
+
+    clipped = collection.clip(mask)
+    assert len(clipped) == 2, len(clipped)
+    for img, sum_should_be in zip(clipped, [87310, 87310]):
+        assert len(img) == 1
+        shape = next(iter(img)).values.shape
+        assert shape == (19, 19), shape
+        values = next(iter(img)).values.data
+        sum_ = np.sum(values, where=~np.isnan(values))
+        assert sum_ == sum_should_be, (sum_, next(iter(img)).values.data)
+
+    clipped = collection.clip(mask, keep_bounds=True)
+    assert len(clipped) == 3, len(clipped)
+    for img, sum_should_be in zip(clipped, [0, 87310, 87310]):
+        assert len(img) == 1
+        shape = next(iter(img)).values.shape
+        assert shape == (299, 299), shape
+        sum_ = np.sum(values, where=~np.isnan(values))
+        assert sum_ == sum_should_be, (sum_, next(iter(img)).values.data)
+
+
+@print_function_name
 def test_xarray_as_backend():
     import xarray as xr
 
@@ -1646,6 +1676,7 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
+    test_clip()
     test_metadata_attributes()
     test_masking()
     test_numpy_as_backend()

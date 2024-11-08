@@ -819,7 +819,7 @@ class Band(_ImageBandBase):
     def values(self) -> np.ndarray:
         """The numpy array, if loaded."""
         if self._values is None:
-            raise ArrayNotLoadedError("array is not loaded.")
+            raise _ArrayNotLoadedError("array is not loaded.")
         return self._values
 
     @values.setter
@@ -982,7 +982,7 @@ class Band(_ImageBandBase):
             crs=self.crs,
             **kwargs,
         )
-        self._bounds = to_bbox(mask)
+        self._bounds = to_bbox(to_shapely(mask).intersection(box(*self.bounds)))
         self.transform = _get_transform_from_bounds(self._bounds, values.shape)
         self.values = values
         return self
@@ -1155,7 +1155,7 @@ class Band(_ImageBandBase):
             if not isinstance(self.values, (np.ndarray | DataArray)):
                 raise ValueError()
             return True
-        except ValueError:  # also catches ArrayNotLoadedError
+        except ValueError:  # also catches _ArrayNotLoadedError
             return False
 
     def write(
@@ -1176,6 +1176,7 @@ class Band(_ImageBandBase):
             raise ValueError("Cannot write None crs to image.")
 
         if self.nodata:
+            # TODO take out .data if masked?
             values_with_nodata = np.concatenate(
                 [self.values.flatten(), np.array([self.nodata])]
             )
@@ -1723,7 +1724,7 @@ class Image(_ImageBandBase):
                 band.values = np.ma.array(
                     band.values.data, mask=mask_arr, fill_value=band.nodata
                 )
-            except ArrayNotLoadedError:
+            except _ArrayNotLoadedError:
                 pass
 
     @property
@@ -2400,7 +2401,7 @@ class ImageCollection(_ImageBase):
 
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             if self.masking:
-                parallel(
+                masks = parallel(
                     joblib.delayed(_load_band)(
                         img.mask,
                         bounds=bounds,
@@ -2410,9 +2411,9 @@ class ImageCollection(_ImageBase):
                     )
                     for img in self
                 )
-                for img in self:
-                    for band in img:
-                        band._mask = img.mask
+                # for img in self:
+                #     for band in img:
+                #         band._mask = img.mask
 
             parallel(
                 joblib.delayed(_load_band)(
@@ -2422,9 +2423,14 @@ class ImageCollection(_ImageBase):
                     file_system=file_system,
                     **kwargs,
                 )
-                for img in self
+                for img, mask in zip(self, masks, strict=True)
                 for band in img
             )
+
+        if self.masking:
+            for img, mask_array in zip(self, masks, strict=True):
+                for band in img:
+                    band.values.mask = mask_array
 
         return self
 
@@ -2435,32 +2441,44 @@ class ImageCollection(_ImageBase):
         copy: bool = True,
         **kwargs,
     ) -> "ImageCollection":
-        """Clip all image Bands with 'loky'."""
+        """Clip all image Bands in parallel with 'loky'."""
         copied = self.copy() if copy else self
 
         if not keep_bounds:
+            # clip with rioxarray
             with joblib.Parallel(n_jobs=copied.processes, backend="loky") as parallel:
                 parallel(
-                    joblib.delayed(_clip_band)(band, mask, **kwargs)
+                    (joblib.delayed(_clip_band)(band, mask, **kwargs))
                     for img in copied
                     for band in img
                 )
+        copied._images = [img for img in copied if img.union_all()]
 
         common_band_from_geopandas_kwargs = dict(
             gdf=to_gdf(mask)[["geometry"]],
-            # res=copied.res,
             default_value=1,
             fill=0,
         )
-        for bounds in {tuple(int(x) for x in img.bounds) for img in copied}:
+
+        for img in copied:
+            print(img[0].values)
+            print(type(img[0].values))
+            print(len(img[0].values))
+            print(img.union_all())
+            print(img.bounds)
+            print(img[0].bounds)
+            print(img[0].values.shape)
+            setattr(img, "_rounded_bounds", tuple(int(x) for x in img.bounds))
+
+        for bounds in {img._rounded_bounds for img in copied}:
             shapes = {
                 band.values.shape
                 for img in copied
                 for band in img
-                if tuple(int(x) for x in img.bounds) == bounds
+                if img._rounded_bounds == bounds
             }
             if not len(shapes) == 1:
-                raise ValueError(f"Different shapes: {shapes}")
+                raise ValueError(f"Different shapes: {shapes}. For bounds {bounds}")
 
             mask_array: np.ndarray = Band.from_geopandas(
                 **common_band_from_geopandas_kwargs,
@@ -2471,17 +2489,20 @@ class ImageCollection(_ImageBase):
             is_not_polygon = mask_array == 0
 
             for img in copied:
-                if tuple(int(x) for x in img.bounds) != bounds:
+                if img._rounded_bounds != bounds:
                     continue
-                if img.mask is not None:
-                    is_not_polygon |= img.mask.values
-                    img.mask.values = is_not_polygon
+
+                del img._rounded_bounds
+
+                # if img.mask is not None:
+                #     is_not_polygon |= img.mask.values
+                #     img.mask.values = is_not_polygon
 
                 for band in img:
-                    if img.mask is not None:
-                        band._mask = img.mask
-                    if band.mask is not None:
-                        band.mask.values |= is_not_polygon
+                    # if img.mask is not None:
+                    #     band._mask = img.mask
+                    # if band.mask is not None:
+                    #     band.mask.values |= is_not_polygon
                     if isinstance(band.values, np.ma.core.MaskedArray):
                         band._values.mask |= is_not_polygon
                     else:
@@ -3254,10 +3275,7 @@ class Sentinel2CloudlessCollection(Sentinel2CloudlessConfig, ImageCollection):
 
 
 def concat_image_collections(collections: Sequence[ImageCollection]) -> ImageCollection:
-    """Union multiple ImageCollections together.
-
-    Same as using the union operator |.
-    """
+    """Concatenate ImageCollections."""
     resolutions = {x.res for x in collections}
     if len(resolutions) > 1:
         raise ValueError(f"resoultion mismatch. {resolutions}")
@@ -3381,7 +3399,7 @@ def _get_images(
     return images
 
 
-class ArrayNotLoadedError(ValueError):
+class _ArrayNotLoadedError(ValueError):
     """Arrays are not loaded."""
 
 
@@ -3497,15 +3515,15 @@ def _open_raster(path: str | Path) -> rasterio.io.DatasetReader:
         return rasterio.open(file)
 
 
-def _load_band(band: Band, **kwargs) -> None:
+def _load_band(band: Band, **kwargs) -> Band:
     return band.load(**kwargs)
 
 
-def _band_apply(band: Band, func: Callable, **kwargs) -> None:
+def _band_apply(band: Band, func: Callable, **kwargs) -> Band:
     return band.apply(func, **kwargs)
 
 
-def _clip_band(band: Band, mask, **kwargs) -> None:
+def _clip_band(band: Band, mask, **kwargs) -> Band:
     return band.clip(mask, **kwargs)
 
 

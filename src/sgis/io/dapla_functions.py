@@ -1,5 +1,7 @@
 """Functions for reading and writing GeoDataFrames in Statistics Norway's GCS Dapla."""
 
+from __future__ import annotations
+
 import json
 import multiprocessing
 import os

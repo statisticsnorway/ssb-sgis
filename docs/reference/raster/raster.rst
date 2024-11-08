@@ -1,7 +1,7 @@
-Raster
-======
+Image Collection
+================
 
-.. automodule:: sgis.raster.raster
+.. automodule:: sgis.raster.image_collection
     :members:
     :exclude-members:
     :show-inheritance:
