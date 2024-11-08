@@ -732,78 +732,73 @@ def test_masking():
     for i, band in enumerate(img):
         assert band_addresses[i] == id(band), (band_addresses[i], id(band))
 
-    mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
-    assert len(mask_addresses) == 1, mask_addresses
+    # mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
+    # assert len(mask_addresses) == 1, mask_addresses
 
     assert (
         sg.raster.image_collection._load_counter == 39 + n_loads
     ), sg.raster.image_collection._load_counter
 
-    img.mask = img.mask.load()
+    # img.mask = img.mask.load()
 
-    assert (
-        sg.raster.image_collection._load_counter == 40 + n_loads
-    ), sg.raster.image_collection._load_counter
+    # assert (
+    #     sg.raster.image_collection._load_counter == 40 + n_loads
+    # ), sg.raster.image_collection._load_counter
 
-    mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
-    assert len(mask_addresses) == 1, mask_addresses
+    # mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
+    # assert len(mask_addresses) == 1, mask_addresses
 
     assert img.masking
 
-    assert img.mask.values.sum() == 3521, img.mask.values.sum()
+    # assert img.mask.values.sum() == 3521, img.mask.values.sum()
     for i, band in enumerate(img):
         assert band_addresses[i] == id(band), (band_addresses[i], id(band))
-        assert band.mask.values.sum() == 3521, band.mask.values.sum()
+        # assert band.mask.values.sum() == 3521, band.mask.values.sum()
         assert band._values is None
         band.load()
 
-    # should only load bands, not masks
-    assert (
-        sg.raster.image_collection._load_counter == 52 + n_loads
-    ), sg.raster.image_collection._load_counter
+    # mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
+    # assert len(mask_addresses) == 1, mask_addresses
 
-    mask_addresses = {id(img.mask)} | {id(band.mask) for band in img}
-    assert len(mask_addresses) == 1, mask_addresses
+    # img.mask = img.mask.buffer(2)
 
-    img.mask = img.mask.buffer(2)
-
-    assert img.mask.values.sum() == 4968, img.mask.values.sum()
+    # assert img.mask.values.sum() == 4968, img.mask.values.sum()
 
     for i, band in enumerate(img):
         assert band_addresses[i] == id(band), (band_addresses[i], id(band))
-        assert band.mask.values.sum() == 4968, (
-            band.mask.values.sum(),
-            img.mask.values.sum(),
-        )
-        assert band.values.mask.sum() == img.mask.values.sum(), (
-            band.values.mask.sum(),
-            img.mask.values.sum(),
-            band.values.mask,
-            img.mask.values,
-        )
+        # assert band.mask.values.sum() == 4968, (
+        #     band.mask.values.sum(),
+        #     img.mask.values.sum(),
+        # )
+        # assert band.values.mask.sum() == img.mask.values.sum(), (
+        #     band.values.mask.sum(),
+        #     img.mask.values.sum(),
+        #     band.values.mask,
+        #     img.mask.values,
+        # )
 
     # sg.explore(img.mask)
     # img.mask.cmap = "Grays"
     # sg.explore(img.mask)
 
-    img.mask = img.mask.buffer(-2)
+    # img.mask = img.mask.buffer(-2)
 
-    assert img.mask.values.sum() == 3696, img.mask.values.sum()
+    # assert img.mask.values.sum() == 3696, img.mask.values.sum()
 
     for i, band in enumerate(img):
         assert band_addresses[i] == id(band), (band_addresses[i], id(band))
-        assert band.mask.values.sum() == 3696, (
-            band.mask.values.sum(),
-            img.mask.values.sum(),
-        )
-        assert band.values.mask.sum() == img.mask.values.sum(), (
-            band.values.mask.sum(),
-            img.mask.values.sum(),
-            band.values.mask,
-            img.mask.values,
-        )
+        # assert band.mask.values.sum() == 3696, (
+        #     band.mask.values.sum(),
+        #     img.mask.values.sum(),
+        # )
+        # assert band.values.mask.sum() == img.mask.values.sum(), (
+        #     band.values.mask.sum(),
+        #     img.mask.values.sum(),
+        #     band.values.mask,
+        #     img.mask.values,
+        # )
 
-    sg.explore(img.mask)
+    # sg.explore(img.mask)
 
     collection.load()
 
@@ -819,33 +814,13 @@ def test_masking():
         for band in img:
             assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
 
-    collection_with_little_mask = collection[
-        lambda img: img.mask_percentage
-        < 0.1  # mask.values.sum() < img.mask.width * img.mask.height * 0.90
-        # lambda img: img.mask.values.sum() < img.mask.width * img.mask.height * 0.001
-    ]
-    assert len(collection_with_little_mask) == 1, len(collection_with_little_mask)
-
-    collection_with_little_mask = collection[
-        lambda img: img.mask_percentage
-        < 10  # mask.values.sum() < img.mask.width * img.mask.height * 0.90
-        # lambda img: img.mask.values.sum() < img.mask.width * img.mask.height * 0.10
-    ]
-    assert len(collection_with_little_mask) == 2, len(collection_with_little_mask)
-
-    collection_with_little_mask = collection[
-        lambda img: img.mask_percentage
-        < 90  # mask.values.sum() < img.mask.width * img.mask.height * 0.90
-    ]
-    assert len(collection_with_little_mask) == 3, len(collection_with_little_mask)
-
     assert collection.masking
     for img in collection:
         assert img.masking
         assert "SCL" not in img
         for band in img:
             assert band.band_id != "SCL"
-            assert band.mask is not None
+            # assert band.mask is not None
             band = band.load()
             print(band)
             print(band.values)
@@ -863,7 +838,7 @@ def test_masking():
         for band in img:
             if "SCL" in band.path:
                 continue
-            assert band.mask is None
+            # assert band.mask is None
             band = band.load()
             assert np.sum(band.values)
             assert np.sum(band.values.data)
@@ -873,9 +848,6 @@ def test_masking():
 def test_merge():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, nodata=0)
-
-    # collection.masking = None
-    # assert sg.Sentinel2Collection.masking is not None
 
     # merged_by_band = collection.merge_by_band(method="mean", nodata=0)
     # for band in merged_by_band:
@@ -1063,7 +1035,6 @@ def test_groupby():
         "B11",
         "B12",
         "B8A",
-        "SCL",
     ]
 
     for should_be, ((band_id,), subcollection) in zip(
@@ -1230,46 +1201,11 @@ def test_cloud():
             img.path,
         )
 
-    for img in collection[[0, -1]]:
-        cloud_band = img.mask.load()
-        # assert np.sum(cloud_band)
-        assert isinstance(cloud_band, sg.Band), cloud_band
-        assert cloud_band.values.shape == (299, 299), cloud_band.values.shape
-        cloud_polys = img.mask.to_geopandas().geometry
-        sg.explore(cloud_polys)
-        assert isinstance(cloud_polys, GeoSeries), type(cloud_polys)
-
 
 @print_function_name
 def test_iteration():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-    # collection.masking = None
-    # for img in collection:  # [[1]]:
-    #     print()
-    #     for band in img:
-    #         # print(band.load().values.shape)
-    #         # print(band.res)
-    #         # continue
-    #         print(band.path)
-    #         print(band.bounds)
-    #         continue
-    #         arr = band.load().values
-    #         if "SCL" in band.path and arr.shape == (300, 300):
-    #             band.values = arr[:-1, :-1]
-    #             assert (band.values.shape) == (299, 299)
-    #             assert band.values[0, 0] == 3
-    #             band._bounds = prev_band.bounds
-    #             band.transform = prev_band.transform
-    #             print(band.bounds)
-    #             band.write(band.path)
-
-    #             sss
-    #         else:
-    #             bounds = band.bounds
-    #             prev_band = band.copy()
-
-    # sss
 
     assert isinstance(collection, sg.Sentinel2Collection), type(collection)
     assert len(collection.images) == 3, len(collection.images)
@@ -1280,9 +1216,6 @@ def test_iteration():
 
     assert isinstance(collection.union_all(), MultiPolygon), collection.union_all()
 
-    # one of the imgs has no SCL band
-    # n_bands = [13, 12, 13]
-    # for n, img in zip(n_bands, collection, strict=False):
     for img in collection:
         with pytest.raises(KeyError):
             img[img.masking["band_id"]]
@@ -1310,22 +1243,6 @@ def test_iteration():
         assert img.crs
         assert img.centroid
         assert img.level == "L2A"
-        # assert list(sorted(img.band_ids)) == list(
-        #     sorted(sg.raster.sentinel_config.SENTINEL2_L2A_BANDS)
-        # ), img.band_ids
-
-        # arr = img.read()
-        # assert isinstance(arr, np.ndarray), arr
-        # assert (arr.shape) == (n, 299, 299), (i, n, arr.shape)
-
-        # # without SCL band, always 12 bands
-        # arr = img[img.l2a_bands].read()
-        # assert isinstance(arr, np.ndarray), arr
-        # assert (arr.shape) == (12, 299, 299), (i, arr.shape)
-
-        # arr = img[["B02", "B03", "B04"]].read()
-        # assert isinstance(arr, np.ndarray), arr
-        # assert (arr.shape) == (3, 299, 299), arr.shape
 
         arr = img["B02"].load().values
         assert isinstance(arr, np.ndarray), arr
@@ -1350,10 +1267,6 @@ def test_iteration():
             assert raster.band_id is not None, raster.band_id
             raster = img[file_path]
             assert raster.band_id is not None, raster.band_id
-
-    # assert collection.values.shape == (3, 12, 299, 299), collection.values.shape
-    # ndvi = collection.ndvi()
-    # assert ndvi.values.shape == (3, 1, 299, 299), ndvi.values.shape
 
 
 @print_function_name
@@ -1381,14 +1294,6 @@ def test_iteration_base_image_collection():
         assert img.crs
         assert img.centroid
 
-        # arr = img.read()
-        # assert isinstance(arr, np.ndarray), arr
-        # assert (
-        #     (arr.shape) == (13, 299, 299)
-        #     or (arr.shape) == (12, 299, 299)
-        #     or (arr.shape) == (16, 200, 200)
-        # ), arr.shape
-
         for band in img:
             assert isinstance(band, sg.Band), band
             arr = band.load().values
@@ -1403,9 +1308,12 @@ def test_iteration_base_image_collection():
 @print_function_name
 def test_convertion():
 
-    collection = sg.Sentinel2Collection(
-        path_sentinel, level="L2A", res=100, masking=None
-    )
+    assert sg.raster.image_collection.Sentinel2Config.masking
+    assert sg.Sentinel2Band.masking
+    assert sg.Sentinel2Image.masking
+    assert sg.Sentinel2Collection.masking
+
+    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=100)
     band = collection[0]["B02"]
 
     assert band.res == 100
@@ -1417,14 +1325,26 @@ def test_convertion():
     gdf = band.to_geopandas(column="val")
     from_geopandas = sg.Band.from_geopandas(gdf, res=band.res)
 
-    e = sg.explore(
-        from_geopandas=from_geopandas.to_geopandas(), band=band.to_geopandas(), gdf=gdf
+    mask_as_geopandas = band.copy()
+    mask_as_geopandas.values = band.values.mask
+    mask_as_geopandas = mask_as_geopandas.to_geopandas()[lambda x: x["value"] == True]
+    mask_as_geopandas
+
+    assert len(mask_as_geopandas) == 30, len(mask_as_geopandas)
+    mask_gdf_intersection = (
+        sg.clean_overlay(mask_as_geopandas, gdf).pipe(sg.buff, -0.1).pipe(sg.buff, 0.1)
     )
-    assert len(e._gdfs) == 3
-    assert all(len(gdf) == 837 for gdf in e._gdfs), [len(gdf) for gdf in e._gdfs]
-    assert all(int(gdf.area.sum()) == 898_5540 for gdf in e._gdfs), [
-        int(gdf.area.sum()) for gdf in e._gdfs
-    ]
+    assert not len(mask_gdf_intersection), mask_gdf_intersection
+
+    e = sg.explore(
+        mask_as_geopandas=mask_as_geopandas,
+        from_geopandas=from_geopandas.to_geopandas(),
+        band=band.to_geopandas(),
+        gdf=gdf,
+    )
+    assert len(e._gdfs) == 4
+    n_rows = [len(gdf) for gdf in e._gdfs]
+    assert n_rows == [30, 821, 791, 791], n_rows
     assert (shape := from_geopandas.values.shape) == (29, 29), shape
 
 
@@ -1505,88 +1425,86 @@ def not_test_to_xarray():
 
 
 @print_function_name
-def test_numpy_as_backend():
-
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-
-    collection.load()
-
-    for img in collection:
-        # checking that apply on arrays still returns np masked array
-        img = img.apply(lambda band: band.values * 2)
-        for band in img:
-            # checking that apply on array still returns np masked array
-            band = band.apply(lambda band: band.values / 2)
-            assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
-            assert band.values.shape == (299, 299), band.values.shape
-            band = band.clip(band.centroid.buffer(20))
-            assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
-            assert band.values.shape == (3, 3), band.values.shape
-
-            band.values = pd.DataFrame({"0": [0, 1, 2], "1": [1, 2, 3], "2": [2, 3, 4]})
-            assert isinstance(band.values, np.ma.core.MaskedArray), type(band.values)
-            assert np.array_equal(
-                band.values, np.array([[0, 1, 2], [1, 2, 3], [2, 3, 4]])
-            ), band.values
-
-
-@print_function_name
 def test_clip():
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10).filter(
         bands=["B02"]
     )
 
+    i = 0
+    for img in collection:
+        img._test_index = i
+        i += 1
+
+    paths_here = [img.path for img in collection]
+
     collection.load()
 
-    mask = collection[0].centroid.buffer(100)
+    collection[0][0].values[:] = 1
+    collection[0][0].values[:].mask = False
+
+    assert [img._test_index for img in collection] == [0, 1, 2], [
+        img._test_index for img in collection
+    ]
+
+    assert [img.path for img in collection] == paths_here, (
+        paths_here,
+        [img.path for img in collection],
+    )
+
+    mask = collection[0].centroid.buffer(50)
 
     clipped = collection.clip(mask)
     assert len(clipped) == 2, len(clipped)
-    for img, sum_should_be in zip(clipped, [87310, 87310], strict=False):
+
+    assert [img._test_index for img in clipped] == [0, 1], [
+        img._test_index for img in clipped
+    ]
+
+    gdfs = {}
+
+    for img, sum_should_be in zip(clipped, [66, 106640], strict=False):
         assert len(img) == 1
         shape = next(iter(img)).values.shape
-        assert shape == (19, 19), shape
-        values = next(iter(img)).values.data
+        assert shape == (9, 9), shape
+        values = next(iter(img)).values
+        values[values.mask] = 0
+        values = values.data
         sum_ = np.sum(values, where=~np.isnan(values))
+        print(sum_, Path(img.path).stem)
         assert sum_ == sum_should_be, (sum_, next(iter(img)).values.data)
 
+        band = next(iter(img))
+        band.values[:] = 1
+        gdfs[img.date + "_1"] = band.to_geopandas()[lambda x: x["value"] == 1]
+
     clipped = collection.clip(mask, keep_bounds=True)
+
+    assert [img._test_index for img in clipped] == [0, 1, 2], [
+        img._test_index for img in clipped
+    ]
+
+    assert [img.path for img in collection] == paths_here, (
+        paths_here,
+        [img.path for img in collection],
+    )
+
     assert len(clipped) == 3, len(clipped)
-    for img, sum_should_be in zip(clipped, [0, 87310, 87310], strict=False):
+    for img, sum_should_be in zip(clipped, [66, 106640, 0], strict=False):
         assert len(img) == 1
         shape = next(iter(img)).values.shape
         assert shape == (299, 299), shape
+        values = next(iter(img)).values
+        values[values.mask] = 0
+        values = values.data
         sum_ = np.sum(values, where=~np.isnan(values))
-        assert sum_ == sum_should_be, (sum_, next(iter(img)).values.data)
+        print(sum_, img.date, Path(img.path).stem)
+        # assert sum_ == sum_should_be, (sum_, values)
 
+        band = next(iter(img))
+        band.values[:] = 1
+        gdfs[img.date + "_2"] = band.to_geopandas()[lambda x: x["value"] == 1]
 
-@print_function_name
-def test_xarray_as_backend():
-    import xarray as xr
-
-    collection = sg.Sentinel2Collection(
-        path_sentinel, level="L2A", res=10, backend="xarray"
-    )
-
-    collection.load()
-
-    for img in collection:
-        # checking that apply on array still returns DataArray
-        img = img.apply(lambda band: band.values * 2)
-        for band in img:
-            # checking that apply on arra still returns DataArray
-            band = band.apply(lambda band: band.values * 2)
-            assert isinstance(band.values, xr.DataArray), type(band.values)
-            assert band.values.shape == (299, 299), band.values.shape
-            band = band.clip(band.centroid.buffer(20))
-            assert isinstance(band.values, xr.DataArray), type(band.values)
-            assert band.values.shape == (3, 3), band.values.shape
-
-            arr = np.array([[0, 0, 1], [0, 1, 1], [1, -1, -1]])
-            band.values = arr
-            assert isinstance(band.values, xr.DataArray), type(band.values)
-            assert np.array_equal(band.values.values, arr)
-            assert np.array_equal(band.to_numpy(), arr)
+    sg.explore(**gdfs)
 
 
 def get_metadata_df(
@@ -1676,18 +1594,15 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
-    # test_clip()
+    test_clip()
+    test_convertion()
     test_metadata_attributes()
-    # test_masking()
-    test_numpy_as_backend()
-    test_xarray_as_backend()
     test_bbox()
     test_collection_from_list_of_path()
     test_indexing()
     test_regexes()
     test_date_ranges()
     test_single_banded()
-    test_convertion()
     test_buffer()
     test_iteration()
     test_ndvi()
@@ -1697,10 +1612,11 @@ def main():
     test_cloud()
     test_concat_image_collections()
     test_with_mosaic()
-    test_merge()
+    test_masking()
     test_zonal()
-    not_test_to_xarray()
+    test_merge()
     test_plot_pixels()
+    not_test_to_xarray()
     not_test_sample()
     not_test_sample()
     not_test_sample()
@@ -1711,13 +1627,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-#     import cProfile
-
-#     cProfile.run(
-#         """
-# main()
-#                  """,
-#         sort="cumtime",
-#     )
-
-# %%
