@@ -1522,8 +1522,6 @@ class Image(_ImageBandBase):
         if bounds is None and indexes is None and all(band.has_array for band in self):
             return self
 
-        self._add_index_attr()
-
         if self.masking:
             mask_array: np.ndarray = _read_mask_array(
                 self,
@@ -1555,19 +1553,7 @@ class Image(_ImageBandBase):
                         band.values, mask=mask_array, fill_value=self.nodata
                     )
 
-        self._sort_by_index()
-        for band in self:
-            del band._idx
-
         return self
-
-    def _add_index_attr(self) -> None:
-        for j, band in enumerate(self):
-            band._idx = j
-
-    def _sort_by_index(self) -> None:
-        return
-        self._bands = sorted(self._bands, key=lambda band: band._idx)
 
     def _construct_image_from_bands(
         self, data: Sequence[Band], res: int | None
@@ -2315,21 +2301,6 @@ class ImageCollection(_ImageBase):
             self._images = list(reversed(self.images))
         return self
 
-    def _add_index_attr(self) -> None:
-        i = 0
-        for img in self:
-            img._idx = i
-            i += 1
-            for band in img:
-                band._idx = i
-                i += 1
-
-    def _sort_by_index(self) -> None:
-        return
-        self._images = sorted(self._images, key=lambda img: img._idx)
-        for img in self:
-            img._bands = sorted(img._bands, key=lambda band: band._idx)
-
     def load(
         self,
         bounds: tuple | Geometry | GeoDataFrame | GeoSeries | None = None,
@@ -2345,17 +2316,14 @@ class ImageCollection(_ImageBase):
         ):
             return self
 
-        self._add_index_attr()
-
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             if self.masking:
-                masks: list[tuple[int, np.ndarray]] = parallel(
+                masks: list[np.ndarray] = parallel(
                     joblib.delayed(_read_mask_array)(
                         img,
                         bounds=bounds,
                         indexes=indexes,
                         file_system=file_system,
-                        return_index=img._idx,
                         **kwargs,
                     )
                     for img in self
@@ -2374,15 +2342,8 @@ class ImageCollection(_ImageBase):
                 for band in img
             )
 
-        self._sort_by_index()
-
         if self.masking:
-            masks = sorted(masks, key=lambda x: x[0])
-            for img, (idx, mask_array) in zip(self, masks, strict=True):
-                assert idx is not None
-                assert idx == img._idx
-                del img._idx
-
+            for img, mask_array in zip(self, masks, strict=True):
                 for band in img:
                     if isinstance(band.values, np.ma.core.MaskedArray):
                         band.values.mask |= mask_array
@@ -2390,7 +2351,6 @@ class ImageCollection(_ImageBase):
                         band.values = np.ma.array(
                             band.values, mask=mask_array, fill_value=self.nodata
                         )
-                    del band._idx
 
         return self
 
@@ -2405,7 +2365,6 @@ class ImageCollection(_ImageBase):
         copied = self.copy() if copy else self
 
         if not keep_bounds:
-            copied._add_index_attr()
             # clip with rioxarray
             with joblib.Parallel(n_jobs=copied.processes, backend="loky") as parallel:
                 parallel(
@@ -2417,13 +2376,6 @@ class ImageCollection(_ImageBase):
                     for img in copied
                     for band in img
                 )
-
-            copied._sort_by_index()
-
-            for img in copied:
-                del img._idx
-                for band in img:
-                    del band._idx
 
         copied._images = [img for img in copied if img.union_all()]
 
@@ -3472,9 +3424,7 @@ def _open_raster(path: str | Path) -> rasterio.io.DatasetReader:
         return rasterio.open(file)
 
 
-def _read_mask_array(
-    self: Band | Image, return_index: int | None = None, **kwargs
-) -> np.ndarray:
+def _read_mask_array(self: Band | Image, **kwargs) -> np.ndarray:
     mask_band_id = self.masking["band_id"]
     mask_paths = [path for path in self._all_file_paths if mask_band_id in path]
     if len(mask_paths) > 1:
@@ -3493,8 +3443,6 @@ def _read_mask_array(
     )
     band.load(**kwargs)
     boolean_mask = np.isin(band.values, list(self.masking["values"]))
-    if return_index is not None:
-        return return_index, boolean_mask
     return boolean_mask
 
 
