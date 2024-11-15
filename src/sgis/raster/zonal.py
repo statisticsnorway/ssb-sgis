@@ -5,7 +5,6 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from shapely import Geometry
-from shapely.geometry import Polygon
 
 from ..helpers import get_non_numpy_func_name
 from ..helpers import get_numpy_func
@@ -28,70 +27,14 @@ def _prepare_zonal(
 
 
 def _make_geometry_iterrows(gdf: gpd.GeoDataFrame) -> list[tuple[int, Geometry]]:
-    """Because pandas iterrows returns non-geo Series."""
+    """Because pandas iterrows returns Series, not GeoSeries."""
     return list(gdf.geometry.items())
-
-
-def _zonal_func(
-    poly_iter: tuple[int, Polygon],
-    cube,
-    array_func: Callable,
-    aggfunc: str | Callable | Sequence[Callable | str],
-    func_names: list[str],
-    by_date: bool,
-) -> pd.DataFrame:
-    cube = cube.copy()
-    i, polygon = poly_iter
-    if not by_date or cube.date.isna().all():
-        df = _clip_and_aggregate(
-            cube, polygon, array_func, aggfunc, func_names, date=None, i=i
-        )
-        return df if by_date else df.drop(columns="date")
-
-    out = []
-
-    na_date = cube[cube.date.isna()]
-    df = _clip_and_aggregate(
-        na_date, polygon, array_func, aggfunc, func_names, date=pd.NA, i=i
-    )
-    out.append(df)
-
-    cube = cube[lambda x: x["date"].notna()]
-
-    for dt in cube.date.unique():
-        cube_date = cube[cube.date == dt]
-        df = _clip_and_aggregate(
-            cube_date, polygon, array_func, aggfunc, func_names, dt, i
-        )
-        out.append(df)
-
-    return pd.concat(out)
 
 
 def _no_overlap_df(func_names: list[str], i: int, date: str) -> pd.DataFrame:
     df = pd.DataFrame(columns=func_names, index=[i])
     df["date"] = date
     df["_no_overlap"] = 1
-    return df
-
-
-def _clip_and_aggregate(
-    cube,
-    polygon: Geometry,
-    array_func: Callable,
-    aggfunc: Callable,
-    func_names: list[str],
-    date: str,
-    i: int,
-) -> pd.DataFrame:
-    if not len(cube):
-        return _no_overlap_df(func_names, i, date)
-    clipped = cube.clipmerge(polygon)
-    if not len(clipped) or [arr is None for arr in clipped.arrays]:
-        return _no_overlap_df(func_names, i, date)
-    assert len(clipped) == 1
-    array = clipped[0].array
-    df = _aggregate(array, array_func, aggfunc, func_names, date, i)
     return df
 
 

@@ -21,8 +21,21 @@ from shapely.geometry import shape
 from ..geopandas_tools.conversion import to_bbox
 
 
+def _get_res_from_bounds(
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple, shape: tuple[int, ...]
+) -> tuple[int, int] | None:
+    minx, miny, maxx, maxy = to_bbox(obj)
+    try:
+        height, width = shape[-2:]
+    except IndexError:
+        return None
+    resx = (maxx - minx) / width
+    resy = (maxy - miny) / height
+    return resx, resy
+
+
 def _get_transform_from_bounds(
-    obj: GeoDataFrame | GeoSeries | Geometry | tuple, shape: tuple[float, ...]
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple, shape: tuple[int, ...]
 ) -> Affine:
     minx, miny, maxx, maxy = to_bbox(obj)
     if len(shape) == 2:
@@ -35,12 +48,16 @@ def _get_transform_from_bounds(
     return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
 
 
+def _res_as_tuple(res: int | float | tuple[int | float]) -> tuple[int | float]:
+    return (res, res) if isinstance(res, numbers.Number) else res
+
+
 def _get_shape_from_bounds(
     obj: GeoDataFrame | GeoSeries | Geometry | tuple,
     res: int,
     indexes: int | tuple[int],
 ) -> tuple[int, int]:
-    resx, resy = (res, res) if isinstance(res, numbers.Number) else res
+    resx, resy = _res_as_tuple(res)
 
     minx, miny, maxx, maxy = to_bbox(obj)
 
@@ -157,6 +174,10 @@ def _gdf_to_arr(
     elif not isinstance(gdf, GeoDataFrame):
         raise TypeError(type(gdf))
 
+    if bounds is not None:
+        gdf = gdf.clip(bounds)
+        bounds_gdf = GeoDataFrame({"geometry": [shapely.box(*bounds)]}, crs=gdf.crs)
+
     if len(gdf.columns) > 2:
         raise ValueError(
             "gdf should have only a geometry column and one numeric column to "
@@ -170,26 +191,19 @@ def _gdf_to_arr(
         values = gdf[col].values
 
     if bounds is not None:
-        bounds_gdf = GeoDataFrame({"geometry": [shapely.box(*bounds)]}, crs=gdf.crs)
         gdf = pd.concat([bounds_gdf, gdf])
         values = np.concatenate([np.array([fill]), values])
 
     if out_shape is None:
         assert res is not None
         out_shape = _get_shape_from_bounds(gdf.total_bounds, res=res, indexes=1)
-    else:
-        assert res is None
-        minx, miny, maxx, maxy = bounds
-        resx = (maxx - minx) / out_shape[0]
-        resy = (maxy - miny) / out_shape[1]
-        if resx == resy:
-            res = resx
-        else:
-            res = (resx, resy)
+
+    if not len(gdf):
+        return np.full(out_shape, fill)
 
     transform = _get_transform_from_bounds(gdf.total_bounds, out_shape)
 
-    return res, features.rasterize(
+    return features.rasterize(
         _gdf_to_geojson_with_col(gdf, values),
         out_shape=out_shape,
         transform=transform,

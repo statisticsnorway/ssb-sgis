@@ -74,7 +74,7 @@ def _extract_regex_match_from_string(
                 return re.search(regex, xml_file).group(1)
             except (TypeError, AttributeError, IndexError):
                 continue
-        raise _RegexError()
+        raise _RegexError(regexes)
 
     out = {}
     for regex in regexes:
@@ -84,7 +84,7 @@ def _extract_regex_match_from_string(
         except (TypeError, AttributeError):
             continue
     if not out:
-        raise _RegexError()
+        raise _RegexError(regexes)
     return out
 
 
