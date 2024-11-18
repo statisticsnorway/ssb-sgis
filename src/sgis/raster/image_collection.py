@@ -957,28 +957,10 @@ class Band(_ImageBandBase):
     def clip(
         self,
         mask: GeoDataFrame | GeoSeries | Polygon | MultiPolygon,
-        # keep_bounds: bool = True,
-        # **kwargs,
     ) -> "Band":
         """Clip band values to geometry mask while preserving bounds."""
         if not self.height or not self.width:
             return self
-
-        # only_with_rio = kwargs.pop("only_with_rio", False)
-
-        # if not keep_bounds:
-        #     values = _clip_xarray(
-        #         self.to_xarray(),
-        #         mask,
-        #         crs=self.crs,
-        #         **kwargs,
-        #     )
-        #     self._bounds = to_bbox(to_shapely(mask).intersection(box(*self.bounds)))
-        #     self.transform = _get_transform_from_bounds(self._bounds, values.shape)
-        #     self.values = values
-
-        # if only_with_rio:
-        #     return self
 
         fill: int = self.nodata or 0
 
@@ -2095,6 +2077,7 @@ class ImageCollection(_ImageBase):
         self,
         func: Callable,
         kwargs: dict | None = None,
+        masked: bool = True,
     ) -> np.ndarray | tuple[np.ndarray] | None:
         """Run a function for each pixel.
 
@@ -2103,13 +2086,19 @@ class ImageCollection(_ImageBase):
         """
         values = np.array([band.values for img in self for band in img])
 
+        if masked and hasattr(next(iter(next(iter(self)))).values, "mask"):
+            mask_array = np.array([band.values.mask for img in self for band in img])
+        else:
+            mask_array = None
+
         return pixelwise(
             values=values,
             func=func,
-            mask_array=values.mask if hasattr(values, "mask") else None,
+            mask_array=mask_array,
             nodata=self.nodata,
             kwargs=kwargs,
             processes=self.processes,
+            masked=masked,
         )
 
     def get_unique_band_ids(self) -> list[str]:
@@ -2444,26 +2433,11 @@ class ImageCollection(_ImageBase):
     def clip(
         self,
         mask: Geometry | GeoDataFrame | GeoSeries,
-        # keep_bounds: bool = True,
         dropna: bool = True,
         copy: bool = True,
-        # **kwargs,
     ) -> "ImageCollection":
         """Clip all image Bands while preserving bounds."""
         copied = self.copy() if copy else self
-
-        # if not keep_bounds:
-        #     # clip with rioxarray
-        #     with joblib.Parallel(n_jobs=copied.processes, backend="loky") as parallel:
-        #         parallel(
-        #             (
-        #                 joblib.delayed(_clip_band)(
-        #                     band, mask, keep_bounds=False, only_with_rio=True, **kwargs
-        #                 )
-        #             )
-        #             for img in copied
-        #             for band in img
-        #         )
 
         copied._images = [img for img in copied if img.union_all()]
 
@@ -3419,7 +3393,7 @@ def _read_mask_array(self: Band | Image, **kwargs) -> np.ndarray:
 
     band = Band(
         next(iter(mask_paths)),
-        **self._common_init_kwargs,
+        **{**self._common_init_kwargs, "metadata": None},
     )
     band.load(**kwargs)
     boolean_mask = np.isin(band.values, list(self.masking["values"]))
@@ -3563,15 +3537,22 @@ def pixelwise(
     nodata: int | None = None,
     kwargs: dict | None = None,
     processes: int = 1,
+    masked: bool = True,
 ) -> Any:
     """Run a function for each pixel of a 3d array."""
     kwargs = kwargs or {}
 
-    is_missing = values == nodata
-    if mask_array is not None:
-        is_missing |= mask_array
+    if masked:
+        is_missing = values == nodata
+        if mask_array is not None:
+            is_missing |= mask_array
 
-    not_all_missing = np.all(is_missing, axis=0) == False
+        not_all_missing = np.all(is_missing, axis=0) == False
+
+    else:
+        is_missing = np.full(values.shape, False)
+        not_all_missing = np.full(values.shape[1:], True)
+
     nonmissing_row_indices, nonmissing_col_indices = not_all_missing.nonzero()
 
     def select_values(row: int, col: int) -> np.ndarray:
@@ -3609,11 +3590,14 @@ def pixelwise(
             counter += 1
             continue
         for i, arr in enumerate(out_arrays):
-            arr[row, col] = these_results[i]
+            try:
+                arr[row, col] = these_results[i]
+            except TypeError:
+                arr[row, col] = these_results
         counter += 1
     assert counter == len(results), (counter, len(results))
 
     if len(out_arrays) == 1:
-        out_arrays[0]
+        return out_arrays[0]
 
     return out_arrays
