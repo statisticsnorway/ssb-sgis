@@ -446,12 +446,13 @@ def to_gdf(
     geom_col: str = _find_geometry_column(obj, geometry)  # type: ignore[no-redef]
     index = kwargs.pop("index", None)
 
-    # get done with iterators that get consumed by 'all'
+    # get done with iterators that would get consumed by 'all' later
     if isinstance(obj, Iterator) and not isinstance(obj, Sized):
-        obj = GeoSeries(
-            (_make_one_shapely_geom(g) for g in obj if g is not None), index=index
-        )
-        return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
+        obj = list(obj)
+        # obj = GeoSeries(
+        #     (_make_one_shapely_geom(g) for g in obj if g is not None), index=index
+        # )
+        # return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
 
     if hasattr(obj, "__len__") and not len(obj):
         return GeoDataFrame({"geometry": []}, crs=crs)
