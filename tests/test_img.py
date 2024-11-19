@@ -373,7 +373,7 @@ def test_pixelwise():
 
     lengths = collection.pixelwise(
         run_pixelwise,
-        index_alligned_kwargs=dict(days_since_start=days_since_start),
+        index_aligned_kwargs=dict(days_since_start=days_since_start),
         kwargs=dict(not_alligned_array=days_since_start),
     )
     assert np.array_equal(
@@ -386,13 +386,13 @@ def test_pixelwise():
 
     collection.pixelwise(
         run_pixelwise_not_masked,
-        index_alligned_kwargs=dict(days_since_start=days_since_start),
+        index_aligned_kwargs=dict(days_since_start=days_since_start),
         masked=False,
     )
 
     predicted_start, predicted_end, n_observations = collection.pixelwise(
         get_predictions_1d,
-        index_alligned_kwargs=dict(a=days_since_start),
+        index_aligned_kwargs=dict(a=days_since_start),
         kwargs=dict(prediction_func=run_lstsq),
     )
 
@@ -429,7 +429,7 @@ def test_pixelwise():
 
     predicted_start, predicted_end, n_observations = collection.pixelwise(
         get_predictions_1d,
-        index_alligned_kwargs=dict(a=days_since_start),
+        index_aligned_kwargs=dict(a=days_since_start),
         kwargs=dict(prediction_func=run_random_forest),
     )
 
@@ -483,7 +483,7 @@ def _test_ndvi_predictions(prediction_func):
 
     predicted_start, predicted_end, n_observations = collection.pixelwise(
         func=get_predictions_1d,
-        index_alligned_kwargs=dict(a=days_since_start),
+        index_aligned_kwargs=dict(a=days_since_start),
         kwargs=dict(
             prediction_func=prediction_func,
         ),

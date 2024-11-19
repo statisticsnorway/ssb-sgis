@@ -2077,7 +2077,7 @@ class ImageCollection(_ImageBase):
         self,
         func: Callable,
         kwargs: dict | None = None,
-        index_alligned_kwargs: dict | None = None,
+        index_aligned_kwargs: dict | None = None,
         masked: bool = True,
     ) -> np.ndarray | tuple[np.ndarray] | None:
         """Run a function for each pixel.
@@ -2112,7 +2112,7 @@ class ImageCollection(_ImageBase):
             func=func,
             values=values,
             mask_array=mask_array,
-            index_alligned_kwargs=index_alligned_kwargs,
+            index_aligned_kwargs=index_aligned_kwargs,
             kwargs=kwargs,
             processes=self.processes,
             nodata=self.nodata or np.nan,
@@ -2916,7 +2916,7 @@ class ImageCollection(_ImageBase):
                     first_date=first_date,
                     figsize=figsize,
                 ),
-                index_alligned_kwargs=dict(x=x),
+                index_aligned_kwargs=dict(x=x),
             )
 
     def __repr__(self) -> str:
@@ -3550,13 +3550,13 @@ def pixelwise(
     func: Callable,
     values: np.ndarray,
     mask_array: np.ndarray | None = None,
-    index_alligned_kwargs: dict | None = None,
+    index_aligned_kwargs: dict | None = None,
     kwargs: dict | None = None,
     processes: int = 1,
     nodata=np.nan,
 ) -> Any:
     """Run a function for each pixel of a 3d array."""
-    index_alligned_kwargs = index_alligned_kwargs or {}
+    index_aligned_kwargs = index_aligned_kwargs or {}
     kwargs = kwargs or {}
 
     if mask_array is not None:
@@ -3578,7 +3578,7 @@ def pixelwise(
                 **kwargs,
                 **{
                     key: value[~mask_array[:, row, col]]
-                    for key, value in index_alligned_kwargs.items()
+                    for key, value in index_aligned_kwargs.items()
                 },
             )
             for row, col in (
