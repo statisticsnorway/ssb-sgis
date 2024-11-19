@@ -232,6 +232,10 @@ class Map:
         self._nan_idx = self._gdf[self._column].isna()
         self._get_unique_values()
 
+    def __getattr__(self, attr: str) -> Any:
+        """Search for attribute in kwargs."""
+        return self.kwargs.get(attr, super().__getattribute__(attr))
+
     def __bool__(self) -> bool:
         """True of any gdfs with more than 0 rows."""
         return bool(len(self._gdfs) + len(self._gdf))

@@ -183,9 +183,11 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
 
 
 def _single_band_to_arr(band, mask, name, raster_data_dict):
-    try:
+    if band.has_array and mask is None:
         arr = band.values
-    except (ValueError, AttributeError):
+    elif band.has_array:
+        arr = band.clip(mask).values
+    else:
         arr = band.load(indexes=1, bounds=mask).values
     bounds: tuple = (
         _any_to_bbox_crs4326(mask, band.crs)
@@ -533,8 +535,8 @@ class Explore(Map):
                 arr = np.where(arr, 1, 0)
             try:
                 arr = (arr - np.min(arr)) / (np.max(arr) - np.min(arr))
-            except Exception:
-                pass
+            except Exception as e:
+                warnings.warn(str(e), stacklevel=1)
 
             label = raster_data_dict["label"]
             bounds = raster_data_dict["bounds"]
@@ -1066,7 +1068,7 @@ class Explore(Map):
         name: str,
         max_images: int,
         n_added_images: int,
-        rbg_bands: list[str] = (["B02", "B03", "B04"], ["B2", "B3", "B4"]),
+        rbg_bands: list[str] = (("B04", "B02", "B03"), ("B4", "B2", "B3")),
     ) -> tuple[list[dict], int]:
         out = []
 
@@ -1162,17 +1164,25 @@ class Explore(Map):
                     n_added_images += 1
                 continue
 
+            def load(band_id: str) -> Band:
+                band = image[band_id]
+                if band.has_array and mask is not None:
+                    band = band.clip(mask, copy=True)
+                elif not band.has_array:
+                    band = band.load(indexes=1, bounds=mask)
+                return band
+
             for red, blue, green in rbg_bands:
                 try:
-                    red_band = image[red].load(indexes=1, bounds=mask)
+                    red_band = load(red)
                 except KeyError:
                     continue
                 try:
-                    blue_band = image[blue].load(indexes=1, bounds=mask)
+                    blue_band = load(blue)
                 except KeyError:
                     continue
                 try:
-                    green_band = image[green].load(indexes=1, bounds=mask)
+                    green_band = load(green)
                 except KeyError:
                     continue
                 break
