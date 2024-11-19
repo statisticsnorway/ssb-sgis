@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ssb-sgis"
-version = "1.0.8"
+version = "1.0.9"
 description = "GIS functions used at Statistics Norway."
 authors = ["Morten Letnes <morten.letnes@ssb.no>"]
 license = "MIT"
@@ -32,7 +32,6 @@ joblib = ">=1.4.0"
 mapclassify = ">=2.5.0"
 matplotlib = ">=3.7.0"
 networkx = ">=3.0"
-numba = { version = ">=0.60.0", optional = true }
 numpy = ">=1.26.4"
 pandas = ">=2.2.1"
 pyarrow = ">=11.0.0"

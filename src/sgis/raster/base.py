@@ -9,6 +9,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import rasterio
+import shapely
 from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
@@ -20,8 +21,21 @@ from shapely.geometry import shape
 from ..geopandas_tools.conversion import to_bbox
 
 
+def _get_res_from_bounds(
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple, shape: tuple[int, ...]
+) -> tuple[int, int] | None:
+    minx, miny, maxx, maxy = to_bbox(obj)
+    try:
+        height, width = shape[-2:]
+    except IndexError:
+        return None
+    resx = (maxx - minx) / width
+    resy = (maxy - miny) / height
+    return resx, resy
+
+
 def _get_transform_from_bounds(
-    obj: GeoDataFrame | GeoSeries | Geometry | tuple, shape: tuple[float, ...]
+    obj: GeoDataFrame | GeoSeries | Geometry | tuple, shape: tuple[int, ...]
 ) -> Affine:
     minx, miny, maxx, maxy = to_bbox(obj)
     if len(shape) == 2:
@@ -34,12 +48,16 @@ def _get_transform_from_bounds(
     return rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
 
 
+def _res_as_tuple(res: int | float | tuple[int | float]) -> tuple[int | float]:
+    return (res, res) if isinstance(res, numbers.Number) else res
+
+
 def _get_shape_from_bounds(
     obj: GeoDataFrame | GeoSeries | Geometry | tuple,
     res: int,
     indexes: int | tuple[int],
 ) -> tuple[int, int]:
-    resx, resy = (res, res) if isinstance(res, numbers.Number) else res
+    resx, resy = _res_as_tuple(res)
 
     minx, miny, maxx, maxy = to_bbox(obj)
 
@@ -111,7 +129,9 @@ def _value_geom_pair(value, geom):
 
 def _gdf_to_arr(
     gdf: GeoDataFrame,
-    res: int | float,
+    res: int | float | None = None,
+    out_shape: tuple[int, int] | None = None,
+    bounds: tuple[float] | None = None,
     fill: int = 0,
     all_touched: bool = False,
     merge_alg: Callable = MergeAlg.replace,
@@ -125,6 +145,7 @@ def _gdf_to_arr(
     Args:
         gdf: The GeoDataFrame to rasterize.
         res: Resolution of the raster in units of the GeoDataFrame's coordinate reference system.
+        bounds: Optional bounds to box 'gdf' into (so both clip and extend to).
         fill: Fill value for areas outside of input geometries (default is 0).
         all_touched: Whether to consider all pixels touched by geometries,
             not just those whose center is within the polygon (default is False).
@@ -134,6 +155,7 @@ def _gdf_to_arr(
             (default is 1).
         dtype: Data type of the output array. If None, it will be
             determined automatically.
+        out_shape: Optional 2 dimensional shape of the resulting array.
 
     Returns:
         A Raster instance based on the specified GeoDataFrame and parameters.
@@ -142,33 +164,48 @@ def _gdf_to_arr(
         TypeError: If 'transform' is provided in kwargs, as this is
         computed based on the GeoDataFrame bounds and resolution.
     """
+    if res is not None and out_shape is not None:
+        raise TypeError("Cannot specify both 'res' and 'out_shape'")
+    if res is None and out_shape is None:
+        raise TypeError("Must specify either 'res' or 'out_shape'")
+
     if isinstance(gdf, GeoSeries):
-        values = gdf.index
         gdf = gdf.to_frame("geometry")
-    elif isinstance(gdf, GeoDataFrame):
-        if len(gdf.columns) > 2:
-            raise ValueError(
-                "gdf should have only a geometry column and one numeric column to "
-                "use as array values. "
-                "Alternatively only a geometry column and a numeric index."
-            )
-        elif len(gdf.columns) == 1:
-            values = gdf.index
-        else:
-            col: str = next(
-                iter([col for col in gdf if col != gdf._geometry_column_name])
-            )
-            values = gdf[col]
+    elif not isinstance(gdf, GeoDataFrame):
+        raise TypeError(type(gdf))
 
-    if isinstance(values, pd.MultiIndex):
-        raise ValueError("Index cannot be MultiIndex.")
+    if bounds is not None:
+        gdf = gdf.clip(bounds)
+        bounds_gdf = GeoDataFrame({"geometry": [shapely.box(*bounds)]}, crs=gdf.crs)
 
-    shape = _get_shape_from_bounds(gdf.total_bounds, res=res, indexes=1)
-    transform = _get_transform_from_bounds(gdf.total_bounds, shape)
+    if len(gdf.columns) > 2:
+        raise ValueError(
+            "gdf should have only a geometry column and one numeric column to "
+            "use as array values. "
+            "Alternatively only a geometry column and a numeric index."
+        )
+    elif len(gdf.columns) == 1:
+        values = np.full(len(gdf), default_value)
+    else:
+        col: str = next(iter(gdf.columns.difference({gdf.geometry.name})))
+        values = gdf[col].values
+
+    if bounds is not None:
+        gdf = pd.concat([bounds_gdf, gdf])
+        values = np.concatenate([np.array([fill]), values])
+
+    if out_shape is None:
+        assert res is not None
+        out_shape = _get_shape_from_bounds(gdf.total_bounds, res=res, indexes=1)
+
+    if not len(gdf):
+        return np.full(out_shape, fill)
+
+    transform = _get_transform_from_bounds(gdf.total_bounds, out_shape)
 
     return features.rasterize(
         _gdf_to_geojson_with_col(gdf, values),
-        out_shape=shape,
+        out_shape=out_shape,
         transform=transform,
         fill=fill,
         all_touched=all_touched,

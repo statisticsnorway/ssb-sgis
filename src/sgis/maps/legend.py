@@ -73,8 +73,10 @@ LOWERCASE_WORDS = {
 
 def prettify_label(label: str) -> str:
     """Replace underscores with spaces and capitalize words that are all lowecase."""
+    if len(label) == 1:
+        return label
     return " ".join(
-        word.title() if word.islower() and word not in LOWERCASE_WORDS else word
+        (word.title() if word.islower() and word not in LOWERCASE_WORDS else word)
         for word in label.replace("_", " ").split()
     )
 

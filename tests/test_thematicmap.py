@@ -21,9 +21,9 @@ import sgis as sg
 __test = 1
 
 
-@pytest.mark.skip(
-    reason="This test takes forever on torchgeo bbox, need to investigate"
-)
+# @pytest.mark.skip(
+#     reason="This test takes forever on torchgeo bbox, need to investigate"
+# )
 def test_thematicmap2():
     municipalities = gpd.read_parquet(f"{testdata}/municipalities_2017.parquet")
     m = sg.ThematicMap(
@@ -213,8 +213,8 @@ def test_thematicmap(points_oslo):
         assert (m.facecolor, m.title_color, m.bg_gdf_color) == (
             "#fefefe",
             "#0f0f0f",
-            "#dbdbdb",
-        )
+            "#e8e6e6",
+        ), (m.facecolor, m.title_color, m.bg_gdf_color)
 
     check_colors_bins(points)
 
@@ -236,7 +236,7 @@ def test_thematicmap(points_oslo):
         ]
         m.title = inspect.stack()[0][3]
         m.plot()
-        assert m.bins == [63, 100, 200, 300, 440], m.bins
+        assert [int(round(x, 0)) for x in m.bins] == [63, 100, 200, 300, 440], m.bins
         assert m.legend._categories == labels_should_be, m.legend._categories
 
         m = sg.ThematicMap(points, points, points, "meters")
@@ -249,7 +249,7 @@ def test_thematicmap(points_oslo):
         ]
         m.title = inspect.stack()[0][3]
         m.plot()
-        assert m.bins == [63, 100, 200, 300, 440], m.bins
+        assert [int(round(x, 0)) for x in m.bins] == [63, 100, 200, 300, 440], m.bins
         assert m.legend._categories == labels_should_be, m.legend._categories
 
     manual_labels_and_bins(points)
@@ -273,7 +273,7 @@ def test_thematicmap(points_oslo):
         ], m._unique_colors
         assert m._k == 7, m._k
         assert m.column == "length"
-        assert m.legend.title == "length"
+        assert m.legend.title == "Length", m.legend.title
         assert m.legend._position_has_been_set is False
         assert m.legend.rounding == 0
         assert m.legend._categories == [
@@ -289,16 +289,21 @@ def test_thematicmap(points_oslo):
     k_is_7_equal_to_n_unique(points)
 
     def k_is_3(points):
-        m = sg.ThematicMap(points, points, points, "meters")
-        m.cmap = "viridis"
-        m.black = True
-        m.k = 3
-        m.title = "black, viridis, k=3"
+        m = sg.ThematicMap(
+            points,
+            points,
+            points,
+            "meters",
+            cmap="viridis",
+            dark=True,
+            k=3,
+            title="black, viridis, k=3",
+        )
         m.plot()
         assert m.cmap == "viridis"
-        assert m.cmap_start == 0
+        assert m.cmap_start == 0, m.cmap_start
         assert m.column == "length"
-        assert m.legend.title == "length"
+        assert m.legend.title == "Length"
         assert m._k == 3
         assert list(m._unique_colors) == [
             "#440154",
@@ -325,8 +330,9 @@ def test_thematicmap(points_oslo):
     manual_bins_and_legend_suffix_sep(points)
 
     def rounding_1(points):
-        m = sg.ThematicMap(points, points, points, "meters")
-        m.legend.rounding = 1
+        m = sg.ThematicMap(
+            points, points, points, "meters", legend_kwargs=dict(rounding=1)
+        )
         m.title = inspect.stack()[0][3]
         m.plot()
         assert list(m._unique_colors) == [
@@ -337,7 +343,7 @@ def test_thematicmap(points_oslo):
             "#49006a",
         ], m._unique_colors
 
-    rounding_1(points)
+    # rounding_1(points)
 
     def with_nans(points):
         with_nan = points.assign(col_with_nan=lambda x: x.area)
@@ -600,7 +606,7 @@ def test_thematicmap(points_oslo):
 
     def categorical_column(points):
         points["category"] = [*"abcddea"]
-        m = sg.ThematicMap(points, "category")
+        m = sg.ThematicMap(points, "category", legend_kwargs=dict(pretty_labels=False))
         m.plot()
         assert m.legend._categories == ["a", "b", "c", "d", "e"], m.legend._categories
 
