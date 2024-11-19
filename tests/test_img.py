@@ -544,11 +544,10 @@ def run_random_forest(
     a: np.ndarray,
     b: np.ndarray,
     regressor: RandomForestRegressor | None = None,
-    plot: bool = False,
 ):
     if regressor is None:
         regressor = RandomForestRegressor(min_samples_split=5, n_estimators=5)
-    return predict_with_regressor(a, b, regressor=regressor, plot=plot)
+    return predict_with_regressor(a, b, regressor=regressor)
 
 
 def predict_with_regressor(
