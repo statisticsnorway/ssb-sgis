@@ -2077,6 +2077,7 @@ class ImageCollection(_ImageBase):
         self,
         func: Callable,
         kwargs: dict | None = None,
+        index_alligned_kwargs: dict | None = None,
         masked: bool = True,
     ) -> np.ndarray | tuple[np.ndarray] | None:
         """Run a function for each pixel.
@@ -2086,19 +2087,35 @@ class ImageCollection(_ImageBase):
         """
         values = np.array([band.values for img in self for band in img])
 
-        if masked and hasattr(next(iter(next(iter(self)))).values, "mask"):
+        if (
+            masked
+            and self.nodata is not None
+            and hasattr(next(iter(next(iter(self)))).values, "mask")
+        ):
+            mask_array = np.array(
+                [
+                    (band.values.mask) | (band.values.data == self.nodata)
+                    for img in self
+                    for band in img
+                ]
+            )
+        elif masked and self.nodata is not None:
+            mask_array = np.array(
+                [band.values == self.nodata for img in self for band in img]
+            )
+        elif masked:
             mask_array = np.array([band.values.mask for img in self for band in img])
         else:
             mask_array = None
 
         return pixelwise(
-            values=values,
             func=func,
+            values=values,
             mask_array=mask_array,
-            nodata=self.nodata,
+            index_alligned_kwargs=index_alligned_kwargs,
             kwargs=kwargs,
             processes=self.processes,
-            masked=masked,
+            nodata=self.nodata or np.nan,
         )
 
     def get_unique_band_ids(self) -> list[str]:
@@ -2892,7 +2909,6 @@ class ImageCollection(_ImageBase):
             subcollection.pixelwise(
                 _plot_pixels_1d,
                 kwargs=dict(
-                    x=x,
                     alpha=alpha,
                     x_var=x_var,
                     y_label=y_label,
@@ -2900,6 +2916,7 @@ class ImageCollection(_ImageBase):
                     first_date=first_date,
                     figsize=figsize,
                 ),
+                index_alligned_kwargs=dict(x=x),
             )
 
     def __repr__(self) -> str:
@@ -3530,44 +3547,40 @@ def _plot_pixels_1d(
 
 
 def pixelwise(
-    values: np.ndarray,
     func: Callable,
+    values: np.ndarray,
     mask_array: np.ndarray | None = None,
-    nodata: int | None = None,
+    index_alligned_kwargs: dict | None = None,
     kwargs: dict | None = None,
     processes: int = 1,
-    masked: bool = True,
+    nodata=np.nan,
 ) -> Any:
     """Run a function for each pixel of a 3d array."""
+    index_alligned_kwargs = index_alligned_kwargs or {}
     kwargs = kwargs or {}
 
-    if masked:
-        is_missing = values == nodata
-        if mask_array is not None:
-            is_missing |= mask_array
-
-        not_all_missing = np.all(is_missing, axis=0) == False
+    if mask_array is not None:
+        not_all_missing = np.all(mask_array, axis=0) == False
 
     else:
-        is_missing = np.full(values.shape, False)
+        mask_array = np.full(values.shape, False)
         not_all_missing = np.full(values.shape[1:], True)
 
     nonmissing_row_indices, nonmissing_col_indices = not_all_missing.nonzero()
 
-    def select_values(row: int, col: int) -> np.ndarray:
-        return values[~is_missing[:, row, col], row, col]
-
-    def filter_kwargs(row: int, col: int) -> dict[str, Any]:
-        out_kwargs = {}
-        for key, value in kwargs.items():
-            if isinstance(value, np.ndarray):
-                value = value[~is_missing[:, row, col]]
-            out_kwargs[key] = value
-        return out_kwargs
+    def select_pixel_values(row: int, col: int) -> np.ndarray:
+        return values[~mask_array[:, row, col], row, col]
 
     with joblib.Parallel(n_jobs=processes, backend="loky") as parallel:
         results: list[tuple[np.float64, np.float64]] = parallel(
-            joblib.delayed(func)(select_values(row, col), **filter_kwargs(row, col))
+            joblib.delayed(func)(
+                select_pixel_values(row, col),
+                **kwargs,
+                **{
+                    key: value[~mask_array[:, row, col]]
+                    for key, value in index_alligned_kwargs.items()
+                },
+            )
             for row, col in (
                 zip(nonmissing_row_indices, nonmissing_col_indices, strict=True)
             )
@@ -3580,6 +3593,7 @@ def pixelwise(
         n_out_arrays = len(next(iter(results)))
     except TypeError:
         n_out_arrays = 1
+
     out_arrays = tuple(np.full(values.shape[1:], nodata) for _ in range(n_out_arrays))
 
     counter = 0

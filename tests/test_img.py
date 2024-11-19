@@ -350,12 +350,14 @@ def test_pixelwise():
         ]
     )
 
-    lengths_should_be = np.array([[None, 1, 2], [3, 3, 3]])
+    lengths_should_be = np.array([[np.nan, 1, 2], [3, 3, 3]])
 
-    def run_pixelwise(pixel_values, days_since_start):
+    def run_pixelwise(pixel_values, days_since_start, not_alligned_array):
         assert pixel_values.max() < 1, pixel_values
         assert len(pixel_values) >= 1
         assert pixel_values.shape == days_since_start.shape
+
+        assert len(not_alligned_array) == 3
 
         if len(pixel_values) == 2:
             assert np.array_equal(
@@ -370,9 +372,13 @@ def test_pixelwise():
     days_since_start = np.array([0, 100, 110])
 
     lengths = collection.pixelwise(
-        run_pixelwise, kwargs=dict(days_since_start=days_since_start)
+        run_pixelwise,
+        index_alligned_kwargs=dict(days_since_start=days_since_start),
+        kwargs=dict(not_alligned_array=days_since_start),
     )
-    assert np.array_equal(lengths, lengths_should_be), lengths
+    assert np.array_equal(
+        lengths, lengths_should_be.astype(lengths.dtype), equal_nan=True
+    ), lengths
 
     def run_pixelwise_not_masked(pixel_values, days_since_start):
         assert len(pixel_values) == 3, pixel_values
@@ -380,44 +386,56 @@ def test_pixelwise():
 
     collection.pixelwise(
         run_pixelwise_not_masked,
-        kwargs=dict(days_since_start=days_since_start),
+        index_alligned_kwargs=dict(days_since_start=days_since_start),
         masked=False,
     )
 
     predicted_start, predicted_end, n_observations = collection.pixelwise(
         get_predictions_1d,
-        kwargs=dict(a=days_since_start, prediction_func=run_lstsq),
+        index_alligned_kwargs=dict(a=days_since_start),
+        kwargs=dict(prediction_func=run_lstsq),
     )
 
     # rounding manually since numpy cannot round None
-    predicted_start = np.array(
-        [
-            [round(value, 3) if value is not None else None for value in row]
-            for row in predicted_start
-        ]
-    )
-    predicted_end = np.array(
-        [
-            [round(value, 3) if value is not None else None for value in row]
-            for row in predicted_end
-        ]
-    )
+    predicted_start = np.round(predicted_start, 3)
+    predicted_end = np.round(predicted_end, 3)
+    # predicted_start = np.array(
+    #     [
+    #         [round(value, 3) if value is not None else None for value in row]
+    #         for row in predicted_start
+    #     ]
+    # )
+    # predicted_end = np.array(
+    #     [
+    #         [round(value, 3) if value is not None else None for value in row]
+    #         for row in predicted_end
+    #     ]
+    # )
 
-    assert np.array_equal(n_observations, lengths_should_be), n_observations
     assert np.array_equal(
-        predicted_start, np.array([[None, 0.1, 0.3], [0.377, 0.353, 0.288]])
+        n_observations, lengths_should_be, equal_nan=True
+    ), n_observations
+    assert np.array_equal(
+        predicted_start,
+        np.array([[np.nan, 0.1, 0.3], [0.377, 0.353, 0.288]]),
+        equal_nan=True,
     ), predicted_start
 
     assert np.array_equal(
-        predicted_end, np.array([[None, 0.1, 0.6], [0.675, 0.479, 0.778]])
+        predicted_end,
+        np.array([[np.nan, 0.1, 0.6], [0.675, 0.479, 0.778]]),
+        equal_nan=True,
     ), predicted_end
 
     predicted_start, predicted_end, n_observations = collection.pixelwise(
         get_predictions_1d,
-        kwargs=dict(a=days_since_start, prediction_func=run_random_forest),
+        index_alligned_kwargs=dict(a=days_since_start),
+        kwargs=dict(prediction_func=run_random_forest),
     )
 
-    assert np.array_equal(n_observations, lengths_should_be), n_observations
+    assert np.array_equal(
+        n_observations, lengths_should_be, equal_nan=True
+    ), n_observations
 
 
 @print_function_name
@@ -465,8 +483,8 @@ def _test_ndvi_predictions(prediction_func):
 
     predicted_start, predicted_end, n_observations = collection.pixelwise(
         func=get_predictions_1d,
+        index_alligned_kwargs=dict(a=days_since_start),
         kwargs=dict(
-            a=days_since_start,
             prediction_func=prediction_func,
         ),
     )
@@ -524,6 +542,8 @@ def get_predictions_1d(
 ) -> tuple[np.float64, np.float64, int]:
     assert np.min(pixel_values) >= -1, pixel_values
     assert np.max(pixel_values) <= 1, pixel_values
+
+    assert len(a) == len(pixel_values), (len(a), len(pixel_values))
 
     predicted_start, predicted_end = prediction_func(a, pixel_values)
 
