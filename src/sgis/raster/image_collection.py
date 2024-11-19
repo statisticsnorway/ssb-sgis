@@ -2973,7 +2973,6 @@ class Sentinel2Config:
             xml_file,
         )
         if match_ is None:
-            return None
             raise _RegexError()
 
         if "NOT_REFINED" in match_.group(0):
