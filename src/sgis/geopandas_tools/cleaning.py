@@ -579,9 +579,9 @@ def _snap_to_anchors(
                         # browser=True,
                     )
 
-                print(
-                    "line_is_simple", line_is_simple, range_index, i, index, j
-                )  # , j2, j3, x)
+                # print(
+                #     "line_is_simple", line_is_simple, range_index, i, index, j
+                # )  # , j2, j3, x)
 
                 if not line_is_simple:
                     #     for j4 in range(len(ring)):

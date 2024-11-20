@@ -617,19 +617,19 @@ class _ImageBandBase(_ImageBase):
             return nonmissing_metadata_attributes
 
         # read all xml content once
-        file_contents: list[str] = []
+        file_contents: dict[str, str] = {}
         for path in self._all_file_paths:
             if ".xml" not in path:
                 continue
             with _open_func(path, "rb") as file:
-                file_contents.append(file.read().decode("utf-8"))
+                file_contents[path] = file.read().decode("utf-8")
 
         def is_last_xml(i: int) -> bool:
             return i == len(file_contents) - 1
 
         for attr, value in missing_metadata_attributes.items():
             results = None
-            for i, file_content in enumerate(file_contents):
+            for i, file_content in enumerate(file_contents.values()):
                 if isinstance(value, str) and value in dir(self):
                     # method or a hardcoded value
                     value: Callable | Any = getattr(self, value)
@@ -639,7 +639,7 @@ class _ImageBandBase(_ImageBase):
                         results = value(file_content)
                     except _RegexError as e:
                         if is_last_xml(i):
-                            raise e.__class__(self.path, e) from e
+                            raise e.__class__(self.path, list(file_contents), e) from e
                         continue
                     if results is not None:
                         break
@@ -2079,6 +2079,7 @@ class ImageCollection(_ImageBase):
         kwargs: dict | None = None,
         index_aligned_kwargs: dict | None = None,
         masked: bool = True,
+        processes: int | None = None,
     ) -> np.ndarray | tuple[np.ndarray] | None:
         """Run a function for each pixel.
 
@@ -2114,7 +2115,7 @@ class ImageCollection(_ImageBase):
             mask_array=mask_array,
             index_aligned_kwargs=index_aligned_kwargs,
             kwargs=kwargs,
-            processes=self.processes,
+            processes=processes or self.processes,
             nodata=self.nodata or np.nan,
         )
 
@@ -2990,14 +2991,15 @@ class Sentinel2Config:
             xml_file,
         )
         if match_ is None:
-            raise _RegexError()
+            return None
+            raise _RegexError(xml_file)
 
         if "NOT_REFINED" in match_.group(0):
             return False
         elif "REFINED" in match_.group(0):
             return True
         else:
-            raise _RegexError()
+            raise _RegexError(xml_file)
 
     def _get_boa_quantification_value(self, xml_file: str) -> int:
         return int(
@@ -3560,17 +3562,17 @@ def pixelwise(
     kwargs = kwargs or {}
 
     if mask_array is not None:
+        # skip pixels where all values are masked
         not_all_missing = np.all(mask_array, axis=0) == False
-
     else:
         mask_array = np.full(values.shape, False)
         not_all_missing = np.full(values.shape[1:], True)
 
-    nonmissing_row_indices, nonmissing_col_indices = not_all_missing.nonzero()
-
     def select_pixel_values(row: int, col: int) -> np.ndarray:
         return values[~mask_array[:, row, col], row, col]
 
+    # loop through long 1d arrays of aligned row and col indices
+    nonmissing_row_indices, nonmissing_col_indices = not_all_missing.nonzero()
     with joblib.Parallel(n_jobs=processes, backend="loky") as parallel:
         results: list[tuple[np.float64, np.float64]] = parallel(
             joblib.delayed(func)(
@@ -3587,14 +3589,17 @@ def pixelwise(
         )
 
     if all(x is None for x in results):
-        return
+        return nonmissing_row_indices, nonmissing_col_indices
 
     try:
         n_out_arrays = len(next(iter(results)))
     except TypeError:
         n_out_arrays = 1
 
-    out_arrays = tuple(np.full(values.shape[1:], nodata) for _ in range(n_out_arrays))
+    out_arrays = [
+        np.full(values.shape[1:], nodata).astype(np.float64)
+        for _ in range(n_out_arrays)
+    ]
 
     counter = 0
     for row, col in zip(nonmissing_row_indices, nonmissing_col_indices, strict=True):
@@ -3610,7 +3615,9 @@ def pixelwise(
         counter += 1
     assert counter == len(results), (counter, len(results))
 
-    if len(out_arrays) == 1:
-        return out_arrays[0]
+    for i, array in enumerate(out_arrays):
+        all_are_integers = np.all(np.mod(array, 1) == 0)
+        if all_are_integers:
+            out_arrays[i] = array.astype(int)
 
-    return out_arrays
+    return (nonmissing_row_indices, nonmissing_col_indices, *out_arrays)
