@@ -2992,7 +2992,6 @@ class Sentinel2Config:
         )
         if match_ is None:
             return None
-            raise _RegexError(xml_file)
 
         if "NOT_REFINED" in match_.group(0):
             return False
