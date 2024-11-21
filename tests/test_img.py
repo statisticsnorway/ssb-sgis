@@ -343,12 +343,38 @@ def test_pixelwise():
         mask=[[True, False, False], [False, False, False]],
     )
 
+    # sg.raster.image_collection.pixelwise(
+    #     np.array([array1, array2, array3]),
+    #     mask_array=np.array([arr.mask for arr in [array1, array2, array3]])
+    # )
+
     collection = sg.ImageCollection(
         [
-            sg.Image([sg.Band(arr, bounds=(0, 0, 1, 1))])
+            sg.Image([sg.Band(arr, bounds=(0, 0, 1, 1), crs=25833)])
             for arr in [array1, array2, array3]
-        ]
+        ],
+        res=10,
     )
+
+    def return_self(x):
+        return x
+
+    row_indices, col_indices, values = collection.pixelwise(return_self).to_tuple()
+    assert list(row_indices) == list([0, 0, 1, 1, 1]), row_indices
+    assert list(col_indices) == list([1, 2, 0, 1, 2]), col_indices
+    assert isinstance(values, list), type(values)
+
+    dict_results = collection.pixelwise(return_self).to_dict()
+    keys_should_be = [(0, 1), (0, 2), (1, 0), (1, 1), (1, 2)]
+    assert list(dict_results.keys()) == keys_should_be, dict_results
+    gdf = collection.pixelwise(return_self).to_geopandas()
+    assert list(gdf.index) == keys_should_be, list(gdf.index)
+    assert list(gdf.columns) == ["value", "geometry"]
+    print(dict_results)
+    print(gdf)
+
+    arrays = collection.pixelwise(return_self).to_numpy()
+    print(arrays)
 
     lengths_should_be = np.array([[np.nan, 1, 2], [3, 3, 3]])
 
@@ -375,7 +401,7 @@ def test_pixelwise():
         run_pixelwise,
         index_aligned_kwargs=dict(days_since_start=days_since_start),
         kwargs=dict(not_alligned_array=days_since_start),
-    )
+    ).to_numpy()
     assert np.array_equal(
         lengths, lengths_should_be.astype(lengths.dtype), equal_nan=True
     ), lengths
@@ -384,17 +410,17 @@ def test_pixelwise():
         assert len(pixel_values) == 3, pixel_values
         assert len(days_since_start) == 3, days_since_start
 
-    collection.pixelwise(
+    _, _, _ = collection.pixelwise(
         run_pixelwise_not_masked,
         index_aligned_kwargs=dict(days_since_start=days_since_start),
         masked=False,
-    )
+    ).to_tuple()
 
     predicted_start, predicted_end, n_observations = collection.pixelwise(
         get_predictions_1d,
         index_aligned_kwargs=dict(a=days_since_start),
         kwargs=dict(prediction_func=run_lstsq),
-    )
+    ).to_numpy()
 
     # rounding manually since numpy cannot round None
     predicted_start = np.round(predicted_start, 3)
@@ -431,7 +457,7 @@ def test_pixelwise():
         get_predictions_1d,
         index_aligned_kwargs=dict(a=days_since_start),
         kwargs=dict(prediction_func=run_random_forest),
-    )
+    ).to_numpy()
 
     assert np.array_equal(
         n_observations, lengths_should_be, equal_nan=True
@@ -487,7 +513,7 @@ def _test_ndvi_predictions(prediction_func):
         kwargs=dict(
             prediction_func=prediction_func,
         ),
-    )
+    ).to_numpy()
 
     assert np.sum(n_observations == 1) == 940, np.sum(n_observations == 1)
     assert np.sum(n_observations == 2) == 305, np.sum(n_observations == 2)

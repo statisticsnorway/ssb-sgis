@@ -177,6 +177,90 @@ def _get_child_paths_threaded(data: Sequence[str]) -> set[str]:
     return set(itertools.chain.from_iterable(all_paths))
 
 
+@dataclass
+class PixelwiseResults:
+    """Container of results from pixelwise operation to be converted."""
+
+    row_indices: np.ndarray
+    col_indices: np.ndarray
+    results: list[Any]
+    res: int | tuple[int, int]
+    bounds: tuple[float, float, float, float]
+    shape: tuple[int, int]
+    crs: Any
+    nodata: int | float | None
+
+    def to_tuple(self) -> tuple[int, int, Any]:
+        """Return 3-length tuple of row indices, column indices and pixelwise results."""
+        return self.row_indices, self.col_indices, self.results
+
+    def to_dict(self) -> dict[tuple[int, int], Any]:
+        """Return dictionary with row and column indices as keys and pixelwise results as values."""
+        return {
+            (int(row), int(col)): value
+            for row, col, value in zip(
+                self.row_indices, self.col_indices, self.results, strict=True
+            )
+        }
+
+    def to_geopandas(self, column: str = "value") -> GeoDataFrame:
+        """Return GeoDataFrame with pixel geometries and values from the pixelwise operation."""
+        minx, miny = self.bounds[:2]
+        resx, resy = _res_as_tuple(self.res)
+
+        minxs = np.full(self.row_indices.shape, minx) + (minx * self.row_indices * resx)
+        minys = np.full(self.col_indices.shape, miny) + (miny * self.col_indices * resy)
+        maxxs = minxs + resx
+        maxys = minys + resy
+
+        return GeoDataFrame(
+            {
+                column: self.results,
+                "geometry": [
+                    box(minx, miny, maxx, maxy)
+                    for minx, miny, maxx, maxy in zip(
+                        minxs, minys, maxxs, maxys, strict=True
+                    )
+                ],
+            },
+            index=[self.row_indices, self.col_indices],
+            crs=self.crs,
+        )
+
+    def to_numpy(self) -> np.ndarray | tuple[np.ndarray, ...]:
+        """Reshape pixelwise results to 2d numpy arrays in the shape of the full arrays of the image bands."""
+        try:
+            n_out_arrays = len(next(iter(self.results)))
+        except TypeError:
+            n_out_arrays = 1
+
+        out_arrays = [
+            np.full(self.shape, self.nodata).astype(np.float64)
+            for _ in range(n_out_arrays)
+        ]
+
+        for row, col, these_results in zip(
+            self.row_indices, self.col_indices, self.results, strict=True
+        ):
+            if these_results is None:
+                continue
+            for i, arr in enumerate(out_arrays):
+                try:
+                    arr[row, col] = these_results[i]
+                except TypeError:
+                    arr[row, col] = these_results
+
+        for i, array in enumerate(out_arrays):
+            all_are_integers = np.all(np.mod(array, 1) == 0)
+            if all_are_integers:
+                out_arrays[i] = array.astype(int)
+
+        if len(out_arrays) == 1:
+            return out_arrays[0]
+
+        return tuple(out_arrays)
+
+
 class ImageCollectionGroupBy:
     """Iterator and merger class returned from groupby.
 
@@ -617,19 +701,19 @@ class _ImageBandBase(_ImageBase):
             return nonmissing_metadata_attributes
 
         # read all xml content once
-        file_contents: list[str] = []
+        file_contents: dict[str, str] = {}
         for path in self._all_file_paths:
             if ".xml" not in path:
                 continue
             with _open_func(path, "rb") as file:
-                file_contents.append(file.read().decode("utf-8"))
+                file_contents[path] = file.read().decode("utf-8")
 
         def is_last_xml(i: int) -> bool:
             return i == len(file_contents) - 1
 
         for attr, value in missing_metadata_attributes.items():
             results = None
-            for i, file_content in enumerate(file_contents):
+            for i, file_content in enumerate(file_contents.values()):
                 if isinstance(value, str) and value in dir(self):
                     # method or a hardcoded value
                     value: Callable | Any = getattr(self, value)
@@ -639,7 +723,7 @@ class _ImageBandBase(_ImageBase):
                         results = value(file_content)
                     except _RegexError as e:
                         if is_last_xml(i):
-                            raise e.__class__(self.path, e) from e
+                            raise e.__class__(self.path, list(file_contents), e) from e
                         continue
                     if results is not None:
                         break
@@ -804,9 +888,7 @@ class Band(_ImageBandBase):
             )
         else:
             self._path = _fix_path(str(data))
-            if callable(res) and res() is None:
-                res = None
-            self._res = res
+            self._res = res if not (callable(res) and res() is None) else None
 
         if cmap is not None:
             self.cmap = cmap
@@ -1476,7 +1558,7 @@ class Image(_ImageBandBase):
                 f"'data' must be string, Path-like or a sequence of Band. Got {data}"
             )
 
-        self._res = res
+        self._res = res if not (callable(res) and res() is None) else None
         self._path = _fix_path(data)
 
         if all_file_paths is None and self.path:
@@ -1955,7 +2037,7 @@ class ImageCollection(_ImageBase):
         self.nodata = nodata
         self.level = level
         self.processes = processes
-        self._res = res
+        self._res = res if not (callable(res) and res() is None) else None
         self._crs = None
 
         self._df = None
@@ -2079,6 +2161,7 @@ class ImageCollection(_ImageBase):
         kwargs: dict | None = None,
         index_aligned_kwargs: dict | None = None,
         masked: bool = True,
+        processes: int | None = None,
     ) -> np.ndarray | tuple[np.ndarray] | None:
         """Run a function for each pixel.
 
@@ -2108,13 +2191,23 @@ class ImageCollection(_ImageBase):
         else:
             mask_array = None
 
-        return pixelwise(
+        nonmissing_row_indices, nonmissing_col_indices, results = pixelwise(
             func=func,
             values=values,
             mask_array=mask_array,
             index_aligned_kwargs=index_aligned_kwargs,
             kwargs=kwargs,
-            processes=self.processes,
+            processes=processes or self.processes,
+        )
+
+        return PixelwiseResults(
+            nonmissing_row_indices,
+            nonmissing_col_indices,
+            results,
+            shape=values.shape[1:],
+            res=self.res,
+            bounds=self.bounds,
+            crs=self.crs,
             nodata=self.nodata or np.nan,
         )
 
@@ -2990,14 +3083,14 @@ class Sentinel2Config:
             xml_file,
         )
         if match_ is None:
-            raise _RegexError()
+            return None
 
         if "NOT_REFINED" in match_.group(0):
             return False
         elif "REFINED" in match_.group(0):
             return True
         else:
-            raise _RegexError()
+            raise _RegexError(xml_file)
 
     def _get_boa_quantification_value(self, xml_file: str) -> int:
         return int(
@@ -3553,26 +3646,25 @@ def pixelwise(
     index_aligned_kwargs: dict | None = None,
     kwargs: dict | None = None,
     processes: int = 1,
-    nodata=np.nan,
-) -> Any:
+) -> tuple[np.ndarray, np.ndarray, list[Any]]:
     """Run a function for each pixel of a 3d array."""
     index_aligned_kwargs = index_aligned_kwargs or {}
     kwargs = kwargs or {}
 
     if mask_array is not None:
+        # skip pixels where all values are masked
         not_all_missing = np.all(mask_array, axis=0) == False
-
     else:
         mask_array = np.full(values.shape, False)
         not_all_missing = np.full(values.shape[1:], True)
 
-    nonmissing_row_indices, nonmissing_col_indices = not_all_missing.nonzero()
-
     def select_pixel_values(row: int, col: int) -> np.ndarray:
         return values[~mask_array[:, row, col], row, col]
 
+    # loop through long 1d arrays of aligned row and col indices
+    nonmissing_row_indices, nonmissing_col_indices = not_all_missing.nonzero()
     with joblib.Parallel(n_jobs=processes, backend="loky") as parallel:
-        results: list[tuple[np.float64, np.float64]] = parallel(
+        results: list[Any] = parallel(
             joblib.delayed(func)(
                 select_pixel_values(row, col),
                 **kwargs,
@@ -3586,31 +3678,4 @@ def pixelwise(
             )
         )
 
-    if all(x is None for x in results):
-        return
-
-    try:
-        n_out_arrays = len(next(iter(results)))
-    except TypeError:
-        n_out_arrays = 1
-
-    out_arrays = tuple(np.full(values.shape[1:], nodata) for _ in range(n_out_arrays))
-
-    counter = 0
-    for row, col in zip(nonmissing_row_indices, nonmissing_col_indices, strict=True):
-        these_results = results[counter]
-        if these_results is None:
-            counter += 1
-            continue
-        for i, arr in enumerate(out_arrays):
-            try:
-                arr[row, col] = these_results[i]
-            except TypeError:
-                arr[row, col] = these_results
-        counter += 1
-    assert counter == len(results), (counter, len(results))
-
-    if len(out_arrays) == 1:
-        return out_arrays[0]
-
-    return out_arrays
+    return nonmissing_row_indices, nonmissing_col_indices, results

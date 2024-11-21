@@ -7,8 +7,5 @@ import os
 
 
 def is_dapla() -> bool:
-    """From https://github.com/statisticsnorway/ssb-altinn-python/blob/main/src/altinn/utils.py."""
-    try:
-        return os.environ["GCS_TOKEN_PROVIDER_KEY"] == "google"
-    except KeyError:
-        return False
+    """Simply checks if an os environment variable contains the text 'dapla'."""
+    return any("dapla" in key.lower() for key in os.environ)
