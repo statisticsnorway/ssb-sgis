@@ -311,7 +311,7 @@ def _test_ndvi(collection, type_should_be, cloudless: bool):
             assert e.rasters
             # cannot find an object name since the image is created within the explore constructor
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
-                "Image(0)",
+                "NDVIBand(band_id=None, "
             ], x
 
 
