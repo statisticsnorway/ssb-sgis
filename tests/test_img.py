@@ -200,7 +200,9 @@ def demo():
 @print_function_name
 def test_explore():
 
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    collection = sg.Sentinel2Collection(
+        path_sentinel, level="L2A", res=10
+    ).sort_images()
 
     e = sg.explore(collection)
     assert e.rasters
