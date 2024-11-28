@@ -86,7 +86,7 @@ def explore(
     smooth_factor: int | float = 1.5,
     size: int | None = None,
     max_images: int = 10,
-    images_to_gdf: bool = False,
+    max_nodata_percentage: int = 100,
     **kwargs,
 ) -> Explore:
     """Interactive map of GeoDataFrames with layers that can be toggled on/off.
@@ -116,8 +116,8 @@ def explore(
             1000.
         max_images: Maximum number of images (Image, ImageCollection, Band) to show per
             map. Defaults to 10.
-        images_to_gdf: If True (not default), images (Image, ImageCollection, Band)
-            will be converted to GeoDataFrame and added to the map.
+        max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
+            image arrays.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -165,6 +165,8 @@ def explore(
             mask=mask,
             browser=browser,
             max_zoom=max_zoom,
+            max_images=max_images,
+            max_nodata_percentage=max_nodata_percentage,
             **kwargs,
         )
 
@@ -211,46 +213,6 @@ def explore(
             else:
                 mask = mask4326.to_crs(to_crs)
 
-        # else:
-        #     mask_flipped = mask
-
-        # # coords = mask.get_coordinates()
-        # if (
-        #     (mask_flipped.distance(bounds) > size).all()
-        #     # and coords["x"].max() < 180
-        #     # and coords["y"].max() < 180
-        #     # and coords["x"].min() > -180
-        #     # and coords["y"].min() > -180
-        # ):
-        #     try:
-        #         bounds4326 = to_gdf(bounds, to_crs).to_crs(4326).geometry.iloc[0]
-        #     except ValueError:
-        #         bounds4326 = to_gdf(bounds, to_crs).set_crs(4326).geometry.iloc[0]
-
-        #     mask4326 = mask.set_crs(4326, allow_override=True)
-
-        #     if (mask4326.distance(bounds4326) > size).all():
-        #         # try flipping coordinates
-        #         x, y = list(mask4326.geometry.iloc[0].coords)[0]
-        #         mask4326 = to_gdf([y, x], 4326)
-
-        #     mask = mask4326
-
-        #     # if mask4326.intersects(bounds4326).any():
-        #     #     mask = mask4326
-        #     # else:
-        #     #     try:
-        #     #         mask = mask.to_crs(to_crs)
-        #     #     except ValueError:
-        #     #         pass
-        # else:
-        #     mask = mask_flipped
-
-        # try:
-        #     mask = mask.to_crs(to_crs)
-        # except ValueError:
-        #     pass
-
         if get_geom_type(mask) in ["point", "line"]:
             mask = mask.buffer(size)
 
@@ -260,6 +222,8 @@ def explore(
             mask=mask,
             browser=browser,
             max_zoom=max_zoom,
+            max_images=max_images,
+            max_nodata_percentage=max_nodata_percentage,
             **kwargs,
         )
 
@@ -270,6 +234,7 @@ def explore(
         max_zoom=max_zoom,
         smooth_factor=smooth_factor,
         max_images=max_images,
+        max_nodata_percentage=max_nodata_percentage,
         **kwargs,
     )
 
@@ -294,6 +259,7 @@ def samplemap(
     explore: bool = True,
     browser: bool = False,
     max_images: int = 10,
+    max_nodata_percentage: int = 100,
     **kwargs,
 ) -> Explore:
     """Shows an interactive map of a random area of GeoDataFrames.
@@ -327,6 +293,8 @@ def samplemap(
             If True the maps will be opened in a browser folder.
         max_images: Maximum number of images (Image, ImageCollection, Band) to show per
             map. Defaults to 10.
+        max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
+            image arrays.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -409,6 +377,7 @@ def samplemap(
         explore=explore,
         smooth_factor=smooth_factor,
         max_images=max_images,
+        max_nodata_percentage=max_nodata_percentage,
         **kwargs,
     )
 
@@ -422,6 +391,7 @@ def clipmap(
     smooth_factor: int | float = 1.5,
     browser: bool = False,
     max_images: int = 10,
+    max_nodata_percentage: int = 100,
     **kwargs,
 ) -> Explore | Map:
     """Shows an interactive map of a of GeoDataFrames clipped to the mask extent.
@@ -450,6 +420,8 @@ def clipmap(
             If True the maps will be opened in a browser folder.
         max_images: Maximum number of images (Image, ImageCollection, Band) to show per
             map. Defaults to 10.
+        max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
+            image arrays.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -484,6 +456,7 @@ def clipmap(
             max_zoom=max_zoom,
             smooth_factor=smooth_factor,
             max_images=max_images,
+            max_nodata_percentage=max_nodata_percentage,
             **kwargs,
         )
         m.mask = mask

@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from time import perf_counter
 
+# %%
+
 import numpy as np
 import pandas as pd
 import pyproj
@@ -302,7 +304,7 @@ def _test_ndvi(collection, type_should_be, cloudless: bool):
             e = sg.explore(new_img)
             assert e.rasters
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
-                "new_img",
+                "NDVIBand(band_id=None, "
             ], x
 
             e = sg.explore(sg.Image([ndvi], res=10))
@@ -470,6 +472,7 @@ def _test_ndvi_predictions(prediction_func):
     collection = sg.Sentinel2Collection(
         path_sentinel, level="L2A", res=10, nodata=nodata
     )
+
     collection = collection.filter(intersects=collection[0].centroid)
     assert len(collection) == 2, len(collection)
     assert list(collection.date) == ["20170826", "20230606"], list(collection.date)
