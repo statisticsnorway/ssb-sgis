@@ -558,6 +558,8 @@ class Explore(Map):
         for data in results:
             self.raster_data += data
 
+        self.raster_data = sorted(self.raster_data, key=lambda x: x["label"])
+
         if len(self.raster_data) > 6:
             self._show_rasters = False
 
@@ -1458,7 +1460,5 @@ def _image_collection_to_background_map(
 
             n_added_images += 1
             out.append(x)
-
-    out = sorted(out, key=lambda x: x["label"])
 
     return out
