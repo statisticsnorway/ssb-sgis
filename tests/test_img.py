@@ -208,7 +208,7 @@ def test_explore():
     assert e.rasters
     assert (x := [x["label"] for x in e.raster_data]) == [
         img.name for img in collection
-    ], x
+    ][::-1], x
 
 
 @print_function_name
