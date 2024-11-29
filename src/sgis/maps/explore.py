@@ -211,6 +211,7 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     raster_data_dict["arr"] = arr
     raster_data_dict["bounds"] = bounds
     raster_data_dict["label"] = band.name or name
+    raster_data_dict["date"] = band.date
     return True
 
 
@@ -557,8 +558,6 @@ class Explore(Map):
 
         for data in results:
             self.raster_data += data
-
-        self.raster_data = sorted(self.raster_data, key=lambda x: x["label"])
 
         if len(self.raster_data) > 6:
             self._show_rasters = False
@@ -1387,6 +1386,7 @@ def _add_one_image(
     raster_data_dict["bounds"] = bounds
     raster_data_dict["cmap"] = None
     raster_data_dict["label"] = _determine_label(image, image.name or name)
+    raster_data_dict["date"] = image.date
 
     return raster_data_dict
 
@@ -1460,5 +1460,10 @@ def _image_collection_to_background_map(
 
             n_added_images += 1
             out.append(x)
+
+    if all(x["date"] for x in out):
+        out = sorted(out, key=lambda x: x["date"])
+    else:
+        out = sorted(out, key=lambda x: x["label"])
 
     return out

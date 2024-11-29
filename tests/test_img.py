@@ -6,8 +6,6 @@ from collections.abc import Iterable
 from pathlib import Path
 from time import perf_counter
 
-# %%
-
 import numpy as np
 import pandas as pd
 import pyproj
@@ -208,7 +206,7 @@ def test_explore():
     assert e.rasters
     assert (x := [x["label"] for x in e.raster_data]) == [
         img.name for img in collection
-    ][::-1], x
+    ], x
 
 
 @print_function_name
@@ -1776,6 +1774,7 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
+    test_explore()
     test_pixelwise()
     test_ndvi_predictions()
     test_clip()
