@@ -179,7 +179,7 @@ def _get_child_paths_threaded(data: Sequence[str]) -> set[str]:
 
 @dataclass
 class PixelwiseResults:
-    """Container of results from pixelwise operation to be converted."""
+    """Container of pixelwise results to be converted to numpy/geopandas."""
 
     row_indices: np.ndarray
     col_indices: np.ndarray
@@ -656,6 +656,12 @@ class _ImageBandBase(_ImageBase):
         if hasattr(self, "_month") and self._month:
             return self._month
         return str(self.date).replace("-", "").replace("/", "")[4:6]
+
+    @property
+    def day(self) -> str:
+        if hasattr(self, "_day") and self._day:
+            return self._day
+        return str(self.date).replace("-", "").replace("/", "")[6:8]
 
     @property
     def name(self) -> str | None:
@@ -1572,7 +1578,7 @@ class Image(_ImageBandBase):
 
         if df is None:
             if not self._all_file_paths:
-                self._all_file_paths = [self.path]
+                self._all_file_paths = {self.path}
             df = self._create_metadata_df(self._all_file_paths)
 
         df["image_path"] = df["image_path"].astype(str)
@@ -1597,7 +1603,7 @@ class Image(_ImageBandBase):
         if self.metadata:
             try:
                 metadata = self.metadata[self.path]
-            except KeyError:
+            except KeyError as e:
                 metadata = {}
             for key, value in metadata.items():
                 if key in dir(self):
@@ -2062,9 +2068,9 @@ class ImageCollection(_ImageBase):
                         ) from e
                     raise e
                 if self.level:
-                    self._all_file_paths = [
+                    self._all_file_paths = {
                         path for path in self._all_file_paths if self.level in path
-                    ]
+                    }
                 self._df = self._create_metadata_df(self._all_file_paths)
                 return
 
@@ -2076,9 +2082,9 @@ class ImageCollection(_ImageBase):
         self._all_file_paths = _get_all_file_paths(self.path)
 
         if self.level:
-            self._all_file_paths = [
+            self._all_file_paths = {
                 path for path in self._all_file_paths if self.level in path
-            ]
+            }
 
         self._df = self._create_metadata_df(self._all_file_paths)
 
@@ -2645,15 +2651,9 @@ class ImageCollection(_ImageBase):
 
         other = to_shapely(other)
 
-        if self.processes == 1:
-            intersects_list: pd.Series = GeoSeries(
-                [img.union_all() for img in self]
-            ).intersects(other)
-        else:
-            with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
-                intersects_list: list[bool] = parallel(
-                    joblib.delayed(_intesects)(image, other) for image in self
-                )
+        intersects_list: pd.Series = GeoSeries(
+            [img.union_all() for img in self]
+        ).intersects(other)
 
         self.images = [
             image
@@ -3097,7 +3097,9 @@ class Sentinel2Config:
             _extract_regex_match_from_string(
                 xml_file,
                 (
-                    r'<BOA_QUANTIFICATION_VALUE unit="none">-?(\d+)</BOA_QUANTIFICATION_VALUE>',
+                    r'<BOA_QUANTIFICATION_VALUE unit="none">(\d+)</BOA_QUANTIFICATION_VALUE>',
+                    # r'<BOA_QUANTIFICATION_VALUE unit="none">-?(\d+)</BOA_QUANTIFICATION_VALUE>',
+                    r'<QUANTIFICATION_VALUE unit="none">?(\d+)</QUANTIFICATION_VALUE>',
                 ),
             )
         )
@@ -3515,10 +3517,6 @@ def _load_band(band: Band, **kwargs) -> Band:
 
 def _band_apply(band: Band, func: Callable, **kwargs) -> Band:
     return band.apply(func, **kwargs)
-
-
-def _clip_band(band: Band, mask, **kwargs) -> Band:
-    return band.clip(mask, **kwargs)
 
 
 def _merge_by_band(collection: ImageCollection, **kwargs) -> Image:

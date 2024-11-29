@@ -697,4 +697,6 @@ def get_total_bounds(
                     raise e2 from e
                 else:
                     continue
+    if not xs or not ys:
+        raise ValueError(f"No bounds found for {geometries}")
     return min(xs), min(ys), max(xs), max(ys)

@@ -198,7 +198,9 @@ def demo():
 @print_function_name
 def test_explore():
 
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    collection = sg.Sentinel2Collection(
+        path_sentinel, level="L2A", res=10
+    ).sort_images()
 
     e = sg.explore(collection)
     assert e.rasters
@@ -302,14 +304,14 @@ def _test_ndvi(collection, type_should_be, cloudless: bool):
             e = sg.explore(new_img)
             assert e.rasters
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
-                "new_img",
+                "NDVIBand(band_id=None, "
             ], x
 
             e = sg.explore(sg.Image([ndvi], res=10))
             assert e.rasters
             # cannot find an object name since the image is created within the explore constructor
             assert (x := list(sorted([x["label"] for x in e.raster_data]))) == [
-                "Image(0)",
+                "NDVIBand(band_id=None, "
             ], x
 
 
@@ -470,6 +472,7 @@ def _test_ndvi_predictions(prediction_func):
     collection = sg.Sentinel2Collection(
         path_sentinel, level="L2A", res=10, nodata=nodata
     )
+
     collection = collection.filter(intersects=collection[0].centroid)
     assert len(collection) == 2, len(collection)
     assert list(collection.date) == ["20170826", "20230606"], list(collection.date)
@@ -1771,6 +1774,7 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
+    test_explore()
     test_pixelwise()
     test_ndvi_predictions()
     test_clip()
