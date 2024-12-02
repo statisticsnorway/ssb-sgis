@@ -211,7 +211,11 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     raster_data_dict["arr"] = arr
     raster_data_dict["bounds"] = bounds
     raster_data_dict["label"] = band.name or name
-    raster_data_dict["date"] = band.date
+    try:
+        raster_data_dict["date"] = band.date
+    except Exception:
+        raster_data_dict["date"] = None
+
     return True
 
 
@@ -1386,7 +1390,10 @@ def _add_one_image(
     raster_data_dict["bounds"] = bounds
     raster_data_dict["cmap"] = None
     raster_data_dict["label"] = _determine_label(image, image.name or name)
-    raster_data_dict["date"] = image.date
+    try:
+        raster_data_dict["date"] = image.date
+    except Exception:
+        raster_data_dict["date"] = None
 
     return raster_data_dict
 
