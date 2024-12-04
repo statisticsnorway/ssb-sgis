@@ -1476,7 +1476,7 @@ def _image_collection_to_background_map(
                 continue
             i = 1
             while x["label"] in {y["label"] for y in out}:
-                x["label"] = x["label"].rstrip(f"_{i}", "") + f"_{i + 1}"
+                x["label"] = x["label"].rstrip(f"_{i}") + f"_{i + 1}"
                 i += 1
 
             n_added_images += 1
