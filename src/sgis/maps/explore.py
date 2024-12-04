@@ -271,6 +271,7 @@ class Explore(Map):
         decimals: int = 6,
         max_images: int = 10,
         max_nodata_percentage: int = 100,
+        display: bool = True,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -299,6 +300,7 @@ class Explore(Map):
             decimals: Number of decimals in the coordinates.
             max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
                 image arrays.
+            display: Whether to display the map interactively.
             **kwargs: Additional keyword arguments. Can also be geometry-like objects
                 where the key is the label.
         """
@@ -314,6 +316,7 @@ class Explore(Map):
         self.decimals = decimals
         self.max_images = max_images
         self.max_nodata_percentage = max_nodata_percentage
+        self.display = display
         self.legend = None
 
         self.browser = browser
@@ -622,6 +625,8 @@ class Explore(Map):
                 f.write(self.map._repr_html_())
         elif self.browser:
             run_html_server(self.map._repr_html_())
+        elif not self.display:
+            return
         else:
             display(self.map)
 
