@@ -183,7 +183,9 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
     return folium.TileLayer(provider, name=name, attr=attr, max_zoom=max_zoom)
 
 
-def _single_band_to_arr(band, mask, name, raster_data_dict):
+def _single_band_to_arr_is_too_much_nodata(
+    band, mask, name, raster_data_dict, max_nodata_percentage
+) -> bool:
     if band.has_array and mask is None:
         arr = band.values
     elif band.has_array:
@@ -191,8 +193,8 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     else:
         arr = band.load(indexes=1, bounds=mask).values
 
-    if _is_too_much_nodata([arr], band.nodata):
-        return False
+    if _is_too_much_nodata([arr], band.nodata, max_nodata_percentage):
+        return True
 
     bounds: tuple = (
         _any_to_bbox_crs4326(mask, band.crs)
@@ -216,25 +218,28 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     except Exception:
         raster_data_dict["date"] = None
 
-    return True
+    return False
 
 
 def _is_too_much_nodata(
     arrays: list[np.ndarray],
-    nodata: int | None = None,
-    max_nodata_percentage: int = 100,
+    nodata: int | None,
+    max_nodata_percentage: int,
 ) -> bool:
     return (
         any(arr.shape[0] == 0 for arr in arrays)
         or any(
             (
                 isinstance(arr, np.ma.core.MaskedArray)
-                and np.mean((arr.mask) | (arr.data == nodata) | (np.isnan(arr.data)))
+                and np.mean(((arr.mask) | (arr.data == nodata) | (np.isnan(arr.data))))
                 > (max_nodata_percentage / 100)
             )
             for arr in arrays
         )
-        or any(np.mean(arr == nodata) > (max_nodata_percentage / 100) for arr in arrays)
+        or any(
+            np.mean((arr == nodata) | (np.isnan(arr))) > (max_nodata_percentage / 100)
+            for arr in arrays
+        )
     )
 
 
@@ -460,8 +465,7 @@ class Explore(Map):
 
         if center is None:
             self.to_show = self._gdfs
-            self._explore(**kwargs)
-            return
+            return self._explore(**kwargs)
 
         size = size if size else 1000
 
@@ -1350,7 +1354,10 @@ def _add_one_image(
     if len(image) < 3:
         for band in image:
             name = _determine_label(band, band.name or name)
-            _single_band_to_arr(band, mask, name, raster_data_dict)
+            if _single_band_to_arr_is_too_much_nodata(
+                band, mask, name, raster_data_dict, max_nodata_percentage
+            ):
+                return
         return raster_data_dict
 
     def load(band_id: str) -> Band:
@@ -1433,8 +1440,10 @@ def _image_collection_to_background_map(
             return out
 
         raster_data_dict = {}
-        out.append(raster_data_dict)
-        _single_band_to_arr(band, mask, name, raster_data_dict)
+        if _single_band_to_arr_is_too_much_nodata(
+            band, mask, name, raster_data_dict, max_nodata_percentage
+        ):
+            out.append(raster_data_dict)
         return out
 
     else:
