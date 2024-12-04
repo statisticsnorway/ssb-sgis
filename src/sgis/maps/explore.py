@@ -1440,7 +1440,7 @@ def _image_collection_to_background_map(
             return out
 
         raster_data_dict = {}
-        if _single_band_to_arr_is_too_much_nodata(
+        if not _single_band_to_arr_is_too_much_nodata(
             band, mask, name, raster_data_dict, max_nodata_percentage
         ):
             out.append(raster_data_dict)
