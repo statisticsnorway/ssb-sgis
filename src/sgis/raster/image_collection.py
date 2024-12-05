@@ -2426,21 +2426,7 @@ class ImageCollection(_ImageBase):
 
             _bounds = to_bbox(_bounds)
             collection.load(bounds=(_bounds if _bounds is not None else None), **kwargs)
-            arr = np.array(
-                [
-                    # (
-                    #     band.load(
-                    #         bounds=(_bounds if _bounds is not None else None),
-                    #         **kwargs,
-                    #     )
-                    #     if not band.has_array
-                    #     else band
-                    # ).values
-                    band.values
-                    for img in collection
-                    for band in img
-                ]
-            )
+            arr = np.array([band.values for img in collection for band in img])
             arr = numpy_func(arr, axis=0)
             if as_int:
                 arr = arr.astype(int)
