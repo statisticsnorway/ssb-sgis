@@ -500,6 +500,14 @@ class _ImageBase:
         }
 
     @property
+    def _common_init_kwargs_after_load(self) -> dict:
+        return {
+            k: v
+            for k, v in self._common_init_kwargs.items()
+            if k not in {"res", "metadata"}
+        }
+
+    @property
     def path(self) -> str:
         try:
             return self._path
@@ -1736,7 +1744,7 @@ class Image(_ImageBandBase):
             arr,
             bounds=red.bounds,
             crs=red.crs,
-            **{k: v for k, v in red._common_init_kwargs.items() if k != "res"},
+            **red._common_init_kwargs_after_load,
         )
 
     def get_brightness(
@@ -1767,7 +1775,7 @@ class Image(_ImageBandBase):
             brightness,
             bounds=red.bounds,
             crs=self.crs,
-            **{k: v for k, v in self._common_init_kwargs.items() if k != "res"},
+            **self._common_init_kwargs_after_load,
         )
 
     def to_xarray(self) -> DataArray:
@@ -2096,7 +2104,7 @@ class ImageCollection(_ImageBase):
 
         for attr in by:
             if attr == "bounds":
-                # need integers to check equality when grouping
+                # need integers to properly check equality when grouping
                 df[attr] = [
                     tuple(int(x) for x in band.bounds) for img in self for band in img
                 ]
@@ -2316,9 +2324,8 @@ class ImageCollection(_ImageBase):
             arr,
             bounds=bounds,
             crs=crs,
-            **{k: v for k, v in self._common_init_kwargs.items() if k != "res"},
+            **self._common_init_kwargs_after_load,
         )
-
         band._merged = True
         return band
 
@@ -2384,19 +2391,20 @@ class ImageCollection(_ImageBase):
 
             arrs.append(arr)
             bands.append(
-                self.band_class(
+                # self.band_class(
+                Band(
                     arr,
                     bounds=out_bounds,
                     crs=crs,
                     band_id=band_id,
-                    **{k: v for k, v in self._common_init_kwargs.items() if k != "res"},
+                    **self._common_init_kwargs_after_load,
                 )
             )
 
         # return self.image_class( # TODO
         image = Image(
             bands,
-            band_class=self.band_class,
+            # band_class=self.band_class,
             **self._common_init_kwargs,
         )
 

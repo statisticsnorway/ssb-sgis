@@ -1071,8 +1071,8 @@ def test_merge():
         assert len(date_group) == 1
 
         # get 2d array with mean/median values of all bands in the image
-        medianed = date_group.merge(method="median", target_aligned_pixels=True).values
-        meaned = date_group.merge(method="mean", target_aligned_pixels=True).values
+        medianed = date_group.merge(method="median").values
+        meaned = date_group.merge(method="mean").values
         continue
 
         assert meaned.shape == (299, 299)
@@ -1774,6 +1774,7 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
+    test_merge()
     test_ndvi()
     test_explore()
     test_pixelwise()
