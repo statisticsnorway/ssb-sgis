@@ -500,6 +500,14 @@ class _ImageBase:
         }
 
     @property
+    def _common_init_kwargs_after_load(self) -> dict:
+        return {
+            k: v
+            for k, v in self._common_init_kwargs.items()
+            if k not in {"res", "metadata"}
+        }
+
+    @property
     def path(self) -> str:
         try:
             return self._path
@@ -1136,8 +1144,8 @@ class Band(_ImageBandBase):
                 if self.nodata is None or np.isnan(self.nodata):
                     self.nodata = src.nodata
                 else:
-                    dtype_min_value = _get_dtype_min(src.dtypes[0])
-                    dtype_max_value = _get_dtype_max(src.dtypes[0])
+                    dtype_min_value = _get_dtype_min_value(src.dtypes[0])
+                    dtype_max_value = _get_dtype_max_value(src.dtypes[0])
                     if self.nodata > dtype_max_value or self.nodata < dtype_min_value:
                         src._dtypes = tuple(
                             rasterio.dtypes.get_minimum_dtype(self.nodata)
@@ -1240,17 +1248,17 @@ class Band(_ImageBandBase):
         if self.crs is None:
             raise ValueError("Cannot write None crs to image.")
 
-        if self.nodata:
-            # TODO take out .data if masked?
-            values_with_nodata = np.concatenate(
-                [self.values.flatten(), np.array([self.nodata])]
-            )
-        else:
-            values_with_nodata = self.values
+        try:
+            data = self.values.data
+        except AttributeError:
+            data = self.values
+        data = np.array([np.min(data), np.max(data), self.nodata or 0])
+        min_dtype = rasterio.dtypes.get_minimum_dtype(data)
+
         profile = {
             "driver": driver,
             "compress": compress,
-            "dtype": rasterio.dtypes.get_minimum_dtype(values_with_nodata),
+            "dtype": min_dtype,
             "crs": self.crs,
             "transform": self.transform,
             "nodata": self.nodata,
@@ -1263,7 +1271,7 @@ class Band(_ImageBandBase):
             with rasterio.open(f, "w", **profile) as dst:
 
                 if dst.nodata is None:
-                    dst.nodata = _get_dtype_min(dst.dtypes[0])
+                    dst.nodata = _get_dtype_min_value(dst.dtypes[0])
 
                 if (
                     isinstance(self.values, np.ma.core.MaskedArray)
@@ -1515,12 +1523,6 @@ class NDVIBand(Band):
     cmap: str = "Greens"
 
 
-def median_as_int_and_minimum_dtype(arr: np.ndarray) -> np.ndarray:
-    arr = np.median(arr, axis=0).astype(int)
-    min_dtype = rasterio.dtypes.get_minimum_dtype(arr)
-    return arr.astype(min_dtype)
-
-
 class Image(_ImageBandBase):
     """Image consisting of one or more Bands."""
 
@@ -1742,7 +1744,7 @@ class Image(_ImageBandBase):
             arr,
             bounds=red.bounds,
             crs=red.crs,
-            **{k: v for k, v in red._common_init_kwargs.items() if k != "res"},
+            **red._common_init_kwargs_after_load,
         )
 
     def get_brightness(
@@ -1773,7 +1775,7 @@ class Image(_ImageBandBase):
             brightness,
             bounds=red.bounds,
             crs=self.crs,
-            **{k: v for k, v in self._common_init_kwargs.items() if k != "res"},
+            **self._common_init_kwargs_after_load,
         )
 
     def to_xarray(self) -> DataArray:
@@ -2102,7 +2104,7 @@ class ImageCollection(_ImageBase):
 
         for attr in by:
             if attr == "bounds":
-                # need integers to check equality when grouping
+                # need integers to properly check equality when grouping
                 df[attr] = [
                     tuple(int(x) for x in band.bounds) for img in self for band in img
                 ]
@@ -2322,9 +2324,8 @@ class ImageCollection(_ImageBase):
             arr,
             bounds=bounds,
             crs=crs,
-            **{k: v for k, v in self._common_init_kwargs.items() if k != "res"},
+            **self._common_init_kwargs_after_load,
         )
-
         band._merged = True
         return band
 
@@ -2390,19 +2391,20 @@ class ImageCollection(_ImageBase):
 
             arrs.append(arr)
             bands.append(
-                self.band_class(
+                # self.band_class(
+                Band(
                     arr,
                     bounds=out_bounds,
                     crs=crs,
                     band_id=band_id,
-                    **{k: v for k, v in self._common_init_kwargs.items() if k != "res"},
+                    **self._common_init_kwargs_after_load,
                 )
             )
 
         # return self.image_class( # TODO
         image = Image(
             bands,
-            band_class=self.band_class,
+            # band_class=self.band_class,
             **self._common_init_kwargs,
         )
 
@@ -2431,25 +2433,17 @@ class ImageCollection(_ImageBase):
                 continue
 
             _bounds = to_bbox(_bounds)
-            arr = np.array(
-                [
-                    (
-                        # band.load(
-                        #     bounds=(_bounds if _bounds is not None else None),
-                        #     **kwargs,
-                        # )
-                        # if not band.has_array
-                        # else
-                        band
-                    ).values
-                    for img in collection
-                    for band in img
-                ]
-            )
+            collection.load(bounds=(_bounds if _bounds is not None else None), **kwargs)
+            arr = np.array([band.values for img in collection for band in img])
             arr = numpy_func(arr, axis=0)
             if as_int:
                 arr = arr.astype(int)
-                min_dtype = rasterio.dtypes.get_minimum_dtype(arr)
+                try:
+                    data = arr.data
+                except AttributeError:
+                    data = arr
+                data = np.array([np.min(data), np.max(data), self.nodata or 0])
+                min_dtype = rasterio.dtypes.get_minimum_dtype(data)
                 arr = arr.astype(min_dtype)
 
             if len(arr.shape) == 2:
@@ -3429,22 +3423,18 @@ def _date_is_within(
     return False
 
 
-def _get_dtype_min(dtype: str | type) -> int | float:
+def _get_dtype_min_value(dtype: str | type) -> int | float:
     try:
         return np.iinfo(dtype).min
     except ValueError:
         return np.finfo(dtype).min
 
 
-def _get_dtype_max(dtype: str | type) -> int | float:
+def _get_dtype_max_value(dtype: str | type) -> int | float:
     try:
         return np.iinfo(dtype).max
     except ValueError:
         return np.finfo(dtype).max
-
-
-def _intesects(x, other) -> bool:
-    return box(*x.bounds).intersects(other)
 
 
 def _copy_and_add_df_parallel(

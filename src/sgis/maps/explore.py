@@ -183,7 +183,9 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
     return folium.TileLayer(provider, name=name, attr=attr, max_zoom=max_zoom)
 
 
-def _single_band_to_arr(band, mask, name, raster_data_dict):
+def _single_band_to_arr_is_too_much_nodata(
+    band, mask, name, raster_data_dict, max_nodata_percentage
+) -> bool:
     if band.has_array and mask is None:
         arr = band.values
     elif band.has_array:
@@ -191,8 +193,8 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     else:
         arr = band.load(indexes=1, bounds=mask).values
 
-    if _is_too_much_nodata([arr], band.nodata):
-        return False
+    if _is_too_much_nodata([arr], band.nodata, max_nodata_percentage):
+        return True
 
     bounds: tuple = (
         _any_to_bbox_crs4326(mask, band.crs)
@@ -216,25 +218,28 @@ def _single_band_to_arr(band, mask, name, raster_data_dict):
     except Exception:
         raster_data_dict["date"] = None
 
-    return True
+    return False
 
 
 def _is_too_much_nodata(
     arrays: list[np.ndarray],
-    nodata: int | None = None,
-    max_nodata_percentage: int = 100,
+    nodata: int | None,
+    max_nodata_percentage: int,
 ) -> bool:
     return (
         any(arr.shape[0] == 0 for arr in arrays)
         or any(
             (
                 isinstance(arr, np.ma.core.MaskedArray)
-                and np.mean((arr.mask) | (arr.data == nodata) | (np.isnan(arr.data)))
+                and np.mean(((arr.mask) | (arr.data == nodata) | (np.isnan(arr.data))))
                 > (max_nodata_percentage / 100)
             )
             for arr in arrays
         )
-        or any(np.mean(arr == nodata) > (max_nodata_percentage / 100) for arr in arrays)
+        or any(
+            np.mean((arr == nodata) | (np.isnan(arr))) > (max_nodata_percentage / 100)
+            for arr in arrays
+        )
     )
 
 
@@ -271,6 +276,7 @@ class Explore(Map):
         decimals: int = 6,
         max_images: int = 10,
         max_nodata_percentage: int = 100,
+        display: bool = True,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -299,6 +305,7 @@ class Explore(Map):
             decimals: Number of decimals in the coordinates.
             max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
                 image arrays.
+            display: Whether to display the map interactively.
             **kwargs: Additional keyword arguments. Can also be geometry-like objects
                 where the key is the label.
         """
@@ -314,6 +321,7 @@ class Explore(Map):
         self.decimals = decimals
         self.max_images = max_images
         self.max_nodata_percentage = max_nodata_percentage
+        self.display = display
         self.legend = None
 
         self.browser = browser
@@ -457,8 +465,7 @@ class Explore(Map):
 
         if center is None:
             self.to_show = self._gdfs
-            self._explore(**kwargs)
-            return
+            return self._explore(**kwargs)
 
         size = size if size else 1000
 
@@ -622,6 +629,8 @@ class Explore(Map):
                 f.write(self.map._repr_html_())
         elif self.browser:
             run_html_server(self.map._repr_html_())
+        elif not self.display:
+            return
         else:
             display(self.map)
 
@@ -1345,7 +1354,10 @@ def _add_one_image(
     if len(image) < 3:
         for band in image:
             name = _determine_label(band, band.name or name)
-            _single_band_to_arr(band, mask, name, raster_data_dict)
+            if _single_band_to_arr_is_too_much_nodata(
+                band, mask, name, raster_data_dict, max_nodata_percentage
+            ):
+                return
         return raster_data_dict
 
     def load(band_id: str) -> Band:
@@ -1428,8 +1440,10 @@ def _image_collection_to_background_map(
             return out
 
         raster_data_dict = {}
-        out.append(raster_data_dict)
-        _single_band_to_arr(band, mask, name, raster_data_dict)
+        if not _single_band_to_arr_is_too_much_nodata(
+            band, mask, name, raster_data_dict, max_nodata_percentage
+        ):
+            out.append(raster_data_dict)
         return out
 
     else:
@@ -1462,7 +1476,7 @@ def _image_collection_to_background_map(
                 continue
             i = 1
             while x["label"] in {y["label"] for y in out}:
-                x["label"] = x["label"].rstrip(f"_{i}", "") + f"_{i + 1}"
+                x["label"] = x["label"].rstrip(f"_{i}") + f"_{i + 1}"
                 i += 1
 
             n_added_images += 1
