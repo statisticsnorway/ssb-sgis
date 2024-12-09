@@ -140,25 +140,6 @@ def test_explore(points_oslo, roads_oslo):
     )
     assert isinstance(e.norge_i_bilder, sg.NorgeIBilderWms)
 
-    wms = sg.NorgeIBilderWms()
-    wms.load_tiles()
-    try:
-        os.remove(sg.maps.norge_i_bilder_wms.JSON_PATH)
-    except FileNotFoundError:
-        pass
-    with open(sg.maps.norge_i_bilder_wms.JSON_PATH, "w", encoding="utf-8") as file:
-        json.dump(
-            [
-                {
-                    key: value if key != "bbox" else value.wkt
-                    for key, value in tile.items()
-                }
-                for tile in wms.tiles
-            ],
-            file,
-            ensure_ascii=False,
-        )
-
     inner_test_center(r300, r200, r100, p)
 
     sg.explore(r300, "meters", r100, bygdoy=7000)
@@ -286,6 +267,27 @@ def not_test_explore(points_oslo, roads_oslo):
     r100 = roads.clip(p.buffer(100))
 
     sg.explore(points_oslo, center="akersveien 26")
+
+
+def not_test_wms_json():
+    wms = sg.NorgeIBilderWms()
+    wms.load_tiles()
+    try:
+        os.remove(sg.maps.norge_i_bilder_wms.JSON_PATH)
+    except FileNotFoundError:
+        pass
+    with open(sg.maps.norge_i_bilder_wms.JSON_PATH, "w", encoding="utf-8") as file:
+        json.dump(
+            [
+                {
+                    key: value if key != "bbox" else value.wkt
+                    for key, value in tile.items()
+                }
+                for tile in wms.tiles
+            ],
+            file,
+            ensure_ascii=False,
+        )
 
 
 def main():

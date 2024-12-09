@@ -11,7 +11,6 @@ import folium
 import shapely
 
 from ..geopandas_tools.conversion import to_shapely
-from ..io.opener import opener
 
 JSON_PATH = Path(__file__).parent / "norge_i_bilder.json"
 
@@ -105,6 +104,20 @@ class NorgeIBilderWms:
 
             name = tile["name"]
 
+            if (
+                not name
+                or not any(year in name for year in self.years)
+                or (
+                    self.contains
+                    and not any(re.search(x, name.lower()) for x in self.contains)
+                )
+                or (
+                    self.not_contains
+                    and any(re.search(x, name.lower()) for x in self.not_contains)
+                )
+            ):
+                continue
+
             all_tiles[name] = folium.WmsTileLayer(
                 url="https://wms.geonorge.no/skwms1/wms.nib-prosjekter",
                 name=name,
@@ -135,9 +148,8 @@ class NorgeIBilderWms:
 
         if all(year in DEFAULT_YEARS for year in self.years):
             try:
-                with opener(JSON_PATH, "r") as file:
-                    with open(file, encoding="utf-8") as buffer:
-                        self.tiles = json.load(buffer)
+                with open(JSON_PATH, encoding="utf-8") as file:
+                    self.tiles = json.load(file)
             except FileNotFoundError:
                 self.tiles = None
                 return
