@@ -96,6 +96,7 @@ from .maps.maps import explore
 from .maps.maps import explore_locals
 from .maps.maps import qtm
 from .maps.maps import samplemap
+from .maps.norge_i_bilder_wms import NorgeIBilderWms
 from .maps.thematicmap import ThematicMap
 from .maps.tilesources import kartverket as kartverket_tiles
 from .maps.tilesources import xyz as xyztiles
