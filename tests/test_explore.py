@@ -1,4 +1,7 @@
 # %%
+import datetime
+import json
+import os
 import warnings
 from pathlib import Path
 
@@ -114,8 +117,29 @@ def test_explore(points_oslo, roads_oslo):
     roads["geometry"] = roads.buffer(3)
 
     r300 = roads.clip(p.buffer(300))
+
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
+
+    e = sg.explore(
+        r300,
+        "meters",
+        r100,
+        bygdoy=7000,
+        norge_i_bilder=True,
+        tiles=["openstreetmap"],
+    )
+    assert isinstance(e.norge_i_bilder, sg.NorgeIBilderWms)
+    e = sg.explore(
+        r300,
+        "meters",
+        r100,
+        bygdoy=7000,
+        norge_i_bilder=sg.NorgeIBilderWms(
+            years=[2022, 2023, 2024], not_contains="sentinel"
+        ),
+    )
+    assert isinstance(e.norge_i_bilder, sg.NorgeIBilderWms)
 
     inner_test_center(r300, r200, r100, p)
 
@@ -246,17 +270,42 @@ def not_test_explore(points_oslo, roads_oslo):
     sg.explore(points_oslo, center="akersveien 26")
 
 
+def not_test_wms_json():
+    wms = sg.NorgeIBilderWms(years=range(1999, datetime.datetime.now().year + 1))
+    wms.load_tiles()
+    try:
+        os.remove(sg.maps.norge_i_bilder_wms.JSON_PATH)
+    except FileNotFoundError:
+        pass
+    with open(sg.maps.norge_i_bilder_wms.JSON_PATH, "w", encoding="utf-8") as file:
+        json.dump(
+            [
+                {
+                    key: value if key != "bbox" else value.wkt
+                    for key, value in tile.items()
+                }
+                for tile in wms.tiles
+            ],
+            file,
+            ensure_ascii=False,
+        )
+
+
 def main():
 
     from oslo import points_oslo
     from oslo import roads_oslo
 
-    test_image_collection()
+    not_test_wms_json()
+
     test_explore(points_oslo(), roads_oslo())
+    test_image_collection()
     # not_test_explore(points_oslo(), roads_oslo())
 
 
 if __name__ == "__main__":
 
     main()
-    # cProfile.run("main()", sort="cumtime")
+    import cProfile
+
+    cProfile.run("main()", sort="cumtime")
