@@ -1,4 +1,5 @@
 # %%
+import datetime
 import json
 import os
 import warnings
@@ -270,7 +271,7 @@ def not_test_explore(points_oslo, roads_oslo):
 
 
 def not_test_wms_json():
-    wms = sg.NorgeIBilderWms()
+    wms = sg.NorgeIBilderWms(years=range(1999, datetime.datetime.now().year + 1))
     wms.load_tiles()
     try:
         os.remove(sg.maps.norge_i_bilder_wms.JSON_PATH)
@@ -294,6 +295,8 @@ def main():
 
     from oslo import points_oslo
     from oslo import roads_oslo
+
+    not_test_wms_json()
 
     test_explore(points_oslo(), roads_oslo())
     test_image_collection()
