@@ -31,6 +31,7 @@ from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
 from .explore import Explore
 from .map import Map
+from .norge_i_bilder_wms import NorgeIBilderWms
 from .thematicmap import ThematicMap
 
 try:
@@ -57,6 +58,9 @@ def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
         "akersveien": (10.7476367, 59.9222191),
         "kongsvinger": (12.0035242, 60.1875279),
         "stavanger": (5.6960601, 58.8946196),
+        "trondheim": (10.39677054, 63.42687816),
+        "trondhjem": (10.39677054, 63.42687816),
+        "bergen": (5.32574594, 60.39550309),
         "volda": (6.0705987, 62.146643),
     }
 
@@ -87,6 +91,7 @@ def explore(
     size: int | None = None,
     max_images: int = 10,
     max_nodata_percentage: int = 100,
+    norge_i_bilder: bool | NorgeIBilderWms = False,
     **kwargs,
 ) -> Explore:
     """Interactive map of GeoDataFrames with layers that can be toggled on/off.
@@ -118,6 +123,9 @@ def explore(
             map. Defaults to 10.
         max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
             image arrays.
+        norge_i_bilder: If True, all Norge i bilder images in bounds will be loaded
+            into the map. Can optionally be set to an instance of NorgeIBilderWms to filter
+            years and names.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -167,6 +175,7 @@ def explore(
             max_zoom=max_zoom,
             max_images=max_images,
             max_nodata_percentage=max_nodata_percentage,
+            norge_i_bilder=norge_i_bilder,
             **kwargs,
         )
 
@@ -224,6 +233,7 @@ def explore(
             max_zoom=max_zoom,
             max_images=max_images,
             max_nodata_percentage=max_nodata_percentage,
+            norge_i_bilder=norge_i_bilder,
             **kwargs,
         )
 
@@ -235,6 +245,7 @@ def explore(
         smooth_factor=smooth_factor,
         max_images=max_images,
         max_nodata_percentage=max_nodata_percentage,
+        norge_i_bilder=norge_i_bilder,
         **kwargs,
     )
 
@@ -260,6 +271,7 @@ def samplemap(
     browser: bool = False,
     max_images: int = 10,
     max_nodata_percentage: int = 100,
+    norge_i_bilder: bool | NorgeIBilderWms = False,
     **kwargs,
 ) -> Explore:
     """Shows an interactive map of a random area of GeoDataFrames.
@@ -295,6 +307,9 @@ def samplemap(
             map. Defaults to 10.
         max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
             image arrays.
+        norge_i_bilder: If True, all Norge i bilder images in bounds will be loaded
+            into the map. Can optionally be set to an instance of NorgeIBilderWms to filter
+            years and names.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -378,6 +393,7 @@ def samplemap(
         smooth_factor=smooth_factor,
         max_images=max_images,
         max_nodata_percentage=max_nodata_percentage,
+        norge_i_bilder=norge_i_bilder,
         **kwargs,
     )
 
@@ -392,6 +408,7 @@ def clipmap(
     browser: bool = False,
     max_images: int = 10,
     max_nodata_percentage: int = 100,
+    norge_i_bilder: bool | NorgeIBilderWms = False,
     **kwargs,
 ) -> Explore | Map:
     """Shows an interactive map of a of GeoDataFrames clipped to the mask extent.
@@ -422,6 +439,9 @@ def clipmap(
             map. Defaults to 10.
         max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
             image arrays.
+        norge_i_bilder: If True, all Norge i bilder images in bounds will be loaded
+            into the map. Can optionally be set to an instance of NorgeIBilderWms to filter
+            years and names.
         **kwargs: Keyword arguments to pass to geopandas.GeoDataFrame.explore, for
             instance 'cmap' to change the colors, 'scheme' to change how the data
             is grouped. This defaults to 'fisherjenkssampled' for numeric data.
@@ -457,6 +477,7 @@ def clipmap(
             smooth_factor=smooth_factor,
             max_images=max_images,
             max_nodata_percentage=max_nodata_percentage,
+            norge_i_bilder=norge_i_bilder,
             **kwargs,
         )
         m.mask = mask

@@ -44,6 +44,7 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
+from .norge_i_bilder_wms import NorgeIBilderWms
 
 try:
     from ..raster.image_collection import Band
@@ -157,7 +158,9 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
     except TypeError:
         name = tile
 
-    if not isinstance(tile, str):
+    if isinstance(tile, folium.map.Layer) and not isinstance(tile, folium.GeoJson):
+        return tile
+    elif not isinstance(tile, str):
         try:
             return folium.TileLayer(tile, name=name, max_zoom=max_zoom)
         except TypeError:
@@ -277,6 +280,7 @@ class Explore(Map):
         max_images: int = 10,
         max_nodata_percentage: int = 100,
         display: bool = True,
+        norge_i_bilder: bool = False,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -306,6 +310,9 @@ class Explore(Map):
             max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
                 image arrays.
             display: Whether to display the map interactively.
+            norge_i_bilder: If True, all Norge i bilder images in bounds will be loaded
+                into the map. Can optionally be set to an instance of NorgeIBilderWms to filter
+                years and names.
             **kwargs: Additional keyword arguments. Can also be geometry-like objects
                 where the key is the label.
         """
@@ -322,6 +329,7 @@ class Explore(Map):
         self.max_images = max_images
         self.max_nodata_percentage = max_nodata_percentage
         self.display = display
+        self.norge_i_bilder = norge_i_bilder
         self.legend = None
 
         self.browser = browser
@@ -760,6 +768,14 @@ class Explore(Map):
         for tile in tiles:
             to_tile(tile, max_zoom=self.max_zoom).add_to(mapobj)
 
+    def _add_norge_i_bilder(self, map_: folium.Map, bbox: Any) -> None:
+        if not isinstance(self.norge_i_bilder, NorgeIBilderWms):
+            self.norge_i_bilder = NorgeIBilderWms()
+
+        tiles = self.norge_i_bilder.get_tiles(bbox, max_zoom=self.max_zoom)
+        for tile in tiles.values():
+            map_.add_child(tile)
+
     def _create_continous_map(self):
         self._prepare_continous_map()
         if self.scheme:
@@ -966,6 +982,9 @@ class Explore(Map):
             m.get_root().add_child(style)
             # folium.LayerControl(collapsed=False).add_to(m)
 
+        if self.norge_i_bilder:
+            self._add_norge_i_bilder(m, bounds)
+
         return m
 
     def _make_geojson(
@@ -1112,6 +1131,7 @@ class Explore(Map):
             highlight_function=highlight_function,
             smooth_factor=self.smooth_factor,
             show=show,
+            # on_each_feature="function(feature,layer){layer.bindTooltip(feature.properties.NAME,{permanent:true,direction:'center'});return layer;}",
             **kwargs,
         )
 
@@ -1141,6 +1161,8 @@ def _tooltip_popup(
         return folium.GeoJsonTooltip(fields, **kwargs)
     elif type_ == "popup":
         return folium.GeoJsonPopup(fields, **kwargs)
+    else:
+        raise ValueError(type_)
 
 
 def _intersects_if_not_none_or_empty(obj: Any, other: Any) -> bool:
