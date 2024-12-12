@@ -126,20 +126,9 @@ def test_explore(points_oslo, roads_oslo):
         "meters",
         r100,
         bygdoy=7000,
-        norge_i_bilder=True,
-        tiles=["openstreetmap"],
+        wms=sg.NorgeIBilderWms(years=[2022, 2023, 2024], not_contains="sentinel"),
     )
-    assert isinstance(e.norge_i_bilder, sg.NorgeIBilderWms)
-    e = sg.explore(
-        r300,
-        "meters",
-        r100,
-        bygdoy=7000,
-        norge_i_bilder=sg.NorgeIBilderWms(
-            years=[2022, 2023, 2024], not_contains="sentinel"
-        ),
-    )
-    assert isinstance(e.norge_i_bilder, sg.NorgeIBilderWms)
+    assert isinstance(next(iter(e.wms)), sg.NorgeIBilderWms)
 
     inner_test_center(r300, r200, r100, p)
 
