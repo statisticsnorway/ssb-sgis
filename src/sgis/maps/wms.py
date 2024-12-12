@@ -1,3 +1,4 @@
+import abc
 import datetime
 import json
 import re
@@ -24,7 +25,28 @@ DEFAULT_YEARS: tuple[str] = tuple(
 
 
 @dataclass
-class NorgeIBilderWms:
+class WmsLoader(abc.ABC):
+    """Abstract base class for wms loaders.
+
+    Child classes must implement the method 'get_tiles',
+    which should return a list of folium.WmsTileLayer.
+    """
+
+    @abc.abstractmethod
+    def get_tiles(self, bbox: Any, max_zoom: int = 40) -> list[folium.WmsTileLayer]:
+        """Get all tiles intersecting with a bbox."""
+
+    @abc.abstractmethod
+    def load_tiles(self) -> None:
+        """Load all tiles into self.tiles.
+
+        Not needed in sgis.explore.
+        """
+        pass
+
+
+@dataclass
+class NorgeIBilderWms(WmsLoader):
     """Loads Norge i bilder tiles as folium.WmsTiles."""
 
     years: Iterable[int | str] = DEFAULT_YEARS

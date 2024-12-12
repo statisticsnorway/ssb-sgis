@@ -44,7 +44,7 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
-from .norge_i_bilder_wms import NorgeIBilderWms
+from .wms import WmsLoader
 
 try:
     from ..raster.image_collection import Band
@@ -280,7 +280,7 @@ class Explore(Map):
         max_images: int = 10,
         max_nodata_percentage: int = 100,
         display: bool = True,
-        norge_i_bilder: bool = False,
+        wms: WmsLoader | None = None,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -310,9 +310,7 @@ class Explore(Map):
             max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
                 image arrays.
             display: Whether to display the map interactively.
-            norge_i_bilder: If True, all Norge i bilder images in bounds will be loaded
-                into the map. Can optionally be set to an instance of NorgeIBilderWms to filter
-                years and names.
+            wms: A WmsLoader instance for loading image tiles as layers. E.g. NorgeIBilderWms.
             **kwargs: Additional keyword arguments. Can also be geometry-like objects
                 where the key is the label.
         """
@@ -329,7 +327,7 @@ class Explore(Map):
         self.max_images = max_images
         self.max_nodata_percentage = max_nodata_percentage
         self.display = display
-        self.norge_i_bilder = norge_i_bilder
+        self.wms = [wms] if isinstance(wms, WmsLoader) else wms
         self.legend = None
 
         self.browser = browser
@@ -768,13 +766,11 @@ class Explore(Map):
         for tile in tiles:
             to_tile(tile, max_zoom=self.max_zoom).add_to(mapobj)
 
-    def _add_norge_i_bilder(self, map_: folium.Map, bbox: Any) -> None:
-        if not isinstance(self.norge_i_bilder, NorgeIBilderWms):
-            self.norge_i_bilder = NorgeIBilderWms()
-
-        tiles = self.norge_i_bilder.get_tiles(bbox, max_zoom=self.max_zoom)
-        for tile in tiles.values():
-            map_.add_child(tile)
+    def _add_wms(self, map_: folium.Map, bbox: Any) -> None:
+        for wms in self.wms:
+            tiles = wms.get_tiles(bbox, max_zoom=self.max_zoom)
+            for tile in tiles.values():
+                map_.add_child(tile)
 
     def _create_continous_map(self):
         self._prepare_continous_map()
@@ -982,8 +978,8 @@ class Explore(Map):
             m.get_root().add_child(style)
             # folium.LayerControl(collapsed=False).add_to(m)
 
-        if self.norge_i_bilder:
-            self._add_norge_i_bilder(m, bounds)
+        if self.wms:
+            self._add_wms(m, bounds)
 
         return m
 
