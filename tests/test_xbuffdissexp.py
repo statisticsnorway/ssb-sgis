@@ -188,7 +188,7 @@ def test_buffdissexp(gdf_fixture):
         copy = gdf_fixture.copy()
 
         # with geopandas
-        copy["geometry"] = copy.buffer(distance, resolution=50).make_valid()
+        copy["geometry"] = copy.buffer(distance, resolution=30).make_valid()
         copy = copy.dissolve(by="txtcol")
         copy["geometry"] = copy.make_valid()
         copy = copy.explode(index_parts=False)
@@ -215,7 +215,7 @@ def test_buffdiss(gdf_fixture):
         copy = gdf_fixture.copy()
 
         # with geopandas
-        copy["geometry"] = copy.buffer(distance, resolution=50).make_valid()
+        copy["geometry"] = copy.buffer(distance, resolution=30).make_valid()
         copy = copy.dissolve(by="txtcol")
         copy["geometry"] = copy.make_valid()
 
