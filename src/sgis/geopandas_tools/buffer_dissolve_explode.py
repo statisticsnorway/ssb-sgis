@@ -5,7 +5,7 @@ for the following:
 
 - Geometries are made valid after buffer and dissolve.
 
-- The buffer resolution defaults to 50 (geopandas' default is 16).
+- The buffer resolution defaults to 30 (geopandas' default is 16).
 
 - If 'by' is not specified, the index will be labeled 0, 1, …, n - 1 after exploded, instead of 0, 0, …, 0 as it will with the geopandas defaults.
 
@@ -49,7 +49,7 @@ def buffdissexp(
     gdf: GeoDataFrame,
     distance: int | float,
     *,
-    resolution: int = 50,
+    resolution: int = 30,
     index_parts: bool = False,
     copy: bool = True,
     grid_size: float | int | None = None,
@@ -68,7 +68,7 @@ def buffdissexp(
         distance: the distance (meters, degrees, depending on the crs) to buffer
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
-            Here defaults to 50, as opposed to the default 16 in geopandas.
+            Here defaults to 30, as opposed to the default 16 in geopandas.
         index_parts: If False (default), the index after dissolve is respected. If
             True, an integer index level is added during explode.
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
@@ -101,7 +101,7 @@ def buffdissexp(
 def buffdiss(
     gdf: GeoDataFrame,
     distance: int | float,
-    resolution: int = 50,
+    resolution: int = 30,
     copy: bool = True,
     n_jobs: int = 1,
     join_style: int | str = "round",
@@ -119,7 +119,7 @@ def buffdiss(
         distance: the distance (meters, degrees, depending on the crs) to buffer
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
-            Here defaults to 50, as opposed to the default 16 in geopandas.
+            Here defaults to 30, as opposed to the default 16 in geopandas.
         join_style: Buffer join style.
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         n_jobs: Number of threads to use. Defaults to 1.
@@ -511,7 +511,7 @@ def buffdissexp_by_cluster(
     gdf: GeoDataFrame,
     distance: int | float,
     *,
-    resolution: int = 50,
+    resolution: int = 30,
     copy: bool = True,
     n_jobs: int = 1,
     join_style: int | str = "round",
@@ -532,7 +532,7 @@ def buffdissexp_by_cluster(
         distance: the distance (meters, degrees, depending on the crs) to buffer
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
-            Here defaults to 50, as opposed to the default 16 in geopandas.
+            Here defaults to 30, as opposed to the default 16 in geopandas.
         join_style: Buffer join style.
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         n_jobs: int = 1,
@@ -554,7 +554,7 @@ def buffdissexp_by_cluster(
 def buff(
     gdf: GeoDataFrame | GeoSeries,
     distance: int | float,
-    resolution: int = 50,
+    resolution: int = 30,
     copy: bool = True,
     join_style: int | str = "round",
     **buffer_kwargs,
@@ -566,7 +566,7 @@ def buff(
         distance: the distance (meters, degrees, depending on the crs) to buffer
             the geometry by
         resolution: The number of segments used to approximate a quarter circle.
-            Here defaults to 50, as opposed to the default 16 in geopandas.
+            Here defaults to 30, as opposed to the default 16 in geopandas.
         join_style: Buffer join style.
         copy: Whether to copy the GeoDataFrame before buffering. Defaults to True.
         **buffer_kwargs: additional keyword arguments passed to geopandas' buffer.

@@ -590,7 +590,7 @@ class Parallel:
         with_neighbors: bool = False,
         funcdict: dict[str, Callable] | None = None,
         file_type: str = "parquet",
-        muni_number_col: str = "KOMMUNENR",
+        muni_number_col: str = "komm_nr",
         strict: bool = False,
         write_empty: bool = False,
         id_assign_func: Callable | functools.partial = clean_overlay,
@@ -622,7 +622,7 @@ class Parallel:
                 the data is read.
             file_type: Defaults to parquet.
             muni_number_col: String column name with municipality
-                number/identifier. Defaults to KOMMUNENR. If the column is not present
+                number/identifier. Defaults to komm_nr. If the column is not present
                 in the data to be split, the data will be intersected with the
                 municipalities.
             strict: If False (default), the dictionaries 'out_data' and 'funcdict' does
@@ -761,7 +761,7 @@ def write_municipality_data(
     out_folder: str,
     municipalities: GeoDataFrame | list[str] | None = None,
     with_neighbors: bool = False,
-    muni_number_col: str = "KOMMUNENR",
+    muni_number_col: str = "komm_nr",
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
@@ -840,7 +840,7 @@ def _write_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
     municipalities: GeoDataFrame | list[str] | None = None,
-    muni_number_col: str = "KOMMUNENR",
+    muni_number_col: str = "komm_nr",
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
@@ -896,7 +896,7 @@ def _write_neighbor_municipality_data(
     data: str | GeoDataFrame | DataFrame,
     out_folder: str,
     municipalities: GeoDataFrame,
-    muni_number_col: str = "KOMMUNENR",
+    muni_number_col: str = "komm_nr",
     file_type: str = "parquet",
     func: Callable | None = None,
     write_empty: bool = False,
