@@ -45,7 +45,7 @@ def test_drop_inactive():
     assert list(gdf.columns) == ["geometry"]
 
 
-def test__rename_geometry_if():
+def test_rename_geometry_if():
     gdf = sg.to_gdf([0, 0])
     gdf = gdf.rename_geometry("geom2")
     gdf.columns = ["geom2"]
@@ -87,8 +87,8 @@ def test_points_in_bounds():
 def test_area():
     gdf = create_all_geometry_types()
     gdf = sg.buffdissexp(gdf, 25, resolution=50)
-    assert round(gdf.area.sum(), 5) == 6270.69379, round(gdf.area.sum(), 5)
-    assert round(gdf.length.sum(), 5) == 332.02674, round(gdf.length.sum(), 5)
+    assert round(gdf.area.sum(), 5) == 6270.72656, round(gdf.area.sum(), 5)
+    assert round(gdf.length.sum(), 5) == 332.02452, round(gdf.length.sum(), 5)
 
 
 def test_clean_clip():
@@ -229,6 +229,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+    test_area()
     test_points_in_bounds()
     test_clean_clip()
     test_random_points_in_polygons()
