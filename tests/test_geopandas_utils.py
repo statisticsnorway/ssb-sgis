@@ -86,7 +86,7 @@ def test_points_in_bounds():
 
 def test_area():
     gdf = create_all_geometry_types()
-    gdf = sg.buffdissexp(gdf, 25)
+    gdf = sg.buffdissexp(gdf, 25, resolution=50)
     assert round(gdf.area.sum(), 5) == 6270.69379, round(gdf.area.sum(), 5)
     assert round(gdf.length.sum(), 5) == 332.02674, round(gdf.length.sum(), 5)
 
