@@ -669,6 +669,7 @@ def bounds_to_points(
     0  MULTIPOINT (1.00000 0.00000, 1.00000 1.00000, ...
     1                       MULTIPOINT (0.00000 0.00000)
     """
+    gdf = gdf.copy() if copy else gdf
     as_bounds = bounds_to_polygon(gdf, copy=copy)
     if isinstance(gdf, GeoSeries):
         return GeoSeries(extract_unique_points(as_bounds), index=gdf.index)
