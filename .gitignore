@@ -17,6 +17,7 @@
 *.xls
 *.xlsx
 *.zip
+*.log
 
 # Allow .parquet files below the testdata directory
 !tests/testdata/**/*.parquet

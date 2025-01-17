@@ -15,6 +15,7 @@ import pandas as pd
 import pyarrow
 import pyarrow.parquet as pq
 import shapely
+from gcsfs import GCSFileSystem
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from geopandas.io.arrow import _geopandas_to_arrow
@@ -30,7 +31,7 @@ PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
 def read_geopandas(
     gcs_path: str | Path | list[str | Path] | tuple[str | Path] | GeoSeries,
     pandas_fallback: bool = False,
-    file_system: dp.gcs.GCSFileSystem | None = None,
+    file_system: GCSFileSystem | None = None,
     mask: GeoSeries | GeoDataFrame | shapely.Geometry | tuple | None = None,
     threads: int | None = None,
     **kwargs,
@@ -138,8 +139,7 @@ def read_geopandas(
                     raise e.__class__(
                         f"{e.__class__.__name__}: {e} for {gcs_path}."
                     ) from e
-                df = dp.read_pandas(gcs_path, **kwargs)
-
+                df = pd.read_parquet(file, **kwargs)
                 if pandas_fallback or not len(df):
                     return df
                 else:
@@ -157,7 +157,7 @@ def read_geopandas(
             except ValueError as e:
                 if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
                     raise e
-                df = dp.read_pandas(gcs_path, **kwargs)
+                df = pd.read_parquet(file, **kwargs)
 
                 if pandas_fallback or not len(df):
                     return df
@@ -168,7 +168,7 @@ def read_geopandas(
                     ) from e
             except Exception as e:
                 raise e.__class__(
-                    f"{e.__class__.__name__}: {e} for {df}." + more_txt
+                    f"{e.__class__.__name__}: {e} for {gcs_path}." + more_txt
                 ) from e
 
     if mask is not None:
@@ -177,7 +177,7 @@ def read_geopandas(
 
 
 def _get_bounds_parquet(
-    path: str | Path, file_system: dp.gcs.GCSFileSystem, pandas_fallback: bool = False
+    path: str | Path, file_system: GCSFileSystem, pandas_fallback: bool = False
 ) -> tuple[list[float], dict] | tuple[None, None]:
     with file_system.open(path) as f:
         try:
@@ -202,7 +202,7 @@ def _get_bounds_parquet(
     return meta["bbox"], meta["crs"]
 
 
-def _get_columns(path: str | Path, file_system: dp.gcs.GCSFileSystem) -> pd.Index:
+def _get_columns(path: str | Path, file_system: GCSFileSystem) -> pd.Index:
     with file_system.open(path) as f:
         schema = pq.read_schema(f)
         index_cols = _get_index_cols(schema)
@@ -216,7 +216,7 @@ def _get_index_cols(schema: pyarrow.Schema) -> list[str]:
 
 def get_bounds_series(
     paths: list[str | Path] | tuple[str | Path],
-    file_system: dp.gcs.GCSFileSystem | None = None,
+    file_system: GCSFileSystem | None = None,
     threads: int | None = None,
     pandas_fallback: bool = False,
 ) -> GeoSeries:
@@ -227,7 +227,7 @@ def get_bounds_series(
 
     Args:
         paths: Iterable of file paths in gcs.
-        file_system: Optional instance of dp.gcs.GCSFileSystem.
+        file_system: Optional instance of GCSFileSystem.
             If None, an instance is created within the function.
             Note that this is slower in long loops.
         threads: Number of threads to use if reading multiple files. Defaults to
@@ -307,7 +307,7 @@ def write_geopandas(
     gcs_path: str | Path,
     overwrite: bool = True,
     pandas_fallback: bool = False,
-    file_system: dp.gcs.GCSFileSystem | None = None,
+    file_system: GCSFileSystem | None = None,
     write_covering_bbox: bool = False,
     **kwargs,
 ) -> None:

@@ -1774,8 +1774,8 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
-    test_merge()
     test_ndvi()
+    test_merge()
     test_explore()
     test_pixelwise()
     test_ndvi_predictions()

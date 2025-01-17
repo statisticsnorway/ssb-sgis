@@ -280,7 +280,10 @@ class ThematicMap(Map):
         return self
 
     def add_background(
-        self, gdf: GeoDataFrame, color: str | None = None
+        self,
+        gdf: GeoDataFrame,
+        color: str | None = None,
+        **kwargs,
     ) -> "ThematicMap":
         """Add a GeoDataFrame as a background layer.
 
@@ -288,6 +291,7 @@ class ThematicMap(Map):
             gdf: a GeoDataFrame.
             color: Single color. Defaults to gray (shade depends on whether the map
                 facecolor is black or white).
+            **kwargs: Keyword arguments sent to GeoDataFrame.plot.
         """
         if color:
             self.bg_gdf_color = color
@@ -299,6 +303,7 @@ class ThematicMap(Map):
             )
         if self.bounds is None:
             self.bounds = to_bbox(self._gdf.total_bounds)
+        self.bg_gdf_kwargs = kwargs
         return self
 
     def plot(self, **kwargs) -> None:
@@ -515,7 +520,9 @@ class ThematicMap(Map):
     def _actually_add_background(self) -> None:
         self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
         self.ax.set_ylim([self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03])
-        self._background_gdfs.plot(ax=self.ax, color=self.bg_gdf_color)
+        self._background_gdfs.plot(
+            ax=self.ax, color=self.bg_gdf_color, **self.bg_gdf_kwargs
+        )
 
     @staticmethod
     def _get_matplotlib_figure_and_axix(
