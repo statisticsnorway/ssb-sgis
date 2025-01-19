@@ -1,10 +1,6 @@
-config = {
-    "n_jobs": 1,
-}
-
-
 import sgis.raster.indices as indices
 
+from .conf import config
 from .geopandas_tools.bounds import Gridlooper
 from .geopandas_tools.bounds import bounds_to_points
 from .geopandas_tools.bounds import bounds_to_polygon
