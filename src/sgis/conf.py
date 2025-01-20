@@ -5,7 +5,9 @@ except ImportError:
     class GCSFileSystem:
         """Placeholder."""
 
-        raise ImportError
+        def __init__(self, *args, **kwargs) -> None:
+            """Placeholder."""
+            raise ImportError("gcsfs")
 
 
 config = {
