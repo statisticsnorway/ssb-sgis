@@ -397,13 +397,13 @@ def write_geopandas(
                 file_system,
                 **kwargs,
             )
-        with file_system.open(gcs_path, mode="wb") as buffer:
+        with file_system.open(gcs_path, mode="wb") as file:
             table = _geopandas_to_arrow(
                 df,
                 index=df.index,
                 schema_version=None,
             )
-            pq.write_table(table, buffer, compression="snappy", **kwargs)
+            pq.write_table(table, file, compression="snappy", **kwargs)
         return
 
     layer = kwargs.pop("layer", None)
@@ -472,16 +472,15 @@ def _write_partitioned_geoparquet(df, path, partition_cols, file_system, **kwarg
     def threaded_write(path_rows):
         new_path, rows = path_rows
         for sibling_path in glob_func(str(Path(new_path).with_name("**"))):
-            if paths_are_equal(sibling_path, Path(new_path).parent):
-                continue
-            _remove_file(sibling_path, file_system)
-        with file_system.open(new_path, mode="wb") as buffer:
+            if not paths_are_equal(sibling_path, Path(new_path).parent):
+                _remove_file(sibling_path, file_system)
+        with file_system.open(new_path, mode="wb") as file:
             table = _geopandas_to_arrow(
                 rows,
                 index=df.index,
                 schema_version=None,
             )
-            pq.write_table(table, buffer, compression="snappy", **kwargs)
+            pq.write_table(table, file, compression="snappy", **kwargs)
 
     with ThreadPoolExecutor() as executor:
         list(executor.map(threaded_write, args))

@@ -45,6 +45,8 @@ df["komm_nr"] = (
 )
 df["fylke_nr"] = df["komm_nr"].str[:2]
 df["x"] = range(len(df))
+df["x"] = df["x"].astype("UInt32")
+df["komm_nr"] = df["komm_nr"].astype(pd.StringDtype("pyarrow"))
 
 df = df[cols_should_be]
 
@@ -151,10 +153,13 @@ assert isinstance(df2, gpd.GeoDataFrame)
 df2 = sg.read_geopandas(
     Path(path) / "komm_nr=0301",
     file_system=LocalFileSystem(),
-)
+).convert_dtypes()
 assert len(df2) == 1, len(df2)
 assert len(df2.columns) == len(cols_should_be), list(df2)
 assert isinstance(df2, gpd.GeoDataFrame)
+assert [str(x) for x in df2.dtypes] == ["string", "string", "UInt32", "geometry"], [
+    str(x) for x in df2.dtypes
+]
 
 
 # with vanilla pandas
@@ -168,8 +173,12 @@ df2 = pd.read_parquet(
             ("geometry", pa.binary()),
         ]
     ),
-)
+).convert_dtypes()
 assert len(df2) == sum(n_should_be), (len(df2), sum(n_should_be))
+assert list(df2) == cols_should_be, list(df2)
+assert [str(x) for x in df2.dtypes] == ["string", "string", "Int16", "object"], [
+    str(x) for x in df2.dtypes
+]
 
 for n, kommnr in zip(
     n_should_be, ["0301", "4601", "4602", "3201", "5501", "5001"], strict=True
@@ -190,7 +199,7 @@ for n, kommnr in zip(
             ]
         ),
         filters=[f"komm_nr = {kommnr}".split()],
-    )
+    ).convert_dtypes()
     assert len(df2) == n
     assert list(df2) == cols_should_be, list(df2)
 
@@ -207,9 +216,10 @@ df2 = sg.read_geopandas(
     ),
     mask=df[df["komm_nr"] == "4601"].geometry.iloc[0].buffer(0.1),
     file_system=LocalFileSystem(),
-)
+).convert_dtypes()
+
 assert len(df2), df2
-assert [str(x) for x in df2.dtypes] == ["object", "uint16", "geometry"], [
+assert [str(x) for x in df2.dtypes] == ["string", "UInt16", "geometry"], [
     str(x) for x in df2.dtypes
 ]
 assert isinstance(df2, gpd.GeoDataFrame)
