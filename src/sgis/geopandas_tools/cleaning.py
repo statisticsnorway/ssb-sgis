@@ -1,5 +1,6 @@
 import re
 import warnings
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -35,7 +36,6 @@ from .general import sort_large_first
 from .general import sort_small_first
 from .general import to_lines
 from .geometry_types import make_all_singlepart
-from .geometry_types import to_single_geom_type
 from .overlay import clean_overlay
 from .polygon_operations import close_all_holes
 from .polygon_operations import eliminate_by_longest
@@ -81,7 +81,8 @@ def coverage_clean(
             for polygons to be eliminated. Any gap, hole, sliver or double
             surface that are empty after a negative buffer of tolerance / 2
             are eliminated into the neighbor with the longest shared border.
-        duplicate action: Either "fix", "error" or "ignore".
+        mask: Unused.
+        duplicate_action: Either "fix", "error" or "ignore".
             If "fix" (default), double surfaces thicker than the
             tolerance will be updated from top to bottom (function update_geometries)
             and then dissolved into the neighbor polygon with the longest shared border.
@@ -89,6 +90,7 @@ def coverage_clean(
             than the tolerance. If "ignore", double surfaces are kept as is.
         grid_sizes: One or more grid_sizes used in overlay and dissolve operations that
             might raise a GEOSException. Defaults to (None,), meaning no grid_sizes.
+        logger: Optional.
 
     Returns:
         A GeoDataFrame with cleaned polygons.
@@ -326,7 +328,7 @@ def coverage_clean(
     return cleaned
 
 
-def safe_simplify(gdf, tolerance: float | int):
+def safe_simplify(gdf, tolerance: float | int) -> GeoDataFrame:
     """Simplify only if the resulting area is no more than 1 percent larger.
 
     Because simplifying can result in holes being filled.
@@ -341,221 +343,6 @@ def safe_simplify(gdf, tolerance: float | int):
     )
 
     return copied
-
-
-def simplify_and_put_small_on_top(gdf, tolerance: float | int, grid_size=None):
-    copied = sort_small_first(gdf)
-    copied.geometry = shapely.make_valid(
-        shapely.simplify(
-            shapely.segmentize(copied.geometry.values, tolerance), tolerance=tolerance
-        )
-    )
-    return update_geometries(copied, geom_type="polygon", grid_size=grid_size)
-
-
-def split_spiky_polygons(
-    gdf: GeoDataFrame, tolerance: int | float, grid_sizes: tuple[None | int] = (None,)
-) -> GeoDataFrame:
-    if not len(gdf):
-        return gdf
-
-    gdf = to_single_geom_type(make_all_singlepart(gdf), "polygon")
-
-    if not gdf.index.is_unique:
-        gdf = gdf.reset_index(drop=True)
-
-    # remove both inwards and outwards spikes
-    polygons_without_spikes = (
-        gdf.buffer(-tolerance / 2, join_style=2)
-        .buffer(tolerance, join_style=2)
-        .buffer(-tolerance / 2, join_style=2)
-    )
-
-    donuts_around_polygons = to_lines(
-        polygons_without_spikes.to_frame("geometry")
-    ).pipe(buff, 1e-3, copy=False)
-
-    # donuts_around_polygons["_poly_idx"] = donuts_around_polygons.index
-
-    def remove_spikes(df):
-        df = df.to_frame("geometry")
-        # df = df.reset_index(drop=True)
-        df["_poly_idx"] = df.index
-        df["_ring_idx"] = range(len(df))
-
-        points = df.copy()
-        points.geometry = extract_unique_points(points.geometry)
-        points = points.explode(index_parts=False).explode(index_parts=False)
-        points["_idx"] = range(len(points))
-
-        # keep only matches from same polygon
-        not_spikes = points.sjoin(donuts_around_polygons).loc[
-            lambda x: x["_poly_idx"] == x["index_right"]
-        ]
-        can_be_polygons = not_spikes.iloc[
-            (not_spikes.groupby("_ring_idx").transform("size") >= 3).values
-        ]
-
-        without_spikes = (
-            can_be_polygons.sort_values("_idx")
-            .groupby("_ring_idx")["geometry"]
-            .agg(LinearRing)
-        )
-
-        missing = df.loc[
-            ~df["_ring_idx"].isin(without_spikes.index), df._geometry_column_name
-        ]
-        from ..maps.maps import explore
-
-        explore(
-            gdf,
-            # points,
-            # not_spikes,
-            without_spikes.buffer(1e-3).to_frame(),
-            donuts_around_polygons,
-            center=(56249, 6901798),
-            size=100,
-        )  # , without_spikes, donuts_around_polygons, polygons_without_spikes)
-
-        return pd.concat(
-            [without_spikes, missing]
-        ).sort_index()  # .to_frame("geometry")
-
-    without_spikes = GeoDataFrame(
-        {
-            "geometry": PolygonsAsRings(gdf.geometry).apply_geoseries_func(
-                remove_spikes
-            )
-            # .apply_gdf_func(remove_spikes).to_numpy()
-        },
-        crs=gdf.crs,
-    ).pipe(to_single_geom_type, "polygon")
-
-    is_thin = without_spikes.buffer(-tolerance / 2).is_empty
-    without_spikes = pd.concat(
-        [
-            split_by_neighbors(
-                without_spikes[is_thin], without_spikes, tolerance=tolerance
-            ),
-            without_spikes[~is_thin],
-        ]
-    )
-
-    # for _ in range(2):
-    if 1:
-        for i, grid_size in enumerate(grid_sizes):
-            try:
-                without_spikes = update_geometries(
-                    sort_small_first(without_spikes), geom_type="polygon"
-                )
-                break
-            except GEOSException as e:
-                if i == len(grid_sizes) - 1:
-                    raise e
-
-    for i, grid_size in enumerate(grid_sizes):
-        try:
-            return clean_overlay(
-                gdf, without_spikes, how="identity", grid_size=grid_size
-            )
-        except GEOSException as e:
-            if i == len(grid_sizes) - 1:
-                raise e
-
-
-def split_up_slivers(
-    slivers: GeoDataFrame,
-    gdf: GeoDataFrame,
-    tolerance: int | float,
-    grid_sizes: tuple[None | int] = (None,),
-) -> GeoDataFrame:
-    if not len(slivers):
-        return slivers
-
-    nearby_lines = clean_overlay(
-        to_lines(gdf),
-        slivers.buffer(tolerance).to_frame("geometry"),
-        keep_geom_type=True,
-    )
-
-    gdf = to_single_geom_type(make_all_singlepart(gdf), "polygon")
-
-    if not gdf.index.is_unique:
-        gdf = gdf.reset_index(drop=True)
-
-    polygons_without_spikes = gdf.buffer(tolerance / 2, join_style=2).buffer(
-        -tolerance / 2, join_style=2
-    )
-
-    donuts_around_polygons = to_lines(
-        polygons_without_spikes.to_frame("geometry")
-    ).pipe(buff, 1e-3, copy=False)
-
-    def remove_spikes(df):
-        df = df.to_frame("geometry")
-        df["_ring_idx"] = range(len(df))
-        df = df.reset_index(drop=True)
-
-        points = df.copy()
-        points.geometry = extract_unique_points(points.geometry)
-        points = points.explode(index_parts=False)
-        points["_idx"] = range(len(points))
-
-        not_spikes = points.sjoin(donuts_around_polygons).loc[
-            lambda x: x["_ring_idx"] == x["index_right"]
-        ]
-        can_be_polygons = not_spikes.iloc[
-            (not_spikes.groupby("_ring_idx").transform("size") >= 3).values
-        ]
-
-        without_spikes = (
-            can_be_polygons.sort_values("_idx")
-            .groupby("_ring_idx")["geometry"]
-            .agg(LinearRing)
-        )
-
-        missing = df[~df["_ring_idx"].isin(without_spikes.index)].geometry
-
-        return pd.concat([without_spikes, missing]).sort_index()
-
-    without_spikes = GeoDataFrame(
-        {
-            "geometry": PolygonsAsRings(gdf.geometry)
-            .apply_geoseries_func(remove_spikes)
-            .to_numpy()
-        },
-        crs=gdf.crs,
-    ).pipe(to_single_geom_type, "polygon")
-
-    is_thin = without_spikes.buffer(-tolerance / 2).is_empty
-    without_spikes = pd.concat(
-        [
-            split_by_neighbors(
-                without_spikes[is_thin], without_spikes, tolerance=tolerance
-            ),
-            without_spikes[~is_thin],
-        ]
-    )
-
-    for _ in range(2):
-        for i, grid_size in enumerate(grid_sizes):
-            try:
-                without_spikes = update_geometries(
-                    sort_small_first(without_spikes), geom_type="polygon"
-                )
-                break
-            except GEOSException as e:
-                if i == len(grid_sizes) - 1:
-                    raise e
-
-    for i, grid_size in enumerate(grid_sizes):
-        try:
-            return clean_overlay(
-                gdf, without_spikes, how="identity", grid_size=grid_size
-            )
-        except GEOSException as e:
-            if i == len(grid_sizes) - 1:
-                raise e
 
 
 def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
@@ -580,10 +367,10 @@ def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
     return gdf
 
 
-def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
-    return clean_overlay(
-        gdf, gdf[["geometry"]], how="intersection", grid_size=tolerance
-    )
+# def remove_spikes(gdf: GeoDataFrame, tolerance: int | float) -> GeoDataFrame:
+#     return clean_overlay(
+#         gdf, gdf[["geometry"]], how="intersection", grid_size=tolerance
+#     )
 
 
 def _remove_spikes(
@@ -651,8 +438,8 @@ def _remove_spikes(
     return pd.concat([as_lines, missing]).sort_index()
 
 
-def get_angle_between_indexed_points(point_df: GeoDataFrame):
-    """ "Get angle difference between the two lines"""
+def get_angle_between_indexed_points(point_df: GeoDataFrame) -> GeoDataFrame:
+    """Get angle difference between the two lines."""
     point_df["next"] = point_df.groupby(level=0)["geometry"].shift(-1)
 
     notna = point_df["next"].notna()
@@ -725,7 +512,7 @@ def try_for_grid_size(
     grid_sizes: tuple[None, float | int],
     args: tuple | None = None,
     kwargs: dict | None = None,
-):
+) -> Any:
     if args is None:
         args = ()
     if kwargs is None:
@@ -800,7 +587,7 @@ def split_and_eliminate_by_longest(
     )
 
 
-def split_by_neighbors(df, split_by, tolerance, grid_size=None):
+def split_by_neighbors(df, split_by, tolerance, grid_size=None) -> GeoDataFrame:
     if not len(df):
         return df
 

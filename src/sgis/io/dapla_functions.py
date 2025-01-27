@@ -9,11 +9,11 @@ import multiprocessing
 import os
 import shutil
 import uuid
+from collections.abc import Callable
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
-from collections.abc import Callable
 
 import geopandas as gpd
 import joblib
