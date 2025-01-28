@@ -13,6 +13,29 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 
+try:
+    from fsspec.spec import AbstractFileSystem
+except ImportError:
+
+    class AbstractFileSystem:
+        """Placeholder."""
+
+
+from .conf import config
+
+
+def _get_file_system(
+    file_system: None | AbstractFileSystem, kwargs: dict
+) -> AbstractFileSystem:
+    if file_system is not None and "filesystem" in kwargs:
+        raise ValueError("Cannot pass both filesystem and file_system.")
+    return (
+        file_system
+        or kwargs.pop("file_system", None)
+        or kwargs.pop("filesystem", None)
+        or config["file_system"]()
+    )
+
 
 def get_numpy_func(text: str, error_message: str | None = None) -> Callable:
     """Fetch a numpy function based on its name.

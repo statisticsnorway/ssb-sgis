@@ -34,6 +34,7 @@ from ..conf import config
 from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.sfilter import sfilter
+from ..helpers import _get_file_system
 
 PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
 NULL_VALUE = "__HIVE_DEFAULT_PARTITION__"
@@ -629,17 +630,6 @@ def expression_match_path(expression: ds.Expression, path: str) -> bool:
         # cannot determine if the expression match without reading the file
         return True
     return bool(len(table))
-
-
-def _get_file_system(file_system, kwargs):
-    if file_system is not None and "filesystem" in kwargs:
-        raise ValueError("Cannot pass both filesystem and file_system.")
-    return (
-        file_system
-        or kwargs.pop("file_system", None)
-        or kwargs.pop("filesystem", None)
-        or config["file_system"]()
-    )
 
 
 def _read_geopandas(file, pandas_fallback: bool, **kwargs):
