@@ -185,6 +185,7 @@ def get_intersections(
     geom_type: str | None = None,
     keep_geom_type: bool | None = None,
     predicate: str | None = "intersects",
+    grid_size: float | None = None,
     n_jobs: int = 1,
 ) -> GeoDataFrame:
     """Find geometries that intersect in a GeoDataFrame.
@@ -204,6 +205,8 @@ def get_intersections(
         keep_geom_type: Whether to keep the original geometry type.
             If mixed geometry types and keep_geom_type=True,
             an exception is raised.
+        grid_size: Precision grid size to round the geometries. Will use the highest
+            precision of the inputs by default.
         n_jobs: Number of threads.
         predicate: Spatial predicate for the spatial tree.
 
@@ -279,6 +282,7 @@ def get_intersections(
         geom_type,
         keep_geom_type,
         n_jobs=n_jobs,
+        grid_size=grid_size,
         predicate=predicate,
     ).pipe(clean_geoms)
 
@@ -296,7 +300,8 @@ def _get_intersecting_geometries(
     geom_type: str | None,
     keep_geom_type: bool,
     n_jobs: int,
-    predicate: str | None,
+    grid_size: float | None = None,
+    predicate: str | None = None,
 ) -> GeoDataFrame:
     right = gdf[[gdf._geometry_column_name]]
     right["idx_right"] = right.index
@@ -317,6 +322,7 @@ def _get_intersecting_geometries(
             right,
             how="intersection",
             predicate=predicate,
+            grid_size=grid_size,
             geom_type=geom_type,
             keep_geom_type=keep_geom_type,
             n_jobs=n_jobs,
@@ -336,6 +342,7 @@ def _get_intersecting_geometries(
                     left,
                     right,
                     how="intersection",
+                    grid_size=grid_size,
                     predicate=predicate,
                     geom_type=geom_type,
                     n_jobs=n_jobs,

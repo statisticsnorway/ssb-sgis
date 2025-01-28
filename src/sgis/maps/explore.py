@@ -114,6 +114,20 @@ _MAP_KWARGS = [
 ]
 
 
+class HtmlViewer:
+    """To be passed to IPython.display.display to show as map in Jupyter."""
+
+    def __init__(self, path: str, file_system=None) -> None:
+        """Takes a file path."""
+        self.file_system = _get_file_system(file_system, {})
+        self.path = path
+
+    def _repr_html_(self) -> str:
+        """Method to be used by IPython.display.display."""
+        with self.file_system.open(self.path, "r") as file:
+            return file.read()
+
+
 class MeasureControlFix(plugins.MeasureControl):
     """Monkey-patch to fix a bug in the lenght measurement control.
 
@@ -620,6 +634,7 @@ class Explore(Map):
         """Save the map to local disk as an html document."""
         with self.file_system.open(path, "w") as f:
             f.write(self.map._repr_html_())
+        print(f"display(sg.HtmlViewer('{self.out_path}'))")
 
     def _explore(self, **kwargs) -> None:
         self.kwargs = self.kwargs | kwargs
@@ -635,6 +650,7 @@ class Explore(Map):
         if self.out_path:
             with self.file_system.open(self.out_path, "w") as f:
                 f.write(self.map._repr_html_())
+            print(f"display(sg.HtmlViewer('{self.out_path}'))")
         elif self.browser:
             run_html_server(self.map._repr_html_())
         elif not self.display:
