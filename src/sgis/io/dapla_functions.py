@@ -23,7 +23,6 @@ import pyarrow.dataset
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 import shapely
-from gcsfs import GCSFileSystem
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from geopandas.io.arrow import _geopandas_to_arrow
@@ -35,6 +34,11 @@ from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.sfilter import sfilter
 from ..helpers import _get_file_system
+
+try:
+    from gcsfs import GCSFileSystem
+except ImportError:
+    pass
 
 PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
 NULL_VALUE = "__HIVE_DEFAULT_PARTITION__"
