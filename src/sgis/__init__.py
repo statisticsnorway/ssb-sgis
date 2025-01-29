@@ -85,6 +85,7 @@ from .io.opener import opener
 from .io.read_parquet import read_parquet_url
 from .maps.examine import Examine
 from .maps.explore import Explore
+from .maps.explore import HtmlViewer
 from .maps.httpserver import run_html_server
 from .maps.legend import Legend
 from .maps.maps import clipmap

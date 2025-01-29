@@ -4,7 +4,6 @@ This module holds the Explore class, which is the basis for the explore, samplem
 clipmap functions from the 'maps' module.
 """
 
-import os
 import random
 import re
 import warnings
@@ -44,6 +43,7 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
+from ..helpers import _get_file_system
 from .wms import WmsLoader
 
 try:
@@ -112,6 +112,20 @@ _MAP_KWARGS = [
     "max_lon",
     "max_bounds",
 ]
+
+
+class HtmlViewer:
+    """To be passed to IPython.display.display to show as map in Jupyter."""
+
+    def __init__(self, path: str, file_system=None) -> None:
+        """Takes a file path."""
+        self.file_system = _get_file_system(file_system, {})
+        self.path = path
+
+    def _repr_html_(self) -> str:
+        """Method to be used by IPython.display.display."""
+        with self.file_system.open(self.path, "r") as file:
+            return file.read()
 
 
 class MeasureControlFix(plugins.MeasureControl):
@@ -281,6 +295,7 @@ class Explore(Map):
         max_nodata_percentage: int = 100,
         display: bool = True,
         wms: WmsLoader | None = None,
+        file_system=None,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -311,6 +326,8 @@ class Explore(Map):
                 image arrays.
             display: Whether to display the map interactively.
             wms: A WmsLoader instance for loading image tiles as layers. E.g. NorgeIBilderWms.
+            file_system: Any file system instance with an 'open' method. Used to write html file
+                to 'out_path'.
             **kwargs: Additional keyword arguments. Can also be geometry-like objects
                 where the key is the label.
         """
@@ -329,6 +346,7 @@ class Explore(Map):
         self.display = display
         self.wms = [wms] if isinstance(wms, WmsLoader) else wms
         self.legend = None
+        self.file_system = _get_file_system(file_system, kwargs)
 
         self.browser = browser
         if not self.browser and "show_in_browser" in kwargs:
@@ -614,8 +632,9 @@ class Explore(Map):
 
     def save(self, path: str) -> None:
         """Save the map to local disk as an html document."""
-        with open(path, "w") as f:
+        with self.file_system.open(path, "w") as f:
             f.write(self.map._repr_html_())
+        print(f"display(sg.HtmlViewer('{self.out_path}'))")
 
     def _explore(self, **kwargs) -> None:
         self.kwargs = self.kwargs | kwargs
@@ -629,10 +648,9 @@ class Explore(Map):
             self._create_continous_map()
 
         if self.out_path:
-            with open(
-                os.getcwd() + "/" + self.out_path.strip(".html") + ".html", "w"
-            ) as f:
+            with self.file_system.open(self.out_path, "w") as f:
                 f.write(self.map._repr_html_())
+            print(f"display(sg.HtmlViewer('{self.out_path}'))")
         elif self.browser:
             run_html_server(self.map._repr_html_())
         elif not self.display:
