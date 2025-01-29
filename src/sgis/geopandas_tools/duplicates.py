@@ -7,6 +7,7 @@ from geopandas import GeoSeries
 from shapely import STRtree
 from shapely import difference
 from shapely import make_valid
+from shapely import simplify
 from shapely.errors import GEOSException
 
 from .general import _determine_geom_type_args
@@ -352,8 +353,10 @@ def _get_intersecting_geometries(
     # make sure it's correct by sjoining a point inside the polygons
     points_joined = (
         # large and very detailed geometries can dissappear with small negative buffer
-        # simplify(intersected.geometry, 1e-3)
-        intersected.geometry.representative_point()  # .buffer(-1e-3)
+        simplify(intersected.geometry, 1e-3)
+        .buffer(-1e-3)
+        # intersected.geometry
+        .representative_point()
         .to_frame()
         .sjoin(intersected)
     )
@@ -364,7 +367,7 @@ def _get_intersecting_geometries(
         columns=["idx_left", "idx_right"]
     )
 
-    return out
+    # return out
 
     # some polygons within polygons are not counted in the intersection
     within = (
@@ -372,8 +375,11 @@ def _get_intersecting_geometries(
         .sjoin(
             GeoDataFrame(
                 {
-                    # "geometry": gdf.geometry.values,
-                    "geometry": gdf.buffer(1e-6).values,
+                    # "geometry": polygons(
+                    #     get_exterior_ring(gdf.geometry.values)
+                    # ),  # buffer(1e-6).values)),
+                    "geometry": gdf.geometry.values,
+                    # "geometry": buffer(simplify(gdf.geometry.values, 1e-3), 1e-6),
                     "_range_idx_inters_right": range(len(gdf)),
                 },
                 crs=gdf.crs,
