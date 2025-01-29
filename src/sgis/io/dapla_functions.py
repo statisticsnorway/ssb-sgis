@@ -695,8 +695,8 @@ def _read_partitioned_parquet(
             if mask is not None and not intersects(file, mask):
                 return
 
+            # get instead of pop, then copy kwargs (because mutable)
             schema = kwargs.get("schema", pq.read_schema(file))
-            # copy kwargs because mutable
             new_kwargs = {
                 key: value for key, value in kwargs.items() if key != "schema"
             }

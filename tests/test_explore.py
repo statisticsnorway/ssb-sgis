@@ -260,6 +260,9 @@ def not_test_explore(points_oslo, roads_oslo):
 
 
 def not_test_wms_json():
+    print(
+        "IMPORTANT: if you run this function, make sure to change the global variable JSON_YEARS in wms.py"
+    )
     wms = sg.NorgeIBilderWms(years=range(1999, datetime.datetime.now().year + 1))
     wms.load_tiles()
     try:

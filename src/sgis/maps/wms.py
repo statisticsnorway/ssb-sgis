@@ -15,6 +15,8 @@ from ..geopandas_tools.conversion import to_shapely
 
 JSON_PATH = Path(__file__).parent / "norge_i_bilder.json"
 
+JSON_YEARS = [str(year) for year in range(1999, 2025)]
+
 DEFAULT_YEARS: tuple[str] = tuple(
     str(year)
     for year in range(
@@ -168,7 +170,7 @@ class NorgeIBilderWms(WmsLoader):
 
         self.years = [str(int(year)) for year in self.years]
 
-        if all(year in DEFAULT_YEARS for year in self.years):
+        if all(year in JSON_YEARS for year in self.years):
             try:
                 with open(JSON_PATH, encoding="utf-8") as file:
                     self.tiles = json.load(file)
@@ -185,3 +187,7 @@ class NorgeIBilderWms(WmsLoader):
             ]
         else:
             self.tiles = None
+
+    def __repr__(self) -> str:
+        """Print representation."""
+        return f"{self.__class__.__name__}({len(self.tiles or [])})"
