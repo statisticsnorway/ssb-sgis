@@ -85,8 +85,6 @@ def read_geopandas(
     file_system = _get_file_system(file_system, kwargs)
 
     if not isinstance(gcs_path, (str | Path | os.PathLike)):
-        kwargs |= {"file_system": file_system, "pandas_fallback": pandas_fallback}
-
         cols = {}
         if mask is not None:
             if not isinstance(gcs_path, GeoSeries):
