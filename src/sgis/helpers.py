@@ -33,7 +33,16 @@ def _get_file_system(
         raise ValueError("Cannot pass both filesystem and file_system.")
     file_system2 = kwargs.pop("file_system", None)
     file_system3 = kwargs.pop("filesystem", None)
-    return file_system or file_system2 or file_system3 or config["file_system"]()
+    return (
+        file_system
+        or file_system2
+        or file_system3
+        or (
+            config["file_system"]()
+            if callable(config["file_system"])
+            else config["file_system"]
+        )
+    )
 
 
 def get_numpy_func(text: str, error_message: str | None = None) -> Callable:
