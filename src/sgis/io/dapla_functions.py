@@ -654,7 +654,6 @@ def expression_match_path(expression: ds.Expression, path: str) -> bool:
 
 def _read_geopandas(
     file,
-    # read_func: Callable = pq.read_table,
     read_func: Callable = gpd.read_parquet,
     file_format: str = "parquet",
     **kwargs,
