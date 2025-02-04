@@ -403,7 +403,9 @@ def write_geopandas(
         raise ValueError("File already exists.")
 
     if not isinstance(df, GeoDataFrame):
-        raise ValueError(f"DataFrame must be GeoDataFrame. Got {type(df)}.")
+        raise ValueError(
+            f"DataFrame must be GeoDataFrame. Got {type(df)} for {gcs_path}."
+        )
 
     if not len(df) and get_child_paths(gcs_path, file_system):
         # no need to write empty df
