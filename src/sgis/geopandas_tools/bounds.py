@@ -507,7 +507,7 @@ def make_ssb_grid(
             to make sure all data is covered by the grid.
 
     Returns:
-        GeoDataFrame with grid geometries and a column 'SSBID'.
+        GeoDataFrame with grid geometries and a column 'ssb_rute_id'.
 
     Raises:
         ValueError: If the GeoDataFrame does not have 25833 as crs.
@@ -568,12 +568,12 @@ def make_ssb_grid(
     grid["nordc"] = (
         (np.floor((grid.geometry.centroid.y) / gridsize) * gridsize).apply(int)
     ).apply(str)
-    grid["SSBID"] = grid["ostc"] + grid["nordc"]
-    return grid[["SSBID", "geometry"]]
+    grid["ssb_rute_id"] = grid["ostc"] + grid["nordc"]
+    return grid[["ssb_rute_id", "geometry"]]
 
 
 def add_grid_id(
-    gdf: GeoDataFrame, gridsize: int, out_column: str = "SSBID"
+    gdf: GeoDataFrame, gridsize: int, out_column: str = "ssb_rute_id"
 ) -> GeoDataFrame:
     """Adds an SSB grid ID column to a GeoDataFrame of points.
 
