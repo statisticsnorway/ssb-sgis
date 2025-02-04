@@ -674,18 +674,30 @@ def _read_geopandas(
 def _read_pandas(gcs_path: str, **kwargs):
     file_system = _get_file_system(None, kwargs)
 
+    if not isinstance(gcs_path, (str | Path | os.PathLike)):
+        # recursive read with threads
+        threads = (
+            min(len(gcs_path), int(multiprocessing.cpu_count())) or 1
+            if kwargs.get("use_threads")
+            else 1
+        )
+        with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:
+            return pd.concat(
+                parallel(
+                    joblib.delayed(_read_pandas)(x, file_system=file_system, **kwargs)
+                    for x in gcs_path
+                )
+            )
+
     child_paths = get_child_paths(gcs_path, file_system)
     if child_paths:
-
-        return gpd.GeoDataFrame(
-            _read_partitioned_parquet(
-                gcs_path,
-                read_func=pd.read_parquet,
-                file_system=file_system,
-                mask=None,
-                child_paths=child_paths,
-                **kwargs,
-            )
+        return _read_partitioned_parquet(
+            gcs_path,
+            read_func=pd.read_parquet,
+            file_system=file_system,
+            mask=None,
+            child_paths=child_paths,
+            **kwargs,
         )
 
     with file_system.open(gcs_path, "rb") as file:
@@ -744,7 +756,7 @@ def _read_partitioned_parquet(
 
     if results:
         if all(isinstance(x, DataFrame) for x in results):
-            results = GeoDataFrame(pd.concat(results))
+            results = pd.concat(results)
         else:
             geo_metadata = _get_geo_metadata(next(iter(child_paths)), file_system)
             results = _arrow_to_geopandas(
