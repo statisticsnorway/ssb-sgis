@@ -54,6 +54,7 @@ class NorgeIBilderWms(WmsLoader):
     years: Iterable[int | str] = DEFAULT_YEARS
     contains: str | Iterable[str] | None = None
     not_contains: str | Iterable[str] | None = None
+    show: bool | Iterable[int] | int = False
 
     def load_tiles(self) -> None:
         """Load all Norge i bilder tiles into self.tiles."""
@@ -122,6 +123,11 @@ class NorgeIBilderWms(WmsLoader):
 
         bbox = to_shapely(bbox)
 
+        if isinstance(self.show, bool):
+            show = self.show
+        else:
+            show = False
+
         for tile in self.tiles:
             if not tile["bbox"] or not tile["bbox"].intersects(bbox):
                 continue
@@ -150,9 +156,17 @@ class NorgeIBilderWms(WmsLoader):
                 transparent=True,  # Allow transparency
                 version="1.3.0",  # WMS version
                 attr="&copy; <a href='https://www.geonorge.no/'>Geonorge</a>",
-                show=False,
+                show=show,
                 max_zoom=max_zoom,
             )
+
+        if isinstance(self.show, int):
+            tile = all_tiles[list(all_tiles)[self.show]]
+            tile.show = True
+        elif isinstance(self.show, Iterable):
+            for i in self.show:
+                tile = all_tiles[list(all_tiles)[i]]
+                tile.show = True
 
         return all_tiles
 
