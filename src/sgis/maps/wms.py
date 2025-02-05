@@ -163,6 +163,10 @@ class NorgeIBilderWms(WmsLoader):
         if isinstance(self.show, int):
             tile = all_tiles[list(all_tiles)[self.show]]
             tile.show = True
+        elif isinstance(self.show, Iterable):
+            for i in self.show:
+                tile = all_tiles[list(all_tiles)[i]]
+                tile.show = True
 
         return all_tiles
 

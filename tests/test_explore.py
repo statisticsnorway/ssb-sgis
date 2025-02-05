@@ -147,7 +147,7 @@ def test_explore(points_oslo, roads_oslo):
         r100,
         bygdoy=7000,
         wms=sg.NorgeIBilderWms(
-            years=[2022, 2023, 2024], not_contains="sentinel", show=1
+            years=[2022, 2023, 2024], not_contains="sentinel", show=[1, 2]
         ),
     )
     assert isinstance(next(iter(e.wms)), sg.NorgeIBilderWms)
