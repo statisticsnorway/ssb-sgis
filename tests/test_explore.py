@@ -126,7 +126,29 @@ def test_explore(points_oslo, roads_oslo):
         "meters",
         r100,
         bygdoy=7000,
-        wms=sg.NorgeIBilderWms(years=[2022, 2023, 2024], not_contains="sentinel"),
+        wms=sg.NorgeIBilderWms(
+            years=[2022, 2023, 2024], not_contains="sentinel", show=-1
+        ),
+    )
+    assert isinstance(next(iter(e.wms)), sg.NorgeIBilderWms)
+    e = sg.explore(
+        r300,
+        "meters",
+        r100,
+        bygdoy=7000,
+        wms=sg.NorgeIBilderWms(
+            years=[2022, 2023, 2024], not_contains="sentinel", show=0
+        ),
+    )
+    assert isinstance(next(iter(e.wms)), sg.NorgeIBilderWms)
+    e = sg.explore(
+        r300,
+        "meters",
+        r100,
+        bygdoy=7000,
+        wms=sg.NorgeIBilderWms(
+            years=[2022, 2023, 2024], not_contains="sentinel", show=1
+        ),
     )
     assert isinstance(next(iter(e.wms)), sg.NorgeIBilderWms)
 
@@ -288,7 +310,7 @@ def main():
     from oslo import points_oslo
     from oslo import roads_oslo
 
-    not_test_wms_json()
+    # not_test_wms_json()
 
     test_explore(points_oslo(), roads_oslo())
     test_image_collection()
