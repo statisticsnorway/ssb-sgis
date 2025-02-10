@@ -29,6 +29,8 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from pandas.api.types import is_dict_like
 from rasterio.enums import MergeAlg
+from rtree.index import Index
+from rtree.index import Property
 from scipy import stats
 from scipy.ndimage import binary_dilation
 from scipy.ndimage import binary_erosion
@@ -84,6 +86,43 @@ except ImportError:
 
     def combine_by_coords(*args, **kwargs) -> None:
         raise ImportError("xarray")
+
+
+try:
+    from gcsfs.core import GCSFile
+except ImportError:
+
+    class GCSFile:
+        """Placeholder."""
+
+
+try:
+    import torch
+except ImportError:
+
+    class torch:
+        """Placeholder."""
+
+        class Tensor:
+            """Placeholder to reference torch.Tensor."""
+
+
+try:
+    from torchgeo.datasets.utils import disambiguate_timestamp
+except ImportError:
+    pass
+
+
+try:
+    from torchgeo.datasets.utils import BoundingBox
+except ImportError:
+
+    class BoundingBox:
+        """Placeholder."""
+
+        def __init__(self, *args, **kwargs) -> None:
+            """Placeholder."""
+            raise ImportError("missing optional dependency 'torchgeo'")
 
 
 from ..geopandas_tools.bounds import get_total_bounds
@@ -2656,6 +2695,25 @@ class ImageCollection(_ImageBase):
         ]
         return self
 
+    def to_torch(self, **kwargs):
+        from torchgeo.datasets.geo import RasterDataset
+
+        # def _open(band):
+        #     with opener(band.path) as file:
+        #         return rasterio.open(file)
+        # files = [_open(band) for img in self for band in img]
+        # class MyRasterDataset(RasterDataset):
+        #     @property
+        #     def files(self):
+        #         return files
+
+        return RasterDataset(
+            [band.path for img in self for band in img],
+            crs=self.crs,
+            res=self.res,
+            **kwargs,
+        )
+
     def to_xarray(
         self,
         **kwargs,
@@ -2878,6 +2936,17 @@ class ImageCollection(_ImageBase):
 
         if self._should_be_sorted:
             self._images = list(sorted(self._images))
+
+        self.index = Index(interleaved=False, properties=Property(dimension=3))
+        for i, img in enumerate(self._images):
+            minx, miny, maxx, maxy = img.bounds
+            mint, maxt = disambiguate_timestamp(img.date, "%Y%m%d")
+            try:
+                filepath = img.path
+            except PathlessImageError:
+                filepath = None
+            coords = (minx, maxx, miny, maxy, mint, maxt)
+            self.index.insert(i, coords, img.path)
 
         return self._images
 
@@ -3667,3 +3736,14 @@ def pixelwise(
         )
 
     return nonmissing_row_indices, nonmissing_col_indices, results
+
+
+def numpy_to_torch(array: np.ndarray) -> torch.Tensor:
+    """Convert numpy array to a pytorch tensor."""
+    # fix numpy dtypes which are not supported by pytorch tensors
+    if array.dtype == np.uint16:
+        array = array.astype(np.int32)
+    elif array.dtype == np.uint32:
+        array = array.astype(np.int64)
+
+    return torch.tensor(array)
