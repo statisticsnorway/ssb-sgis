@@ -475,14 +475,14 @@ def _dissolve_thick_double_and_update(gdf, double, thin_double):
     large = (
         double.loc[~double["_double_idx"].isin(thin_double["_double_idx"])]
         .drop(columns="_double_idx")
-        # .pipe(sort_large_first)
-        .sort_values("_poly_idx")
+        .pipe(sort_small_first)
+        # .sort_values("_poly_idx")
         .pipe(update_geometries, geom_type="polygon")
     )
     return (
-        clean_overlay(gdf, large, how="update")
-        # .pipe(sort_large_first)
-        .sort_values("_poly_idx").pipe(update_geometries, geom_type="polygon")
+        clean_overlay(gdf, large, how="update").pipe(sort_small_first)
+        # .sort_values("_poly_idx")
+        .pipe(update_geometries, geom_type="polygon")
     )
 
 
@@ -534,7 +534,8 @@ def split_and_eliminate_by_longest(
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     if not len(to_eliminate):
-        return gdf
+        gdf = (gdf,) if isinstance(gdf, GeoDataFrame) else gdf
+        return gdf, to_eliminate
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         as_gdf = pd.concat(gdf, ignore_index=True)

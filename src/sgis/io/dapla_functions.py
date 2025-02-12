@@ -86,6 +86,9 @@ def read_geopandas(
     """
     file_system = _get_file_system(file_system, kwargs)
 
+    if isinstance(gcs_path, (Path | os.PathLike)):
+        gcs_path = str(gcs_path)
+
     if not isinstance(gcs_path, (str | Path | os.PathLike)):
         return _read_geopandas_from_iterable(
             gcs_path,
