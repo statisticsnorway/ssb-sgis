@@ -238,12 +238,29 @@ class Map:
 
         self._nan_idx = self._gdf[self._column].isna()
         self._get_unique_values()
+        self._to_categorical()
 
-        if self._is_categorical and self.column is not None:
-            for i, gdf in enumerate(self._gdfs):
-                if self.column in gdf:
-                    self._gdfs[i][self.column] = gdf[self.column].astype(str)
-        self._gdf[self.column] = self._gdf[self.column].astype(str)
+    def _to_categorical(self):
+        if not (self._is_categorical and self.column is not None):
+            return
+
+        def to_string_via_int(series):
+            if not pd.api.types.is_numeric_dtype(series):
+                return series.astype("string")
+            try:
+                series = series.astype(float)
+            except ValueError:
+                return series
+            no_decimals: bool = (series.dropna() % 1 == 0).all()
+            if no_decimals:
+                return series.astype("Int64").astype("string")
+            else:
+                return series.astype("string")
+
+        for i, gdf in enumerate(self._gdfs):
+            if self.column in gdf:
+                self._gdfs[i][self.column] = to_string_via_int(gdf[self.column])
+        self._gdf[self.column] = to_string_via_int(self._gdf[self.column])
 
     def __getattr__(self, attr: str) -> Any:
         """Search for attribute in kwargs."""

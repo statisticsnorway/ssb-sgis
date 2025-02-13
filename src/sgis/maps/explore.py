@@ -441,16 +441,9 @@ class Explore(Map):
             self.cmap_start = self.kwargs.pop("cmap_start", 0)
             self.cmap_stop = self.kwargs.pop("cmap_stop", 256)
 
-        # if self._gdf.crs is None:
-        #     self.kwargs["crs"] = "Simple"
-
         self.original_crs = self.gdf.crs
 
-        if self._is_categorical and self.column is not None:
-            for i, gdf in enumerate(self._gdfs):
-                if self.column in gdf:
-                    self._gdfs[i][self.column] = gdf[self.column].astype(str)
-        self._gdf[self.column] = self._gdf[self.column].astype(str)
+        self._to_categorical()
 
     def __repr__(self) -> str:
         """Representation."""
