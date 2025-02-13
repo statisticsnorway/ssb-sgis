@@ -1,5 +1,4 @@
 # %%
-import glob
 import os
 import platform
 import re
@@ -17,20 +16,6 @@ from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
 from shapely.geometry import Polygon
 from sklearn.ensemble import RandomForestRegressor
-
-try:
-    import torch
-    import torchgeo
-    from lightning.pytorch import Trainer
-    from torch.utils.data import DataLoader
-    from torchgeo.datamodules import InriaAerialImageLabelingDataModule
-    from torchgeo.datasets import stack_samples
-    from torchgeo.datasets.utils import BoundingBox
-    from torchgeo.samplers import RandomBatchGeoSampler
-    from torchgeo.samplers import RandomGeoSampler
-    from torchgeo.trainers import SemanticSegmentationTask
-except ImportError:
-    pass
 
 src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
@@ -1788,76 +1773,7 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
         return {}
 
 
-@print_function_name
-def test_torch():
-    # collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10).to_torch()
-    torchgeo.datasets.Sentinel2.filename_regex = (
-        sg.Sentinel2Collection.filename_regexes[0]
-    )
-    dataset = torchgeo.datasets.Sentinel2(
-        glob.glob(f"{path_sentinel}/*.SAFE/*.tif"), res=10
-    )
-
-    print(dataset)
-
-    # dataset = dataset
-    assert len(dataset) == 36, len(dataset)
-    # for img in dataset:
-    #     assert len(img) == 12, len(img)
-
-    sampler = RandomGeoSampler(dataset, size=16, length=10)
-    dataloader = DataLoader(
-        dataset, batch_size=2, sampler=sampler, collate_fn=stack_samples
-    )
-
-    # Training loop
-    for batch in dataloader:
-        imgs = batch["image"]  # list of imgs
-        boxes = batch["boxes"]  # list of boxes
-        labels = batch["labels"]  # list of labels
-        masks = batch["masks"]  # list of masks
-        print(imgs)
-        assert len(imgs.shape) == 4, imgs.shape
-
-    sampler = RandomBatchGeoSampler(dataset, size=16, length=10, batch_size=10)
-    dataloader = DataLoader(
-        dataset, batch_size=2, sampler=sampler, collate_fn=stack_samples
-    )
-
-    # Training loop
-    for batch in dataloader:
-        images = batch["image"]  # list of images
-        boxes = batch["boxes"]  # list of boxes
-        labels = batch["labels"]  # list of labels
-        masks = batch["masks"]  # list of masks
-        print(images)
-        assert len(images.shape) == 4, images.shape
-
-    return
-
-    datamodule = InriaAerialImageLabelingDataModule(
-        # root=path_sentinel,
-        batch_size=64,
-        num_workers=6,
-    )
-    task = SemanticSegmentationTask(
-        model="unet",
-        backbone="resnet50",
-        weights=True,
-        in_channels=3,
-        num_classes=2,
-        loss="ce",
-        ignore_index=None,
-        lr=0.1,
-        patience=6,
-    )
-    trainer = Trainer(default_root_dir=path_sentinel)
-
-    trainer.fit(model=task, datamodule=datamodule)
-
-
 def main():
-    test_torch()
     test_ndvi()
     test_merge()
     test_explore()
@@ -1867,7 +1783,6 @@ def main():
     test_convertion()
     test_metadata_attributes()
     test_bbox()
-    test_collection_from_list_of_path()
     test_indexing()
     test_regexes()
     test_date_ranges()
@@ -1882,6 +1797,7 @@ def main():
     test_with_mosaic()
     test_masking()
     test_zonal()
+    test_collection_from_list_of_path()
     test_merge()
     test_plot_pixels()
     not_test_to_xarray()
