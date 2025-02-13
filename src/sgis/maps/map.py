@@ -291,7 +291,7 @@ class Map:
         Because floats don't always equal each other. This will make very
         similar values count as the same value in the color classification.
         """
-        array = self._gdf.loc[list(~self._nan_idx), self._column].astype("Int64")
+        array = self._gdf.loc[list(~self._nan_idx), self._column]
         self._min = np.min(array)
         self._max = np.max(array)
         self._get_multiplier(array)
@@ -743,9 +743,7 @@ class Map:
             if gdf[self._column].isna().all():
                 return np.repeat(len(bins), len(gdf))
 
-            gdf["col_as_int"] = self._array_to_large_int(
-                gdf[self._column].astype("int64")
-            )
+            gdf["col_as_int"] = self._array_to_large_int(gdf[self._column])
             bins = self._array_to_large_int(self._unique_values)
             gdf["col_as_int"] = gdf["col_as_int"].fillna(np.nan)
             classified = np.searchsorted(bins, gdf["col_as_int"])
