@@ -594,8 +594,9 @@ def to_lines(
     """
     gdf = (
         pd.concat(df.assign(**{"_df_idx": i}) for i, df in enumerate(gdfs))
-        .pipe(make_all_singlepart, ignore_index=True)
+        .pipe(make_all_singlepart)
         .pipe(clean_geoms)
+        .pipe(make_all_singlepart, ignore_index=True)
     )
     geom_col = gdf.geometry.name
 
@@ -607,7 +608,9 @@ def to_lines(
     if (geoms.geom_type == "Polygon").all():
         geoms = polygons_to_lines(geoms, copy=copy)
     elif (geoms.geom_type != "LineString").any():
-        raise ValueError("Point geometries not allowed in 'to_lines'.")
+        raise ValueError(
+            f"Point geometries not allowed in 'to_lines'. {geoms.geom_type.value_counts()}"
+        )
 
     gdf.geometry.loc[:] = geoms
 

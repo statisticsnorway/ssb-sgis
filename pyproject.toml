@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ssb-sgis"
-version = "1.1.5"
+version = "1.1.6"
 description = "GIS functions used at Statistics Norway."
 authors = ["Morten Letnes <morten.letnes@ssb.no>"]
 license = "MIT"
@@ -56,6 +56,7 @@ bucket = ["dapla-toolbelt", "gcsfs"]
 torch = ["torch", "torchgeo"]
 xarray = ["xarray", "rioxarray"]
 test = ["xarray", "rioxarray", "torch", "torchgeo", "dask"]
+
 [tool.poetry.group.dev.dependencies]
 pygments = ">=2.10.0"
 black = { extras = ["jupyter"], version = ">=23.1.0" }

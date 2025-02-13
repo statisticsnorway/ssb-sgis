@@ -667,7 +667,7 @@ def _read_geopandas(
         return read_func(file, **kwargs)
     except ValueError as e:
         if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
-            raise e
+            raise e.__class__(f"{e.__class__.__name__}: {e} for {file}. ") from e
         df = getattr(pd, f"read_{file_format}")(file, **kwargs)
         if not len(df):
             return GeoDataFrame(df)
