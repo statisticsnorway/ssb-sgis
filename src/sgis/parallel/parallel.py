@@ -1117,7 +1117,6 @@ def chunkwise(
         iterable_chunked: list[Iterable] = [
             to_type(chunk) for chunk in np.array_split(list(iterable), n_chunks)
         ]
-
     return Parallel(processes, backend=backend).map(
         func,
         iterable_chunked,

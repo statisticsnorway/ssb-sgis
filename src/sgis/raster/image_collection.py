@@ -8,6 +8,7 @@ import re
 import time
 from abc import abstractmethod
 from collections.abc import Callable
+from collections.abc import Generator
 from collections.abc import Iterable
 from collections.abc import Iterator
 from collections.abc import Sequence
@@ -84,6 +85,14 @@ except ImportError:
 
     def combine_by_coords(*args, **kwargs) -> None:
         raise ImportError("xarray")
+
+
+try:
+    from gcsfs.core import GCSFile
+except ImportError:
+
+    class GCSFile:
+        """Placeholder."""
 
 
 from ..geopandas_tools.bounds import get_total_bounds
@@ -2645,9 +2654,10 @@ class ImageCollection(_ImageBase):
 
         other = to_shapely(other)
 
-        intersects_list: pd.Series = GeoSeries(
-            [img.union_all() for img in self]
-        ).intersects(other)
+        with ThreadPoolExecutor() as executor:
+            bounds_iterable: Generator[Polygon] = executor.map(_union_all, self)
+
+        intersects_list: pd.Series = GeoSeries(list(bounds_iterable)).intersects(other)
 
         self.images = [
             image
@@ -3477,6 +3487,10 @@ def _get_single_value(values: tuple):
 def _open_raster(path: str | Path) -> rasterio.io.DatasetReader:
     with opener(path) as file:
         return rasterio.open(file)
+
+
+def _union_all(obj: _ImageBase) -> Polygon:
+    return obj.union_all()
 
 
 def _read_mask_array(self: Band | Image, **kwargs) -> np.ndarray:

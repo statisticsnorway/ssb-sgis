@@ -1,4 +1,5 @@
 import os
+import socket
 import webbrowser
 from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
@@ -7,8 +8,19 @@ from IPython.display import HTML
 from IPython.display import display
 
 
+def find_available_port(start_port: int, max_attempts: int = 10) -> int:
+    """Find an available port starting from `start_port`."""
+    for port in range(start_port, start_port + max_attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            if sock.connect_ex(("127.0.0.1", port)) != 0:
+                return port  # Port is available
+    raise RuntimeError("No available ports found in range.")
+
+
 def run_html_server(contents: str | None = None, port: int = 3000) -> None:
     """Run a simple, temporary http web server for serving static HTML content."""
+    port = find_available_port(port)
+
     if "JUPYTERHUB_SERVICE_PREFIX" in os.environ:
         # Create a link using the https://github.com/jupyterhub/jupyter-server-proxy
         display_address = os.environ["JUPYTERHUB_SERVICE_PREFIX"] + f"proxy/{port}/"

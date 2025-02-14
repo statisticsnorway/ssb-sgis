@@ -110,6 +110,7 @@ class Map:
         nan_color="#c2c2c2",
         scheme: str = DEFAULT_SCHEME,
         cmap: str | None = None,
+        categorical: bool | None = None,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -124,6 +125,7 @@ class Map:
             scheme: Classification scheme to be used.
             cmap (str): Colormap of the plot. See:
                 https://matplotlib.org/stable/tutorials/colors/colormaps.html
+            categorical: Set to True to convert 'column' to string values.
             **kwargs: Arbitrary keyword arguments.
         """
         gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
@@ -198,9 +200,13 @@ class Map:
                 f"length as gdfs ({len(gdfs)}). Got len {len(show)}"
             )
 
+        if categorical is not None:
+            self._is_categorical = categorical
+
         if not self._gdfs or not any(len(gdf) for gdf in self._gdfs):
             self._gdfs = []
-            self._is_categorical = True
+            if categorical is None:
+                self._is_categorical = True
             self._unique_values = []
             self._nan_idx = []
             return
@@ -209,7 +215,8 @@ class Map:
             self._set_labels()
 
         self._gdfs = self._to_common_crs_and_one_geom_col(self._gdfs)
-        self._is_categorical = self._check_if_categorical()
+        if categorical is None:
+            self._is_categorical = self._check_if_categorical()
 
         if self._column:
             self._fillna_if_col_is_missing()
@@ -231,6 +238,29 @@ class Map:
 
         self._nan_idx = self._gdf[self._column].isna()
         self._get_unique_values()
+        self._to_categorical()
+
+    def _to_categorical(self):
+        if not (self._is_categorical and self.column is not None):
+            return
+
+        def to_string_via_int(series):
+            if not pd.api.types.is_numeric_dtype(series):
+                return series.astype("string")
+            try:
+                series = series.astype(float)
+            except ValueError:
+                return series
+            no_decimals: bool = (series.dropna() % 1 == 0).all()
+            if no_decimals:
+                return series.astype("Int64").astype("string")
+            else:
+                return series.astype("string")
+
+        for i, gdf in enumerate(self._gdfs):
+            if self.column in gdf:
+                self._gdfs[i][self.column] = to_string_via_int(gdf[self.column])
+        self._gdf[self.column] = to_string_via_int(self._gdf[self.column])
 
     def __getattr__(self, attr: str) -> Any:
         """Search for attribute in kwargs."""

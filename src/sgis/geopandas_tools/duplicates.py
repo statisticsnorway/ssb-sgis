@@ -307,7 +307,7 @@ def _get_intersecting_geometries(
     right["idx_right"] = right.index
 
     left = (
-        gdf
+        gdf.copy()
         if not any("index_" in str(col) for col in gdf)
         else gdf.loc[:, lambda x: x.columns.difference({"index_right", "index_left"})]
     )

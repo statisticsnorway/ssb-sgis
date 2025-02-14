@@ -86,6 +86,9 @@ def read_geopandas(
     """
     file_system = _get_file_system(file_system, kwargs)
 
+    if isinstance(gcs_path, (Path | os.PathLike)):
+        gcs_path = str(gcs_path)
+
     if not isinstance(gcs_path, (str | Path | os.PathLike)):
         return _read_geopandas_from_iterable(
             gcs_path,
@@ -664,7 +667,7 @@ def _read_geopandas(
         return read_func(file, **kwargs)
     except ValueError as e:
         if "Missing geo metadata" not in str(e) and "geometry" not in str(e):
-            raise e
+            raise e.__class__(f"{e.__class__.__name__}: {e} for {file}. ") from e
         df = getattr(pd, f"read_{file_format}")(file, **kwargs)
         if not len(df):
             return GeoDataFrame(df)

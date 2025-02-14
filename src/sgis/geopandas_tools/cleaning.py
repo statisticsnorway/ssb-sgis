@@ -101,18 +101,18 @@ def coverage_clean(
 
     _cleaning_checks(gdf, tolerance, duplicate_action)
 
-    if not gdf.index.is_unique:
-        gdf = gdf.reset_index(drop=True)
+    # if not gdf.index.is_unique:
+    #     gdf = gdf.reset_index(drop=True)
 
-    gdf = make_all_singlepart(gdf).loc[
-        lambda x: x.geom_type.isin(["Polygon", "MultiPolygon"])
-    ]
+    # gdf = make_all_singlepart(gdf).loc[
+    #     lambda x: x.geom_type.isin(["Polygon", "MultiPolygon"])
+    # ]
 
-    gdf = safe_simplify(gdf, PRECISION)
+    # gdf = safe_simplify(gdf, PRECISION)
 
     gdf = (
         clean_geoms(gdf)
-        .pipe(make_all_singlepart)
+        .pipe(make_all_singlepart, ignore_index=True)
         .loc[lambda x: x.geom_type.isin(["Polygon", "MultiPolygon"])]
     )
 
@@ -475,14 +475,14 @@ def _dissolve_thick_double_and_update(gdf, double, thin_double):
     large = (
         double.loc[~double["_double_idx"].isin(thin_double["_double_idx"])]
         .drop(columns="_double_idx")
-        # .pipe(sort_large_first)
-        .sort_values("_poly_idx")
+        .pipe(sort_small_first)
+        # .sort_values("_poly_idx")
         .pipe(update_geometries, geom_type="polygon")
     )
     return (
-        clean_overlay(gdf, large, how="update")
-        # .pipe(sort_large_first)
-        .sort_values("_poly_idx").pipe(update_geometries, geom_type="polygon")
+        clean_overlay(gdf, large, how="update").pipe(sort_small_first)
+        # .sort_values("_poly_idx")
+        .pipe(update_geometries, geom_type="polygon")
     )
 
 
@@ -534,7 +534,8 @@ def split_and_eliminate_by_longest(
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:
     if not len(to_eliminate):
-        return gdf
+        gdf = (gdf,) if isinstance(gdf, GeoDataFrame) else gdf
+        return (*gdf, to_eliminate)
 
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
         as_gdf = pd.concat(gdf, ignore_index=True)
@@ -596,7 +597,10 @@ def split_by_neighbors(df, split_by, tolerance, grid_size=None) -> GeoDataFrame:
 
     intersecting_lines = (
         clean_overlay(
-            to_lines(split_by), buff(df, tolerance), how="identity", grid_size=grid_size
+            to_lines(split_by.explode(ignore_index=True)[lambda x: x.length > 0]),
+            buff(df, tolerance),
+            how="identity",
+            grid_size=grid_size,
         )
         .pipe(get_line_segments)
         .reset_index(drop=True)
