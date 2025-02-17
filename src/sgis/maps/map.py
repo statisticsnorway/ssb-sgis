@@ -128,6 +128,8 @@ class Map:
             categorical: Set to True to convert 'column' to string values.
             **kwargs: Arbitrary keyword arguments.
         """
+        self.kwargs = {}
+
         gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
 
         self._column = column
@@ -175,7 +177,6 @@ class Map:
         self.labels = new_labels
 
         # pop all geometry-like items from kwargs into self._gdfs
-        self.kwargs = {}
         i = 0
         for key, value in kwargs.items():
             try:
@@ -262,9 +263,9 @@ class Map:
                 self._gdfs[i][self.column] = to_string_via_int(gdf[self.column])
         self._gdf[self.column] = to_string_via_int(self._gdf[self.column])
 
-    def __getattr__(self, attr: str) -> Any:
-        """Search for attribute in kwargs."""
-        return self.kwargs.get(attr, super().__getattribute__(attr))
+    # def __getattr__(self, attr: str) -> Any:
+    #     """Search for attribute in kwargs."""
+    #     return self.kwargs.get(attr, super().__getattribute__(attr))
 
     def __bool__(self) -> bool:
         """True of any gdfs with more than 0 rows."""
