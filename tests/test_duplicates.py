@@ -255,8 +255,8 @@ def test_update_geometries():
     updated_smallest_first = sg.update_geometries(
         sg.sort_large_first(circles).iloc[::-1], n_jobs=n_jobs
     )
-    area = list((updated_smallest_first.area * 10).astype(int))
-    assert area == [15, 24, 18, 26], area
+    area = updated_smallest_first.area * 10
+    assert [int(x) for x in area] == [15, 24, 18, 0, 26], area
 
     sg.explore(circles, updated, updated_largest_first, updated_smallest_first)
 
