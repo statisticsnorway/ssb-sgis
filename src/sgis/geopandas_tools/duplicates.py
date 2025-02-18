@@ -164,6 +164,8 @@ def update_geometries(
 
     copied.index = copied.index.map(index_mapper)
 
+    copied = make_all_singlepart(copied)
+
     # TODO check why polygons dissappear in rare cases. For now, just add back the missing
     dissapeared = sfilter_inverse(gdf, copied.buffer(-PRECISION))
     copied = pd.concat([copied, dissapeared])
