@@ -238,8 +238,8 @@ class Map:
             self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
         self._nan_idx = self._gdf[self._column].isna()
-        self._get_unique_values()
         self._to_categorical()
+        self._get_unique_values()
 
     def _to_categorical(self):
         if not (self._is_categorical and self.column is not None):
@@ -554,12 +554,6 @@ class Map:
             1 if any(x in self._column for x in ["meter", "metre", "leng"]) else 0
         )
         n = n + maybe_area + maybe_length
-
-        if n == 0:
-            raise ValueError(
-                f"The column {self._column!r} is not present in any "
-                "of the passed GeoDataFrames."
-            )
 
     def _check_if_categorical(self) -> bool:
         """Quite messy this..."""
