@@ -128,7 +128,7 @@ def read_geopandas(
         return gpd.GeoDataFrame(
             _read_partitioned_parquet(
                 gcs_path,
-                read_func=_read_geopandas,
+                read_func=pq.read_table,
                 file_system=file_system,
                 mask=mask,
                 filters=filters,
@@ -145,15 +145,13 @@ def read_geopandas(
         read_func = gpd.read_file
 
     with file_system.open(gcs_path, mode="rb") as file:
-        df = _read_geopandas(
+        return _read_geopandas(
             file,
             read_func=read_func,
             file_format=file_format,
             filters=filters,
             **kwargs,
         )
-
-    return df
 
 
 def _read_geopandas_from_iterable(
@@ -763,17 +761,16 @@ def _read_partitioned_parquet(
 
     if results:
         if all(isinstance(x, DataFrame) for x in results):
-            results = pd.concat(results)
+            return pd.concat(results)
         else:
             geo_metadata = _get_geo_metadata(next(iter(child_paths)), file_system)
-            results = _arrow_to_geopandas(
+            return _arrow_to_geopandas(
                 pyarrow.concat_tables(
                     results,
                     promote_options="permissive",
                 ),
                 geo_metadata,
             )
-        return results
 
     # add columns to empty DataFrame
     first_path = next(iter(child_paths + [path]))
