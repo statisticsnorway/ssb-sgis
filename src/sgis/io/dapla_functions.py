@@ -99,12 +99,14 @@ def read_geopandas(
             **kwargs,
         )
 
-    if (
+    single_eq_filter = (
         isinstance(filters, Iterable)
         and len(filters) == 1
         and ("=" in next(iter(filters)) or "==" in next(iter(filters)))
-    ):
-        # try to read only files in the relevant partition, because glob is slow without GCSFileSystem
+    )
+    # try to read files in subfolder path / "column=value"
+    # because glob is slow without GCSFileSystem from the root partition
+    if single_eq_filter:
         try:
             expression = "".join(next(iter(filters))).replace("==", "=")
             glob_func = _get_glob(file_system)

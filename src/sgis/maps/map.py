@@ -128,6 +128,8 @@ class Map:
             categorical: Set to True to convert 'column' to string values.
             **kwargs: Arbitrary keyword arguments.
         """
+        self.kwargs = {}
+
         gdfs, column, kwargs = self._separate_args(gdfs, column, kwargs)
 
         self._column = column
@@ -175,7 +177,6 @@ class Map:
         self.labels = new_labels
 
         # pop all geometry-like items from kwargs into self._gdfs
-        self.kwargs = {}
         i = 0
         for key, value in kwargs.items():
             try:
@@ -237,8 +238,8 @@ class Map:
             self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
         self._nan_idx = self._gdf[self._column].isna()
-        self._get_unique_values()
         self._to_categorical()
+        self._get_unique_values()
 
     def _to_categorical(self):
         if not (self._is_categorical and self.column is not None):
@@ -262,9 +263,9 @@ class Map:
                 self._gdfs[i][self.column] = to_string_via_int(gdf[self.column])
         self._gdf[self.column] = to_string_via_int(self._gdf[self.column])
 
-    def __getattr__(self, attr: str) -> Any:
-        """Search for attribute in kwargs."""
-        return self.kwargs.get(attr, super().__getattribute__(attr))
+    # def __getattr__(self, attr: str) -> Any:
+    #     """Search for attribute in kwargs."""
+    #     return self.kwargs.get(attr, super().__getattribute__(attr))
 
     def __bool__(self) -> bool:
         """True of any gdfs with more than 0 rows."""
@@ -553,12 +554,6 @@ class Map:
             1 if any(x in self._column for x in ["meter", "metre", "leng"]) else 0
         )
         n = n + maybe_area + maybe_length
-
-        if n == 0:
-            raise ValueError(
-                f"The column {self._column!r} is not present in any "
-                "of the passed GeoDataFrames."
-            )
 
     def _check_if_categorical(self) -> bool:
         """Quite messy this..."""
