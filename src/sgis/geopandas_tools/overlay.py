@@ -824,11 +824,14 @@ def make_valid_and_keep_geom_type(
     geoms = GeoSeries(geoms)
     geoms.index = range(len(geoms))
     geoms.loc[:] = make_valid(geoms.to_numpy())
-    geoms = geoms.explode(index_parts=False).pipe(to_single_geom_type, geom_type)
-    only_one = geoms.groupby(level=0).transform("size") == 1
-    one_hit = geoms[only_one]
-    many_hits = geoms[~only_one].groupby(level=0).agg(unary_union)
-    return pd.concat([one_hit, many_hits]).sort_index()
+    geoms_with_correct_type = geoms.explode(index_parts=False).pipe(
+        to_single_geom_type, geom_type
+    )
+    only_one = geoms_with_correct_type.groupby(level=0).transform("size") == 1
+    one_hit = geoms_with_correct_type[only_one]
+    many_hits = geoms_with_correct_type[~only_one].groupby(level=0).agg(unary_union)
+    geoms_with_wrong_type = geoms.loc[~geoms.index.isin(geoms_with_correct_type.index)]
+    return pd.concat([one_hit, many_hits, geoms_with_wrong_type]).sort_index()
 
 
 def _agg_geoms(g: np.ndarray, grid_size: int | float | None = None) -> Geometry:
