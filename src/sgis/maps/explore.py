@@ -646,6 +646,10 @@ class Explore(Map):
         else:
             self._create_continous_map()
 
+        if not self.map:
+            print("No data, no map")
+            return
+
         if self.out_path:
             with self.file_system.open(self.out_path, "w") as f:
                 f.write(self.map._repr_html_())
