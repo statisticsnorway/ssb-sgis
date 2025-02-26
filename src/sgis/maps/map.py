@@ -263,10 +263,6 @@ class Map:
                 self._gdfs[i][self.column] = to_string_via_int(gdf[self.column])
         self._gdf[self.column] = to_string_via_int(self._gdf[self.column])
 
-    # def __getattr__(self, attr: str) -> Any:
-    #     """Search for attribute in kwargs."""
-    #     return self.kwargs.get(attr, super().__getattribute__(attr))
-
     def __bool__(self) -> bool:
         """True of any gdfs with more than 0 rows."""
         return bool(len(self._gdfs) + len(self._gdf))

@@ -240,8 +240,13 @@ def _get_geo_metadata(file, file_system) -> dict:
     try:
         meta = pq.read_schema(file).metadata
     except FileNotFoundError:
-        with file_system.open(file, "rb") as f:
-            meta = pq.read_schema(f).metadata
+        try:
+            with file_system.open(file, "rb") as f:
+                meta = pq.read_schema(f).metadata
+        except Exception as e:
+            raise e.__class__(f"{file}: {e}") from e
+    except Exception as e:
+        raise e.__class__(f"{file}: {e}") from e
 
     return json.loads(meta[b"geo"])
 
