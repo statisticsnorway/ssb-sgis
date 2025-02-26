@@ -779,7 +779,10 @@ def _read_partitioned_parquet(
 
     # add columns to empty DataFrame
     first_path = next(iter(child_paths + [path]))
-    return pd.DataFrame(columns=_get_columns(first_path, file_system))
+    df = pd.DataFrame(columns=_get_columns(first_path, file_system))
+    if "columns" in kwargs:
+        return df[list(kwargs["columns"])]
+    return df
 
 
 def paths_are_equal(path1: Path | str, path2: Path | str) -> bool:
