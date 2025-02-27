@@ -240,8 +240,13 @@ def _get_geo_metadata(file, file_system) -> dict:
     try:
         meta = pq.read_schema(file).metadata
     except FileNotFoundError:
-        with file_system.open(file, "rb") as f:
-            meta = pq.read_schema(f).metadata
+        try:
+            with file_system.open(file, "rb") as f:
+                meta = pq.read_schema(f).metadata
+        except Exception as e:
+            raise e.__class__(f"{file}: {e}") from e
+    except Exception as e:
+        raise e.__class__(f"{file}: {e}") from e
 
     return json.loads(meta[b"geo"])
 
@@ -774,7 +779,10 @@ def _read_partitioned_parquet(
 
     # add columns to empty DataFrame
     first_path = next(iter(child_paths + [path]))
-    return pd.DataFrame(columns=_get_columns(first_path, file_system))
+    df = pd.DataFrame(columns=_get_columns(first_path, file_system))
+    if "columns" in kwargs:
+        return df[list(kwargs["columns"])]
+    return df
 
 
 def paths_are_equal(path1: Path | str, path2: Path | str) -> bool:
