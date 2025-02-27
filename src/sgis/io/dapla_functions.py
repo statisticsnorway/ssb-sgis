@@ -780,7 +780,7 @@ def _read_partitioned_parquet(
     # add columns to empty DataFrame
     first_path = next(iter(child_paths + [path]))
     df = pd.DataFrame(columns=_get_columns(first_path, file_system))
-    if "columns" in kwargs:
+    if kwargs.get("columns"):
         return df[list(kwargs["columns"])]
     return df
 
