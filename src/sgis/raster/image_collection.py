@@ -212,19 +212,23 @@ class PixelwiseResults:
             )
         }
 
-    def to_geopandas(self, column: str = "value") -> GeoDataFrame:
+    def to_geopandas(self, column: str | list[str] = "value") -> GeoDataFrame:
         """Return GeoDataFrame with pixel geometries and values from the pixelwise operation."""
         minx, miny = self.bounds[:2]
         resx, resy = _res_as_tuple(self.res)
 
-        minxs = np.full(self.row_indices.shape, minx) + (minx * self.row_indices * resx)
-        minys = np.full(self.col_indices.shape, miny) + (miny * self.col_indices * resy)
+        minxs = np.full(self.row_indices.shape, minx) + (self.row_indices * resx)
+        minys = np.full(self.col_indices.shape, miny) + (self.col_indices * resy)
         maxxs = minxs + resx
         maxys = minys + resy
 
         return GeoDataFrame(
             {
-                column: self.results,
+                **(
+                    {col: [x[i] for x in self.results] for i, col in enumerate(column)}
+                    if not isinstance(column, str)
+                    else {column: self.results}
+                ),
                 "geometry": [
                     box(minx, miny, maxx, maxy)
                     for minx, miny, maxx, maxy in zip(
