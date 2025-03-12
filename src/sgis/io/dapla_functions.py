@@ -109,7 +109,7 @@ def read_geopandas(
     if single_eq_filter:
         try:
             expression = "".join(next(iter(filters))).replace("==", "=")
-            glob_func = _get_glob(file_system)
+            glob_func = _get_glob_func(file_system)
             paths = glob_func(str(Path(gcs_path) / expression))
             if paths:
                 return _read_geopandas_from_iterable(
@@ -543,7 +543,7 @@ def _write_partitioned_geoparquet(
         if df[col].isna().all() and not kwargs.get("schema"):
             raise ValueError("Must specify 'schema' when all rows are NA.")
 
-    glob_func = _get_glob(file_system)
+    glob_func = _get_glob_func(file_system)
 
     if file_system.exists(path) and file_system.isfile(path):
         _remove_file(path, file_system)
@@ -596,7 +596,7 @@ def _write_partitioned_geoparquet(
         executor.map(threaded_write, dfs, paths)
 
 
-def _get_glob(file_system) -> functools.partial:
+def _get_glob_func(file_system) -> functools.partial:
     try:
         return functools.partial(file_system.glob)
     except AttributeError:
@@ -724,9 +724,9 @@ def _read_partitioned_parquet(
     **kwargs,
 ):
     file_system = _get_file_system(file_system, kwargs)
+    glob_func = _get_glob_func(file_system)
 
     if child_paths is None:
-        glob_func = _get_glob(file_system)
         child_paths = list(glob_func(str(Path(path) / "**/*.parquet")))
 
     filters = _filters_to_expression(filters)
@@ -735,18 +735,29 @@ def _read_partitioned_parquet(
         bbox, _ = _get_bounds_parquet_from_open_file(file, file_system)
         return shapely.box(*bbox).intersects(to_shapely(mask))
 
-    def read(path: str) -> pyarrow.Table | None:
-        with file_system.open(path, "rb") as file:
-            if mask is not None and not intersects(file, mask):
-                return
+    def read(child_path: str) -> pyarrow.Table | None:
+        try:
+            with file_system.open(child_path, "rb") as file:
+                if mask is not None and not intersects(file, mask):
+                    return
 
-            # 'get' instead of 'pop' because dict is mutable
-            schema = kwargs.get("schema", pq.read_schema(file))
-            new_kwargs = {
-                key: value for key, value in kwargs.items() if key != "schema"
-            }
+                # 'get' instead of 'pop' because dict is mutable
+                schema = kwargs.get("schema", pq.read_schema(file))
+                new_kwargs = {
+                    key: value for key, value in kwargs.items() if key != "schema"
+                }
 
-            return read_func(file, schema=schema, filters=filters, **new_kwargs)
+                return read_func(file, schema=schema, filters=filters, **new_kwargs)
+        except ArrowInvalid as e:
+            if not len(
+                {
+                    x
+                    for x in glob_func(str(Path(child_path) / "**"))
+                    if not paths_are_equal(child_path, x)
+                }
+            ):
+                raise e
+            # allow not being able to read hard-to-delete empty directories
 
     with ThreadPoolExecutor() as executor:
         results = [
@@ -790,7 +801,7 @@ def paths_are_equal(path1: Path | str, path2: Path | str) -> bool:
 
 
 def get_child_paths(path, file_system) -> list[str]:
-    glob_func = _get_glob(file_system)
+    glob_func = _get_glob_func(file_system)
     return [
         x
         for x in glob_func(str(Path(path) / "**/*.parquet"))
