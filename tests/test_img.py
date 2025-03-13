@@ -1,4 +1,5 @@
 # %%
+import glob
 import os
 import platform
 import re
@@ -803,7 +804,11 @@ def _test_metadata_attributes(metadata_from_xml: bool):
     """Metadata attributes should be accessible through xml files for both Band, Image and Collection."""
     if not metadata_from_xml:
         metadata = get_metadata_df([testdata], 1, band_endswith="m_clipped.tif")
-        # metadata = pd.read_parquet(metadata_df_path)
+        metadata = {}
+        for path in glob.glob(f"{testdata}/**/*.SAFE", recursive=True):
+            img = sg.Sentinel2Image(path)
+            mtd = img.get_image_metadata_dict()
+            metadata[next(iter(mtd))] = next(iter(mtd.values()))
     else:
         metadata = None
 
@@ -1774,14 +1779,14 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
+    test_metadata_attributes()
+    test_pixelwise()
     test_ndvi()
     test_merge()
     test_explore()
-    test_pixelwise()
     test_ndvi_predictions()
     test_clip()
     test_convertion()
-    test_metadata_attributes()
     test_bbox()
     test_indexing()
     test_regexes()
