@@ -425,12 +425,6 @@ def eliminate_by_longest(
     explore_locals(center=_DEBUG_CONFIG["center"])
 
     if not _recurse and len(isolated):
-        if 0:
-            isolated.geometry = isolated.buffer(
-                -PRECISION,
-                resolution=1,
-                join_style=2,
-            )
         out, isolated = _recursively_eliminate_new_neighbors(
             out,
             isolated,

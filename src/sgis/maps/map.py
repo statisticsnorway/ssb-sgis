@@ -729,6 +729,8 @@ class Map:
         """Place the column values into groups."""
         bins = bins.copy()
 
+        assert gdf.index.is_unique
+
         # if equal lenght, convert to integer and check for equality
         if len(bins) == len(self._unique_values):
             if gdf[self._column].isna().all():

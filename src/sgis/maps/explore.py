@@ -828,7 +828,7 @@ class Explore(Map):
             if not len(gdf):
                 continue
 
-            gdf = self._to_single_geom_type(make_all_singlepart(gdf))
+            gdf = self._to_single_geom_type(make_all_singlepart(gdf, ignore_index=True))
 
             if not len(gdf):
                 continue

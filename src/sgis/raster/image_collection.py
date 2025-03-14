@@ -2,6 +2,7 @@ import datetime
 import functools
 import glob
 import itertools
+import json
 import os
 import random
 import re
@@ -468,8 +469,8 @@ class _ImageBase:
             regexes = (regexes,)
         return tuple(re.compile(regexes, flags=re.VERBOSE) for regexes in regexes)
 
-    @staticmethod
     def _metadata_to_nested_dict(
+        self,
         metadata: str | Path | os.PathLike | dict | pd.DataFrame | None,
     ) -> dict[str, dict[str, Any]]:
         """Construct metadata dict from dictlike, DataFrame or file path.
@@ -932,14 +933,20 @@ class Band(_ImageBandBase):
             }
 
         if self.metadata:
+            parent = _fix_path(str(Path(self.path).parent))
             if self.path is not None:
                 self.metadata = {
-                    key: value
-                    for key, value in self.metadata.items()
-                    if key == self.path
+                    key: value for key, value in self.metadata.items() if key == parent
                 }
-            this_metadata = self.metadata[self.path]
-            for key, value in this_metadata.items():
+            for key, value in self.metadata.get(parent, {}).items():
+                if key == "bands" and self.band_id in value:
+                    band_metadata = value[self.band_id]
+                    for band_key, band_value in band_metadata.items():
+                        if band_key in dir(self):
+                            setattr(self, f"_{band_key}", band_value)
+                        else:
+                            setattr(self, band_key, band_value)
+                    continue
                 if key in dir(self):
                     setattr(self, f"_{key}", value)
                 else:
@@ -1592,6 +1599,22 @@ class Image(_ImageBandBase):
         else:
             self._all_file_paths = None
 
+        if not self.metadata and "metadata.json" in {
+            Path(x).name for x in self._all_file_paths
+        }:
+            with _open_func(
+                next(
+                    iter(
+                        {
+                            x
+                            for x in self._all_file_paths
+                            if str(x).endswith("metadata.json")
+                        }
+                    )
+                )
+            ) as file:
+                self.metadata = json.load(file)
+
         if df is None:
             if not self._all_file_paths:
                 self._all_file_paths = {self.path}
@@ -1616,12 +1639,10 @@ class Image(_ImageBandBase):
                 key: value for key, value in self.metadata.items() if self.path in key
             }
 
-        if self.metadata:
-            try:
-                metadata = self.metadata[self.path]
-            except KeyError as e:
-                metadata = {}
-            for key, value in metadata.items():
+        if self.metadata.get(self.path, {}):
+            for key, value in self.metadata[self.path].items():
+                if key in {"bands"}:
+                    continue
                 if key in dir(self):
                     setattr(self, f"_{key}", value)
                 else:
@@ -1704,6 +1725,56 @@ class Image(_ImageBandBase):
                     )
 
         return self
+
+    def get_image_metadata_dict(self) -> dict:
+        """Creates a nested dict of metadata.
+
+        The dict structure will be:
+
+        {
+            image_path: {
+                image_attribute: value,
+                ...,
+                "bands": {
+                    band_id: {
+                        band_attribute: band_value,
+                    },
+                    ...,
+                }
+            }
+        }
+        """
+        path = self.path
+        metadata = {
+            path: {
+                "bounds": self.bounds,
+                "crs": str(pyproj.CRS(self.crs).to_string()),
+            }
+        }
+        for key in self.metadata_attributes:
+            metadata[path][key] = getattr(self, key)
+
+        metadata[path]["bands"] = {}
+        for band in self:
+            metadata[path]["bands"][band.band_id] = {}
+            for key in band.metadata_attributes:
+                if key in self.metadata_attributes:
+                    continue
+                metadata[path]["bands"][band.band_id][key] = getattr(band, key)
+        return metadata
+
+    def write_image_metadata(self) -> None:
+        """Write file 'metadata.json' under image path.
+
+        The file will be used to give the image attributes
+        and avoid the much slower metadata fetching with rasterio.
+
+        See method 'get_image_metadata_dict' for info on the structure of
+        the json file.
+        """
+        metadata = self.get_image_metadata_dict()
+        with _open_func(str(Path(self.path) / "metadata.json"), "w") as file:
+            json.dump(metadata, file)
 
     def _construct_image_from_bands(
         self, data: Sequence[Band], res: int | None
