@@ -897,9 +897,6 @@ class Band(_ImageBandBase):
             if self._bounds is None:
                 raise ValueError("Must specify bounds when data is an array.")
             if not (res is None or (callable(res) and res() is None)):
-                # if not (res is None or (callable(res) and res() is None)) and _res_as_tuple(
-                #     res
-                # ) != _get_res_from_bounds(self._bounds, data.shape):
                 raise ValueError(
                     f"Cannot specify 'res' when data is an array. {res} and {_get_res_from_bounds(self._bounds, data.shape)}"
                 )
@@ -934,10 +931,6 @@ class Band(_ImageBandBase):
 
         if self.metadata:
             parent = _fix_path(str(Path(self.path).parent))
-            if self.path is not None:
-                self.metadata = {
-                    key: value for key, value in self.metadata.items() if key == parent
-                }
             for key, value in self.metadata.get(parent, {}).items():
                 if key == "bands" and self.band_id in value:
                     band_metadata = value[self.band_id]
