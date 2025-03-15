@@ -205,9 +205,9 @@ def get_polygon_clusters(
 
 def get_cluster_mapper(
     gdf: GeoDataFrame | GeoSeries, predicate: str = "intersects"
-) -> dict[int, int]:
-    if not gdf.index.is_unique:
-        raise ValueError("Index must be unique")
+) -> list[int]:
+    """Returns a list of cluster indices corresponding to the order of the input GeoDataFrame or GeoSeries."""
+    gdf = gdf.reset_index(drop=True)
     neighbors = get_neighbor_indices(gdf, gdf, predicate=predicate)
 
     edges = [(source, target) for source, target in neighbors.items()]
@@ -215,11 +215,12 @@ def get_cluster_mapper(
     graph = nx.Graph()
     graph.add_edges_from(edges)
 
-    return {
-        j: i
-        for i, component in enumerate(nx.connected_components(graph))
-        for j in component
+    mapper = {
+        i: cluster_index
+        for cluster_index, component in enumerate(nx.connected_components(graph))
+        for i in component
     }
+    return list(dict(sorted(mapper.items())).values())
 
 
 def eliminate_by_longest(
