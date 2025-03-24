@@ -164,7 +164,7 @@ def explore(
 
     mask = kwargs.pop("mask", loc_mask)
 
-    if mask is not None:
+    if mask is not None and center is None:
         return clipmap(
             *gdfs,
             column=column,

@@ -480,7 +480,9 @@ def _dissolve_thick_double_and_update(gdf, double, thin_double):
         .pipe(update_geometries, geom_type="polygon")
     )
     return (
-        clean_overlay(gdf, large, how="update").pipe(sort_small_first)
+        clean_overlay(gdf, large, how="update", geom_type="polygon").pipe(
+            sort_small_first
+        )
         # .sort_values("_poly_idx")
         .pipe(update_geometries, geom_type="polygon")
     )
@@ -601,6 +603,7 @@ def split_by_neighbors(df, split_by, tolerance, grid_size=None) -> GeoDataFrame:
             buff(df, tolerance),
             how="identity",
             grid_size=grid_size,
+            geom_type="polygon",
         )
         .pipe(get_line_segments)
         .reset_index(drop=True)
@@ -621,7 +624,9 @@ def split_by_neighbors(df, split_by, tolerance, grid_size=None) -> GeoDataFrame:
 
     buffered = buff(extended_lines, tolerance, single_sided=True)
 
-    return clean_overlay(df, buffered, how="identity", grid_size=grid_size)
+    return clean_overlay(
+        df, buffered, how="identity", geom_type="polygon", grid_size=grid_size
+    )
 
 
 def extend_lines(arr1, arr2, distance) -> NDArray[LineString]:
