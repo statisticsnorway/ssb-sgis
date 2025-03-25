@@ -119,6 +119,11 @@ def clean_overlay(
                 df1.geometry.geom_type.value_counts(),
             )
 
+    if geom_type == "polygon" or get_geom_type(df1) == "polygon":
+        df1.geometry = df1.buffer(0)
+    if geom_type == "polygon" or get_geom_type(df2) == "polygon":
+        df2.geometry = df2.buffer(0)
+
     df1 = clean_geoms(df1)
     df2 = clean_geoms(df2)
 
@@ -131,10 +136,14 @@ def clean_overlay(
     if geom_type and get_geom_type(df1) == get_geom_type(df2):
         df2 = to_single_geom_type(df2, geom_type)
 
-    assert df1.is_valid.all(), df1.is_valid.value_counts()
-    assert df2.is_valid.all(), df2.is_valid.value_counts()
-    assert df1.geometry.notna().all()
-    assert df2.geometry.notna().all()
+    assert df1.is_valid.all(), [
+        geom.wkt for geom in df1[lambda x: x.is_valid == False].geometry
+    ]
+    assert df2.is_valid.all(), [
+        geom.wkt for geom in df2[lambda x: x.is_valid == False].geometry
+    ]
+    assert df1.geometry.notna().all(), df1[lambda x: x.isna()]
+    assert df2.geometry.notna().all(), df2[lambda x: x.isna()]
 
     box1 = box(*df1.total_bounds)
     box2 = box(*df2.total_bounds)
