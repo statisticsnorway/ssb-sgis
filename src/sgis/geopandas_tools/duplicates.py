@@ -98,6 +98,9 @@ def update_geometries(
     if len(gdf) <= 1:
         return gdf
 
+    if geom_type == "polygon" or get_geom_type(gdf) == "polygon":
+        gdf.geometry = gdf.buffer(0)
+
     copied = make_all_singlepart(clean_geoms(gdf))
 
     copied, geom_type, keep_geom_type = _determine_geom_type_args(
