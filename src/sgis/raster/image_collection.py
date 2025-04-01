@@ -42,12 +42,6 @@ from shapely.geometry import Point
 from shapely.geometry import Polygon
 
 try:
-    import dapla as dp
-except ImportError:
-    pass
-
-
-try:
     from google.auth import exceptions
 except ImportError:
 
@@ -59,10 +53,14 @@ except ImportError:
 
 
 try:
+    from gcsfs import GCSFileSystem
     from gcsfs.core import GCSFile
 except ImportError:
 
     class GCSFile:
+        """Placeholder."""
+
+    class GCSFileSystem:
         """Placeholder."""
 
 
@@ -103,7 +101,6 @@ from ..geopandas_tools.conversion import to_geoseries
 from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
 from ..helpers import _fix_path
-from ..helpers import get_all_files
 from ..helpers import get_numpy_func
 from ..helpers import is_method
 from ..helpers import is_property
@@ -132,22 +129,23 @@ from .zonal import _zonal_post
 if is_dapla():
 
     def _ls_func(*args, **kwargs) -> list[str]:
-        return dp.FileClient.get_gcs_file_system().ls(*args, **kwargs)
+        return GCSFileSystem().ls(*args, **kwargs)
 
     def _glob_func(*args, **kwargs) -> list[str]:
-        return dp.FileClient.get_gcs_file_system().glob(*args, **kwargs)
+        return GCSFileSystem().glob(*args, **kwargs)
 
     def _open_func(*args, **kwargs) -> GCSFile:
-        return dp.FileClient.get_gcs_file_system().open(*args, **kwargs)
-
-    def _read_parquet_func(*args, **kwargs) -> list[str]:
-        return dp.read_pandas(*args, **kwargs)
+        return GCSFileSystem().open(*args, **kwargs)
 
 else:
-    _ls_func = functools.partial(get_all_files, recursive=False)
+
+    def _ls_func(path):
+        return glob.glob(str(Path(path) / "**"), recursive=False)
+
+    def _glob_func(path, **kwargs):
+        return glob.glob(path, recursive=True, **kwargs)
+
     _open_func = open
-    _glob_func = glob.glob
-    _read_parquet_func = pd.read_parquet
 
 DATE_RANGES_TYPE = (
     tuple[str | pd.Timestamp | None, str | pd.Timestamp | None]
@@ -181,15 +179,12 @@ ALLOWED_INIT_KWARGS = [
 _LOAD_COUNTER: int = 0
 
 
-def _get_child_paths_threaded(data: Sequence[str]) -> set[str]:
-    with ThreadPoolExecutor() as executor:
-        all_paths: Iterator[set[str]] = executor.map(_ls_func, data)
-    return set(itertools.chain.from_iterable(all_paths))
-
-
 @dataclass
 class PixelwiseResults:
-    """Container of pixelwise results to be converted to numpy/geopandas."""
+    """Container of pixelwise results to be converted to dict/tuple/numpy/geopandas.
+
+    Not to be initialised by user.
+    """
 
     row_indices: np.ndarray
     col_indices: np.ndarray
@@ -310,7 +305,7 @@ class ImageCollectionGroupBy:
     ) -> "ImageCollection":
         """Merge each group into separate Bands per band_id, returned as an ImageCollection."""
         images = self._run_func_for_collection_groups(
-            _merge_by_band,
+            _merge_by_band_as_func,
             method=method,
             bounds=bounds,
             as_int=as_int,
@@ -342,7 +337,7 @@ class ImageCollectionGroupBy:
     ) -> "Image":
         """Merge each group into a single Band, returned as combined Image."""
         bands: list[Band] = self._run_func_for_collection_groups(
-            _merge,
+            _merge_as_func,
             method=method,
             bounds=bounds,
             as_int=as_int,
@@ -405,7 +400,10 @@ class BandMasking:
 
 
 class None_:
-    """Default None for args that are not allowed to be None."""
+    """Default None for args that should not be None.
+
+    In order to raise error only in some cases.
+    """
 
     def __new__(cls) -> None:
         """Always returns None."""
@@ -449,6 +447,27 @@ class _ImageBase:
         self._from_array = False
         self._from_geopandas = False
 
+    @property
+    def path(self) -> str:
+        try:
+            return self._path
+        except AttributeError as e:
+            raise PathlessImageError(self) from e
+
+    @property
+    def res(self) -> int:
+        """Pixel resolution."""
+        return self._res
+
+    @abstractmethod
+    def union_all(self) -> Polygon | MultiPolygon:
+        pass
+
+    def assign(self, **kwargs) -> "_ImageBase":
+        for key, value in kwargs.items():
+            self._safe_setattr(key, value)
+        return self
+
     def _safe_setattr(
         self, key: str, value: Any, error_obj: Exception | None = None
     ) -> None:
@@ -471,16 +490,15 @@ class _ImageBase:
 
     def _metadata_to_nested_dict(
         self,
-        metadata: str | Path | os.PathLike | dict | pd.DataFrame | None,
+        metadata: dict | pd.DataFrame | None,
     ) -> dict[str, dict[str, Any]]:
-        """Construct metadata dict from dictlike, DataFrame or file path.
+        """Construct metadata dict from dictlike or DataFrame.
+
+        First level keys are are file paths, second level keys are attributes.
 
         Extract metadata value:
         >>> self.metadata[self.path]['cloud_cover_percentage']
         """
-        if isinstance(metadata, (str | Path | os.PathLike)):
-            metadata = _read_parquet_func(metadata)
-
         if isinstance(metadata, pd.DataFrame):
 
             def is_scalar(x) -> bool:
@@ -491,7 +509,7 @@ class _ImageBase:
                 """Convert to None rowwise because pandas doesn't always."""
                 return x if not (is_scalar(x) and pd.isna(x)) else None
 
-            # to nested dict because pandas indexing gives rare KeyError with long strings
+            # to nested dict instead of pandas because pandas indexing gives rare KeyError with long strings
             return {
                 _fix_path(path): {
                     attr: na_to_none(value) for attr, value in row.items()
@@ -516,39 +534,12 @@ class _ImageBase:
 
     @property
     def _common_init_kwargs_after_load(self) -> dict:
+        """Some attributes can be wrong after loading the image."""
         return {
             k: v
             for k, v in self._common_init_kwargs.items()
             if k not in {"res", "metadata"}
         }
-
-    @property
-    def path(self) -> str:
-        try:
-            return self._path
-        except AttributeError as e:
-            raise PathlessImageError(self) from e
-
-    @property
-    def res(self) -> int:
-        """Pixel resolution."""
-        # if self._res is None:
-        #     if self.has_array:
-        #         self._res = _get_res_from_bounds(self.bounds, self.values.shape)
-        #     else:
-        #         with opener(self.path) as file:
-        #             with rasterio.open(file) as src:
-        #                 self._res = src.res
-        return self._res
-
-    @abstractmethod
-    def union_all(self) -> Polygon | MultiPolygon:
-        pass
-
-    def assign(self, **kwargs) -> "_ImageBase":
-        for key, value in kwargs.items():
-            self._safe_setattr(key, value)
-        return self
 
     def _name_regex_searcher(
         self, group: str, patterns: tuple[re.Pattern]
@@ -648,20 +639,21 @@ class _ImageBase:
 class _ImageBandBase(_ImageBase):
     """Common parent class of Image and Band."""
 
-    def intersects(
-        self, geometry: GeoDataFrame | GeoSeries | Geometry | tuple | _ImageBase
-    ) -> bool:
-        if hasattr(geometry, "crs") and not pyproj.CRS(self.crs).equals(
-            pyproj.CRS(geometry.crs)
-        ):
-            raise ValueError(f"crs mismatch: {self.crs} and {geometry.crs}")
-        return self.union_all().intersects(to_shapely(geometry))
-
     def union_all(self) -> Polygon:
         try:
             return box(*self.bounds)
         except TypeError:
             return Polygon()
+
+    def intersects(
+        self, geometry: GeoDataFrame | GeoSeries | Geometry | tuple | _ImageBase
+    ) -> bool:
+        crs_mismatch: bool = hasattr(geometry, "crs") and not pyproj.CRS(
+            self.crs
+        ).equals(pyproj.CRS(geometry.crs))
+        if crs_mismatch:
+            raise ValueError(f"crs mismatch: {self.crs} and {geometry.crs}")
+        return self.union_all().intersects(to_shapely(geometry))
 
     @property
     def centroid(self) -> Point:
@@ -672,19 +664,19 @@ class _ImageBandBase(_ImageBase):
     def year(self) -> str:
         if hasattr(self, "_year") and self._year:
             return self._year
-        return str(self.date)[:4]
+        return pd.to_datetime(self.date).year
 
     @property
     def month(self) -> str:
         if hasattr(self, "_month") and self._month:
             return self._month
-        return str(self.date).replace("-", "").replace("/", "")[4:6]
+        return pd.to_datetime(self.date).month
 
     @property
     def day(self) -> str:
         if hasattr(self, "_day") and self._day:
             return self._day
-        return str(self.date).replace("-", "").replace("/", "")[6:8]
+        return pd.to_datetime(self.date).day
 
     @property
     def name(self) -> str | None:
@@ -744,7 +736,7 @@ class _ImageBandBase(_ImageBase):
             results = None
             for i, file_content in enumerate(file_contents.values()):
                 if isinstance(value, str) and value in dir(self):
-                    # method or a hardcoded value
+                    # is method or a hardcoded value
                     value: Callable | Any = getattr(self, value)
 
                 if callable(value):
@@ -1580,8 +1572,8 @@ class Image(_ImageBandBase):
                 f"'data' must be string, Path-like or a sequence of Band. Got {data}"
             )
 
-        self._res = res if not (callable(res) and res() is None) else None
         self._path = _fix_path(data)
+        self._res = res if not (callable(res) and res() is None) else None
 
         if all_file_paths is None and self.path:
             self._all_file_paths = _get_all_file_paths(self.path)
@@ -1592,9 +1584,11 @@ class Image(_ImageBandBase):
         else:
             self._all_file_paths = None
 
-        if not self.metadata and "metadata.json" in {
-            Path(x).name for x in self._all_file_paths
-        }:
+        if (
+            self.metadata is None
+            or not len(self.metadata)
+            and "metadata.json" in {Path(x).name for x in self._all_file_paths}
+        ):
             with _open_func(
                 next(
                     iter(
@@ -1697,7 +1691,7 @@ class Image(_ImageBandBase):
 
         with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             parallel(
-                joblib.delayed(_load_band)(
+                joblib.delayed(_load_as_func)(
                     band,
                     bounds=bounds,
                     indexes=indexes,
@@ -1787,10 +1781,11 @@ class Image(_ImageBandBase):
             if len(band_values) > 1:
                 raise ValueError(f"Different {key} values in bands: {band_values}")
             elif len(band_values):
+                value = next(iter(band_values))
                 try:
-                    setattr(self, key, next(iter(band_values)))
+                    setattr(self, key, value)
                 except AttributeError:
-                    setattr(self, f"_{key}", next(iter(band_values)))
+                    setattr(self, f"_{key}", value)
 
     def copy(self) -> "Image":
         """Copy the instance and its attributes."""
@@ -1802,7 +1797,9 @@ class Image(_ImageBandBase):
     def apply(self, func: Callable, **kwargs) -> "Image":
         """Apply a function to each band of the Image."""
         with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
-            parallel(joblib.delayed(_band_apply)(band, func, **kwargs) for band in self)
+            parallel(
+                joblib.delayed(_apply_as_func)(band, func, **kwargs) for band in self
+            )
 
         return self
 
@@ -2132,40 +2129,36 @@ class ImageCollection(_ImageBase):
 
         if hasattr(data, "__iter__") and not isinstance(data, str):
             self._path = None
-            if all(isinstance(x, Image) for x in data):
+            data_is_images: bool = all(isinstance(x, Image) for x in data)
+            if data_is_images:
                 self.images = [x.copy() for x in data]
                 return
-            elif all(isinstance(x, (str | Path | os.PathLike)) for x in data):
-                # adding band paths (asuming 'data' is a sequence of image paths)
+            data_is_paths: bool = all(
+                isinstance(x, (str | Path | os.PathLike)) for x in data
+            )
+            if data_is_paths:
                 try:
+                    # adding band paths (asuming 'data' is a sequence of image paths)
                     self._all_file_paths = _get_child_paths_threaded(data) | {
                         _fix_path(x) for x in data
                     }
                 except FileNotFoundError as e:
                     if _from_root:
-                        raise TypeError(
+                        raise ValueError(
                             "When passing 'root', 'data' must be a sequence of image file names that have 'root' as parent path."
                         ) from e
                     raise e
-                if self.level:
-                    self._all_file_paths = {
-                        path for path in self._all_file_paths if self.level in path
-                    }
-                self._df = self._create_metadata_df(self._all_file_paths)
-                return
 
-        if not isinstance(data, (str | Path | os.PathLike)):
+        elif isinstance(data, (str | Path | os.PathLike)):
+            self._path = _fix_path(str(data))
+            self._all_file_paths = _get_all_file_paths(self.path)
+        else:
             raise TypeError("'data' must be string, Path-like or a sequence of Image.")
-
-        self._path = _fix_path(str(data))
-
-        self._all_file_paths = _get_all_file_paths(self.path)
 
         if self.level:
             self._all_file_paths = {
                 path for path in self._all_file_paths if self.level in path
             }
-
         self._df = self._create_metadata_df(self._all_file_paths)
 
     def groupby(
@@ -2230,16 +2223,15 @@ class ImageCollection(_ImageBase):
                 pass
         return copied
 
-    def apply(self, func: Callable, **kwargs) -> "ImageCollection":
-        """Apply a function to all bands in each image of the collection."""
-        with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
-            parallel(
-                joblib.delayed(_band_apply)(band, func, **kwargs)
-                for img in self
-                for band in img
+    def apply(self, func: Callable, copy: bool = True, **kwargs) -> "ImageCollection":
+        """Apply a function to each image of the collection."""
+        copied = self.copy() if copy else self
+        with joblib.Parallel(n_jobs=copied.processes, backend="loky") as parallel:
+            copied.images = parallel(
+                joblib.delayed(_apply_as_func)(img, func, **kwargs) for img in copied
             )
 
-        return self
+        return copied
 
     def pixelwise(
         self,
@@ -2594,7 +2586,7 @@ class ImageCollection(_ImageBase):
                 )
 
             parallel(
-                joblib.delayed(_load_band)(
+                joblib.delayed(_load_as_func)(
                     band,
                     bounds=bounds,
                     indexes=indexes,
@@ -2797,25 +2789,6 @@ class ImageCollection(_ImageBase):
 
         return combine_by_coords(list(xarrs.values()))
         # return Dataset(xarrs)
-
-    def to_geopandas(self, column: str = "value") -> dict[str, GeoDataFrame]:
-        """Convert each band in each Image to a GeoDataFrame."""
-        out = {}
-        i = 0
-        for img in self:
-            for band in img:
-                i += 1
-                try:
-                    name = band.name
-                except AttributeError:
-                    name = None
-
-                if name is None:
-                    name = f"{self.__class__.__name__}({i})"
-
-                if name not in out:
-                    out[name] = band.to_geopandas(column=column)
-        return out
 
     def sample(self, n: int = 1, size: int = 500) -> "ImageCollection":
         """Sample one or more areas of a given size and set this as mask for the images."""
@@ -3098,7 +3071,7 @@ class ImageCollection(_ImageBase):
                 root = f" root='{next(iter(parents))}',"
         else:
             data = [img for img in self]
-        return f"{self.__class__.__name__}({data},{root} res={self.res}, level='{self.level}')"
+        return f"{self.__class__.__name__}({data},{root} res={self.res}, level='{self.level}', processes={self.processes})"
 
 
 class Sentinel2Config:
@@ -3171,7 +3144,6 @@ class Sentinel2Config:
                 xml_file,
                 (
                     r'<BOA_QUANTIFICATION_VALUE unit="none">(\d+)</BOA_QUANTIFICATION_VALUE>',
-                    # r'<BOA_QUANTIFICATION_VALUE unit="none">-?(\d+)</BOA_QUANTIFICATION_VALUE>',
                     r'<QUANTIFICATION_VALUE unit="none">?(\d+)</QUANTIFICATION_VALUE>',
                 ),
             )
@@ -3390,21 +3362,13 @@ def _clip_xarray(
 
 
 def _get_all_file_paths(path: str) -> set[str]:
-    if is_dapla():
-        return {_fix_path(x) for x in sorted(set(_glob_func(path + "/**")))}
-    else:
-        return {
-            _fix_path(x)
-            for x in sorted(
-                set(
-                    _glob_func(path + "/**")
-                    + _glob_func(path + "/**/**")
-                    + _glob_func(path + "/**/**/**")
-                    + _glob_func(path + "/**/**/**/**")
-                    + _glob_func(path + "/**/**/**/**/**")
-                )
-            )
-        }
+    return {_fix_path(x) for x in sorted(set(_glob_func(path + "/**")))}
+
+
+def _get_child_paths_threaded(data: Sequence[str]) -> set[str]:
+    with ThreadPoolExecutor() as executor:
+        all_paths: Iterator[set[str]] = executor.map(_ls_func, data)
+    return set(itertools.chain.from_iterable(all_paths))
 
 
 def _get_images(
@@ -3584,19 +3548,19 @@ def _read_mask_array(self: Band | Image, **kwargs) -> np.ndarray:
     return boolean_mask
 
 
-def _load_band(band: Band, **kwargs) -> Band:
+def _load_as_func(band: Band, **kwargs) -> Band:
     return band.load(**kwargs)
 
 
-def _band_apply(band: Band, func: Callable, **kwargs) -> Band:
+def _apply_as_func(band: Band | Image, func: Callable, **kwargs) -> Band:
     return band.apply(func, **kwargs)
 
 
-def _merge_by_band(collection: ImageCollection, **kwargs) -> Image:
+def _merge_by_band_as_func(collection: ImageCollection, **kwargs) -> Image:
     return collection.merge_by_band(**kwargs)
 
 
-def _merge(collection: ImageCollection, **kwargs) -> Band:
+def _merge_as_func(collection: ImageCollection, **kwargs) -> Band:
     return collection.merge(**kwargs)
 
 
