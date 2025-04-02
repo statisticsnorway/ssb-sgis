@@ -189,6 +189,7 @@ def _dissolve(
     grid_size: None | float = None,
     n_jobs: int = 1,
     as_index: bool = True,
+    backend="threading",
     **dissolve_kwargs,
 ) -> GeoDataFrame:
 
@@ -259,6 +260,7 @@ def _dissolve(
                 by=by,
                 grid_size=grid_size,
                 as_index=True,
+                backend=backend,
                 **dissolve_kwargs,
             )
             dissolved[geom_col] = agged

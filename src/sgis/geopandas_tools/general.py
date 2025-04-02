@@ -1168,14 +1168,19 @@ def _grouped_unary_union(
 
 
 def _parallel_unary_union(
-    gdf: GeoDataFrame, n_jobs: int = 1, by=None, grid_size=None, **kwargs
+    gdf: GeoDataFrame,
+    n_jobs: int = 1,
+    by=None,
+    grid_size=None,
+    backend="threading",
+    **kwargs,
 ) -> list[Geometry]:
     try:
         geom_col = gdf._geometry_column_name
     except AttributeError:
         geom_col = "geometry"
 
-    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
+    with joblib.Parallel(n_jobs=n_jobs, backend=backend) as parallel:
         delayed_operations = []
         for _, geoms in gdf.groupby(by, **kwargs)[geom_col]:
             delayed_operations.append(
@@ -1186,10 +1191,10 @@ def _parallel_unary_union(
 
 
 def _parallel_unary_union_geoseries(
-    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
+    ser: GeoSeries, n_jobs: int = 1, grid_size=None, backend="threading", **kwargs
 ) -> list[Geometry]:
 
-    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
+    with joblib.Parallel(n_jobs=n_jobs, backend=backend) as parallel:
         delayed_operations = []
         for _, geoms in ser.groupby(**kwargs):
             delayed_operations.append(
