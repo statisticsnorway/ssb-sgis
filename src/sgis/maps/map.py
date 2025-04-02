@@ -307,7 +307,9 @@ class Map:
         notna = array[array.notna()]
         isna = array[array.isna()]
 
-        unique_multiplied = (notna * self._multiplier).astype(np.int64)
+        unique_multiplied = (notna.astype(np.float64) * self._multiplier).astype(
+            np.int64
+        )
 
         return pd.concat([unique_multiplied, isna]).sort_index()
 
