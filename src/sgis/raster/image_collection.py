@@ -208,6 +208,19 @@ class PixelwiseResults:
             )
         }
 
+    def to_pandas(self, column: str | list[str] = "value") -> GeoDataFrame:
+        """Return DataFrame with 2 dim index and values from the pixelwise operation."""
+        return pd.DataFrame(
+            {
+                **(
+                    {col: [x[i] for x in self.results] for i, col in enumerate(column)}
+                    if not isinstance(column, str)
+                    else {column: self.results}
+                )
+            },
+            index=[self.row_indices, self.col_indices],
+        )
+
     def to_geopandas(self, column: str | list[str] = "value") -> GeoDataFrame:
         """Return GeoDataFrame with pixel geometries and values from the pixelwise operation."""
         resx, resy = _res_as_tuple(self.res)
@@ -1297,13 +1310,14 @@ class Band(_ImageBandBase):
 
         self._path = _fix_path(str(path))
 
-    def apply(self, func: Callable, **kwargs) -> "Band":
-        """Apply a function to the Band."""
-        results = func(self, **kwargs)
+    def apply(self, func_: Callable, copy: bool = True, **kwargs) -> "Band":
+        """Apply a function to the array."""
+        copied = self.copy() if copy else self
+        results = func_(copied, **kwargs)
         if isinstance(results, Band):
             return results
-        self.values = results
-        return self
+        copied.values = results
+        return copied
 
     def sample(self, size: int = 1000, mask: Any = None, **kwargs) -> "Image":
         """Take a random spatial sample area of the Band."""
@@ -1794,14 +1808,13 @@ class Image(_ImageBandBase):
             band._mask = copied._mask
         return copied
 
-    def apply(self, func: Callable, **kwargs) -> "Image":
+    def apply(self, func_: Callable, copy: bool = True, **kwargs) -> "Image":
         """Apply a function to each band of the Image."""
+        copied = self.copy() if copy else self
         with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
-            parallel(
-                joblib.delayed(_apply_as_func)(band, func, **kwargs) for band in self
-            )
+            parallel(joblib.delayed(func_)(band, **kwargs) for band in copied)
 
-        return self
+        return copied
 
     def ndvi(
         self, red_band: str, nir_band: str, padding: int = 0, copy: bool = True
@@ -2223,15 +2236,111 @@ class ImageCollection(_ImageBase):
                 pass
         return copied
 
-    def apply(self, func: Callable, copy: bool = True, **kwargs) -> "ImageCollection":
+    def apply(self, func_: Callable, copy: bool = True, **kwargs) -> "ImageCollection":
         """Apply a function to each image of the collection."""
         copied = self.copy() if copy else self
         with joblib.Parallel(n_jobs=copied.processes, backend="loky") as parallel:
             copied.images = parallel(
-                joblib.delayed(_apply_as_func)(img, func, **kwargs) for img in copied
+                joblib.delayed(func_)(img, **kwargs) for img in copied
             )
 
         return copied
+
+    def pixelwise(
+        self,
+        func: Callable,
+        kwargs: dict | None = None,
+        index_aligned_kwargs: dict | None = None,
+        masked: bool = True,
+        processes: int | None = None,
+    ) -> np.ndarray | tuple[np.ndarray] | None:
+        """Run a function for each pixel.
+
+        The function should take a 1d array as first argument. This will be
+        the pixel values for all bands in all images in the collection.
+        """
+        band_ids = {band.band_id for img in self for band in img}
+        if any(len(img) > 1 for img in self):
+            if any(band_id is None for band_id in band_ids):
+                raise ValueError(
+                    "band_id cannot be None when Images have more than one band"
+                )
+            if any({band.band_id for band in img} != band_ids for img in self):
+                raise ValueError("All Images must have same band_ids.")
+        out_row_indices, out_col_indices = np.array([]), np.array([])
+        out_results = []
+        out_return_attributes = []
+
+        for band_id in band_ids:
+
+            if band_id is None:
+                bands = [next(iter(img)) for img in self]
+                assert len(bands) == len(self), (len(bands), len(self))
+            else:
+                bands = [img[band_id] for img in self]
+
+            is_band_id = np.array(
+                [band.band_id == band_id for img in self for band in img]
+            )
+            values = np.array(bands)
+
+            if (
+                masked
+                and self.nodata is not None
+                and hasattr(next(iter(bands)).values, "mask")
+            ):
+                mask_array = np.array(
+                    [
+                        (band.values.mask) | (band.values.data == self.nodata)
+                        for band in bands
+                    ]
+                )
+            elif masked and self.nodata is not None:
+                mask_array = np.array([band.values == self.nodata for band in bands])
+            elif masked:
+                mask_array = np.array([band.values.mask for band in bands])
+            else:
+                mask_array = None
+
+            (
+                nonmissing_row_indices,
+                nonmissing_col_indices,
+                results,
+                return_attributes,
+            ) = pixelwise(
+                func=func,
+                values=values,
+                mask_array=mask_array,
+                # index_aligned_kwargs=index_aligned_kwargs,
+                index_aligned_kwargs={
+                    key: value[is_band_id]
+                    for key, value in index_aligned_kwargs.items()
+                },
+                kwargs=kwargs,
+                processes=processes or self.processes,
+            )
+            out_row_indices = np.concatenate([out_row_indices, nonmissing_row_indices])
+            out_col_indices = np.concatenate([out_col_indices, nonmissing_col_indices])
+            out_results += results
+            return_attributes_reshaped = {
+                key: value for key, value in next(iter(return_attributes)).items()
+            }
+            if len(return_attributes) > 1:
+                for key, value in return_attributes[1:].items():
+                    return_attributes_reshaped[key].append(value)
+            out_return_attributes += return_attributes
+
+        return PixelwiseResults(
+            out_row_indices,
+            out_col_indices,
+            out_results,
+            out_return_attributes,
+            shape=values.shape[1:],
+            res=self.res,
+            bounds=self.bounds,
+            crs=self.crs,
+            nodata=self.nodata or np.nan,
+        )
 
     def pixelwise(
         self,
@@ -2954,7 +3063,7 @@ class ImageCollection(_ImageBase):
         )
 
     @images.setter
-    def images(self, new_value: list["Image"]) -> list["Image"]:
+    def images(self, new_value: list["Image"]) -> None:
         new_value = list(new_value)
         if not new_value:
             self._images = new_value
@@ -2967,10 +3076,20 @@ class ImageCollection(_ImageBase):
                 img._bands = [new_value[i]]
                 new_images.append(img)
             self._images = new_images
-            return
-        if not all(isinstance(x, Image) for x in new_value):
+        elif all(hasattr(x, "shape") for x in new_value):
+            for img, arr in zip(self._images, new_value, strict=True):
+                img._bands = [
+                    Band(
+                        arr,
+                        bounds=img.bounds,
+                        crs=img.crs,
+                        **img._common_init_kwargs_after_load,
+                    )
+                ]
+        elif not all(isinstance(x, Image) for x in new_value):
             raise TypeError("images should be a sequence of Image.")
-        self._images = new_value
+        else:
+            self._images = new_value
 
     def union_all(self) -> Polygon | MultiPolygon:
         """(Multi)Polygon representing the union of all image bounds."""
@@ -3552,8 +3671,8 @@ def _load_as_func(band: Band, **kwargs) -> Band:
     return band.load(**kwargs)
 
 
-def _apply_as_func(band: Band | Image, func: Callable, **kwargs) -> Band:
-    return band.apply(func, **kwargs)
+def _apply_as_func(band: Band | Image, func_: Callable, **kwargs) -> Band:
+    return band.apply(func_, **kwargs)
 
 
 def _merge_by_band_as_func(collection: ImageCollection, **kwargs) -> Image:
@@ -3680,6 +3799,7 @@ def pixelwise(
     mask_array: np.ndarray | None = None,
     index_aligned_kwargs: dict | None = None,
     kwargs: dict | None = None,
+    # index_aligned_return_attributes: dict | None = None,
     processes: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, list[Any]]:
     """Run a function for each pixel of a 3d array."""
@@ -3712,5 +3832,22 @@ def pixelwise(
                 zip(nonmissing_row_indices, nonmissing_col_indices, strict=True)
             )
         )
+        # return_attributes: dict[str] = (
+        #     [
+        #         {
+        #             key: value[~mask_array[:, row, col]]
+        #             for key, value in index_aligned_return_attributes.items()
+        #         }
+        #         for row, col in (
+        #             zip(nonmissing_row_indices, nonmissing_col_indices, strict=True)
+        #         )
+        #     ]
+        #     if index_aligned_return_attributes is not None
+        #     else None
+        # )
 
-    return nonmissing_row_indices, nonmissing_col_indices, results
+    return (
+        nonmissing_row_indices,
+        nonmissing_col_indices,
+        results,
+    )  # , return_attributes
