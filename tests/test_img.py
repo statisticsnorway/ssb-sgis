@@ -551,12 +551,6 @@ def _test_ndvi_predictions(prediction_func):
     )
 
     sg.explore(
-        collection.to_geopandas(),
-        n_observations=n_observations.to_geopandas(),
-        # browser=True,
-    )
-
-    sg.explore(
         predicted_start=predicted_start.to_geopandas(),
         predicted_end=predicted_end.to_geopandas(),
         n_observations=n_observations.to_geopandas(),
