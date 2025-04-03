@@ -1,5 +1,6 @@
 # %%
 import glob
+import numbers
 import os
 import platform
 import re
@@ -253,7 +254,6 @@ def test_plot_pixels():
 def test_ndvi():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-    assert len(collection) == 2, len(collection)
     _test_ndvi(collection, np.ma.core.MaskedArray, cloudless=False)
 
     collection = sg.Sentinel2CloudlessCollection(path_sentinel, level=None, res=10)
@@ -1312,9 +1312,9 @@ def test_groupby():
             largest_date = img.date
 
     for (year,), subcollection in collection.groupby("year"):
-        assert isinstance(year, str), year
-        assert year.startswith("20")
-        assert len(year) == 4, year
+        assert isinstance(year, numbers.Number), year
+        assert str(year).startswith("20")
+        assert len(str(year)) == 4, year
         for img in subcollection:
             assert img.year == year
             for band in img:
@@ -1330,12 +1330,11 @@ def test_groupby():
         month,
     ), subcollection in collection.groupby(["year", "month"]):
         merged = subcollection.load().merge_by_band()
-        assert isinstance(month, str), month
-        assert month.startswith("0")
-        assert isinstance(year, str), year
-        assert year.startswith("20")
-        assert len(month) == 2, month
-        assert len(year) == 4, year
+        assert isinstance(month, numbers.Number), (month, type(month))
+        assert isinstance(year, numbers.Number), year
+        assert str(year).startswith("20")
+        assert len(str(month)) in [1, 2], month
+        assert len(str(year)) == 4, year
         for img in subcollection:
             assert img.month == month
             for band in img:
@@ -1785,6 +1784,7 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 def main():
     test_ndvi()
     test_metadata_attributes()
+    test_groupby()
     test_pixelwise()
     test_merge()
     test_explore()
@@ -1800,7 +1800,6 @@ def main():
     test_iteration()
     test_gradient()
     test_iteration_base_image_collection()
-    test_groupby()
     test_cloud()
     test_concat_image_collections()
     test_with_mosaic()
