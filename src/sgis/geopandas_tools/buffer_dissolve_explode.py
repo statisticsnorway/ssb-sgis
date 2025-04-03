@@ -264,6 +264,8 @@ def _dissolve(
                 **dissolve_kwargs,
             )
             dissolved[geom_col] = agged
+            if not as_index:
+                dissolved = dissolved.reset_index()
             return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
         except Exception as e:
             print(e, dissolved, agged, many_hits)
