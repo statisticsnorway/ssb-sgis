@@ -253,6 +253,7 @@ def test_plot_pixels():
 def test_ndvi():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
+    assert len(collection) == 2, len(collection)
     _test_ndvi(collection, np.ma.core.MaskedArray, cloudless=False)
 
     collection = sg.Sentinel2CloudlessCollection(path_sentinel, level=None, res=10)
@@ -271,13 +272,22 @@ def _test_ndvi(collection, type_should_be, cloudless: bool):
             assert img.tile == tile_id, (img.tile, tile_id)
             img = img[img.ndvi_bands]
             if not cloudless:
-                img = img.apply(
-                    lambda band: (band.load().values + (band.boa_add_offset or 0))
-                    / band.boa_quantification_value
-                )
+
+                def athmospheric_correction(band):
+                    values = (
+                        band.load().values + (band.boa_add_offset or 0)
+                    ) / band.boa_quantification_value
+                    return values
+
+                img = img.apply(athmospheric_correction)
             ndvi = img.ndvi()
             assert isinstance(ndvi.values, type_should_be), type(ndvi.values)
-            assert ndvi.values.max() <= 1, ndvi.values.max()
+            assert ndvi.values.max() <= 1, (
+                ndvi.values.max(),
+                img,
+                {band.boa_add_offset for band in img},
+                {band.boa_quantification_value for band in img},
+            )
             assert ndvi.values.min() >= -1, ndvi.values.min()
 
             if type_should_be == np.ma.core.MaskedArray:
@@ -1773,9 +1783,9 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
+    test_ndvi()
     test_metadata_attributes()
     test_pixelwise()
-    test_ndvi()
     test_merge()
     test_explore()
     test_ndvi_predictions()

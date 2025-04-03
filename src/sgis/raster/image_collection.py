@@ -1811,8 +1811,13 @@ class Image(_ImageBandBase):
     def apply(self, func_: Callable, copy: bool = True, **kwargs) -> "Image":
         """Apply a function to each band of the Image."""
         copied = self.copy() if copy else self
-        with joblib.Parallel(n_jobs=self.processes, backend="loky") as parallel:
-            parallel(joblib.delayed(func_)(band, **kwargs) for band in copied)
+        with joblib.Parallel(n_jobs=copied.processes, backend="loky") as parallel:
+            results = parallel(joblib.delayed(func_)(band, **kwargs) for band in copied)
+        if all(isinstance(x, Band) for x in results):
+            copied._bands = results
+        elif all(hasattr(x, "shape") for x in results):
+            for band, arr in zip(copied.bands, results, strict=True):
+                band.values = arr
 
         return copied
 
