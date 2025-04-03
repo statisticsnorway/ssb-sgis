@@ -333,7 +333,7 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     area_mapper = dict(enumerate(gdf.area.values))
-    sorted_areas = dict(reversed(sorted(area_mapper.items(), key=lambda item: item[1])))
+    sorted_areas = dict(reversed(sorted(area_mapper.items(), key=get_dict_value)))
     return gdf.iloc[list(sorted_areas)]
 
 
@@ -349,9 +349,7 @@ def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     length_mapper = dict(enumerate(gdf.length.values))
-    sorted_lengths = dict(
-        reversed(sorted(length_mapper.items(), key=lambda item: item[1]))
-    )
+    sorted_lengths = dict(reversed(sorted(length_mapper.items(), key=get_dict_value)))
     return gdf.iloc[list(sorted_lengths)]
 
 
@@ -367,7 +365,7 @@ def sort_short_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     length_mapper = dict(enumerate(gdf.length.values))
-    sorted_lengths = dict(sorted(length_mapper.items(), key=lambda item: item[1]))
+    sorted_lengths = dict(sorted(length_mapper.items(), key=get_dict_value))
     return gdf.iloc[list(sorted_lengths)]
 
 
@@ -384,8 +382,12 @@ def sort_small_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     area_mapper = dict(enumerate(gdf.area.values))
-    sorted_areas = dict(sorted(area_mapper.items(), key=lambda item: item[1]))
+    sorted_areas = dict(sorted(area_mapper.items(), key=get_dict_value))
     return gdf.iloc[list(sorted_areas)]
+
+
+def get_dict_value(item: tuple[Hashable, Any]) -> Any:
+    return item[1]
 
 
 def make_lines_between_points(
@@ -1153,16 +1155,19 @@ def _grouped_unary_union(
         except AttributeError:
             geom_col = "geometry"
 
+    unary_union_for_grid_size = functools.partial(
+        _unary_union_for_notna, grid_size=grid_size
+    )
     if isinstance(df, pd.Series):
         return GeoSeries(
             df.groupby(level=level, as_index=as_index, **kwargs).agg(
-                lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+                unary_union_for_grid_size
             )
         )
 
     return GeoSeries(
         df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
-            lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+            unary_union_for_grid_size
         )
     )
 
