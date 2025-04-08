@@ -24,11 +24,11 @@ from geopandas import GeoSeries
 from shapely import get_num_geometries
 
 from ..parallel.parallel import Parallel
-from .general import _parallel_unary_union
-from .general import _unary_union_for_notna
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper
 from .polygon_operations import get_grouped_centroids
+from .runners import DissolveRunner
+from .utils import _unary_union_for_notna
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
@@ -53,8 +53,8 @@ def buffdissexp(
     index_parts: bool = False,
     copy: bool = True,
     grid_size: float | int | None = None,
-    n_jobs: int = 1,
     join_style: int | str = "round",
+    n_jobs: int = 1,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Buffers and dissolves overlapping geometries.
@@ -189,9 +189,12 @@ def _dissolve(
     grid_size: None | float = None,
     n_jobs: int = 1,
     as_index: bool = True,
-    backend="threading",
+    backend: str = "loky",
+    dissolve_runner: DissolveRunner | None = None,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
+    if dissolve_runner is None:
+        dissolve_runner = DissolveRunner(n_jobs, backend)
 
     if not len(gdf):
         return gdf
@@ -241,30 +244,37 @@ def _dissolve(
     dissolved = many_hits.groupby(by, as_index=True, **dissolve_kwargs)[other_cols].agg(
         aggfunc
     )
-
-    if n_jobs > 1:
-        try:
-            geoms_agged = _parallel_unary_union(
-                many_hits,
-                n_jobs=n_jobs,
-                by=by,
-                grid_size=grid_size,
-                as_index=True,
-                backend=backend,
-                **dissolve_kwargs,
-            )
-        except Exception as e:
-            raise e.__class__(f"{e}. {dissolved}. {geoms_agged}. {many_hits}") from e
-    else:
-        geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
-            lambda x: _unary_union_for_notna(x, grid_size=grid_size)
-        )
+    geoms_agged = dissolve_runner.run(
+        many_hits,
+        # n_jobs=n_jobs,
+        by=by,
+        grid_size=grid_size,
+        as_index=True,
+        # backend=backend,
+        **dissolve_kwargs,
+    )
+    # if n_jobs > 1:
+    #     try:
+    #         geoms_agged2 = _parallel_unary_union(
+    #             many_hits,
+    #             n_jobs=n_jobs,
+    #             by=by,
+    #             grid_size=grid_size,
+    #             as_index=True,
+    #             backend=backend,
+    #             **dissolve_kwargs,
+    #         )
+    #     except Exception as e:
+    #         raise e.__class__(f"{e}. {dissolved}. {geoms_agged}. {many_hits}") from e
+    # else:
+    #     geoms_agged2 = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
+    #         lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+    #     )
+    # print(geoms_agged2)
 
     dissolved[geom_col] = geoms_agged
-
     if not as_index:
         dissolved = dissolved.reset_index()
-
     try:
         return GeoDataFrame(
             pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs
@@ -280,6 +290,7 @@ def diss(
     as_index: bool = True,
     grid_size: float | int | None = None,
     n_jobs: int = 1,
+    backend: str = "loky",
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Dissolves geometries.
@@ -294,6 +305,8 @@ def diss(
             True to be consistent with geopandas.
         grid_size: Rounding of the coordinates. Defaults to None.
         n_jobs: Number of threads to use. Defaults to 1.
+        backend: Backend if n_jobs is > 1. Either "dask" or any joblib supported backend.
+            defaults to "loky".
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -315,6 +328,7 @@ def diss(
         grid_size=grid_size,
         n_jobs=n_jobs,
         as_index=as_index,
+        backend=backend,
         **dissolve_kwargs,
     )
 

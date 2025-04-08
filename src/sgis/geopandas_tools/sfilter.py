@@ -9,6 +9,7 @@ from shapely import Geometry
 from shapely import STRtree
 
 from .conversion import to_gdf
+from .runners import RTreeRunner
 
 gdf_type_error_message = "'gdf' should be of type GeoDataFrame or GeoSeries."
 
@@ -18,6 +19,8 @@ def sfilter(
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
     distance: int | float | None = None,
+    n_jobs: int = 1,
+    rtree_runner: RTreeRunner | None = None,
 ) -> GeoDataFrame:
     """Filter a GeoDataFrame or GeoSeries by spatial predicate.
 
@@ -80,7 +83,9 @@ def sfilter(
 
     other = _sfilter_checks(other, crs=gdf.crs)
 
-    indices = _get_sfilter_indices(gdf, other, predicate, distance)
+    indices = _get_sfilter_indices(
+        gdf, other, predicate, distance, n_jobs, rtree_runner
+    )
 
     return gdf.iloc[indices]
 
@@ -90,6 +95,8 @@ def sfilter_split(
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
     distance: int | float | None = None,
+    n_jobs: int = 1,
+    rtree_runner: RTreeRunner | None = None,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     """Split a GeoDataFrame or GeoSeries by spatial predicate.
 
@@ -151,7 +158,9 @@ def sfilter_split(
 
     other = _sfilter_checks(other, crs=gdf.crs)
 
-    indices = _get_sfilter_indices(gdf, other, predicate, distance)
+    indices = _get_sfilter_indices(
+        gdf, other, predicate, distance, n_jobs, rtree_runner
+    )
 
     return (
         gdf.iloc[indices],
@@ -164,6 +173,8 @@ def sfilter_inverse(
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
     distance: int | float | None = None,
+    n_jobs: int = 1,
+    rtree_runner: RTreeRunner | None = None,
 ) -> GeoDataFrame | GeoSeries:
     """Filter a GeoDataFrame or GeoSeries by inverse spatial predicate.
 
@@ -215,11 +226,10 @@ def sfilter_inverse(
     """
     if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError(gdf_type_error_message)
-
     other = _sfilter_checks(other, crs=gdf.crs)
-
-    indices = _get_sfilter_indices(gdf, other, predicate, distance)
-
+    indices = _get_sfilter_indices(
+        gdf, other, predicate, distance, n_jobs, rtree_runner
+    )
     return gdf.iloc[pd.Index(range(len(gdf))).difference(pd.Index(indices))]
 
 
@@ -252,6 +262,8 @@ def _get_sfilter_indices(
     right: GeoDataFrame | GeoSeries | Geometry,
     predicate: str,
     distance: int | float | None,
+    n_jobs: int,
+    rtree_runner: RTreeRunner | None,
 ) -> np.ndarray:
     """Compute geometric comparisons and get matching indices.
 
@@ -273,6 +285,9 @@ def _get_sfilter_indices(
     """
     original_predicate = predicate
 
+    if rtree_runner is None:
+        rtree_runner = RTreeRunner(n_jobs)
+
     with warnings.catch_warnings():
         # We don't need to show our own warning here
         # TODO remove this once the deprecation has been enforced
@@ -285,21 +300,27 @@ def _get_sfilter_indices(
             # contains is a faster predicate
             # see discussion at https://github.com/geopandas/geopandas/pull/1421
             predicate = "contains"
-            sindex, kwargs = _get_spatial_tree(left)
-            input_geoms = right.geometry if isinstance(right, GeoDataFrame) else right
+            arr1 = right.geometry.values
+            arr2 = left.geometry.values
+            # sindex, kwargs = _get_spatial_tree(left)
+            # input_geoms = right.geometry if isinstance(right, GeoDataFrame) else right
         else:
             # all other predicates are symmetric
             # keep them the same
-            sindex, kwargs = _get_spatial_tree(right)
-            input_geoms = left.geometry if isinstance(left, GeoDataFrame) else left
+            # sindex, kwargs = _get_spatial_tree(right)
+            # input_geoms = left.geometry if isinstance(left, GeoDataFrame) else left
+            arr1 = left.geometry.values
+            arr2 = right.geometry.values
 
-    l_idx, r_idx = sindex.query(
-        input_geoms, predicate=predicate, distance=distance, **kwargs
+    l_idx, r_idx = rtree_runner.query(
+        arr1, arr2, predicate=predicate, distance=distance
     )
 
+    # l_idx, r_idx = sindex.query(
+    #     input_geoms, predicate=predicate, distance=distance, **kwargs
+    # )
     if original_predicate == "within":
         return np.sort(np.unique(r_idx))
-
     return np.sort(np.unique(l_idx))
 
 

@@ -146,31 +146,24 @@ def to_bbox(
     except Exception:
         pass
 
-    try:
-        minx = float(np.min(obj["minx"]))  # type: ignore [index]
-        miny = float(np.min(obj["miny"]))  # type: ignore [index]
-        maxx = float(np.max(obj["maxx"]))  # type: ignore [index]
-        maxy = float(np.max(obj["maxy"]))  # type: ignore [index]
-        return minx, miny, maxx, maxy
-    except Exception:
-        pass
-    try:
-        minx = float(np.min(obj.minx))  # type: ignore [union-attr]
-        miny = float(np.min(obj.miny))  # type: ignore [union-attr]
-        maxx = float(np.max(obj.maxx))  # type: ignore [union-attr]
-        maxy = float(np.max(obj.maxy))  # type: ignore [union-attr]
-        return minx, miny, maxx, maxy
-    except Exception:
-        pass
+    def to_int_if_possible(x):
+        if isinstance(x, int) or float(x).is_integer():
+            return int(x)
+        return float(x)
 
-    try:
-        minx = float(np.min(obj["west_longitude"]))  # type: ignore [index]
-        miny = float(np.min(obj["south_latitude"]))  # type: ignore [index]
-        maxx = float(np.max(obj["east_longitude"]))  # type: ignore [index]
-        maxy = float(np.max(obj["north_latitude"]))  # type: ignore [index]
-        return minx, miny, maxx, maxy
-    except Exception:
-        pass
+    for attrs in [
+        ("minx", "miny", "maxx", "maxy"),
+        ("xmin", "ymin", "xmax", "xmax"),
+        ("west_longitude", "south_latitude", "east_longitude", "north_latitude"),
+    ]:
+        try:
+            return tuple(to_int_if_possible(obj[attr]) for attr in attrs)
+        except Exception:
+            pass
+        try:
+            return tuple(to_int_if_possible(getattr(obj, attr)) for attr in attrs)
+        except Exception:
+            pass
 
     if hasattr(obj, "geometry"):
         try:

@@ -34,9 +34,7 @@ from .conversion import to_geoseries
 from .duplicates import _get_intersecting_geometries
 from .general import _grouped_unary_union
 from .general import _parallel_unary_union
-from .general import _parallel_unary_union_geoseries
 from .general import _push_geom_col
-from .general import _unary_union_for_notna
 from .general import clean_geoms
 from .general import extend_lines
 from .general import get_grouped_centroids
@@ -51,6 +49,7 @@ from .overlay import clean_overlay
 from .polygons_as_rings import PolygonsAsRings
 from .sfilter import sfilter
 from .sfilter import sfilter_inverse
+from .utils import _unary_union_for_notna
 
 PRECISION = 1e-3
 _BUFFER = False
@@ -232,6 +231,7 @@ def eliminate_by_longest(
     aggfunc: str | dict | list | None = None,
     grid_size=None,
     n_jobs: int = 1,
+    backend: str = "threading",
     **kwargs,
 ) -> tuple[GeoDataFrame]:
     """Dissolves selected polygons with the longest bordering neighbor polygon.
@@ -390,6 +390,7 @@ def eliminate_by_longest(
         fix_double,
         grid_size=grid_size,
         n_jobs=n_jobs,
+        backend=backend,
         **kwargs,
     )
 
@@ -609,6 +610,7 @@ def _eliminate_by_area(
     fix_double: bool = True,
     grid_size=None,
     n_jobs: int = 1,
+    backend: str = "dask",
     **kwargs,
 ) -> GeoDataFrame:
     _recurse = kwargs.pop("_recurse", False)
@@ -667,6 +669,7 @@ def _eliminate_by_area(
         fix_double=fix_double,
         grid_size=grid_size,
         n_jobs=n_jobs,
+        backend=backend,
         **kwargs,
     )
 
@@ -738,7 +741,7 @@ def _eliminate_by_area(
 
 
 def _eliminate(
-    gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, n_jobs, **kwargs
+    gdf, to_eliminate, aggfunc, crs, fix_double, grid_size, n_jobs, backend, **kwargs
 ):
     if not len(to_eliminate):
         return gdf
@@ -857,8 +860,9 @@ def _eliminate(
             soon_erased.to_numpy(),
             intersecting.to_numpy(),
             grid_size=grid_size,
-            n_jobs=n_jobs,
             geom_type="polygon",
+            n_jobs=n_jobs,
+            backend=backend,
         )
 
         missing = _grouped_unary_union(missing, level=0, grid_size=grid_size)
@@ -893,7 +897,7 @@ def _eliminate(
 
         if n_jobs > 1:
             eliminated["geometry"] = GeoSeries(
-                _parallel_unary_union_geoseries(
+                _parallel_unary_union(
                     soon_eliminated,
                     level=0,
                     grid_size=grid_size,

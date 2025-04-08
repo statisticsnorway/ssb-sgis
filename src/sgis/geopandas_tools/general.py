@@ -23,7 +23,6 @@ from shapely import get_parts
 from shapely import linestrings
 from shapely import make_valid
 from shapely import points as shapely_points
-from shapely import union_all
 from shapely.geometry import LineString
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
@@ -37,6 +36,7 @@ from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .neighbors import get_k_nearest_neighbors
 from .sfilter import sfilter_split
+from .utils import _unary_union_for_notna
 
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:
@@ -1125,20 +1125,10 @@ def _determine_geom_type_args(
     return gdf, geom_type, keep_geom_type
 
 
-def _unary_union_for_notna(geoms, **kwargs):
-    try:
-        return make_valid(union_all(geoms, **kwargs))
-    except TypeError:
-        return union_all([geom for geom in geoms.dropna().values], **kwargs)
-
-
 def _grouped_unary_union(
     df: GeoDataFrame | GeoSeries | pd.DataFrame | pd.Series,
     by: str | list[str] | None = None,
-    level: int | None = None,
-    as_index: bool = True,
     grid_size: float | int | None = None,
-    dropna: bool = False,
     **kwargs,
 ) -> GeoSeries | GeoDataFrame:
     """Vectorized unary_union for groups.
@@ -1146,7 +1136,7 @@ def _grouped_unary_union(
     Experimental. Messy code.
     """
     try:
-        geom_col = df._geometry_column_name
+        geom_col = df.geometry.name
     except AttributeError:
         try:
             geom_col = df.name
@@ -1154,22 +1144,19 @@ def _grouped_unary_union(
                 geom_col = "geometry"
         except AttributeError:
             geom_col = "geometry"
+    try:
+        crs = df.crs
+    except AttributeError:
+        crs = None
+    try:
+        groupby_obj = df.groupby(by, **kwargs)[geom_col]
+    except KeyError:
+        groupby_obj = df.groupby(by, **kwargs)
 
     unary_union_for_grid_size = functools.partial(
         _unary_union_for_notna, grid_size=grid_size
     )
-    if isinstance(df, pd.Series):
-        return GeoSeries(
-            df.groupby(level=level, as_index=as_index, **kwargs).agg(
-                unary_union_for_grid_size
-            )
-        )
-
-    return GeoSeries(
-        df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
-            unary_union_for_grid_size
-        )
-    )
+    return GeoSeries(groupby_obj.agg(unary_union_for_grid_size))
 
 
 def _parallel_unary_union(
@@ -1181,29 +1168,17 @@ def _parallel_unary_union(
     **kwargs,
 ) -> list[Geometry]:
     try:
-        geom_col = gdf._geometry_column_name
+        geom_col = gdf.geometry.name
     except AttributeError:
         geom_col = "geometry"
 
-    with joblib.Parallel(n_jobs=n_jobs, backend=backend) as parallel:
-        delayed_operations = []
-        for _, geoms in gdf.groupby(by, **kwargs)[geom_col]:
-            delayed_operations.append(
-                joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
-            )
-
-        return parallel(delayed_operations)
-
-
-def _parallel_unary_union_geoseries(
-    ser: GeoSeries, n_jobs: int = 1, grid_size=None, backend="threading", **kwargs
-) -> list[Geometry]:
+    try:
+        groupby_obj = gdf.groupby(by, **kwargs)[geom_col]
+    except KeyError:
+        groupby_obj = gdf.groupby(by, **kwargs)
 
     with joblib.Parallel(n_jobs=n_jobs, backend=backend) as parallel:
-        delayed_operations = []
-        for _, geoms in ser.groupby(**kwargs):
-            delayed_operations.append(
-                joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
-            )
-
-        return parallel(delayed_operations)
+        return parallel(
+            joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
+            for _, geoms in groupby_obj
+        )

@@ -672,7 +672,7 @@ class Parallel:
     def chunkwise(
         self,
         func: Callable,
-        iterable: Collection[Iterable[Any]],
+        *iterables: Collection[Iterable[Any]],
         args: tuple | None = None,
         kwargs: dict | None = None,
         max_rows_per_chunk: int | None = None,
@@ -682,8 +682,8 @@ class Parallel:
         Args:
             func: Function to run chunkwise. It should take
                 (a chunk of) the iterable as first argument.
-            iterable: Iterable to split in chunks and passed
-                as first argument to 'func'.
+            iterables: Iterable(s) to split in chunks and passed
+                as first argument(s) to 'func'. Iterables must have same length.
             args: Positional arguments in 'func' after the DataFrame.
             kwargs: Additional keyword arguments in 'func'.
             max_rows_per_chunk: Alternatively decide number of chunks
@@ -691,7 +691,7 @@ class Parallel:
         """
         return chunkwise(
             func,
-            iterable,
+            *iterables,
             args=args,
             kwargs=kwargs,
             processes=self.processes,
@@ -1067,7 +1067,7 @@ def _fix_missing_muni_numbers(
 
 def chunkwise(
     func: Callable,
-    iterable: Collection[Iterable[Any]],
+    *iterables: Collection[Iterable[Any]],
     args: tuple | None = None,
     kwargs: dict | None = None,
     processes: int = 1,
@@ -1082,7 +1082,7 @@ def chunkwise(
     Args:
         func: The function to apply to each chunk. This function must accept a DataFrame as
             its first argument and return a DataFrame.
-        iterable: Iterable to be chunked and processed.
+        iterables: Iterable(s) to be chunked and processed. Must have same length.
         args: Additional positional arguments to pass to 'func'.
         kwargs: Keyword arguments to pass to 'func'.
         processes: The number of parallel jobs to run. Defaults to 1 (no parallel execution).
@@ -1096,30 +1096,36 @@ def chunkwise(
     args = args or ()
     kwargs = kwargs or {}
 
+    if len({len(x) for x in iterables}) not in [0, 1]:
+        raise ValueError(
+            f"iterables must have same length. Got {', '.join([len(x) for x in iterables])}"
+        )
+
     if max_rows_per_chunk is None:
         n_chunks: int = processes
     else:
-        n_chunks: int = len(iterable) // max_rows_per_chunk
-
+        n_chunks: int = len(next(iter(iterables))) // max_rows_per_chunk
     if n_chunks <= 1:
-        return [func(iterable, *args, **kwargs)]
+        return [func(*iterables, *args, **kwargs)]
 
-    chunks = np.array_split(np.arange(len(iterable)), n_chunks)
+    chunks = np.array_split(np.arange(len(next(iter(iterables)))), n_chunks)
 
-    if hasattr(iterable, "iloc"):
-        iterable_chunked: list[pd.DataFrame | pd.Series] = [
-            iterable.iloc[chunk] for chunk in chunks
-        ]
-    elif is_array_like(iterable):
-        iterable_chunked: list[np.ndarray] = [iterable[chunk] for chunk in chunks]
-    else:
-        to_type: type = iterable.__class__
-        iterable_chunked: list[Iterable] = [
-            to_type(chunk) for chunk in np.array_split(list(iterable), n_chunks)
-        ]
-    return Parallel(processes, backend=backend).map(
+    def get_chunk(iterable, chunk):
+        if hasattr(iterable, "iloc"):
+            return iterable.iloc[chunk]
+        elif is_array_like(iterable):
+            return iterable[chunk]
+        else:
+            to_type: type = iterable.__class__
+            return to_type([x for i, x in enumerate(iterable) if i in chunk])
+
+    iterables_chunked: list[list[Iterable[Any]]] = [
+        [get_chunk(iterable, chunk) for chunk in chunks] for iterable in iterables
+    ]
+
+    return Parallel(processes, backend=backend).starmap(
         func,
-        iterable_chunked,
+        iterables_chunked,
         args=args,
         kwargs=kwargs,
     )
