@@ -196,18 +196,15 @@ def _dissolve(
     if not len(gdf):
         return gdf
 
-    geom_col = gdf._geometry_column_name
+    geom_col = gdf.geometry.name
+    by = dissolve_kwargs.pop("by", None)
+    by_was_none = not bool(by)
 
-    gdf[geom_col] = gdf[geom_col].make_valid()
-
+    # make sure geometries are dissolved rowwise to make dissolving simpler later
     more_than_one = get_num_geometries(gdf.geometry.values) > 1
     gdf.loc[more_than_one, geom_col] = gdf.loc[more_than_one, geom_col].apply(
         _unary_union_for_notna
     )
-
-    by = dissolve_kwargs.pop("by", None)
-
-    by_was_none = not bool(by)
 
     if by is None and dissolve_kwargs.get("level") is None:
         by = np.zeros(len(gdf), dtype="int64")
@@ -216,7 +213,6 @@ def _dissolve(
         if isinstance(by, str):
             by = [by]
         other_cols = list(gdf.columns.difference({geom_col} | set(by or {})))
-
     try:
         is_one_hit = (
             gdf.groupby(by, as_index=True, **dissolve_kwargs).transform("size") == 1
@@ -229,17 +225,11 @@ def _dissolve(
             query &= gdf[col].notna()
         gdf = gdf.loc[query]
         assert not len(gdf), gdf
-        if not by_was_none and as_index:
-            try:
-                gdf = gdf.set_index(original_by)
-            except Exception as e:
-                print(gdf)
-                print(original_by)
-                raise e
-
+        if as_index and not by_was_none:
+            gdf = gdf.set_index(original_by)
         return gdf
 
-    if not by_was_none and as_index:
+    if as_index and not by_was_none:
         one_hit = gdf[is_one_hit].set_index(by)
     else:
         one_hit = gdf[is_one_hit]
@@ -254,7 +244,7 @@ def _dissolve(
 
     if n_jobs > 1:
         try:
-            agged = _parallel_unary_union(
+            geoms_agged = _parallel_unary_union(
                 many_hits,
                 n_jobs=n_jobs,
                 by=by,
@@ -263,17 +253,12 @@ def _dissolve(
                 backend=backend,
                 **dissolve_kwargs,
             )
-            dissolved[geom_col] = agged
-            if not as_index:
-                dissolved = dissolved.reset_index()
-            return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
         except Exception as e:
-            print(e, dissolved, agged, many_hits)
-            raise e
-
-    geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
-        lambda x: _unary_union_for_notna(x, grid_size=grid_size)
-    )
+            raise e.__class__(f"{e}. {dissolved}. {geoms_agged}. {many_hits}") from e
+    else:
+        geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
+            lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+        )
 
     dissolved[geom_col] = geoms_agged
 
@@ -285,7 +270,7 @@ def _dissolve(
             pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs
         )
     except TypeError as e:
-        raise e.__class__(e, dissolved.index, one_hit.index) from e
+        raise e.__class__(f"{e}. {dissolved.index}. {one_hit.index}") from e
 
 
 def diss(
