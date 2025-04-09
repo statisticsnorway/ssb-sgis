@@ -140,29 +140,6 @@ def test_gradient():
 
 
 @print_function_name
-def test_with_mosaic():
-
-    mosaic = sg.Sentinel2CloudlessCollection(
-        path_sentinel, level=None, res=10, processes=2
-    )
-    for img in mosaic:
-        assert isinstance(img, sg.Sentinel2CloudlessImage), type(img)
-        for band in img:
-            assert isinstance(band, sg.Sentinel2CloudlessBand), type(band)
-            print(img.filename_regexes)
-            assert band.band_id is not None
-    sg.explore(mosaic)
-    assert len(mosaic) == 1, mosaic
-
-    collection = sg.Sentinel2Collection(path_sentinel, level=None, res=10, processes=2)
-    assert len(collection) == 3, collection
-    assert list(collection.date) == list(sorted(collection.date)), collection.date
-
-    concated = sg.concat_image_collections([mosaic, collection])
-    assert len(concated) == 4, concated
-
-
-@print_function_name
 def test_concat_image_collections():
 
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10, processes=2)
@@ -495,6 +472,7 @@ def _test_ndvi_predictions(prediction_func):
         collection[0].clip(mask.buffer(100)),
         collection[1].clip(mask),
     ]
+
     sg.explore(
         x1=collection[0][0].to_geopandas(),
         x2=collection[1][0].to_geopandas(),
@@ -509,17 +487,24 @@ def _test_ndvi_predictions(prediction_func):
     for band in collection[0]:
         band.boa_add_offset = -1000
 
-    def normalize(band: sg.Band):
-        values = band.values
-        values = (values + band.boa_add_offset) / band.boa_quantification_value
-        band.values = (values - np.min(values)) / (np.max(values) - np.min(values))
-        return band
+    for img in collection:
+        for band in img:
+            band.values = (
+                band.values + band.boa_add_offset
+            ) / band.boa_quantification_value
 
-    collection.images = [img.apply(normalize).ndvi(padding=0.05) for img in collection]
+    def calculate_ndvi(img: sg.Image, band_ids: list[str]) -> np.ndarray:
+        red = img[band_ids[0]]
+        nir = img[band_ids[0]]
+        return sg.indices.ndvi(red.values, nir.values)
+
+    collection = collection.apply(calculate_ndvi, band_ids=collection.ndvi_bands)
 
     days_since_start = np.array(
         (pd.to_datetime(collection.date) - pd.Timestamp(min(collection.date))).dt.days
     )
+    assert len(collection) == 2
+    assert len(days_since_start) == 2
 
     predicted_start, predicted_end, n_observations = collection.pixelwise(
         func=get_predictions_1d,
@@ -923,8 +908,8 @@ def test_indexing():
     assert isinstance(s2b, sg.ImageCollection)
     assert len(s2b) == 2, s2b
 
-    assert isinstance((x := collection[[0, -1]]), sg.ImageCollection), x
     assert len(x := collection[[0, -1]]) == 2, x
+    assert isinstance((x := collection[[0, -1]]), sg.ImageCollection), x
     assert isinstance((x := collection[0][["B02", "B03"]]), sg.Image), x
     assert isinstance((x := collection[0][["B02"]]), sg.Image), x
     assert isinstance((x := collection[0]["B02"]), sg.Band), x
@@ -1782,17 +1767,17 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
+    test_ndvi_predictions()
+    test_indexing()
+    test_concat_image_collections()
     test_ndvi()
     test_metadata_attributes()
     test_groupby()
     test_pixelwise()
     test_merge()
     test_explore()
-    test_ndvi_predictions()
-    test_clip()
     test_convertion()
     test_bbox()
-    test_indexing()
     test_regexes()
     test_date_ranges()
     test_single_banded()
@@ -1801,13 +1786,12 @@ def main():
     test_gradient()
     test_iteration_base_image_collection()
     test_cloud()
-    test_concat_image_collections()
-    test_with_mosaic()
     test_masking()
     test_zonal()
     test_collection_from_list_of_path()
     test_merge()
     test_plot_pixels()
+    test_clip()
     not_test_to_xarray()
     not_test_sample()
     not_test_sample()

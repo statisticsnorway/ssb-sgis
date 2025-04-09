@@ -221,8 +221,21 @@ class PixelwiseResults:
             index=[self.row_indices, self.col_indices],
         )
 
+    @property
+    def is_empty(self) -> bool:
+        """Returns True if all band arrays in all images have shape (0,)."""
+        return not any(x for x in self.row_indices.shape) and not any(
+            x for x in self.col_indices.shape
+        )
+
     def to_geopandas(self, column: str | list[str] = "value") -> GeoDataFrame:
         """Return GeoDataFrame with pixel geometries and values from the pixelwise operation."""
+        if self.is_empty:
+            if isinstance(column, str):
+                return GeoDataFrame({"geometry": [], column: []}, crs=self.crs)
+            return GeoDataFrame(
+                {"geometry": [], **{col: [] for col in column}}, crs=self.crs
+            )
         resx, resy = _res_as_tuple(self.res)
 
         # work ourselves inwards from the bottom left and top right corners
@@ -231,7 +244,6 @@ class PixelwiseResults:
         maxys = np.full(self.row_indices.shape, maxy) - (self.row_indices * resy)
         maxxs = minxs + resx
         minys = maxys - resy
-
         return GeoDataFrame(
             {
                 **(
@@ -252,6 +264,8 @@ class PixelwiseResults:
 
     def to_numpy(self) -> np.ndarray | tuple[np.ndarray, ...]:
         """Reshape pixelwise results to 2d numpy arrays in the shape of the full arrays of the image bands."""
+        if self.is_empty:
+            return tuple(np.array([]) for _ in range(len(self.results)))
         try:
             n_out_arrays = len(next(iter(self.results)))
         except TypeError:
@@ -2264,6 +2278,18 @@ class ImageCollection(_ImageBase):
         The function should take a 1d array as first argument. This will be
         the pixel values for all bands in all images in the collection.
         """
+        if not len(self):
+            return PixelwiseResults(
+                np.array([]),
+                np.array([]),
+                np.array([]),
+                shape=(0,),
+                res=self.res,
+                bounds=None,
+                crs=None,
+                nodata=self.nodata or np.nan,
+            )
+
         values = np.array([band.values for img in self for band in img])
 
         if (
@@ -2885,6 +2911,11 @@ class ImageCollection(_ImageBase):
         if isinstance(item, int):
             return self.images[item]
 
+        if isinstance(item, str):
+            return self._metadata_attribute_collection_type(
+                [getattr(img, item) for img in self]
+            )
+
         if isinstance(item, slice):
             copied = self.copy()
             copied.images = copied.images[item]
@@ -2913,7 +2944,6 @@ class ImageCollection(_ImageBase):
         # check for base bool and numpy bool
         if all("bool" in str(type(x)) for x in item):
             copied.images = [img for x, img in zip(item, copied, strict=True) if x]
-
         else:
             copied.images = [copied.images[i] for i in item]
         return copied
@@ -3708,7 +3738,6 @@ def pixelwise(
     mask_array: np.ndarray | None = None,
     index_aligned_kwargs: dict | None = None,
     kwargs: dict | None = None,
-    # index_aligned_return_attributes: dict | None = None,
     processes: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, list[Any]]:
     """Run a function for each pixel of a 3d array."""
@@ -3741,22 +3770,5 @@ def pixelwise(
                 zip(nonmissing_row_indices, nonmissing_col_indices, strict=True)
             )
         )
-        # return_attributes: dict[str] = (
-        #     [
-        #         {
-        #             key: value[~mask_array[:, row, col]]
-        #             for key, value in index_aligned_return_attributes.items()
-        #         }
-        #         for row, col in (
-        #             zip(nonmissing_row_indices, nonmissing_col_indices, strict=True)
-        #         )
-        #     ]
-        #     if index_aligned_return_attributes is not None
-        #     else None
-        # )
 
-    return (
-        nonmissing_row_indices,
-        nonmissing_col_indices,
-        results,
-    )  # , return_attributes
+    return (nonmissing_row_indices, nonmissing_col_indices, results)

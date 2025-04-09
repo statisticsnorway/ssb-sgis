@@ -6,9 +6,7 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import STRtree
 from shapely import difference
-from shapely import make_valid
 from shapely import simplify
-from shapely.errors import GEOSException
 
 from .general import _determine_geom_type_args
 from .general import _push_geom_col
@@ -17,11 +15,9 @@ from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .overlay import clean_overlay
-from .overlay import make_valid_and_keep_geom_type
-from .runners import DissolveRunner
-from .runners import FunctionRunner
 from .runners import OverlayRunner
 from .runners import RTreeRunner
+from .runners import UnionRunner
 from .sfilter import sfilter_inverse
 
 PRECISION = 1e-3
@@ -34,9 +30,9 @@ def update_geometries(
     grid_size: int | None = None,
     predicate: str | None = "intersects",
     n_jobs: int = 1,
-    overlay_runner: FunctionRunner = OverlayRunner(),
-    dissolve_runner: DissolveRunner | None = None,
+    union_runner: UnionRunner | None = None,
     rtree_runner: RTreeRunner | None = None,
+    overlay_runner: OverlayRunner = OverlayRunner(),
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
@@ -54,8 +50,14 @@ def update_geometries(
             "line" or "point".
         grid_size: Precision grid size to round the geometries. Will use the highest
             precision of the inputs by default.
-        n_jobs: Number of threads.
         predicate: Spatial predicate for the spatial tree.
+        n_jobs: Number of workers.
+        union_runner: Optionally debug/manipulate the spatial union operations.
+            See the 'runners' module for example implementations.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
+        overlay_runner: Optionally debug/manipulate the spatial overlay operations.
+            See the 'runners' module for example implementations.
 
     Example:
     --------
@@ -102,10 +104,10 @@ def update_geometries(
     if len(gdf) <= 1:
         return gdf
 
-    if dissolve_runner is None:
-        dissolve_runner = DissolveRunner(n_jobs, "loky")
+    if union_runner is None:
+        union_runner = UnionRunner(n_jobs)
     if rtree_runner is None:
-        rtree_runner = RTreeRunner(n_jobs, "loky")
+        rtree_runner = RTreeRunner(n_jobs)
 
     if geom_type == "polygon" or get_geom_type(gdf) == "polygon":
         gdf.geometry = gdf.buffer(0)
@@ -129,45 +131,20 @@ def update_geometries(
     erasers = pd.Series(copied.geometry.loc[indices.values].values, index=indices.index)
     only_one = erasers.groupby(level=0).transform("size") == 1
     one_hit = erasers[only_one]
-    many_hits = dissolve_runner.run(erasers[~only_one], level=0, grid_size=grid_size)
+    many_hits = union_runner.run(erasers[~only_one], level=0, grid_size=grid_size)
     erasers = pd.concat([one_hit, many_hits]).sort_index()
-    # if n_jobs > 1:
-    #     erasers = _parallel_unary_union(
-    #         erasers,
-    #         level=0,
-    #         n_jobs=n_jobs,
-    #         grid_size=grid_size,
-    #     )
-    #     erasers = pd.Series(erasers, index=indices.index.unique())
-    # else:
-    #     only_one = erasers.groupby(level=0).transform("size") == 1
-    #     one_hit = erasers[only_one]
-    #     many_hits = _grouped_unary_union(
-    #         erasers[~only_one], level=0, grid_size=grid_size
-    #     )
-    #     erasers = pd.concat([one_hit, many_hits]).sort_index()
 
     # match up the aggregated erasers by index
     arr1 = copied.geometry.loc[erasers.index].to_numpy()
     arr2 = erasers.to_numpy()
-    try:
-        erased = make_valid(
-            overlay_runner.run(difference, arr1, arr2, grid_size=grid_size)
-        )
-    except GEOSException:
-        arr1 = make_valid_and_keep_geom_type(arr1, geom_type=geom_type)
-        arr2 = make_valid_and_keep_geom_type(arr2, geom_type=geom_type)
-        erased = make_valid(
-            overlay_runner.run(difference, arr1, arr2, grid_size=grid_size)
-        )
+    erased = overlay_runner.run(
+        difference, arr1, arr2, grid_size=grid_size, geom_type=geom_type
+    )
 
     erased = GeoSeries(erased, index=erasers.index)
     copied.loc[erased.index, geom_col] = erased
-
     copied = copied.loc[~copied.is_empty]
-
     copied.index = copied.index.map(index_mapper)
-
     copied = make_all_singlepart(copied)
 
     # TODO check why polygons dissappear in rare cases. For now, just add back the missing

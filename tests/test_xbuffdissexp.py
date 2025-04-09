@@ -65,13 +65,12 @@ def test_dissexp_by_cluster():
         y=[np.random.choice([*"abc"]) for _ in range(100)],
     )
     gdf.geometry = gdf.buffer(0.001)
-
     for n_jobs in [1, 3]:
         for processes in [1, 3]:
             print(n_jobs, processes)
             by_cluster = sg.dissexp_by_cluster(gdf, n_jobs=n_jobs)
             regular = sg.dissexp(gdf, n_jobs=n_jobs)
-            assert len(by_cluster) == len(regular)
+            assert len(by_cluster) == len(regular), (len(by_cluster), len(regular))
             assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
             assert list(sorted(by_cluster.columns)) == [
@@ -155,7 +154,7 @@ def test_buffdissexp_by_cluster(gdf_fixture):
     for distance in [1, 10, 100, 1000, 10000]:
         by_cluster = sg.buffdissexp_by_cluster(gdf_fixture, distance)
         regular = sg.buffdissexp(gdf_fixture, distance)
-        assert len(by_cluster) == len(regular)
+        assert len(by_cluster) == len(regular), (len(by_cluster), len(regular))
         assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
     gdf = sg.random_points(100).assign(
@@ -163,7 +162,7 @@ def test_buffdissexp_by_cluster(gdf_fixture):
     )
     by_cluster = sg.buffdissexp_by_cluster(gdf, 0.1)
     regular = sg.buffdissexp(gdf, 0.1)
-    assert len(by_cluster) == len(regular)
+    assert len(by_cluster) == len(regular), (len(by_cluster), len(regular))
     assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
     assert list(sorted(by_cluster.columns)) == [

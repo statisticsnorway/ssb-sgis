@@ -86,18 +86,21 @@ def test_sfilter():
 
 def test_sfilter_random():
     for _ in range(25):
-        gdf = sg.random_points(12)
-        gdf.geometry = gdf.buffer(random.random())
-        other = sg.random_points(6)
-        other.geometry = other.buffer(random.random())
-        intersecting, not_intersecting = sg.sfilter_split(gdf, other)
+        for n_jobs in [1, 3]:
+            gdf = sg.random_points(12)
+            gdf.geometry = gdf.buffer(random.random())
+            other = sg.random_points(6)
+            other.geometry = other.buffer(random.random())
+            intersecting, not_intersecting = sg.sfilter_split(gdf, other)
 
-        assert intersecting.equals(sg.sfilter(gdf, other))
-        assert not_intersecting.equals(sg.sfilter_inverse(gdf, other))
+            assert intersecting.equals(sg.sfilter(gdf, other, n_jobs=n_jobs))
+            assert not_intersecting.equals(
+                sg.sfilter_inverse(gdf, other, n_jobs=n_jobs)
+            )
 
-        filt = gdf.intersects(union_all(other.geometry.values))
-        assert intersecting.equals(gdf[filt]), (intersecting, gdf[filt])
-        assert not_intersecting.equals(gdf[~filt]), (intersecting, gdf[~filt])
+            filt = gdf.intersects(union_all(other.geometry.values))
+            assert intersecting.equals(gdf[filt]), (intersecting, gdf[filt])
+            assert not_intersecting.equals(gdf[~filt]), (intersecting, gdf[~filt])
 
 
 def benchmark_within_vs_intersects():

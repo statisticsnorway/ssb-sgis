@@ -4,9 +4,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from geopandas import __version__ as geopandas_version
 from shapely import Geometry
-from shapely import STRtree
 
 from .conversion import to_gdf
 from .runners import RTreeRunner
@@ -302,29 +300,14 @@ def _get_sfilter_indices(
             predicate = "contains"
             arr1 = right.geometry.values
             arr2 = left.geometry.values
-            # sindex, kwargs = _get_spatial_tree(left)
-            # input_geoms = right.geometry if isinstance(right, GeoDataFrame) else right
         else:
             # all other predicates are symmetric
             # keep them the same
-            # sindex, kwargs = _get_spatial_tree(right)
-            # input_geoms = left.geometry if isinstance(left, GeoDataFrame) else left
             arr1 = left.geometry.values
             arr2 = right.geometry.values
 
-    l_idx, r_idx = rtree_runner.query(
-        arr1, arr2, predicate=predicate, distance=distance
-    )
+    left, right = rtree_runner.query(arr1, arr2, predicate=predicate, distance=distance)
 
-    # l_idx, r_idx = sindex.query(
-    #     input_geoms, predicate=predicate, distance=distance, **kwargs
-    # )
     if original_predicate == "within":
-        return np.sort(np.unique(r_idx))
-    return np.sort(np.unique(l_idx))
-
-
-def _get_spatial_tree(df):
-    if int(geopandas_version[0]) >= 1:
-        return df.sindex, {"sort": False}
-    return STRtree(df.geometry.values), {}
+        return np.sort(np.unique(right))
+    return np.sort(np.unique(left))

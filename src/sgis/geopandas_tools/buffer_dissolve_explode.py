@@ -27,7 +27,7 @@ from ..parallel.parallel import Parallel
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper
 from .polygon_operations import get_grouped_centroids
-from .runners import DissolveRunner
+from .runners import UnionRunner
 from .utils import _unary_union_for_notna
 
 
@@ -187,17 +187,16 @@ def _dissolve(
     gdf: GeoDataFrame,
     aggfunc: str = "first",
     grid_size: None | float = None,
-    n_jobs: int = 1,
     as_index: bool = True,
-    backend: str = "loky",
-    dissolve_runner: DissolveRunner | None = None,
+    n_jobs: int = 1,
+    union_runner: UnionRunner | None = None,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
-    if dissolve_runner is None:
-        dissolve_runner = DissolveRunner(n_jobs, backend)
-
     if not len(gdf):
         return gdf
+
+    if union_runner is None:
+        union_runner = UnionRunner(n_jobs)
 
     geom_col = gdf.geometry.name
     by = dissolve_kwargs.pop("by", None)
@@ -221,7 +220,7 @@ def _dissolve(
             gdf.groupby(by, as_index=True, **dissolve_kwargs).transform("size") == 1
         )
     except IndexError:
-        # if no rows when dropna=True
+        # if no rows after dropping na if dropna=True
         original_by = [x for x in by]
         query = gdf[by.pop(0)].notna()
         for col in gdf[by]:
@@ -244,35 +243,13 @@ def _dissolve(
     dissolved = many_hits.groupby(by, as_index=True, **dissolve_kwargs)[other_cols].agg(
         aggfunc
     )
-    geoms_agged = dissolve_runner.run(
+    dissolved[geom_col] = union_runner.run(
         many_hits,
-        # n_jobs=n_jobs,
         by=by,
         grid_size=grid_size,
         as_index=True,
-        # backend=backend,
         **dissolve_kwargs,
     )
-    # if n_jobs > 1:
-    #     try:
-    #         geoms_agged2 = _parallel_unary_union(
-    #             many_hits,
-    #             n_jobs=n_jobs,
-    #             by=by,
-    #             grid_size=grid_size,
-    #             as_index=True,
-    #             backend=backend,
-    #             **dissolve_kwargs,
-    #         )
-    #     except Exception as e:
-    #         raise e.__class__(f"{e}. {dissolved}. {geoms_agged}. {many_hits}") from e
-    # else:
-    #     geoms_agged2 = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
-    #         lambda x: _unary_union_for_notna(x, grid_size=grid_size)
-    #     )
-    # print(geoms_agged2)
-
-    dissolved[geom_col] = geoms_agged
     if not as_index:
         dissolved = dissolved.reset_index()
     try:
@@ -290,7 +267,6 @@ def diss(
     as_index: bool = True,
     grid_size: float | int | None = None,
     n_jobs: int = 1,
-    backend: str = "loky",
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Dissolves geometries.
@@ -305,8 +281,6 @@ def diss(
             True to be consistent with geopandas.
         grid_size: Rounding of the coordinates. Defaults to None.
         n_jobs: Number of threads to use. Defaults to 1.
-        backend: Backend if n_jobs is > 1. Either "dask" or any joblib supported backend.
-            defaults to "loky".
         **dissolve_kwargs: additional keyword arguments passed to geopandas' dissolve.
 
     Returns:
@@ -328,7 +302,6 @@ def diss(
         grid_size=grid_size,
         n_jobs=n_jobs,
         as_index=as_index,
-        backend=backend,
         **dissolve_kwargs,
     )
 
@@ -585,7 +558,7 @@ def buff(
     if copy:
         gdf = gdf.copy()
 
-    gdf[gdf._geometry_column_name] = gdf.buffer(
+    gdf[gdf.geometry.name] = gdf.buffer(
         distance, resolution=resolution, join_style=join_style, **buffer_kwargs
     ).make_valid()
 

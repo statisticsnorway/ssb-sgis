@@ -75,13 +75,15 @@ def parallel_overlay(
     Returns:
         A GeoDataFrame containing the result of the overlay operation.
     """
+    if how != "intersection":
+        raise ValueError("parallel_overlay only supports how='intersection'.")
     return pd.concat(
         chunkwise(
             _clean_overlay_with_print,
             df1,
             kwargs={
                 "df2": df2,
-                # "to_print": to_print,
+                "to_print": to_print,
                 "how": how,
             }
             | kwargs,
@@ -1120,7 +1122,7 @@ def chunkwise(
             return to_type([x for i, x in enumerate(iterable) if i in chunk])
 
     iterables_chunked: list[list[Iterable[Any]]] = [
-        [get_chunk(iterable, chunk) for chunk in chunks] for iterable in iterables
+        [get_chunk(iterable, chunk) for iterable in iterables] for chunk in chunks
     ]
 
     return Parallel(processes, backend=backend).starmap(
