@@ -375,8 +375,8 @@ def test_grouped_unary_union():
     df = sg.random_points(10000).pipe(sg.buff, 0.01)
     df["col"] = [random.choice(list(range(250))) for _ in range(len(df))]
 
-    for _ in range(2):
-        dissolved = sg.geopandas_tools.general._grouped_unary_union(df, by="col")
+    for n_jobs in [1, 3]:
+        dissolved = sg.UnionRunner(n_jobs).run(df, by="col")
         dissolved2 = (
             df.groupby("col")["geometry"].agg(lambda x: (unary_union(x))).make_valid()
         )
@@ -384,7 +384,7 @@ def test_grouped_unary_union():
     assert dissolved.equals(dissolved2), (dissolved, dissolved2)
 
     def grouped_unary_union():
-        return sg.geopandas_tools.general._grouped_unary_union(df, by="col")
+        return sg.UnionRunner(1).run(df, by="col")
 
     def groupby_unary_union():
         return df.groupby("col")["geometry"].agg(unary_union).make_valid()
