@@ -23,13 +23,13 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import get_num_geometries
 
+from ..conf import config
 from ..parallel.parallel import Parallel
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper
 from .polygon_operations import get_grouped_centroids
 from .runners import UnionRunner
 from .utils import _unary_union_for_notna
-from ..conf import config
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:

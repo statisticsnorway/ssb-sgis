@@ -8,6 +8,7 @@ from shapely import STRtree
 from shapely import difference
 from shapely import simplify
 
+from ..conf import config
 from .general import _determine_geom_type_args
 from .general import _push_geom_col
 from .general import clean_geoms
@@ -19,7 +20,6 @@ from .runners import OverlayRunner
 from .runners import RTreeQueryRunner
 from .runners import UnionRunner
 from .sfilter import sfilter_inverse
-from ..conf import config
 
 PRECISION = 1e-3
 
@@ -197,6 +197,7 @@ def get_intersections(
             precision of the inputs by default.
         n_jobs: Number of threads.
         predicate: Spatial predicate for the spatial tree.
+        **kwargs: Keyword arguments passed to clean_overlay.
 
     Returns:
         A GeoDataFrame of the overlapping polygons.

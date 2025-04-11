@@ -6,7 +6,6 @@ from collections.abc import Hashable
 from collections.abc import Iterable
 from typing import Any
 
-import joblib
 import numpy as np
 import pandas as pd
 import pyproj
@@ -36,7 +35,6 @@ from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .neighbors import get_k_nearest_neighbors
 from .sfilter import sfilter_split
-from .utils import _unary_union_for_notna
 
 
 def split_geom_types(gdf: GeoDataFrame | GeoSeries) -> tuple[GeoDataFrame | GeoSeries]:

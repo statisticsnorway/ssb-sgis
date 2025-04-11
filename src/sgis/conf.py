@@ -1,4 +1,5 @@
 from typing import Any
+from collections.abc import Iterable
 
 try:
     from gcsfs import GCSFileSystem
@@ -68,16 +69,20 @@ except ImportError:
 
     file_system = LocalFileSystem
 
-from .geopandas_tools.runners import RTreeQueryRunner
 from .geopandas_tools.runners import OverlayRunner
+from .geopandas_tools.runners import RTreeQueryRunner
 from .geopandas_tools.runners import UnionRunner
 
 
 class Config:
+    """Dictlike config with a 'get_instance' method."""
+
     def __init__(self, data: dict) -> None:
+        """Initialise with dict."""
         self.data = data
 
     def get_instance(self, key: str, *args, **kwargs) -> Any:
+        """Get the dict value and call it if callable."""
         x = self.data[key]
         if callable(x):
             return x(*args, **kwargs)
@@ -95,7 +100,7 @@ class Config:
         """Set dict value."""
         self.data[key] = value
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[str]:
         """Iterate over dict keys."""
         return iter(self.data)
 

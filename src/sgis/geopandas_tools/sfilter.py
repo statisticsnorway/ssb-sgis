@@ -34,6 +34,9 @@ def sfilter(
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
         distance: Max distance to allow if predicate=="dwithin".
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         A copy of 'gdf' with only the rows matching the
@@ -106,6 +109,9 @@ def sfilter_split(
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
         distance: Max distance to allow if predicate=="dwithin".
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         A tuple of GeoDataFrames, one with the rows that match the spatial predicate
@@ -183,6 +189,9 @@ def sfilter_inverse(
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
         distance: Max distance to allow if predicate=="dwithin".
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         A copy of 'gdf' with only the rows that do not match the
@@ -274,6 +283,9 @@ def _get_sfilter_indices(
     right : GeoDataFrame
     predicate : string
         Binary predicate to query.
+    n_jobs: Number of workers.
+    rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+        See the 'runners' module for example implementations.
 
     Returns:
     -------

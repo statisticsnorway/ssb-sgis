@@ -23,6 +23,7 @@ from shapely import is_empty
 from shapely import make_valid
 from shapely import union_all
 
+from ..conf import config
 from .general import _determine_geom_type_args
 from .general import clean_geoms
 from .geometry_types import get_geom_type
@@ -31,7 +32,6 @@ from .geometry_types import to_single_geom_type
 from .runners import OverlayRunner
 from .runners import RTreeQueryRunner
 from .runners import UnionRunner
-from ..conf import config
 
 DEFAULT_GRID_SIZE = None
 DEFAULT_LSUFFIX = "_1"

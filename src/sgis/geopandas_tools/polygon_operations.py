@@ -26,6 +26,7 @@ from shapely.errors import GEOSException
 from shapely.geometry import LinearRing
 from shapely.ops import SplitOp
 
+from ..conf import config
 from ..debug_config import _DEBUG_CONFIG
 from ..debug_config import _try_debug_print
 from ..maps.maps import explore_locals
@@ -49,7 +50,6 @@ from .runners import UnionRunner
 from .sfilter import sfilter
 from .sfilter import sfilter_inverse
 from .utils import _unary_union_for_notna
-from ..conf import config
 
 PRECISION = 1e-3
 _BUFFER = False

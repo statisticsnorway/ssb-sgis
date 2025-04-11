@@ -1,7 +1,8 @@
 import functools
-from collections.abc import Callable
 from abc import ABC
 from abc import abstractmethod
+from collections.abc import Callable
+from typing import Any
 from dataclasses import dataclass
 
 import joblib
@@ -34,11 +35,8 @@ class AbstractRunner(ABC):
     backend: str | None = None
 
     @abstractmethod
-    def run(self, *args, **kwargs):
-        pass
-
-    def __post_init__(self):
-        print("hei", self.__class__.__name__, self.n_jobs, self.backend)
+    def run(self, *args, **kwargs) -> Any:
+        """Abstract run method."""
 
 
 @dataclass
@@ -224,6 +222,7 @@ class GridSizeOverlayRunner(OverlayRunner):
     grid_sizes: list[float] | None = None
 
     def __post_init__(self) -> None:
+        """Check that grid_sizes is passed."""
         if self.grid_sizes is None:
             raise ValueError(
                 f"must set 'grid_sizes' in the {self.__class__.__name__} initialiser."
@@ -236,7 +235,7 @@ class GridSizeOverlayRunner(OverlayRunner):
         arr2: np.ndarray,
         grid_size: int | float | None = None,
         geom_type: str | None = None,
-    ):
+    ) -> np.ndarray:
         """Run the overlay operation rowwise with fallback.
 
         The overlay operation (func) is looped for each row in arr1 and arr2
