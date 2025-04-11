@@ -1,3 +1,5 @@
+from typing import Any
+
 try:
     from gcsfs import GCSFileSystem
 
@@ -72,28 +74,37 @@ from .geopandas_tools.runners import UnionRunner
 
 
 class Config:
-    def __init__(self, data: dict):
+    def __init__(self, data: dict) -> None:
         self.data = data
 
-    def get_instance(self, key: str, *args, **kwargs):
+    def get_instance(self, key: str, *args, **kwargs) -> Any:
         x = self.data[key]
         if callable(x):
             return x(*args, **kwargs)
         return x
 
-    def __getattr__(self, attr: str):
+    def __getattr__(self, attr: str) -> Any:
+        """Get dict attribute."""
         return getattr(self.data, attr)
 
-    def __setitem__(self, key: str, value):
+    def __getitem__(self, key: str) -> Any:
+        """Get dict value."""
+        return self.data[key]
+
+    def __setitem__(self, key: str, value) -> None:
+        """Set dict value."""
         self.data[key] = value
 
     def __iter__(self):
+        """Iterate over dict keys."""
         return iter(self.data)
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Length of dict."""
         return len(self.data)
 
     def __str__(self) -> str:
+        """String representation of dict."""
         return str(self.data)
 
 
@@ -101,7 +112,7 @@ config = Config(
     {
         "n_jobs": 1,
         "file_system": file_system,
-        "rtree_runner": RTreeQueryRunner(1),
+        "rtree_runner": RTreeQueryRunner,
         "overlay_runner": OverlayRunner,
         "union_runner": UnionRunner,
     }
