@@ -9,34 +9,29 @@ version of the solution from GH 2792.
 """
 
 import functools
-from collections.abc import Callable
 
 import geopandas as gpd
-import joblib
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from geopandas import GeoSeries
 from pandas import DataFrame
 from shapely import Geometry
-from shapely import STRtree
 from shapely import box
 from shapely import difference
 from shapely import intersection
+from shapely import is_empty
 from shapely import make_valid
-from shapely import unary_union
-from shapely.errors import GEOSException
+from shapely import union_all
 
-try:
-    import dask.array as da
-except ImportError:
-    pass
-
+from ..conf import config
 from .general import _determine_geom_type_args
 from .general import clean_geoms
 from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
+from .runners import OverlayRunner
+from .runners import RTreeQueryRunner
+from .runners import UnionRunner
 
 DEFAULT_GRID_SIZE = None
 DEFAULT_LSUFFIX = "_1"
@@ -51,9 +46,12 @@ def clean_overlay(
     geom_type: str | None = None,
     predicate: str | None = "intersects",
     grid_size: float | None = None,
-    n_jobs: int = 1,
     lsuffix: str = DEFAULT_LSUFFIX,
     rsuffix: str = DEFAULT_RSUFFIX,
+    n_jobs: int = 1,
+    rtree_runner: RTreeQueryRunner | None = None,
+    union_runner: UnionRunner | None = None,
+    overlay_runner: OverlayRunner | None = None,
 ) -> GeoDataFrame:
     """Fixes and explodes geometries before doing a shapely overlay, then cleans up.
 
@@ -74,10 +72,16 @@ def clean_overlay(
             "point".
         grid_size: Precision grid size to round the geometries. Will use the highest
             precision of the inputs by default.
-        n_jobs: number of threads.
         predicate: Spatial predicate in the spatial tree.
         lsuffix: Suffix of columns in df1 that are also in df2.
         rsuffix: Suffix of columns in df2 that are also in df1.
+        n_jobs: number of jobs. Defaults to 1.
+        union_runner: Optionally debug/manipulate the spatial union operations.
+            See the 'runners' module for example implementations.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
+        overlay_runner: Optionally debug/manipulate the spatial overlay operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         GeoDataFrame with overlayed and fixed geometries and columns from both
@@ -103,6 +107,13 @@ def clean_overlay(
 
     if df1.crs != df2.crs:
         raise ValueError(f"'crs' mismatch. Got {df1.crs} and {df2.crs}")
+
+    if rtree_runner is None:
+        rtree_runner = config.get_instance("rtree_runner", n_jobs)
+    if union_runner is None:
+        union_runner = config.get_instance("union_runner", n_jobs)
+    if overlay_runner is None:
+        overlay_runner = config.get_instance("overlay_runner", n_jobs)
 
     crs = df1.crs
 
@@ -148,13 +159,16 @@ def clean_overlay(
     box1 = box(*df1.total_bounds)
     box2 = box(*df2.total_bounds)
 
-    if not len(df1) or not len(df1) or not box1.intersects(box2):
+    if not grid_size and (
+        (not len(df1) or not len(df2))
+        or (not box1.intersects(box2) and how == "intersection")
+    ):
         return _no_intersections_return(df1, df2, how, lsuffix, rsuffix)
 
-    if df1._geometry_column_name != "geometry":
+    if df1.geometry.name != "geometry":
         df1 = df1.rename_geometry("geometry")
 
-    if df2._geometry_column_name != "geometry":
+    if df2.geometry.name != "geometry":
         df2 = df2.rename_geometry("geometry")
 
     # to pandas because GeoDataFrame constructor is expensive
@@ -171,8 +185,10 @@ def clean_overlay(
                 lsuffix=lsuffix,
                 rsuffix=rsuffix,
                 geom_type=geom_type,
-                n_jobs=n_jobs,
                 predicate=predicate,
+                rtree_runner=rtree_runner,
+                overlay_runner=overlay_runner,
+                union_runner=union_runner,
             ),
             geometry="geometry",
             crs=crs,
@@ -188,9 +204,9 @@ def clean_overlay(
 
 
 def _join_and_get_no_rows(df1, df2, lsuffix, rsuffix):
-    geom_col = df1._geometry_column_name
+    geom_col = df1.geometry.name
     df1_cols = df1.columns.difference({geom_col})
-    df2_cols = df2.columns.difference({df2._geometry_column_name})
+    df2_cols = df2.columns.difference({df2.geometry.name})
     cols_with_suffix = [
         f"{col}{lsuffix}" if col in df2_cols else col for col in df1_cols
     ] + [f"{col}{rsuffix}" if col in df1_cols else col for col in df2_cols]
@@ -215,7 +231,7 @@ def _no_intersections_return(
     if how == "identity":
         # add suffixes and return df1
         df_template = _join_and_get_no_rows(df1, df2, lsuffix, rsuffix)
-        df2_cols = df2.columns.difference({df2._geometry_column_name})
+        df2_cols = df2.columns.difference({df2.geometry.name})
         df1.columns = [f"{col}{lsuffix}" if col in df2_cols else col for col in df1]
         return pd.concat([df_template, df1], ignore_index=True)
 
@@ -237,33 +253,41 @@ def _shapely_pd_overlay(
     df1: DataFrame,
     df2: DataFrame,
     how: str,
-    grid_size: float = DEFAULT_GRID_SIZE,
-    predicate: str = "intersects",
-    lsuffix: str = DEFAULT_LSUFFIX,
-    rsuffix: str = DEFAULT_RSUFFIX,
-    geom_type: str | None = None,
-    n_jobs: int = 1,
+    grid_size: float,
+    predicate: str,
+    lsuffix: str,
+    rsuffix: str,
+    geom_type: str | None,
+    rtree_runner: RTreeQueryRunner,
+    overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> DataFrame:
-    if not grid_size and not len(df1) or not len(df2):
-        return _no_intersections_return(df1, df2, how, lsuffix, rsuffix)
-
-    tree = STRtree(df2.geometry.values)
-    left, right = tree.query(df1.geometry.values, predicate=predicate)
-
+    left, right = rtree_runner.run(
+        df1.geometry.values, df2.geometry.values, predicate=predicate
+    )
     pairs = _get_intersects_pairs(df1, df2, left, right, rsuffix)
-    assert pairs.geometry.notna().all(), pairs.geometry
-    assert pairs.geom_right.notna().all(), pairs.geom_right
+    assert pairs["geometry"].notna().all(), pairs.geometry[lambda x: x.isna()]
+    assert pairs["geom_right"].notna().all(), pairs.geom_right[lambda x: x.isna()]
 
     if how == "intersection":
         overlayed = [
             _intersection(
-                pairs, grid_size=grid_size, geom_type=geom_type, n_jobs=n_jobs
+                pairs,
+                grid_size=grid_size,
+                geom_type=geom_type,
+                overlay_runner=overlay_runner,
             )
         ]
 
     elif how == "difference":
         overlayed = _difference(
-            pairs, df1, left, grid_size=grid_size, geom_type=geom_type, n_jobs=n_jobs
+            pairs,
+            df1,
+            left,
+            grid_size=grid_size,
+            geom_type=geom_type,
+            overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     elif how == "symmetric_difference":
@@ -276,12 +300,19 @@ def _shapely_pd_overlay(
             grid_size=grid_size,
             rsuffix=rsuffix,
             geom_type=geom_type,
-            n_jobs=n_jobs,
+            overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     elif how == "identity":
         overlayed = _identity(
-            pairs, df1, left, grid_size=grid_size, geom_type=geom_type, n_jobs=n_jobs
+            pairs,
+            df1,
+            left,
+            grid_size=grid_size,
+            geom_type=geom_type,
+            overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     elif how == "union":
@@ -294,7 +325,8 @@ def _shapely_pd_overlay(
             grid_size=grid_size,
             rsuffix=rsuffix,
             geom_type=geom_type,
-            n_jobs=n_jobs,
+            overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     elif how == "update":
@@ -304,8 +336,9 @@ def _shapely_pd_overlay(
             df2,
             left=left,
             grid_size=grid_size,
-            n_jobs=n_jobs,
             geom_type=geom_type,
+            overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     assert isinstance(overlayed, list)
@@ -323,8 +356,9 @@ def _shapely_pd_overlay(
         overlayed = _add_suffix_left(overlayed, df1, df2, lsuffix)
 
     overlayed["geometry"] = make_valid(overlayed["geometry"])
-    # None and empty are falsy
-    overlayed = overlayed.loc[lambda x: x["geometry"].notna()]
+    overlayed = overlayed.loc[
+        lambda x: (x["geometry"].notna().values) & (~is_empty(x["geometry"].values))
+    ]
 
     return overlayed
 
@@ -336,115 +370,38 @@ def _update(
     left: np.ndarray,
     grid_size: float | None | int,
     geom_type: str | None,
-    n_jobs: int,
+    overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> GeoDataFrame:
     overlayed = _difference(
-        pairs, df1, left, grid_size=grid_size, geom_type=geom_type, n_jobs=n_jobs
+        pairs,
+        df1,
+        left,
+        grid_size=grid_size,
+        geom_type=geom_type,
+        overlay_runner=overlay_runner,
+        union_runner=union_runner,
     )
 
     return overlayed + [df2]
-
-
-def _run_overlay_dask(
-    arr1: np.ndarray,
-    arr2: np.ndarray,
-    func: Callable,
-    n_jobs: int,
-    grid_size: float | int | None,
-) -> np.ndarray:
-    if len(arr1) // n_jobs <= 1:
-        try:
-            return func(arr1, arr2, grid_size=grid_size)
-        except TypeError as e:
-            raise TypeError(e, {type(x) for x in arr1}, {type(x) for x in arr2}) from e
-    arr1 = da.from_array(arr1, chunks=len(arr1) // n_jobs)
-    arr2 = da.from_array(arr2, chunks=len(arr2) // n_jobs)
-    res = arr1.map_blocks(func, arr2, grid_size=grid_size, dtype=float)
-    return res.compute(scheduler="threads", optimize_graph=False, num_workers=n_jobs)
-
-
-def _run_overlay_joblib_threading(
-    arr1: np.ndarray,
-    arr2: np.ndarray,
-    func: Callable,
-    n_jobs: int,
-    grid_size: int | float | None,
-) -> list[Geometry]:
-    if len(arr1) // n_jobs <= 1:
-        try:
-            return func(arr1, arr2, grid_size=grid_size)
-        except TypeError as e:
-            raise TypeError(e, {type(x) for x in arr1}, {type(x) for x in arr2}) from e
-    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
-        return parallel(
-            joblib.delayed(func)(g1, g2, grid_size=grid_size)
-            for g1, g2 in zip(arr1, arr2, strict=True)
-        )
 
 
 def _intersection(
     pairs: pd.DataFrame,
     grid_size: None | float | int,
     geom_type: str | None,
-    n_jobs: int = 1,
+    overlay_runner: OverlayRunner,
 ) -> GeoDataFrame:
     if not len(pairs):
         return pairs.drop(columns="geom_right")
-
     intersections = pairs.copy()
-
-    arr1 = intersections["geometry"].to_numpy()
-    arr2 = intersections["geom_right"].to_numpy()
-
-    if n_jobs > 1 and len(arr1) / n_jobs > 10:
-        try:
-            res = _run_overlay_joblib_threading(
-                arr1,
-                arr2,
-                func=intersection,
-                n_jobs=n_jobs,
-                grid_size=grid_size,
-            )
-        except GEOSException:
-            arr1 = make_valid_and_keep_geom_type(
-                arr1, geom_type=geom_type, n_jobs=n_jobs
-            )
-            arr2 = make_valid_and_keep_geom_type(
-                arr2, geom_type=geom_type, n_jobs=n_jobs
-            )
-            arr1 = arr1.loc[lambda x: x.index.isin(arr2.index)]
-            arr2 = arr2.loc[lambda x: x.index.isin(arr1.index)]
-
-            res = _run_overlay_joblib_threading(
-                arr1.to_numpy(),
-                arr2.to_numpy(),
-                func=intersection,
-                n_jobs=n_jobs,
-                grid_size=grid_size,
-            )
-        intersections["geometry"] = res
-        return intersections.drop(columns="geom_right")
-
-    try:
-        intersections["geometry"] = intersection(
-            intersections["geometry"].to_numpy(),
-            intersections["geom_right"].to_numpy(),
-            grid_size=grid_size,
-        )
-    except GEOSException:
-        left = make_valid_and_keep_geom_type(
-            intersections["geometry"].to_numpy(), geom_type, n_jobs=n_jobs
-        )
-        right = make_valid_and_keep_geom_type(
-            intersections["geom_right"].to_numpy(), geom_type, n_jobs=n_jobs
-        )
-        left = left.loc[lambda x: x.index.isin(right.index)]
-        right = right.loc[lambda x: x.index.isin(left.index)]
-
-        intersections["geometry"] = intersection(
-            left.to_numpy(), right.to_numpy(), grid_size=grid_size
-        )
-
+    intersections["geometry"] = overlay_runner.run(
+        intersection,
+        intersections["geometry"].to_numpy(),
+        intersections["geom_right"].to_numpy(),
+        grid_size=grid_size,
+        geom_type=geom_type,
+    )
     return intersections.drop(columns="geom_right")
 
 
@@ -457,12 +414,16 @@ def _union(
     grid_size: int | float | None,
     rsuffix: str,
     geom_type: str | None,
-    n_jobs: int = 1,
+    overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> list[GeoDataFrame]:
     merged = []
     if len(left):
         intersections = _intersection(
-            pairs, grid_size=grid_size, geom_type=geom_type, n_jobs=n_jobs
+            pairs,
+            grid_size=grid_size,
+            geom_type=geom_type,
+            overlay_runner=overlay_runner,
         )
         merged.append(intersections)
     symmdiff = _symmetric_difference(
@@ -474,7 +435,8 @@ def _union(
         grid_size=grid_size,
         rsuffix=rsuffix,
         geom_type=geom_type,
-        n_jobs=n_jobs,
+        overlay_runner=overlay_runner,
+        union_runner=union_runner,
     )
     merged += symmdiff
     return merged
@@ -486,15 +448,27 @@ def _identity(
     left: np.ndarray,
     grid_size: int | float | None,
     geom_type: str | None,
-    n_jobs: int = 1,
+    overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> list[GeoDataFrame]:
     merged = []
     if len(left):
         intersections = _intersection(
-            pairs, grid_size=grid_size, geom_type=geom_type, n_jobs=n_jobs
+            pairs,
+            grid_size=grid_size,
+            geom_type=geom_type,
+            overlay_runner=overlay_runner,
         )
         merged.append(intersections)
-    diff = _difference(pairs, df1, left, grid_size=grid_size, n_jobs=n_jobs)
+    diff = _difference(
+        pairs,
+        df1,
+        left,
+        geom_type=geom_type,
+        grid_size=grid_size,
+        overlay_runner=overlay_runner,
+        union_runner=union_runner,
+    )
     merged += diff
     return merged
 
@@ -508,12 +482,19 @@ def _symmetric_difference(
     grid_size: int | float | None,
     rsuffix: str,
     geom_type: str | None,
-    n_jobs: int = 1,
+    overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> list[GeoDataFrame]:
     merged = []
 
     difference_left = _difference(
-        pairs, df1, left, grid_size=grid_size, geom_type=geom_type, n_jobs=n_jobs
+        pairs,
+        df1,
+        left,
+        grid_size=grid_size,
+        geom_type=geom_type,
+        overlay_runner=overlay_runner,
+        union_runner=union_runner,
     )
     merged += difference_left
 
@@ -525,7 +506,8 @@ def _symmetric_difference(
             grid_size=grid_size,
             rsuffix=rsuffix,
             geom_type=geom_type,
-            n_jobs=n_jobs,
+            overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
         merged.append(clip_right)
 
@@ -539,9 +521,10 @@ def _difference(
     pairs: pd.DataFrame,
     df1: pd.DataFrame,
     left: np.ndarray,
-    grid_size: int | float | None = None,
-    geom_type: str | None = None,
-    n_jobs: int = 1,
+    grid_size: int | float | None,
+    geom_type: str | None,
+    overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> list[GeoDataFrame]:
     merged = []
     if len(left):
@@ -550,7 +533,8 @@ def _difference(
             df1=df1,
             grid_size=grid_size,
             geom_type=geom_type,
-            n_jobs=n_jobs,
+            overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
         merged.append(clip_left)
     diff_left = _add_indices_from_left(df1, left)
@@ -618,7 +602,8 @@ def _shapely_diffclip_left(
     df1: pd.DataFrame,
     grid_size: int | float | None,
     geom_type: str | None,
-    n_jobs: int,
+    overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> pd.DataFrame:
     """Aggregate areas in right by unique values from left, then erases those from left."""
     keep_cols = list(df1.columns.difference({"_overlay_index_right"})) + ["geom_right"]
@@ -675,12 +660,14 @@ def _shapely_diffclip_left(
             }
         )
 
-        agged = pd.Series(
-            {
-                i: agg_geoms_partial(geoms)
-                for i, geoms in agger.groupby(level=0)["geom_right"]
-            }
-        )
+        agged = union_runner.run(agger["geom_right"], level=0)
+        # agged = pd.Series(
+
+        #     {
+        #         i: agg_geoms_partial(geoms)
+        #         for i, geoms in agger.groupby(level=0)["geom_right"]
+        #     }
+        # )
         many_hits_agged["geom_right"] = inverse_index_mapper.map(agged)
         many_hits_agged = many_hits_agged.drop(columns=["_right_indices"])
 
@@ -688,15 +675,19 @@ def _shapely_diffclip_left(
     except IndexError:
         clip_left = pairs.loc[:, list(keep_cols)]
 
-    assert clip_left["geometry"].notna().all()
-    assert clip_left["geom_right"].notna().all()
+    assert clip_left["geometry"].notna().all(), clip_left["geometry"][
+        lambda x: x.isna()
+    ]
+    assert clip_left["geom_right"].notna().all(), clip_left["geom_right"][
+        lambda x: x.isna()
+    ]
 
-    clip_left["geometry"] = _try_difference(
+    clip_left["geometry"] = overlay_runner.run(
+        difference,
         clip_left["geometry"].to_numpy(),
         clip_left["geom_right"].to_numpy(),
         grid_size=grid_size,
         geom_type=geom_type,
-        n_jobs=n_jobs,
     )
 
     return clip_left.drop(columns="geom_right")
@@ -709,7 +700,8 @@ def _shapely_diffclip_right(
     grid_size: int | float | None,
     rsuffix: str,
     geom_type: str | None,
-    n_jobs: int,
+    overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> pd.DataFrame:
     agg_geoms_partial = functools.partial(_agg_geoms, grid_size=grid_size)
 
@@ -720,16 +712,22 @@ def _shapely_diffclip_right(
         one_hit = pairs[only_one].set_index("_overlay_index_right")[
             ["geom_left", "geometry"]
         ]
-        many_hits = (
-            pairs[~only_one]
-            .groupby("_overlay_index_right")
-            .agg(
-                {
-                    "geom_left": agg_geoms_partial,
-                    "geometry": "first",
-                }
-            )
+        many_hits_ungrouped = pairs[~only_one].set_index("_overlay_index_right")
+        many_hits = pd.DataFrame(index=many_hits_ungrouped.index.unique())
+        many_hits["geometry"] = many_hits_ungrouped.groupby(level=0)["geometry"].first()
+        many_hits["geom_left"] = union_runner.run(
+            many_hits_ungrouped["geom_left"], level=0
         )
+        # many_hits = (
+        #     pairs[~only_one]
+        #     .groupby("_overlay_index_right")
+        #     .agg(
+        #         {
+        #             "geom_left": agg_geoms_partial,
+        #             "geometry": "first",
+        #         }
+        #     )
+        # )
         clip_right = (
             pd.concat([one_hit, many_hits])
             .join(df2.drop(columns=["geometry"]))
@@ -748,10 +746,15 @@ def _shapely_diffclip_right(
             }
         )
 
-    assert clip_right["geometry"].notna().all()
-    assert clip_right["geom_left"].notna().all()
+    assert clip_right["geometry"].notna().all(), clip_right["geometry"][
+        lambda x: x.isna()
+    ]
+    assert clip_right["geom_left"].notna().all(), clip_right["geom_left"][
+        lambda x: x.isna()
+    ]
 
-    clip_right["geometry"] = _try_difference(
+    clip_right["geometry"] = overlay_runner.run(
+        difference,
         clip_right["geometry"].to_numpy(),
         clip_right["geom_left"].to_numpy(),
         grid_size=grid_size,
@@ -761,87 +764,5 @@ def _shapely_diffclip_right(
     return clip_right.drop(columns="geom_left")
 
 
-def _try_difference(
-    left: np.ndarray,
-    right: np.ndarray,
-    grid_size: int | float | None,
-    geom_type: str | None,
-    n_jobs: int = 1,
-) -> np.ndarray:
-    """Try difference overlay, then make_valid and retry."""
-    if n_jobs > 1 and len(left) / n_jobs > 10:
-        try:
-            return _run_overlay_joblib_threading(
-                left,
-                right,
-                func=difference,
-                n_jobs=n_jobs,
-                grid_size=grid_size,
-            )
-        except GEOSException:
-            left = make_valid_and_keep_geom_type(
-                left, geom_type=geom_type, n_jobs=n_jobs
-            )
-            right = make_valid_and_keep_geom_type(
-                right, geom_type=geom_type, n_jobs=n_jobs
-            )
-            left = left.loc[lambda x: x.index.isin(right.index)]
-            right = right.loc[lambda x: x.index.isin(left.index)]
-
-            return _run_overlay_joblib_threading(
-                left.to_numpy(),
-                right.to_numpy(),
-                func=difference,
-                n_jobs=n_jobs,
-                grid_size=grid_size,
-            )
-
-    try:
-        return difference(
-            left,
-            right,
-            grid_size=grid_size,
-        )
-    except GEOSException:
-        left = make_valid_and_keep_geom_type(left, geom_type, n_jobs=n_jobs)
-        right = make_valid_and_keep_geom_type(right, geom_type, n_jobs=n_jobs)
-        left = left.loc[lambda x: x.index.isin(right.index)]
-        right = right.loc[lambda x: x.index.isin(left.index)]
-        try:
-            return difference(
-                left.to_numpy(),
-                right.to_numpy(),
-                grid_size=grid_size,
-            )
-        except GEOSException as e:
-            raise e.__class__(e, f"{grid_size=}", f"{left=}", f"{right=}") from e
-
-
-def make_valid_and_keep_geom_type(
-    geoms: np.ndarray, geom_type: str, n_jobs: int
-) -> GeoSeries:
-    """Make GeometryCollections into (Multi)Polygons, (Multi)LineStrings or (Multi)Points.
-
-    Because GeometryCollections might appear after dissolving (unary_union).
-    And this makes shapely difference/intersection fail.
-
-    Args:
-        geoms: Array of geometries.
-        geom_type: geometry type to be kept.
-        n_jobs: Number of treads.
-    """
-    geoms = GeoSeries(geoms)
-    geoms.index = range(len(geoms))
-    geoms.loc[:] = make_valid(geoms.to_numpy())
-    geoms_with_correct_type = geoms.explode(index_parts=False).pipe(
-        to_single_geom_type, geom_type
-    )
-    only_one = geoms_with_correct_type.groupby(level=0).transform("size") == 1
-    one_hit = geoms_with_correct_type[only_one]
-    many_hits = geoms_with_correct_type[~only_one].groupby(level=0).agg(unary_union)
-    geoms_with_wrong_type = geoms.loc[~geoms.index.isin(geoms_with_correct_type.index)]
-    return pd.concat([one_hit, many_hits, geoms_with_wrong_type]).sort_index()
-
-
 def _agg_geoms(g: np.ndarray, grid_size: int | float | None = None) -> Geometry:
-    return make_valid(unary_union(g, grid_size=grid_size))
+    return make_valid(union_all(g, grid_size=grid_size))

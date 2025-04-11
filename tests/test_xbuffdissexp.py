@@ -65,13 +65,12 @@ def test_dissexp_by_cluster():
         y=[np.random.choice([*"abc"]) for _ in range(100)],
     )
     gdf.geometry = gdf.buffer(0.001)
-
     for n_jobs in [1, 3]:
         for processes in [1, 3]:
             print(n_jobs, processes)
             by_cluster = sg.dissexp_by_cluster(gdf, n_jobs=n_jobs)
             regular = sg.dissexp(gdf, n_jobs=n_jobs)
-            assert len(by_cluster) == len(regular)
+            assert len(by_cluster) == len(regular), (len(by_cluster), len(regular))
             assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
             assert list(sorted(by_cluster.columns)) == [
@@ -155,7 +154,7 @@ def test_buffdissexp_by_cluster(gdf_fixture):
     for distance in [1, 10, 100, 1000, 10000]:
         by_cluster = sg.buffdissexp_by_cluster(gdf_fixture, distance)
         regular = sg.buffdissexp(gdf_fixture, distance)
-        assert len(by_cluster) == len(regular)
+        assert len(by_cluster) == len(regular), (len(by_cluster), len(regular))
         assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
     gdf = sg.random_points(100).assign(
@@ -163,7 +162,7 @@ def test_buffdissexp_by_cluster(gdf_fixture):
     )
     by_cluster = sg.buffdissexp_by_cluster(gdf, 0.1)
     regular = sg.buffdissexp(gdf, 0.1)
-    assert len(by_cluster) == len(regular)
+    assert len(by_cluster) == len(regular), (len(by_cluster), len(regular))
     assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
 
     assert list(sorted(by_cluster.columns)) == [
@@ -376,8 +375,8 @@ def test_grouped_unary_union():
     df = sg.random_points(10000).pipe(sg.buff, 0.01)
     df["col"] = [random.choice(list(range(250))) for _ in range(len(df))]
 
-    for _ in range(2):
-        dissolved = sg.geopandas_tools.general._grouped_unary_union(df, by="col")
+    for n_jobs in [1, 3]:
+        dissolved = sg.UnionRunner(n_jobs).run(df, by="col")
         dissolved2 = (
             df.groupby("col")["geometry"].agg(lambda x: (unary_union(x))).make_valid()
         )
@@ -385,7 +384,7 @@ def test_grouped_unary_union():
     assert dissolved.equals(dissolved2), (dissolved, dissolved2)
 
     def grouped_unary_union():
-        return sg.geopandas_tools.general._grouped_unary_union(df, by="col")
+        return sg.UnionRunner(1).run(df, by="col")
 
     def groupby_unary_union():
         return df.groupby("col")["geometry"].agg(unary_union).make_valid()

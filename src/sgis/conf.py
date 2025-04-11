@@ -1,3 +1,6 @@
+from collections.abc import Iterable
+from typing import Any
+
 try:
     from gcsfs import GCSFileSystem
 
@@ -66,7 +69,56 @@ except ImportError:
 
     file_system = LocalFileSystem
 
-config = {
-    "n_jobs": 1,
-    "file_system": file_system,
-}
+from .geopandas_tools.runners import OverlayRunner
+from .geopandas_tools.runners import RTreeQueryRunner
+from .geopandas_tools.runners import UnionRunner
+
+
+class Config:
+    """Dictlike config with a 'get_instance' method."""
+
+    def __init__(self, data: dict) -> None:
+        """Initialise with dict."""
+        self.data = data
+
+    def get_instance(self, key: str, *args, **kwargs) -> Any:
+        """Get the dict value and call it if callable."""
+        x = self.data[key]
+        if callable(x):
+            return x(*args, **kwargs)
+        return x
+
+    def __getattr__(self, attr: str) -> Any:
+        """Get dict attribute."""
+        return getattr(self.data, attr)
+
+    def __getitem__(self, key: str) -> Any:
+        """Get dict value."""
+        return self.data[key]
+
+    def __setitem__(self, key: str, value) -> None:
+        """Set dict value."""
+        self.data[key] = value
+
+    def __iter__(self) -> Iterable[str]:
+        """Iterate over dict keys."""
+        return iter(self.data)
+
+    def __len__(self) -> int:
+        """Length of dict."""
+        return len(self.data)
+
+    def __str__(self) -> str:
+        """String representation of dict."""
+        return str(self.data)
+
+
+config = Config(
+    {
+        "n_jobs": 1,
+        "file_system": file_system,
+        "rtree_runner": RTreeQueryRunner,
+        "overlay_runner": OverlayRunner,
+        "union_runner": UnionRunner,
+    }
+)

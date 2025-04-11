@@ -779,14 +779,12 @@ def _read_partitioned_parquet(
         if all(isinstance(x, DataFrame) for x in results):
             return pd.concat(results)
         else:
-            geo_metadata = _get_geo_metadata(next(iter(child_paths)), file_system)
-            return _arrow_to_geopandas(
-                pyarrow.concat_tables(
-                    results,
-                    promote_options="permissive",
-                ),
-                geo_metadata,
+            results = pyarrow.concat_tables(
+                results,
+                promote_options="permissive",
             )
+            geo_metadata = _get_geo_metadata(next(iter(child_paths)), file_system)
+            return _arrow_to_geopandas(results, geo_metadata)
 
     # add columns to empty DataFrame
     first_path = next(iter(child_paths + [path]))

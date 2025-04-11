@@ -198,7 +198,7 @@ def get_all_files(root: str, recursive: bool = True) -> list[str]:
 
 
 def return_two_vals(
-    vals: tuple[str, str] | list[str] | str | int | float
+    vals: tuple[str, str] | list[str] | str | int | float,
 ) -> tuple[str | int | float, str | int | float]:
     """Return a two-length tuple from a str/int/float or list/tuple of length 1 or 2.
 

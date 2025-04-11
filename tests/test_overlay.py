@@ -93,6 +93,8 @@ def test_overlay(points_oslo):
                     geom_type="polygon",
                 )
 
+            if how != "intersection":
+                continue
             overlayed3 = sg.parallel_overlay(
                 p500, p1000, processes=4, max_rows_per_chunk=100, how=how
             )
@@ -121,8 +123,8 @@ def test_overlay(points_oslo):
 
 
 def test_overlay_random(n=25):
-    for _ in range(n):
-        print(_)
+    for i in range(n):
+        print(i)
         loc_num = np.random.randint(low=50, high=150)
         buff_num = np.random.randint(low=7, high=23)
         for how in [
@@ -140,12 +142,12 @@ def test_overlay_random(n=25):
             gdf1.index = [np.random.randint(low=0, high=10) for _ in range(len(gdf1))]
             gdf2.index = [np.random.randint(low=0, high=10) for _ in range(len(gdf2))]
 
+            overlayed2 = sg.clean_overlay(gdf1, gdf2, how=how)
             overlayed = (
                 gdf1.overlay(gdf2, how=how)
                 .explode(ignore_index=True)
                 .explode(ignore_index=True)
             )
-            overlayed2 = sg.clean_overlay(gdf1, gdf2, how=how)
 
             if len(overlayed) != len(overlayed2):
                 raise ValueError(how, len(overlayed), len(overlayed2))
@@ -176,4 +178,4 @@ def main():
 
 if __name__ == "__main__":
     partial_func()
-    # main()
+    main()

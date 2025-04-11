@@ -23,12 +23,13 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import get_num_geometries
 
+from ..conf import config
 from ..parallel.parallel import Parallel
-from .general import _parallel_unary_union
-from .general import _unary_union_for_notna
 from .geometry_types import make_all_singlepart
 from .polygon_operations import get_cluster_mapper
 from .polygon_operations import get_grouped_centroids
+from .runners import UnionRunner
+from .utils import _unary_union_for_notna
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
@@ -53,8 +54,8 @@ def buffdissexp(
     index_parts: bool = False,
     copy: bool = True,
     grid_size: float | int | None = None,
-    n_jobs: int = 1,
     join_style: int | str = "round",
+    n_jobs: int = 1,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
     """Buffers and dissolves overlapping geometries.
@@ -187,26 +188,26 @@ def _dissolve(
     gdf: GeoDataFrame,
     aggfunc: str = "first",
     grid_size: None | float = None,
-    n_jobs: int = 1,
     as_index: bool = True,
+    n_jobs: int = 1,
+    union_runner: UnionRunner | None = None,
     **dissolve_kwargs,
 ) -> GeoDataFrame:
-
     if not len(gdf):
         return gdf
 
-    geom_col = gdf._geometry_column_name
+    if union_runner is None:
+        union_runner = config.get_instance("union_runner", n_jobs)
 
-    gdf[geom_col] = gdf[geom_col].make_valid()
+    geom_col = gdf.geometry.name
+    by = dissolve_kwargs.pop("by", None)
+    by_was_none = not bool(by)
 
+    # make sure geometries are dissolved rowwise to make dissolving simpler later
     more_than_one = get_num_geometries(gdf.geometry.values) > 1
     gdf.loc[more_than_one, geom_col] = gdf.loc[more_than_one, geom_col].apply(
         _unary_union_for_notna
     )
-
-    by = dissolve_kwargs.pop("by", None)
-
-    by_was_none = not bool(by)
 
     if by is None and dissolve_kwargs.get("level") is None:
         by = np.zeros(len(gdf), dtype="int64")
@@ -215,30 +216,23 @@ def _dissolve(
         if isinstance(by, str):
             by = [by]
         other_cols = list(gdf.columns.difference({geom_col} | set(by or {})))
-
     try:
         is_one_hit = (
             gdf.groupby(by, as_index=True, **dissolve_kwargs).transform("size") == 1
         )
     except IndexError:
-        # if no rows when dropna=True
+        # if no rows after dropping na if dropna=True
         original_by = [x for x in by]
         query = gdf[by.pop(0)].notna()
         for col in gdf[by]:
             query &= gdf[col].notna()
         gdf = gdf.loc[query]
         assert not len(gdf), gdf
-        if not by_was_none and as_index:
-            try:
-                gdf = gdf.set_index(original_by)
-            except Exception as e:
-                print(gdf)
-                print(original_by)
-                raise e
-
+        if as_index and not by_was_none:
+            gdf = gdf.set_index(original_by)
         return gdf
 
-    if not by_was_none and as_index:
+    if as_index and not by_was_none:
         one_hit = gdf[is_one_hit].set_index(by)
     else:
         one_hit = gdf[is_one_hit]
@@ -250,38 +244,21 @@ def _dissolve(
     dissolved = many_hits.groupby(by, as_index=True, **dissolve_kwargs)[other_cols].agg(
         aggfunc
     )
-
-    if n_jobs > 1:
-        try:
-            agged = _parallel_unary_union(
-                many_hits,
-                n_jobs=n_jobs,
-                by=by,
-                grid_size=grid_size,
-                as_index=True,
-                **dissolve_kwargs,
-            )
-            dissolved[geom_col] = agged
-            return GeoDataFrame(dissolved, geometry=geom_col, crs=gdf.crs)
-        except Exception as e:
-            print(e, dissolved, agged, many_hits)
-            raise e
-
-    geoms_agged = many_hits.groupby(by, **dissolve_kwargs)[geom_col].agg(
-        lambda x: _unary_union_for_notna(x, grid_size=grid_size)
+    dissolved[geom_col] = union_runner.run(
+        many_hits,
+        by=by,
+        grid_size=grid_size,
+        as_index=True,
+        **dissolve_kwargs,
     )
-
-    dissolved[geom_col] = geoms_agged
-
     if not as_index:
         dissolved = dissolved.reset_index()
-
     try:
         return GeoDataFrame(
             pd.concat([dissolved, one_hit]).sort_index(), geometry=geom_col, crs=gdf.crs
         )
     except TypeError as e:
-        raise e.__class__(e, dissolved.index, one_hit.index) from e
+        raise e.__class__(f"{e}. {dissolved.index}. {one_hit.index}") from e
 
 
 def diss(
@@ -582,7 +559,7 @@ def buff(
     if copy:
         gdf = gdf.copy()
 
-    gdf[gdf._geometry_column_name] = gdf.buffer(
+    gdf[gdf.geometry.name] = gdf.buffer(
         distance, resolution=resolution, join_style=join_style, **buffer_kwargs
     ).make_valid()
 

@@ -6,7 +6,6 @@ from collections.abc import Hashable
 from collections.abc import Iterable
 from typing import Any
 
-import joblib
 import numpy as np
 import pandas as pd
 import pyproj
@@ -23,7 +22,6 @@ from shapely import get_parts
 from shapely import linestrings
 from shapely import make_valid
 from shapely import points as shapely_points
-from shapely import union_all
 from shapely.geometry import LineString
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
@@ -333,7 +331,7 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     area_mapper = dict(enumerate(gdf.area.values))
-    sorted_areas = dict(reversed(sorted(area_mapper.items(), key=lambda item: item[1])))
+    sorted_areas = dict(reversed(sorted(area_mapper.items(), key=_get_dict_value)))
     return gdf.iloc[list(sorted_areas)]
 
 
@@ -349,9 +347,7 @@ def sort_long_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     length_mapper = dict(enumerate(gdf.length.values))
-    sorted_lengths = dict(
-        reversed(sorted(length_mapper.items(), key=lambda item: item[1]))
-    )
+    sorted_lengths = dict(reversed(sorted(length_mapper.items(), key=_get_dict_value)))
     return gdf.iloc[list(sorted_lengths)]
 
 
@@ -367,7 +363,7 @@ def sort_short_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     length_mapper = dict(enumerate(gdf.length.values))
-    sorted_lengths = dict(sorted(length_mapper.items(), key=lambda item: item[1]))
+    sorted_lengths = dict(sorted(length_mapper.items(), key=_get_dict_value))
     return gdf.iloc[list(sorted_lengths)]
 
 
@@ -384,8 +380,12 @@ def sort_small_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
     area_mapper = dict(enumerate(gdf.area.values))
-    sorted_areas = dict(sorted(area_mapper.items(), key=lambda item: item[1]))
+    sorted_areas = dict(sorted(area_mapper.items(), key=_get_dict_value))
     return gdf.iloc[list(sorted_areas)]
+
+
+def _get_dict_value(item: tuple[Hashable, Any]) -> Any:
+    return item[1]
 
 
 def make_lines_between_points(
@@ -1121,79 +1121,3 @@ def _determine_geom_type_args(
         if geom_type == "mixed":
             raise ValueError("Cannot set keep_geom_type=True with mixed geometries")
     return gdf, geom_type, keep_geom_type
-
-
-def _unary_union_for_notna(geoms, **kwargs):
-    try:
-        return make_valid(union_all(geoms, **kwargs))
-    except TypeError:
-        return union_all([geom for geom in geoms.dropna().values], **kwargs)
-
-
-def _grouped_unary_union(
-    df: GeoDataFrame | GeoSeries | pd.DataFrame | pd.Series,
-    by: str | list[str] | None = None,
-    level: int | None = None,
-    as_index: bool = True,
-    grid_size: float | int | None = None,
-    dropna: bool = False,
-    **kwargs,
-) -> GeoSeries | GeoDataFrame:
-    """Vectorized unary_union for groups.
-
-    Experimental. Messy code.
-    """
-    try:
-        geom_col = df._geometry_column_name
-    except AttributeError:
-        try:
-            geom_col = df.name
-            if geom_col is None:
-                geom_col = "geometry"
-        except AttributeError:
-            geom_col = "geometry"
-
-    if isinstance(df, pd.Series):
-        return GeoSeries(
-            df.groupby(level=level, as_index=as_index, **kwargs).agg(
-                lambda x: _unary_union_for_notna(x, grid_size=grid_size)
-            )
-        )
-
-    return GeoSeries(
-        df.groupby(by, level=level, as_index=as_index, **kwargs)[geom_col].agg(
-            lambda x: _unary_union_for_notna(x, grid_size=grid_size)
-        )
-    )
-
-
-def _parallel_unary_union(
-    gdf: GeoDataFrame, n_jobs: int = 1, by=None, grid_size=None, **kwargs
-) -> list[Geometry]:
-    try:
-        geom_col = gdf._geometry_column_name
-    except AttributeError:
-        geom_col = "geometry"
-
-    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
-        delayed_operations = []
-        for _, geoms in gdf.groupby(by, **kwargs)[geom_col]:
-            delayed_operations.append(
-                joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
-            )
-
-        return parallel(delayed_operations)
-
-
-def _parallel_unary_union_geoseries(
-    ser: GeoSeries, n_jobs: int = 1, grid_size=None, **kwargs
-) -> list[Geometry]:
-
-    with joblib.Parallel(n_jobs=n_jobs, backend="threading") as parallel:
-        delayed_operations = []
-        for _, geoms in ser.groupby(**kwargs):
-            delayed_operations.append(
-                joblib.delayed(_unary_union_for_notna)(geoms, grid_size=grid_size)
-            )
-
-        return parallel(delayed_operations)

@@ -4,11 +4,10 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
-from geopandas import __version__ as geopandas_version
 from shapely import Geometry
-from shapely import STRtree
 
 from .conversion import to_gdf
+from .runners import RTreeQueryRunner
 
 gdf_type_error_message = "'gdf' should be of type GeoDataFrame or GeoSeries."
 
@@ -18,6 +17,8 @@ def sfilter(
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
     distance: int | float | None = None,
+    n_jobs: int = 1,
+    rtree_runner: RTreeQueryRunner | None = None,
 ) -> GeoDataFrame:
     """Filter a GeoDataFrame or GeoSeries by spatial predicate.
 
@@ -33,6 +34,9 @@ def sfilter(
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
         distance: Max distance to allow if predicate=="dwithin".
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         A copy of 'gdf' with only the rows matching the
@@ -80,7 +84,9 @@ def sfilter(
 
     other = _sfilter_checks(other, crs=gdf.crs)
 
-    indices = _get_sfilter_indices(gdf, other, predicate, distance)
+    indices = _get_sfilter_indices(
+        gdf, other, predicate, distance, n_jobs, rtree_runner
+    )
 
     return gdf.iloc[indices]
 
@@ -90,6 +96,8 @@ def sfilter_split(
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
     distance: int | float | None = None,
+    n_jobs: int = 1,
+    rtree_runner: RTreeQueryRunner | None = None,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     """Split a GeoDataFrame or GeoSeries by spatial predicate.
 
@@ -101,6 +109,9 @@ def sfilter_split(
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
         distance: Max distance to allow if predicate=="dwithin".
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         A tuple of GeoDataFrames, one with the rows that match the spatial predicate
@@ -151,7 +162,9 @@ def sfilter_split(
 
     other = _sfilter_checks(other, crs=gdf.crs)
 
-    indices = _get_sfilter_indices(gdf, other, predicate, distance)
+    indices = _get_sfilter_indices(
+        gdf, other, predicate, distance, n_jobs, rtree_runner
+    )
 
     return (
         gdf.iloc[indices],
@@ -164,6 +177,8 @@ def sfilter_inverse(
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
     distance: int | float | None = None,
+    n_jobs: int = 1,
+    rtree_runner: RTreeQueryRunner | None = None,
 ) -> GeoDataFrame | GeoSeries:
     """Filter a GeoDataFrame or GeoSeries by inverse spatial predicate.
 
@@ -174,6 +189,9 @@ def sfilter_inverse(
         other: The geometry object to filter 'gdf' by.
         predicate: Spatial predicate to use. Defaults to 'intersects'.
         distance: Max distance to allow if predicate=="dwithin".
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         A copy of 'gdf' with only the rows that do not match the
@@ -215,11 +233,10 @@ def sfilter_inverse(
     """
     if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError(gdf_type_error_message)
-
     other = _sfilter_checks(other, crs=gdf.crs)
-
-    indices = _get_sfilter_indices(gdf, other, predicate, distance)
-
+    indices = _get_sfilter_indices(
+        gdf, other, predicate, distance, n_jobs, rtree_runner
+    )
     return gdf.iloc[pd.Index(range(len(gdf))).difference(pd.Index(indices))]
 
 
@@ -252,6 +269,8 @@ def _get_sfilter_indices(
     right: GeoDataFrame | GeoSeries | Geometry,
     predicate: str,
     distance: int | float | None,
+    n_jobs: int,
+    rtree_runner: RTreeQueryRunner | None,
 ) -> np.ndarray:
     """Compute geometric comparisons and get matching indices.
 
@@ -264,6 +283,9 @@ def _get_sfilter_indices(
     right : GeoDataFrame
     predicate : string
         Binary predicate to query.
+    n_jobs: Number of workers.
+    rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+        See the 'runners' module for example implementations.
 
     Returns:
     -------
@@ -272,6 +294,9 @@ def _get_sfilter_indices(
         columns named `_key_left` and `_key_right`.
     """
     original_predicate = predicate
+
+    if rtree_runner is None:
+        rtree_runner = RTreeQueryRunner(n_jobs)
 
     with warnings.catch_warnings():
         # We don't need to show our own warning here
@@ -285,25 +310,16 @@ def _get_sfilter_indices(
             # contains is a faster predicate
             # see discussion at https://github.com/geopandas/geopandas/pull/1421
             predicate = "contains"
-            sindex, kwargs = _get_spatial_tree(left)
-            input_geoms = right.geometry if isinstance(right, GeoDataFrame) else right
+            arr1 = right.geometry.values
+            arr2 = left.geometry.values
         else:
             # all other predicates are symmetric
             # keep them the same
-            sindex, kwargs = _get_spatial_tree(right)
-            input_geoms = left.geometry if isinstance(left, GeoDataFrame) else left
+            arr1 = left.geometry.values
+            arr2 = right.geometry.values
 
-    l_idx, r_idx = sindex.query(
-        input_geoms, predicate=predicate, distance=distance, **kwargs
-    )
+    left, right = rtree_runner.run(arr1, arr2, predicate=predicate, distance=distance)
 
     if original_predicate == "within":
-        return np.sort(np.unique(r_idx))
-
-    return np.sort(np.unique(l_idx))
-
-
-def _get_spatial_tree(df):
-    if int(geopandas_version[0]) >= 1:
-        return df.sindex, {"sort": False}
-    return STRtree(df.geometry.values), {}
+        return np.sort(np.unique(right))
+    return np.sort(np.unique(left))
