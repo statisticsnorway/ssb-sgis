@@ -2,8 +2,8 @@ import functools
 from abc import ABC
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import Any
 from dataclasses import dataclass
+from typing import Any
 
 import joblib
 import numpy as np
