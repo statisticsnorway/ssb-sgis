@@ -29,6 +29,7 @@ from .polygon_operations import get_cluster_mapper
 from .polygon_operations import get_grouped_centroids
 from .runners import UnionRunner
 from .utils import _unary_union_for_notna
+from ..conf import config
 
 
 def _decide_ignore_index(kwargs: dict) -> tuple[dict, bool]:
@@ -196,7 +197,7 @@ def _dissolve(
         return gdf
 
     if union_runner is None:
-        union_runner = UnionRunner(n_jobs)
+        union_runner = config.get_instance("union_runner", n_jobs)
 
     geom_col = gdf.geometry.name
     by = dissolve_kwargs.pop("by", None)

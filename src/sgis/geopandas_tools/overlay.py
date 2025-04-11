@@ -29,7 +29,9 @@ from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .runners import OverlayRunner
-from .runners import RTreeRunner
+from .runners import RTreeQueryRunner
+from .runners import UnionRunner
+from ..conf import config
 
 DEFAULT_GRID_SIZE = None
 DEFAULT_LSUFFIX = "_1"
@@ -47,8 +49,9 @@ def clean_overlay(
     lsuffix: str = DEFAULT_LSUFFIX,
     rsuffix: str = DEFAULT_RSUFFIX,
     n_jobs: int = 1,
-    rtree_runner: RTreeRunner | None = None,
-    overlay_runner: OverlayRunner = OverlayRunner(),
+    rtree_runner: RTreeQueryRunner | None = None,
+    union_runner: UnionRunner | None = None,
+    overlay_runner: OverlayRunner | None = None,
 ) -> GeoDataFrame:
     """Fixes and explodes geometries before doing a shapely overlay, then cleans up.
 
@@ -73,8 +76,12 @@ def clean_overlay(
         lsuffix: Suffix of columns in df1 that are also in df2.
         rsuffix: Suffix of columns in df2 that are also in df1.
         n_jobs: number of jobs. Defaults to 1.
-        backend: Backend if n_jobs is > 1. Either "dask" or any joblib supported backend.
-            defaults to "threading".
+        union_runner: Optionally debug/manipulate the spatial union operations.
+            See the 'runners' module for example implementations.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
+        overlay_runner: Optionally debug/manipulate the spatial overlay operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         GeoDataFrame with overlayed and fixed geometries and columns from both
@@ -102,7 +109,11 @@ def clean_overlay(
         raise ValueError(f"'crs' mismatch. Got {df1.crs} and {df2.crs}")
 
     if rtree_runner is None:
-        rtree_runner = RTreeRunner(n_jobs)
+        rtree_runner = config.get_instance("rtree_runner", n_jobs)
+    if union_runner is None:
+        union_runner = config.get_instance("union_runner", n_jobs)
+    if overlay_runner is None:
+        overlay_runner = config.get_instance("overlay_runner", n_jobs)
 
     crs = df1.crs
 
@@ -177,6 +188,7 @@ def clean_overlay(
                 predicate=predicate,
                 rtree_runner=rtree_runner,
                 overlay_runner=overlay_runner,
+                union_runner=union_runner,
             ),
             geometry="geometry",
             crs=crs,
@@ -246,10 +258,11 @@ def _shapely_pd_overlay(
     lsuffix: str,
     rsuffix: str,
     geom_type: str | None,
-    rtree_runner: RTreeRunner,
+    rtree_runner: RTreeQueryRunner,
     overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> DataFrame:
-    left, right = rtree_runner.query(
+    left, right = rtree_runner.run(
         df1.geometry.values, df2.geometry.values, predicate=predicate
     )
     pairs = _get_intersects_pairs(df1, df2, left, right, rsuffix)
@@ -274,6 +287,7 @@ def _shapely_pd_overlay(
             grid_size=grid_size,
             geom_type=geom_type,
             overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     elif how == "symmetric_difference":
@@ -287,6 +301,7 @@ def _shapely_pd_overlay(
             rsuffix=rsuffix,
             geom_type=geom_type,
             overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     elif how == "identity":
@@ -297,6 +312,7 @@ def _shapely_pd_overlay(
             grid_size=grid_size,
             geom_type=geom_type,
             overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     elif how == "union":
@@ -310,6 +326,7 @@ def _shapely_pd_overlay(
             rsuffix=rsuffix,
             geom_type=geom_type,
             overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     elif how == "update":
@@ -321,6 +338,7 @@ def _shapely_pd_overlay(
             grid_size=grid_size,
             geom_type=geom_type,
             overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
 
     assert isinstance(overlayed, list)
@@ -353,6 +371,7 @@ def _update(
     grid_size: float | None | int,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> GeoDataFrame:
     overlayed = _difference(
         pairs,
@@ -361,6 +380,7 @@ def _update(
         grid_size=grid_size,
         geom_type=geom_type,
         overlay_runner=overlay_runner,
+        union_runner=union_runner,
     )
 
     return overlayed + [df2]
@@ -395,6 +415,7 @@ def _union(
     rsuffix: str,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> list[GeoDataFrame]:
     merged = []
     if len(left):
@@ -415,6 +436,7 @@ def _union(
         rsuffix=rsuffix,
         geom_type=geom_type,
         overlay_runner=overlay_runner,
+        union_runner=union_runner,
     )
     merged += symmdiff
     return merged
@@ -427,6 +449,7 @@ def _identity(
     grid_size: int | float | None,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> list[GeoDataFrame]:
     merged = []
     if len(left):
@@ -444,6 +467,7 @@ def _identity(
         geom_type=geom_type,
         grid_size=grid_size,
         overlay_runner=overlay_runner,
+        union_runner=union_runner,
     )
     merged += diff
     return merged
@@ -459,6 +483,7 @@ def _symmetric_difference(
     rsuffix: str,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> list[GeoDataFrame]:
     merged = []
 
@@ -469,6 +494,7 @@ def _symmetric_difference(
         grid_size=grid_size,
         geom_type=geom_type,
         overlay_runner=overlay_runner,
+        union_runner=union_runner,
     )
     merged += difference_left
 
@@ -481,6 +507,7 @@ def _symmetric_difference(
             rsuffix=rsuffix,
             geom_type=geom_type,
             overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
         merged.append(clip_right)
 
@@ -497,6 +524,7 @@ def _difference(
     grid_size: int | float | None,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> list[GeoDataFrame]:
     merged = []
     if len(left):
@@ -506,6 +534,7 @@ def _difference(
             grid_size=grid_size,
             geom_type=geom_type,
             overlay_runner=overlay_runner,
+            union_runner=union_runner,
         )
         merged.append(clip_left)
     diff_left = _add_indices_from_left(df1, left)
@@ -574,6 +603,7 @@ def _shapely_diffclip_left(
     grid_size: int | float | None,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> pd.DataFrame:
     """Aggregate areas in right by unique values from left, then erases those from left."""
     keep_cols = list(df1.columns.difference({"_overlay_index_right"})) + ["geom_right"]
@@ -630,12 +660,14 @@ def _shapely_diffclip_left(
             }
         )
 
-        agged = pd.Series(
-            {
-                i: agg_geoms_partial(geoms)
-                for i, geoms in agger.groupby(level=0)["geom_right"]
-            }
-        )
+        agged = union_runner.run(agger["geom_right"], level=0)
+        # agged = pd.Series(
+
+        #     {
+        #         i: agg_geoms_partial(geoms)
+        #         for i, geoms in agger.groupby(level=0)["geom_right"]
+        #     }
+        # )
         many_hits_agged["geom_right"] = inverse_index_mapper.map(agged)
         many_hits_agged = many_hits_agged.drop(columns=["_right_indices"])
 
@@ -669,6 +701,7 @@ def _shapely_diffclip_right(
     rsuffix: str,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
+    union_runner: UnionRunner,
 ) -> pd.DataFrame:
     agg_geoms_partial = functools.partial(_agg_geoms, grid_size=grid_size)
 
@@ -679,16 +712,22 @@ def _shapely_diffclip_right(
         one_hit = pairs[only_one].set_index("_overlay_index_right")[
             ["geom_left", "geometry"]
         ]
-        many_hits = (
-            pairs[~only_one]
-            .groupby("_overlay_index_right")
-            .agg(
-                {
-                    "geom_left": agg_geoms_partial,
-                    "geometry": "first",
-                }
-            )
+        many_hits_ungrouped = pairs[~only_one].set_index("_overlay_index_right")
+        many_hits = pd.DataFrame(index=many_hits_ungrouped.index.unique())
+        many_hits["geometry"] = many_hits_ungrouped.groupby(level=0)["geometry"].first()
+        many_hits["geom_left"] = union_runner.run(
+            many_hits_ungrouped["geom_left"], level=0
         )
+        # many_hits = (
+        #     pairs[~only_one]
+        #     .groupby("_overlay_index_right")
+        #     .agg(
+        #         {
+        #             "geom_left": agg_geoms_partial,
+        #             "geometry": "first",
+        #         }
+        #     )
+        # )
         clip_right = (
             pd.concat([one_hit, many_hits])
             .join(df2.drop(columns=["geometry"]))

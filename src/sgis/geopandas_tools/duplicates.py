@@ -16,9 +16,10 @@ from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .overlay import clean_overlay
 from .runners import OverlayRunner
-from .runners import RTreeRunner
+from .runners import RTreeQueryRunner
 from .runners import UnionRunner
 from .sfilter import sfilter_inverse
+from ..conf import config
 
 PRECISION = 1e-3
 
@@ -31,8 +32,8 @@ def update_geometries(
     predicate: str | None = "intersects",
     n_jobs: int = 1,
     union_runner: UnionRunner | None = None,
-    rtree_runner: RTreeRunner | None = None,
-    overlay_runner: OverlayRunner = OverlayRunner(),
+    rtree_runner: RTreeQueryRunner | None = None,
+    overlay_runner: OverlayRunner | None = None,
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
@@ -104,10 +105,12 @@ def update_geometries(
     if len(gdf) <= 1:
         return gdf
 
-    if union_runner is None:
-        union_runner = UnionRunner(n_jobs)
     if rtree_runner is None:
-        rtree_runner = RTreeRunner(n_jobs)
+        rtree_runner = config.get_instance("rtree_runner", n_jobs)
+    if union_runner is None:
+        union_runner = config.get_instance("union_runner", n_jobs)
+    if overlay_runner is None:
+        overlay_runner = config.get_instance("overlay_runner", n_jobs)
 
     if geom_type == "polygon" or get_geom_type(gdf) == "polygon":
         gdf.geometry = gdf.buffer(0)
@@ -122,7 +125,7 @@ def update_geometries(
     index_mapper = {i: idx for i, idx in enumerate(copied.index)}
     copied = copied.reset_index(drop=True)
 
-    left, right = rtree_runner.query(
+    left, right = rtree_runner.run(
         copied.geometry.values, copied.geometry.values, predicate=predicate
     )
     indices = pd.Series(right, index=left).loc[lambda x: x.index > x.values]

@@ -1,5 +1,7 @@
 import functools
 from collections.abc import Callable
+from abc import ABC
+from abc import abstractmethod
 from dataclasses import dataclass
 
 import joblib
@@ -18,7 +20,29 @@ from .utils import make_valid_and_keep_geom_type
 
 
 @dataclass
-class UnionRunner:
+class AbstractRunner(ABC):
+    """Blueprint for 'runner' classes.
+
+    Subclasses must implement a 'run' method.
+
+    Args:
+        n_jobs: Number of workers.
+        backend: Backend for the workers.
+    """
+
+    n_jobs: int
+    backend: str | None = None
+
+    @abstractmethod
+    def run(self, *args, **kwargs):
+        pass
+
+    def __post_init__(self):
+        print("hei", self.__class__.__name__, self.n_jobs, self.backend)
+
+
+@dataclass
+class UnionRunner(AbstractRunner):
     """Run shapely.union_all with pandas.groupby.
 
     Subclasses must implement a 'run' method that takes the arguments
@@ -97,7 +121,7 @@ def _strtree_query(arr1, arr2, **kwargs):
 
 
 @dataclass
-class RTreeRunner:
+class RTreeQueryRunner(AbstractRunner):
     """Run shapely.STRTree chunkwise.
 
     Subclasses must implement a 'query' method that takes a numpy.ndarray
@@ -115,7 +139,7 @@ class RTreeRunner:
     n_jobs: int
     backend: str = "loky"
 
-    def query(
+    def run(
         self, arr1: np.ndarray, arr2: np.ndarray, **kwargs
     ) -> tuple[np.ndarray, np.ndarray]:
         """Run a spatial rtree query and return indices of hits from arr1 and arr2 in a tuple of two arrays."""
@@ -152,7 +176,7 @@ class RTreeRunner:
 
 
 @dataclass
-class OverlayRunner:
+class OverlayRunner(AbstractRunner):
     """Run a vectorized shapely overlay operation on two equal-length numpy arrays.
 
     Subclasses must implement a 'run' method that takes an overlay function (shapely.intersection, shapely.difference etc.)
@@ -163,6 +187,9 @@ class OverlayRunner:
     Defaults to an instance of OverlayRunner, which is run sequencially (no n_jobs)
     because the vectorized shapely functions are usually faster than any attempt to parallelize.
     """
+
+    n_jobs: None = None
+    backend: None = None
 
     @staticmethod
     def run(
@@ -193,7 +220,14 @@ class GridSizeOverlayRunner(OverlayRunner):
     """Run a shapely overlay operation rowwise for different grid_sizes until success."""
 
     n_jobs: int
-    grid_sizes: list[float]
+    backend: str | None
+    grid_sizes: list[float] | None = None
+
+    def __post_init__(self) -> None:
+        if self.grid_sizes is None:
+            raise ValueError(
+                f"must set 'grid_sizes' in the {self.__class__.__name__} initialiser."
+            )
 
     def run(
         self,

@@ -78,7 +78,7 @@ from .geopandas_tools.polygon_operations import split_polygons_by_lines
 from .geopandas_tools.polygons_as_rings import PolygonsAsRings
 from .geopandas_tools.runners import GridSizeOverlayRunner
 from .geopandas_tools.runners import OverlayRunner
-from .geopandas_tools.runners import RTreeRunner
+from .geopandas_tools.runners import RTreeQueryRunner
 from .geopandas_tools.runners import UnionRunner
 from .geopandas_tools.sfilter import sfilter
 from .geopandas_tools.sfilter import sfilter_inverse

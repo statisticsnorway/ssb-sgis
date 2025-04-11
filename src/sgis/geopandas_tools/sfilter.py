@@ -7,7 +7,7 @@ from geopandas import GeoSeries
 from shapely import Geometry
 
 from .conversion import to_gdf
-from .runners import RTreeRunner
+from .runners import RTreeQueryRunner
 
 gdf_type_error_message = "'gdf' should be of type GeoDataFrame or GeoSeries."
 
@@ -18,7 +18,7 @@ def sfilter(
     predicate: str = "intersects",
     distance: int | float | None = None,
     n_jobs: int = 1,
-    rtree_runner: RTreeRunner | None = None,
+    rtree_runner: RTreeQueryRunner | None = None,
 ) -> GeoDataFrame:
     """Filter a GeoDataFrame or GeoSeries by spatial predicate.
 
@@ -94,7 +94,7 @@ def sfilter_split(
     predicate: str = "intersects",
     distance: int | float | None = None,
     n_jobs: int = 1,
-    rtree_runner: RTreeRunner | None = None,
+    rtree_runner: RTreeQueryRunner | None = None,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     """Split a GeoDataFrame or GeoSeries by spatial predicate.
 
@@ -172,7 +172,7 @@ def sfilter_inverse(
     predicate: str = "intersects",
     distance: int | float | None = None,
     n_jobs: int = 1,
-    rtree_runner: RTreeRunner | None = None,
+    rtree_runner: RTreeQueryRunner | None = None,
 ) -> GeoDataFrame | GeoSeries:
     """Filter a GeoDataFrame or GeoSeries by inverse spatial predicate.
 
@@ -261,7 +261,7 @@ def _get_sfilter_indices(
     predicate: str,
     distance: int | float | None,
     n_jobs: int,
-    rtree_runner: RTreeRunner | None,
+    rtree_runner: RTreeQueryRunner | None,
 ) -> np.ndarray:
     """Compute geometric comparisons and get matching indices.
 
@@ -284,7 +284,7 @@ def _get_sfilter_indices(
     original_predicate = predicate
 
     if rtree_runner is None:
-        rtree_runner = RTreeRunner(n_jobs)
+        rtree_runner = RTreeQueryRunner(n_jobs)
 
     with warnings.catch_warnings():
         # We don't need to show our own warning here
@@ -306,7 +306,7 @@ def _get_sfilter_indices(
             arr1 = left.geometry.values
             arr2 = right.geometry.values
 
-    left, right = rtree_runner.query(arr1, arr2, predicate=predicate, distance=distance)
+    left, right = rtree_runner.run(arr1, arr2, predicate=predicate, distance=distance)
 
     if original_predicate == "within":
         return np.sort(np.unique(right))

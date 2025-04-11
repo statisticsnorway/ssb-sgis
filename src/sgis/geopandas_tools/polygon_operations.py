@@ -49,6 +49,7 @@ from .runners import UnionRunner
 from .sfilter import sfilter
 from .sfilter import sfilter_inverse
 from .utils import _unary_union_for_notna
+from ..conf import config
 
 PRECISION = 1e-3
 _BUFFER = False
@@ -231,7 +232,7 @@ def eliminate_by_longest(
     grid_size=None,
     n_jobs: int = 1,
     union_runner: UnionRunner | None = None,
-    overlay_runner: OverlayRunner = OverlayRunner(),
+    overlay_runner: OverlayRunner | None = None,
     **kwargs,
 ) -> tuple[GeoDataFrame]:
     """Dissolves selected polygons with the longest bordering neighbor polygon.
@@ -259,6 +260,10 @@ def eliminate_by_longest(
             (if aggfunc="first").
         grid_size: Rounding of the coordinates. Defaults to None.
         n_jobs: Number of threads to use. Defaults to 1.
+        union_runner: Optionally debug/manipulate the spatial union operations.
+            See the 'runners' module for example implementations.
+        overlay_runner: Optionally debug/manipulate the spatial overlay operations.
+            See the 'runners' module for example implementations.
         **kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
@@ -500,7 +505,7 @@ def eliminate_by_largest(
     grid_size=None,
     n_jobs: int = 1,
     union_runner: UnionRunner | None = None,
-    overlay_runner: OverlayRunner = OverlayRunner(),
+    overlay_runner: OverlayRunner | None = None,
     **kwargs,
 ) -> tuple[GeoDataFrame]:
     """Dissolves selected polygons with the largest neighbor polygon.
@@ -529,6 +534,10 @@ def eliminate_by_largest(
         predicate: Binary predicate passed to sjoin. Defaults to "intersects".
         grid_size: Rounding of the coordinates. Defaults to None.
         n_jobs: Number of threads to use. Defaults to 1.
+        union_runner: Optionally debug/manipulate the spatial union operations.
+            See the 'runners' module for example implementations.
+        overlay_runner: Optionally debug/manipulate the spatial overlay operations.
+            See the 'runners' module for example implementations.
         **kwargs: Keyword arguments passed to the dissolve method.
 
     Returns:
@@ -591,7 +600,7 @@ def eliminate_by_smallest(
     grid_size=None,
     n_jobs: int = 1,
     union_runner: UnionRunner | None = None,
-    overlay_runner: OverlayRunner = OverlayRunner(),
+    overlay_runner: OverlayRunner | None = None,
     **kwargs,
 ) -> tuple[GeoDataFrame]:
     return _eliminate_by_area(
@@ -767,7 +776,9 @@ def _eliminate(
         return gdf
 
     if union_runner is None:
-        union_runner = UnionRunner(n_jobs)
+        union_runner = config.get_instance("union_runner", n_jobs)
+    if overlay_runner is None:
+        overlay_runner = config.get_instance("overlay_runner", n_jobs)
 
     gdf["_range_idx_elim"] = range(len(gdf))
 

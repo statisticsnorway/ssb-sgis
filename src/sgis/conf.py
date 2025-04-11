@@ -66,7 +66,43 @@ except ImportError:
 
     file_system = LocalFileSystem
 
-config = {
-    "n_jobs": 1,
-    "file_system": file_system,
-}
+from .geopandas_tools.runners import RTreeQueryRunner
+from .geopandas_tools.runners import OverlayRunner
+from .geopandas_tools.runners import UnionRunner
+
+
+class Config:
+    def __init__(self, data: dict):
+        self.data = data
+
+    def get_instance(self, key: str, *args, **kwargs):
+        x = self.data[key]
+        if callable(x):
+            return x(*args, **kwargs)
+        return x
+
+    def __getattr__(self, attr: str):
+        return getattr(self.data, attr)
+
+    def __setitem__(self, key: str, value):
+        self.data[key] = value
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __str__(self) -> str:
+        return str(self.data)
+
+
+config = Config(
+    {
+        "n_jobs": 1,
+        "file_system": file_system,
+        "rtree_runner": RTreeQueryRunner(1),
+        "overlay_runner": OverlayRunner,
+        "union_runner": UnionRunner,
+    }
+)
