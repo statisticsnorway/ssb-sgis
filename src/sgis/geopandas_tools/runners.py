@@ -189,8 +189,8 @@ class OverlayRunner(AbstractRunner):
     n_jobs: None = None
     backend: None = None
 
-    @staticmethod
     def run(
+        self,
         func: Callable,
         arr1: np.ndarray,
         arr2: np.ndarray,
