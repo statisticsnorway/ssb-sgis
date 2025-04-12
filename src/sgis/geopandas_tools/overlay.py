@@ -110,11 +110,11 @@ def clean_overlay(
         raise ValueError(f"'crs' mismatch. Got {df1.crs} and {df2.crs}")
 
     if rtree_runner is None:
-        rtree_runner = _get_instance(config, "rtree_runner", n_jobs)
+        rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
     if union_runner is None:
-        union_runner = _get_instance(config, "union_runner", n_jobs)
+        union_runner = _get_instance(config, "union_runner", n_jobs=n_jobs)
     if overlay_runner is None:
-        overlay_runner = _get_instance(config, "overlay_runner", n_jobs)
+        overlay_runner = _get_instance(config, "overlay_runner", n_jobs=n_jobs)
 
     crs = df1.crs
 

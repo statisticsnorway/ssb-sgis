@@ -73,11 +73,11 @@ from .geopandas_tools.runners import RTreeQueryRunner
 from .geopandas_tools.runners import UnionRunner
 
 
-def _get_instance(data: dict, key: str, *args, **kwargs) -> Any:
+def _get_instance(data: dict, key: str, **kwargs) -> Any:
     """Get the dict value and call it if callable."""
     x = data[key]
     if callable(x):
-        return x(*args, **kwargs)
+        return x(**kwargs)
     return x
 
 

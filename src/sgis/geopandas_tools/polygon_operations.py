@@ -777,9 +777,9 @@ def _eliminate(
         return gdf
 
     if union_runner is None:
-        union_runner = _get_instance(config, "union_runner", n_jobs)
+        union_runner = _get_instance(config, "union_runner", n_jobs=n_jobs)
     if overlay_runner is None:
-        overlay_runner = _get_instance(config, "overlay_runner", n_jobs)
+        overlay_runner = _get_instance(config, "overlay_runner", n_jobs=n_jobs)
 
     gdf["_range_idx_elim"] = range(len(gdf))
 

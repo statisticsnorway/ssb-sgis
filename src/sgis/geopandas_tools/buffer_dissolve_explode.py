@@ -198,7 +198,7 @@ def _dissolve(
         return gdf
 
     if union_runner is None:
-        union_runner = _get_instance(config, "union_runner", n_jobs)
+        union_runner = _get_instance(config, "union_runner", n_jobs=n_jobs)
 
     geom_col = gdf.geometry.name
     by = dissolve_kwargs.pop("by", None)

@@ -298,7 +298,7 @@ def _get_sfilter_indices(
     original_predicate = predicate
 
     if rtree_runner is None:
-        rtree_runner = _get_instance(config, "rtree_runner", n_jobs)
+        rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
 
     with warnings.catch_warnings():
         # We don't need to show our own warning here
