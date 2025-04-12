@@ -23,6 +23,7 @@ from shapely import is_empty
 from shapely import make_valid
 from shapely import union_all
 
+from ..conf import _get_instance
 from ..conf import config
 from .general import _determine_geom_type_args
 from .general import clean_geoms
@@ -109,11 +110,11 @@ def clean_overlay(
         raise ValueError(f"'crs' mismatch. Got {df1.crs} and {df2.crs}")
 
     if rtree_runner is None:
-        rtree_runner = config.get_instance("rtree_runner", n_jobs)
+        rtree_runner = _get_instance(config, "rtree_runner", n_jobs)
     if union_runner is None:
-        union_runner = config.get_instance("union_runner", n_jobs)
+        union_runner = _get_instance(config, "union_runner", n_jobs)
     if overlay_runner is None:
-        overlay_runner = config.get_instance("overlay_runner", n_jobs)
+        overlay_runner = _get_instance(config, "overlay_runner", n_jobs)
 
     crs = df1.crs
 

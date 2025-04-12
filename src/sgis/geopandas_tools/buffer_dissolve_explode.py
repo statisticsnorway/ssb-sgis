@@ -23,6 +23,7 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import get_num_geometries
 
+from ..conf import _get_instance
 from ..conf import config
 from ..parallel.parallel import Parallel
 from .geometry_types import make_all_singlepart
@@ -197,7 +198,7 @@ def _dissolve(
         return gdf
 
     if union_runner is None:
-        union_runner = config.get_instance("union_runner", n_jobs)
+        union_runner = _get_instance(config, "union_runner", n_jobs)
 
     geom_col = gdf.geometry.name
     by = dissolve_kwargs.pop("by", None)

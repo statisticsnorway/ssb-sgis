@@ -26,6 +26,7 @@ from shapely.errors import GEOSException
 from shapely.geometry import LinearRing
 from shapely.ops import SplitOp
 
+from ..conf import _get_instance
 from ..conf import config
 from ..debug_config import _DEBUG_CONFIG
 from ..debug_config import _try_debug_print
@@ -776,9 +777,9 @@ def _eliminate(
         return gdf
 
     if union_runner is None:
-        union_runner = config.get_instance("union_runner", n_jobs)
+        union_runner = _get_instance(config, "union_runner", n_jobs)
     if overlay_runner is None:
-        overlay_runner = config.get_instance("overlay_runner", n_jobs)
+        overlay_runner = _get_instance(config, "overlay_runner", n_jobs)
 
     gdf["_range_idx_elim"] = range(len(gdf))
 

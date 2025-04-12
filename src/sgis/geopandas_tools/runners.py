@@ -247,7 +247,9 @@ class GridSizeOverlayRunner(OverlayRunner):
 
         """
         kwargs = dict(
-            grid_size=grid_size, geom_type=geom_type.lower(), grid_sizes=self.grid_sizes
+            grid_size=grid_size,
+            geom_type=geom_type.lower() if geom_type is not None else None,
+            grid_sizes=self.grid_sizes,
         )
         with joblib.Parallel(self.n_jobs, backend="threading") as parallel:
             return parallel(
@@ -263,8 +265,16 @@ def _run_overlay_rowwise(func, geom1, geom2, grid_size, geom_type, grid_sizes):
         pass
     geom1 = get_parts(make_valid(geom1))
     geom2 = get_parts(make_valid(geom2))
-    geom1 = union_all([g for g in geom1 if pd.notna(g) and geom_type in g.geom_type])
-    geom2 = union_all([g for g in geom2 if pd.notna(g) and geom_type in g.geom_type])
+    if geom_type is not None:
+        geom1 = union_all(
+            [g for g in geom1 if pd.notna(g) and geom_type in g.geom_type]
+        )
+        geom2 = union_all(
+            [g for g in geom2 if pd.notna(g) and geom_type in g.geom_type]
+        )
+    else:
+        geom1 = union_all([g for g in geom1 if pd.notna(g)])
+        geom2 = union_all([g for g in geom2 if pd.notna(g)])
     try:
         return func(geom1, geom2)
     except GEOSException:
