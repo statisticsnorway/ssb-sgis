@@ -21,7 +21,6 @@ from shapely import get_coordinates
 from shapely import get_parts
 from shapely import linestrings
 from shapely import make_valid
-from shapely import points as shapely_points
 from shapely.geometry import LineString
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
@@ -34,6 +33,7 @@ from .geometry_types import get_geom_type
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
 from .neighbors import get_k_nearest_neighbors
+from .sfilter import sfilter
 from .sfilter import sfilter_split
 
 
@@ -416,7 +416,7 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     """Creates a GeoDataFrame with n random points.
 
     Args:
-        n: Number of points/rows to create.
+        n: Number of points to create.
         loc: Mean ('centre') of the distribution.
 
     Returns:
@@ -459,46 +459,84 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     9999  POINT (134.503 168.155)
     [10000 rows x 1 columns]
     """
-    if isinstance(n, (str, float)):
-        n = int(n)
-
     x = np.random.rand(n) * float(loc) * 2
     y = np.random.rand(n) * float(loc) * 2
-
-    return GeoDataFrame(
-        (Point(x, y) for x, y in zip(x, y, strict=True)), columns=["geometry"]
-    )
+    return GeoDataFrame(shapely.points(x, y=y), columns=["geometry"])
 
 
-def random_points_in_polygons(gdf: GeoDataFrame, n: int, seed=None) -> GeoDataFrame:
-    """Creates a GeoDataFrame with n random points within the geometries of 'gdf'.
+def random_points_norway(size: int, *, seed: int | None = None) -> GeoDataFrame:
+    """Creates a GeoDataFrame with crs=25833 n random points aprox. within the borders of mainland Norway.
 
     Args:
-        gdf: A GeoDataFrame.
-        n: Number of points/rows to create.
-        seed: Optional random seet.
+        size: Number of points to create.
+        seed: Optional random seed.
 
     Returns:
         A GeoDataFrame of points with n rows.
     """
-    all_points = []
+    return random_points_in_polygons(
+        [
+            shapely.wkt.loads(x)
+            for x in [
+                "POLYGON ((546192 7586393, 546191 7586393, 526598 7592425, 526597 7592425, 526596 7592425, 526595 7592426, 526594 7592426, 525831 7593004, 525830 7593005, 525327 7593495, 525326 7593496, 525326 7593497, 525325 7593498, 525325 7593499, 525324 7593500, 525192 7594183, 525192 7594184, 524157 7606517, 524157 7606518, 524157 7606519, 524157 7606520, 524157 7606521, 526235 7613535, 526236 7613536, 559423 7676952, 559424 7676953, 559511 7677088, 579978 7708379, 636963 7792940, 636963 7792941, 636964 7792942, 636965 7792943, 641013 7795664, 823514 7912323, 823515 7912323, 823516 7912323, 882519 7931958, 882520 7931959, 882521 7931959, 953896 7939985, 953897 7939985, 973544 7939988, 973545 7939988, 973546 7939988, 975510 7939467, 1051029 7913762, 1051030 7913762, 1055067 7912225, 1055068 7912224, 1056725 7911491, 1098379 7890321, 1098380 7890320, 1098381 7890320, 1099197 7889670, 1099198 7889669, 1099442 7889429, 1099443 7889429, 1099444 7889428, 1099444 7889427, 1099445 7889426, 1099445 7889425, 1099445 7889424, 1099446 7889423, 1114954 7799458, 1115106 7797736, 1115106 7797735, 1115106 7797734, 1115106 7797733, 1115106 7797732, 1115105 7797731, 1115105 7797730, 1114774 7797199, 1112876 7794451, 1057595 7720320, 1057112 7719702, 1057112 7719701, 1057111 7719701, 1057110 7719700, 1057109 7719699, 902599 7637176, 902598 7637176, 902597 7637175, 902596 7637175, 702394 7590633, 702393 7590633, 702392 7590633, 546193 7586393, 546192 7586393))",
+                "POLYGON ((60672 6448410, 60671 6448411, 57185 6448783, 39229 6451077, 39228 6451077, 39227 6451077, 27839 6454916, 27838 6454916, 27808 6454929, 27807 6454929, 8939 6465625, 8938 6465626, 7449 6466699, 7448 6466700, 6876 6467215, 6876 6467216, -31966 6512038, -31968 6512040, -32554 6512779, -32554 6512780, -40259 6524877, -42041 6527698, -42217 6528008, -42546 6528677, -42547 6528678, -77251 6614452, -77252 6614453, -77252 6614454, -77252 6614455, -77252 6614456, -77206 6615751, -77206 6615752, -65669 6811422, -65669 6811423, -65608 6812139, -65608 6812140, -65608 6812141, -50907 6879624, -50907 6879625, -50907 6879626, -50906 6879627, -50889 6879658, -50889 6879659, -16217 6934790, -16217 6934791, -16216 6934792, -2958 6949589, -2957 6949590, 55128 6995098, 144915 7064393, 144915 7064394, 144916 7064395, 144958 7064418, 144959 7064418, 144960 7064418, 144961 7064419, 144962 7064419, 144963 7064419, 150493 7064408, 150494 7064408, 150495 7064408, 150770 7064370, 150771 7064370, 150772 7064370, 188559 7048106, 188560 7048105, 188664 7048054, 188665 7048054, 188666 7048053, 357806 6914084, 357807 6914083, 357808 6914082, 357809 6914081, 357809 6914080, 357810 6914079, 357810 6914078, 359829 6906908, 386160 6804356, 386160 6804355, 386160 6804354, 386160 6804353, 386160 6804352, 386160 6804351, 368140 6699014, 368140 6699013, 363725 6675483, 363725 6675482, 361041 6665071, 361040 6665070, 361040 6665069, 308721 6537573, 308720 6537572, 307187 6534433, 307187 6534432, 307186 6534431, 307185 6534430, 307184 6534429, 307183 6534429, 307182 6534428, 303562 6532881, 300420 6531558, 99437 6459510, 99436 6459510, 67654 6449332, 65417 6448682, 65416 6448682, 65415 6448682, 60673 6448410, 60672 6448410))",
+                "POLYGON ((219870 6914350, 219869 6914350, 219868 6914351, 219867 6914351, 194827 6928565, 194826 6928566, 193100 6929790, 193099 6929790, 193098 6929791, 193098 6929792, 193097 6929793, 157353 7006877, 157353 7006878, 154402 7017846, 154402 7017847, 154392 7017923, 154392 7017924, 154392 7017925, 154392 7017926, 166616 7077346, 166617 7077347, 169164 7087256, 169165 7087257, 170277 7089848, 173146 7096147, 173147 7096148, 174684 7098179, 174685 7098180, 314514 7253805, 314515 7253805, 314515 7253806, 314516 7253806, 314517 7253807, 314518 7253807, 314519 7253808, 314520 7253808, 314521 7253808, 314522 7253808, 314523 7253808, 314524 7253808, 332374.8847495829 7250200.016409928, 327615 7280207, 327615 7280208, 327615 7280209, 327615 7280210, 328471 7285637, 364549 7480637, 364549 7480638, 367030 7488919, 367030 7488920, 367045 7488948, 367045 7488949, 367046 7488950, 419493 7560257, 472291 7626092, 506326 7665544, 506327 7665545, 506328 7665546, 541847 7692387, 541848 7692388, 541849 7692388, 541850 7692389, 541851 7692389, 541852 7692389, 545852 7692619, 546265 7692617, 546266 7692617, 546267 7692617, 546268 7692617, 546269 7692616, 546270 7692616, 546270 7692615, 546271 7692615, 546272 7692614, 623027 7613734, 623028 7613733, 623029 7613732, 627609 7605928, 627610 7605928, 627610 7605927, 627610 7605926, 627611 7605925, 627611 7605924, 630573 7568363, 630573 7568362, 630573 7568361, 630573 7568360, 630573 7568359, 628567 7562381, 621356 7542293, 621356 7542292, 468368 7221876.188770507, 468368 7221876, 459071 7119021, 459071 7119020, 459071 7119019, 459070 7119018, 459070 7119017, 454728 7109371, 451784 7102984, 449525 7098307, 357809 6914071, 357808 6914070, 357808 6914069, 357807 6914068, 357806 6914068, 357806 6914067, 357805 6914067, 357804 6914066, 353158 6912240, 353157 6912239, 353156 6912239, 351669 6911974, 351668 6911974, 351667 6911974, 219871 6914350, 219870 6914350))",
+            ]
+        ],
+        size=size,
+        crs=25833,
+        seed=seed,
+    )
 
+
+def random_points_in_polygons(
+    polygons: Geometry | GeoDataFrame | GeoSeries,
+    size: int,
+    *,
+    seed: int | None = None,
+    crs: Any = 25833,
+) -> GeoDataFrame:
+    """Creates a GeoDataFrame with n random points within the geometries of 'gdf'.
+
+    Args:
+        polygons: A GeoDataFrame or GeoSeries of polygons. Or a single polygon.
+        size: Number of points to create.
+        seed: Optional random seed.
+        crs: Optional crs of the output GeoDataFrame if input is shapely.Geometry.
+
+    Returns:
+        A GeoDataFrame of points with n rows.
+    """
+    if crs is None:
+        try:
+            crs = polygons.crs
+        except AttributeError:
+            pass
     rng = np.random.default_rng(seed)
-
-    for i, geom in enumerate(gdf.geometry):
-        minx, miny, maxx, maxy = geom.bounds
-
-        xs = rng.uniform(minx, maxx, size=n * 500)
-        ys = rng.uniform(miny, maxy, size=n * 500)
-
-        points = GeoSeries(shapely_points(xs, y=ys), index=[i] * len(xs))
-        all_points.append(points)
-
+    polygons = to_gdf(polygons, crs=crs).geometry
+    bounds = polygons.bounds
+    n_repeats = int(size / len(polygons) * 1.25) + 1
+    minx = np.repeat(bounds["minx"].values, n_repeats)
+    maxx = np.repeat(bounds["maxx"].values, n_repeats)
+    miny = np.repeat(bounds["miny"].values, n_repeats)
+    maxy = np.repeat(bounds["maxy"].values, n_repeats)
+    index = np.repeat(np.arange(len(polygons)), n_repeats)
+    length = len(index)
+    out = []
+    while sum(len(df) for df in out) < size * 1.25:
+        xs = rng.uniform(low=minx, high=maxx, size=length)
+        ys = rng.uniform(low=miny, high=maxy, size=length)
+        out.append(
+            GeoDataFrame(
+                shapely.points(xs, y=ys), index=index, columns=["geometry"], crs=crs
+            ).pipe(sfilter, polygons)
+        )
     return (
-        pd.concat(all_points)
-        .loc[lambda x: x.intersects(gdf.geometry)]
+        pd.concat(out)
         .groupby(level=0)
-        .head(n)
+        .sample(n_repeats, replace=True)
+        .sample(size)
+        .sort_index()
     )
 
 

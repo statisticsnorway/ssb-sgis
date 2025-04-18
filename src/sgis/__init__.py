@@ -42,6 +42,7 @@ from .geopandas_tools.general import make_lines_between_points
 from .geopandas_tools.general import points_in_bounds
 from .geopandas_tools.general import random_points
 from .geopandas_tools.general import random_points_in_polygons
+from .geopandas_tools.general import random_points_norway
 from .geopandas_tools.general import sort_large_first
 from .geopandas_tools.general import sort_long_first
 from .geopandas_tools.general import sort_short_first
