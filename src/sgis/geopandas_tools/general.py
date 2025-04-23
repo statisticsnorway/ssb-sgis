@@ -486,7 +486,7 @@ def random_points_norway(size: int, *, seed: int | None = None) -> GeoDataFrame:
         size=size,
         crs=25833,
         seed=seed,
-    )
+    ).sample(size)
 
 
 def random_points_in_polygons(
@@ -515,15 +515,14 @@ def random_points_in_polygons(
     rng = np.random.default_rng(seed)
     polygons = to_gdf(polygons, crs=crs).geometry
     bounds = polygons.bounds
-    n_repeats = int(size / len(polygons) * 1.25) + 1
-    minx = np.repeat(bounds["minx"].values, n_repeats)
-    maxx = np.repeat(bounds["maxx"].values, n_repeats)
-    miny = np.repeat(bounds["miny"].values, n_repeats)
-    maxy = np.repeat(bounds["maxy"].values, n_repeats)
-    index = np.repeat(np.arange(len(polygons)), n_repeats)
+    minx = np.repeat(bounds["minx"].values, size)
+    maxx = np.repeat(bounds["maxx"].values, size)
+    miny = np.repeat(bounds["miny"].values, size)
+    maxy = np.repeat(bounds["maxy"].values, size)
+    index = np.repeat(np.arange(len(polygons)), size)
     length = len(index)
     out = []
-    while sum(len(df) for df in out) < size * 1.25:
+    while sum(len(df) for df in out) < size * len(polygons):
         xs = rng.uniform(low=minx, high=maxx, size=length)
         ys = rng.uniform(low=miny, high=maxy, size=length)
         out.append(
@@ -531,13 +530,7 @@ def random_points_in_polygons(
                 shapely.points(xs, y=ys), index=index, columns=["geometry"], crs=crs
             ).pipe(sfilter, polygons)
         )
-    return (
-        pd.concat(out)
-        .groupby(level=0)
-        .sample(n_repeats, replace=True)
-        .sample(size)
-        .sort_index()
-    )
+    return pd.concat(out).groupby(level=0).sample(size, replace=True).sort_index()
 
 
 def polygons_to_lines(
