@@ -120,9 +120,24 @@ class UnionRunner(AbstractRunner):
         return agged
 
 
-def _strtree_query(arr1, arr2, **kwargs):
+def _strtree_query(
+    arr1: np.ndarray,
+    arr2: np.ndarray,
+    method: str,
+    indices1: np.ndarray | None = None,
+    indices2: np.ndarray | None = None,
+    **kwargs,
+):
     tree = STRtree(arr2)
-    return tree.query(arr1, **kwargs)
+    func = getattr(tree, method)
+    left, right = func(arr1, **kwargs)
+    if indices1 is not None:
+        index_mapper1 = {i: x for i, x in enumerate(indices1)}
+        left = np.array([index_mapper1[i] for i in left])
+    if indices2 is not None:
+        index_mapper2 = {i: x for i, x in enumerate(indices2)}
+        right = np.array([index_mapper2[i] for i in right])
+    return left, right
 
 
 @dataclass
@@ -145,39 +160,52 @@ class RTreeQueryRunner(AbstractRunner):
     backend: str = "loky"
 
     def run(
-        self, arr1: np.ndarray, arr2: np.ndarray, **kwargs
+        self, arr1: np.ndarray, arr2: np.ndarray, method: str = "query", **kwargs
     ) -> tuple[np.ndarray, np.ndarray]:
         """Run a spatial rtree query and return indices of hits from arr1 and arr2 in a tuple of two arrays."""
         if (
-            self.n_jobs > 1
+            (self.n_jobs or 1) > 1
             and len(arr1) / self.n_jobs > 10_000
-            and len(arr1) / len(arr2) > 2
+            and len(arr1) / len(arr2)
         ):
             chunks = np.array_split(np.arange(len(arr1)), self.n_jobs)
             assert sum(len(x) for x in chunks) == len(arr1)
             with joblib.Parallel(self.n_jobs, backend=self.backend) as parallel:
                 results = parallel(
-                    joblib.delayed(_strtree_query)(arr1[chunk], arr2, **kwargs)
+                    joblib.delayed(_strtree_query)(
+                        arr1[chunk],
+                        arr2,
+                        method=method,
+                        indices1=chunk,
+                        **kwargs,
+                    )
                     for chunk in chunks
                 )
             left = np.concatenate([x[0] for x in results])
             right = np.concatenate([x[1] for x in results])
             return left, right
         elif (
-            self.n_jobs > 1
+            (self.n_jobs or 1) > 1
             and len(arr2) / self.n_jobs > 10_000
-            and len(arr2) / len(arr1) > 2
+            and len(arr2) / len(arr1)
         ):
             chunks = np.array_split(np.arange(len(arr2)), self.n_jobs)
             with joblib.Parallel(self.n_jobs, backend=self.backend) as parallel:
                 results = parallel(
-                    joblib.delayed(_strtree_query)(arr1, arr2[chunk], **kwargs)
+                    joblib.delayed(_strtree_query)(
+                        arr1,
+                        arr2[chunk],
+                        method=method,
+                        indices2=chunk,
+                        **kwargs,
+                    )
                     for chunk in chunks
                 )
             left = np.concatenate([x[0] for x in results])
             right = np.concatenate([x[1] for x in results])
             return left, right
-        return _strtree_query(arr1, arr2, **kwargs)
+
+        return _strtree_query(arr1, arr2, method=method, **kwargs)
 
 
 @dataclass
@@ -226,7 +254,7 @@ class GridSizeOverlayRunner(OverlayRunner):
 
     n_jobs: int
     backend: str | None
-    grid_sizes: list[float] | None = None
+    grid_sizes: list[float | int] | None = None
 
     def __post_init__(self) -> None:
         """Check that grid_sizes is passed."""
@@ -276,9 +304,9 @@ def _run_overlay_rowwise(
     func: Callable,
     geom1: Geometry,
     geom2: Geometry,
-    grid_size: None | float,
+    grid_size: float | int | None,
     geom_type: str | None,
-    grid_sizes: list[float],
+    grid_sizes: list[float | int],
 ) -> Geometry:
     try:
         return func(geom1, geom2, grid_size=grid_size)
@@ -295,6 +323,4 @@ def _run_overlay_rowwise(
             return func(geom1, geom2, grid_size=grid_size)
         except GEOSException as e:
             if i == len(grid_sizes) - 1:
-                raise GEOSException(
-                    f"{e}. Function: {func}. geom1: {geom1}. geom2: {geom2}"
-                ) from e
+                raise e
