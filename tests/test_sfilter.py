@@ -97,7 +97,6 @@ def test_sfilter_random():
             assert not_intersecting.equals(
                 sg.sfilter_inverse(gdf, other, n_jobs=n_jobs)
             )
-
             filt = gdf.intersects(union_all(other.geometry.values))
             assert intersecting.equals(gdf[filt]), (intersecting, gdf[filt])
             assert not_intersecting.equals(gdf[~filt]), (intersecting, gdf[~filt])

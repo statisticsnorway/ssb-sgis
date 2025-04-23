@@ -6,6 +6,8 @@ from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import Geometry
 
+from ..conf import _get_instance
+from ..conf import config
 from .conversion import to_gdf
 from .runners import RTreeQueryRunner
 
@@ -17,7 +19,7 @@ def sfilter(
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
     distance: int | float | None = None,
-    n_jobs: int = 1,
+    n_jobs: int | None = None,
     rtree_runner: RTreeQueryRunner | None = None,
 ) -> GeoDataFrame:
     """Filter a GeoDataFrame or GeoSeries by spatial predicate.
@@ -296,7 +298,7 @@ def _get_sfilter_indices(
     original_predicate = predicate
 
     if rtree_runner is None:
-        rtree_runner = RTreeQueryRunner(n_jobs)
+        rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
 
     with warnings.catch_warnings():
         # We don't need to show our own warning here

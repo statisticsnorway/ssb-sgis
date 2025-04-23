@@ -8,6 +8,7 @@ from shapely import STRtree
 from shapely import difference
 from shapely import simplify
 
+from ..conf import _get_instance
 from ..conf import config
 from .general import _determine_geom_type_args
 from .general import _push_geom_col
@@ -106,11 +107,11 @@ def update_geometries(
         return gdf
 
     if rtree_runner is None:
-        rtree_runner = config.get_instance("rtree_runner", n_jobs)
+        rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
     if union_runner is None:
-        union_runner = config.get_instance("union_runner", n_jobs)
+        union_runner = _get_instance(config, "union_runner", n_jobs=n_jobs)
     if overlay_runner is None:
-        overlay_runner = config.get_instance("overlay_runner", n_jobs)
+        overlay_runner = _get_instance(config, "overlay_runner", n_jobs=n_jobs)
 
     if geom_type == "polygon" or get_geom_type(gdf) == "polygon":
         gdf.geometry = gdf.buffer(0)

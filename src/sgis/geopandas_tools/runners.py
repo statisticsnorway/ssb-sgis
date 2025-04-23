@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from shapely import Geometry
 from shapely import STRtree
 from shapely import get_parts
 from shapely import make_valid
@@ -37,6 +38,12 @@ class AbstractRunner(ABC):
     @abstractmethod
     def run(self, *args, **kwargs) -> Any:
         """Abstract run method."""
+
+    def __str__(self) -> str:
+        """String representation."""
+        return (
+            f"{self.__class__.__name__}(n_jobs={self.n_jobs}, backend='{self.backend}')"
+        )
 
 
 @dataclass
@@ -68,10 +75,10 @@ class UnionRunner(AbstractRunner):
         """Run groupby on geometries in parallel (if n_jobs > 1)."""
         # assume geometry column is 'geometry' if input is pandas.Series og pandas.DataFrame
         try:
-            geom_col = df.geometry.name
+            geom_col: str = df.geometry.name
         except AttributeError:
             try:
-                geom_col = df.name
+                geom_col: str | None = df.name
                 if geom_col is None:
                     geom_col = "geometry"
             except AttributeError:
@@ -90,10 +97,10 @@ class UnionRunner(AbstractRunner):
             by = np.zeros(len(df), dtype="int64")
 
         try:
-            # DataFrame
+            # (Geo)DataFrame
             groupby_obj = df.groupby(by, **kwargs)[geom_col]
         except KeyError:
-            # Series
+            # (Geo)Series
             groupby_obj = df.groupby(by, **kwargs)
 
         if self.n_jobs is None or self.n_jobs == 1:
@@ -113,9 +120,24 @@ class UnionRunner(AbstractRunner):
         return agged
 
 
-def _strtree_query(arr1, arr2, **kwargs):
+def _strtree_query(
+    arr1: np.ndarray,
+    arr2: np.ndarray,
+    method: str,
+    indices1: np.ndarray | None = None,
+    indices2: np.ndarray | None = None,
+    **kwargs,
+):
     tree = STRtree(arr2)
-    return tree.query(arr1, **kwargs)
+    func = getattr(tree, method)
+    left, right = func(arr1, **kwargs)
+    if indices1 is not None:
+        index_mapper1 = {i: x for i, x in enumerate(indices1)}
+        left = np.array([index_mapper1[i] for i in left])
+    if indices2 is not None:
+        index_mapper2 = {i: x for i, x in enumerate(indices2)}
+        right = np.array([index_mapper2[i] for i in right])
+    return left, right
 
 
 @dataclass
@@ -138,39 +160,52 @@ class RTreeQueryRunner(AbstractRunner):
     backend: str = "loky"
 
     def run(
-        self, arr1: np.ndarray, arr2: np.ndarray, **kwargs
+        self, arr1: np.ndarray, arr2: np.ndarray, method: str = "query", **kwargs
     ) -> tuple[np.ndarray, np.ndarray]:
         """Run a spatial rtree query and return indices of hits from arr1 and arr2 in a tuple of two arrays."""
-        # if (
-        #     self.n_jobs > 1
-        #     and len(arr1) / self.n_jobs > 1000
-        #     # and len(arr1) / len(arr2) > 3
-        # ):
-        #     chunks = np.array_split(np.arange(len(arr1)), self.n_jobs)
-        #     assert sum(len(x) for x in chunks) == len(arr1)
-        #     with joblib.Parallel(self.n_jobs, backend=self.backend) as parallel:
-        #         results = parallel(
-        #             joblib.delayed(_strtree_query)(arr1[chunk], arr2, **kwargs)
-        #             for chunk in chunks
-        #         )
-        #     left = np.concatenate([x[0] for x in results])
-        #     right = np.concatenate([x[1] for x in results])
-        #     return left, right
-        # elif (
-        #     self.n_jobs > 1
-        #     and len(arr2) / self.n_jobs > 1000
-        #     and len(arr2) / len(arr1) > 3
-        # ):
-        #     chunks = np.array_split(np.arange(len(arr2)), self.n_jobs)
-        #     with joblib.Parallel(self.n_jobs, backend=self.backend) as parallel:
-        #         results = parallel(
-        #             joblib.delayed(_strtree_query)(arr1, arr2[chunk], **kwargs)
-        #             for chunk in chunks
-        #         )
-        #     left = np.concatenate([x[0] for x in results])
-        #     right = np.concatenate([x[1] for x in results])
-        #     return left, right
-        return _strtree_query(arr1, arr2, **kwargs)
+        if (
+            (self.n_jobs or 1) > 1
+            and len(arr1) / self.n_jobs > 10_000
+            and len(arr1) / len(arr2)
+        ):
+            chunks = np.array_split(np.arange(len(arr1)), self.n_jobs)
+            assert sum(len(x) for x in chunks) == len(arr1)
+            with joblib.Parallel(self.n_jobs, backend=self.backend) as parallel:
+                results = parallel(
+                    joblib.delayed(_strtree_query)(
+                        arr1[chunk],
+                        arr2,
+                        method=method,
+                        indices1=chunk,
+                        **kwargs,
+                    )
+                    for chunk in chunks
+                )
+            left = np.concatenate([x[0] for x in results])
+            right = np.concatenate([x[1] for x in results])
+            return left, right
+        elif (
+            (self.n_jobs or 1) > 1
+            and len(arr2) / self.n_jobs > 10_000
+            and len(arr2) / len(arr1)
+        ):
+            chunks = np.array_split(np.arange(len(arr2)), self.n_jobs)
+            with joblib.Parallel(self.n_jobs, backend=self.backend) as parallel:
+                results = parallel(
+                    joblib.delayed(_strtree_query)(
+                        arr1,
+                        arr2[chunk],
+                        method=method,
+                        indices2=chunk,
+                        **kwargs,
+                    )
+                    for chunk in chunks
+                )
+            left = np.concatenate([x[0] for x in results])
+            right = np.concatenate([x[1] for x in results])
+            return left, right
+
+        return _strtree_query(arr1, arr2, method=method, **kwargs)
 
 
 @dataclass
@@ -189,8 +224,8 @@ class OverlayRunner(AbstractRunner):
     n_jobs: None = None
     backend: None = None
 
-    @staticmethod
     def run(
+        self,
         func: Callable,
         arr1: np.ndarray,
         arr2: np.ndarray,
@@ -219,7 +254,7 @@ class GridSizeOverlayRunner(OverlayRunner):
 
     n_jobs: int
     backend: str | None
-    grid_sizes: list[float] | None = None
+    grid_sizes: list[float | int] | None = None
 
     def __post_init__(self) -> None:
         """Check that grid_sizes is passed."""
@@ -247,7 +282,9 @@ class GridSizeOverlayRunner(OverlayRunner):
 
         """
         kwargs = dict(
-            grid_size=grid_size, geom_type=geom_type.lower(), grid_sizes=self.grid_sizes
+            grid_size=grid_size,
+            geom_type=geom_type.lower() if geom_type is not None else None,
+            grid_sizes=self.grid_sizes,
         )
         with joblib.Parallel(self.n_jobs, backend="threading") as parallel:
             return parallel(
@@ -256,15 +293,27 @@ class GridSizeOverlayRunner(OverlayRunner):
             )
 
 
-def _run_overlay_rowwise(func, geom1, geom2, grid_size, geom_type, grid_sizes):
+def _fix_gemetry_fast(geom: Geometry, geom_type: str | None) -> Geometry:
+    geom = make_valid(geom)
+    if geom.geom_type == geom_type or geom_type is None:
+        return geom
+    return union_all([g for g in get_parts(geom) if geom_type in g.geom_type])
+
+
+def _run_overlay_rowwise(
+    func: Callable,
+    geom1: Geometry,
+    geom2: Geometry,
+    grid_size: float | int | None,
+    geom_type: str | None,
+    grid_sizes: list[float | int],
+) -> Geometry:
     try:
         return func(geom1, geom2, grid_size=grid_size)
     except GEOSException:
         pass
-    geom1 = get_parts(make_valid(geom1))
-    geom2 = get_parts(make_valid(geom2))
-    geom1 = union_all([g for g in geom1 if pd.notna(g) and geom_type in g.geom_type])
-    geom2 = union_all([g for g in geom2 if pd.notna(g) and geom_type in g.geom_type])
+    geom1 = _fix_gemetry_fast(geom1, geom_type)
+    geom2 = _fix_gemetry_fast(geom2, geom_type)
     try:
         return func(geom1, geom2)
     except GEOSException:

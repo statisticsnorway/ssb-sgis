@@ -128,11 +128,11 @@ def read_geopandas(
         return gpd.GeoDataFrame(
             _read_partitioned_parquet(
                 gcs_path,
-                read_func=pq.read_table,
                 file_system=file_system,
                 mask=mask,
                 filters=filters,
                 child_paths=child_paths,
+                use_threads=use_threads,
                 **kwargs,
             )
         )
@@ -145,7 +145,7 @@ def read_geopandas(
         read_func = gpd.read_file
 
     with file_system.open(gcs_path, mode="rb") as file:
-        return _read_geopandas(
+        return _read_geopandas_single_path(
             file,
             read_func=read_func,
             file_format=file_format,
@@ -163,18 +163,10 @@ def _read_geopandas_from_iterable(
         paths = list(paths.index)
     elif mask is None:
         paths = list(paths)
-    else:
-        if not isinstance(paths, GeoSeries):
-            bounds_series: GeoSeries = get_bounds_series(
-                paths,
-                file_system,
-                use_threads=use_threads,
-                pandas_fallback=pandas_fallback,
-            )
-        else:
-            bounds_series = paths
-        new_bounds_series = sfilter(bounds_series, mask)
-        if not len(new_bounds_series):
+    elif isinstance(paths, GeoSeries):
+        bounds_series = sfilter(paths, mask)
+        if not len(bounds_series):
+            # return GeoDataFrame with correct columns
             if isinstance(kwargs.get("columns"), Iterable):
                 cols = {col: [] for col in kwargs["columns"]}
             else:
@@ -186,29 +178,14 @@ def _read_geopandas_from_iterable(
                         if file_system.isfile(path):
                             raise ArrowInvalid(e, path) from e
             return GeoDataFrame(cols | {"geometry": []})
-        paths = list(new_bounds_series.index)
+        paths = list(bounds_series.index)
 
-    # recursive read with threads
-    threads = (
-        min(len(paths), int(multiprocessing.cpu_count())) or 1 if use_threads else 1
+    results: list[pyarrow.Table] = _read_pyarrow_with_treads(
+        paths, file_system=file_system, mask=mask, use_threads=use_threads, **kwargs
     )
-    with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:
-        dfs: list[GeoDataFrame] = parallel(
-            joblib.delayed(read_geopandas)(
-                x,
-                file_system=file_system,
-                pandas_fallback=pandas_fallback,
-                mask=mask,
-                use_threads=use_threads,
-                **kwargs,
-            )
-            for x in paths
-        )
-
-    if dfs:
-        df = pd.concat(dfs, ignore_index=True)
+    if results:
         try:
-            df = GeoDataFrame(df)
+            return _concat_pyarrow_to_geopandas(results, paths, file_system)
         except Exception as e:
             if not pandas_fallback:
                 print(e)
@@ -217,6 +194,49 @@ def _read_geopandas_from_iterable(
         df = GeoDataFrame(cols | {"geometry": []})
 
     return df
+
+
+def _read_pyarrow_with_treads(
+    paths: list[str | Path | os.PathLike], file_system, use_threads, mask, **kwargs
+) -> list[pyarrow.Table]:
+    read_partial = functools.partial(
+        _read_pyarrow, mask=mask, file_system=file_system, **kwargs
+    )
+    if not use_threads:
+        return [x for x in map(read_partial, paths) if x is not None]
+    with ThreadPoolExecutor() as executor:
+        return [x for x in executor.map(read_partial, paths) if x is not None]
+
+
+def intersects(file, mask, file_system) -> bool:
+    bbox, _ = _get_bounds_parquet_from_open_file(file, file_system)
+    return shapely.box(*bbox).intersects(to_shapely(mask))
+
+
+def _read_pyarrow(path: str, file_system, mask=None, **kwargs) -> pyarrow.Table | None:
+    try:
+        with file_system.open(path, "rb") as file:
+            if mask is not None and not intersects(file, mask, file_system):
+                return
+
+            # 'get' instead of 'pop' because dict is mutable
+            schema = kwargs.get("schema", pq.read_schema(file))
+            new_kwargs = {
+                key: value for key, value in kwargs.items() if key != "schema"
+            }
+
+            return pq.read_table(file, schema=schema, **new_kwargs)
+    except ArrowInvalid as e:
+        glob_func = _get_glob_func(file_system)
+        if not len(
+            {
+                x
+                for x in glob_func(str(Path(path) / "**"))
+                if not paths_are_equal(path, x)
+            }
+        ):
+            raise e
+        # allow not being able to read empty directories that are hard to delete in gcs
 
 
 def _get_bounds_parquet(
@@ -662,10 +682,10 @@ def expression_match_path(expression: ds.Expression, path: str) -> bool:
     return bool(len(table))
 
 
-def _read_geopandas(
+def _read_geopandas_single_path(
     file,
-    read_func: Callable = gpd.read_parquet,
-    file_format: str = "parquet",
+    read_func: Callable,
+    file_format: str,
     **kwargs,
 ):
     try:
@@ -681,32 +701,29 @@ def _read_geopandas(
         raise e.__class__(f"{e.__class__.__name__}: {e} for {file}.") from e
 
 
-def _read_pandas(gcs_path: str, **kwargs):
+def _read_pandas(gcs_path: str, use_threads: bool = True, **kwargs):
     file_system = _get_file_system(None, kwargs)
 
     if not isinstance(gcs_path, (str | Path | os.PathLike)):
-        # recursive read with threads
-        threads = (
-            min(len(gcs_path), int(multiprocessing.cpu_count())) or 1
-            if kwargs.get("use_threads")
-            else 1
+        results: list[pyarrow.Table] = _read_pyarrow_with_treads(
+            gcs_path,
+            file_system=file_system,
+            mask=None,
+            use_threads=use_threads,
+            **kwargs,
         )
-        with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:
-            return pd.concat(
-                parallel(
-                    joblib.delayed(_read_pandas)(x, file_system=file_system, **kwargs)
-                    for x in gcs_path
-                )
-            )
+        results = pyarrow.concat_tables(results, promote_options="permissive")
+        return results.to_pandas()
 
     child_paths = get_child_paths(gcs_path, file_system)
     if child_paths:
         return _read_partitioned_parquet(
             gcs_path,
-            read_func=pd.read_parquet,
             file_system=file_system,
             mask=None,
             child_paths=child_paths,
+            use_threads=use_threads,
+            to_geopandas=False,
             **kwargs,
         )
 
@@ -716,11 +733,12 @@ def _read_pandas(gcs_path: str, **kwargs):
 
 def _read_partitioned_parquet(
     path: str,
-    read_func: Callable,
     filters=None,
     file_system=None,
     mask=None,
     child_paths: list[str] | None = None,
+    use_threads: bool = True,
+    to_geopandas: bool = True,
     **kwargs,
 ):
     file_system = _get_file_system(file_system, kwargs)
@@ -731,60 +749,22 @@ def _read_partitioned_parquet(
 
     filters = _filters_to_expression(filters)
 
-    def intersects(file, mask) -> bool:
-        bbox, _ = _get_bounds_parquet_from_open_file(file, file_system)
-        return shapely.box(*bbox).intersects(to_shapely(mask))
+    results: list[pyarrow.Table] = _read_pyarrow_with_treads(
+        (
+            path
+            for path in child_paths
+            if filters is None or expression_match_path(filters, path)
+        ),
+        file_system=file_system,
+        mask=mask,
+        use_threads=use_threads,
+        **kwargs,
+    )
 
-    def read(child_path: str) -> pyarrow.Table | None:
-        try:
-            with file_system.open(child_path, "rb") as file:
-                if mask is not None and not intersects(file, mask):
-                    return
-
-                # 'get' instead of 'pop' because dict is mutable
-                schema = kwargs.get("schema", pq.read_schema(file))
-                new_kwargs = {
-                    key: value for key, value in kwargs.items() if key != "schema"
-                }
-
-                return read_func(file, schema=schema, filters=filters, **new_kwargs)
-        except ArrowInvalid as e:
-            if not len(
-                {
-                    x
-                    for x in glob_func(str(Path(child_path) / "**"))
-                    if not paths_are_equal(child_path, x)
-                }
-            ):
-                raise e
-            # allow not being able to read hard-to-delete empty directories
-
-    with ThreadPoolExecutor() as executor:
-        results = [
-            df
-            for df in (
-                executor.map(
-                    read,
-                    (
-                        path
-                        for path in child_paths
-                        if filters is None or expression_match_path(filters, path)
-                    ),
-                )
-            )
-            if df is not None
-        ]
-
-    if results:
-        if all(isinstance(x, DataFrame) for x in results):
-            return pd.concat(results)
-        else:
-            results = pyarrow.concat_tables(
-                results,
-                promote_options="permissive",
-            )
-            geo_metadata = _get_geo_metadata(next(iter(child_paths)), file_system)
-            return _arrow_to_geopandas(results, geo_metadata)
+    if results and to_geopandas:
+        return _concat_pyarrow_to_geopandas(results, child_paths, file_system)
+    elif results:
+        return pyarrow.concat_tables(results, promote_options="permissive").to_pandas()
 
     # add columns to empty DataFrame
     first_path = next(iter(child_paths + [path]))
@@ -792,6 +772,17 @@ def _read_partitioned_parquet(
     if kwargs.get("columns"):
         return df[list(kwargs["columns"])]
     return df
+
+
+def _concat_pyarrow_to_geopandas(
+    results: list[pyarrow.Table], paths: list[str], file_system: Any
+):
+    results = pyarrow.concat_tables(
+        results,
+        promote_options="permissive",
+    )
+    geo_metadata = _get_geo_metadata(next(iter(paths)), file_system)
+    return _arrow_to_geopandas(results, geo_metadata)
 
 
 def paths_are_equal(path1: Path | str, path2: Path | str) -> bool:
