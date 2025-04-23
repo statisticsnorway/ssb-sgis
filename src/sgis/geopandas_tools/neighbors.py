@@ -17,8 +17,11 @@ from pandas import MultiIndex
 from pandas import Series
 from sklearn.neighbors import NearestNeighbors
 
+from ..conf import _get_instance
+from ..conf import config
 from .conversion import coordinate_array
 from .geometry_types import get_geom_type
+from .runners import RTreeQueryRunner
 
 
 def get_neighbor_indices(
@@ -26,6 +29,8 @@ def get_neighbor_indices(
     neighbors: GeoDataFrame | GeoSeries,
     max_distance: int = 0,
     predicate: str = "intersects",
+    rtree_runner: RTreeQueryRunner | None = None,
+    n_jobs: int | None = None,
 ) -> Series:
     """Creates a pandas Series with the index of 'gdf' and values of 'neighbors'.
 
@@ -41,6 +46,9 @@ def get_neighbor_indices(
         predicate: Spatial predicate to use in sjoin. Defaults to "intersects", meaning
             the geometry itself and geometries within will be considered neighbors if
             they are part of the 'neighbors' GeoDataFrame.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
+        n_jobs: Number of workers.
 
     Returns:
         A pandas Series with values of the intersecting 'neighbors' indices.
@@ -103,6 +111,9 @@ def get_neighbor_indices(
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
+    if rtree_runner is None:
+        rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
+
     if isinstance(neighbors, GeoSeries):
         neighbors = neighbors.to_frame()
     else:
@@ -119,11 +130,21 @@ def get_neighbor_indices(
 
     if predicate == "nearest":
         max_distance = None if max_distance == 0 else max_distance
-        joined = gdf.sjoin_nearest(neighbors, how="inner", max_distance=max_distance)
+        left, right = rtree_runner.run(
+            gdf.geometry.values,
+            neighbors.geometry.values,
+            method="query_nearest",
+            max_distance=max_distance,
+        )
     else:
-        joined = gdf.sjoin(neighbors, how="inner", predicate=predicate)
-
-    return joined.rename(columns={"index_right": "neighbor_index"})["neighbor_index"]
+        left, right = rtree_runner.run(
+            gdf.geometry.values, neighbors.geometry.values, predicate=predicate
+        )
+    index_mapper1 = {i: x for i, x in enumerate(gdf.index)}
+    left = np.array([index_mapper1[i] for i in left])
+    index_mapper2 = {i: x for i, x in enumerate(neighbors.index)}
+    right = np.array([index_mapper2[i] for i in right])
+    return Series(right, index=left, name="neighbor_index")
 
 
 def get_neighbor_dfs(

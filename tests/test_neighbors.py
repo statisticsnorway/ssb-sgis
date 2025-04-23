@@ -204,16 +204,20 @@ def test_get_neighbor_indices():
     points = sg.to_gdf([(0, 0), (0.5, 0.5), (2, 2)])
     p1 = points.iloc[[0]]
 
-    neighbor_indices = sg.get_neighbor_indices(p1, points)
+    neighbor_indices = sg.get_neighbor_indices(p1, points).astype("int64")
     assert neighbor_indices.equals(pd.Series([0], index=[0])), (
         neighbor_indices,
         pd.Series([0], index=[0]),
     )
 
-    neighbor_indices = sg.get_neighbor_indices(p1, points, max_distance=1)
+    neighbor_indices = sg.get_neighbor_indices(p1, points, max_distance=1).astype(
+        "int64"
+    )
     assert neighbor_indices.equals(pd.Series([0, 1], index=[0, 0]))
 
-    neighbor_indices = sg.get_neighbor_indices(p1, points, max_distance=3)
+    neighbor_indices = sg.get_neighbor_indices(p1, points, max_distance=3).astype(
+        "int64"
+    )
     assert neighbor_indices.equals(pd.Series([0, 1, 2], index=[0, 0, 0]))
 
     # Tests are OK this far, but fails from here
@@ -225,12 +229,14 @@ def test_get_neighbor_indices():
 
     two_points = sg.to_gdf([(0, 0), (0.5, 0.5)])
     two_points["text"] = [*"ab"]
-    neighbor_indices = sg.get_neighbor_indices(two_points, two_points)
+    neighbor_indices = sg.get_neighbor_indices(two_points, two_points).astype("int64")
     assert neighbor_indices.equals(pd.Series([0, 1], index=[0, 1]))
 
-    neighbor_indices = sg.get_neighbor_indices(
-        two_points, two_points, max_distance=1
-    ).sort_values()
+    neighbor_indices = (
+        sg.get_neighbor_indices(two_points, two_points, max_distance=1)
+        .sort_values()
+        .astype("int64")
+    )
     assert neighbor_indices.equals(
         pd.Series([0, 0, 1, 1], index=[0, 1, 0, 1])
     ), neighbor_indices

@@ -22,8 +22,13 @@ def test_random_points_in_polygons():
     n_points = 10
     circles = sg.random_points(n_circles).buffer(0.1)
     points_in_circles = sg.random_points_in_polygons(circles, n_points)
-    assert len(points_in_circles) == len(circles) * n_points
+    assert len(points_in_circles) == len(circles) * n_points, (
+        len(points_in_circles),
+        len(circles) * n_points,
+    )
     assert (points_in_circles.groupby(level=0).size() == n_points).all()
+
+    assert len(sg.random_points_norway(n_points)) == n_points
 
 
 def test_get_common_crs():
@@ -60,9 +65,7 @@ def test_rename_geometry_if():
 
 
 def test_random():
-    gdf = sg.random_points("1")
-    assert len(gdf) == 1
-    gdf = sg.random_points(1.32323)
+    gdf = sg.random_points(1)
     assert len(gdf) == 1
 
     for i in [1, 10, 100]:

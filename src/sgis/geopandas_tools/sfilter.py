@@ -19,7 +19,7 @@ def sfilter(
     other: GeoDataFrame | GeoSeries | Geometry,
     predicate: str = "intersects",
     distance: int | float | None = None,
-    n_jobs: int = 1,
+    n_jobs: int | None = None,
     rtree_runner: RTreeQueryRunner | None = None,
 ) -> GeoDataFrame:
     """Filter a GeoDataFrame or GeoSeries by spatial predicate.
