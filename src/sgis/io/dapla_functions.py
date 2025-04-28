@@ -110,7 +110,8 @@ def read_geopandas(
         try:
             expression = "".join(next(iter(filters))).replace("==", "=")
             glob_func = _get_glob_func(file_system)
-            paths = glob_func(str(Path(gcs_path) / expression))
+            suffix: str = Path(gcs_path).suffix
+            paths = glob_func(str(Path(gcs_path) / expression / f"*{suffix}"))
             if paths:
                 return _read_geopandas_from_iterable(
                     paths,
