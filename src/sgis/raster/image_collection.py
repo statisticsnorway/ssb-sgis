@@ -94,6 +94,8 @@ except ImportError:
         """Placeholder."""
 
 
+from ..conf import _get_instance
+from ..conf import config
 from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.conversion import to_bbox
 from ..geopandas_tools.conversion import to_gdf
@@ -106,7 +108,7 @@ from ..helpers import is_method
 from ..helpers import is_property
 from ..io._is_dapla import is_dapla
 from ..io.opener import opener
-from . import sentinel_config as config
+from . import sentinel_config
 from .base import _array_to_geojson
 from .base import _gdf_to_arr
 from .base import _get_res_from_bounds
@@ -443,11 +445,15 @@ class _ImageBase:
     metadata_attributes: ClassVar[dict | None] = None
     masking: ClassVar[BandMasking | None] = None
 
-    def __init__(self, *, metadata=None, bbox=None, **kwargs) -> None:
+    def __init__(self, *, metadata=None, bbox=None, file_system=None, **kwargs) -> None:
 
         self._bounds = None
         self._path = None
         self._bbox = to_bbox(bbox) if bbox is not None else None
+        if file_system is None:
+            self.file_system = _get_instance(config, "file_system")
+        else:
+            self.file_system = file_system
 
         self.metadata_attributes = self.metadata_attributes or {}
 
@@ -3135,8 +3141,8 @@ class ImageCollection(_ImageBase):
 class Sentinel2Config:
     """Holder of Sentinel 2 regexes, band_ids etc."""
 
-    image_regexes: ClassVar[str] = (config.SENTINEL2_IMAGE_REGEX,)
-    filename_regexes: ClassVar[str] = (config.SENTINEL2_FILENAME_REGEX,)
+    image_regexes: ClassVar[str] = (sentinel_config.SENTINEL2_IMAGE_REGEX,)
+    filename_regexes: ClassVar[str] = (sentinel_config.SENTINEL2_FILENAME_REGEX,)
     metadata_attributes: ClassVar[
         dict[str, Callable | functools.partial | tuple[str]]
     ] = {
@@ -3222,8 +3228,8 @@ class Sentinel2Config:
 class Sentinel2CloudlessConfig(Sentinel2Config):
     """Holder of regexes, band_ids etc. for Sentinel 2 cloudless mosaic."""
 
-    image_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_IMAGE_REGEX,)
-    filename_regexes: ClassVar[str] = (config.SENTINEL2_MOSAIC_FILENAME_REGEX,)
+    image_regexes: ClassVar[str] = (sentinel_config.SENTINEL2_MOSAIC_IMAGE_REGEX,)
+    filename_regexes: ClassVar[str] = (sentinel_config.SENTINEL2_MOSAIC_FILENAME_REGEX,)
     masking: ClassVar[None] = None
     all_bands: ClassVar[list[str]] = [
         x.replace("B0", "B") for x in Sentinel2Config.all_bands
