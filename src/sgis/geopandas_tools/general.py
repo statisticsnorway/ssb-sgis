@@ -643,7 +643,7 @@ def to_lines(
             f"Point geometries not allowed in 'to_lines'. {geoms.geom_type.value_counts()}"
         )
 
-    gdf.geometry.loc[:] = geoms
+    gdf.loc[:, gdf.geometry.name] = geoms
 
     if not split:
         return gdf
