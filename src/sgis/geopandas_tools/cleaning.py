@@ -41,7 +41,6 @@ from ..debug_config import _DEBUG_CONFIG
 from ..maps.maps import explore
 from .conversion import to_gdf
 from .conversion import to_geoseries
-from .duplicates import update_geometries
 from .general import clean_geoms
 from .geometry_types import make_all_singlepart
 from .geometry_types import to_single_geom_type
@@ -50,7 +49,6 @@ from .polygon_operations import eliminate_by_longest
 from .polygon_operations import split_by_neighbors
 from .polygons_as_rings import PolygonsAsRings
 from .sfilter import sfilter
-from .sfilter import sfilter_inverse
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 warnings.simplefilter(action="ignore", category=RuntimeWarning)
@@ -123,10 +121,10 @@ def coverage_clean(
 
     gdf_original = gdf.copy()
 
-    # more_than_one = get_num_geometries(gdf.geometry.values) > 1
+    # more_than_one = shapely.get_num_geometries(gdf.geometry.values) > 1
     # gdf.loc[more_than_one, gdf._geometry_column_name] = gdf.loc[
     #     more_than_one, gdf._geometry_column_name
-    # ].apply(_unary_union_for_notna)
+    # ].apply(shapely.union_all)
 
     if mask is not None:
         try:
@@ -163,23 +161,42 @@ def coverage_clean(
         # # mask = GeoDataFrame({"geometry": mask[not_by_gaps]})
 
     gdf = gdf[lambda x: ~x.buffer(-PRECISION).is_empty]
-    gdf = gdf[lambda x: ~x.buffer(-((tolerance / 2) - PRECISION)).is_empty]
+    # gdf = gdf[lambda x: ~x.buffer(-((tolerance / 2) - PRECISION)).is_empty]
+
+    # gdf.geometry = (
+    #     gdf.buffer(
+    #         -PRECISION,
+    #         resolution=1,
+    #         join_style=2,
+    #     )
+    #     .buffer(
+    #         PRECISION * 2,
+    #         resolution=1,
+    #         join_style=2,
+    #     )
+    #     .buffer(
+    #         -PRECISION,
+    #         resolution=1,
+    #         join_style=2,
+    #     )
+    # )
 
     gdf = snap_polygons(gdf, tolerance, mask=mask, snap_to_anchors=snap_to_anchors)
+
+    # if mask is not None:
+    #     missing_from_mask = clean_overlay(
+    #         mask, gdf, how="difference", geom_type="polygon"
+    #     ).loc[lambda x: x.buffer(-tolerance + PRECISION).is_empty]
+    #     gdf, _ = eliminate_by_longest(gdf, missing_from_mask)
+
+    # missing_from_gdf = sfilter_inverse(gdf_original, gdf.buffer(-PRECISION)).loc[
+    #     lambda x: (~x.buffer(-PRECISION).is_empty)
+    # ]
+    # gdf = pd.concat([gdf, missing_from_gdf], ignore_index=True).pipe(
+    #     update_geometries, geom_type="polygon"
+    # )
+    # gdf = snap_polygons(gdf, tolerance, mask=mask, snap_to_anchors=snap_to_anchors)
     return gdf
-
-    if mask is not None:
-        missing_from_mask = clean_overlay(
-            mask, gdf, how="difference", geom_type="polygon"
-        ).loc[lambda x: x.buffer(-tolerance + PRECISION).is_empty]
-        gdf, _ = eliminate_by_longest(gdf, missing_from_mask)
-
-    missing_from_gdf = sfilter_inverse(gdf_original, gdf.buffer(-PRECISION)).loc[
-        lambda x: (~x.buffer(-PRECISION).is_empty)
-    ]
-    return pd.concat([gdf, missing_from_gdf], ignore_index=True).pipe(
-        update_geometries, geom_type="polygon"
-    )
 
 
 def snap_polygons(
@@ -374,7 +391,6 @@ def snap_polygons(
     #     gdf_orig,
     #     gdf,
     #     dups=get_intersections(gdf, geom_type="polygon"),
-    #     msk=mask,
     #     gaps=get_gaps(gdf),
     #     updated=update_geometries(gdf, geom_type="polygon"),
     #     # browser=False,
@@ -383,6 +399,378 @@ def snap_polygons(
     # gdf = update_geometries(gdf, geom_type="polygon")
 
     return gdf  # .pipe(clean_clip, mask, geom_type="polygon")
+
+
+def _snap_linearrings(
+    geoms: NDArray[LinearRing],
+    tolerance: int | float,
+    mask: GeoDataFrame | None,
+    snap_to_anchors: bool = True,
+):
+    if not len(geoms):
+        return geoms
+
+    points = GeoDataFrame(
+        {
+            "geometry": extract_unique_points(geoms),
+            "_geom_idx": np.arange(len(geoms)),
+        }
+    ).explode(ignore_index=True)
+    coords = get_coordinates(points.geometry.values)
+    indices = points["_geom_idx"].values
+
+    if mask is not None:
+        mask_coords, mask_indices = get_coordinates(
+            mask.geometry.values, return_index=True
+        )
+        mask_coords, mask_indices = _remove_duplicate_points(mask_coords, mask_indices)
+        mask_coords, mask_indices = _add_last_points_to_end(mask_coords, mask_indices)
+        mask_coords = np.array(mask_coords)
+        mask_indices = np.array(mask_indices)
+
+        mask_coords, mask_indices = _remove_duplicate_points(mask_coords, mask_indices)
+        mask_coords = np.array(mask_coords)
+        mask_indices = np.array(mask_indices)
+
+        original_mask_buffered: NDArray[Polygon] = shapely.buffer(
+            shapely.linearrings(mask_coords, indices=mask_indices),
+            tolerance * 1.1,
+        )
+        if 1:
+            mask_coords, mask_indices, was_midpoint_mask, _ = (
+                _add_midpoints_to_segments_numba(
+                    mask_coords,
+                    mask_indices,
+                    get_coordinates(
+                        sfilter(
+                            points.geometry.drop_duplicates(),
+                            original_mask_buffered,
+                        ).values
+                    ),
+                    tolerance * 1.1,
+                )
+            )
+        else:
+            was_midpoint_mask = np.full(len(mask_coords), False)
+
+        mask_coords = np.array(mask_coords)
+        mask_indices = np.array(mask_indices)
+        mask_indices = (mask_indices + 1) * -1
+
+    coords, indices = _remove_duplicate_points(coords, indices)
+    coords, indices = _add_last_points_to_end(coords, indices)
+    coords, indices = _remove_duplicate_points(np.array(coords), np.array(indices))
+    coords = np.array(coords)
+    indices = np.array(indices)
+
+    if snap_to_anchors:
+        if mask is None:
+            mask_coords = [coords[0]]
+            mask_indices = [indices[0]]
+            was_midpoint_mask = [False]
+        anchors, anchor_indices, was_midpoint_anchors = _build_anchors(
+            coords,
+            indices,
+            mask_coords,
+            mask_indices,
+            was_midpoint_mask,
+            tolerance + PRECISION,  # * 100
+        )
+        anchors = np.array(anchors)
+        anchor_indices = np.array(anchor_indices)
+        # anchors = np.round(anchors, 3)
+    else:
+        anchors, anchor_indices, was_midpoint_anchors = (
+            mask_coords,
+            mask_indices,
+            was_midpoint_mask,
+        )
+
+    coords, indices, anchors = _prepare_coords(
+        coords,
+        indices,
+        anchors,
+        tolerance,
+        anchor_indices,
+        mask_indices,
+        was_midpoint_anchors,
+        mask_coords,
+        geoms,
+        msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+            was_midpoint_mask=was_midpoint_mask
+        ),
+    )
+
+    used_coords = get_coordinates(
+        polygons(
+            pd.Series(_coords_to_rings(coords, indices, geoms))
+            .loc[lambda x: x.notna()]
+            .values
+        )
+    )
+
+    # unused_anchors = _get_unused_anchors(anchors, used_coords)
+    # was_midpoint_anchors = np.full(len(was_midpoint_anchors), False)
+
+    # if len(unused_anchors):
+    #     explore(
+    #         coords=to_gdf(shapely.points(coords), 25833).assign(
+    #             idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
+    #         ),
+    #         unused_anchors=to_gdf(shapely.points(unused_anchors), 25833).assign(
+    #             wkt=lambda x: [g.wkt for g in x.geometry]
+    #         ),
+    #         anchors=to_gdf(shapely.points(anchors), 25833).assign(
+    #             # idx=anchor_indices,
+    #             wkt=lambda x: [g.wkt for g in x.geometry]
+    #         ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+    #         geoms=to_gdf(polygons(geoms), 25833),
+    #         coords_here111=to_gdf(
+    #             polygons(
+    #                 (
+    #                     pd.Series(_coords_to_rings(coords, indices, geoms))
+    #                     .loc[lambda x: x.notna()]
+    #                     .values
+    #                 )
+    #             ),
+    #             25833,
+    #         ),
+    #         msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+    #             was_midpoint_mask=was_midpoint_mask
+    #         ),
+    #     )
+
+    #     coords, indices, anchors = _prepare_coords(
+    #         coords,
+    #         indices,
+    #         unused_anchors,
+    #         tolerance,
+    #         anchor_indices,
+    #         mask_indices,
+    #         was_midpoint_anchors,
+    #         mask_coords,
+    #         geoms,
+    #         msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+    #             was_midpoint_mask=was_midpoint_mask
+    #         ),
+    #     )
+
+    #     explore(
+    #         coords=to_gdf(shapely.points(coords), 25833).assign(
+    #             idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
+    #         ),
+    #         anchors=to_gdf(shapely.points(anchors), 25833).assign(
+    #             # idx=anchor_indices,
+    #             wkt=lambda x: [g.wkt for g in x.geometry]
+    #         ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+    #         geoms=to_gdf(polygons(geoms), 25833),
+    #         coords_her22222=to_gdf(
+    #             polygons(
+    #                 (
+    #                     pd.Series(_coords_to_rings(coords, indices, geoms))
+    #                     .loc[lambda x: x.notna()]
+    #                     .values
+    #                 )
+    #             ),
+    #             25833,
+    #         ),
+    #         msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+    #             was_midpoint_mask=was_midpoint_mask
+    #         ),
+    #     )
+
+    coords_down_here = to_gdf(
+        polygons(
+            pd.Series(_coords_to_rings(coords, indices, geoms))
+            .loc[lambda x: x.notna()]
+            .values
+        ),
+        25833,
+    )
+
+    print("try/except")
+    try:
+        explore(
+            coords=to_gdf(shapely.points(coords), 25833).assign(
+                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
+            ),
+            anchors=to_gdf(shapely.points(anchors), 25833).assign(
+                # idx=anchor_indices,
+                wkt=lambda x: [g.wkt for g in x.geometry]
+            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+            geoms=to_gdf(polygons(geoms), 25833),
+            coords_down_here=coords_down_here,
+            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+                was_midpoint_mask=was_midpoint_mask
+            ),
+        )
+
+        explore(
+            coords=to_gdf(shapely.points(coords), 25833).assign(
+                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
+            ),
+            anchors=to_gdf(shapely.points(anchors), 25833).assign(
+                # idx=anchor_indices,
+                wkt=lambda x: [g.wkt for g in x.geometry]
+            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+            geoms=to_gdf(polygons(geoms), 25833),
+            coords_down_here=coords_down_here,
+            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+                was_midpoint_mask=was_midpoint_mask
+            ),
+            center=(5.37707159, 59.01065276, 1),
+        )
+        explore(
+            coords=to_gdf(shapely.points(coords), 25833).assign(
+                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
+            ),
+            anchors=to_gdf(shapely.points(anchors), 25833).assign(
+                # idx=anchor_indices,
+                wkt=lambda x: [g.wkt for g in x.geometry]
+            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+            geoms=to_gdf(polygons(geoms), 25833),
+            coords_down_here=coords_down_here,
+            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+                was_midpoint_mask=was_midpoint_mask
+            ),
+            center=(5.37419946, 59.01138812, 15),
+        )
+
+        explore(
+            coords=to_gdf(shapely.points(coords), 25833).assign(
+                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
+            ),
+            anchors=to_gdf(shapely.points(anchors), 25833).assign(
+                # idx=anchor_indices,
+                wkt=lambda x: [g.wkt for g in x.geometry]
+            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+            geoms=to_gdf(polygons(geoms), 25833),
+            coords_down_here=coords_down_here,
+            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+                was_midpoint_mask=was_midpoint_mask
+            ),
+            center=(5.38389153, 59.00548223, 1),
+        )
+        explore(
+            coords=to_gdf(shapely.points(coords), 25833).assign(
+                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
+            ),
+            anchors=to_gdf(shapely.points(anchors), 25833).assign(
+                # idx=anchor_indices,
+                wkt=lambda x: [g.wkt for g in x.geometry]
+            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+            geoms=to_gdf(polygons(geoms), 25833),
+            coords_down_here=coords_down_here,
+            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
+                was_midpoint_mask=was_midpoint_mask
+            ),
+            center=_DEBUG_CONFIG["center"],
+        )
+
+    except GEOSException as e:
+        print(e)
+
+    return _coords_to_rings(coords, indices, geoms)
+
+
+def _prepare_coords(
+    coords,
+    indices,
+    anchors,
+    tolerance,
+    anchor_indices,
+    mask_indices,
+    was_midpoint_anchors,
+    mask_coords,
+    geoms,
+    **kwargs,
+):
+    coords, indices, was_midpoint, _ = _add_midpoints_to_segments_numba(
+        coords,
+        indices,
+        anchors,
+        tolerance * 1.1,
+    )
+    print(len(coords))
+    print(len(anchors))
+
+    # was_midpoint = np.array(was_midpoint)
+    # midpoints = np.array(coords)[was_midpoint]
+    # coords, indices, was_midpoint, _ = _add_midpoints_to_segments_numba(
+    #     coords,
+    #     indices,
+    #     midpoints,
+    #     tolerance * 1.1,
+    # )
+    # print(len(coords))
+    anchors = np.array(anchors)
+    was_midpoint = np.array(was_midpoint)
+
+    coords, indices, was_midpoint = _add_last_points_to_end_with_third_arr(
+        coords, indices, was_midpoint
+    )
+
+    coords, indices, was_midpoint = _remove_duplicate_points_with_third_array(
+        coords, indices, was_midpoint
+    )
+
+    coords = np.array(coords)
+    indices = np.array(indices)
+    was_midpoint = np.array(was_midpoint)
+
+    _coords_up_here = (
+        pd.Series(_coords_to_rings(coords, indices, geoms))
+        .loc[lambda x: x.notna()]
+        .values
+    )
+    _coords_up_here = to_gdf(polygons(_coords_up_here), 25833)
+
+    explore(
+        coords=to_gdf(shapely.points(coords), 25833).assign(
+            idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
+        ),
+        non_lonely_anchors=to_gdf(
+            shapely.points(
+                _remove_lonely_anchors(
+                    anchors, coords, anchor_indices, tolerance * 1.1
+                )[0]
+            ),
+            25833,
+        ).assign(
+            wkt=lambda x: [g.wkt for g in x.geometry]
+        ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+        anchors=to_gdf(shapely.points(anchors), 25833).assign(
+            # idx=anchor_indices,
+            wkt=lambda x: [g.wkt for g in x.geometry]
+        ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
+        _coords_up_here=_coords_up_here,
+        geoms=to_gdf(polygons(geoms), 25833),
+        **kwargs,
+        # center=_DEBUG_CONFIG["center"],
+    )
+
+    # anchors, anchor_indices = _remove_lonely_anchors(
+    #     anchors, coords, anchor_indices, tolerance * 1.1
+    # )
+    # print(len(anchors))
+
+    coords, indices = _snap_to_anchors(
+        coords,
+        indices,
+        anchors,
+        anchor_indices,
+        mask_coords,
+        mask_indices,
+        was_midpoint,
+        was_midpoint_anchors,
+        tolerance + PRECISION * 100,
+    )
+    indices = np.array(indices)
+    coords = np.array(coords)
+    indices = indices[coords[:, 0] != np.inf]
+    coords = coords[coords[:, 0] != np.inf]
+
+    return coords, indices, anchors
 
 
 def _snap_to_anchors(
@@ -449,9 +837,8 @@ def _snap_to_anchors(
                 if distances[j] > tolerance:  # TODO or distances[j] == 0:
                     break
 
-                if was_midpoint_anchors[j]:
-                    print("TODO: was_midpoint_anchors?")
-                    # continue
+                # if was_midpoint_anchors[j]:
+                #     continue
 
                 anchor = anchors[j]
                 ring = these_coords.copy()
@@ -467,7 +854,7 @@ def _snap_to_anchors(
                 # has_same_anchor_neg = True
                 while (
                     pos_counter + i < len(these_distances) - 1
-                ):  # has_same_anchor_pos or has_same_anchor_neg:
+                ):  # # has_same_anchor_pos or has_same_anchor_neg:
                     pos_counter += 1
 
                     # if indices[i + pos_counter] != index:
@@ -476,9 +863,8 @@ def _snap_to_anchors(
                     next_distances = these_distances[i + pos_counter]
                     has_same_anchor_pos = False
                     for j2 in np.argsort(next_distances):
-                        if was_midpoint_anchors[j2]:
-                            print("TODO: was_midpoint_anchors 222?")
-                            # continue
+                        # if was_midpoint_anchors[j2]:
+                        #     continue
                         if next_distances[j2] > tolerance:
                             break
 
@@ -512,8 +898,8 @@ def _snap_to_anchors(
                     # snap points at the end of the line if same anchor
                     neg_counter = 0
                     # has_same_anchor_neg = True
-                    while (
-                        neg_counter > (len(these_distances) - 1) * -1
+                    while abs(neg_counter) < (
+                        len(these_distances) - 1
                     ):  # has_same_anchor_neg:
                         neg_counter -= 1
 
@@ -524,9 +910,8 @@ def _snap_to_anchors(
                         next_distances = these_distances[neg_counter]
                         has_same_anchor_neg = False
                         for j3 in np.argsort(next_distances):
-                            if was_midpoint_anchors[j3]:
-                                print("TODO: was_midpoint_anchors 222?")
-                                # continue
+                            # if was_midpoint_anchors[j3]:
+                            #     continue
 
                             if next_distances[j3] > tolerance:
                                 break
@@ -750,12 +1135,27 @@ def _remove_lonely_anchors(
             if dist <= tolerance:
                 n_points_nearby += 1
         is_lonely = n_points_nearby <= 1
-        if is_lonely:
-            print("is_lonely", is_lonely, n_points_nearby)
         if not is_lonely:
             new_anchors.append(anchor)
             new_anchor_indices.append(anchor_index)
     return new_anchors, new_anchor_indices
+
+
+@numba.njit
+def _get_unused_anchors(anchors: NDArray[np.float64], coords: NDArray[np.float64]):
+    new_anchors = []
+    for i in np.arange(len(anchors)):
+        anchor = anchors[i]
+        is_unused = True
+        for j in np.arange(len(coords)):
+            geom = coords[j]
+            dist = np.sqrt((geom[0] - anchor[0]) ** 2 + (geom[1] - anchor[1]) ** 2)
+            if dist == 0:
+                is_unused = False
+                break
+        if is_unused:
+            new_anchors.append(anchor)
+    return new_anchors
 
 
 @numba.njit
@@ -769,8 +1169,37 @@ def _build_anchors(
 ):
     anchors = list(mask_coords)
     anchor_indices = list(mask_indices)
-    is_anchor_arr = np.full(len(geoms), False)
-    was_midpoint_mask = list(was_midpoint_mask)
+    was_midpoint_anchor = list(was_midpoint_mask)
+    # anchors = []
+    # anchor_indices = []
+    # was_midpoint_anchor = []
+    # for i in np.arange(len(mask_coords)):
+    #     if was_midpoint_mask[i]:
+    #         continue
+    #     geom = mask_coords[i]
+    #     index = mask_indices[i]
+    #     anchors.append(geom)
+    #     anchor_indices.append(index)
+    #     was_midpoint_anchor.append(False)
+
+    # for i in np.arange(len(mask_coords)):
+    #     if not was_midpoint_mask[i]:
+    #         continue
+    #     geom = mask_coords[i]
+    #     index = mask_indices[i]
+
+    #     is_anchor = True
+    #     for j in range(len(anchors)):
+    #         anchor = anchors[j]
+    #         dist = np.sqrt((geom[0] - anchor[0]) ** 2 + (geom[1] - anchor[1]) ** 2)
+    #         if dist <= tolerance:
+    #             is_anchor = False
+    #             break
+    #     if is_anchor:
+    #         anchors.append(geom)
+    #         anchor_indices.append(index)
+    #         was_midpoint_anchor.append(True)
+
     for i in np.arange(len(geoms)):
         geom = geoms[i]
         index = indices[i]
@@ -781,20 +1210,48 @@ def _build_anchors(
         for j in range(len(anchors)):
             # if indices[i] != indices[j]:
             # if i != j  and indices[i] != indices[j]:
+
             anchor = anchors[j]
+
+            # first check if geom is near enough this anchor
             dist = np.sqrt((geom[0] - anchor[0]) ** 2 + (geom[1] - anchor[1]) ** 2)
             if dist <= tolerance:
                 is_anchor = False
                 break
+
+            continue
+            # now to check if geom is near enough the anchor line
+
+            # skipping last point of each ring since we're fetching this j and next j
+            anchor_index = anchor_indices[j]
+            is_last = j == len(anchors) - 1 or anchor_index != anchor_indices[j + 1]
+            if is_last:
+                continue
+
+            anchor2 = anchors[j + 1]
+
+            segment_vector = anchor2 - anchor
+            point_vector = geom - anchor
+            segment_length_squared = np.dot(segment_vector, segment_vector)
+            if segment_length_squared == 0:
+                closest_point = anchor
+            else:
+                factor = np.dot(point_vector, segment_vector) / segment_length_squared
+                factor = max(0, min(1, factor))
+                closest_point = anchor + factor * segment_vector
+
+            if np.linalg.norm(geom - closest_point) <= tolerance:
+                is_anchor = False
+                break
+
             # distances.append(dist)
 
         # distances = np.array(distances)
-        is_anchor_arr[i] = is_anchor
-        if is_anchor:  # not len(distances) or np.min(distances) > tolerance:
+        if is_anchor:
             anchors.append(geom)
             anchor_indices.append(index)
-            was_midpoint_mask.append(True)
-    return anchors, anchor_indices, is_anchor_arr, was_midpoint_mask
+            was_midpoint_anchor.append(True)
+    return anchors, anchor_indices, was_midpoint_anchor
 
 
 @numba.njit
@@ -950,295 +1407,6 @@ def _remove_duplicate_points(
         prev = xy
 
     return out_coords, out_indices
-
-
-def _snap_linearrings(
-    geoms: NDArray[LinearRing],
-    tolerance: int | float,
-    mask: GeoDataFrame | None,
-    snap_to_anchors: bool = True,
-):
-    if not len(geoms):
-        return geoms
-
-    points = GeoDataFrame(
-        {
-            "geometry": extract_unique_points(geoms),
-            "_geom_idx": np.arange(len(geoms)),
-        }
-    ).explode(ignore_index=True)
-    coords = get_coordinates(points.geometry.values)
-    indices = points["_geom_idx"].values
-
-    if mask is not None:
-        mask_coords, mask_indices = get_coordinates(
-            mask.geometry.values, return_index=True
-        )
-        mask_coords, mask_indices = _remove_duplicate_points(mask_coords, mask_indices)
-        mask_coords, mask_indices = _add_last_points_to_end(mask_coords, mask_indices)
-        mask_coords = np.array(mask_coords)
-        mask_indices = np.array(mask_indices)
-
-        mask_coords, mask_indices = _remove_duplicate_points(mask_coords, mask_indices)
-        mask_coords = np.array(mask_coords)
-        mask_indices = np.array(mask_indices)
-
-        original_mask_buffered: NDArray[Polygon] = shapely.buffer(
-            shapely.linearrings(mask_coords, indices=mask_indices),
-            tolerance * 1.1,
-        )
-        if 1:
-            mask_coords, mask_indices, was_midpoint_mask, _ = (
-                _add_midpoints_to_segments_numba(
-                    mask_coords,
-                    mask_indices,
-                    get_coordinates(
-                        sfilter(
-                            points.geometry.drop_duplicates(),
-                            original_mask_buffered,
-                        ).values
-                    ),
-                    tolerance * 1.1,
-                )
-            )
-        else:
-            was_midpoint_mask = np.full(len(mask_coords), False)
-
-        mask_coords = np.array(mask_coords)
-        mask_indices = np.array(mask_indices)
-        mask_indices = (mask_indices + 1) * -1
-
-    coords, indices = _remove_duplicate_points(coords, indices)
-    coords, indices = _add_last_points_to_end(coords, indices)
-    coords, indices = _remove_duplicate_points(np.array(coords), np.array(indices))
-    coords = np.array(coords)
-    indices = np.array(indices)
-
-    if snap_to_anchors:
-        if mask is None:
-            mask_coords = [coords[0]]
-            mask_indices = [indices[0]]
-            was_midpoint_mask = [False]
-        anchors, anchor_indices, _, was_midpoint_anchors = _build_anchors(
-            coords,
-            indices,
-            mask_coords,
-            mask_indices,
-            was_midpoint_mask,
-            tolerance + PRECISION,  # * 100
-        )
-        anchors = np.array(anchors)
-        anchor_indices = np.array(anchor_indices)
-        # anchors = np.round(anchors, 3)
-    else:
-        anchors, anchor_indices, was_midpoint_anchors = (
-            mask_coords,
-            mask_indices,
-            was_midpoint_mask,
-        )
-
-    coords, indices, was_midpoint, _ = _add_midpoints_to_segments_numba(
-        coords,
-        indices,
-        anchors,
-        tolerance * 1.1,
-    )
-    print(len(coords))
-    print(len(anchors))
-
-    # was_midpoint = np.array(was_midpoint)
-    # midpoints = np.array(coords)[was_midpoint]
-    # coords, indices, was_midpoint, _ = _add_midpoints_to_segments_numba(
-    #     coords,
-    #     indices,
-    #     midpoints,
-    #     tolerance * 1.1,
-    # )
-    # print(len(coords))
-    anchors = np.array(anchors)
-    was_midpoint = np.array(was_midpoint)
-
-    _coords_up_here000 = (
-        pd.Series(_coords_to_rings(np.array(coords), np.array(indices), geoms))
-        .loc[lambda x: x.notna()]
-        .values
-    )
-    _coords_up_here000 = to_gdf(polygons(_coords_up_here000), 25833)
-
-    coords, indices, was_midpoint = _add_last_points_to_end_with_third_arr(
-        coords, indices, was_midpoint
-    )
-
-    coords, indices, was_midpoint = _remove_duplicate_points_with_third_array(
-        coords, indices, was_midpoint
-    )
-
-    coords = np.array(coords)
-    indices = np.array(indices)
-    was_midpoint = np.array(was_midpoint)
-
-    _coords_up_here = (
-        pd.Series(_coords_to_rings(coords, indices, geoms))
-        .loc[lambda x: x.notna()]
-        .values
-    )
-    _coords_up_here = to_gdf(polygons(_coords_up_here), 25833)
-
-    print("Heihfdfd 003232")
-    explore(
-        coords=to_gdf(shapely.points(coords), 25833).assign(
-            idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
-        ),
-        non_lonely_anchors=to_gdf(
-            shapely.points(
-                _remove_lonely_anchors(
-                    anchors, coords, anchor_indices, tolerance * 1.1
-                )[0]
-            ),
-            25833,
-        ).assign(
-            wkt=lambda x: [g.wkt for g in x.geometry]
-        ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
-        anchors=to_gdf(shapely.points(anchors), 25833).assign(
-            # idx=anchor_indices,
-            wkt=lambda x: [g.wkt for g in x.geometry]
-        ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
-        _coords_up_here000=_coords_up_here000,
-        _coords_up_here=_coords_up_here,
-        geoms=to_gdf(polygons(geoms), 25833),
-        msk=to_gdf(shapely.points(mask_coords), 25833).assign(
-            was_midpoint_mask=was_midpoint_mask
-        ),
-        # center=_DEBUG_CONFIG["center"],
-    )
-
-    # anchors, anchor_indices = _remove_lonely_anchors(
-    #     anchors, coords, anchor_indices, tolerance * 1.1
-    # )
-    # print(len(anchors))
-
-    coords, indices = _snap_to_anchors(
-        coords,
-        indices,
-        anchors,
-        anchor_indices,
-        mask_coords,
-        mask_indices,
-        was_midpoint,
-        was_midpoint_anchors,
-        tolerance + PRECISION * 100,
-    )
-    indices = np.array(indices)
-    coords = np.array(coords)
-    indices = indices[coords[:, 0] != np.inf]
-    coords = coords[coords[:, 0] != np.inf]
-
-    coords_down_here = (
-        pd.Series(_coords_to_rings(coords, indices, geoms))
-        .loc[lambda x: x.notna()]
-        .values
-    )
-    lines_down_here = to_gdf(shapely.buffer(coords_down_here, 0.1), 25833)
-    coords_down_here = to_gdf(polygons(coords_down_here), 25833)
-
-    print("try/except")
-    try:
-        explore(
-            coords=to_gdf(shapely.points(coords), 25833).assign(
-                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
-            ),
-            anchors=to_gdf(shapely.points(anchors), 25833).assign(
-                # idx=anchor_indices,
-                wkt=lambda x: [g.wkt for g in x.geometry]
-            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
-            _coords_up_here000=_coords_up_here000,
-            _coords_up_here=_coords_up_here,
-            coords_down_here=coords_down_here,
-            lines_down_here=lines_down_here,
-            geoms=to_gdf(polygons(geoms), 25833),
-            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
-                was_midpoint_mask=was_midpoint_mask
-            ),
-        )
-
-        explore(
-            coords=to_gdf(shapely.points(coords), 25833).assign(
-                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
-            ),
-            anchors=to_gdf(shapely.points(anchors), 25833).assign(
-                # idx=anchor_indices,
-                wkt=lambda x: [g.wkt for g in x.geometry]
-            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
-            _coords_up_here000=_coords_up_here000,
-            _coords_up_here=_coords_up_here,
-            coords_down_here=coords_down_here,
-            lines_down_here=lines_down_here,
-            geoms=to_gdf(polygons(geoms), 25833),
-            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
-                was_midpoint_mask=was_midpoint_mask
-            ),
-            center=(5.37707159, 59.01065276, 1),
-        )
-        explore(
-            coords=to_gdf(shapely.points(coords), 25833).assign(
-                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
-            ),
-            anchors=to_gdf(shapely.points(anchors), 25833).assign(
-                # idx=anchor_indices,
-                wkt=lambda x: [g.wkt for g in x.geometry]
-            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
-            _coords_up_here000=_coords_up_here000,
-            _coords_up_here=_coords_up_here,
-            coords_down_here=coords_down_here,
-            lines_down_here=lines_down_here,
-            geoms=to_gdf(polygons(geoms), 25833),
-            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
-                was_midpoint_mask=was_midpoint_mask
-            ),
-            center=(5.37419946, 59.01138812, 15),
-        )
-
-        explore(
-            coords=to_gdf(shapely.points(coords), 25833).assign(
-                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
-            ),
-            anchors=to_gdf(shapely.points(anchors), 25833).assign(
-                # idx=anchor_indices,
-                wkt=lambda x: [g.wkt for g in x.geometry]
-            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
-            _coords_up_here000=_coords_up_here000,
-            _coords_up_here=_coords_up_here,
-            lines_down_here=lines_down_here,
-            coords_down_here=coords_down_here,
-            geoms=to_gdf(polygons(geoms), 25833),
-            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
-                was_midpoint_mask=was_midpoint_mask
-            ),
-            center=(5.38389153, 59.00548223, 1),
-        )
-        explore(
-            coords=to_gdf(shapely.points(coords), 25833).assign(
-                idx=indices, wkt=lambda x: [g.wkt for g in x.geometry]
-            ),
-            anchors=to_gdf(shapely.points(anchors), 25833).assign(
-                # idx=anchor_indices,
-                wkt=lambda x: [g.wkt for g in x.geometry]
-            ),  # , straight_distances=straight_distances, distances_to_lines=distances_to_lines),
-            _coords_up_here000=_coords_up_here000,
-            _coords_up_here=_coords_up_here,
-            coords_down_here=coords_down_here,
-            lines_down_here=lines_down_here,
-            geoms=to_gdf(polygons(geoms), 25833),
-            msk=to_gdf(shapely.points(mask_coords), 25833).assign(
-                was_midpoint_mask=was_midpoint_mask
-            ),
-            center=_DEBUG_CONFIG["center"],
-        )
-
-    except GEOSException as e:
-        print(e)
-
-    return _coords_to_rings(coords, indices, geoms)
 
 
 def _coords_to_rings(

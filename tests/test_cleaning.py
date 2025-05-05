@@ -8,7 +8,6 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import pytest
 import shapely
 from geopandas import GeoDataFrame
 from shapely import extract_unique_points
@@ -28,7 +27,7 @@ import sgis as sg
 # sg.explore = no_explore
 
 
-@pytest.mark.skip(reason="This test fails, need to investigate")
+# @pytest.mark.skip(reason="This test fails, need to investigate")
 def test_clean_closing_hole():
     df = sg.to_gdf(
         [
@@ -121,7 +120,7 @@ def test_clean_dissappearing_polygon():
     ) == AREA_SHOULD_BE, area
 
 
-@pytest.mark.skip(reason="This test fails, need to investigate")
+# @pytest.mark.skip(reason="This test fails, need to investigate")
 def test_clean_complicated_land_use():
     for tolerance in [
         0.5,
@@ -236,7 +235,7 @@ def _test_clean_complicated_land_use_base(path, mask, tolerance):
     ), f"path: {Path(path).stem}, tolerance {tolerance}, double: {double.area.sum()}"
 
 
-@pytest.mark.skip(reason="This test fails, need to investigate")
+# @pytest.mark.skip(reason="This test fails, need to investigate")
 def test_clean_1144():
     df = gpd.read_parquet(
         Path(__file__).parent / "testdata" / "snap_problem_area_1144.parquet"
@@ -466,7 +465,7 @@ def get_missing(df, other):
     )
 
 
-@pytest.mark.skip(reason="This test fails, need to investigate")
+# @pytest.mark.skip(reason="This test fails, need to investigate")
 def test_clean():
 
     df = gpd.read_parquet(Path(__file__).parent / "testdata" / "polygon_snap.parquet")
@@ -739,7 +738,7 @@ def not_test_spikes():
         assert is_close_enough(length1, length2), (length1, length2)
 
 
-@pytest.mark.skip(reason="This test fails, need to investigate")
+# @pytest.mark.skip(reason="This test fails, need to investigate")
 def test_snappping(_test=False):
 
     if _test:
@@ -894,7 +893,7 @@ def test_snappping(_test=False):
                 gaps.area.sum() == 0
             ), f"tolerance {tolerance} {i}, gaps: {gaps.area.sum()}"
             assert double.area.sum() == 0, (
-                sg.explore_locals(browser=True),
+                sg.explore_locals(),
                 gaps,
                 missing,
                 f"tolerance {tolerance} {i}, double: {double.area.sum()}",
