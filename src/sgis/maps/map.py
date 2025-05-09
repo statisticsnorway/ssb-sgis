@@ -136,9 +136,12 @@ class Map:
         self.bins = bins
         self._k = k
         self.nan_label = nan_label
-        self.nan_color = nan_color or "#c2c2c2"
+        self.nan_color = nan_color
+        self._nan_color_was_none = nan_color is None
         self._cmap = cmap
         self.scheme = scheme
+        self._categories_colors_dict = {}
+        self._more_data = {}
 
         # need to get the object names of the gdfs before copying. Only getting,
         # not setting, labels. So the original gdfs don't get the label column.
@@ -199,10 +202,11 @@ class Map:
 
         if not self._gdfs or not any(len(gdf) for gdf in self._gdfs.values()):
             self._gdfs = {}
-            self._gdf = GeoDataFrame({"geometry": [], "color": []})
+            self._gdf = self._get_gdf_template()
             if categorical is None:
                 self._is_categorical = True
             self._unique_values = []
+            self._column = "label"
             return
 
         self._gdfs = self._to_common_crs_and_one_geom_col(self._gdfs)
@@ -229,8 +233,58 @@ class Map:
         self._to_categorical()
         self._get_unique_values()
 
-        self._categories_colors_dict = {}
-        self._more_data = {}
+    def _get_gdf_template(self):
+        return GeoDataFrame(
+            {
+                "geometry": [],
+                "label": [],
+                "color": [],
+            }
+            | ({self._column: []} if self._column is not None else {})
+        )
+
+    def _prepare_continous_map(self) -> None:
+        """Create bins if not already done and adjust k if needed."""
+        if self.scheme is None:
+            return
+
+        if self.bins is None:
+            self.bins = self._create_bins(self._gdf, self._column)
+            if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
+                self._k = len(self.bins)
+        elif not all(self._gdf[self._column].isna()):
+            self.bins = self._add_minmax_to_bins(self.bins)
+            if len(self._unique_values) <= len(self.bins):
+                self._k = len(self.bins)  # - 1
+        else:
+            self._unique_values = self.nan_label
+            self._k = 1
+
+    def _prepare_categorical_plot(self):
+        """Map values to colors."""
+        self._make_categories_colors_dict()
+        if self._gdf is not None and len(self._gdf):
+            self._fix_nans()
+
+        def _map(value, label):
+            try:
+                return self._categories_colors_dict[value]
+            except KeyError as e:
+                if label in self._categories_colors_dict:
+                    return self._categories_colors_dict[label]
+                if not pd.isna(value):
+                    raise e
+            return self.nan_color
+
+        for label, gdf in self._gdfs.items():
+            gdf["color"] = [_map(value, label) for value in gdf[self._column]]
+            self._gdfs[label] = gdf
+        self._gdf["color"] = [
+            _map(value, label)
+            for value, label in zip(
+                self._gdf[self._column], self._gdf["label"], strict=False
+            )
+        ]
 
     def _to_categorical(self):
         if not (self._is_categorical and self.column is not None):

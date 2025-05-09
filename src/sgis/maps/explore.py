@@ -427,11 +427,8 @@ class Explore(Map):
         if self._gdfs:
             self._gdf = pd.concat(new_gdfs, ignore_index=True)
         else:
-            self._gdf = GeoDataFrame({"geometry": [], self._column: []})
+            self._gdf = self._get_gdf_template()
         self.show = show_new
-
-        # if self._show_was_none and len(self._gdfs) > 6:
-        #     self.show = [False] * len(self._gdfs)
 
         if self._is_categorical:
             if len(self.gdfs) == 1:
@@ -567,7 +564,7 @@ class Explore(Map):
         if self._gdfs:
             self._gdf = pd.concat(self._gdfs.values(), ignore_index=True)
         else:
-            self._gdf = GeoDataFrame({"geometry": [], self._column: []})
+            self._gdf = self._get_gdf_template()
 
         self._explore(**kwargs)
 
@@ -718,12 +715,11 @@ class Explore(Map):
         return gdf.total_bounds
 
     def _create_categorical_map(self) -> None:
-        self._make_categories_colors_dict()
+        self._prepare_categorical_plot()
         if self._gdf is not None and len(self._gdf):
-            self._fix_nans()
             gdf = self._prepare_gdf_for_map(self._gdf)
         else:
-            gdf = GeoDataFrame({"geometry": [], self._column: []})
+            gdf = self._get_gdf_template()
 
         self._load_rasters_as_images()
 
@@ -796,7 +792,10 @@ class Explore(Map):
         if self.scheme:
             classified = self._classify_from_bins(self._gdf, bins=self.bins)
             classified_sequential = self._push_classification(classified)
-            n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
+            n_colors = (
+                len(np.unique(classified_sequential))
+                - self._gdf[self._column].isna().any()
+            )
             unique_colors = self._get_continous_colors(n=n_colors)
 
         self._load_rasters_as_images()

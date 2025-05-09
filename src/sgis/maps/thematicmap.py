@@ -184,6 +184,8 @@ class ThematicMap(Map):
         """Initializer."""
         new_gdfs = {}
         for i, gdf in enumerate(gdfs):
+            if isinstance(gdf, str):
+                raise ValueError("gdfs cannot be a string in ThematicMap.")
             name = _determine_best_name(gdf, column, i)
             if name in new_gdfs:
                 name += str(i)
@@ -206,6 +208,7 @@ class ThematicMap(Map):
             k=k,
             bins=bins,
             nan_label=nan_label,
+            nan_color=nan_color,
             **new_gdfs,
         )
 
@@ -416,7 +419,9 @@ class ThematicMap(Map):
             include_legend = False
 
         elif self._is_categorical:
-            kwargs = self._prepare_categorical_plot(kwargs)
+            self._prepare_categorical_plot()
+            if self._gdf is not None:
+                kwargs["color"] = self._gdf["color"]
             if self.legend:
                 self.legend._prepare_categorical_legend(
                     categories_colors=self._categories_colors_dict,
@@ -475,23 +480,6 @@ class ThematicMap(Map):
             fs = FileClient.get_gcs_file_system()
             with fs.open(path, "wb") as file:
                 plt.savefig(file)
-
-    def _prepare_continous_map(self) -> None:
-        """Create bins if not already done and adjust k if needed."""
-        if self.scheme is None:
-            return
-
-        if self.bins is None:
-            self.bins = self._create_bins(self._gdf, self._column)
-            if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
-                self._k = len(self.bins)
-        elif not all(self._gdf[self._column].isna()):
-            self.bins = self._add_minmax_to_bins(self.bins)
-            if len(self._unique_values) <= len(self.bins):
-                self._k = len(self.bins)  # - 1
-        else:
-            self._unique_values = self.nan_label
-            self._k = 1
 
     def _prepare_plot(self, **kwargs) -> None:
         """Add figure and axis, title and background gdf."""
@@ -574,37 +562,6 @@ class ThematicMap(Map):
 
         return kwargs
 
-    def _prepare_categorical_plot(self, kwargs: dict) -> dict:
-        """Map values to colors."""
-        self._make_categories_colors_dict()
-        if self._gdf is not None and len(self._gdf):
-            self._fix_nans()
-
-        def _map(value, label):
-            try:
-                return self._categories_colors_dict[value]
-            except KeyError as e:
-                if label in self._categories_colors_dict:
-                    return self._categories_colors_dict[label]
-                if not pd.isna(value):
-                    raise e
-            return self.nan_color
-
-        for label, gdf in self._gdfs.items():
-            gdf["color"] = [_map(value, label) for value in gdf[self._column]]
-            self._gdfs[label] = gdf
-        self._gdf["color"] = [
-            _map(value, label)
-            for value, label in zip(
-                self._gdf[self._column], self._gdf["label"], strict=False
-            )
-        ]
-
-        if self._gdf is not None:
-            colorarray = self._gdf["color"]
-            kwargs["color"] = colorarray
-        return kwargs
-
     def _actually_add_legend(self) -> None:
         """Add legend to the axis and fill it with colors and labels."""
         if not self.legend._position_has_been_set:
@@ -675,7 +632,7 @@ class ThematicMap(Map):
                 "#fefefe",
                 "#383836",
             )
-            self.nan_color = "#666666"
+            self.nan_color = "#666666" if self._nan_color_was_none else self.nan_color
             if not self._is_categorical:
                 self.change_cmap("viridis")
 
@@ -693,7 +650,7 @@ class ThematicMap(Map):
                 "#0f0f0f",
                 "#e8e6e6",
             )
-            self.nan_color = "#c2c2c2"
+            self.nan_color = "#c2c2c2" if self._nan_color_was_none else self.nan_color
             if not self._is_categorical:
                 self.change_cmap("RdPu", start=23)
 

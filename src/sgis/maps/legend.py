@@ -289,13 +289,13 @@ class Legend:
             }
         # swap column values with label list and hope it's in the correct order
         elif self.labels:
-
-            categories_colors = {
-                label: color
-                for label, color in zip(
-                    self.labels, categories_colors.values(), strict=True
+            if len(self.labels) != len(categories_colors):
+                raise ValueError(
+                    f"Unequal length of labels {self.labels} and categories/colors  {categories_colors}"
                 )
-            }
+            categories_colors = dict(
+                zip(self.labels, categories_colors.values(), strict=True)
+            )
 
         self._patches, self._categories = [], []
         for category, color in categories_colors.items():

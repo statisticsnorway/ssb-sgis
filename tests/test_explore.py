@@ -285,13 +285,15 @@ def not_test_wms_json():
     print(
         "IMPORTANT: if you run this function, make sure to change the global variable JSON_YEARS in wms.py"
     )
-    wms = sg.NorgeIBilderWms(years=range(1999, datetime.datetime.now().year + 1))
+    wms = sg.NorgeIBilderWms(
+        years=range(1999, datetime.datetime.now().year + 1), _use_json=False
+    )
     wms.load_tiles()
     try:
-        os.remove(sg.maps.norge_i_bilder_wms.JSON_PATH)
+        os.remove(sg.maps.wms.JSON_PATH)
     except FileNotFoundError:
         pass
-    with open(sg.maps.norge_i_bilder_wms.JSON_PATH, "w", encoding="utf-8") as file:
+    with open(sg.maps.wms.JSON_PATH, "w", encoding="utf-8") as file:
         json.dump(
             [
                 {
