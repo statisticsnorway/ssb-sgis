@@ -11,12 +11,14 @@ import pandas as pd
 from geopandas import GeoDataFrame
 
 from ..geopandas_tools.conversion import to_bbox
+from ..geopandas_tools.conversion import to_gdf
 from ..helpers import is_property
 from .legend import LEGEND_KWARGS
 from .legend import ContinousLegend
 from .legend import Legend
 from .legend import prettify_bins
 from .map import Map
+from .map import _determine_best_name
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(
@@ -70,6 +72,7 @@ class ThematicMap(Map):
         bins: For numeric columns. List of numbers that define the
             maximum value for the color groups.
         nan_label: Label for missing data.
+        nan_hatch: Hatch for missing data. See https://matplotlib.org/stable/gallery/shapes_and_collections/hatch_style_reference.html.
         legend_kwargs: dictionary with attributes for the legend. E.g.:
             title: Legend title. Defaults to the column name.
             rounding: If positive number, it will round floats to n decimals.
@@ -170,23 +173,47 @@ class ThematicMap(Map):
         k: int = 5,
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
+        nan_color: str | None = None,
+        nan_hatch: str | None = None,
+        hatch: str | None = None,
         legend_kwargs: dict | None = None,
         title_kwargs: dict | None = None,
         legend: bool = True,
         **kwargs,
     ) -> None:
-        """Initialiser."""
+        """Initializer."""
+        new_gdfs = {}
+        for i, gdf in enumerate(gdfs):
+            name = _determine_best_name(gdf, column, i)
+            if name in new_gdfs:
+                name += str(i)
+            try:
+                new_gdfs[name] = to_gdf(gdf)
+            except Exception:
+                continue
+
+        new_kwargs = {}
+        self.kwargs = {}
+        for key, value in kwargs.items():
+            try:
+                new_gdfs[key] = to_gdf(value)
+            except Exception:
+                new_kwargs[key] = value
+
         super().__init__(
-            *gdfs,
             column=column,
             scheme=scheme,
             k=k,
             bins=bins,
             nan_label=nan_label,
+            **new_gdfs,
         )
+
+        self.kwargs = self.kwargs | new_kwargs
 
         self.title = title
         self._size = size
+        self.hatch = hatch
         self._dark = dark
         self.title_kwargs = title_kwargs or {}
         if title_position and "position" in self.title_kwargs:
@@ -219,7 +246,7 @@ class ThematicMap(Map):
 
         self._title_fontsize = self._size * 1.9
 
-        black = kwargs.pop("black", None)
+        black = self.kwargs.pop("black", None)
         self._dark = self._dark or black
 
         if not self.cmap and not self._is_categorical:
@@ -235,13 +262,15 @@ class ThematicMap(Map):
         if cmap:
             self._cmap = cmap
 
-        for key, value in kwargs.items():
+        new_kwargs = {}
+        for key, value in self.kwargs.items():
             if key not in MAP_KWARGS:
-                self.kwargs[key] = value
+                new_kwargs[key] = value
             elif is_property(self, key):
                 setattr(self, f"_{key}", value)
             else:
                 setattr(self, key, value)
+        self.kwargs = new_kwargs
 
         for key, value in legend_kwargs.items():
             if key not in LEGEND_KWARGS:
@@ -261,6 +290,20 @@ class ThematicMap(Map):
         self.diffx = self.maxx - self.minx
         self.diffy = self.maxy - self.miny
 
+        if self._gdf[self._column].isna().any():
+            isnas = []
+            for label, gdf in self._gdfs.items():
+
+                isnas.append(gdf[gdf[self._column].isna()])
+                self._gdfs[label] = gdf[gdf[self._column].notna()]
+            color = self.facecolor if nan_hatch else self.nan_color
+            self._more_data[nan_label] = {
+                "gdf": pd.concat(isnas, ignore_index=True),
+                "color": color,
+                "hatch": nan_hatch,
+            } | new_kwargs
+            self._gdf = pd.concat(self.gdfs.values(), ignore_index=True)
+
     @property
     def valid_keywords(self) -> set[str]:
         """List all valid keywords for the class initialiser."""
@@ -277,6 +320,52 @@ class ThematicMap(Map):
                 is the end of the color range.
         """
         super().change_cmap(cmap, start, stop)
+        return self
+
+    def add_data(
+        self,
+        *,
+        color: str | None = None,
+        hatch: str | None = None,
+        **kwargs,
+    ) -> "ThematicMap":
+        """Add Geometric Data of a given color or hatch.
+
+        The geodata must be passed as keyword argument.
+        The keyword will be used as label in the legend.
+
+        Args:
+            color: Color of the data.
+            hatch: Hatch of the data. See https://matplotlib.org/stable/gallery/shapes_and_collections/hatch_style_reference.html.
+            **kwargs: Must include exactly one GeoDataFrame or object that can be converted to GeoDataFrame.
+                Additional kwargs are passed to geopandas.GeoDataFrame.plot and matplotlib.patches.Patch.
+        """
+        new_kwargs = {}
+        n = 0
+        for key, value in kwargs.items():
+            try:
+                gdf = to_gdf(value)
+                label = key
+                n += 1
+            except Exception:
+                new_kwargs[key] = value
+
+        if n != 1:
+            raise ValueError(
+                "Must specify a single geometry object as keyword argument."
+            )
+        if not color and not hatch:
+            raise TypeError("Must pass either 'color' or 'hatch'.")
+        if hatch is not None:
+            color = self.facecolor
+        gdf["label"] = label
+        self._more_data[label] = {
+            "gdf": gdf,
+            "color": color,
+            "hatch": hatch,
+        } | new_kwargs
+        if self.bounds is None:
+            self.bounds = to_bbox(self._gdf.total_bounds)
         return self
 
     def add_background(
@@ -331,7 +420,7 @@ class ThematicMap(Map):
             if self.legend:
                 self.legend._prepare_categorical_legend(
                     categories_colors=self._categories_colors_dict,
-                    nan_label=self.nan_label,
+                    hatch=self.hatch,
                 )
 
         else:
@@ -339,19 +428,23 @@ class ThematicMap(Map):
             if self.legend:
                 if not self.legend.rounding:
                     self.legend._rounding = self.legend._get_rounding(
-                        array=self._gdf.loc[~self._nan_idx, self._column]
+                        array=self._gdf[self._column].dropna()
                     )
 
                 self.legend._prepare_continous_legend(
                     bins=self.bins,
                     colors=self._unique_colors,
-                    nan_label=self.nan_label,
                     bin_values=self._bins_unique_values,
+                    nan_label=self.nan_label,
+                    hatch=self.hatch,
                 )
+
+        if self.legend and self._more_data:
+            self.legend._add_more_data_to_legend(self._more_data)
 
         if self.legend and not self.legend._position_has_been_set:
             self.legend._position = self.legend._get_best_legend_position(
-                self._gdf, k=self._k + bool(len(self._nan_idx))
+                self._gdf, k=self._k + self._gdf[self._column].isna().any()
             )
 
         self._prepare_plot(**kwargs)
@@ -359,7 +452,9 @@ class ThematicMap(Map):
         if self.legend:
             self.ax = self.legend._actually_add_legend(ax=self.ax)
 
-        self.ax = self._gdf.plot(legend=include_legend, ax=self.ax, **kwargs)
+        self.ax = self._gdf.plot(
+            legend=include_legend, ax=self.ax, hatch=self.hatch, **kwargs
+        )
 
         if __test:
             return self
@@ -381,6 +476,23 @@ class ThematicMap(Map):
             with fs.open(path, "wb") as file:
                 plt.savefig(file)
 
+    def _prepare_continous_map(self) -> None:
+        """Create bins if not already done and adjust k if needed."""
+        if self.scheme is None:
+            return
+
+        if self.bins is None:
+            self.bins = self._create_bins(self._gdf, self._column)
+            if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
+                self._k = len(self.bins)
+        elif not all(self._gdf[self._column].isna()):
+            self.bins = self._add_minmax_to_bins(self.bins)
+            if len(self._unique_values) <= len(self.bins):
+                self._k = len(self.bins)  # - 1
+        else:
+            self._unique_values = self.nan_label
+            self._k = 1
+
     def _prepare_plot(self, **kwargs) -> None:
         """Add figure and axis, title and background gdf."""
         for attr in self.__dict__.keys():
@@ -394,16 +506,17 @@ class ThematicMap(Map):
         )
         self.fig.patch.set_facecolor(self.facecolor)
         self.ax.set_axis_off()
+        self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
+        self.ax.set_ylim([self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03])
 
         if hasattr(self, "_background_gdfs"):
             self._actually_add_background()
-        elif self.bounds is not None:
-            self.ax.set_xlim(
-                [self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03]
-            )
-            self.ax.set_ylim(
-                [self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03]
-            )
+        # if self.bounds is not None:
+
+        for datadict in self._more_data.values():
+            gdf = datadict["gdf"]
+            datadict = {key: value for key, value in datadict.items() if key != "gdf"}
+            gdf.plot(ax=self.ax, **datadict)
 
         if self.title:
             self.ax.set_title(
@@ -437,7 +550,10 @@ class ThematicMap(Map):
 
             classified = self._classify_from_bins(self._gdf, bins=self.bins)
             classified_sequential = self._push_classification(classified)
-            n_colors = len(np.unique(classified_sequential)) - any(self._nan_idx)
+            n_colors = (
+                len(np.unique(classified_sequential))
+                - self._gdf[self._column].isna().any()
+            )
             self._unique_colors = self._get_continous_colors(n=n_colors)
             self._bins_unique_values = self._make_bin_value_dict(
                 self._gdf, classified_sequential
@@ -453,7 +569,7 @@ class ThematicMap(Map):
                 bins=self.bins, rounding=self.legend._rounding
             )
 
-            if any(self._nan_idx):
+            if self._gdf[self._column].isna().any():
                 self.bins = self.bins + [self.nan_label]
 
         return kwargs
@@ -464,6 +580,26 @@ class ThematicMap(Map):
         if self._gdf is not None and len(self._gdf):
             self._fix_nans()
 
+        def _map(value, label):
+            try:
+                return self._categories_colors_dict[value]
+            except KeyError as e:
+                if label in self._categories_colors_dict:
+                    return self._categories_colors_dict[label]
+                if not pd.isna(value):
+                    raise e
+            return self.nan_color
+
+        for label, gdf in self._gdfs.items():
+            gdf["color"] = [_map(value, label) for value in gdf[self._column]]
+            self._gdfs[label] = gdf
+        self._gdf["color"] = [
+            _map(value, label)
+            for value, label in zip(
+                self._gdf[self._column], self._gdf["label"], strict=False
+            )
+        ]
+
         if self._gdf is not None:
             colorarray = self._gdf["color"]
             kwargs["color"] = colorarray
@@ -473,7 +609,7 @@ class ThematicMap(Map):
         """Add legend to the axis and fill it with colors and labels."""
         if not self.legend._position_has_been_set:
             self.legend._position = self.legend._get_best_legend_position(
-                self._gdf, k=self._k + bool(len(self._nan_idx))
+                self._gdf, k=self._k + self._gdf[self._column].isna().any()
             )
 
         if self._is_categorical:
@@ -518,15 +654,15 @@ class ThematicMap(Map):
         return bins_unique_values
 
     def _actually_add_background(self) -> None:
-        self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
-        self.ax.set_ylim([self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03])
+        # self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
+        # self.ax.set_ylim([self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03])
         self._background_gdfs.plot(
             ax=self.ax, color=self.bg_gdf_color, **self.bg_gdf_kwargs
         )
 
     @staticmethod
     def _get_matplotlib_figure_and_axix(
-        figsize: tuple[int, int]
+        figsize: tuple[int, int],
     ) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(1, 1, 1)
@@ -568,16 +704,6 @@ class ThematicMap(Map):
                     "title_color": "#0f0f0f",
                 }.items():
                     setattr(self.legend, key, color)
-
-    @property
-    def dark(self) -> bool:
-        """Whether to use dark background and light text colors."""
-        return self._dark
-
-    @dark.setter
-    def dark(self, new_value: bool):
-        self._dark = new_value
-        self._dark_or_light()
 
     @property
     def title_fontsize(self) -> int:

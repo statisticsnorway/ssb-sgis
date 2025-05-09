@@ -44,6 +44,7 @@ from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..helpers import _get_file_system
+from ..helpers import dict_zip
 from .wms import WmsLoader
 
 try:
@@ -385,12 +386,12 @@ class Explore(Map):
 
         super().__init__(column=column, show=show, **(new_kwargs | new_gdfs))
 
-        if self.gdfs is None:
+        if self._gdfs is None:
             return
 
         # stringify or remove columns not renerable by leaflet (list, geometry etc.)
-        new_gdfs, show_new = [], []
-        for gdf, show in zip(self.gdfs, self.show, strict=True):
+        new_gdfs, show_new = {}, {}
+        for label, gdf, show in dict_zip(self._gdfs, self.show):
             try:
                 gdf = gdf.reset_index()
             except Exception:
@@ -420,8 +421,8 @@ class Explore(Map):
                 gdf.index = gdf.index.astype(str)
             except Exception:
                 pass
-            new_gdfs.append(to_gdf(gdf))
-            show_new.append(show)
+            new_gdfs[label] = to_gdf(gdf)
+            show_new[label] = show
         self._gdfs = new_gdfs
         if self._gdfs:
             self._gdf = pd.concat(new_gdfs, ignore_index=True)
@@ -455,7 +456,7 @@ class Explore(Map):
             rasters = self.raster_data
         except AttributeError:
             rasters = self.rasters
-        return len([gdf for gdf in self._gdfs if len(gdf)]) + len(rasters)
+        return len([gdf for gdf in self._gdfs.values() if len(gdf)]) + len(rasters)
 
     def __bool__(self) -> bool:
         """True if any gdfs have rows or there are any raster images."""
@@ -473,7 +474,7 @@ class Explore(Map):
         self.mask = mask if mask is not None else self.mask
         if (
             self._gdfs
-            and not any(len(gdf) for gdf in self._gdfs)
+            and not any(len(gdf) for gdf in self._gdfs.values())
             and not len(self.rasters)
         ):
             warnings.warn("None of the GeoDataFrames have rows.", stacklevel=1)
@@ -498,13 +499,11 @@ class Explore(Map):
             else center
         )
 
-        gdfs: tuple[GeoDataFrame] = ()
-        for gdf in self._gdfs:
+        for label, gdf in self._gdfs.items():
             keep_geom_type = False if get_geom_type(gdf) == "mixed" else True
             gdf = gdf.clip(centerpoint.buffer(size), keep_geom_type=keep_geom_type)
-            gdfs = gdfs + (gdf,)
-        self._gdfs = gdfs
-        self._gdf = pd.concat(gdfs, ignore_index=True)
+            self._gdfs[label] = gdf
+        self._gdf = pd.concat(self._gdfs.values(), ignore_index=True)
 
         self._get_unique_values()
 
@@ -558,17 +557,15 @@ class Explore(Map):
             self._update_column()
             kwargs.pop("column", None)
 
-        gdfs: tuple[GeoDataFrame] = ()
-        for gdf in self._gdfs:
+        for label, gdf in self._gdfs.items():
             gdf = gdf.clip(self.mask)
             collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
             if len(collections):
                 collections = make_all_singlepart(collections)
                 gdf = pd.concat([gdf, collections], ignore_index=False)
-            gdfs = gdfs + (gdf,)
-        self._gdfs = gdfs
+            self._gdfs[label] = gdf
         if self._gdfs:
-            self._gdf = pd.concat(self._gdfs, ignore_index=True)
+            self._gdf = pd.concat(self._gdfs.values(), ignore_index=True)
         else:
             self._gdf = GeoDataFrame({"geometry": [], self._column: []})
 
@@ -638,7 +635,10 @@ class Explore(Map):
     def _explore(self, **kwargs) -> None:
         self.kwargs = self.kwargs | kwargs
 
-        if self._show_was_none and len([gdf for gdf in self._gdfs if len(gdf)]) > 6:
+        if (
+            self._show_was_none
+            and len([gdf for gdf in self._gdfs.values() if len(gdf)]) > 6
+        ):
             self.show = [False] * len(self._gdfs)
 
         if self._is_categorical:
@@ -662,15 +662,13 @@ class Explore(Map):
             display(self.map)
 
     def _split_categories(self) -> None:
-        new_gdfs, new_labels, new_shows = [], [], []
+        new_gdfs, new_shows = {}, {}
         for cat in self._unique_values:
             gdf = self.gdf.loc[self.gdf[self.column] == cat]
-            new_gdfs.append(gdf)
-            new_labels.append(cat)
-            new_shows.append(self.show[0])
+            new_gdfs[cat] = gdf
+            new_shows[cat] = next(iter(self.show.values()))
         self._gdfs = new_gdfs
         self._gdf = pd.concat(new_gdfs, ignore_index=True)
-        self.labels = new_labels
         self.show = new_shows
 
     def _to_single_geom_type(self, gdf: GeoDataFrame) -> GeoDataFrame:
@@ -742,7 +740,7 @@ class Explore(Map):
             **self.kwargs,
         )
 
-        for gdf, label, show in zip(self._gdfs, self.labels, self.show, strict=True):
+        for label, gdf, show in dict_zip(self._gdfs, self.show):
             if not len(gdf):
                 continue
 
@@ -824,7 +822,7 @@ class Explore(Map):
             index=self.bins,
         )
 
-        for gdf, label, show in zip(self._gdfs, self.labels, self.show, strict=True):
+        for (label, gdf), show in zip(self._gdfs.items(), self.show, strict=True):
             if not len(gdf):
                 continue
 

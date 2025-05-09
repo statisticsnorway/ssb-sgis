@@ -107,7 +107,7 @@ class Map:
         k: int = 5,
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
-        nan_color="#c2c2c2",
+        nan_color: str | None = None,
         scheme: str = DEFAULT_SCHEME,
         cmap: str | None = None,
         categorical: bool | None = None,
@@ -136,45 +136,39 @@ class Map:
         self.bins = bins
         self._k = k
         self.nan_label = nan_label
-        self.nan_color = nan_color
+        self.nan_color = nan_color or "#c2c2c2"
         self._cmap = cmap
         self.scheme = scheme
 
         # need to get the object names of the gdfs before copying. Only getting,
         # not setting, labels. So the original gdfs don't get the label column.
-        self.labels: list[str] = [
-            _determine_best_name(gdf, column, i) for i, gdf in enumerate(gdfs)
-        ]
+        self._gdfs: dict[str, GeoDataFrame] = {
+            _determine_best_name(gdf, column, i): gdf for i, gdf in enumerate(gdfs)
+        }
 
         show = kwargs.pop("show", True)
         if isinstance(show, (int, bool)):
-            show_temp = [bool(show) for _ in range(len(gdfs))]
+            self.show = {label: bool(show) for label in self._gdfs}
         elif not hasattr(show, "__iter__"):
             raise ValueError(
                 "'show' must be boolean or an iterable of boleans same "
                 f"length as gdfs ({len(gdfs)}). Got len {len(show)}"
             )
         else:
-            show_temp = show
+            self.show = {label: bool(show) for label in self._gdfs}
 
-        show_args = show_temp[: len(gdfs)]
+        show_args = list(self.show.values())[: len(gdfs)]
         # gdfs that are in kwargs
-        show_kwargs = show_temp[len(gdfs) :]
-        self._gdfs = []
-        new_labels = []
-        self.show = []
-        for label, gdf, show in zip(self.labels, gdfs, show_args, strict=False):
+        show_kwargs = list(self.show.values())[len(gdfs) :]
+        for (label, gdf), show in zip(self._gdfs.items(), show_args, strict=False):
             if not len(gdf):
                 continue
 
-            gdf = clean_geoms(gdf).reset_index(drop=True)
+            gdf = clean_geoms(to_gdf(gdf)).reset_index(drop=True)
             if not len(gdf):
                 continue
-
-            self._gdfs.append(to_gdf(gdf))
-            new_labels.append(label)
-            self.show.append(show)
-        self.labels = new_labels
+            self._gdfs[label] = gdf
+            self.show[label] = show
 
         # pop all geometry-like items from kwargs into self._gdfs
         i = 0
@@ -184,14 +178,13 @@ class Map:
                     value = to_gdf(value)
                 if not len(value):
                     continue
-                self._gdfs.append(to_gdf(value))
-                self.labels.append(key)
+                self._gdfs[key] = to_gdf(value)
                 try:
                     show = show_kwargs[i]
                     i += 1
                 except IndexError:
                     pass
-                self.show.append(show)
+                self.show[key] = show
             except Exception:
                 self.kwargs[key] = value
 
@@ -204,42 +197,40 @@ class Map:
         if categorical is not None:
             self._is_categorical = categorical
 
-        if not self._gdfs or not any(len(gdf) for gdf in self._gdfs):
-            self._gdfs = []
+        if not self._gdfs or not any(len(gdf) for gdf in self._gdfs.values()):
+            self._gdfs = {}
+            self._gdf = GeoDataFrame({"geometry": [], "color": []})
             if categorical is None:
                 self._is_categorical = True
             self._unique_values = []
-            self._nan_idx = []
             return
-
-        if not self.labels:
-            self._set_labels()
 
         self._gdfs = self._to_common_crs_and_one_geom_col(self._gdfs)
         if categorical is None:
             self._is_categorical = self._check_if_categorical()
 
+        for label, gdf in self._gdfs.items():
+            gdf["label"] = label
+            self._gdfs[label] = gdf
+
         if self._column:
             self._fillna_if_col_is_missing()
         else:
-            gdfs = []
-            for gdf, label in zip(self._gdfs, self.labels, strict=True):
-                gdf["label"] = label
-                gdfs.append(gdf)
             self._column = "label"
-            self._gdfs = gdfs
 
         try:
-            self._gdf = pd.concat(self._gdfs, ignore_index=True)
+            self._gdf = pd.concat(self._gdfs.values(), ignore_index=True)
         except ValueError:
-            crs = get_common_crs(self._gdfs)
-            for gdf in self._gdfs:
+            crs = get_common_crs(self._gdfs.values())
+            for gdf in self._gdfs.values():
                 gdf.crs = crs
             self._gdf = pd.concat(self._gdfs, ignore_index=True)
 
-        self._nan_idx = self._gdf[self._column].isna()
         self._to_categorical()
         self._get_unique_values()
+
+        self._categories_colors_dict = {}
+        self._more_data = {}
 
     def _to_categorical(self):
         if not (self._is_categorical and self.column is not None):
@@ -288,10 +279,10 @@ class Map:
         Because floats don't always equal each other. This will make very
         similar values count as the same value in the color classification.
         """
-        array = self._gdf.loc[list(~self._nan_idx), self._column]
+        array = self._gdf[self._column].dropna()
         self._min = np.min(array)
         self._max = np.max(array)
-        self._get_multiplier(array)
+        self._get_multiplier(array.astype(np.float64))
 
         unique = array.reset_index(drop=True).drop_duplicates()
         as_int = self._array_to_large_int(unique)
@@ -318,7 +309,7 @@ class Map:
 
         Adding this as an attribute to use later in _classify_from_bins.
         """
-        if np.max(array) == 0:
+        if not len(array) or np.max(array) == 0:
             self._multiplier: int = 1
             return
 
@@ -341,53 +332,23 @@ class Map:
         # make sure they are lists
         bins = [bin_ for bin_ in bins]
 
-        if min(bins) > 0 and min(
-            self._gdf.loc[list(~self._nan_idx), self._column]
-        ) < min(bins):
-            num = min(self._gdf.loc[list(~self._nan_idx), self._column])
-            # if isinstance(num, float):
-            #     num -= (
-            #         float(f"1e-{abs(self.legend.rounding)}")
-            #         if self.legend and self.legend.rounding
-            #         else 0
-            #     )
+        if min(bins) > 0 and (self._gdf[self._column].dropna().min()) < min(bins):
+            num = self._gdf[self._column].dropna().min()
             bins = [num] + bins
 
-        if min(bins) < 0 and min(
-            self._gdf.loc[list(~self._nan_idx), self._column]
-        ) < min(bins):
-            num = min(self._gdf.loc[list(~self._nan_idx), self._column])
-            # if isinstance(num, float):
-            #     num -= (
-            #         float(f"1e-{abs(self.legend.rounding)}")
-            #         if self.legend and self.legend.rounding
-            #         else 0
-            #     )
+        if min(bins) < 0 and (self._gdf[self._column].dropna().min()) < min(bins):
+            num = self._gdf[self._column].dropna().min()
+
             bins = [num] + bins
 
-        if max(bins) > 0 and max(
-            self._gdf.loc[self._gdf[self._column].notna(), self._column]
-        ) > max(bins):
-            num = max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
-            # if isinstance(num, float):
-            #     num += (
-            #         float(f"1e-{abs(self.legend.rounding)}")
-            #         if self.legend and self.legend.rounding
-            #         else 0
-            #     )
+        if max(bins) > 0 and (self._gdf[self._column].dropna().max()) > max(bins):
+            num = self._gdf[self._column].dropna().max()
             bins = bins + [num]
 
         if max(bins) < 0 and max(
             self._gdf.loc[self._gdf[self._column].notna(), self._column]
         ) < max(bins):
             num = max(self._gdf.loc[self._gdf[self._column].notna(), self._column])
-            # if isinstance(num, float):
-            #     num += (
-            #         float(f"1e-{abs(self.legend.rounding)}")
-            #         if self.legend and self.legend.rounding
-            #         else 0
-            #     )
-
             bins = bins + [num]
 
         def adjust_bin(num: int | float, i: int) -> int | float:
@@ -494,40 +455,14 @@ class Map:
 
         return gdfs, column, kwargs
 
-    def _prepare_continous_map(self) -> None:
-        """Create bins if not already done and adjust k if needed."""
-        if self.scheme is None:
-            return
-
-        if self.bins is None:
-            self.bins = self._create_bins(self._gdf, self._column)
-            if len(self.bins) <= self._k and len(self.bins) != len(self._unique_values):
-                self._k = len(self.bins)
-        elif not all(self._gdf[self._column].isna()):
-            self.bins = self._add_minmax_to_bins(self.bins)
-            if len(self._unique_values) <= len(self.bins):
-                self._k = len(self.bins)  # - 1
-        else:
-            self._unique_values = self.nan_label
-            self._k = 1
-
-    def _set_labels(self) -> None:
-        """Setting the labels after copying the gdfs."""
-        gdfs = []
-        for i, gdf in enumerate(self._gdfs):
-            gdf["label"] = self.labels[i]
-            gdfs.append(gdf)
-        self._gdfs = gdfs
-
     def _to_common_crs_and_one_geom_col(
-        self, gdfs: list[GeoDataFrame]
-    ) -> list[GeoDataFrame]:
+        self, gdfs: dict[str, GeoDataFrame]
+    ) -> dict[str, GeoDataFrame]:
         """Need common crs and max one geometry column."""
-        crs_list = list({gdf.crs for gdf in gdfs if gdf.crs is not None})
+        crs_list = list({gdf.crs for gdf in gdfs.values() if gdf.crs is not None})
         if crs_list:
             self.crs = crs_list[0]
-        new_gdfs = []
-        for gdf in gdfs:
+        for label, gdf in gdfs.items():
             gdf = gdf.reset_index(drop=True)
             gdf = drop_inactive_geometry_columns(gdf).pipe(_rename_geometry_if)
             if crs_list:
@@ -535,17 +470,18 @@ class Map:
                     gdf = gdf.to_crs(self.crs)
                 except ValueError:
                     gdf = gdf.set_crs(self.crs)
-            new_gdfs.append(gdf)
-        return new_gdfs
+            gdfs[label] = gdf
+        return gdfs
 
     def _fillna_if_col_is_missing(self) -> None:
         n = 0
-        for gdf in self._gdfs:
+        for label, gdf in self._gdfs.items():
             if self._column in gdf.columns:
                 gdf[self._column] = gdf[self._column].fillna(pd.NA)
                 n += 1
             else:
                 gdf[self._column] = pd.NA
+            self._gdfs[label] = gdf
 
         maybe_area = 1 if "area" in self._column else 0
         maybe_length = (
@@ -576,7 +512,7 @@ class Map:
 
         all_nan = 0
         col_not_present = 0
-        for gdf in self._gdfs:
+        for gdf in self._gdfs.values():
             if self._column not in gdf:
                 if maybe_area_km2 and unit_is_meters(gdf):
                     gdf["area_km2"] = gdf.area / 1_000_000
@@ -620,34 +556,33 @@ class Map:
             self._categories_colors_dict = {
                 category: _CATEGORICAL_CMAP[i]
                 for i, category in enumerate(self._unique_values)
-            }
+            } | self._categories_colors_dict
         elif self._cmap:
             cmap = matplotlib.colormaps.get_cmap(self._cmap)
 
             self._categories_colors_dict = {
                 category: colors.to_hex(cmap(int(i)))
                 for i, category in enumerate(self._unique_values)
-            }
+            } | self._categories_colors_dict
         else:
             cmap = matplotlib.colormaps.get_cmap("tab20")
 
             self._categories_colors_dict = {
                 category: colors.to_hex(cmap(int(i)))
                 for i, category in enumerate(self._unique_values)
-            }
+            } | self._categories_colors_dict
 
     def _fix_nans(self) -> None:
-        if any(self._nan_idx):
+        def hasnans(df: GeoDataFrame, label: str) -> bool:
+            if label in self._categories_colors_dict:
+                return False
+            return df[self._column].isna().any()
+
+        if any(hasnans(df, label) for label, df in self._gdfs.items()):
             self._gdf[self._column] = self._gdf[self._column].fillna(self.nan_label)
-            self._categories_colors_dict[self.nan_label] = self.nan_color
-
-        new_gdfs = []
-        for gdf in self._gdfs:
-            gdf["color"] = gdf[self._column].map(self._categories_colors_dict)
-            new_gdfs.append(gdf)
-        self._gdfs = new_gdfs
-
-        self._gdf["color"] = self._gdf[self._column].map(self._categories_colors_dict)
+            self._categories_colors_dict[self.nan_label] = (
+                self._categories_colors_dict.get(self.nan_label, self.nan_color)
+            )
 
     def _create_bins(self, gdf: GeoDataFrame, column: str) -> np.ndarray:
         """Make bin list of length k + 1, or length of unique values.
@@ -657,7 +592,7 @@ class Map:
         If 'scheme' is not specified, the jenks_breaks function is used, which is
         much faster than the one from Mapclassifier.
         """
-        if not len(gdf.loc[list(~self._nan_idx), column]):
+        if not gdf[column].notna().any():
             return np.array([0])
 
         n_classes = (
@@ -673,12 +608,10 @@ class Map:
             n_classes = len(self._unique_values)
 
         if self.scheme == "jenks":
-            bins = jenks_breaks(
-                gdf.loc[list(~self._nan_idx), column], n_classes=n_classes
-            )
+            bins = jenks_breaks(gdf[column].dropna(), n_classes=n_classes)
         else:
             binning = classify(
-                np.asarray(gdf.loc[list(~self._nan_idx), column]),
+                np.asarray(gdf[column].dropna()),
                 scheme=self.scheme,
                 # k=self._k,
                 k=n_classes,
@@ -720,10 +653,9 @@ class Map:
         cmap = matplotlib.colormaps.get_cmap(self._cmap)
         colors_ = [
             colors.to_hex(cmap(int(i)))
-            #            for i in np.linspace(self.cmap_start, self.cmap_stop, num=self._k)
             for i in np.linspace(self.cmap_start, self.cmap_stop, num=n)
         ]
-        if any(self._nan_idx):
+        if self._gdf[self._column].isna().any():
             colors_ = colors_ + [self.nan_color]
         return np.array(colors_)
 
@@ -774,7 +706,7 @@ class Map:
 
         So from e.g. [0,2,4] to [0,1,2].
 
-        Otherwise, will get index error when classifying colors.
+        Otherwise, we will get index error when classifying colors.
         """
         rank_dict = {val: rank for rank, val in enumerate(np.unique(classified))}
 
