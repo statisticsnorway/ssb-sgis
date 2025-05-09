@@ -636,7 +636,7 @@ class Explore(Map):
             self._show_was_none
             and len([gdf for gdf in self._gdfs.values() if len(gdf)]) > 6
         ):
-            self.show = [False] * len(self._gdfs)
+            self.show = {label: False for label in self._gdfs}
 
         if self._is_categorical:
             self._create_categorical_map()
