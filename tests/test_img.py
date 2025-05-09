@@ -151,7 +151,7 @@ def test_concat_image_collections():
     for k, v in new_collection.__dict__.items():
         if "path" in k:
             continue
-        if k in ["_df", "_images", "_all_filepaths"]:
+        if k in ["_df", "_images", "_all_filepaths", "file_system"]:
             continue
         assert v == getattr(
             collection, k
@@ -282,10 +282,10 @@ def _test_ndvi(collection, type_should_be, cloudless: bool):
 
             e = sg.explore(ndvi.get_n_largest(n), ndvi.get_n_smallest(n), img)
             assert e.rasters
-            assert e["labels"] == [
+            assert list(e._gdfs) == [
                 f"largest_{n}",
                 f"smallest_{n}",
-            ], e["labels"]
+            ], list(e._gdfs)
 
             new_img = sg.Image([ndvi], res=10)
 
@@ -1524,9 +1524,9 @@ def test_convertion():
         gdf=gdf,
     )
     assert len(e._gdfs) == 4
-    n_rows = [len(gdf) for gdf in e._gdfs]
-    assert n_rows == [30, 821, 791, 791], n_rows
+    n_rows = [len(gdf) for gdf in e._gdfs.values()]
     assert (shape := from_geopandas.values.shape) == (29, 29), shape
+    assert n_rows == [30, 821, 791, 791], n_rows
 
 
 @print_function_name
@@ -1767,6 +1767,7 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
+    test_convertion()
     test_ndvi_predictions()
     test_indexing()
     test_concat_image_collections()
@@ -1776,7 +1777,6 @@ def main():
     test_pixelwise()
     test_merge()
     test_explore()
-    test_convertion()
     test_bbox()
     test_regexes()
     test_date_ranges()
