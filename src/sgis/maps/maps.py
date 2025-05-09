@@ -479,7 +479,7 @@ def clipmap(
         if m.gdfs is None and not len(m.rasters):
             return m
 
-        m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
+        m._gdfs = {label: gdf.clip(mask) for label, gdf in m._gdfs.items()}
         m._gdf = m._gdf.clip(mask)
         m._nan_idx = m._gdf[m._column].isna()
         m._get_unique_values()
@@ -494,7 +494,7 @@ def clipmap(
         if m.gdfs is None:
             return m
 
-        m._gdfs = [gdf.clip(mask) for gdf in m._gdfs]
+        m._gdfs = {label: gdf.clip(mask) for label, gdf in m._gdfs.items()}
         m._gdf = m._gdf.clip(mask)
         m._nan_idx = m._gdf[m._column].isna()
         m._get_unique_values()

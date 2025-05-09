@@ -55,6 +55,7 @@ class NorgeIBilderWms(WmsLoader):
     contains: str | Iterable[str] | None = None
     not_contains: str | Iterable[str] | None = None
     show: bool | Iterable[int] | int = False
+    _use_json: bool = True
 
     def load_tiles(self) -> None:
         """Load all Norge i bilder tiles into self.tiles."""
@@ -184,7 +185,7 @@ class NorgeIBilderWms(WmsLoader):
 
         self.years = [str(int(year)) for year in self.years]
 
-        if all(year in JSON_YEARS for year in self.years):
+        if self._use_json and all(year in JSON_YEARS for year in self.years):
             try:
                 with open(JSON_PATH, encoding="utf-8") as file:
                     self.tiles = json.load(file)

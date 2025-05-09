@@ -172,9 +172,11 @@ def clean_overlay(
     if df2.geometry.name != "geometry":
         df2 = df2.rename_geometry("geometry")
 
-    # to pandas because GeoDataFrame constructor is expensive
+    # to pandas because GeoDataFrame constructor is slow
     df1 = DataFrame(df1).reset_index(drop=True)
     df2 = DataFrame(df2).reset_index(drop=True)
+    df1.geometry.values.crs = None
+    df2.geometry.values.crs = None
 
     overlayed = (
         gpd.GeoDataFrame(

@@ -21,6 +21,129 @@ import sgis as sg
 __test = 1
 
 
+def test_hatches():
+    gdf = sg.to_gdf([(0.5, 0.5), (0, 0), (1, 1), (1, 0), (0, 1), (0.5, 0.5)]).assign(
+        geometry=lambda x: x.geometry.buffer([1.4, 1, 0.8, 0.6, 0.4, 0.2]),
+        value=pd.Series([pd.NA, 1, 2, 3, 4, 5]).astype("UInt8"),
+    )
+
+    m = sg.ThematicMap(
+        dataframe=gdf.iloc[3:].assign(
+            value=lambda df: [str(x) if pd.notna(x) else pd.NA for x in df["value"]]
+        ),
+        column="value",
+        title="hatch on extra data",
+    )
+    m.add_data(no_data=gdf.iloc[3:].buffer(0.2), hatch="/")
+    m.plot()
+    assert list(m._more_data) == ["no_data"], list(m._more_data)
+    assert (x := m._categories_colors_dict) == {
+        "3": "#3b93ff",
+        "4": "#ff3370",
+        "5": "#f7cf19",
+    }, x
+    assert len(m.legend._patches) == 4
+
+    m = sg.ThematicMap(
+        dataframe=gdf,
+        column="value",
+        nan_label="No data",
+        nan_hatch=r"/",
+        title="hatch on nan",
+    )
+    m.plot()
+    assert list(m._more_data) == ["No data"]
+    assert (x := list(m._unique_colors)) == [
+        "#fee6e3",
+        "#fbb0ba",
+        "#ee559d",
+        "#a5017d",
+        "#49006a",
+    ], x
+    assert len(m.legend._patches) == 6
+
+    m = sg.ThematicMap(
+        dataframe=gdf,
+        column="value",
+        nan_label="No Data",
+        title="hatch on buffered background, but gray nan",
+    )
+    m.add_background(gdf.buffer(0.2), hatch="/")
+    m.plot()
+    assert [x.strip() for x in m.legend._categories] == [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "No Data",
+    ], m.legend._categories
+    assert (x := list(m._unique_colors)) == [
+        "#fee6e3",
+        "#fbb0ba",
+        "#ee559d",
+        "#a5017d",
+        "#49006a",
+    ], x
+    assert len(m.legend._patches) == 6
+    assert [x.strip() for x in m.legend._categories] == [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "No Data",
+    ], m.legend._categories
+
+    m = sg.ThematicMap(
+        dataframe=gdf,
+        column="value",
+        title="Numeric, hatch nan",
+        alpha=1,
+        nan_hatch=r"\"",
+        nan_label="No data",
+        legend_kwargs=dict(
+            title="Sirkel numeric",
+        ),
+    )
+    m.plot()
+
+    m = sg.ThematicMap(
+        dataframe=gdf.assign(
+            value=lambda df: [str(x) if pd.notna(x) else pd.NA for x in df["value"]]
+        ),
+        column="value",
+        alpha=1,
+        nan_color="Green",
+        nan_label="No data",
+        title="Green 'No data'",
+        legend_kwargs=dict(
+            title="Sirkel categoric",
+        ),
+    )
+    m.plot()
+    assert len(m._categories_colors_dict) == 5, m._categories_colors_dict
+    assert len(m._more_data) == 1, m._more_data
+    assert m.nan_color == "Green", m.nan_color
+
+    m = sg.ThematicMap(
+        dataframe=gdf.assign(
+            value=lambda df: [str(x) if pd.notna(x) else pd.NA for x in df["value"]]
+        ),
+        column="value",
+        alpha=1,
+        nan_hatch=r"\"",
+        nan_label="No data",
+        title="hatch nan on 'No data'",
+        legend_kwargs=dict(
+            title="Sirkel categoric",
+        ),
+    )
+    m.plot()
+    assert len(m._categories_colors_dict) == 5, m._categories_colors_dict
+    assert len(m._more_data) == 1, m._more_data
+
+
 # @pytest.mark.skip(
 #     reason="This test takes forever on torchgeo bbox, need to investigate"
 # )
@@ -71,7 +194,7 @@ def test_thematicmap(points_oslo):
     points.geometry = points.buffer(np.arange(1, len(points) + 1) * 10)
 
     def incorrect_attributes(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
 
         with pytest.raises(AttributeError):
             m.legend_title = "this should not work"
@@ -84,7 +207,7 @@ def test_thematicmap(points_oslo):
     incorrect_attributes(points)
 
     def pretty_labels(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.title = inspect.stack()[0][3]
         m.legend.title = "not pretty_labels, no bins"
         m.legend.pretty_labels = False
@@ -96,7 +219,7 @@ def test_thematicmap(points_oslo):
             "314 ",
             "377  - 440 ",
         ], m.legend._categories
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.title = inspect.stack()[0][3]
         m.legend.title = "pretty_labels, no bins"
         m.legend.pretty_labels = True
@@ -112,7 +235,7 @@ def test_thematicmap(points_oslo):
         # column with the exact bin values
         points["col"] = [63, 100, 150, 200, 250, 300, 440]
 
-        m = sg.ThematicMap(points, points, points, "col")
+        m = sg.ThematicMap(pd.concat([points, points, points]), "col")
         m.bins = (99.99, 199.999, 299.99)
         m.title = "not pretty_labels, bins: " + ", ".join(
             [str(bin_) for bin_ in m.bins]
@@ -127,7 +250,7 @@ def test_thematicmap(points_oslo):
             "300  - 440 ",
         ], m.legend._categories
 
-        m = sg.ThematicMap(points, points, points, "col")
+        m = sg.ThematicMap(pd.concat([points, points, points]), "col")
         m.bins = (100, 200, 300)
         m.title = "not pretty_labels, bins: " + ", ".join(
             [str(bin_) for bin_ in m.bins]
@@ -143,7 +266,7 @@ def test_thematicmap(points_oslo):
             "440 ",
         ], m.legend._categories
 
-        m = sg.ThematicMap(points, points, points, "col")
+        m = sg.ThematicMap(pd.concat([points, points, points]), "col")
         m.bins = (99.99, 199.999, 299.99)
         m.title = "pretty_labels, bins: " + ", ".join([str(bin_) for bin_ in m.bins])
         m.legend.title = "pretty_labels, bins"
@@ -157,7 +280,7 @@ def test_thematicmap(points_oslo):
             "301  to 440 ",
         ], m.legend._categories
 
-        m = sg.ThematicMap(points, points, points, "col")
+        m = sg.ThematicMap(pd.concat([points, points, points]), "col")
         m.bins = (100, 200, 300)
         m.title = "pretty_labels, bins: " + ", ".join([str(bin_) for bin_ in m.bins])
         m.legend.title = "pretty_labels, bins"
@@ -184,7 +307,7 @@ def test_thematicmap(points_oslo):
     thousand_sep_decimal_mark(points)
 
     def size_10(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.size = 10
         m.title = inspect.stack()[0][3]
         m.plot()
@@ -196,8 +319,9 @@ def test_thematicmap(points_oslo):
     size_10(points)
 
     def check_colors_bins(points):
-        m = sg.ThematicMap(points, points, points, "meters")
-        m.title = "added title"
+        m = sg.ThematicMap(
+            pd.concat([points, points, points]), title="added title", column="meters"
+        )
         m.plot()
         assert m._k == 5
         assert m.column == "length"
@@ -226,7 +350,8 @@ def test_thematicmap(points_oslo):
             "300 m to 440 m ",
         ]
 
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
+        assert not m._is_categorical
         m.bins = [(min(points.length)), 100, 200, 300, (max(points.length))]
         m.legend.labels = [
             f"{int(round(min(points.length),0))} m to 100 m ",
@@ -239,7 +364,7 @@ def test_thematicmap(points_oslo):
         assert [int(round(x, 0)) for x in m.bins] == [63, 100, 200, 300, 440], m.bins
         assert m.legend._categories == labels_should_be, m.legend._categories
 
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.bins = [100, 200, 300]
         m.legend.labels = [
             f"{int(round(min(points.length),0))} m to 100 m ",
@@ -255,12 +380,12 @@ def test_thematicmap(points_oslo):
     manual_labels_and_bins(points)
 
     def k_is_7_equal_to_n_unique(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.k = 7
         m.title = "k=7 (all)"
         m.plot()
         assert m.title == "k=7 (all)"
-        assert m.labels == ["points"] * 3
+        # assert list(m._gdfs) == ["points"] * 3, m._gdfs
         assert m.cmap == "RdPu"
         assert list(m._unique_colors) == [
             "#fee6e3",
@@ -290,10 +415,8 @@ def test_thematicmap(points_oslo):
 
     def k_is_3(points):
         m = sg.ThematicMap(
-            points,
-            points,
-            points,
-            "meters",
+            pd.concat([points, points, points]),
+            column="meters",
             cmap="viridis",
             dark=True,
             k=3,
@@ -314,7 +437,7 @@ def test_thematicmap(points_oslo):
     k_is_3(points)
 
     def manual_bins_and_legend_suffix_sep(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.bins = (100, 200, 300)
         m.legend.label_sep = "to"
         m.legend.label_suffix = "m"
@@ -331,7 +454,9 @@ def test_thematicmap(points_oslo):
 
     def rounding_1(points):
         m = sg.ThematicMap(
-            points, points, points, "meters", legend_kwargs=dict(rounding=1)
+            pd.concat([points, points, points]),
+            column="meters",
+            legend_kwargs=dict(rounding=1),
         )
         m.title = inspect.stack()[0][3]
         m.plot()
@@ -352,7 +477,7 @@ def test_thematicmap(points_oslo):
             "col_with_nan",
         ] = pd.NA
 
-        m = sg.ThematicMap(with_nan, "col_with_nan")
+        m = sg.ThematicMap(with_nan, column="col_with_nan")
         m.title = "Middle values missing"
         m.k = 3
         m.plot()
@@ -360,8 +485,8 @@ def test_thematicmap(points_oslo):
             "#fee6e3",
             "#ee559d",
             "#49006a",
-            "#c2c2c2",
         ], m._unique_colors
+        assert list(m._more_data) == ["Missing"]
 
         def _to_int(value):
             try:
@@ -372,14 +497,14 @@ def test_thematicmap(points_oslo):
         with_nan["col_with_nan_cat"] = with_nan["col_with_nan"].map(_to_int).astype(str)
         with_nan.loc[with_nan.col_with_nan_cat == "nan", "col_with_nan_cat"] = pd.NA
 
-        m = sg.ThematicMap(with_nan, "col_with_nan_cat")
+        m = sg.ThematicMap(with_nan, column="col_with_nan_cat")
         m.title = "Middle values missing, categorical"
         m.plot()
 
     with_nans(points)
 
     def cmap_start_and_stop(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.cmap = "viridis"
         m.k = 4
         m.cmap_start = 100
@@ -402,7 +527,7 @@ def test_thematicmap(points_oslo):
                 points.iloc[[4]].assign(large_number=100008000.4321),
                 points.iloc[[5]].assign(large_number=100010000.3232),
                 points.iloc[[6]].assign(large_number=100012000.2323),
-                "large_number",
+                column="large_number",
             )
             m.k = k
             m.plot()
@@ -411,7 +536,7 @@ def test_thematicmap(points_oslo):
         p2 = points.iloc[2:4].assign(large_number=100000001)
         p3 = points.iloc[4:].assign(large_number=100000002)
 
-        m = sg.ThematicMap(p1, p2, p3, "large_number")
+        m = sg.ThematicMap(p1, p2, p3, column="large_number")
         m.title = "n_unique=3"
         m.plot()
         assert len(m._unique_values) == 3, m._unique_values
@@ -428,7 +553,7 @@ def test_thematicmap(points_oslo):
             points.iloc[[4]].assign(large_number=100008000.4321),
             points.iloc[[5]].assign(large_number=100010000.3232),
             points.iloc[[6]].assign(large_number=100012000.2323),
-            "large_number",
+            column="large_number",
         )
         m.plot()
         assert len(m._unique_values) == 7, m._unique_values
@@ -453,7 +578,7 @@ def test_thematicmap(points_oslo):
                 points.iloc[[4]].assign(small_number=0.00004),
                 points.iloc[[5]].assign(small_number=0.00005),
                 points.iloc[[6]].assign(small_number=0.00006),
-                "small_number",
+                column="small_number",
             )
             m.k = k
             m.plot()
@@ -461,7 +586,7 @@ def test_thematicmap(points_oslo):
         buffered1 = points.iloc[:2].assign(small_number=0.000000)
         buffered2 = points.iloc[2:4].assign(small_number=0.00001)
         buffered3 = points.iloc[4:].assign(small_number=0.00002)
-        m = sg.ThematicMap(buffered1, buffered2, buffered3, "small_number")
+        m = sg.ThematicMap(buffered1, buffered2, buffered3, column="small_number")
         m.title = "n_unique=3"
         m.plot()
         assert len(m._unique_values) == 3, m._unique_values
@@ -485,7 +610,7 @@ def test_thematicmap(points_oslo):
             points.iloc[[4]].assign(small_number=0.00004),
             points.iloc[[5]].assign(small_number=0.00005),
             points.iloc[[6]].assign(small_number=0.00006),
-            "small_number",
+            column="small_number",
         )
         m.k = 7
         m.title = "k=7"
@@ -510,7 +635,7 @@ def test_thematicmap(points_oslo):
             points.iloc[[4]].assign(quite_small_number=1.4),
             points.iloc[[5]].assign(quite_small_number=1.8),
             points.iloc[[6]].assign(quite_small_number=2.6),
-            "quite_small_number",
+            column="quite_small_number",
         )
         m.title = "k=5"
         m.plot()
@@ -531,7 +656,7 @@ def test_thematicmap(points_oslo):
                 points.iloc[[4]].assign(negative_number=-100_004),
                 points.iloc[[5]].assign(negative_number=-100_005),
                 points.iloc[[6]].assign(negative_number=-100_006),
-                "negative_number",
+                column="negative_number",
             )
             m.k = k
             m.title = f"k={k}"
@@ -540,7 +665,7 @@ def test_thematicmap(points_oslo):
         buffered1 = points.iloc[:2].assign(negative_number=-100_000)
         buffered2 = points.iloc[2:4].assign(negative_number=-100_001)
         buffered3 = points.iloc[4:].assign(negative_number=-100_002)
-        m = sg.ThematicMap(buffered1, buffered2, buffered3, "negative_number")
+        m = sg.ThematicMap(buffered1, buffered2, buffered3, column="negative_number")
         m.plot()
         assert len(m._unique_values) == 3, m._unique_values
         assert list(m._unique_colors) == [
@@ -562,7 +687,7 @@ def test_thematicmap(points_oslo):
             points.iloc[[4]].assign(negative_number=-100_004),
             points.iloc[[5]].assign(negative_number=-100_005),
             points.iloc[[6]].assign(negative_number=-100_006),
-            "negative_number",
+            column="negative_number",
         )
         m.title = "large, negative numbers"
         m.plot()
@@ -576,7 +701,7 @@ def test_thematicmap(points_oslo):
             points.iloc[[4]].assign(negative_number=-0.00232),
             points.iloc[[5]].assign(negative_number=-0.0223),
             points.iloc[[6]].assign(negative_number=-0.3232),
-            "negative_number",
+            column="negative_number",
         )
         m.title = "small, negative numbers"
         m.plot()
@@ -585,7 +710,7 @@ def test_thematicmap(points_oslo):
     negative_numbers(points)
 
     def scheme_is_none(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.title = inspect.stack()[0][3]
         m.scheme = None
         m.plot()
@@ -593,7 +718,7 @@ def test_thematicmap(points_oslo):
     scheme_is_none(points)
 
     def assert_manually(points):
-        m = sg.ThematicMap(points, points, points, "meters")
+        m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.cmap = "plasma"
         m.title_fontsize = 20
         m.legend.fontsize = 30
@@ -606,7 +731,9 @@ def test_thematicmap(points_oslo):
 
     def categorical_column(points):
         points["category"] = [*"abcddea"]
-        m = sg.ThematicMap(points, "category", legend_kwargs=dict(pretty_labels=False))
+        m = sg.ThematicMap(
+            points, column="category", legend_kwargs=dict(pretty_labels=False)
+        )
         m.plot()
         assert m.legend._categories == ["a", "b", "c", "d", "e"], m.legend._categories
 
@@ -618,6 +745,7 @@ def main():
 
     test_thematicmap2()
     test_thematicmap(points_oslo())
+    test_hatches()
 
 
 if __name__ == "__main__":

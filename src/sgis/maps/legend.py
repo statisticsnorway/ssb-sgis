@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
-from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from pandas import Series
 
 from ..geopandas_tools.bounds import bounds_to_points
@@ -50,6 +50,7 @@ LEGEND_KWARGS = {
     "rounding",
     "facecolor",
     "labelcolor",
+    "hatch",
 }
 
 LOWERCASE_WORDS = {
@@ -265,8 +266,17 @@ class Legend:
         else:
             self._markersize = size
 
+    def _get_patch(self, color, edgecolor="black", **kwargs) -> Patch:
+        return Patch(
+            facecolor=color,
+            edgecolor=edgecolor,
+            **kwargs,
+        )
+
     def _prepare_categorical_legend(
-        self, categories_colors: dict, nan_label: str
+        self,
+        categories_colors: dict,
+        hatch: str,
     ) -> None:
         for attr in self.__dict__.keys():
             if attr in self.kwargs:
@@ -279,31 +289,30 @@ class Legend:
             }
         # swap column values with label list and hope it's in the correct order
         elif self.labels:
-            categories_colors = {
-                label: color
-                for label, color in zip(
-                    self.labels, categories_colors.values(), strict=True
+            if len(self.labels) != len(categories_colors):
+                raise ValueError(
+                    f"Unequal length of labels {self.labels} and categories/colors  {categories_colors}"
                 )
-            }
+            categories_colors = dict(
+                zip(self.labels, categories_colors.values(), strict=True)
+            )
 
         self._patches, self._categories = [], []
         for category, color in categories_colors.items():
             if self.pretty_labels:
                 category = prettify_label(category)
-            if category == nan_label:
-                self._categories.append(nan_label)
-            else:
-                self._categories.append(category)
+            self._categories.append(category)
+            self._patches.append(self._get_patch(color=color, hatch=hatch))
+
+    def _add_more_data_to_legend(self, more_data: dict[str, dict]) -> None:
+        for label, datadict in more_data.items():
+            if self.pretty_labels:
+                label = prettify_label(label)
+            self._categories.append(label)
+            datadict = {key: value for key, value in datadict.items() if key != "gdf"}
             self._patches.append(
-                Line2D(
-                    [0],
-                    [0],
-                    linestyle="none",
-                    marker="o",
-                    alpha=self.kwargs.get("alpha", 1),
-                    markersize=self._markersize,
-                    markerfacecolor=color,
-                    markeredgewidth=0,
+                self._get_patch(
+                    **datadict,
                 )
             )
 
@@ -595,40 +604,34 @@ class ContinousLegend(Legend):
         self,
         bins: list[float],
         colors: list[str],
-        nan_label: str,
         bin_values: dict,
+        nan_label: str,
+        hatch: str,
     ) -> None:
         # TODO: clean up this messy method
 
-        for attr in self.kwargs:
+        if (
+            colors is not None
+            and self.labels is not None
+            and len(self.labels) != len(colors)
+        ):
+            raise ValueError(
+                "Label list must be same length as the number of groups. "
+                f"Got k={len(colors)} and labels={len(self.labels)}."
+                f"labels: {', '.join(self.labels)}"
+                f"colors: {', '.join(colors)}"
+                f"bins: {bins}"
+            )
+
+        for attr in dict(self.kwargs):
             if attr in self.__dict__:
                 self[attr] = self.kwargs.pop(attr)
 
         self._patches, self._categories = [], []
-
         for color in colors:
-            self._patches.append(
-                Line2D(
-                    [0],
-                    [0],
-                    linestyle="none",
-                    marker="o",
-                    alpha=self.kwargs.get("alpha", 1),
-                    markersize=self._markersize,
-                    markerfacecolor=color,
-                    markeredgewidth=0,
-                )
-            )
+            self._patches.append(self._get_patch(color=color, hatch=hatch))
 
         if self.labels:
-            if len(self.labels) != len(colors):
-                raise ValueError(
-                    "Label list must be same length as the number of groups. "
-                    f"Got k={len(colors)} and labels={len(self.labels)}."
-                    f"labels: {', '.join(self.labels)}"
-                    f"colors: {', '.join(colors)}"
-                    f"bins: {bins}"
-                )
             self._categories = self.labels
 
         elif len(bins) == len(colors):
@@ -702,6 +705,9 @@ class ContinousLegend(Legend):
                     max_rounded = self._format_number(max_rounded)
                     label = self._get_two_value_label(min_rounded, max_rounded)
                     self._categories.append(label)
+
+        # if nan_label:
+        #     self._categories.append(nan_label)
 
     def _get_two_value_label(self, value1: int | float, value2: int | float) -> str:
         return (
