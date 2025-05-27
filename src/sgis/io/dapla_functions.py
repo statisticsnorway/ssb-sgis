@@ -40,7 +40,10 @@ from ..helpers import _get_file_system
 try:
     from gcsfs import GCSFileSystem
 except ImportError:
-    pass
+
+    class GCSFileSystem:
+        """Placeholder."""
+
 
 PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
 NULL_VALUE = "__HIVE_DEFAULT_PARTITION__"
@@ -96,6 +99,7 @@ def read_geopandas(
             file_system=file_system,
             use_threads=use_threads,
             pandas_fallback=pandas_fallback,
+            filters=filters,
             **kwargs,
         )
 
@@ -108,7 +112,9 @@ def read_geopandas(
     # because glob is slow without GCSFileSystem from the root partition
     if single_eq_filter:
         try:
-            expression = "".join(next(iter(filters))).replace("==", "=")
+            expression: list[str] = "".join(
+                [str(x) for x in next(iter(filters))]
+            ).replace("==", "=")
             glob_func = _get_glob_func(file_system)
             suffix: str = Path(gcs_path).suffix
             paths = glob_func(str(Path(gcs_path) / expression / f"*{suffix}"))
@@ -119,6 +125,7 @@ def read_geopandas(
                     file_system=file_system,
                     use_threads=use_threads,
                     pandas_fallback=pandas_fallback,
+                    filters=filters,
                     **kwargs,
                 )
         except FileNotFoundError:
@@ -182,7 +189,11 @@ def _read_geopandas_from_iterable(
         paths = list(bounds_series.index)
 
     results: list[pyarrow.Table] = _read_pyarrow_with_treads(
-        paths, file_system=file_system, mask=mask, use_threads=use_threads, **kwargs
+        paths,
+        file_system=file_system,
+        mask=mask,
+        use_threads=use_threads,
+        **kwargs,
     )
     if results:
         try:
@@ -198,10 +209,15 @@ def _read_geopandas_from_iterable(
 
 
 def _read_pyarrow_with_treads(
-    paths: list[str | Path | os.PathLike], file_system, use_threads, mask, **kwargs
+    paths: list[str | Path | os.PathLike],
+    file_system,
+    use_threads,
+    mask,
+    filters,
+    **kwargs,
 ) -> list[pyarrow.Table]:
     read_partial = functools.partial(
-        _read_pyarrow, mask=mask, file_system=file_system, **kwargs
+        _read_pyarrow, filters=filters, mask=mask, file_system=file_system, **kwargs
     )
     if not use_threads:
         return [x for x in map(read_partial, paths) if x is not None]
@@ -645,7 +661,7 @@ def expression_match_path(expression: ds.Expression, path: str) -> bool:
     """Check if a file path match a pyarrow Expression.
 
     Examples:
-    --------
+    ---------
     >>> import pyarrow.compute as pc
     >>> path = 'data/file.parquet/x=1/y=10/name0.parquet'
     >>> expression = (pc.Field("x") == 1) & (pc.Field("y") == 10)
@@ -758,6 +774,7 @@ def _read_partitioned_parquet(
         ),
         file_system=file_system,
         mask=mask,
+        filters=filters,
         use_threads=use_threads,
         **kwargs,
     )
