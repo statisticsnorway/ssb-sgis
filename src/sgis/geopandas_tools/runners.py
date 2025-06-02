@@ -151,11 +151,12 @@ class GridSizeUnionRunner(UnionRunner):
         self,
         df: GeoDataFrame | GeoSeries | pd.DataFrame | pd.Series,
         by: str | list[str] | None = None,
+        grid_size: int | float | None = None,
         **kwargs,
     ) -> GeoSeries | GeoDataFrame:
         """Run groupby on geometries in parallel (if n_jobs > 1) with grid_sizes."""
         try:
-            return super().run(df, by=by, **kwargs)
+            return super().run(df, by=by, grid_size=grid_size, **kwargs)
         except GEOSException:
             pass
         for i, grid_size in enumerate(self.grid_sizes):

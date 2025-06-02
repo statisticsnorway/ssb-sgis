@@ -603,7 +603,6 @@ def split_by_neighbors(df, split_by, tolerance, grid_size=None) -> GeoDataFrame:
             buff(df, tolerance),
             how="identity",
             grid_size=grid_size,
-            geom_type="polygon",
         )
         .pipe(get_line_segments)
         .reset_index(drop=True)
