@@ -120,6 +120,53 @@ class UnionRunner(AbstractRunner):
         return agged
 
 
+@dataclass
+class GridSizeUnionRunner(UnionRunner):
+    """Run shapely.union_all with pandas.groupby for different grid sizes until no GEOSException is raised.
+
+    Subclasses must implement a 'run' method that takes the arguments
+    'df' (GeoDataFrame or GeoSeries), 'by' (optional column to group by), 'grid_size'
+    (passed to shapely.union_all) and **kwargs passed to pandas.DataFrame.groupby.
+    Defaults to None, meaning the default runner with number of workers set
+    to 'n_jobs'.
+
+
+    Args:
+        n_jobs: Number of workers.
+        backend: Backend for the workers.
+    """
+
+    n_jobs: int
+    backend: str | None = None
+    grid_sizes: list[float | int] | None = None
+
+    def __post_init__(self) -> None:
+        """Check that grid_sizes is passed."""
+        if self.grid_sizes is None:
+            raise ValueError(
+                f"must set 'grid_sizes' in the {self.__class__.__name__} initialiser."
+            )
+
+    def run(
+        self,
+        df: GeoDataFrame | GeoSeries | pd.DataFrame | pd.Series,
+        by: str | list[str] | None = None,
+        grid_size: int | float | None = None,
+        **kwargs,
+    ) -> GeoSeries | GeoDataFrame:
+        """Run groupby on geometries in parallel (if n_jobs > 1) with grid_sizes."""
+        try:
+            return super().run(df, by=by, grid_size=grid_size, **kwargs)
+        except GEOSException:
+            pass
+        for i, grid_size in enumerate(self.grid_sizes):
+            try:
+                return super().run(df, by=by, grid_size=grid_size, **kwargs)
+            except GEOSException as e:
+                if i == len(self.grid_sizes) - 1:
+                    raise e
+
+
 def _strtree_query(
     arr1: np.ndarray,
     arr2: np.ndarray,

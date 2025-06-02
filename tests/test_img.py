@@ -28,7 +28,6 @@ import sys
 
 sys.path.insert(0, src)
 
-
 import sgis as sg
 
 path_sentinel = testdata + "/sentinel2"

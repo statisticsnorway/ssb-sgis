@@ -296,13 +296,11 @@ class ThematicMap(Map):
         if self._gdf[self._column].isna().any():
             isnas = []
             for label, gdf in self._gdfs.items():
-
                 isnas.append(gdf[gdf[self._column].isna()])
                 self._gdfs[label] = gdf[gdf[self._column].notna()]
-            color = self.facecolor if nan_hatch else self.nan_color
             self._more_data[nan_label] = {
                 "gdf": pd.concat(isnas, ignore_index=True),
-                "color": color,
+                "color": self.nan_color,
                 "hatch": nan_hatch,
             } | new_kwargs
             self._gdf = pd.concat(self.gdfs.values(), ignore_index=True)
