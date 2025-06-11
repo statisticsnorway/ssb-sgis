@@ -185,7 +185,9 @@ def _read_geopandas_from_iterable(
                     except ArrowInvalid as e:
                         if file_system.isfile(path):
                             raise ArrowInvalid(e, path) from e
-            return GeoDataFrame(cols | {"geometry": []})
+            first_path = next(iter(paths.index))
+            _, crs = _get_bounds_parquet(first_path, file_system)
+            return GeoDataFrame(cols | {"geometry": []}, crs=crs)
         paths = list(bounds_series.index)
 
     results: list[pyarrow.Table] = _read_pyarrow_with_treads(
@@ -203,7 +205,9 @@ def _read_geopandas_from_iterable(
                 print(e)
                 raise e
     else:
-        df = GeoDataFrame(cols | {"geometry": []})
+        first_path = next(iter(paths))
+        _, crs = _get_bounds_parquet(first_path, file_system)
+        df = GeoDataFrame(cols | {"geometry": []}, crs=crs)
 
     return df
 
@@ -786,7 +790,8 @@ def _read_partitioned_parquet(
 
     # add columns to empty DataFrame
     first_path = next(iter(child_paths + [path]))
-    df = pd.DataFrame(columns=_get_columns(first_path, file_system))
+    _, crs = _get_bounds_parquet(first_path, file_system)
+    df = GeoDataFrame(columns=_get_columns(first_path, file_system), crs=crs)
     if kwargs.get("columns"):
         return df[list(kwargs["columns"])]
     return df
