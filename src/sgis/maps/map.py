@@ -259,6 +259,9 @@ class Map:
             self._fix_nans()
 
         def _map(value, label):
+            print(self._categories_colors_dict)
+            print(value)
+            print(label)
             try:
                 return self._categories_colors_dict[value]
             except KeyError as e:
