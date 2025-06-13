@@ -259,9 +259,6 @@ class Map:
             self._fix_nans()
 
         def _map(value, label):
-            print(self._categories_colors_dict)
-            print(value)
-            print(label)
             try:
                 return self._categories_colors_dict[value]
             except KeyError as e:
@@ -600,6 +597,13 @@ class Map:
 
     def _make_categories_colors_dict(self) -> None:
         if "color" in self.kwargs and is_dict_like(self.kwargs["color"]):
+            if self._column is None and not all(
+                key in self.kwargs["color"] for key in self._gdfs
+            ):
+                raise ValueError(
+                    "When specifying 'color' as dict-like, you must also pass a column "
+                    "or all gdfs passed must have labels/names corresponding to keys in the color dict."
+                )
             self._categories_colors_dict = self.kwargs.pop("color")
         elif not self._cmap and len(self._unique_values) <= len(_CATEGORICAL_CMAP):
             # custom categorical cmap
