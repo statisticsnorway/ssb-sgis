@@ -15,7 +15,6 @@ from geopandas import GeoSeries
 from pandas import DataFrame
 from pandas import MultiIndex
 from pandas import Series
-from sklearn.neighbors import NearestNeighbors
 
 from ..conf import _get_instance
 from ..conf import config
@@ -467,6 +466,8 @@ def k_nearest_neighbors(
         of the neighbors.
 
     """
+    from sklearn.neighbors import NearestNeighbors
+
     if not len(to_array) or not len(from_array):
         return np.array([]), np.array([])
 

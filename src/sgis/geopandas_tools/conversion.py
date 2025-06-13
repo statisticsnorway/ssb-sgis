@@ -43,14 +43,6 @@ except ImportError:
         """Placeholder."""
 
 
-try:
-    from torchgeo.datasets.geo import RasterDataset
-except ImportError:
-
-    class RasterDataset:  # type: ignore
-        """Placeholder."""
-
-
 def crs_to_string(crs: Any) -> str:
     """Extract the string of a CRS-like object."""
     if crs is None:
@@ -415,21 +407,6 @@ def to_gdf(
             except Exception:
                 pass
 
-    if isinstance(obj, RasterDataset):
-        # read the entire dataset
-        obj = obj[obj.bounds]
-        crs = obj["crs"]
-        array = np.array(obj["image"])
-        transform = get_transform_from_bounds(obj["bbox"], shape=array.shape)
-        return gpd.GeoDataFrame(
-            pd.DataFrame(
-                _array_to_geojson(array, transform),
-                columns=["value", "geometry"],
-            ),
-            geometry="geometry",
-            crs=crs,
-        )
-
     if is_array_like(geometry) and len(geometry) == len(obj):  # type: ignore
         geometry = GeoSeries(
             _make_one_shapely_geom(g) for g in geometry if g is not None  # type: ignore
@@ -442,10 +419,6 @@ def to_gdf(
     # get done with iterators that would get consumed by 'all' later
     if isinstance(obj, Iterator) and not isinstance(obj, Sized):
         obj = list(obj)
-        # obj = GeoSeries(
-        #     (_make_one_shapely_geom(g) for g in obj if g is not None), index=index
-        # )
-        # return GeoDataFrame({geom_col: obj}, geometry=geom_col, crs=crs, **kwargs)
 
     if hasattr(obj, "__len__") and not len(obj):
         return GeoDataFrame({"geometry": []}, crs=crs)

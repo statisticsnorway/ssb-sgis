@@ -436,6 +436,7 @@ class NetworkAnalysis:
         rowwise: bool = False,
         strict: bool = False,
         frequency_col: str = "frequency",
+        n_jobs: int | None = None,
     ) -> GeoDataFrame:
         """Finds the number of times each line segment was visited in all trips.
 
@@ -465,6 +466,7 @@ class NetworkAnalysis:
                 to False.
             frequency_col: Name of column with the number of times each road was
                 visited. Defaults to 'frequency'.
+            n_jobs: Number of parallell jobs.
 
         Returns:
             A GeoDataFrame with all line segments that were visited at least once,
@@ -635,6 +637,7 @@ class NetworkAnalysis:
             graph=self.graph,
             roads=self.network.gdf,
             weight_df=weight_df,
+            n_jobs=n_jobs,
         )
 
         if isinstance(results, GeoDataFrame):
@@ -665,6 +668,7 @@ class NetworkAnalysis:
         rowwise: bool = False,
         destination_count: int | None = None,
         cutoff: int | float | None = None,
+        n_jobs: int | None = None,
     ) -> GeoDataFrame:
         """Returns the geometry of the low-cost route between origins and destinations.
 
@@ -685,6 +689,7 @@ class NetworkAnalysis:
             cutoff: the maximum cost (weight) for the trips. Defaults to None,
                 meaning all rows will be included. NaNs will also be removed if cutoff
                 is specified.
+            n_jobs: Number of parallell jobs.
 
         Returns:
             A DataFrame with the geometry of the routes between origin and destination.
@@ -738,6 +743,7 @@ class NetworkAnalysis:
             weight=self.rules.weight,
             roads=self.network.gdf,
             od_pairs=od_pairs,
+            n_jobs=n_jobs,
         )
 
         if cutoff is not None:

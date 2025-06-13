@@ -34,13 +34,6 @@ from .map import Map
 from .thematicmap import ThematicMap
 from .wms import WmsLoader
 
-try:
-    from torchgeo.datasets.geo import RasterDataset
-except ImportError:
-
-    class RasterDataset:
-        """Placeholder."""
-
 
 def _get_location_mask(kwargs: dict, gdfs) -> tuple[GeoDataFrame | None, dict]:
     try:
@@ -530,7 +523,7 @@ def explore_locals(
 
     frame = inspect.currentframe().f_back
 
-    allowed_types = (GeoDataFrame, GeoSeries, Geometry, RasterDataset)
+    allowed_types = (GeoDataFrame, GeoSeries, Geometry)
 
     local_gdfs = {}
     while True:

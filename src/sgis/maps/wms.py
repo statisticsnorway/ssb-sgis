@@ -20,7 +20,7 @@ JSON_YEARS = [str(year) for year in range(1999, 2025)]
 DEFAULT_YEARS: tuple[str] = tuple(
     str(year)
     for year in range(
-        int(datetime.datetime.now().year) - 8,
+        int(datetime.datetime.now().year) - 10,
         int(datetime.datetime.now().year) + 1,
     )
 )
@@ -111,6 +111,7 @@ class NorgeIBilderWms(WmsLoader):
                     this_tile["year"] = year
                 else:
                     this_tile["year"] = "9999"
+
                 all_tiles.append(this_tile)
 
         self.tiles = sorted(all_tiles, key=lambda x: x["year"])

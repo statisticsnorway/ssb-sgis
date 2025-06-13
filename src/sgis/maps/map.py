@@ -14,12 +14,12 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from pandas.api.types import is_dict_like
 
 try:
     from jenkspy import jenks_breaks
 except ImportError:
     pass
-from mapclassify import classify
 from pandas.errors import PerformanceWarning
 from shapely import Geometry
 
@@ -33,14 +33,6 @@ from ..helpers import unit_is_meters
 from ..raster.image_collection import Band
 from ..raster.image_collection import Image
 from ..raster.image_collection import ImageCollection
-
-try:
-    from torchgeo.datasets.geo import RasterDataset
-except ImportError:
-
-    class RasterDataset:
-        """Placeholder."""
-
 
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(
@@ -442,7 +434,6 @@ class Map:
             GeoDataFrame,
             GeoSeries,
             Geometry,
-            RasterDataset,
             ImageCollection,
             Image,
             Band,
@@ -605,22 +596,29 @@ class Map:
         return False
 
     def _make_categories_colors_dict(self) -> None:
-        # custom categorical cmap
-        if not self._cmap and len(self._unique_values) <= len(_CATEGORICAL_CMAP):
+        if "color" in self.kwargs and is_dict_like(self.kwargs["color"]):
+            if self._column is None and not all(
+                key in self.kwargs["color"] for key in self._gdfs
+            ):
+                raise ValueError(
+                    "When specifying 'color' as dict-like, you must also pass a column "
+                    "or all gdfs passed must have labels/names corresponding to keys in the color dict."
+                )
+            self._categories_colors_dict = self.kwargs.pop("color")
+        elif not self._cmap and len(self._unique_values) <= len(_CATEGORICAL_CMAP):
+            # custom categorical cmap
             self._categories_colors_dict = {
                 category: _CATEGORICAL_CMAP[i]
                 for i, category in enumerate(self._unique_values)
             } | self._categories_colors_dict
         elif self._cmap:
             cmap = matplotlib.colormaps.get_cmap(self._cmap)
-
             self._categories_colors_dict = {
                 category: colors.to_hex(cmap(int(i)))
                 for i, category in enumerate(self._unique_values)
             } | self._categories_colors_dict
         else:
             cmap = matplotlib.colormaps.get_cmap("tab20")
-
             self._categories_colors_dict = {
                 category: colors.to_hex(cmap(int(i)))
                 for i, category in enumerate(self._unique_values)
@@ -664,6 +662,9 @@ class Map:
         if self.scheme == "jenks":
             bins = jenks_breaks(gdf[column].dropna(), n_classes=n_classes)
         else:
+            # local import because slow
+            from mapclassify import classify
+
             binning = classify(
                 np.asarray(gdf[column].dropna()),
                 scheme=self.scheme,
