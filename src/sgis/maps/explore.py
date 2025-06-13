@@ -69,14 +69,6 @@ from .map import _determine_best_name
 from .tilesources import kartverket
 from .tilesources import xyz
 
-try:
-    from torchgeo.datasets.geo import RasterDataset
-except ImportError:
-
-    class RasterDataset:
-        """Placeholder."""
-
-
 # the geopandas._explore raises a deprication warning. Ignoring for now.
 warnings.filterwarnings(
     action="ignore", category=matplotlib.MatplotlibDeprecationWarning
@@ -207,9 +199,9 @@ def _single_band_to_arr_is_too_much_nodata(
     if band.has_array and mask is None:
         arr = band.values
     elif band.has_array:
-        arr = band.clip(mask).values
+        arr = band.copy().clip(mask).values
     else:
-        arr = band.load(indexes=1, bounds=mask).values
+        arr = band.copy().load(indexes=1, bounds=mask).values
 
     if _is_too_much_nodata([arr], band.nodata, max_nodata_percentage):
         return True
@@ -618,6 +610,8 @@ class Explore(Map):
                 arr,
                 bounds=[[miny, minx], [maxy, maxx]],
                 show=self._show_rasters,
+                vmin=arr.min(),
+                vmax=arr.max(),
                 **kwargs,
             )
             image_overlay.layer_name = Path(label).stem
@@ -1399,9 +1393,9 @@ def _add_one_image(
     def load(band_id: str) -> Band:
         band = image[band_id]
         if band.has_array and mask is not None:
-            band = band.clip(mask, copy=True)
+            band = band.copy().clip(mask, copy=True)
         elif not band.has_array:
-            band = band.load(indexes=1, bounds=mask)
+            band = band.copy().load(indexes=1, bounds=mask)
         return band
 
     for red, blue, green in rbg_bands:

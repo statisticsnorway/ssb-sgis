@@ -312,7 +312,7 @@ def main():
     from oslo import points_oslo
     from oslo import roads_oslo
 
-    # not_test_wms_json()
+    not_test_wms_json()
 
     test_explore(points_oslo(), roads_oslo())
     test_image_collection()

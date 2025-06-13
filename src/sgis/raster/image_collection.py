@@ -26,14 +26,11 @@ import numpy as np
 import pandas as pd
 import pyproj
 import rasterio
-from affine import Affine
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from pandas.api.types import is_array_like
 from pandas.api.types import is_dict_like
 from rasterio.enums import MergeAlg
-from scipy import stats
-from scipy.ndimage import binary_dilation
-from scipy.ndimage import binary_erosion
 from shapely import Geometry
 from shapely import box
 from shapely import unary_union
@@ -64,42 +61,11 @@ except ImportError:
         """Placeholder."""
 
 
-try:
-    from rioxarray.exceptions import NoDataInBounds
-    from rioxarray.merge import merge_arrays
-    from rioxarray.rioxarray import _generate_spatial_coords
-except ImportError:
-    pass
-try:
-    from xarray import DataArray
-    from xarray import Dataset
-    from xarray import combine_by_coords
-except ImportError:
-
-    class DataArray:
-        """Placeholder."""
-
-    class Dataset:
-        """Placeholder."""
-
-    def combine_by_coords(*args, **kwargs) -> None:
-        raise ImportError("xarray")
-
-
-try:
-    from gcsfs.core import GCSFile
-except ImportError:
-
-    class GCSFile:
-        """Placeholder."""
-
-
 from ..conf import _get_instance
 from ..conf import config
 from ..geopandas_tools.bounds import get_total_bounds
 from ..geopandas_tools.conversion import to_bbox
 from ..geopandas_tools.conversion import to_gdf
-from ..geopandas_tools.conversion import to_geoseries
 from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
 from ..helpers import _fix_path
@@ -799,41 +765,6 @@ class _ImageBandBase(_ImageBase):
 
         return missing_metadata_attributes | nonmissing_metadata_attributes
 
-    def _to_xarray(self, array: np.ndarray, transform: Affine) -> DataArray:
-        """Convert the raster to  an xarray.DataArray."""
-        attrs = {"crs": self.crs}
-        for attr in set(self.metadata_attributes).union({"date"}):
-            try:
-                attrs[attr] = getattr(self, attr)
-            except Exception:
-                pass
-
-        if len(array.shape) == 2:
-            height, width = array.shape
-            dims = ["y", "x"]
-        elif len(array.shape) == 3:
-            height, width = array.shape[1:]
-            dims = ["band", "y", "x"]
-        elif not any(dim for dim in array.shape):
-            DataArray(
-                name=self.name or self.__class__.__name__,
-                attrs=attrs,
-            )
-        else:
-            raise ValueError(
-                f"Array should be 2 or 3 dimensional. Got shape {array.shape}"
-            )
-
-        coords = _generate_spatial_coords(transform, width, height)
-
-        return DataArray(
-            array,
-            coords=coords,
-            dims=dims,
-            name=self.name or self.__class__.__name__,
-            attrs=attrs,
-        )
-
 
 class Band(_ImageBandBase):
     """Band holding a single 2 dimensional array representing an image band."""
@@ -1264,7 +1195,7 @@ class Band(_ImageBandBase):
     def has_array(self) -> bool:
         """Whether the array is loaded."""
         try:
-            if not isinstance(self.values, (np.ndarray | DataArray)):
+            if not is_array_like(self.values):
                 raise ValueError()
             return True
         except ValueError:  # also catches _ArrayNotLoadedError
@@ -1501,20 +1432,12 @@ class Band(_ImageBandBase):
             return df[(df[column] != self.nodata) & (df[column].notna())]
         return df
 
-    def to_xarray(self) -> DataArray:
-        """Convert the raster to an xarray.DataArray."""
-        return self._to_xarray(
-            self.values,
-            transform=self.transform,
-            # name=self.name or self.__class__.__name__.lower(),
-        )
-
     def to_numpy(self) -> np.ndarray | np.ma.core.MaskedArray:
         """Convert the raster to a numpy.ndarray."""
         return self._to_numpy(self.values).copy()
 
     def _to_numpy(
-        self, arr: np.ndarray | DataArray, masked: bool = True
+        self, arr: np.ndarray, masked: bool = True
     ) -> np.ndarray | np.ma.core.MaskedArray:
         if not isinstance(arr, np.ndarray):
             mask_arr = None
@@ -1889,13 +1812,6 @@ class Image(_ImageBandBase):
             bounds=red.bounds,
             crs=self.crs,
             **self._common_init_kwargs_after_load,
-        )
-
-    def to_xarray(self) -> DataArray:
-        """Convert the raster to  an xarray.DataArray."""
-        return self._to_xarray(
-            np.array([band.values for band in self]),
-            transform=self[0].transform,
         )
 
     @property
@@ -2539,6 +2455,10 @@ class ImageCollection(_ImageBase):
         indexes: int | tuple[int] | None = None,
         **kwargs,
     ) -> np.ndarray:
+        from rioxarray.merge import merge_arrays
+        from rioxarray.rioxarray import _generate_spatial_coords
+        from xarray import DataArray
+
         arrs = []
         kwargs["indexes"] = indexes
         bounds = to_shapely(bounds) if bounds is not None else None
@@ -2776,69 +2696,6 @@ class ImageCollection(_ImageBase):
             if intersects
         ]
         return self
-
-    def to_xarray(
-        self,
-        **kwargs,
-    ) -> Dataset:
-        """Convert the raster to  an xarray.Dataset.
-
-        Images are converted to 2d arrays for each unique bounds.
-        The spatial dimensions will be labeled "x" and "y". The third
-        dimension defaults to "date" if all images have date attributes.
-        Otherwise defaults to the image name.
-        """
-        if any(not band.has_array for img in self for band in img):
-            raise ValueError("Arrays must be loaded.")
-
-        # if by is None:
-        if all(img.date for img in self):
-            by = ["date"]
-        elif not pd.Index([img.name for img in self]).is_unique:
-            raise ValueError("Images must have unique names.")
-        else:
-            by = ["name"]
-        # elif isinstance(by, str):
-        # by = [by]
-
-        xarrs: dict[str, DataArray] = {}
-        for (bounds, band_id), collection in self.groupby(["bounds", "band_id"]):
-            name = f"{band_id}_{'-'.join(str(int(x)) for x in bounds)}"
-            first_band = collection[0][0]
-            coords = _generate_spatial_coords(
-                first_band.transform, first_band.width, first_band.height
-            )
-            values = np.array([band.to_numpy() for img in collection for band in img])
-            assert len(values) == len(collection)
-
-            # coords["band_id"] = [
-            #     band.band_id or i for i, band in enumerate(collection[0])
-            # ]
-            for attr in by:
-                coords[attr] = [getattr(img, attr) for img in collection]
-            # coords["band"] = band_id  #
-
-            dims = [*by, "y", "x"]
-            # dims = ["band", "y", "x"]
-            # dims = {}
-            # for attr in by:
-            #     dims[attr] = [getattr(img, attr) for img in collection]
-
-            xarrs[name] = DataArray(
-                values,
-                coords=coords,
-                dims=dims,
-                # name=name,
-                name=band_id,
-                attrs={
-                    "crs": collection.crs,
-                    "band_id": band_id,
-                },  # , "bounds": bounds},
-                **kwargs,
-            )
-
-        return combine_by_coords(list(xarrs.values()))
-        # return Dataset(xarrs)
 
     def sample(self, n: int = 1, size: int = 500) -> "ImageCollection":
         """Sample one or more areas of a given size and set this as mask for the images."""
@@ -3407,24 +3264,6 @@ def _slope_2d(array: np.ndarray, res: int | tuple[int], degrees: int) -> np.ndar
     return degrees
 
 
-def _clip_xarray(
-    xarr: DataArray,
-    mask: tuple[int, int, int, int],
-    crs: Any,
-    **kwargs,
-) -> DataArray:
-    # xarray needs a numpy array of polygons
-    mask_arr: np.ndarray = to_geoseries(mask).values
-    try:
-        return xarr.rio.clip(
-            mask_arr,
-            crs=crs,
-            **kwargs,
-        )
-    except NoDataInBounds:
-        return np.array([])
-
-
 def _get_all_file_paths(path: str) -> set[str]:
     return {_fix_path(x) for x in sorted(set(_glob_func(path + "/**")))}
 
@@ -3645,6 +3484,9 @@ def array_buffer(arr: np.ndarray, distance: int) -> np.ndarray:
     Returns:
         Array with buffered values.
     """
+    from scipy.ndimage import binary_dilation
+    from scipy.ndimage import binary_erosion
+
     if not np.all(np.isin(arr, (1, 0, True, False))):
         raise ValueError("Array must be all 0s and 1s or boolean.")
 
@@ -3655,6 +3497,7 @@ def array_buffer(arr: np.ndarray, distance: int) -> np.ndarray:
     arr = np.where(arr, 1, 0)
 
     if distance > 0:
+
         return binary_dilation(arr, structure=structure).astype(dtype)
     elif distance < 0:
 
@@ -3671,6 +3514,8 @@ def _plot_pixels_1d(
     figsize: tuple,
     first_date: pd.Timestamp,
 ) -> None:
+    from scipy import stats
+
     coef, intercept = np.linalg.lstsq(
         np.vstack([x, np.ones(x.shape[0])]).T,
         y,

@@ -111,6 +111,7 @@ class NorgeIBilderWms(WmsLoader):
                     this_tile["year"] = year
                 else:
                     this_tile["year"] = "9999"
+
                 all_tiles.append(this_tile)
 
         self.tiles = sorted(all_tiles, key=lambda x: x["year"])

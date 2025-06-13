@@ -7,7 +7,7 @@ import pandas as pd
 from ..io._is_dapla import is_dapla
 
 try:
-    import dapla as dp
+    from gcsfs import GCSFileSystem
 except ImportError:
     pass
 
@@ -22,7 +22,7 @@ except ImportError:
 if is_dapla():
 
     def _open_func(*args, **kwargs) -> GCSFile:
-        return dp.FileClient.get_gcs_file_system().open(*args, **kwargs)
+        return GCSFileSystem().open(*args, **kwargs)
 
 else:
     _open_func = open

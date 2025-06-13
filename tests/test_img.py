@@ -1530,82 +1530,6 @@ def test_convertion():
 
 
 @print_function_name
-def not_test_to_xarray():
-    import xarray as xr
-
-    collection = sg.Sentinel2Collection(path_sentinel, level="L2A", res=10)
-    collection.load()
-    for img in collection:
-        xarr = img.to_xarray()
-        assert xarr.shape == (12, 299, 299), xarr.shape
-        assert xarr.isnull().sum(), img.values.mask.sum()
-        assert xarr.isnull().sum() == img.values.mask.sum(), (
-            xarr.isnull().sum(),
-            img.values.mask.sum(),
-        )
-
-        for band in img:
-            band.load()
-            xarr = band.to_xarray()
-            assert xarr.shape == (299, 299), xarr.shape
-            assert xarr.isnull().sum(), band.values.mask.sum()
-            assert xarr.isnull().sum() == band.values.mask.sum(), (
-                xarr.isnull().sum(),
-                band.values.mask.sum(),
-            )
-
-    xarr = collection.to_xarray()
-
-    print(xarr)
-    assert isinstance(xarr, xr.Dataset)
-    assert len(xarr) == 2
-    assert list(xarr.dims) == ["x", "y", "band_id", "date"], list(xarr.dims)
-    assert len(xarr.x) == 598, len(xarr.x)
-    assert len(xarr.y) == 598, len(xarr.y)
-    assert len(xarr.band_id) == 12, len(xarr.band_id)
-    assert len(xarr.date) == 3, len(xarr.date)
-
-    print(xarr.date)
-
-    xarr2 = xarr.where(
-        (xarr.date >= "2022") & (xarr.band_id.isin(["B01", "B02", "B04"])),
-        drop=True,
-    )
-    print(xarr2)
-    assert isinstance(xarr2, xr.Dataset)
-    assert len(xarr2.x) == 598, len(xarr2.x)
-    assert len(xarr2.y) == 598, len(xarr2.y)
-    assert len(xarr2.band_id) == 3, len(xarr2.band_id)
-    assert len(xarr.date) == 2, len(xarr.date)
-    assert len(xarr2) == 1
-
-    collection[0].name = "name1"
-
-    xarr = collection.to_xarray(by="name")
-
-    print(xarr)
-    assert isinstance(xarr, xr.Dataset)
-    assert len(xarr) == 2
-    assert list(xarr.dims) == ["x", "y", "band_id", "name"], list(xarr.dims)
-    assert len(xarr.x) == 598, len(xarr.x)
-    assert len(xarr.y) == 598, len(xarr.y)
-    assert len(xarr.band_id) == 12, len(xarr.band_id)
-    assert len(xarr2.name) == 2, len(xarr2.name)
-
-    xarr2 = xarr.where(
-        (xarr.name == "name1") & (xarr.band_id.isin(["B01", "B02", "B04"])),
-        drop=True,
-    )
-    print(xarr2)
-    assert isinstance(xarr2, xr.Dataset)
-    assert len(xarr2) == 1
-    assert len(xarr2.x) == 598, len(xarr2.x)
-    assert len(xarr2.y) == 598, len(xarr2.y)
-    assert len(xarr2.band_id) == 3, len(xarr2.band_id)
-    assert len(xarr2.name) == 1, len(xarr2.name)
-
-
-@print_function_name
 def test_clip():
     collection = sg.Sentinel2Collection(path_sentinel, level="L2A", nodata=-1, res=10)
 
@@ -1792,7 +1716,6 @@ def main():
     test_merge()
     test_plot_pixels()
     test_clip()
-    not_test_to_xarray()
     not_test_sample()
     not_test_sample()
     not_test_sample()

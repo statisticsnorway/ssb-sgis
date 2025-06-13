@@ -24,10 +24,11 @@ def run_html_server(contents: str | None = None, port: int = 3000) -> None:
     if "JUPYTERHUB_SERVICE_PREFIX" in os.environ:
         # Create a link using the https://github.com/jupyterhub/jupyter-server-proxy
         display_address = os.environ["JUPYTERHUB_SERVICE_PREFIX"] + f"proxy/{port}/"
+        stop_address = os.environ["JUPYTERHUB_SERVICE_PREFIX"] + f"proxy/{port}/stop"
         display_content = HTML(
             f"""
         <p>Click <a href='{display_address}'>here</a> to open in browser.</p>
-        <p>Click <a href='{display_address}/stop'>here</a> to stop.</p>
+        <p>Click <a href='{stop_address}'>here</a> to stop.</p>
         """
         )
     else:

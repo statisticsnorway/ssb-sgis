@@ -13,7 +13,7 @@ from typing import Any
 from pandas.api.types import is_array_like
 
 try:
-    import dapla as dp
+    from gcsfs import GCSFileSystem
 except ImportError:
     pass
 
@@ -575,7 +575,7 @@ class Parallel:
             A GeoDataFrame, or a list of GeoDataFrames if concat is False.
         """
         if "file_system" not in kwargs:
-            kwargs["file_system"] = dp.FileClient.get_gcs_file_system()
+            kwargs["file_system"] = GCSFileSystem()
 
         if strict:
             res = self.map(read_geopandas, files, kwargs=kwargs)
@@ -653,7 +653,7 @@ class Parallel:
         if funcdict is None:
             funcdict = {}
 
-        fs = dp.FileClient.get_gcs_file_system()
+        fs = GCSFileSystem()
 
         for _, data, folder, postfunc in dict_zip_union(in_data, out_data, funcdict):
             if data is None or (
