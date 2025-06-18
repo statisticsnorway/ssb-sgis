@@ -858,9 +858,9 @@ class Band(_ImageBandBase):
                 )
             self._crs = crs
             self.transform = _get_transform_from_bounds(self._bounds, shape=data.shape)
-            self._res = _get_res_from_bounds(self._bounds, self.values.shape)
             self._from_array = True
             self.values = data
+            self._res = _get_res_from_bounds(self._bounds, self.values.shape)
 
         elif not isinstance(data, (str | Path | os.PathLike)):
             raise TypeError(
