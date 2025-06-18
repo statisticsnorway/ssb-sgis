@@ -43,6 +43,7 @@ from ..geopandas_tools.general import clean_geoms
 from ..geopandas_tools.general import make_all_singlepart
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
+from ..geopandas_tools.sfilter import sfilter
 from ..helpers import _get_file_system
 from ..helpers import dict_zip
 from .wms import WmsLoader
@@ -487,10 +488,13 @@ class Explore(Map):
             if not isinstance(center, GeoDataFrame)
             else center
         )
+        centerbuffer = centerpoint.buffer(size)
 
         for label, gdf in self._gdfs.items():
             keep_geom_type = False if get_geom_type(gdf) == "mixed" else True
-            gdf = gdf.clip(centerpoint.buffer(size), keep_geom_type=keep_geom_type)
+            gdf = sfilter(gdf, centerbuffer).clip(
+                centerbuffer, keep_geom_type=keep_geom_type
+            )
             self._gdfs[label] = gdf
         self._gdf = pd.concat(self._gdfs.values(), ignore_index=True)
 
@@ -547,7 +551,7 @@ class Explore(Map):
             kwargs.pop("column", None)
 
         for label, gdf in self._gdfs.items():
-            gdf = gdf.clip(self.mask)
+            gdf = sfilter(gdf, self.mask).clip(self.mask)
             collections = gdf.loc[gdf.geom_type == "GeometryCollection"]
             if len(collections):
                 collections = make_all_singlepart(collections)

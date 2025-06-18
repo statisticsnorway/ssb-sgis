@@ -295,9 +295,10 @@ class Map:
             else:
                 return series.astype("string")
 
-        for i, gdf in enumerate(self._gdfs):
+        for label, gdf in self._gdfs.items():
             if self.column in gdf:
-                self._gdfs[i][self.column] = to_string_via_int(gdf[self.column])
+                gdf[self.column] = to_string_via_int(gdf[self.column])
+                self._gdfs[label] = gdf
         self._gdf[self.column] = to_string_via_int(self._gdf[self.column])
 
     def __bool__(self) -> bool:
