@@ -38,10 +38,8 @@ def _get_transform_from_bounds(
     obj: GeoDataFrame | GeoSeries | Geometry | tuple, shape: tuple[int, ...]
 ) -> Affine:
     minx, miny, maxx, maxy = to_bbox(obj)
-    if len(shape) == 2:
-        height, width = shape
-    elif len(shape) == 3:
-        _, height, width = shape
+    if len(shape) in [2, 3]:
+        height, width = shape[-2:]
     else:
         return None
         # raise ValueError(shape)
@@ -104,7 +102,7 @@ def _array_to_geojson(
             return _array_to_geojson_loop(array, transform, mask, processes)
 
         except Exception as err:
-            raise err.__class__(array.shape, err) from err
+            raise err.__class__(f"{array.shape}: {err}") from err
 
 
 def _array_to_geojson_loop(array, transform, mask, processes):
