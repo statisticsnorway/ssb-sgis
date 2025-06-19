@@ -83,6 +83,8 @@ def sfilter(
     """
     if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError(gdf_type_error_message)
+    if not len(gdf):
+        return gdf
 
     other = _sfilter_checks(other, crs=gdf.crs)
 
@@ -159,6 +161,9 @@ def sfilter_split(
     >>> not_intersecting = df1.loc[~filt]
 
     """
+    if not len(gdf):
+        return gdf, gdf
+
     if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError(gdf_type_error_message)
 
@@ -235,6 +240,9 @@ def sfilter_inverse(
     """
     if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
         raise TypeError(gdf_type_error_message)
+    if not len(gdf):
+        return gdf
+
     other = _sfilter_checks(other, crs=gdf.crs)
     indices = _get_sfilter_indices(
         gdf, other, predicate, distance, n_jobs, rtree_runner
