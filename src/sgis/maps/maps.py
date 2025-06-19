@@ -29,6 +29,7 @@ from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.general import is_wkt
 from ..geopandas_tools.geocoding import address_to_gdf
 from ..geopandas_tools.geometry_types import get_geom_type
+from ..geopandas_tools.sfilter import sfilter
 from .explore import Explore
 from .map import Map
 from .thematicmap import ThematicMap
@@ -472,8 +473,10 @@ def clipmap(
         if m.gdfs is None and not len(m.rasters):
             return m
 
-        m._gdfs = {label: gdf.clip(mask) for label, gdf in m._gdfs.items()}
-        m._gdf = m._gdf.clip(mask)
+        m._gdfs = {
+            label: sfilter(gdf, mask).clip(mask) for label, gdf in m._gdfs.items()
+        }
+        m._gdf = sfilter(m._gdf, mask).clip(mask)
         m._nan_idx = m._gdf[m._column].isna()
         m._get_unique_values()
         m.explore(center=center, size=size)
@@ -487,8 +490,10 @@ def clipmap(
         if m.gdfs is None:
             return m
 
-        m._gdfs = {label: gdf.clip(mask) for label, gdf in m._gdfs.items()}
-        m._gdf = m._gdf.clip(mask)
+        m._gdfs = {
+            label: sfilter(gdf, mask).clip(mask) for label, gdf in m._gdfs.items()
+        }
+        m._gdf = sfilter(m._gdf, mask).clip(mask)
         m._nan_idx = m._gdf[m._column].isna()
         m._get_unique_values()
 

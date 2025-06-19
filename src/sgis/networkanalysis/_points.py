@@ -45,14 +45,12 @@ class Points:
             return [0 for _ in distances]
 
         if rules.nodedist_multiplier and rules.nodedist_kmh:
-            raise ValueError(
-                "Can only specify one of 'nodedist_multiplier' and 'nodedist_kmh'"
-            )
+            raise ValueError("Cannot set both 'nodedist_multiplier' and 'nodedist_kmh'")
 
         if rules.nodedist_multiplier:
-            if rules.weight != "meters":
+            if rules.weight == "minutes":
                 raise ValueError(
-                    "Can only specify 'nodedist_multiplier' when the 'weight' is meters"
+                    "Cannot set 'nodedist_multiplier' when the 'weight' is minutes"
                 )
             return [x * rules.nodedist_multiplier for x in distances]
 

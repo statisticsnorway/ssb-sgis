@@ -860,7 +860,6 @@ class Band(_ImageBandBase):
             self.transform = _get_transform_from_bounds(self._bounds, shape=data.shape)
             self._from_array = True
             self.values = data
-
             self._res = _get_res_from_bounds(self._bounds, self.values.shape)
 
         elif not isinstance(data, (str | Path | os.PathLike)):
@@ -1077,7 +1076,6 @@ class Band(_ImageBandBase):
             self.transform = None
             # activate setter
             self.values = self._values
-
             return self
 
         if self.has_array and bounds_was_none:
@@ -1162,8 +1160,7 @@ class Band(_ImageBandBase):
                         values.shape,
                     )
 
-                    width, height = values.shape[-2:]
-
+                    height, width = values.shape[-2:]
                     if width and height:
                         self.transform = rasterio.transform.from_bounds(
                             *bounds, width, height
