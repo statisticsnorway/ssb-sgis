@@ -432,7 +432,7 @@ def _run_func_by_cluster(
 
     def get_group_clusters(group: GeoDataFrame):
         """Adds cluster column. Applied to each group because much faster."""
-        group = group.reset_index(drop=True)
+        group = group[~group.is_empty].reset_index(drop=True)
         group["_cluster"] = get_cluster_mapper(group, predicate=predicate)
         group["_cluster"] = get_grouped_centroids(group, groupby="_cluster")
         return group
