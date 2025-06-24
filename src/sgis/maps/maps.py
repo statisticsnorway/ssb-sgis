@@ -197,10 +197,13 @@ def explore(
 
         bounds: Polygon = box(*get_total_bounds(*gdfs, *list(kwargs.values())))
 
-        any_intersections: bool = mask.intersects(bounds).any()
+        if bounds is not None:
+            any_intersections: bool = mask.intersects(bounds).any()
+        else:
+            any_intersections = False
         if not any_intersections and to_crs is None:
             mask = to_gdf(Polygon(), to_crs)
-        elif not any_intersections:
+        elif not any_intersections and bounds is not None:
             bounds4326 = to_gdf(bounds, to_crs).to_crs(25833).geometry.iloc[0]
             mask4326 = mask.set_crs(4326, allow_override=True).to_crs(25833)
 
