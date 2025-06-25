@@ -132,7 +132,7 @@ class NorgeIBilderWms(WmsLoader):
 
                 all_tiles.append(this_tile)
 
-        self.tiles = sorted(all_tiles, key=lambda x: (x["year"]) + ("IR" in x["name"]))
+        self.tiles = sorted(all_tiles, key=lambda x: (x["year"]))
 
         masks = self._get_norge_i_bilder_polygon_masks(verbose=verbose)
         for tile in self.tiles:
