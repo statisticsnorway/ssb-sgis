@@ -779,9 +779,13 @@ class Explore(Map):
         for tile in tiles:
             to_tile(tile, max_zoom=self.max_zoom).add_to(mapobj)
 
-    def _add_wms(self, map_: folium.Map, bbox: Any) -> None:
+    def _add_wms(self, map_: folium.Map) -> None:
+        try:
+            gdf = self._gdf.to_crs(4326)
+        except Exception:
+            gdf = self._gdf.set_crs(4326)
         for wms in self.wms:
-            tiles = wms.get_tiles(bbox, max_zoom=self.max_zoom)
+            tiles = wms.get_tiles(gdf, max_zoom=self.max_zoom)
             for tile in tiles.values():
                 map_.add_child(tile)
 
@@ -995,7 +999,7 @@ class Explore(Map):
             # folium.LayerControl(collapsed=False).add_to(m)
 
         if self.wms:
-            self._add_wms(m, bounds)
+            self._add_wms(m)
 
         return m
 

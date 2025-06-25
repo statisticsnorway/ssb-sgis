@@ -1,5 +1,4 @@
 # %%
-import datetime
 import json
 import os
 import warnings
@@ -117,10 +116,19 @@ def test_explore(points_oslo, roads_oslo):
     roads["geometry"] = roads.buffer(3)
 
     r300 = roads.clip(p.buffer(300))
-
     r200 = roads.clip(p.buffer(200))
     r100 = roads.clip(p.buffer(100))
 
+    e = sg.explore(
+        r300,
+        "meters",
+        r100,
+        bygdoy=7000,
+        wms=sg.NorgeIBilderWms(
+            years=sg.maps.wms.JSON_YEARS, not_contains="sentinel", show=-1
+        ),
+    )
+    assert isinstance(next(iter(e.wms)), sg.NorgeIBilderWms)
     e = sg.explore(
         r300,
         "meters",
@@ -285,10 +293,13 @@ def not_test_wms_json():
     print(
         "IMPORTANT: if you run this function, make sure to change the global variable JSON_YEARS in wms.py"
     )
-    wms = sg.NorgeIBilderWms(
-        years=range(1999, datetime.datetime.now().year + 1), _use_json=False
-    )
-    wms.load_tiles()
+    years = sg.maps.wms.JSON_YEARS
+    wms = sg.NorgeIBilderWms(years=years, _use_json=False)
+    wms.load_tiles(verbose=True)
+
+    with open(sg.maps.wms.JSON_PATH) as file:
+        print(pd.DataFrame(file).year.value_counts())
+
     try:
         os.remove(sg.maps.wms.JSON_PATH)
     except FileNotFoundError:
@@ -297,7 +308,7 @@ def not_test_wms_json():
         json.dump(
             [
                 {
-                    key: value if key != "bbox" else value.wkt
+                    key: value if key not in ["bbox", "geometry"] else value.wkt
                     for key, value in tile.items()
                 }
                 for tile in wms.tiles
@@ -306,16 +317,23 @@ def not_test_wms_json():
             ensure_ascii=False,
         )
 
+    wms = sg.NorgeIBilderWms(years=years)
+    for tile in wms.tiles:
+        bbox = sg.to_shapely(tile["bbox"])
+        polygon = sg.to_shapely(tile["geometry"])
+        assert bbox.intersects(polygon)
+
 
 def main():
 
     from oslo import points_oslo
     from oslo import roads_oslo
 
-    not_test_wms_json()
+    # not_test_wms_json()
 
     test_explore(points_oslo(), roads_oslo())
     test_image_collection()
+
     # not_test_explore(points_oslo(), roads_oslo())
 
 
