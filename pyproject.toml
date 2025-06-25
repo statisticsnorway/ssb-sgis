@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ssb-sgis"
-version = "1.2.8"
+version = "1.2.9"
 description = "GIS functions used at Statistics Norway."
 authors = ["Morten Letnes <morten.letnes@ssb.no>"]
 license = "MIT"
@@ -67,6 +67,8 @@ mypy = ">=0.930"
 pre-commit = ">=2.16.0"
 pre-commit-hooks = ">=4.1.0"
 ruff = ">=0.0.284"
+owslib = ">=0.34.0"
+pillow = ">=11.0.0"
 pytest = ">=6.2.5"
 sphinx = ">=6.2.1"
 sphinx-autobuild = ">=2021.3.14"
