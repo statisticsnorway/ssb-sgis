@@ -132,7 +132,7 @@ class NorgeIBilderWms(WmsLoader):
 
                 all_tiles.append(this_tile)
 
-        self.tiles = sorted(all_tiles, key=lambda x: x["year"])
+        self.tiles = sorted(all_tiles, key=lambda x: (x["year"]) + ("IR" in x["name"]))
 
         masks = self._get_norge_i_bilder_polygon_masks(verbose=verbose)
         for tile in self.tiles:
@@ -296,14 +296,13 @@ class NorgeIBilderWms(WmsLoader):
     def __post_init__(self) -> None:
         """Fix typings."""
         if self.contains and isinstance(self.contains, str):
-            self.contains = [self.contains.lower()]
+            self.contains = [self.contains]
         elif self.contains:
-            self.contains = [x.lower() for x in self.contains]
-
+            self.contains = [x for x in self.contains]
         if self.not_contains and isinstance(self.not_contains, str):
-            self.not_contains = [self.not_contains.lower()]
+            self.not_contains = [self.not_contains]
         elif self.not_contains:
-            self.not_contains = [x.lower() for x in self.not_contains]
+            self.not_contains = [x for x in self.not_contains]
 
         self.years = [str(int(year)) for year in self.years]
 
