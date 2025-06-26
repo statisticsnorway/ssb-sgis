@@ -466,7 +466,8 @@ def write_geopandas(
             df.geometry = None
         try:
             with file_system.open(gcs_path, "wb") as file:
-                df.to_parquet(file, **kwargs)
+                _to_geopandas(df, file, **kwargs)
+
         except Exception as e:
             more_txt = PANDAS_FALLBACK_INFO if not pandas_fallback else ""
             raise e.__class__(
@@ -486,7 +487,7 @@ def write_geopandas(
                 **kwargs,
             )
         with file_system.open(gcs_path, mode="wb") as file:
-            df.to_parquet(file, **kwargs)
+            _to_geopandas(df, file, **kwargs)
         return
 
     layer = kwargs.pop("layer", None)
