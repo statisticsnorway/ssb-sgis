@@ -5,6 +5,7 @@ from functools import partial
 from pathlib import Path
 
 import dash
+import numpy as np
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 import pandas as pd
@@ -14,12 +15,15 @@ from dash import Dash
 from dash import Input
 from dash import Output
 from dash import State
+from dash import ctx
 from dash import callback
 from dash import dcc
 from dash import html
-from dash_extensions.javascript import assign
+from dash import dash_table
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from jenkspy import jenks_breaks
+import matplotlib
 
 import sgis as sg
 
@@ -33,23 +37,16 @@ NAN_LABEL = "Missing"
 # BASE_DIR = "c:/users/ort"
 
 
-categorical_style_func = assign(
-    """function(feature) {
-    return {
-        color: feature.properties._color,
-        fillColor: feature.properties._color,
-        weight: 2,
-        fillOpacity: 0.5
-    };
-}"""
-)
-
-
 def dict_to_geopandas(dict_):
     geometry = dict_.pop("geometry")
     crs = dict_.pop("crs")
     geometry = GeoSeries.from_wkt(geometry, crs=crs)
     return GeoDataFrame(dict_, geometry=geometry, crs=crs)
+
+
+def random_color():
+    r, g, b = np.random.choice(range(256), size=3)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 if __name__ == "__main__":
@@ -101,16 +98,30 @@ if __name__ == "__main__":
 
     app.layout = dbc.Container(
         [
-            # dbc.Row(
-            #     [
-            #     ]
-            # ),
             dbc.Row(
                 [
                     dbc.Col(
-                        html.Button("Remove item", id="remove-button"),
-                    )
-                ],
+                        dcc.Dropdown(
+                            id="k",
+                            options=[
+                                {"label": i, "value": i} for i in [3, 4, 5, 6, 7, 8, 9]
+                            ],
+                            value=5,
+                            style={
+                                "font-size": 22,
+                                "width": "100%",
+                                "overflow": "visible",
+                            },
+                            maxHeight=300,
+                            clearable=False,
+                        )
+                    ),
+                    dbc.Col(
+                        html.Div(
+                            dbc.Input(value="viridis", id="cmap"), id="cmap-placeholder"
+                        )
+                    ),
+                ]
             ),
             dbc.Row(
                 [
@@ -167,20 +178,29 @@ if __name__ == "__main__":
                         [
                             dbc.Row(
                                 [
-                                    html.Div(
-                                        [
-                                            dcc.Dropdown(
-                                                id="column-dropdown",
-                                                placeholder="Select column to color by",
-                                                style={
-                                                    "font-size": 22,
-                                                    "width": "100%",
-                                                    "overflow": "visible",
-                                                },
-                                                maxHeight=600,
-                                                clearable=True,
-                                            ),
-                                        ],
+                                    dbc.Col(
+                                        html.Div(
+                                            [
+                                                dcc.Dropdown(
+                                                    id="column-dropdown",
+                                                    placeholder="Select column to color by",
+                                                    style={
+                                                        "font-size": 22,
+                                                        "width": "100%",
+                                                        "overflow": "visible",
+                                                    },
+                                                    maxHeight=600,
+                                                    clearable=True,
+                                                ),
+                                            ],
+                                        ),
+                                        width=10,
+                                    ),
+                                    dbc.Col(
+                                        html.Div(
+                                            id="force-categorical",
+                                        ),
+                                        width=2,
                                     ),
                                 ]
                             ),
@@ -217,6 +237,16 @@ if __name__ == "__main__":
                         ],
                     ),
                 ]
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        html.Div(id="feature-table-container"),
+                    ),
+                    dbc.Col(
+                        html.Div(id="remove-buttons"),
+                    ),
+                ],
             ),
             html.Div(
                 id="custom-popup",
@@ -266,8 +296,13 @@ if __name__ == "__main__":
             dcc.Store(id="js_init_store", data=False),
             dcc.Store(id="js_init_store2", data=False),
             html.Div(id="currently-in-bounds"),
+            html.Div(id="currently-in-bounds2"),
             html.Div(id="new-file-added"),
+            html.Div(id="file-removed"),
             html.Div(id="column-value-color-dict"),
+            html.Div(id="bins"),
+            html.Div(False, id="is-numeric"),
+            html.Div(False, id="cmap-has-been-set"),
         ],
         fluid=True,
     )
@@ -389,9 +424,71 @@ def handle_click(load_parquet, up_button_clicks, ids, current_path):
 #     return file_path
 
 
+@app.callback(
+    Output("remove-buttons", "children"),
+    Input("new-file-added", "n_clicks"),
+    Input("file-removed", "children"),
+)
+def render_items(new_file_added, file_removed):
+    return [
+        html.Div(
+            [
+                html.Button(
+                    "❌",
+                    id={"type": "delete-btn", "index": f"{i} -- {path}"},
+                    n_clicks=0,
+                    style={
+                        "color": "red",
+                        "border": "none",
+                        "background": "none",
+                        "cursor": "pointer",
+                    },
+                ),
+                html.Span(get_name(path), style={"marginRight": "10px"}),
+            ],
+            style={"display": "flex", "alignItems": "center", "marginBottom": "5px"},
+        )
+        for i, path in enumerate(exp.selected_paths)
+    ]
+
+
+@app.callback(
+    Output("file-removed", "children"),
+    Input({"type": "delete-btn", "index": dash.ALL}, "n_clicks"),
+    # State({"type": "delete-btn", "index": dash.ALL}, "index"),
+    # State("items-store", "data"),
+    prevent_initial_call=True,
+)
+def delete_item(n_clicks_list):
+    triggered_id = ctx.triggered_id
+    print("delete_item")
+    if triggered_id and triggered_id["type"] == "delete-btn":
+        print(n_clicks_list)  # [0]
+        # print(index)  # [None]
+        i, path_to_remove = triggered_id["index"].split("--")
+        i = int(i.strip())
+        path_to_remove = path_to_remove.strip()
+        print(i, path_to_remove)
+        n_clicks = n_clicks_list[i]
+        if not n_clicks:
+            return dash.no_update
+        # n_clicks = n_clicks_list[triggered_id["index"]]
+        print(n_clicks)
+        # path_to_remove = triggered_id["index"]
+        print(path_to_remove)
+        exp.selected_paths.pop(exp.selected_paths.index(path_to_remove))
+        for path in list(exp.data):
+            if path_to_remove in path:
+                del exp.data[path]
+        exp.bounds = exp.bounds[lambda x: ~x.index.str.contains(path_to_remove)]
+    return 1
+
+
 @callback(
     Output("new-file-added", "n_clicks"),
+    # Output("remove-buttons", "children"),
     Input({"type": "load-parquet", "index": dash.ALL}, "n_clicks"),
+    # Input("remove-buttons", "children"),
     State({"type": "file-item", "index": dash.ALL}, "id"),
     prevent_initial_call=True,
 )
@@ -401,11 +498,22 @@ def append_path(load_parquet, ids):
     print(triggered)
     print(load_parquet)
     if not any(load_parquet):
-        return dash.no_update
+        return dash.no_update  # , dash.no_update
     if triggered:
         selected_path = triggered["index"]
         exp.append(selected_path)
+        # print(remove_buttons)
+        checklist = dcc.Checklist(
+            # list(remove_buttons.options) + [get_name(selected_path)],
+            # list(remove_buttons.value) + [get_name(selected_path)],
+            [get_name(path) for path in exp.selected_paths],
+            [get_name(path) for path in exp.selected_paths],
+        )
+    else:
+        checklist = dash.no_update
+
     return 1
+    return (1, checklist)
 
 
 @callback(
@@ -416,12 +524,7 @@ def append_path(load_parquet, ids):
 )
 def get_files_in_bounds(bounds, n_clicks):
     print("get_files_in_bounds", bounds)
-    if bounds is None:
-        bounds = default_bounds
-    mins, maxs = bounds
-    miny, minx = mins
-    maxy, maxx = maxs
-    box = shapely.box(minx, miny, maxx, maxy)
+    box = shapely.box(*nested_bounds_to_bounds(bounds))
     files_in_bounds = sg.sfilter(exp.bounds, box)
     currently_in_bounds = set(files_in_bounds.index)
     missing = list({path for path in files_in_bounds.index if path not in exp.data})
@@ -474,7 +577,8 @@ def uncheck(is_checked):
 def update_column_dropdown(currently_in_bounds):
     columns = set(
         itertools.chain.from_iterable(
-            set(exp.data[path].columns) for path in currently_in_bounds
+            set(exp.data[path].columns.difference({exp.data[path].geometry.name}))
+            for path in currently_in_bounds
         )
     )
     return [{"label": col, "value": col} for i, col in enumerate(sorted(columns))]
@@ -482,141 +586,266 @@ def update_column_dropdown(currently_in_bounds):
 
 @callback(
     Output("column-value-color-dict", "children"),
+    Output("bins", "children"),
+    Output("is-numeric", "children"),
+    Output("cmap-placeholder", "children"),
+    Output("force-categorical", "children"),
+    Output("currently-in-bounds2", "children"),
     Input("column-dropdown", "value"),
+    Input("cmap", "value"),
+    Input("k", "value"),
+    Input("force-categorical", "n_clicks"),
+    Input("currently-in-bounds", "children"),
+    State("cmap-has-been-set", "children"),
+    State("map", "bounds"),
     prevent_initial_call=True,
 )
-def update_column_dropdown(column):
-    return list(
-        zip(
-            pd.concat(
-                [df[column] for df in exp.data.values() if column in df],
-                ignore_index=True,
-            )
-            .dropna()
-            .unique(),
-            sg.maps.map._CATEGORICAL_CMAP.values(),
-            strict=False,
+def get_column_value_color_dict(
+    column,
+    cmap: str,
+    k: int,
+    force_categorical_clicks: int,
+    currently_in_bounds,
+    cmap_has_been_set: bool,
+    bounds,
+):
+    if column is None or not any(column in df for df in exp.data.values()):
+        return None, None, False, dash.no_update, dash.no_update, currently_in_bounds
+
+    box = shapely.box(*nested_bounds_to_bounds(bounds))
+    values = pd.concat(
+        [
+            sg.sfilter(df[[column, df.geometry.name]], box)[column]
+            for df in exp.data.values()
+            if column in df
+        ],
+        ignore_index=True,
+    ).dropna()
+
+    if not pd.api.types.is_numeric_dtype(values):
+        force_categorical_button = None
+    elif (force_categorical_clicks or 0) % 2 == 0:
+        force_categorical_button = html.Button(
+            "Force categorical",
+            n_clicks=force_categorical_clicks,
+            style={
+                "fillColor": "white",
+                "color": "black",
+            },
         )
-    )  # + [(NAN_LABEL, NAN_COLOR)]
+    else:
+        force_categorical_button = html.Button(
+            "Force categorical",
+            n_clicks=force_categorical_clicks,
+            style={
+                "fillColor": "black",
+                "color": "white",
+            },
+        )
+    is_numeric = (
+        force_categorical_clicks or 0
+    ) % 2 == 0 and pd.api.types.is_numeric_dtype(values)
+    if is_numeric and not cmap_has_been_set:
+        cmap_component = dbc.Input(
+            placeholder="Cmap",
+            value="viridis",
+            type="text",
+            id="cmap",
+            style={"font-size": 22},
+        )
+    elif not cmap_has_been_set:
+        cmap_component = None
+    else:
+        cmap_component = dash.no_update
+
+    if is_numeric:
+        series = pd.concat(
+            [
+                df[column]
+                for path, df in exp.data.items()
+                if any(x in path for x in exp.selected_paths) and column in df
+            ]
+        )
+        bins = jenks_breaks(series.dropna(), n_classes=k)
+        cmap_ = matplotlib.colormaps.get_cmap(cmap)
+        colors_ = [
+            matplotlib.colors.to_hex(cmap_(int(i))) for i in np.linspace(0, 255, num=k)
+        ]
+        column_value_color_dict = (
+            [(f"{round(min(series), 1)} - {bins[0]}", colors_[0])]
+            + [
+                (f"{start} - {stop}", colors_[i + 1])
+                for i, (start, stop) in enumerate(itertools.pairwise(bins[1:-1]))
+            ]
+            + [(f"{bins[-1]} - {round(max(series), 1)}", colors_[-1])]
+        )
+        # list(enumerate(colors_))
+    else:
+
+        unique_values = values.unique()
+        default_colors = list(sg.maps.map._CATEGORICAL_CMAP.values())
+        colors = default_colors[: min(len(unique_values), len(default_colors))] + [
+            random_color()
+            for _ in range(
+                len(unique_values) - len(sg.maps.map._CATEGORICAL_CMAP.values())
+            )
+        ]
+        print(len(unique_values))
+        print(len(colors))
+        print(len(sg.maps.map._CATEGORICAL_CMAP.values()))
+        print(len(unique_values) - len(sg.maps.map._CATEGORICAL_CMAP.values()))
+        column_value_color_dict = list(
+            zip(
+                unique_values,
+                colors,
+                strict=True,
+            )
+        )
+        bins = None
+
+    return (
+        column_value_color_dict,
+        bins,
+        is_numeric,
+        cmap_component,
+        force_categorical_button,
+        currently_in_bounds,
+    )
+
+
+@callback(
+    Output("cmap-has-been-set", "children"),
+    Input("cmap-placeholder", "children"),
+    prevent_initial_call=True,
+)
+def update_cmap_has_been_set(cmap):
+    return True
 
 
 @callback(
     Output("column-value-colors", "children"),
     Input("column-value-color-dict", "children"),
+    State("is-numeric", "children"),
     prevent_initial_call=True,
 )
-def update_column_dropdown(values_to_colors):
+def update_column_dropdown(values_to_colors, is_numeric):
     if values_to_colors is None:
-        return dash.no_update
-    values_to_colors = dict(values_to_colors)
-    return [
-        dbc.Row(
-            [
-                dbc.Col(
-                    dbc.Input(
-                        type="color",
-                        id={"type": "colorpicker", "column_value": value},
-                        value=color,
-                        style={"width": 50, "height": 50},
+        return None
+    if is_numeric:
+        values_to_colors = dict(values_to_colors)
+    else:
+        values_to_colors = dict(values_to_colors)
+    return html.Div(
+        [
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Input(
+                            type="color",
+                            id={"type": "colorpicker", "column_value": value},
+                            value=color,
+                            style={"width": 50, "height": 50},
+                        ),
+                        width="auto",
                     ),
-                    width="auto",
-                ),
-                dbc.Col(
-                    dbc.Label([value]),
-                    width="auto",
-                ),
-            ],
-            style={
-                "display": "flex",
-                "justifyContent": "flex-start",
-                "alignItems": "center",
-                "marginBottom": "5px",
-            },
-        )
-        for value, color in values_to_colors.items()
-    ] + [
-        dbc.Row(
-            [
-                dbc.Col(
-                    dbc.Input(
-                        type="color",
-                        id={"type": "colorpicker", "column_value": NAN_LABEL},
-                        value=NAN_COLOR,
-                        style={"width": 50, "height": 50},
+                    dbc.Col(
+                        dbc.Label([value]),
+                        width="auto",
                     ),
-                    width="auto",
-                ),
-                dbc.Col(
-                    dbc.Label([NAN_LABEL]),
-                    width="auto",
-                ),
-            ],
-            style={
-                "display": "flex",
-                "justifyContent": "flex-start",
-                "alignItems": "center",
-                "marginBottom": "5px",
-            },
-        )
-    ]
+                ],
+                style={
+                    "display": "flex",
+                    "justifyContent": "flex-start",
+                    "alignItems": "center",
+                    "marginBottom": "5px",
+                },
+            )
+            for value, color in values_to_colors.items()
+        ]
+        + [
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Input(
+                            type="color",
+                            id={"type": "colorpicker", "column_value": NAN_LABEL},
+                            value=NAN_COLOR,
+                            style={"width": 50, "height": 50},
+                        ),
+                        width="auto",
+                    ),
+                    dbc.Col(
+                        dbc.Label([NAN_LABEL]),
+                        width="auto",
+                    ),
+                ],
+                style={
+                    "display": "flex",
+                    "justifyContent": "flex-start",
+                    "alignItems": "center",
+                    "marginBottom": "5px",
+                },
+            )
+        ],
+        style={
+            "height": "50vh",
+            "overflow": "scroll",
+        },
+    )
 
 
-@callback(
-    Output("lc", "children"),
-    # Input("selected-file", "children"),
-    Input("currently-in-bounds", "children"),
-    Input({"type": "colorpicker", "column_value": dash.ALL}, "value"),
-    State("map", "bounds"),
-    State({"type": "geojson", "filename": dash.ALL}, "checked"),
-    State("column-dropdown", "value"),
-    State("column-dropdown", "options"),
-    State("column-value-color-dict", "children"),
-    # State({"type": "colorpicker", "column_value": dash.ALL}, "color"),
-    # State({"type": "colorpicker", "column_value": dash.ALL}, "x"),
-    prevent_initial_call=True,
-)
-def add_data(
-    currently_in_bounds,
-    color_values,
-    bounds,
-    is_checked,
-    column,
-    column_options,
-    values_to_colors,
-):
-    print("add_data")
-    print(is_checked)
-    triggered = dash.callback_context.triggered_id
-    print(triggered)
+def nested_bounds_to_bounds(
+    bounds: list[list[float]],
+) -> tuple[float, float, float, float]:
     if bounds is None:
         bounds = default_bounds
     mins, maxs = bounds
     miny, minx = mins
     maxy, maxx = maxs
-    box = shapely.box(minx, miny, maxx, maxy)
+    return minx, miny, maxx, maxy
+
+
+@callback(
+    Output("lc", "children"),
+    Input("currently-in-bounds2", "children"),
+    Input({"type": "colorpicker", "column_value": dash.ALL}, "value"),
+    Input("is-numeric", "children"),
+    State("map", "bounds"),
+    State({"type": "geojson", "filename": dash.ALL}, "checked"),
+    State("column-dropdown", "value"),
+    State("column-value-color-dict", "children"),
+    State("bins", "children"),
+    prevent_initial_call=True,
+)
+def add_data(
+    currently_in_bounds,
+    color_values,
+    is_numeric,
+    bounds,
+    is_checked,
+    column,
+    values_to_colors,
+    bins,
+):
+    print("add_data")
+    print(is_checked)
+    triggered = dash.callback_context.triggered_id
+    print(triggered)
+    box = shapely.box(*nested_bounds_to_bounds(bounds))
     data = []
-    data_copied = exp.data.copy()
-    if data_copied and column:
+    choices = np.arange(len(bins)) if bins is not None else None
+
+    if not is_numeric and values_to_colors is not None and color_values is not None:
         values_to_colors = {
-            x[0]: color for x, color in zip(values_to_colors, color_values)
+            x[0]: color_ for x, color_ in zip(values_to_colors, color_values)
         }
-        # values_to_colors = {dict(values_to_colors)}
-        # values_to_colors = {
-        #     value: color
-        #     for value, color in zip(
-        #         pd.concat(
-        #             [df[column] for df in exp.data.values() if column in df],
-        #             ignore_index=True,
-        #         )
-        #         .dropna()
-        #         .unique(),
-        #         sg.maps.map._CATEGORICAL_CMAP.values(),
-        #         strict=False,
-        #     )
-        # }
-    # for (path, df), color in zip(
-    #     data_copied.items(), sg.maps.map._CATEGORICAL_CMAP.values(), strict=False
-    # ):
+    elif values_to_colors is not None and color_values is not None:
+        values_to_colors = {i: x[1] for i, x in enumerate(values_to_colors)}
+
+    for x, v in dict(locals()).items():
+        print()
+        print(x)
+        print(v)
     for path, color in zip(
         exp.selected_paths, sg.maps.map._CATEGORICAL_CMAP.values(), strict=False
     ):
@@ -624,9 +853,26 @@ def add_data(
             df = exp.data[path]
         else:
             df = pd.concat([df for key, df in exp.data.items() if path in key])
-        if column is not None:
-            if column in df:
-                df["_color"] = df[column].map(values_to_colors)
+        df = sg.sfilter(df, box)
+        if column is not None and column in df and not is_numeric:
+            print("\nhei")
+            print(path)
+            print(values_to_colors)
+            df["_color"] = df[column].map(values_to_colors)
+            print(df["_color"].sort_values())
+        elif column is not None and column in df:
+            conditions = [
+                df[column] < bins[0],
+                *[
+                    (df[column] >= bins[i]) & (df[column] < bins[i + 1])
+                    for i in np.arange(1, len(bins) - 1)
+                ],
+                df[column] >= bins[-1],
+            ]
+            print(len(conditions))
+            print(values_to_colors)
+            df["_color"] = [values_to_colors[x] for x in np.select(conditions, choices)]
+            print(df[["_color"]].sort_values("_color"))
 
         if not any(path in x for x in currently_in_bounds):
 
@@ -648,7 +894,7 @@ def add_data(
                             "color": NAN_COLOR,
                             "fillColor": NAN_COLOR,
                             "weight": 2,
-                            "fillOpacity": 0.5,
+                            "fillOpacity": 0.7,
                         },
                     ),
                     name=get_name(path),
@@ -662,21 +908,15 @@ def add_data(
                     dl.LayerGroup(
                         [
                             dl.GeoJSON(
-                                data=sg.sfilter(
-                                    df[df[column] == value], box
-                                ).__geo_interface__,
+                                data=(df[df["_color"] == color_]).__geo_interface__,
                                 style={
-                                    "color": next(
-                                        iter(df.loc[df[column] == value, "_color"])
-                                    ),
-                                    "fillColor": next(
-                                        iter(df.loc[df[column] == value, "_color"])
-                                    ),
+                                    "color": color_,
+                                    "fillColor": color_,
                                     "weight": 2,
-                                    "fillOpacity": 0.5,
+                                    "fillOpacity": 0.7,
                                 },
                             )
-                            for value in df[column].unique()
+                            for color_ in df["_color"].unique()
                         ]
                         + [
                             dl.GeoJSON(
@@ -687,7 +927,7 @@ def add_data(
                                     "color": NAN_COLOR,
                                     "fillColor": NAN_COLOR,
                                     "weight": 2,
-                                    "fillOpacity": 0.5,
+                                    "fillOpacity": 0.7,
                                 },
                             )
                         ]
@@ -698,15 +938,16 @@ def add_data(
                 )
             )
         else:
+            # no column
             data.append(
                 dl.Overlay(
                     dl.GeoJSON(
-                        data=sg.sfilter(df, box).__geo_interface__,
+                        data=df.__geo_interface__,
                         style={
                             "color": color,
                             "fillColor": color,
                             "weight": 2,
-                            "fillOpacity": 0.5,
+                            "fillOpacity": 0.7,
                         },
                     ),
                     name=get_name(path),
@@ -730,6 +971,25 @@ def add_data(
             checked=False,
         ),
     ] + data
+
+
+# @callback(
+#     Output("feature-table-container", "children"),
+#     Input({"type": "geojson", "filename": dash.ALL}, "click_feature"),
+#     prevent_initial_call=True,
+# )
+# def display_feature_table(feature):
+#     if not feature:
+#         return dash.no_update
+#     print("feature")
+#     print(feature)
+#     props = feature.get("properties", {})
+#     return dash_table.DataTable(
+#         columns=[{"name": k, "id": k} for k in props],
+#         data=[props],
+#         style_table={"overflowX": "auto"},
+#         style_cell={"textAlign": "left"},
+#     )
 
 
 # app.clientside_callback(
