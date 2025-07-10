@@ -28,6 +28,7 @@ BASE_DIR = "/buckets/produkt"
 BASE_DIR = "/buckets/produkt/strandsone/klargjorte-data/2024/strandsone_kode_p2024_v1.parquet/komm_nr=0301"
 BASE_DIR = "/buckets/delt-kart/analyse_data/klargjorte-data/2025"
 NAN_COLOR = "#969696"
+NAN_LABEL = "Missing"
 
 # BASE_DIR = "c:/users/ort"
 
@@ -496,7 +497,7 @@ def update_column_dropdown(column):
             sg.maps.map._CATEGORICAL_CMAP.values(),
             strict=False,
         )
-    )
+    )  # + [(NAN_LABEL, NAN_COLOR)]
 
 
 @callback(
@@ -533,6 +534,30 @@ def update_column_dropdown(values_to_colors):
             },
         )
         for value, color in values_to_colors.items()
+    ] + [
+        dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Input(
+                        type="color",
+                        id={"type": "colorpicker", "column_value": NAN_LABEL},
+                        value=NAN_COLOR,
+                        style={"width": 50, "height": 50},
+                    ),
+                    width="auto",
+                ),
+                dbc.Col(
+                    dbc.Label([NAN_LABEL]),
+                    width="auto",
+                ),
+            ],
+            style={
+                "display": "flex",
+                "justifyContent": "flex-start",
+                "alignItems": "center",
+                "marginBottom": "5px",
+            },
+        )
     ]
 
 
@@ -601,9 +626,7 @@ def add_data(
             df = pd.concat([df for key, df in exp.data.items() if path in key])
         if column is not None:
             if column in df:
-                df["_color"] = df[column].map(values_to_colors).fillna(NAN_COLOR)
-            else:
-                df["_color"] = NAN_COLOR
+                df["_color"] = df[column].map(values_to_colors)
 
         if not any(path in x for x in currently_in_bounds):
 
