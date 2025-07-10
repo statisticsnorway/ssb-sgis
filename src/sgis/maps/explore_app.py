@@ -527,9 +527,9 @@ def update_column_dropdown(values_to_colors):
             ],
             style={
                 "display": "flex",
-                "justifyContent": "flex-start",  # Align items to the left
-                "alignItems": "left",
-                "marginBottom": "0px",
+                "justifyContent": "flex-start",
+                "alignItems": "center",
+                "marginBottom": "5px",
             },
         )
         for value, color in values_to_colors.items()
