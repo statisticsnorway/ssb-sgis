@@ -162,10 +162,9 @@ if __name__ == "__main__":
                         ],
                         width=8,
                     ),
-                    dbc.Row(
+                    dbc.Col(
                         [
-                            dbc.Col(id="column-value-colors"),
-                            dbc.Col(
+                            dbc.Row(
                                 [
                                     html.Div(
                                         [
@@ -184,28 +183,37 @@ if __name__ == "__main__":
                                     ),
                                 ]
                             ),
+                            dbc.Row(id="column-value-colors"),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        html.Div(
+                                            [
+                                                html.H2("File Browser"),
+                                                html.Button("⬆️ Go Up", id="up-button"),
+                                                dcc.Store(
+                                                    id="current-path", data=BASE_DIR
+                                                ),
+                                                html.Div(id="path-display"),
+                                                html.Div(id="file-list"),
+                                                html.Div(
+                                                    id="selected-path",
+                                                    style={
+                                                        "marginTop": "20px",
+                                                        "fontWeight": "bold",
+                                                    },
+                                                ),
+                                                html.Div(
+                                                    id="selected-file",
+                                                    style={"display": "none"},
+                                                ),
+                                            ]
+                                        ),
+                                        # width=4,
+                                    ),
+                                ]
+                            ),
                         ],
-                    ),
-                ]
-            ),
-            dbc.Row(
-                [
-                    dbc.Col(
-                        html.Div(
-                            [
-                                html.H2("File Browser"),
-                                html.Button("⬆️ Go Up", id="up-button"),
-                                dcc.Store(id="current-path", data=BASE_DIR),
-                                html.Div(id="path-display"),
-                                html.Div(id="file-list"),
-                                html.Div(
-                                    id="selected-path",
-                                    style={"marginTop": "20px", "fontWeight": "bold"},
-                                ),
-                                html.Div(id="selected-file", style={"display": "none"}),
-                            ]
-                        ),
-                        # width=4,
                     ),
                 ]
             ),
@@ -500,38 +508,32 @@ def update_column_dropdown(values_to_colors):
     if values_to_colors is None:
         return dash.no_update
     values_to_colors = dict(values_to_colors)
-    return (  # [
-        # html.Div(
-        [
-            # html.Button(
-            #     style={
-            #         "backgroundColor": color,
-            #         "width": "30px",
-            #         "height": "30px",
-            #         "border": "1px solid black",
-            #         "cursor": "pointer",
-            #     },
-            #     id={"type": "color-btn", "index": value},
-            #     n_clicks=0,
-            # ),
-            dbc.Row(
-                [
-                    dbc.Col(dbc.Label([value])),
-                    dbc.Col(
-                        dbc.Input(
-                            type="color",
-                            id={"type": "colorpicker", "column_value": value},
-                            value=color,
-                            style={"width": 50, "height": 50},
-                        ),
+    return [
+        dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Input(
+                        type="color",
+                        id={"type": "colorpicker", "column_value": value},
+                        value=color,
+                        style={"width": 50, "height": 50},
                     ),
-                ]
-            )
-            for value, color in values_to_colors.items()
-        ]
-        # style={"display": "flex", "alignItems": "center", "marginBottom": "8px"},
-    )
-    # ]
+                    width="auto",
+                ),
+                dbc.Col(
+                    dbc.Label([value]),
+                    width="auto",
+                ),
+            ],
+            style={
+                "display": "flex",
+                "justifyContent": "flex-start",  # Align items to the left
+                "alignItems": "left",
+                "marginBottom": "0px",
+            },
+        )
+        for value, color in values_to_colors.items()
+    ]
 
 
 @callback(
