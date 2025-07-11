@@ -25,6 +25,7 @@ from geopandas import GeoSeries
 from jenkspy import jenks_breaks
 import matplotlib
 
+
 import sgis as sg
 
 PORT: int = 8055
@@ -101,46 +102,11 @@ if __name__ == "__main__":
             dbc.Row(
                 [
                     dbc.Col(
-                        dcc.Dropdown(
-                            id="k",
-                            options=[
-                                {"label": i, "value": i} for i in [3, 4, 5, 6, 7, 8, 9]
-                            ],
-                            value=5,
-                            style={
-                                "font-size": 22,
-                                "width": "100%",
-                                "overflow": "visible",
-                            },
-                            maxHeight=300,
-                            clearable=False,
-                        )
-                    ),
-                    dbc.Col(
-                        html.Div(
-                            dbc.Input(value="viridis", id="cmap"), id="cmap-placeholder"
-                        )
-                    ),
-                ]
-            ),
-            dbc.Row(
-                [
-                    dbc.Col(
                         [
                             dl.Map(
                                 center=default_center,
                                 zoom=default_zoom,
                                 children=[
-                                    # dl.TileLayer(),  # Base map layer
-                                    # dl.LayerGroup(
-                                    #     id="layer"
-                                    # ),  # Optional layer for future use
-                                    # dl.GeoJSON(id="geojson"),  # Optional GeoJSON layer
-                                    # dl.LocateControl(
-                                    #     # options={
-                                    #     #     "locateOptions": {"enableHighAccuracy": True}
-                                    #     # }
-                                    # ),
                                     dl.LayersControl(
                                         [
                                             dl.BaseLayer(
@@ -164,9 +130,6 @@ if __name__ == "__main__":
                                         position="bottomright",
                                         primaryLengthUnit="meters",
                                     ),
-                                    # dl.LayerGroup(
-                                    #     dl.Marker(position=[60.39, 5.32]), id="marker-layer"
-                                    # ),
                                 ],
                                 id="map",
                                 style={"width": "100%", "height": "90vh"},
@@ -204,6 +167,62 @@ if __name__ == "__main__":
                                     ),
                                 ]
                             ),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dcc.Dropdown(
+                                            id="k",
+                                            options=[
+                                                {"label": f"k={i}", "value": i}
+                                                for i in [3, 4, 5, 6, 7, 8, 9]
+                                            ],
+                                            value=5,
+                                            style={
+                                                "font-size": 22,
+                                                "width": "100%",
+                                                "overflow": "visible",
+                                            },
+                                            maxHeight=300,
+                                            clearable=False,
+                                        )
+                                    ),
+                                    dbc.Col(
+                                        html.Div(
+                                            dcc.Dropdown(
+                                                id="cmap-placeholder",
+                                                options=[
+                                                    {
+                                                        "label": f"cmap={name}",
+                                                        "value": name,
+                                                    }
+                                                    for name in [
+                                                        "viridis",
+                                                        "plasma",
+                                                        "inferno",
+                                                        "magma",
+                                                        "Greens",
+                                                    ]
+                                                    + [
+                                                        name
+                                                        for name, cmap in matplotlib.colormaps.items()
+                                                        if "linear" in str(cmap).lower()
+                                                    ]
+                                                ],
+                                                value="viridis",
+                                                # style={
+                                                #     "font-size": 22,
+                                                #     "width": "100%",
+                                                #     # "overflow": "scroll",
+                                                # },
+                                                maxHeight=200,
+                                                clearable=False,
+                                            ),
+                                            # dbc.Input(value="viridis", id="cmap"),
+                                            # id="cmap-placeholder",
+                                        )
+                                    ),
+                                ]
+                            ),
                             dbc.Row(id="column-value-colors"),
                             dbc.Row(
                                 [
@@ -216,7 +235,15 @@ if __name__ == "__main__":
                                                     id="current-path", data=BASE_DIR
                                                 ),
                                                 html.Div(id="path-display"),
-                                                html.Div(id="file-list"),
+                                                html.Div(
+                                                    id="file-list",
+                                                    style={
+                                                        "font-size": 12,
+                                                        "width": "100%",
+                                                        "height": "70vh",
+                                                        "overflow": "scroll",
+                                                    },
+                                                ),
                                                 html.Div(
                                                     id="selected-path",
                                                     style={
@@ -234,6 +261,9 @@ if __name__ == "__main__":
                                     ),
                                 ]
                             ),
+                            dbc.Row(
+                                html.Div(id="remove-buttons"),
+                            ),
                         ],
                     ),
                 ]
@@ -242,9 +272,7 @@ if __name__ == "__main__":
                 [
                     dbc.Col(
                         html.Div(id="feature-table-container"),
-                    ),
-                    dbc.Col(
-                        html.Div(id="remove-buttons"),
+                        style={"width": "100%", "height": "100vh"},
                     ),
                 ],
             ),
@@ -295,14 +323,14 @@ if __name__ == "__main__":
             html.Button(id="dummy-button", style={"display": "none"}),
             dcc.Store(id="js_init_store", data=False),
             dcc.Store(id="js_init_store2", data=False),
-            html.Div(id="currently-in-bounds"),
-            html.Div(id="currently-in-bounds2"),
-            html.Div(id="new-file-added"),
-            html.Div(id="file-removed"),
-            html.Div(id="column-value-color-dict"),
-            html.Div(id="bins"),
-            html.Div(False, id="is-numeric"),
-            html.Div(False, id="cmap-has-been-set"),
+            html.Div(id="currently-in-bounds", style={"display": "none"}),
+            html.Div(id="currently-in-bounds2", style={"display": "none"}),
+            html.Div(id="new-file-added", style={"display": "none"}),
+            html.Div(id="file-removed", style={"display": "none"}),
+            html.Div(id="column-value-color-dict", style={"display": "none"}),
+            html.Div(id="bins", style={"display": "none"}),
+            html.Div(False, id="is-numeric", style={"display": "none"}),
+            # html.Div(False, id="cmap-has-been-set", style={"display": "none"}),
         ],
         fluid=True,
     )
@@ -424,7 +452,7 @@ def handle_click(load_parquet, up_button_clicks, ids, current_path):
 #     return file_path
 
 
-@app.callback(
+@callback(
     Output("remove-buttons", "children"),
     Input("new-file-added", "n_clicks"),
     Input("file-removed", "children"),
@@ -452,7 +480,7 @@ def render_items(new_file_added, file_removed):
     ]
 
 
-@app.callback(
+@callback(
     Output("file-removed", "children"),
     Input({"type": "delete-btn", "index": dash.ALL}, "n_clicks"),
     # State({"type": "delete-btn", "index": dash.ALL}, "index"),
@@ -588,15 +616,15 @@ def update_column_dropdown(currently_in_bounds):
     Output("column-value-color-dict", "children"),
     Output("bins", "children"),
     Output("is-numeric", "children"),
-    Output("cmap-placeholder", "children"),
+    # Output("cmap-placeholder", "value"),
     Output("force-categorical", "children"),
     Output("currently-in-bounds2", "children"),
     Input("column-dropdown", "value"),
-    Input("cmap", "value"),
+    Input("cmap-placeholder", "value"),
     Input("k", "value"),
     Input("force-categorical", "n_clicks"),
     Input("currently-in-bounds", "children"),
-    State("cmap-has-been-set", "children"),
+    # State("cmap-has-been-set", "children"),
     State("map", "bounds"),
     prevent_initial_call=True,
 )
@@ -606,11 +634,11 @@ def get_column_value_color_dict(
     k: int,
     force_categorical_clicks: int,
     currently_in_bounds,
-    cmap_has_been_set: bool,
+    # cmap_has_been_set: bool,
     bounds,
 ):
     if column is None or not any(column in df for df in exp.data.values()):
-        return None, None, False, dash.no_update, dash.no_update, currently_in_bounds
+        return None, None, False, dash.no_update, currently_in_bounds
 
     box = shapely.box(*nested_bounds_to_bounds(bounds))
     values = pd.concat(
@@ -645,18 +673,18 @@ def get_column_value_color_dict(
     is_numeric = (
         force_categorical_clicks or 0
     ) % 2 == 0 and pd.api.types.is_numeric_dtype(values)
-    if is_numeric and not cmap_has_been_set:
-        cmap_component = dbc.Input(
-            placeholder="Cmap",
-            value="viridis",
-            type="text",
-            id="cmap",
-            style={"font-size": 22},
-        )
-    elif not cmap_has_been_set:
-        cmap_component = None
-    else:
-        cmap_component = dash.no_update
+    # if is_numeric and not cmap_has_been_set:
+    #     cmap_component = dbc.Input(
+    #         placeholder="Cmap",
+    #         value="viridis",
+    #         type="text",
+    #         id="cmap",
+    #         style={"font-size": 22},
+    #     )
+    # elif not cmap_has_been_set:
+    #     cmap_component = None
+    # else:
+    #     cmap_component = dash.no_update
 
     if is_numeric:
         series = pd.concat(
@@ -665,8 +693,8 @@ def get_column_value_color_dict(
                 for path, df in exp.data.items()
                 if any(x in path for x in exp.selected_paths) and column in df
             ]
-        )
-        bins = jenks_breaks(series.dropna(), n_classes=k)
+        ).dropna()
+        bins = jenks_breaks(series, n_classes=k)
         cmap_ = matplotlib.colormaps.get_cmap(cmap)
         colors_ = [
             matplotlib.colors.to_hex(cmap_(int(i))) for i in np.linspace(0, 255, num=k)
@@ -679,7 +707,6 @@ def get_column_value_color_dict(
             ]
             + [(f"{bins[-1]} - {round(max(series), 1)}", colors_[-1])]
         )
-        # list(enumerate(colors_))
     else:
 
         unique_values = values.unique()
@@ -690,10 +717,6 @@ def get_column_value_color_dict(
                 len(unique_values) - len(sg.maps.map._CATEGORICAL_CMAP.values())
             )
         ]
-        print(len(unique_values))
-        print(len(colors))
-        print(len(sg.maps.map._CATEGORICAL_CMAP.values()))
-        print(len(unique_values) - len(sg.maps.map._CATEGORICAL_CMAP.values()))
         column_value_color_dict = list(
             zip(
                 unique_values,
@@ -707,19 +730,19 @@ def get_column_value_color_dict(
         column_value_color_dict,
         bins,
         is_numeric,
-        cmap_component,
+        # cmap_component,
         force_categorical_button,
         currently_in_bounds,
     )
 
 
-@callback(
-    Output("cmap-has-been-set", "children"),
-    Input("cmap-placeholder", "children"),
-    prevent_initial_call=True,
-)
-def update_cmap_has_been_set(cmap):
-    return True
+# @callback(
+#     Output("cmap-has-been-set", "children"),
+#     Input("cmap-placeholder", "children"),
+#     prevent_initial_call=True,
+# )
+# def update_cmap_has_been_set(cmap):
+#     return True
 
 
 @callback(
@@ -878,8 +901,7 @@ def add_data(
 
             data.append(
                 dl.Overlay(
-                    dl.GeoJSON(),
-                    id={"type": "geojson", "filename": get_name(path)},
+                    dl.GeoJSON(id={"type": "geojson", "filename": path}),
                     name=get_name(path),
                     checked=True,
                 )
@@ -889,16 +911,17 @@ def add_data(
             data.append(
                 dl.Overlay(
                     dl.GeoJSON(
-                        data=sg.sfilter(df, box).__geo_interface__,
+                        data=df.__geo_interface__,
                         style={
                             "color": NAN_COLOR,
                             "fillColor": NAN_COLOR,
                             "weight": 2,
                             "fillOpacity": 0.7,
                         },
+                        # onEachFeature=ns("popup"),
+                        id={"type": "geojson", "filename": path},
                     ),
                     name=get_name(path),
-                    id={"type": "geojson", "filename": get_name(path)},
                     checked=True,
                 )
             )
@@ -915,25 +938,32 @@ def add_data(
                                     "weight": 2,
                                     "fillOpacity": 0.7,
                                 },
+                                # onEachFeature=ns("popup"),
+                                id={
+                                    "type": "geojson",
+                                    "filename": path + color_,
+                                },
                             )
                             for color_ in df["_color"].unique()
                         ]
                         + [
                             dl.GeoJSON(
-                                data=sg.sfilter(
-                                    df[df[column].isna()], box
-                                ).__geo_interface__,
+                                data=df[df[column].isna()].__geo_interface__,
                                 style={
                                     "color": NAN_COLOR,
                                     "fillColor": NAN_COLOR,
                                     "weight": 2,
                                     "fillOpacity": 0.7,
                                 },
+                                id={
+                                    "type": "geojson",
+                                    "filename": path + "nan",
+                                },
+                                # onEachFeature=ns("popup"),
                             )
                         ]
                     ),
                     name=get_name(path),
-                    id={"type": "geojson", "filename": get_name(path)},
                     checked=True,
                 )
             )
@@ -949,9 +979,10 @@ def add_data(
                             "weight": 2,
                             "fillOpacity": 0.7,
                         },
+                        # onEachFeature=ns("popup"),
+                        id={"type": "geojson", "filename": path},
                     ),
                     name=get_name(path),
-                    id={"type": "geojson", "filename": get_name(path)},
                     checked=True,
                 )
             )
@@ -973,23 +1004,43 @@ def add_data(
     ] + data
 
 
-# @callback(
-#     Output("feature-table-container", "children"),
-#     Input({"type": "geojson", "filename": dash.ALL}, "click_feature"),
-#     prevent_initial_call=True,
-# )
-# def display_feature_table(feature):
-#     if not feature:
-#         return dash.no_update
-#     print("feature")
-#     print(feature)
-#     props = feature.get("properties", {})
-#     return dash_table.DataTable(
-#         columns=[{"name": k, "id": k} for k in props],
-#         data=[props],
-#         style_table={"overflowX": "auto"},
-#         style_cell={"textAlign": "left"},
-#     )
+@callback(
+    Output("feature-table-container", "children"),
+    Input({"type": "geojson", "filename": dash.ALL}, "clickData"),
+    Input({"type": "geojson", "filename": dash.ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def display_feature_attributes(feature, n_clicks):
+    print("display_feature_attributes")
+    if not feature or not any(feature):
+        return dash.no_update
+    triggered = dash.callback_context.triggered_id
+    filename_id = triggered["filename"]
+    path = next(iter(x for x in exp.selected_paths if x in filename_id))
+    index = exp.selected_paths.index(path)
+    feature = feature[index]
+    props = feature["properties"]
+    return html.Div(
+        [
+            html.Div(f"Table view on {path}"),
+            dash_table.DataTable(
+                columns=[
+                    {"name": k, "id": k} for k in props if k in exp.data[path].columns
+                ],
+                data=[props],
+                style_header={
+                    "backgroundColor": "#2f2f2f",  # dark gray
+                    "color": "white",
+                    "fontWeight": "bold",
+                },
+                style_data={
+                    "backgroundColor": "#d3d3d3",  # light gray
+                    "color": "black",
+                },
+                style_table={"overflowX": "auto"},
+            ),
+        ]
+    )
 
 
 # app.clientside_callback(
