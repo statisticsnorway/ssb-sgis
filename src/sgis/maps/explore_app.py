@@ -995,6 +995,14 @@ def add_data(
         ),
         dl.BaseLayer(
             dl.TileLayer(
+                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+                attribution='&copy; <a href="https://carto.com/">CARTO</a>',
+            ),
+            name="CartoDB Dark Matter",
+            checked=True,
+        ),
+        dl.BaseLayer(
+            dl.TileLayer(
                 url="https://opencache.statkart.no/gatekeeper/gk/gk.open_nib_web_mercator_wmts_v2?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=Nibcache_web_mercator_v2&STYLE=default&FORMAT=image/jpgpng&tileMatrixSet=default028mm&tileMatrix={z}&tileRow={y}&tileCol={x}",
                 attribution="© Geovekst",
             ),
