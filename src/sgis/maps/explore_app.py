@@ -35,6 +35,30 @@ BASE_DIR = "/buckets/delt-kart/analyse_data/klargjorte-data/2025"
 NAN_COLOR = "#969696"
 NAN_LABEL = "Missing"
 
+BASE_LAYERS = [
+    dl.BaseLayer(
+        dl.TileLayer("OpenStreetMap"),
+        name="OpenStreetMap",
+        checked=True,
+    ),
+    dl.BaseLayer(
+        dl.TileLayer(
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>',
+        ),
+        name="CartoDB Dark Matter",
+        checked=False,
+    ),
+    dl.BaseLayer(
+        dl.TileLayer(
+            url="https://opencache.statkart.no/gatekeeper/gk/gk.open_nib_web_mercator_wmts_v2?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=Nibcache_web_mercator_v2&STYLE=default&FORMAT=image/jpgpng&tileMatrixSet=default028mm&tileMatrix={z}&tileRow={y}&tileCol={x}",
+            attribution="© Geovekst",
+        ),
+        name="Norge i bilder",
+        checked=False,
+    ),
+]
+
 # BASE_DIR = "c:/users/ort"
 
 
@@ -107,24 +131,7 @@ if __name__ == "__main__":
                                 center=default_center,
                                 zoom=default_zoom,
                                 children=[
-                                    dl.LayersControl(
-                                        [
-                                            dl.BaseLayer(
-                                                dl.TileLayer("OpenStreetMap"),
-                                                name="OpenStreetMap",
-                                                checked=True,
-                                            ),
-                                            dl.BaseLayer(
-                                                dl.TileLayer(
-                                                    url="https://opencache.statkart.no/gatekeeper/gk/gk.open_nib_web_mercator_wmts_v2?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=Nibcache_web_mercator_v2&STYLE=default&FORMAT=image/jpgpng&tileMatrixSet=default028mm&tileMatrix={z}&tileRow={y}&tileCol={x}",
-                                                    attribution="© Geovekst",
-                                                ),
-                                                name="Norge i bilder",
-                                                checked=False,
-                                            ),
-                                        ],
-                                        id="lc",
-                                    ),
+                                    dl.LayersControl(BASE_LAYERS, id="lc"),
                                     dl.ScaleControl(position="bottomleft"),
                                     dl.MeasureControl(
                                         position="bottomright",
@@ -987,29 +994,7 @@ def add_data(
                 )
             )
 
-    return [
-        dl.BaseLayer(
-            dl.TileLayer("OpenStreetMap"),
-            name="OpenStreetMap",
-            checked=True,
-        ),
-        dl.BaseLayer(
-            dl.TileLayer(
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-                attribution='&copy; <a href="https://carto.com/">CARTO</a>',
-            ),
-            name="CartoDB Dark Matter",
-            checked=True,
-        ),
-        dl.BaseLayer(
-            dl.TileLayer(
-                url="https://opencache.statkart.no/gatekeeper/gk/gk.open_nib_web_mercator_wmts_v2?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=Nibcache_web_mercator_v2&STYLE=default&FORMAT=image/jpgpng&tileMatrixSet=default028mm&tileMatrix={z}&tileRow={y}&tileCol={x}",
-                attribution="© Geovekst",
-            ),
-            name="Norge i bilder",
-            checked=False,
-        ),
-    ] + data
+    return BASE_LAYERS + data
 
 
 @callback(
@@ -1027,13 +1012,16 @@ def display_feature_attributes(feature, n_clicks):
     path = next(iter(x for x in exp.selected_paths if x in filename_id))
     index = exp.selected_paths.index(path)
     feature = feature[index]
+    print(locals())
     props = feature["properties"]
     return html.Div(
         [
             html.Div(f"Table view on {path}"),
             dash_table.DataTable(
                 columns=[
-                    {"name": k, "id": k} for k in props if k in exp.data[path].columns
+                    {"name": k, "id": k}
+                    for k in props
+                    if k not in exp.data and k in exp.data[path]
                 ],
                 data=[props],
                 style_header={
