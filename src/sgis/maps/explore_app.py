@@ -1,3 +1,4 @@
+import uuid
 import itertools
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -62,6 +63,34 @@ BASE_LAYERS = [
 # BASE_DIR = "c:/users/ort"
 
 
+def nested_bounds_to_bounds(
+    bounds: list[list[float]],
+) -> tuple[float, float, float, float]:
+    if bounds is None:
+        bounds = default_bounds
+    mins, maxs = bounds
+    miny, minx = mins
+    maxy, maxx = maxs
+    return minx, miny, maxx, maxy
+
+
+def read_files(exp, paths):
+    read_func = partial(sg.read_geopandas, file_system=exp.file_system)
+    with ThreadPoolExecutor() as executor:
+        more_data = list(executor.map(read_func, paths))
+    for path, df in zip(paths, more_data, strict=True):
+        exp.data[path] = df.to_crs(4326).assign(
+            _uuid=lambda x: [str(uuid.uuid4()) for _ in range(len(x))]
+        )
+
+
+def bounds_to_nested_bounds(
+    bounds: tuple[float, float, float, float],
+) -> list[list[float]]:
+    minx, miny, maxx, maxy = bounds
+    return [[miny, minx], [maxy, maxx]]
+
+
 def dict_to_geopandas(dict_):
     geometry = dict_.pop("geometry")
     crs = dict_.pop("crs")
@@ -79,15 +108,50 @@ if __name__ == "__main__":
     norge_i_bilder = False
 
     class ExploreApp:
-        def __init__(self, file_system):
-            self.selected_paths: list[str] = []
-            self.currently_in_bounds: set[str] = set()
-            self.bounds = GeoSeries()
-            self.data: dict[str, GeoDataFrame] = {}
+
+        def __init__(
+            self,
+            base_dir: str = BASE_DIR,
+            port=8055,
+            paths: list[str] | None = None,
+            column: str | None = None,
+            # bounds=(
+            #     9.858855440173372,
+            #     59.62124229424823,
+            #     11.563109590563998,
+            #     60.207757877310925,
+            # ),
+            center=(59.91740845, 10.71394444),
+            zoom: int = 10,
+            nan_color: str = NAN_COLOR,
+            nan_label: str = NAN_LABEL,
+            file_system=LocalFileSystem(),
+        ):
+            self.base_dir = base_dir
+            self.port = port
+            self.center = center
+            self.zoom = zoom
+            self.column = column
             self.file_system = file_system
+            self.nan_color = nan_color
+            self.nan_label = nan_label
+            self.file_system = file_system
+            self.currently_in_bounds: set[str] = set()
+            self.bounds_series = GeoSeries()
+            self.data: dict[str, GeoDataFrame] = {}
+            self.paths: list[str] = []
+
+            if not paths:
+                return
+
+            for path in paths:
+                self.append(path)
+
+            read_files(self, paths)
 
         def append(self, path):
-            self.selected_paths.append(path)
+            print("append", path)
+            self.paths.append(path)
             suffix = Path(path).suffix
             if suffix:
                 paths = list(self.file_system.glob(str(Path(path) / f"**/*{suffix}")))
@@ -95,16 +159,46 @@ if __name__ == "__main__":
                     paths = [path]
             else:
                 paths = [path]
-            self.bounds = pd.concat(
+            self.bounds_series = pd.concat(
                 [
-                    self.bounds,
+                    self.bounds_series,
                     sg.get_bounds_series(paths, file_system=self.file_system).to_crs(
                         4326
                     ),
                 ]
             )
 
-    exp = ExploreApp(file_system=LocalFileSystem())
+        def __str__(self) -> str:
+            def to_string(x):
+                if isinstance(x, str):
+                    return f"'{x}'"
+                return x
+
+            txt = ", ".join(
+                [
+                    f"{k}={to_string(v)}"
+                    for k, v in self.__dict__.items()
+                    if k
+                    not in [
+                        "paths",
+                        "currently_in_bounds",
+                        "bounds_series",
+                        "data",
+                    ]
+                ]
+            )
+            return f"{self.__class__.__name__}({txt})"
+
+    exp = ExploreApp(
+        paths=[
+            "/buckets/delt-kart/analyse_data/klargjorte-data/2025/FKB_arealbruk_flate_p2025_v1.parquet"
+        ],
+        column="objtype",
+        zoom=15,
+        center=(59.91740845, 10.71394444),
+        file_system=LocalFileSystem(),
+    )
+    print(exp)
 
     app = Dash(
         __name__,
@@ -114,8 +208,7 @@ if __name__ == "__main__":
         serve_locally=True,
         assets_folder="assets",
     )
-    default_center = [59.91740845, 10.71394444]
-    default_zoom = 10
+    # default_center = [59.91740845, 10.71394444]
     default_bounds = [
         [59.62124229424823, 9.858855440173372],
         [60.207757877310925, 11.563109590563998],
@@ -128,8 +221,13 @@ if __name__ == "__main__":
                     dbc.Col(
                         [
                             dl.Map(
-                                center=default_center,
-                                zoom=default_zoom,
+                                center=exp.center,
+                                zoom=exp.zoom,
+                                # bounds=(
+                                #     bounds_to_nested_bounds(exp.bounds)
+                                #     if len(exp.bounds) == 4
+                                #     else exp.bounds
+                                # ),
                                 children=[
                                     dl.LayersControl(BASE_LAYERS, id="lc"),
                                     dl.ScaleControl(position="bottomleft"),
@@ -146,6 +244,16 @@ if __name__ == "__main__":
                     ),
                     dbc.Col(
                         [
+                            dbc.Row(
+                                html.Button(
+                                    "Split",
+                                    style={
+                                        "fillColor": "white",
+                                        "color": "black",
+                                    },
+                                ),
+                                id="splitter",
+                            ),
                             dbc.Row(
                                 [
                                     dbc.Col(
@@ -232,56 +340,91 @@ if __name__ == "__main__":
                             ),
                             dbc.Row(id="column-value-colors"),
                             dbc.Row(
+                                html.Div(id="remove-buttons"),
+                            ),
+                            dbc.Row(
                                 [
                                     dbc.Col(
                                         html.Div(
                                             [
-                                                html.H2("File Browser"),
-                                                html.Button("⬆️ Go Up", id="up-button"),
-                                                dcc.Store(
-                                                    id="current-path", data=BASE_DIR
-                                                ),
-                                                html.Div(id="path-display"),
-                                                html.Div(
-                                                    id="file-list",
+                                                html.Button(
+                                                    "Export",
+                                                    id="export",
                                                     style={
-                                                        "font-size": 12,
-                                                        "width": "100%",
-                                                        "height": "70vh",
-                                                        "overflow": "scroll",
+                                                        "color": "blue",
+                                                        # "border": "none",
+                                                        # "background": "none",
+                                                        # "cursor": "pointer",
                                                     },
                                                 ),
                                                 html.Div(
-                                                    id="selected-path",
-                                                    style={
-                                                        "marginTop": "20px",
-                                                        "fontWeight": "bold",
-                                                    },
-                                                ),
-                                                html.Div(
-                                                    id="selected-file",
+                                                    id="export-view",
                                                     style={"display": "none"},
                                                 ),
                                             ]
-                                        ),
-                                        # width=4,
+                                        )
                                     ),
                                 ]
                             ),
-                            dbc.Row(
-                                html.Div(id="remove-buttons"),
-                            ),
                         ],
                     ),
-                ]
+                ],
+                style={
+                    "height": "100vh",
+                    "overflow": "scroll",
+                },
             ),
             dbc.Row(
                 [
                     dbc.Col(
+                        html.Button(
+                            "❌ Clear table",
+                            id="clear-table",
+                            style={
+                                "color": "red",
+                                "border": "none",
+                                "background": "none",
+                                "cursor": "pointer",
+                            },
+                        ),
+                        width=1,
+                    ),
+                    dbc.Col(
                         html.Div(id="feature-table-container"),
                         style={"width": "100%", "height": "100vh"},
+                        width=11,
                     ),
                 ],
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        html.Div(
+                            [
+                                html.H2("File Browser"),
+                                html.Button("⬆️ Go Up", id="up-button"),
+                                dcc.Store(id="current-path", data=BASE_DIR),
+                                dcc.Input(
+                                    BASE_DIR,
+                                    id="path-display",
+                                    style={
+                                        "width": "70%",
+                                    },
+                                ),
+                                html.Div(
+                                    id="file-list",
+                                    style={
+                                        "font-size": 12,
+                                        "width": "100%",
+                                        "height": "70vh",
+                                        "overflow": "scroll",
+                                    },
+                                ),
+                            ]
+                        ),
+                        # width=4,
+                    ),
+                ]
             ),
             html.Div(
                 id="custom-popup",
@@ -338,6 +481,7 @@ if __name__ == "__main__":
             html.Div(id="bins", style={"display": "none"}),
             html.Div(False, id="is-numeric", style={"display": "none"}),
             # html.Div(False, id="cmap-has-been-set", style={"display": "none"}),
+            dcc.Store(id="clicked-features", data=[]),
         ],
         fluid=True,
     )
@@ -390,42 +534,72 @@ def list_dir(path):
 
 
 @callback(
-    Output("path-display", "children"),
+    Output("export-view", "children"),
+    Output("export-view", "style"),
+    Input("export", "n_clicks"),
+    Input("file-removed", "children"),
+    State("map", "bounds"),
+    State("map", "zoom"),
+)
+def export(n_clicks, remove, bounds, zoom):
+    triggered = dash.callback_context.triggered_id
+    if triggered == "file-removed":
+        return None, None
+
+    bounds = nested_bounds_to_bounds(bounds)
+
+    def to_string(x):
+        if isinstance(x, str):
+            return f"'{x}'"
+        return x
+
+    data = {
+        k: v
+        for k, v in exp.__dict__.items()
+        if k
+        not in [
+            "paths",
+            "currently_in_bounds",
+            "bounds_series",
+            "data",
+        ]
+    } | {"zoom": zoom, "bounds": bounds}
+    txt = ", ".join([f"{k}={to_string(v)}" for k, v in data.items()])
+    return f"{exp.__class__.__name__}({txt})", None
+
+
+@callback(
+    # Output("path-display", "value"),
     Output("file-list", "children"),
     Input("current-path", "data"),
 )
 def update_file_list(path):
     print("update_file_list")
-    return f"Browsing: {path}", list_dir(path)
+    return list_dir(path)
 
 
 @callback(
     Output("current-path", "data"),
-    Output("selected-path", "children"),
+    Output("path-display", "value"),
     Input({"type": "file-item", "index": dash.ALL}, "n_clicks"),
-    # Input({"type": "load-parquet", "index": dash.ALL}, "n_clicks"),
     Input("up-button", "n_clicks"),
+    Input("path-display", "value"),
     State({"type": "file-item", "index": dash.ALL}, "id"),
     State("current-path", "data"),
     prevent_initial_call=True,
 )
-def handle_click(load_parquet, up_button_clicks, ids, current_path):
+def handle_click(load_parquet, up_button_clicks, path, ids, current_path):
     triggered = dash.callback_context.triggered_id
     print("handle_click")
-    print(triggered)
-    print(load_parquet)
+    if triggered == "path-display":
+        return path, path
     if triggered == "up-button":
         current_path = str(Path(current_path).parent)
-    elif not any(load_parquet):
+        return current_path, current_path
+    elif not any(load_parquet) or not triggered:
         return dash.no_update, dash.no_update
-    elif triggered:
-        selected_path = triggered["index"]
-        # return current_path, selected_path
-        if os.path.isdir(selected_path):  # and triggered["type"] != "load-parquet":
-            return selected_path, None
-        else:
-            return current_path, selected_path
-    return current_path, None
+    selected_path = triggered["index"]
+    return selected_path, selected_path
 
 
 # @callback(
@@ -445,18 +619,6 @@ def handle_click(load_parquet, up_button_clicks, ids, current_path):
 #     elif ctx.triggered_id == "close-popup":
 #         style["display"] = "none"
 #     return style
-
-# @callback(
-#     Output("selected-file", "children"),
-#     Input("selected-path", "children"),
-#     # prevent_initial_call=True,
-# )
-# def check_if_is_file(file_path):
-#     print("check_if_is_file")
-#     if file_path is None or not os.path.getsize(file_path):
-#         return dash.no_update
-#     print("is file", file_path)
-#     return file_path
 
 
 @callback(
@@ -483,7 +645,7 @@ def render_items(new_file_added, file_removed):
             ],
             style={"display": "flex", "alignItems": "center", "marginBottom": "5px"},
         )
-        for i, path in enumerate(exp.selected_paths)
+        for i, path in enumerate(exp.paths)
     ]
 
 
@@ -511,11 +673,13 @@ def delete_item(n_clicks_list):
         print(n_clicks)
         # path_to_remove = triggered_id["index"]
         print(path_to_remove)
-        exp.selected_paths.pop(exp.selected_paths.index(path_to_remove))
+        exp.paths.pop(exp.paths.index(path_to_remove))
         for path in list(exp.data):
             if path_to_remove in path:
                 del exp.data[path]
-        exp.bounds = exp.bounds[lambda x: ~x.index.str.contains(path_to_remove)]
+        exp.bounds_series = exp.bounds_series[
+            lambda x: ~x.index.str.contains(path_to_remove)
+        ]
     return 1
 
 
@@ -541,8 +705,8 @@ def append_path(load_parquet, ids):
         checklist = dcc.Checklist(
             # list(remove_buttons.options) + [get_name(selected_path)],
             # list(remove_buttons.value) + [get_name(selected_path)],
-            [get_name(path) for path in exp.selected_paths],
-            [get_name(path) for path in exp.selected_paths],
+            [get_name(path) for path in exp.paths],
+            [get_name(path) for path in exp.paths],
         )
     else:
         checklist = dash.no_update
@@ -555,40 +719,17 @@ def append_path(load_parquet, ids):
     Output("currently-in-bounds", "children"),
     Input("map", "bounds"),
     Input("new-file-added", "n_clicks"),
+    Input("file-removed", "children"),
     # prevent_initial_call=True,
 )
-def get_files_in_bounds(bounds, n_clicks):
+def get_files_in_bounds(bounds, file_added, file_removed):
     print("get_files_in_bounds", bounds)
     box = shapely.box(*nested_bounds_to_bounds(bounds))
-    files_in_bounds = sg.sfilter(exp.bounds, box)
+    files_in_bounds = sg.sfilter(exp.bounds_series, box)
     currently_in_bounds = set(files_in_bounds.index)
     missing = list({path for path in files_in_bounds.index if path not in exp.data})
-    if not missing:
-        return list(currently_in_bounds)
-
-    read_func = partial(sg.read_geopandas, file_system=exp.file_system)
-    with ThreadPoolExecutor() as executor:
-        more_data = list(executor.map(read_func, missing))
-    # more_data_dict = {}
-    for path, df in zip(missing, more_data, strict=True):
-        exp.data[path] = df.to_crs(4326)
-        continue
-        if path in exp.selected_paths:
-            more_data_dict[path] = df
-            continue
-        root = [x for x in exp.selected_paths if x in path]
-        if len(root) == 1:
-            path = next(iter(root))
-        try:
-            more_data_dict[path].append(df)
-        except KeyError:
-            more_data_dict[path] = [df]
-
-    # for path, df in more_data_dict.items():
-    #     if isinstance(df, list):
-    #         exp.data[path] = pd.concat(df, ignore_index=True).to_crs(4326)
-    #     else:
-    #         exp.data[path] = df.to_crs(4326)
+    if missing:
+        read_files(exp, missing)
     return list(currently_in_bounds)
 
 
@@ -607,12 +748,17 @@ def uncheck(is_checked):
 @callback(
     Output("column-dropdown", "options"),
     Input("currently-in-bounds", "children"),
+    Input("file-removed", "children"),
     prevent_initial_call=True,
 )
-def update_column_dropdown(currently_in_bounds):
+def update_column_dropdown(currently_in_bounds, file_removed):
     columns = set(
         itertools.chain.from_iterable(
-            set(exp.data[path].columns.difference({exp.data[path].geometry.name}))
+            set(
+                exp.data[path].columns.difference(
+                    {exp.data[path].geometry.name, "_uuid"}
+                )
+            )
             for path in currently_in_bounds
         )
     )
@@ -623,7 +769,6 @@ def update_column_dropdown(currently_in_bounds):
     Output("column-value-color-dict", "children"),
     Output("bins", "children"),
     Output("is-numeric", "children"),
-    # Output("cmap-placeholder", "value"),
     Output("force-categorical", "children"),
     Output("currently-in-bounds2", "children"),
     Input("column-dropdown", "value"),
@@ -631,7 +776,6 @@ def update_column_dropdown(currently_in_bounds):
     Input("k", "value"),
     Input("force-categorical", "n_clicks"),
     Input("currently-in-bounds", "children"),
-    # State("cmap-has-been-set", "children"),
     State("map", "bounds"),
     prevent_initial_call=True,
 )
@@ -641,7 +785,6 @@ def get_column_value_color_dict(
     k: int,
     force_categorical_clicks: int,
     currently_in_bounds,
-    # cmap_has_been_set: bool,
     bounds,
 ):
     if column is None or not any(column in df for df in exp.data.values()):
@@ -680,25 +823,12 @@ def get_column_value_color_dict(
     is_numeric = (
         force_categorical_clicks or 0
     ) % 2 == 0 and pd.api.types.is_numeric_dtype(values)
-    # if is_numeric and not cmap_has_been_set:
-    #     cmap_component = dbc.Input(
-    #         placeholder="Cmap",
-    #         value="viridis",
-    #         type="text",
-    #         id="cmap",
-    #         style={"font-size": 22},
-    #     )
-    # elif not cmap_has_been_set:
-    #     cmap_component = None
-    # else:
-    #     cmap_component = dash.no_update
-
     if is_numeric:
         series = pd.concat(
             [
                 df[column]
                 for path, df in exp.data.items()
-                if any(x in path for x in exp.selected_paths) and column in df
+                if any(x in path for x in exp.paths) and column in df
             ]
         ).dropna()
         bins = jenks_breaks(series, n_classes=k)
@@ -737,30 +867,53 @@ def get_column_value_color_dict(
         column_value_color_dict,
         bins,
         is_numeric,
-        # cmap_component,
         force_categorical_button,
         currently_in_bounds,
     )
 
 
-# @callback(
-#     Output("cmap-has-been-set", "children"),
-#     Input("cmap-placeholder", "children"),
-#     prevent_initial_call=True,
-# )
-# def update_cmap_has_been_set(cmap):
-#     return True
-
-
 @callback(
     Output("column-value-colors", "children"),
     Input("column-value-color-dict", "children"),
+    Input("file-removed", "children"),
     State("is-numeric", "children"),
     prevent_initial_call=True,
 )
-def update_column_dropdown(values_to_colors, is_numeric):
+def update_column_dropdown(values_to_colors, file_removed, is_numeric):
     if values_to_colors is None:
-        return None
+        return html.Div(
+            [
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            dbc.Input(
+                                type="color",
+                                id={
+                                    "type": "colorpicker",
+                                    "column_value": get_name(path),
+                                },
+                                value=color,
+                                style={"width": 50, "height": 50},
+                            ),
+                            width="auto",
+                        ),
+                        dbc.Col(
+                            dbc.Label([get_name(path)]),
+                            width="auto",
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "justifyContent": "flex-start",
+                        "alignItems": "center",
+                        "marginBottom": "5px",
+                    },
+                )
+                for path, color in zip(
+                    exp.paths, sg.maps.map._CATEGORICAL_CMAP.values(), strict=False
+                )
+            ]
+        )
     if is_numeric:
         values_to_colors = dict(values_to_colors)
     else:
@@ -824,22 +977,12 @@ def update_column_dropdown(values_to_colors, is_numeric):
     )
 
 
-def nested_bounds_to_bounds(
-    bounds: list[list[float]],
-) -> tuple[float, float, float, float]:
-    if bounds is None:
-        bounds = default_bounds
-    mins, maxs = bounds
-    miny, minx = mins
-    maxy, maxx = maxs
-    return minx, miny, maxx, maxy
-
-
 @callback(
     Output("lc", "children"),
     Input("currently-in-bounds2", "children"),
     Input({"type": "colorpicker", "column_value": dash.ALL}, "value"),
     Input("is-numeric", "children"),
+    Input("file-removed", "children"),
     State("map", "bounds"),
     State({"type": "geojson", "filename": dash.ALL}, "checked"),
     State("column-dropdown", "value"),
@@ -851,6 +994,7 @@ def add_data(
     currently_in_bounds,
     color_values,
     is_numeric,
+    file_removed,
     bounds,
     is_checked,
     column,
@@ -876,13 +1020,17 @@ def add_data(
         print()
         print(x)
         print(v)
-    for path, color in zip(
-        exp.selected_paths, sg.maps.map._CATEGORICAL_CMAP.values(), strict=False
-    ):
+
+    print(exp)
+    for i, path in enumerate(exp.paths):
+        # for path, color in zip(
+        #     exp.paths, sg.maps.map._CATEGORICAL_CMAP.values(), strict=False
+        # ):
         if path in exp.data:
             df = exp.data[path]
         else:
             df = pd.concat([df for key, df in exp.data.items() if path in key])
+
         df = sg.sfilter(df, box)
         if column is not None and column in df and not is_numeric:
             print("\nhei")
@@ -927,6 +1075,7 @@ def add_data(
                         },
                         # onEachFeature=ns("popup"),
                         id={"type": "geojson", "filename": path},
+                        hideout=dict(selected=[]),
                     ),
                     name=get_name(path),
                     checked=True,
@@ -950,6 +1099,7 @@ def add_data(
                                     "type": "geojson",
                                     "filename": path + color_,
                                 },
+                                hideout=dict(selected=[]),
                             )
                             for color_ in df["_color"].unique()
                         ]
@@ -967,6 +1117,7 @@ def add_data(
                                     "filename": path + "nan",
                                 },
                                 # onEachFeature=ns("popup"),
+                                hideout=dict(selected=[]),
                             )
                         ]
                     ),
@@ -976,6 +1127,7 @@ def add_data(
             )
         else:
             # no column
+            color = color_values[i]
             data.append(
                 dl.Overlay(
                     dl.GeoJSON(
@@ -998,45 +1150,80 @@ def add_data(
 
 
 @callback(
-    Output("feature-table-container", "children"),
-    Input({"type": "geojson", "filename": dash.ALL}, "clickData"),
+    # Output("feature-table-container", "children"),
+    Output("clicked-features", "data"),
+    Input("clear-table", "n_clicks"),
     Input({"type": "geojson", "filename": dash.ALL}, "n_clicks"),
+    State({"type": "geojson", "filename": dash.ALL}, "clickData"),
+    # State({"type": "geojson", "filename": dash.ALL}, "hideout"),
+    State("clicked-features", "data"),
     prevent_initial_call=True,
 )
-def display_feature_attributes(feature, n_clicks):
+def display_feature_attributes(clear_table, n_clicks, feature, hideout):
     print("display_feature_attributes")
+    triggered = dash.callback_context.triggered_id
+    if triggered == "clear-table":
+        hideout = []
+        return hideout
     if not feature or not any(feature):
         return dash.no_update
     triggered = dash.callback_context.triggered_id
     filename_id = triggered["filename"]
-    path = next(iter(x for x in exp.selected_paths if x in filename_id))
-    index = exp.selected_paths.index(path)
+    path = next(iter(x for x in exp.paths if x in filename_id))
+    index = exp.paths.index(path)
     feature = feature[index]
     print(locals())
     props = feature["properties"]
+    if props["_uuid"] not in {x["_uuid"] for x in hideout}:
+        hideout.append(props)
+    return hideout
+
+
+@callback(
+    Output("feature-table-container", "children"),
+    Input("clicked-features", "data"),
+    State("column-dropdown", "options"),
+)
+def update_table(data, column_dropdown):
+    if not data:
+        return "No features clicked."
+    all_columns = {x["label"] for x in column_dropdown}
+    columns = [{"name": k, "id": k} for k in data[0].keys() if k in all_columns]
     return html.Div(
         [
-            html.Div(f"Table view on {path}"),
+            # html.Div(f"Table view on {path}"),
             dash_table.DataTable(
-                columns=[
-                    {"name": k, "id": k}
-                    for k in props
-                    if k not in exp.data and k in exp.data[path]
-                ],
-                data=[props],
+                columns=columns,
+                data=data,
                 style_header={
-                    "backgroundColor": "#2f2f2f",  # dark gray
+                    "backgroundColor": "#2f2f2f",
                     "color": "white",
                     "fontWeight": "bold",
                 },
                 style_data={
-                    "backgroundColor": "#d3d3d3",  # light gray
+                    "backgroundColor": "#d3d3d3",
                     "color": "black",
                 },
                 style_table={"overflowX": "auto"},
             ),
         ]
     )
+
+
+app.clientside_callback(
+    """function(_, feature, hideout){
+    let selected = hideout.selected;
+    const name = feature.properties.name;
+    if(selected.includes(name)){selected = selected.filter((item) => (item !== name))}
+    else{selected.push(name);}
+    return {selected: selected};
+}""",
+    Output("geojson", "hideout"),
+    Input({"type": "geojson", "filename": dash.ALL}, "n_clicks"),
+    State({"type": "geojson", "filename": dash.ALL}, "clickData"),
+    State({"type": "geojson", "filename": dash.ALL}, "hideout"),
+    prevent_initial_call=True,
+)
 
 
 # app.clientside_callback(
