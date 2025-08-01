@@ -13,6 +13,7 @@ import shapely
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from pandas import DataFrame
+from pandas import Index
 from pandas import MultiIndex
 from pandas import Series
 
@@ -110,6 +111,8 @@ def get_neighbor_indices(
     if gdf.crs != neighbors.crs:
         raise ValueError(f"'crs' mismatch. Got {gdf.crs} and {neighbors.crs}")
 
+    index_name = gdf.index.name
+
     if rtree_runner is None:
         rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
 
@@ -141,6 +144,8 @@ def get_neighbor_indices(
         )
     index_mapper1 = {i: x for i, x in enumerate(gdf.index)}
     left = np.array([index_mapper1[i] for i in left])
+    if index_name:
+        left = Index(left, name=index_name)
     index_mapper2 = {i: x for i, x in enumerate(neighbors.index)}
     right = np.array([index_mapper2[i] for i in right])
     return Series(right, index=left, name="neighbor_index")
