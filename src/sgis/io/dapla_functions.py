@@ -385,6 +385,9 @@ def get_bounds_series(
     """
     file_system = _get_file_system(file_system, {})
 
+    if isinstance(paths, (str | Path)):
+        paths = [paths]
+
     threads = (
         min(len(paths), int(multiprocessing.cpu_count())) or 1 if use_threads else 1
     )
@@ -457,7 +460,7 @@ def write_geopandas(
         )
 
     if not len(df) and get_child_paths(gcs_path, file_system):
-        # no need to write empty df
+        # no need to write empty df for partitioned parquet
         return
     elif not len(df):
         if pandas_fallback:
@@ -465,8 +468,12 @@ def write_geopandas(
             df.geometry = df.geometry.astype(str)
             df.geometry = None
         try:
+            file_format: str = Path(gcs_path).suffix.lstrip(".")
+            write_method: Callable = getattr(df, f"to_{file_format}")
+            if file_format == "parquet":
+                kwargs["engine"] = "pyarrow"
             with file_system.open(gcs_path, "wb") as file:
-                _to_geopandas(df, file, **kwargs)
+                write_method(file, **kwargs)
 
         except Exception as e:
             more_txt = PANDAS_FALLBACK_INFO if not pandas_fallback else ""
