@@ -634,11 +634,13 @@ def bounds_to_polygon(
     1  POLYGON ((0.00000 0.00000, 0.00000 0.00000, 0....
 
     """
+    bounds = gdf.bounds.values
+    boxes = box(bounds[:, 0], bounds[:, 1], bounds[:, 2], bounds[:, 3])
     if isinstance(gdf, GeoSeries):
-        return GeoSeries([box(*arr) for arr in gdf.bounds.values], index=gdf.index)
+        return GeoSeries(boxes, index=gdf.index)
     if copy:
         gdf = gdf.copy()
-    gdf.geometry = [box(*arr) for arr in gdf.bounds.values]
+    gdf.geometry = boxes
     return gdf
 
 

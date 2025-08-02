@@ -14,7 +14,6 @@ from statistics import mean
 from typing import Any
 from typing import ClassVar
 
-import branca as bc
 import folium
 import geopandas as gpd
 import joblib
@@ -723,9 +722,9 @@ class Explore(Map):
 
         bounds = self._get_bounds(gdf)
 
-        if bounds is None:
-            self.map = None
-            return
+        if bounds is None and self.mask is not None:
+            bounds = self._get_bounds(_to_or_set_crs(to_gdf(self.mask), 4326))
+
         self.map = self._make_folium_map(
             bounds=bounds,
             max_zoom=self.max_zoom,
@@ -790,6 +789,8 @@ class Explore(Map):
                 map_.add_child(tile)
 
     def _create_continous_map(self):
+        import branca as bc
+
         self._prepare_continous_map()
         if self.scheme:
             classified = self._classify_from_bins(self._gdf, bins=self.bins)
@@ -804,9 +805,8 @@ class Explore(Map):
 
         gdf = self._prepare_gdf_for_map(self._gdf)
         bounds = self._get_bounds(gdf)
-        if bounds is None:
-            self.map = None
-            return
+        if bounds is None and self.mask is not None:
+            bounds = self._get_bounds(_to_or_set_crs(to_gdf(self.mask), 4326))
         self.map = self._make_folium_map(
             bounds=bounds,
             max_zoom=self.max_zoom,
@@ -899,6 +899,8 @@ class Explore(Map):
         map_kwds: dict | None = None,
         **kwargs,
     ):
+        import branca as bc
+
         if not map_kwds:
             map_kwds = {}
 
@@ -908,7 +910,7 @@ class Explore(Map):
         # create folium.Map object
         # Get bounds to specify location and map extent
         location = kwargs.pop("location", None)
-        if location is None:
+        if location is None and bounds is not None:
             x = mean([bounds[0], bounds[2]])
             y = mean([bounds[1], bounds[3]])
             location = (y, x)
@@ -1130,8 +1132,9 @@ class Explore(Map):
             if gdf.index.name is not None:
                 gdf = gdf.reset_index()
             # specify fields to show in the tooltip
-            tooltip = _tooltip_popup("tooltip", tooltip, gdf, **tooltip_kwds)
-            popup = _tooltip_popup("popup", popup, gdf, **popup_kwds)
+            cols = list(gdf.columns.difference({df.geometry.name}))
+            tooltip = _tooltip_popup("tooltip", tooltip, cols, **tooltip_kwds)
+            popup = _tooltip_popup("popup", popup, cols, **popup_kwds)
         else:
             tooltip = None
             popup = None
@@ -1153,7 +1156,7 @@ class Explore(Map):
 
 
 def _tooltip_popup(
-    type_: str, fields: Any, gdf: GeoDataFrame, **kwargs
+    type_: str, fields: Any, columns: list[str], **kwargs
 ) -> folium.GeoJsonTooltip | folium.GeoJsonPopup:
     """Get tooltip or popup."""
     # specify fields to show in the tooltip
@@ -1161,9 +1164,9 @@ def _tooltip_popup(
         return None
     else:
         if fields is True:
-            fields = gdf.columns.drop(gdf.geometry.name).to_list()
+            fields = columns
         elif isinstance(fields, int):
-            fields = gdf.columns.drop(gdf.geometry.name).to_list()[:fields]
+            fields = columns[:fields]
         elif isinstance(fields, str):
             fields = [fields]
 
@@ -1526,3 +1529,10 @@ def _image_collection_to_background_map(
         out = sorted(out, key=lambda x: x["label"])
 
     return out
+
+
+def _to_or_set_crs(df, crs):
+    try:
+        return df.to_crs(crs)
+    except Exception:
+        return df.set_crs(crs)
