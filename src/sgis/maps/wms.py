@@ -71,11 +71,10 @@ class NorgeIBilderWms(WmsLoader):
     not_contains: str | Iterable[str] | None = None
     show: bool | Iterable[int] | int = False
     _use_json: bool = True
+    url: str = "https://wms.geonorge.no/skwms1/wms.nib-prosjekter"
 
     def load_tiles(self, verbose: bool = False) -> None:
         """Load all Norge i bilder tiles into self.tiles."""
-        url = "https://wms.geonorge.no/skwms1/wms.nib-prosjekter?SERVICE=WMS&REQUEST=GetCapabilities"
-
         name_pattern = r"<Name>(.*?)</Name>"
         bbox_pattern = (
             r"<EX_GeographicBoundingBox>.*?"
@@ -86,7 +85,7 @@ class NorgeIBilderWms(WmsLoader):
         )
 
         all_tiles: list[dict] = []
-        with urlopen(url) as file:
+        with urlopen(self.url) as file:
             xml_data: str = file.read().decode("utf-8")
 
             for text in xml_data.split('<Layer queryable="1">')[1:]:
@@ -150,28 +149,6 @@ class NorgeIBilderWms(WmsLoader):
         url = "https://wms.geonorge.no/skwms1/wms.nib-mosaikk?SERVICE=WMS&REQUEST=GetCapabilities"
         wms = WebMapService(url, version="1.3.0")
         out = {}
-        # ttiles = {wms[layer].title: [] for layer in list(wms.contents)}
-        # for layer in list(wms.contents):
-        #     if wms[layer].title not in relevant_names:
-        #         continue
-        #     ttiles[wms[layer].title].append(layer)
-        # import pandas as pd
-
-        # df = pd.Series(ttiles).to_frame("title")
-        # df["n"] = df["title"].str.len()
-        # df = df.sort_values("n")
-        # for x in df["title"]:
-        #     if len(x) == 1:
-        #         continue
-        #     bounds = {tuple(wms[layer].boundingBoxWGS84) for layer in x}
-        #     if len(bounds) <= 1:
-        #         continue
-        #     print()
-        #     for layer in x:
-        #         print(layer)
-        #         print(wms[layer].title)
-        #         bbox = wms[layer].boundingBoxWGS84
-        #         print(bbox)
 
         for layer in list(wms.contents):
             title = wms[layer].title
@@ -267,7 +244,7 @@ class NorgeIBilderWms(WmsLoader):
         if not len(tile_layers):
             return tile_layers
 
-        if isinstance(self.show, int):
+        if isinstance(self.show, int) and not isinstance(self.show, bool):
             tile = tile_layers[list(tile_layers)[self.show]]
             tile.show = True
         elif isinstance(self.show, Iterable):
@@ -279,6 +256,8 @@ class NorgeIBilderWms(WmsLoader):
 
     def _filter_tiles(self, mask):
         """Filter relevant dates with pandas and geopandas because fast."""
+        if not self.tiles:
+            return pd.DataFrame(columns=["name", "year", "geometry", "bbox"])
         df = pd.DataFrame(self.tiles)
         filt = (df["name"].notna()) & (df["year"].str.contains("|".join(self.years)))
         if self.contains:
