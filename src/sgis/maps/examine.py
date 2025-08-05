@@ -99,11 +99,7 @@ class Examine:
 
         m = Explore(*gdfs, column=column, **kwargs)
 
-        # m = Map(*gdfs, column=column, **kwargs)
-        self._gdfs: dict[str, gpd.GeoDataFrame] = dict(
-            zip(m.labels, m.gdfs, strict=False)
-        )
-
+        self._gdfs = m._gdfs
         self.rasters: dict[str, ImageCollection | Image | Band] = m.rasters
 
         self.indices = list(range(len(self.mask_gdf)))
