@@ -24,21 +24,33 @@ def run_html_server(contents: str | None = None, port: int = 3000) -> None:
     if "JUPYTERHUB_SERVICE_PREFIX" in os.environ:
         # Create a link using the https://github.com/jupyterhub/jupyter-server-proxy
         display_address = os.environ["JUPYTERHUB_SERVICE_PREFIX"] + f"proxy/{port}/"
-        stop_address = os.environ["JUPYTERHUB_SERVICE_PREFIX"] + f"proxy/{port}/stop"
-        display_content = HTML(
-            f"""
-        <p>Click <a href='{display_address}'>here</a> to open in browser.</p>
-        <p>Click <a href='{stop_address}'>here</a> to stop.</p>
-        """
-        )
+        # stop_address = os.environ["JUPYTERHUB_SERVICE_PREFIX"] + f"proxy/{port}/stop"
+        # display_content = HTML(
+        #     f"""
+        # <p>Click <a href='{display_address}'>here</a> to open in browser.</p>
+        # <p>Click <a href='{stop_address}'>here</a> to stop.</p>
+        # """
+        # )
+    elif (
+        "VSCODE_PROXY_URI" in os.environ
+        and "{{port}}" in os.environ["VSCODE_PROXY_URI"]
+    ):
+        display_address = os.environ["VSCODE_PROXY_URI"].replace("{{port}}", str(port))
     else:
         display_address = f"http://localhost:{port}"
-        display_content = HTML(
-            f"""
-        <p>Click <a href='http://localhost:{port}'>here</a> to open in browser.</p>
-        <p>Click <a href='http://localhost:{port}/stop'>here</a> to stop.<p>"
-        """
-        )
+        # display_content = HTML(
+        #     f"""
+        # <p>Click <a href='http://localhost:{port}'>here</a> to open in browser.</p>
+        # <p>Click <a href='http://localhost:{port}/stop'>here</a> to stop.<p>"
+        # """
+        # )
+    stop_address = f"{display_address}/stop"
+    display_content = HTML(
+        f"""
+    <p>Click <a href='{display_address}'>here</a> to open in browser.</p>
+    <p>Click <a href='{stop_address}'>here</a> to stop.</p>
+    """
+    )
 
     class HTTPServerRequestHandler(BaseHTTPRequestHandler):
         """A handler of request for the server, hosting static content."""
