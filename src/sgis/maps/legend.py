@@ -346,9 +346,17 @@ class Legend:
         minx, miny, maxx, maxy = gdf.total_bounds
         diffx = maxx - minx
         diffy = maxy - miny
+        if diffx > 10000 and diffy > 10000:
+            gridsize = (diffy + diffx) // 1000
+        if diffx > 1000 and diffy > 1000:
+            gridsize = (diffy + diffx) // 100
+        if diffx > 100 and diffy > 100:
+            gridsize = (diffy + diffx) // 10
+        else:
+            gridsize = 30
         points = pd.concat(
             [
-                points_in_bounds(gdf, (diffy + diffx) // 1000),
+                points_in_bounds(gdf, gridsize),
                 bounds_to_points(gdf)
                 .geometry.explode(ignore_index=True)
                 .to_frame("geometry"),
