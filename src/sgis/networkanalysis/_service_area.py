@@ -129,10 +129,12 @@ def _service_area(
 
             service_areas.append(edges_within)
 
-    return pd.concat(
+    service_areas = pd.concat(
         service_areas,
         ignore_index=True,
     )
+    service_areas.geometry = force_2d(service_areas.geometry)
+    return service_areas
 
 
 def _part_of_edge_within(distance_df, nodes_within_break, directed):

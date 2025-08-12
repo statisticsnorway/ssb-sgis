@@ -17,6 +17,7 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
 from pandas import MultiIndex
+from shapely import force_2d
 
 from ..geopandas_tools.general import _push_geom_col
 from ._get_route import _get_k_routes
@@ -643,6 +644,8 @@ class NetworkAnalysis:
         results = results.rename(columns={"frequency": frequency_col}).sort_values(
             frequency_col
         )
+
+        results.geometry = force_2d(results.geometry)
 
         if self.rules.split_lines:
             self._unsplit_network()
