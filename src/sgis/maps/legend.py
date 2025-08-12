@@ -330,6 +330,8 @@ class Legend:
             framealpha=self.framealpha,
             edgecolor=self.edgecolor,
             labelspacing=self.labelspacing,
+            facecolor=self.facecolor,
+            labelcolor=self.labelcolor,
             **self.kwargs,
         )
 

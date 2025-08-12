@@ -260,11 +260,6 @@ class ThematicMap(Map):
         else:
             self._create_legend()
 
-        self._dark_or_light()
-
-        if cmap:
-            self._cmap = cmap
-
         new_kwargs = {}
         for key, value in self.kwargs.items():
             if key not in MAP_KWARGS:
@@ -285,6 +280,11 @@ class ThematicMap(Map):
                     setattr(self.legend, key, value)
                 except Exception:
                     setattr(self.legend, f"_{key}", value)
+
+        self._dark_or_light()
+
+        if cmap:
+            self._cmap = cmap
 
         self.bounds = (
             to_bbox(bounds) if bounds is not None else to_bbox(self._gdf.total_bounds)
@@ -609,8 +609,6 @@ class ThematicMap(Map):
         return bins_unique_values
 
     def _actually_add_background(self) -> None:
-        # self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
-        # self.ax.set_ylim([self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03])
         self._background_gdfs.plot(
             ax=self.ax, color=self.bg_gdf_color, **self.bg_gdf_kwargs
         )
@@ -639,6 +637,7 @@ class ThematicMap(Map):
                     "facecolor": "#0f0f0f",
                     "labelcolor": "#fefefe",
                     "title_color": "#fefefe",
+                    "edgecolor": "#0f0f0f",
                 }.items():
                     setattr(self.legend, key, color)
 
@@ -657,6 +656,7 @@ class ThematicMap(Map):
                     "facecolor": "#fefefe",
                     "labelcolor": "#0f0f0f",
                     "title_color": "#0f0f0f",
+                    "edgecolor": "#0f0f0f",
                 }.items():
                     setattr(self.legend, key, color)
 
