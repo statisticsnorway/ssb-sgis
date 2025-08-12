@@ -344,16 +344,14 @@ class Legend:
         minx, miny, maxx, maxy = gdf.total_bounds
         diffx = maxx - minx
         diffy = maxy - miny
-
         points = pd.concat(
             [
-                points_in_bounds(gdf, 30),
+                points_in_bounds(gdf, (diffy + diffx) // 1000),
                 bounds_to_points(gdf)
                 .geometry.explode(ignore_index=True)
                 .to_frame("geometry"),
             ]
         )
-
         gdf = gdf.loc[:, ~gdf.columns.str.contains("index|level_")]
         joined = points.sjoin_nearest(gdf, distance_col="nearest")
 
