@@ -2,6 +2,7 @@ import warnings
 
 import joblib
 import pandas as pd
+import shapely
 from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
@@ -116,8 +117,8 @@ def _get_route(
     results: DataFrame = pd.concat(resultlist)
     assert list(results.columns) == ["origin", "destination"], list(results.columns)
     lines: GeoDataFrame = _get_line_geometries(results, roads, weight)
+    lines.geometry = shapely.force_2d(lines.geometry)
     lines = lines.dissolve(by=["origin", "destination"], aggfunc="sum", as_index=False)
-
     return lines[["origin", "destination", weight, "geometry"]]
 
 

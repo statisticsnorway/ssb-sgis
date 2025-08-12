@@ -253,17 +253,12 @@ class ThematicMap(Map):
         self._dark = self._dark or black
 
         if not self.cmap and not self._is_categorical:
-            self._choose_cmap()
+            self._choose_cmap(**kwargs)
 
         if not legend:
             self.legend = None
         else:
             self._create_legend()
-
-        self._dark_or_light()
-
-        if cmap:
-            self._cmap = cmap
 
         new_kwargs = {}
         for key, value in self.kwargs.items():
@@ -285,6 +280,11 @@ class ThematicMap(Map):
                     setattr(self.legend, key, value)
                 except Exception:
                     setattr(self.legend, f"_{key}", value)
+
+        self._dark_or_light()
+
+        if cmap:
+            self._cmap = cmap
 
         self.bounds = (
             to_bbox(bounds) if bounds is not None else to_bbox(self._gdf.total_bounds)
@@ -589,16 +589,16 @@ class ThematicMap(Map):
         else:
             self.legend = ContinousLegend(title=self._column, size=self._size)
 
-    def _choose_cmap(self) -> None:
+    def _choose_cmap(self, **kwargs) -> None:
         """Kwargs is to catch start and stop points for the cmap in __init__."""
         if self._dark:
             self._cmap = "viridis"
-            self.cmap_start = 0
-            self.cmap_stop = 256
+            self.cmap_start = self.kwargs.pop("cmap_start", 0)
+            self.cmap_stop = self.kwargs.pop("cmap_stop", 256)
         else:
             self._cmap = "RdPu"
-            self.cmap_start = 23
-            self.cmap_stop = 256
+            self.cmap_start = self.kwargs.pop("cmap_start", 23)
+            self.cmap_stop = self.kwargs.pop("cmap_stop", 256)
 
     def _make_bin_value_dict(self, gdf: GeoDataFrame, classified: np.ndarray) -> dict:
         """Dict with unique values of all bins. Used in labels in ContinousLegend."""
@@ -609,8 +609,6 @@ class ThematicMap(Map):
         return bins_unique_values
 
     def _actually_add_background(self) -> None:
-        # self.ax.set_xlim([self.minx - self.diffx * 0.03, self.maxx + self.diffx * 0.03])
-        # self.ax.set_ylim([self.miny - self.diffy * 0.03, self.maxy + self.diffy * 0.03])
         self._background_gdfs.plot(
             ax=self.ax, color=self.bg_gdf_color, **self.bg_gdf_kwargs
         )
@@ -632,13 +630,14 @@ class ThematicMap(Map):
             )
             self.nan_color = "#666666" if self._nan_color_was_none else self.nan_color
             if not self._is_categorical:
-                self.change_cmap("viridis")
+                self._cmap = self.kwargs.get("cmap", "viridis")
 
             if self.legend is not None:
                 for key, color in {
                     "facecolor": "#0f0f0f",
                     "labelcolor": "#fefefe",
                     "title_color": "#fefefe",
+                    "edgecolor": "#0f0f0f",
                 }.items():
                     setattr(self.legend, key, color)
 
@@ -650,13 +649,14 @@ class ThematicMap(Map):
             )
             self.nan_color = "#c2c2c2" if self._nan_color_was_none else self.nan_color
             if not self._is_categorical:
-                self.change_cmap("RdPu", start=23)
+                self._cmap = self.kwargs.get("cmap", "RdPu")
 
             if self.legend is not None:
                 for key, color in {
                     "facecolor": "#fefefe",
                     "labelcolor": "#0f0f0f",
                     "title_color": "#0f0f0f",
+                    "edgecolor": "#0f0f0f",
                 }.items():
                     setattr(self.legend, key, color)
 

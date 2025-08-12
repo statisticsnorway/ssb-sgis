@@ -17,6 +17,7 @@ from geopandas import GeoDataFrame
 from igraph import Graph
 from pandas import DataFrame
 from pandas import MultiIndex
+from shapely import force_2d
 
 from ..geopandas_tools.general import _push_geom_col
 from ._get_route import _get_k_routes
@@ -34,9 +35,20 @@ from .networkanalysisrules import NetworkAnalysisRules
 class NetworkAnalysis:
     """Class for doing network analysis.
 
-    The class takes a GeoDataFrame of line geometries and rules for the analyses,
-    and holds methods for doing network analysis based on GeoDataFrames of origin
-    and destination points.
+    Args:
+        network: A GeoDataFrame of line geometries.
+        rules: The rules for the analysis, either as an instance of
+            NetworkAnalysisRules or a dictionary with the parameters
+            as keys.
+        log: If True (default), a DataFrame with information about each
+            analysis run will be stored in the 'log' attribute.
+        detailed_log: If True, the log DataFrame will include columns for
+            all arguments passed to the analysis method, plus standard deviation and
+            percentiles (25th, 50th, 75th) of the weight column in the results.
+            Defaults to False.
+
+    The class implements methods for doing network analysis based on
+    GeoDataFrames of origin and destination points.
 
     The 'od_cost_matrix' method is the fastest, and returns a DataFrame with only
     indices and travel costs between each origin-destination pair.
@@ -96,21 +108,7 @@ class NetworkAnalysis:
         log: bool = True,
         detailed_log: bool = False,
     ) -> None:
-        """Initialise NetworkAnalysis instance.
-
-        Args:
-            network: A GeoDataFrame of line geometries.
-            rules: The rules for the analysis, either as an instance of
-                NetworkAnalysisRules or a dictionary with the parameters
-                as keys.
-            log: If True (default), a DataFrame with information about each
-                analysis run will be stored in the 'log' attribute.
-            detailed_log: If True, the log DataFrame will include columns for
-                all arguments passed to the analysis method, plus standard deviation and
-                percentiles (25th, 50th, 75th) of the weight column in the results.
-                Defaults to False.
-
-        """
+        """Initialise NetworkAnalysis instance."""
         if not isinstance(rules, NetworkAnalysisRules):
             rules = NetworkAnalysisRules(**rules)
 
@@ -646,6 +644,8 @@ class NetworkAnalysis:
         results = results.rename(columns={"frequency": frequency_col}).sort_values(
             frequency_col
         )
+
+        results.geometry = force_2d(results.geometry)
 
         if self.rules.split_lines:
             self._unsplit_network()
