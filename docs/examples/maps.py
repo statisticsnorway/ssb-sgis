@@ -67,6 +67,7 @@ m = sg.ThematicMap(
         label_suffix="m",
         position=(0.35, 0.28),
         rounding=1,
+        pretty_labels=True,
     ),
 )
 m.plot()
