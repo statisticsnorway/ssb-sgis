@@ -48,6 +48,7 @@ rioxarray = { version = ">=0.15.5", optional = true }
 dapla-toolbelt = { version = ">=3.0.1", optional = true }
 gcsfs = { version = ">=2024.3.1", optional = true }
 black = "^25.1.0"
+ruff = "^0.12.8"
 
 [tool.poetry.extras]
 all = ["pyogrio", "xarray", "rioxarray", "dapla-toolbelt", "gcsfs", "dask"]
