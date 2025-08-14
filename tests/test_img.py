@@ -1694,7 +1694,6 @@ def _get_metadata_for_one_path(file_path: str, band_endswith: str) -> dict:
 
 
 def main():
-    test_zonal()
     test_collection_from_list_of_path()
     test_convertion()
     test_ndvi_predictions()
@@ -1703,8 +1702,9 @@ def main():
     test_ndvi()
     test_metadata_attributes()
     test_groupby()
-    test_pixelwise()
     test_merge()
+    test_zonal()
+    test_pixelwise()
     test_explore()
     test_bbox()
     test_regexes()
@@ -1716,7 +1716,6 @@ def main():
     test_iteration_base_image_collection()
     test_cloud()
     test_masking()
-    test_merge()
     test_plot_pixels()
     test_clip()
     not_test_sample()

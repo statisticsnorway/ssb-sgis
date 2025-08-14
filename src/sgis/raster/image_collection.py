@@ -629,6 +629,8 @@ class _ImageBase:
         for key, value in self.__dict__.items():
             if key.startswith("_"):
                 continue
+            if key == "file_system" and type(value) is type(getattr(other, key)):
+                continue
             if value != getattr(other, key):
                 print(key, value, getattr(other, key))
                 return False
