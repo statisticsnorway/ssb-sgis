@@ -121,10 +121,8 @@ class Examine:
             )
 
         if sort_values is not None:
-            if (
-                sort_values == "area"
-                or not isinstance(sort_values, str)
-                and "area" in sort_values
+            if sort_values == "area" or (
+                not isinstance(sort_values, str) and "area" in sort_values
             ):
                 self.mask_gdf["area"] = self.mask_gdf.area
             self.mask_gdf = self.mask_gdf.sort_values(sort_values)

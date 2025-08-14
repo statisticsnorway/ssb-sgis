@@ -507,7 +507,7 @@ def to_gdf(
             geoseries = GeoSeries(_make_shapely_geoms(obj.iloc[:, 0]), index=index)
         return GeoDataFrame({key: geoseries}, geometry=key, crs=crs, **kwargs)
 
-    if geometry and geom_col not in obj or isinstance(obj, pd.DataFrame):
+    if (geometry and geom_col not in obj) or isinstance(obj, pd.DataFrame):
         raise ValueError("Cannot find geometry column(s)", geometry)
 
     # geojson, __geo_interface__
@@ -595,10 +595,8 @@ def is_nested_geojson(obj: Any) -> bool:
 
 def get_crs_from_dict(obj: Any) -> CRS | None | Any:
     """Try to extract the 'crs' attribute of the object or an object in the object."""
-    if (
-        not hasattr(obj, "__iter__")
-        or not is_dict_like(obj)
-        and not is_dict_like(obj[0])
+    if not hasattr(obj, "__iter__") or (
+        not is_dict_like(obj) and not is_dict_like(obj[0])
     ):
         return None
 

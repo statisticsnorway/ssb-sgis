@@ -54,7 +54,7 @@ def test_all_geom_types():
     assert len(lines.index.unique()) == 4, lines.index.unique()
 
     index = sorted(set(list(points.index) + list(lines.index) + list(polygons.index)))
-    assert index == sorted(gdf.index), print(index, sorted(gdf.index))
+    assert index == sorted(gdf.index), (index, sorted(gdf.index))
 
     assert (res := sg.to_single_geom_type(gdf.geometry.values, "point")).tolist() == [
         Point([0, 0]),

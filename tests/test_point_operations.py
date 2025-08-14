@@ -70,7 +70,7 @@ def test_snap_geoseries():
     poly = sg.to_gdf(Polygon([(10, 10), (110, 11), (11, 11), (11, 110)])).geometry
     snapped = sg.snap_all(points, to=pd.concat([point, poly]))
     print([geom.x == 0 and geom.y == 0 for geom in snapped.geometry])
-    assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry), print(snapped)
+    assert all(geom.x == 0 and geom.y == 0 for geom in snapped.geometry), snapped
 
 
 if __name__ == "__main__":
