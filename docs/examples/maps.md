@@ -1,21 +1,7 @@
 # Maps
 
 ```python
-import os
-import warnings
-
-import numpy as np
-import pandas as pd
-
-
-os.chdir("../../src")
-
 import sgis as sg
-
-
-# ignore some warnings
-pd.options.mode.chained_assignment = None
-warnings.filterwarnings(action="ignore", category=FutureWarning)
 ```
 
 First get 1000 addresses in Oslo and create a distance to neighbors column.
@@ -55,8 +41,11 @@ print(points)
 Create and save a simple plot with legend and title.
 
 ```python
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
-m.title = "Distance to 99 nearest neighbors"
+m = sg.ThematicMap(
+    sg.buff(points, 100),
+    column="mean_dist_99_neighbors",
+    title="Distance to 99 nearest neighbors",
+)
 m.plot()
 m.save("path_to_file.png")
 ```
@@ -66,16 +55,16 @@ m.save("path_to_file.png")
 Customising the colors and text. Creating an ugly example.
 
 ```python
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
-
-m.title = "Map with custom (and ugly) colors."
-m.title_fontsize = 15
-m.title_color = "red"
-
-m.facecolor = "#edf0c9"  # background color
-
-m.change_cmap("PuBuGn", start=20, stop=250)  # start and stop goes from 0 to 256
-
+m = sg.ThematicMap(
+    sg.buff(points, 100),
+    column="mean_dist_99_neighbors",
+    title="Map with custom (and ugly) colors.",
+    title_fontsize=15,
+    title_color="red",
+    facecolor="#edf0c9",  # background color
+    cmap="PuBuGn",
+    cmap_start=20,
+)
 m.plot()
 ```
 
@@ -86,16 +75,19 @@ See here for available cmaps: https://matplotlib.org/stable/tutorials/colors/col
 Customising the legend can be done through the legend attribute.
 
 ```python
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
-
-m.title = "Map with customised legend"
-
-m.legend.title = "Meters"
-m.legend.label_sep = "to"
-m.legend.label_suffix = "m"
-m.legend.position = (0.35, 0.28)
-m.legend.rounding = 1
-
+m = sg.ThematicMap(
+    sg.buff(points, 100),
+    column="mean_dist_99_neighbors",
+    title="Map with customised legend",
+    legend_kwargs=dict(
+        title="Meters",
+        label_sep="to",
+        label_suffix="m",
+        position=(0.35, 0.28),
+        rounding=1,
+        pretty_labels=True,
+    ),
+)
 m.plot()
 ```
 
@@ -104,15 +96,14 @@ m.plot()
 Using custom breaks and labels for the color classification.
 
 ```python
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
-
-m.title = "Map with custom bins and legend labels"
-m.legend.title = "Custom labels"
-
-m.bins = [1500, 2000, 2500, 3000]
-
-min_value = points.mean_dist_99_neighbors.min()
-max_value = points.mean_dist_99_neighbors.max()
+m = sg.ThematicMap(
+    sg.buff(points, 100),
+    column="mean_dist_99_neighbors",
+    title="Map with custom bins",
+    bins=[1500, 2000, 2500, 3000],
+)
+min_value = points["mean_dist_99_neighbors"].min()
+max_value = points["mean_dist_99_neighbors"].max()
 m.legend.labels = [
     f"{int(round(min_value))} to 1499",
     "1500 to 1999",
@@ -120,7 +111,6 @@ m.legend.labels = [
     "2500 to 2999",
     f"3000 to {int(round(max_value))}",
 ]
-
 m.plot()
 ```
 
@@ -131,10 +121,15 @@ maximum values in each color group. This will be accurate and truthful, but
 somewhat confusing.
 
 ```python
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
-m.title = "Map with custom bins, but default legend labels"
-m.bins = [1500, 2000, 2500, 3000]
-m.legend.title = "Default legend labels"
+m = sg.ThematicMap(
+    sg.buff(points, 100),
+    column="mean_dist_99_neighbors",
+    title = "Map with custom bins, but default legend labels",
+    bins = [1500, 2000, 2500, 3000],
+    legend_kwargs={
+        "title": "Default legend labels",
+    },
+)
 m.plot()
 ```
 
@@ -145,14 +140,16 @@ The background gdf will be gray by default, but can be changed by setting
 the color.
 
 ```python
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
-
-m.title = "Map with a background GeoDataFrame"
-m.legend.title = "Meters"
-
+m = sg.ThematicMap(
+    sg.buff(points, 100),
+    column="mean_dist_99_neighbors",
+    title = "Map with a background GeoDataFrame",
+    legend_kwargs={
+        "title": "Meters",
+    },
+)
 background = sg.buff(points, 500)
 m.add_background(background, color=None)
-
 m.plot()
 ```
 
@@ -162,14 +159,17 @@ Setting black to True gives opposite colors and a palette suited for a black
 background (viridis).
 
 ```python
-m = sg.ThematicMap(points, column="mean_dist_99_neighbors", black=True)
-
-m.title = "black=True, with background GeoDataFrame"
-m.legend.title = "Meters"
-
+m = sg.ThematicMap(
+    points,
+    column="mean_dist_99_neighbors",
+    black=True,
+    title = "black=True, with background GeoDataFrame",
+    legend_kwargs={
+        "title": "Meters",
+    },
+)
 background = sg.buff(points, 500)
 m.add_background(background)
-
 m.plot()
 ```
 
@@ -178,33 +178,34 @@ m.plot()
 Customising all at once.
 
 ```python
-m = sg.ThematicMap(sg.buff(points, 100), column="mean_dist_99_neighbors")
+min_value = points["mean_dist_99_neighbors"].min()
+max_value = points["mean_dist_99_neighbors"].max()
 
-m.title = "Everything customised"
-
-m.facecolor = "#fcfcfc"  # =almost white
-m.change_cmap("YlGnBu", start=50, stop=256)  # start and stop goes from 0 to 256
-
-m.title_fontsize = 125
-m.title_color = "#141414"  # =almost black
-
-m.legend.title = "Meters"
-m.legend.title_fontsize = 55
-m.legend.fontsize = 45
-m.legend.markersize = 30
-m.legend.position = (0.35, 0.28)
-
-m.bins = [1500, 2000, 2500, 3000]
-
-min_value = points.mean_dist_99_neighbors.min()
-max_value = points.mean_dist_99_neighbors.max()
-m.legend.labels = [
-    f"{int(round(min_value))} to 1499",
-    "1500 to 1999",
-    "2000 to 2499",
-    "2500 to 2999",
-    f"3000 to {int(round(max_value))}",
-]
+m = sg.ThematicMap(
+    sg.buff(points, 100),
+    column="mean_dist_99_neighbors",
+    title="Everything customised",
+    bins=[1500, 2000, 2500, 3000],
+    facecolor="#fcfcfc",  # =almost white
+    cmap="YlGnBu",
+    cmap_start=50,
+    title_fontsize=125,
+    title_color="#141414",  # =almost black
+    legend_kwargs=dict(
+        title="Meters",
+        title_fontsize=55,
+        fontsize=45,
+        markersize=30,
+        position=(0.35, 0.28),
+        labels=[
+            f"{int(round(min_value))} to 1499",
+            "1500 to 1999",
+            "2000 to 2499",
+            "2500 to 2999",
+            f"3000 to {int(round(max_value))}",
+        ],
+    ),
+)
 
 background = sg.buff(points, 500)
 m.add_background(background, color="#f0f0f0")

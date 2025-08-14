@@ -92,7 +92,11 @@ def read_geopandas(
     if isinstance(gcs_path, (Path | os.PathLike)):
         gcs_path = str(gcs_path)
 
-    if not isinstance(gcs_path, (str | Path | os.PathLike)):
+    if isinstance(gcs_path, str):
+        gcs_path = _maybe_strip_prefix(gcs_path, file_system)
+    else:
+        gcs_path = [_maybe_strip_prefix(str(path), file_system) for path in gcs_path]
+
         return _read_geopandas_from_iterable(
             gcs_path,
             mask=mask,
@@ -925,3 +929,9 @@ def _get_files_in_subfolders(folderinfo: list[dict]) -> list[tuple]:
         folderinfo = new_folderinfo
 
     return fileinfo
+
+
+def _maybe_strip_prefix(path, file_system):
+    if isinstance(file_system, GCSFileSystem) and path.startswith("gs://"):
+        return path.replace("gs://", "")
+    return path

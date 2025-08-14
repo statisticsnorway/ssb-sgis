@@ -157,6 +157,7 @@ def test_thematicmap2():
             rounding=-2,
             thousand_sep=" ",
             position=(0.82, 0.25),
+            pretty_labels=True,
         ),
         cmap="Greens",
         cmap_start=45,
@@ -164,7 +165,7 @@ def test_thematicmap2():
     )
     m.plot()
     assert m.cmap == "Greens"
-    assert m.cmap_start == 45
+    assert m.cmap_start == 45, m.cmap_start
     assert m.title_kwargs == {"loc": "left", "x": 0.035, "y": 0.9}
     assert list(m.bins) == [0, 600, 1400, 2700, 5400, 9700], list(m.bins)
     assert m.legend._categories == [
@@ -320,7 +321,10 @@ def test_thematicmap(points_oslo):
 
     def check_colors_bins(points):
         m = sg.ThematicMap(
-            pd.concat([points, points, points]), title="added title", column="meters"
+            pd.concat([points, points, points]),
+            title="added title",
+            column="meters",
+            legend_kwargs=dict(pretty_labels=True),
         )
         m.plot()
         assert m._k == 5
@@ -383,6 +387,7 @@ def test_thematicmap(points_oslo):
         m = sg.ThematicMap(pd.concat([points, points, points]), column="meters")
         m.k = 7
         m.title = "k=7 (all)"
+        m.legend.pretty_labels = True
         m.plot()
         assert m.title == "k=7 (all)"
         # assert list(m._gdfs) == ["points"] * 3, m._gdfs
@@ -426,7 +431,7 @@ def test_thematicmap(points_oslo):
         assert m.cmap == "viridis"
         assert m.cmap_start == 0, m.cmap_start
         assert m.column == "length"
-        assert m.legend.title == "Length"
+        assert m.legend.title == "length"
         assert m._k == 3
         assert list(m._unique_colors) == [
             "#440154",

@@ -126,9 +126,13 @@ weights["weight"] = 10
 frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weights)
 
 # plot the results
-m = sg.ThematicMap(sg.buff(frequencies, 15), column="frequency", black=True)
-m.cmap = "plasma"
-m.title = "Number of times each road was used,\nweighted * 10"
+m = sg.ThematicMap(
+    sg.buff(frequencies, 15),
+    column="frequency",
+    black=True,
+    cmap="plasma",
+    title="Number of times each road was used,\nweighted * 10",
+)
 m.plot()
 ```
 
@@ -143,9 +147,14 @@ service_areas = nwa.service_area(
 )
 
 # plot the results
-m = sg.ThematicMap(service_areas, column="minutes", black=True, size=10)
-m.k = 10
-m.title = "Roads that can be reached within 1 to 10 minutes"
+m = sg.ThematicMap(
+    service_areas,
+    column="minutes",
+    black=True,
+    size=10,
+    k=10,
+    title="Roads that can be reached within 1 to 10 minutes",
+)
 m.plot()
 ```
 
@@ -158,9 +167,15 @@ routes = nwa.get_k_routes(
     points.iloc[[0]], points.iloc[[1]], k=4, drop_middle_percent=50
 )
 
-m = sg.ThematicMap(sg.buff(routes, 15), column="k", black=True)
-m.title = "Four fastest routes from A to B"
-m.legend.title = "Rank"
+m = sg.ThematicMap(
+    sg.buff(routes, 15),
+    column="k",
+    black=True,
+    title="Four fastest routes from A to B",
+    legend_kwargs=dict(
+        title="Rank",
+    ),
+)
 m.plot()
 ```
 

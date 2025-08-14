@@ -523,7 +523,7 @@ class ContinousLegend(Legend):
     def __init__(
         self,
         labels: list[str] | None = None,
-        pretty_labels: bool = True,
+        pretty_labels: bool = False,
         label_suffix: str | None = None,
         label_sep: str = "-",
         rounding: int | None = None,
