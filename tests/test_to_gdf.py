@@ -221,7 +221,7 @@ def _df_mixed_types():
 
 
 def _recursive():
-    coords = [[[([([[([([10, 60])])]])], [(59, 10)])]], (5, 10)]
+    coords = [[[([[[[[10, 60]]]]], [(59, 10)])]], (5, 10)]
     gdf = sg.to_gdf(coords, crs=4326)
     assert not gdf.geometry.isna().sum()
     print(coords)

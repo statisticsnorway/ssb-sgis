@@ -83,11 +83,11 @@ m = sg.ThematicMap(
 min_value = points["mean_dist_99_neighbors"].min()
 max_value = points["mean_dist_99_neighbors"].max()
 m.legend.labels = [
-    f"{int(round(min_value))} to 1499",
+    f"{int(min_value)} to 1499",
     "1500 to 1999",
     "2000 to 2499",
     "2500 to 2999",
-    f"3000 to {int(round(max_value))}",
+    f"3000 to {int(max_value)}",
 ]
 m.plot()
 # %% [markdown]
@@ -162,11 +162,11 @@ m = sg.ThematicMap(
         markersize=30,
         position=(0.35, 0.28),
         labels=[
-            f"{int(round(min_value))} to 1499",
+            f"{int(min_value)} to 1499",
             "1500 to 1999",
             "2000 to 2499",
             "2500 to 2999",
-            f"3000 to {int(round(max_value))}",
+            f"3000 to {int(max_value)}",
         ],
     ),
 )

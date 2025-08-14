@@ -629,6 +629,8 @@ class _ImageBase:
         for key, value in self.__dict__.items():
             if key.startswith("_"):
                 continue
+            if key == "file_system" and type(value) is type(getattr(other, key)):
+                continue
             if value != getattr(other, key):
                 print(key, value, getattr(other, key))
                 return False
@@ -747,9 +749,8 @@ class _ImageBandBase(_ImageBase):
                         continue
                     if results is not None:
                         break
-                elif (
-                    isinstance(value, str)
-                    or hasattr(value, "__iter__")
+                elif isinstance(value, str) or (
+                    hasattr(value, "__iter__")
                     and all(isinstance(x, str | re.Pattern) for x in value)
                 ):
                     try:
@@ -1538,9 +1539,8 @@ class Image(_ImageBandBase):
         else:
             self._all_file_paths = None
 
-        if (
-            self.metadata is None
-            or not len(self.metadata)
+        if self.metadata is None or (
+            not len(self.metadata)
             and "metadata.json" in {Path(x).name for x in self._all_file_paths}
         ):
             with _open_func(
@@ -1845,7 +1845,8 @@ class Image(_ImageBandBase):
         if (
             self.filename_patterns
             and any(_get_non_optional_groups(pat) for pat in self.filename_patterns)
-            or self.image_patterns
+        ) or (
+            self.image_patterns
             and any(_get_non_optional_groups(pat) for pat in self.image_patterns)
         ):
             self._bands = [band for band in self._bands if band.band_id is not None]
@@ -1882,8 +1883,7 @@ class Image(_ImageBandBase):
                 for group in sort_groups
                 for pat in self.filename_patterns
             )
-            or all(band.band_id is not None for band in self)
-        )
+        ) or all(band.band_id is not None for band in self)
 
     @property
     def tile(self) -> str:
@@ -2846,17 +2846,21 @@ class ImageCollection(_ImageBase):
         """True if the ImageCollection has regexes that should make it sortable by date."""
         sort_group = "date"
         return (
-            self.filename_patterns
-            and any(
-                sort_group in pat.groupindex
-                and sort_group in _get_non_optional_groups(pat)
-                for pat in self.filename_patterns
+            (
+                self.filename_patterns
+                and any(
+                    sort_group in pat.groupindex
+                    and sort_group in _get_non_optional_groups(pat)
+                    for pat in self.filename_patterns
+                )
             )
-            or self.image_patterns
-            and any(
-                sort_group in pat.groupindex
-                and sort_group in _get_non_optional_groups(pat)
-                for pat in self.image_patterns
+            or (
+                self.image_patterns
+                and any(
+                    sort_group in pat.groupindex
+                    and sort_group in _get_non_optional_groups(pat)
+                    for pat in self.image_patterns
+                )
             )
             or all(getattr(img, sort_group) is not None for img in self)
         )

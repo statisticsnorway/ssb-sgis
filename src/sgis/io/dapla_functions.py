@@ -932,6 +932,7 @@ def _get_files_in_subfolders(folderinfo: list[dict]) -> list[tuple]:
 
 
 def _maybe_strip_prefix(path, file_system):
+    """Strip gcs prefix only if file_system is GCS."""
     if isinstance(file_system, GCSFileSystem) and path.startswith("gs://"):
         return path.replace("gs://", "")
     return path

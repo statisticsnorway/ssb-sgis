@@ -209,15 +209,15 @@ class NetworkAnalysisRules:
             return True
 
     def _validate_weight(self, gdf: GeoDataFrame) -> GeoDataFrame:
-        if "meter" in self.weight or "metre" in self.weight and unit_is_meters(gdf):
+        if "meter" in self.weight or ("metre" in self.weight and unit_is_meters(gdf)):
             if self.nodedist_kmh:
                 raise ValueError("Cannot set 'nodedist_kmh' when 'weight' is meters.")
             gdf[self.weight] = gdf.length
             return gdf
 
         # allow abbreviation of 'minutes' to be nice
-        elif (
-            self.weight == "min" or "minut" in self.weight and "minutes" in gdf.columns
+        elif self.weight == "min" or (
+            "minut" in self.weight and "minutes" in gdf.columns
         ):
             if self.nodedist_multiplier:
                 raise ValueError(

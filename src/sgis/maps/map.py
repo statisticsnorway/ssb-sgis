@@ -543,8 +543,10 @@ class Map:
         def is_maybe_km2():
             if "area" in self._column and (
                 "km2" in self._column
-                or "kilomet" in self._column
-                and ("sq" in self._column or "2" in self._column)
+                or (
+                    "kilomet" in self._column
+                    and ("sq" in self._column or "2" in self._column)
+                )
             ):
                 return True
             else:
