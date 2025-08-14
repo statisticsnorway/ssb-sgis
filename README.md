@@ -42,7 +42,7 @@ pip install ssb-sgis
 
 The sgis package has the following optional dependencies:
 
-- bucket: For working with files stored in GCP buckets
+- bucket: For working with files stored in GCS buckets
 - torch: Use functionality from PyTorch and torchgeo
 - xarray: Use functionality from xarray and rioxarray
 - test: Packages needed for running pytest
