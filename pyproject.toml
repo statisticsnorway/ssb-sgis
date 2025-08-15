@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ssb-sgis"
-version = "1.2.16"
+version = "1.2.17"
 description = "GIS functions used at Statistics Norway."
 authors = ["Morten Letnes <morten.letnes@ssb.no>"]
 license = "MIT"
@@ -47,8 +47,6 @@ xarray = { version = ">=2024.3.0", optional = true }
 rioxarray = { version = ">=0.15.5", optional = true }
 dapla-toolbelt = { version = ">=3.0.1", optional = true }
 gcsfs = { version = ">=2024.3.1", optional = true }
-black = "^25.1.0"
-ruff = "^0.12.8"
 
 [tool.poetry.extras]
 all = ["pyogrio", "xarray", "rioxarray", "dapla-toolbelt", "gcsfs", "dask"]
