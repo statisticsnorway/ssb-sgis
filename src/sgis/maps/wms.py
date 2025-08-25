@@ -3,7 +3,6 @@ import datetime
 import json
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -30,18 +29,17 @@ from ..raster.image_collection import Band
 
 JSON_PATH = Path(__file__).parent / "norge_i_bilder.json"
 
-JSON_YEARS = [str(year) for year in range(2006, datetime.datetime.now().year + 1)]
+# JSON_YEARS = tuple(range(1900, datetime.datetime.now().year + 1))
+JSON_YEARS = tuple(range(2006, datetime.datetime.now().year + 1))
 
-DEFAULT_YEARS: tuple[str] = tuple(
-    str(year)
-    for year in range(
+DEFAULT_YEARS: tuple[int] = tuple(
+    range(
         int(datetime.datetime.now().year) - 10,
         int(datetime.datetime.now().year) + 1,
     )
 )
 
 
-@dataclass
 class WmsLoader(abc.ABC):
     """Abstract base class for wms loaders.
 
@@ -49,32 +47,82 @@ class WmsLoader(abc.ABC):
     which should return a list of folium.WmsTileLayer.
     """
 
+    _min_year: int = 1900
+
+    @abc.abstractmethod
+    def filter_tiles(
+        self, mask: GeoDataFrame | GeoSeries | Geometry | tuple[float]
+    ) -> list[str]:
+        """Filter relevant dates with pandas and geopandas because fast."""
+
     @abc.abstractmethod
     def get_tiles(self, bbox: Any, max_zoom: int = 40) -> list[folium.WmsTileLayer]:
         """Get all tiles intersecting with a bbox."""
 
     @abc.abstractmethod
     def load_tiles(self) -> None:
-        """Load all tiles into self.tiles.
+        """Load all tiles into self._tiles.
 
         Not needed in sgis.explore.
         """
         pass
 
+    def __repr__(self) -> str:
+        """Print representation."""
+        return str(self)
 
-@dataclass
+    def __str__(self) -> str:
+        """String representation."""
+
+        def maybe_to_string(value: Any):
+            if isinstance(value, str):
+                return f"'{value}'"
+            return value
+
+        txt = ", ".join(
+            f"{k}={maybe_to_string(v)}"
+            for k, v in self.__dict__.items()
+            if not k.startswith("_")
+        )
+        return f"{self.__class__.__name__}({txt})"
+
+
 class NorgeIBilderWms(WmsLoader):
-    """Loads Norge i bilder tiles as folium.WmsTiles."""
+    """Loads Norge i bilder tiles as folium.WmsTiles.
 
-    years: Iterable[int | str] = DEFAULT_YEARS
-    contains: str | Iterable[str] | None = None
-    not_contains: str | Iterable[str] | None = None
-    show: bool | Iterable[int] | int = False
-    _use_json: bool = True
+    Args:
+        years: list of years to search for images.
+        contains: substrings to include in image search.
+        not_contains: substrings to exclude in image search.
+        show: Whether to show all layers upon initialisation of the map.
+        _use_json: Whether to use pre-made json file of image names and bounds/masks
+            if all years are within range. Defaults to True (much faster).
+    """
+
     url: str = "https://wms.geonorge.no/skwms1/wms.nib-prosjekter"
 
+    def __init__(
+        self,
+        years: Iterable[int | str] = DEFAULT_YEARS,
+        contains: str | Iterable[str] | None = None,
+        not_contains: str | Iterable[str] | None = None,
+        show: bool | Iterable[int] | int = False,
+        _use_json: bool = True,
+    ) -> None:
+        """Initialiser."""
+        self.years = [int(year) for year in years]
+        self.contains = contains
+        self.not_contains = not_contains
+        self.show = show
+        self._use_json = _use_json
+
+        if self._use_json and all(year in JSON_YEARS for year in self.years):
+            self._load_from_json()
+        else:
+            self._tiles = None
+
     def load_tiles(self, verbose: bool = False) -> None:
-        """Load all Norge i bilder tiles into self.tiles."""
+        """Load all Norge i bilder tiles into self._tiles."""
         name_pattern = r"<Name>(.*?)</Name>"
         bbox_pattern = (
             r"<EX_GeographicBoundingBox>.*?"
@@ -105,14 +153,20 @@ class NorgeIBilderWms(WmsLoader):
 
                 if (
                     not name
-                    or not any(year in name for year in self.years)
+                    or not any(str(year) in name for year in self.years)
                     or (
                         self.contains
-                        and not any(re.search(x, name.lower()) for x in self.contains)
+                        and not any(
+                            re.search(x, name.lower())
+                            for x in _string_as_list(self.contains)
+                        )
                     )
                     or (
                         self.not_contains
-                        and any(re.search(x, name.lower()) for x in self.not_contains)
+                        and any(
+                            re.search(x, name.lower())
+                            for x in _string_as_list(self.not_contains)
+                        )
                     )
                 ):
                     continue
@@ -131,10 +185,10 @@ class NorgeIBilderWms(WmsLoader):
 
                 all_tiles.append(this_tile)
 
-        self.tiles = sorted(all_tiles, key=lambda x: (x["year"]))
+        self._tiles = sorted(all_tiles, key=lambda x: (x["year"]))
 
         masks = self._get_norge_i_bilder_polygon_masks(verbose=verbose)
-        for tile in self.tiles:
+        for tile in self._tiles:
             mask = masks.get(tile["name"], None)
             tile["geometry"] = mask
 
@@ -143,7 +197,7 @@ class NorgeIBilderWms(WmsLoader):
         from owslib.wms import WebMapService
         from PIL import Image
 
-        relevant_names: dict[str, str] = {x["name"]: x["bbox"] for x in self.tiles}
+        relevant_names: dict[str, str] = {x["name"]: x["bbox"] for x in self._tiles}
         assert len(relevant_names), relevant_names
 
         url = "https://wms.geonorge.no/skwms1/wms.nib-mosaikk?SERVICE=WMS&REQUEST=GetCapabilities"
@@ -214,7 +268,7 @@ class NorgeIBilderWms(WmsLoader):
 
     def get_tiles(self, mask: Any, max_zoom: int = 40) -> list[folium.WmsTileLayer]:
         """Get all Norge i bilder tiles intersecting with a mask (bbox or polygon)."""
-        if self.tiles is None:
+        if self._tiles is None:
             self.load_tiles()
 
         if not isinstance(mask, (GeoSeries | GeoDataFrame | Geometry)):
@@ -225,7 +279,7 @@ class NorgeIBilderWms(WmsLoader):
         else:
             show = False
 
-        relevant_tiles = self._filter_tiles(mask)
+        relevant_tiles = self.filter_tiles(mask)
         tile_layers = {
             name: folium.WmsTileLayer(
                 url="https://wms.geonorge.no/skwms1/wms.nib-prosjekter",
@@ -238,7 +292,7 @@ class NorgeIBilderWms(WmsLoader):
                 show=show,
                 max_zoom=max_zoom,
             )
-            for name in relevant_tiles["name"]
+            for name in relevant_tiles
         }
 
         if not len(tile_layers):
@@ -254,59 +308,51 @@ class NorgeIBilderWms(WmsLoader):
 
         return tile_layers
 
-    def _filter_tiles(self, mask):
+    def filter_tiles(
+        self, mask: GeoDataFrame | GeoSeries | Geometry | tuple[float]
+    ) -> list[str]:
         """Filter relevant dates with pandas and geopandas because fast."""
-        if not self.tiles:
-            return pd.DataFrame(columns=["name", "year", "geometry", "bbox"])
-        df = pd.DataFrame(self.tiles)
-        filt = (df["name"].notna()) & (df["year"].str.contains("|".join(self.years)))
+        if not self._tiles:
+            return []
+        df = pd.DataFrame(self._tiles)
+        filt = (df["name"].notna()) & (
+            df["year"].str.contains("|".join([str(year) for year in self.years]))
+        )
         if self.contains:
-            for x in self.contains:
+            for x in _string_as_list(self.contains):
                 filt &= df["name"].str.contains(x)
         if self.not_contains:
-            for x in self.not_contains:
+            for x in _string_as_list(self.not_contains):
                 filt &= ~df["name"].str.contains(x)
         df = df[filt]
         geoms = np.where(df["geometry"].notna(), df["geometry"], df["bbox"])
         geoms = GeoSeries(geoms)
         assert geoms.index.is_unique
-        return df.iloc[sfilter(geoms, mask).index]
+        return list(df.iloc[sfilter(geoms, mask).index]["name"])
 
-    def __post_init__(self) -> None:
-        """Fix typings."""
-        if self.contains and isinstance(self.contains, str):
-            self.contains = [self.contains]
-        elif self.contains:
-            self.contains = [x for x in self.contains]
-        if self.not_contains and isinstance(self.not_contains, str):
-            self.not_contains = [self.not_contains]
-        elif self.not_contains:
-            self.not_contains = [x for x in self.not_contains]
+    def _load_from_json(self) -> None:
+        """Load tiles from json file."""
+        try:
+            with open(JSON_PATH, encoding="utf-8") as file:
+                self._tiles = json.load(file)
+        except FileNotFoundError:
+            self._tiles = None
+            return
+        self._tiles = [
+            {
+                key: (
+                    value
+                    if key not in ["bbox", "geometry"]
+                    else shapely.wkt.loads(value)
+                )
+                for key, value in tile.items()
+            }
+            for tile in self._tiles
+            if any(str(year) in tile["name"] for year in self.years)
+        ]
 
-        self.years = [str(int(year)) for year in self.years]
 
-        if self._use_json and all(year in JSON_YEARS for year in self.years):
-            try:
-                with open(JSON_PATH, encoding="utf-8") as file:
-                    self.tiles = json.load(file)
-            except FileNotFoundError:
-                self.tiles = None
-                return
-            self.tiles = [
-                {
-                    key: (
-                        value
-                        if key not in ["bbox", "geometry"]
-                        else shapely.wkt.loads(value)
-                    )
-                    for key, value in tile.items()
-                }
-                for tile in self.tiles
-                if any(str(year) in tile["name"] for year in self.years)
-            ]
-        else:
-            self.tiles = None
-
-    def __repr__(self) -> str:
-        """Print representation."""
-        return f"{self.__class__.__name__}({len(self.tiles or [])})"
+def _string_as_list(x: str | list[str]) -> list[str] | None:
+    if not x:
+        return None
+    return [x] if isinstance(x, str) else list(x)

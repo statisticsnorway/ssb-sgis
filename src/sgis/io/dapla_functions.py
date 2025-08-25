@@ -464,7 +464,7 @@ def write_geopandas(
         )
 
     if not len(df) and get_child_paths(gcs_path, file_system):
-        # no need to write empty df for partitioned parquet
+        # no need to write empty df for partitioned parquet - if root dir exists
         return
     elif not len(df):
         if pandas_fallback:
@@ -586,9 +586,6 @@ def _write_partitioned_geoparquet(
 ):
     file_system = _get_file_system(file_system, kwargs)
 
-    if basename_template is None:
-        basename_template = uuid.uuid4().hex + "-{i}.parquet"
-
     if isinstance(partition_cols, str):
         partition_cols = [partition_cols]
 
@@ -623,7 +620,10 @@ def _write_partitioned_geoparquet(
         dfs.append(rows)
 
     def threaded_write(rows: DataFrame, path: str) -> None:
-        this_basename = basename_template.replace("-{i}", "0")
+        if basename_template is None:
+            this_basename = (uuid.uuid4().hex + "-{i}.parquet").replace("-{i}", "0")
+        else:
+            this_basename = basename_template
         for i, sibling_path in enumerate(sorted(glob_func(str(Path(path) / "**")))):
             if paths_are_equal(sibling_path, path):
                 continue
