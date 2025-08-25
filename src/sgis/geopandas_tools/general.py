@@ -21,6 +21,7 @@ from shapely import get_coordinates
 from shapely import get_parts
 from shapely import linestrings
 from shapely import make_valid
+from shapely.errors import GEOSException
 from shapely.geometry import LineString
 from shapely.geometry import MultiPoint
 from shapely.geometry import Point
@@ -211,7 +212,10 @@ def clean_geoms(
     if isinstance(gdf, GeoDataFrame):
         # only repair if necessary
         if not gdf.geometry.is_valid.all():
-            gdf.geometry = gdf.make_valid()
+            try:
+                gdf.geometry = gdf.make_valid()
+            except GEOSException as e:
+                raise type(e)(f"{e}: {gdf.geometry}") from e
 
         notna = gdf.geometry.notna()
         if not notna.all():
