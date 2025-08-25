@@ -623,7 +623,7 @@ def _write_partitioned_geoparquet(
         if basename_template is None:
             this_basename = (uuid.uuid4().hex + "-{i}.parquet").replace("-{i}", "0")
         else:
-            this_basename = basename_template
+            this_basename = basename_template.replace("-{i}", "0")
         for i, sibling_path in enumerate(sorted(glob_func(str(Path(path) / "**")))):
             if paths_are_equal(sibling_path, path):
                 continue
