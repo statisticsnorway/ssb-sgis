@@ -27,11 +27,6 @@ from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.sfilter import sfilter
 from ..raster.image_collection import Band
 
-JSON_PATH = Path(__file__).parent / "norge_i_bilder.json"
-
-# JSON_YEARS = tuple(range(1900, datetime.datetime.now().year + 1))
-JSON_YEARS = tuple(range(2006, datetime.datetime.now().year + 1))
-
 DEFAULT_YEARS: tuple[int] = tuple(
     range(
         int(datetime.datetime.now().year) - 10,
@@ -100,6 +95,8 @@ class NorgeIBilderWms(WmsLoader):
     """
 
     url: str = "https://wms.geonorge.no/skwms1/wms.nib-prosjekter"
+    _min_year: int = 1935
+    _json_path = Path(__file__).parent / "norge_i_bilder.json"
 
     def __init__(
         self,
@@ -116,7 +113,7 @@ class NorgeIBilderWms(WmsLoader):
         self.show = show
         self._use_json = _use_json
 
-        if self._use_json and all(year in JSON_YEARS for year in self.years):
+        if self._use_json:
             self._load_from_json()
         else:
             self._tiles = None
@@ -132,8 +129,12 @@ class NorgeIBilderWms(WmsLoader):
             r"<northBoundLatitude>(.*?)</northBoundLatitude>.*?</EX_GeographicBoundingBox>"
         )
 
+        url: str = (
+            "https://wms.geonorge.no/skwms1/wms.nib-prosjekter?SERVICE=WMS&REQUEST=GetCapabilities"
+        )
+
         all_tiles: list[dict] = []
-        with urlopen(self.url) as file:
+        with urlopen(url) as file:
             xml_data: str = file.read().decode("utf-8")
 
             for text in xml_data.split('<Layer queryable="1">')[1:]:
@@ -333,7 +334,7 @@ class NorgeIBilderWms(WmsLoader):
     def _load_from_json(self) -> None:
         """Load tiles from json file."""
         try:
-            with open(JSON_PATH, encoding="utf-8") as file:
+            with open(self._json_path, encoding="utf-8") as file:
                 self._tiles = json.load(file)
         except FileNotFoundError:
             self._tiles = None
