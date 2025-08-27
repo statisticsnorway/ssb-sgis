@@ -126,7 +126,11 @@ def test_explore(points_oslo, roads_oslo):
         r100,
         bygdoy=7000,
         wms=sg.NorgeIBilderWms(
-            years=sg.maps.wms.JSON_YEARS, not_contains="sentinel", show=-1
+            years=list(
+                range(sg.NorgeIBilderWms._min_year, datetime.datetime.now().year + 1)
+            ),
+            not_contains="sentinel",
+            show=-1,
         ),
     )
     assert isinstance(next(iter(e.wms)), sg.NorgeIBilderWms)
