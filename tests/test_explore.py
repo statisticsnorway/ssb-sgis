@@ -1,4 +1,5 @@
 # %%
+import datetime
 import json
 import os
 import warnings
@@ -293,43 +294,37 @@ def not_test_wms_json():
     print(
         "IMPORTANT: if you run this function, make sure to change the global variable JSON_YEARS in wms.py"
     )
-    years = sg.maps.wms.JSON_YEARS
+    years = list(range(sg.NorgeIBilderWms._min_year, datetime.datetime.now().year + 1))
     wms = sg.NorgeIBilderWms(years=years, _use_json=False)
     wms.load_tiles(verbose=True)
 
-    with open(sg.maps.wms.JSON_PATH) as file:
-        print(pd.DataFrame(file).year.value_counts())
-
     try:
-        os.remove(sg.maps.wms.JSON_PATH)
+        os.remove(sg.NorgeIBilderWms._json_path)
     except FileNotFoundError:
         pass
-    with open(sg.maps.wms.JSON_PATH, "w", encoding="utf-8") as file:
+    with open(sg.NorgeIBilderWms._json_path, "w", encoding="utf-8") as file:
         json.dump(
             [
                 {
                     key: value if key not in ["bbox", "geometry"] else value.wkt
                     for key, value in tile.items()
                 }
-                for tile in wms.tiles
+                for tile in wms._tiles
             ],
             file,
             ensure_ascii=False,
         )
 
     wms = sg.NorgeIBilderWms(years=years)
-    for tile in wms.tiles:
+    for tile in wms._tiles:
         bbox = sg.to_shapely(tile["bbox"])
         polygon = sg.to_shapely(tile["geometry"])
         assert bbox.intersects(polygon)
 
 
 def main():
-
     from oslo import points_oslo
     from oslo import roads_oslo
-
-    # not_test_wms_json()
 
     test_explore(points_oslo(), roads_oslo())
     test_image_collection()
@@ -338,6 +333,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # not_test_wms_json()
 
     main()
     import cProfile
