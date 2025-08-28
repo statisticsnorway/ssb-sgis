@@ -573,9 +573,7 @@ class _ImageBase:
         Used in __init__ to select relevant paths fast.
         """
         df = pd.DataFrame({"file_path": list(file_paths)})
-
         df["file_name"] = df["file_path"].apply(lambda x: Path(x).name)
-
         df["image_path"] = df["file_path"].apply(
             lambda x: _fix_path(str(Path(x).parent))
         )
@@ -605,12 +603,10 @@ class _ImageBase:
         grouped["imagename"] = grouped["image_path"].apply(
             lambda x: _fix_path(Path(x).name)
         )
-
         if self.image_patterns and len(grouped):
             grouped = _get_regexes_matches_for_df(
                 grouped, "imagename", self.image_patterns
             )
-
         return grouped
 
     def copy(self) -> "_ImageBase":
@@ -1643,7 +1639,7 @@ class Image(_ImageBandBase):
                 **kwargs,
             )
 
-        with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
+        with joblib.Parallel(n_jobs=-3, backend="threading") as parallel:
             parallel(
                 joblib.delayed(_load_as_func)(
                     band,
@@ -2539,7 +2535,7 @@ class ImageCollection(_ImageBase):
         ):
             return self
 
-        with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
+        with joblib.Parallel(n_jobs=-3, backend="threading") as parallel:
             if self.masking:
                 masks: list[np.ndarray] = parallel(
                     joblib.delayed(_read_mask_array)(
