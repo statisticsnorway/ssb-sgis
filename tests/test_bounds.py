@@ -51,10 +51,10 @@ def test_bounds():
         p = points.sample(10).buffer(1000 * np.random.random(1))
 
         grid = sg.make_grid(p, gridsize=1000)
-        assert p.within(union_all(grid.geometry.values)).all()
+        assert p.intersects(union_all(grid.geometry.values)).all()
 
         grid = sg.make_ssb_grid(p, gridsize=1000)
-        assert p.within(union_all(grid.geometry.values)).all()
+        assert p.intersects(union_all(grid.geometry.values)).all()
 
     grid = sg.make_grid_from_bbox(0, 0, 1, 1, gridsize=0.1, crs=25833)
     print(grid.total_bounds)
@@ -68,7 +68,7 @@ def test_bounds():
     from_bounds["idx"] = from_bounds.index
     if __name__ == "__main__":
         sg.qtm(from_bounds, grid, alpha=0.5)
-    assert grid.within(union_all(from_bounds.geometry.values).buffer(0.00001)).all()
+    assert grid.intersects(union_all(from_bounds.geometry.values).buffer(0.00001)).all()
 
     gdf = sg.to_gdf([(0, 0), (1, 1), (2, 2)]).pipe(sg.buff, 0.1)
     gdf.index = [1, 3, 5]
