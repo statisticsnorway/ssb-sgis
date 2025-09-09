@@ -373,6 +373,10 @@ class ImageCollectionGroupBy:
         """Iterate over the group values and the ImageCollection groups themselves."""
         return iter(self.data)
 
+    def __reversed__(self) -> Iterator[tuple[tuple[Any, ...], "ImageCollection"]]:
+        """Iterate over the group values and the ImageCollection groups themselves."""
+        return iter(reversed(self.data))
+
     def __len__(self) -> int:
         """Number of ImageCollection groups."""
         return len(self.data)
@@ -1639,7 +1643,7 @@ class Image(_ImageBandBase):
                 **kwargs,
             )
 
-        with joblib.Parallel(n_jobs=-3, backend="threading") as parallel:
+        with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             parallel(
                 joblib.delayed(_load_as_func)(
                     band,
@@ -2187,7 +2191,7 @@ class ImageCollection(_ImageBase):
         index_aligned_kwargs: dict | None = None,
         masked: bool = True,
         processes: int | None = None,
-    ) -> np.ndarray | tuple[np.ndarray] | None:
+    ) -> PixelwiseResults:
         """Run a function for each pixel.
 
         The function should take a 1d array as first argument. This will be
@@ -2214,7 +2218,7 @@ class ImageCollection(_ImageBase):
         ):
             mask_array = np.array(
                 [
-                    (band.values.mask) | (band.values.data == self.nodata)
+                    (band.values.mask)  # | (band.values.data == self.nodata)
                     for img in self
                     for band in img
                 ]
@@ -2535,7 +2539,7 @@ class ImageCollection(_ImageBase):
         ):
             return self
 
-        with joblib.Parallel(n_jobs=-3, backend="threading") as parallel:
+        with joblib.Parallel(n_jobs=self.processes, backend="threading") as parallel:
             if self.masking:
                 masks: list[np.ndarray] = parallel(
                     joblib.delayed(_read_mask_array)(
@@ -2678,8 +2682,9 @@ class ImageCollection(_ImageBase):
 
         other = to_shapely(other)
 
+        union_func = functools.partial(_union_all_and_to_crs, crs=self.crs)
         with ThreadPoolExecutor() as executor:
-            bounds_iterable: Generator[Polygon] = executor.map(_union_all, self)
+            bounds_iterable: Generator[Polygon] = executor.map(union_func, self)
 
         intersects_list: pd.Series = GeoSeries(list(bounds_iterable)).intersects(other)
 
@@ -3422,8 +3427,8 @@ def _open_raster(path: str | Path) -> rasterio.io.DatasetReader:
         return rasterio.open(file)
 
 
-def _union_all(obj: _ImageBase) -> Polygon:
-    return obj.union_all()
+def _union_all_and_to_crs(obj: _ImageBase, crs) -> Polygon:
+    return GeoSeries([obj.union_all()], crs=obj.crs).to_crs(crs).union_all()
 
 
 def _read_mask_array(self: Band | Image, **kwargs) -> np.ndarray:
