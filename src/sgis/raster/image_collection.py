@@ -1498,6 +1498,7 @@ class Image(_ImageBandBase):
         df: pd.DataFrame | None = None,
         nodata: int | None = None,
         all_file_paths: list[str] | None = None,
+        use_json_metadata: bool = True,
         **kwargs,
     ) -> None:
         """Image initialiser."""
@@ -1539,9 +1540,12 @@ class Image(_ImageBandBase):
         else:
             self._all_file_paths = None
 
-        if self.metadata is None or (
-            not len(self.metadata)
-            and "metadata.json" in {Path(x).name for x in self._all_file_paths}
+        if use_json_metadata and (
+            self.metadata is None
+            or (
+                not len(self.metadata)
+                and "metadata.json" in {Path(x).name for x in self._all_file_paths}
+            )
         ):
             with _open_func(
                 next(
@@ -2680,9 +2684,16 @@ class ImageCollection(_ImageBase):
         if self._images is None:
             return self
 
+        if not hasattr(other, "crs") or other.crs is None:
+            try:
+                crs = self.crs
+            except ValueError as e:
+                raise ValueError("Cannot filter bounds by object without crs") from e
+        else:
+            crs = other.crs
         other = to_shapely(other)
 
-        union_func = functools.partial(_union_all_and_to_crs, crs=self.crs)
+        union_func = functools.partial(_union_all_and_to_crs, crs=crs)
         with ThreadPoolExecutor() as executor:
             bounds_iterable: Generator[Polygon] = executor.map(union_func, self)
 
