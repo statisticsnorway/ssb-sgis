@@ -479,9 +479,9 @@ def make_grid(
 
     minx, miny, maxx, maxy = to_bbox(obj)
 
-    if isinstance(minx, int) or minx.is_integer():
+    if not isinstance(minx, int) and not float(minx).is_integer():
         minx = int(minx) if minx > 0 else int(minx - 1)
-    if isinstance(miny, int) or miny.is_integer():
+    if not isinstance(miny, int) and not float(miny).is_integer():
         miny = int(miny) if miny > 0 else int(miny - 1)
 
     grid = make_grid_from_bbox(minx, miny, maxx, maxy, gridsize=gridsize, crs=crs)
