@@ -393,7 +393,9 @@ def get_bounds_series(
         paths = [paths]
 
     threads = (
-        min(len(paths), int(multiprocessing.cpu_count())) or 1 if use_threads else 1
+        min(len(paths), int(multiprocessing.cpu_count() * 1.2)) or 1
+        if use_threads
+        else 1
     )
 
     with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:

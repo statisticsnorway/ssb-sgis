@@ -373,6 +373,10 @@ class ImageCollectionGroupBy:
         """Iterate over the group values and the ImageCollection groups themselves."""
         return iter(self.data)
 
+    def __reversed__(self) -> Iterator[tuple[tuple[Any, ...], "ImageCollection"]]:
+        """Iterate over the group values and the ImageCollection groups themselves."""
+        return iter(reversed(self.data))
+
     def __len__(self) -> int:
         """Number of ImageCollection groups."""
         return len(self.data)
@@ -573,9 +577,7 @@ class _ImageBase:
         Used in __init__ to select relevant paths fast.
         """
         df = pd.DataFrame({"file_path": list(file_paths)})
-
         df["file_name"] = df["file_path"].apply(lambda x: Path(x).name)
-
         df["image_path"] = df["file_path"].apply(
             lambda x: _fix_path(str(Path(x).parent))
         )
@@ -605,12 +607,10 @@ class _ImageBase:
         grouped["imagename"] = grouped["image_path"].apply(
             lambda x: _fix_path(Path(x).name)
         )
-
         if self.image_patterns and len(grouped):
             grouped = _get_regexes_matches_for_df(
                 grouped, "imagename", self.image_patterns
             )
-
         return grouped
 
     def copy(self) -> "_ImageBase":
@@ -1498,6 +1498,7 @@ class Image(_ImageBandBase):
         df: pd.DataFrame | None = None,
         nodata: int | None = None,
         all_file_paths: list[str] | None = None,
+        use_json_metadata: bool = True,
         **kwargs,
     ) -> None:
         """Image initialiser."""
@@ -1539,9 +1540,12 @@ class Image(_ImageBandBase):
         else:
             self._all_file_paths = None
 
-        if self.metadata is None or (
-            not len(self.metadata)
-            and "metadata.json" in {Path(x).name for x in self._all_file_paths}
+        if use_json_metadata and (
+            self.metadata is None
+            or (
+                not len(self.metadata)
+                and "metadata.json" in {Path(x).name for x in self._all_file_paths}
+            )
         ):
             with _open_func(
                 next(
@@ -2191,7 +2195,7 @@ class ImageCollection(_ImageBase):
         index_aligned_kwargs: dict | None = None,
         masked: bool = True,
         processes: int | None = None,
-    ) -> np.ndarray | tuple[np.ndarray] | None:
+    ) -> PixelwiseResults:
         """Run a function for each pixel.
 
         The function should take a 1d array as first argument. This will be
@@ -2218,7 +2222,7 @@ class ImageCollection(_ImageBase):
         ):
             mask_array = np.array(
                 [
-                    (band.values.mask) | (band.values.data == self.nodata)
+                    (band.values.mask)  # | (band.values.data == self.nodata)
                     for img in self
                     for band in img
                 ]
@@ -2680,10 +2684,18 @@ class ImageCollection(_ImageBase):
         if self._images is None:
             return self
 
+        if not hasattr(other, "crs") or other.crs is None:
+            try:
+                crs = self.crs
+            except ValueError as e:
+                raise ValueError("Cannot filter bounds by object without crs") from e
+        else:
+            crs = other.crs
         other = to_shapely(other)
 
+        union_func = functools.partial(_union_all_and_to_crs, crs=crs)
         with ThreadPoolExecutor() as executor:
-            bounds_iterable: Generator[Polygon] = executor.map(_union_all, self)
+            bounds_iterable: Generator[Polygon] = executor.map(union_func, self)
 
         intersects_list: pd.Series = GeoSeries(list(bounds_iterable)).intersects(other)
 
@@ -3426,8 +3438,8 @@ def _open_raster(path: str | Path) -> rasterio.io.DatasetReader:
         return rasterio.open(file)
 
 
-def _union_all(obj: _ImageBase) -> Polygon:
-    return obj.union_all()
+def _union_all_and_to_crs(obj: _ImageBase, crs) -> Polygon:
+    return GeoSeries([obj.union_all()], crs=obj.crs).to_crs(crs).union_all()
 
 
 def _read_mask_array(self: Band | Image, **kwargs) -> np.ndarray:
