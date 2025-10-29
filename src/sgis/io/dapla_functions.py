@@ -355,7 +355,7 @@ def get_bounds_series(
     Examples:
     ---------
     >>> import sgis as sg
-    >>> import dapla as dp
+    >>> from gcsfs import GCSFileSystem
     >>> all_paths =  GCSFileSystem().ls("...")
 
     Get the bounds of all your file paths, indexed by path.

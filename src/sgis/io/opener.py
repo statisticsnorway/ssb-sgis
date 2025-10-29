@@ -5,8 +5,7 @@ from contextlib import contextmanager
 from typing import Any
 
 try:
-    from dapla import FileClient
-    from dapla.gcs import GCSFileSystem
+    from gcsfs import GCSFileSystem
 except ImportError:
 
     class GCSFileSystem:  # type: ignore[no-redef]
@@ -30,7 +29,7 @@ def opener(
     """
     if is_dapla():
         if file_system is None:
-            file_system = FileClient.get_gcs_file_system()
+            file_system = GCSFileSystem()
         yield file_system.open(str(path), mode=mode)
     else:
         yield str(path)
