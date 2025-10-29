@@ -268,6 +268,8 @@ def _shapely_pd_overlay(
     left, right = rtree_runner.run(
         df1.geometry.values, df2.geometry.values, predicate=predicate
     )
+    left = left.astype(int)
+    right = right.astype(int)
     pairs = _get_intersects_pairs(df1, df2, left, right, rsuffix)
     assert pairs["geometry"].notna().all(), pairs.geometry[lambda x: x.isna()]
     assert pairs["geom_right"].notna().all(), pairs.geom_right[lambda x: x.isna()]
