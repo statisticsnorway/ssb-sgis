@@ -18,7 +18,7 @@ classifiers = [
 Changelog = "https://github.com/statisticsnorway/ssb-sgis/releases"
 
 [tool.poetry.dependencies]
-python = ">=3.11"
+python = ">=3.11,<4"
 affine = ">=2.4.0"
 branca = ">=0.6.0"
 folium = ">=0.14.0"
