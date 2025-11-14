@@ -21,6 +21,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
+from geopandas import sjoin
 from pandas import DataFrame
 from pandas import Series
 
@@ -170,47 +171,18 @@ def parallel_sjoin(
     Returns:
         A GeoDataFrame containing the result of the overlay operation.
     """
+    df1 = df1.assign(_df1_range_idx=range(len(df1)))
+    df2 = df2.assign(_df2_range_idx=range(len(df2)), _from_df2=1)
     return pd.concat(
         chunkwise(
-            _sjoin_within_first,
+            sjoin,
             df1,
-            kwargs={
-                "df2": df2,
-                "to_print": to_print,
-            }
-            | kwargs,
+            kwargs={"right_df": df2, **kwargs},
             processes=processes,
             max_rows_per_chunk=max_rows_per_chunk,
             backend=backend,
         ),
-        ignore_index=True,
-    )
-
-
-def _sjoin_within_first(
-    df1, df2, to_print: str | None = None, predicate: str = "intersects", **kwargs
-):
-    if to_print:
-        print(to_print, "- sjoin chunk len:", len(df1))
-
-    df2 = df2.reset_index(drop=True)
-    df2["_from_df2"] = 1
-    df1["_range_idx"] = range(len(df1))
-    joined = df1.sjoin(df2, predicate="within", how="left")
-    within = joined.loc[joined["_from_df2"].notna()].drop(
-        columns=["_from_df2", "_range_idx", "index_right"], errors="raise"
-    )
-    not_within = df1.loc[
-        df1["_range_idx"].isin(joined.loc[joined["_from_df2"].isna(), "_range_idx"])
-    ]
-
-    return pd.concat(
-        [
-            within,
-            not_within.sjoin(df2, predicate=predicate, **kwargs),
-        ],
-        ignore_index=True,
-    )
+    ).drop(columns=["_df1_range_idx", "_df2_range_idx", "_from_df2"], errors="raise")
 
 
 def _clip_rowwise(df1, df2, to_print: str | None = None):
