@@ -157,6 +157,8 @@ def parallel_sjoin(
 
     Note that this function is most useful if df2 has few and simple geometries.
 
+    Note that the index in df1 will be ignored.
+
     Args:
         df1: The first GeoDataFrame for the overlay operation.
         df2: The second GeoDataFrame for the overlay operation.
@@ -170,21 +172,27 @@ def parallel_sjoin(
     Returns:
         A GeoDataFrame containing the result of the overlay operation.
     """
-    return pd.concat(
-        chunkwise(
-            _sjoin_within_first,
-            df1,
-            kwargs={
-                "df2": df2,
-                "to_print": to_print,
-            }
-            | kwargs,
-            processes=processes,
-            max_rows_per_chunk=max_rows_per_chunk,
-            backend=backend,
-        ),
-        ignore_index=True,
-    ).drop(columns=["_range_idx", "_from_df2"], errors="raise")
+    df1 = df1.assign(_df1_range_idx=range(len(df1))).reset_index(drop=True)
+    df2 = df2.assign(_df2_range_idx=range(len(df2)), _from_df2=1).reset_index(drop=True)
+    return (
+        pd.concat(
+            chunkwise(
+                _sjoin_within_first,
+                df1,
+                kwargs={
+                    "df2": df2,
+                    "to_print": to_print,
+                }
+                | kwargs,
+                processes=processes,
+                max_rows_per_chunk=max_rows_per_chunk,
+                backend=backend,
+            ),
+            ignore_index=True,
+        )
+        .drop_duplicates(["_df1_range_idx", "_df2_range_idx"])
+        .drop(columns=["_df1_range_idx", "_df2_range_idx", "_from_df2"], errors="raise")
+    )
 
 
 def _sjoin_within_first(
@@ -192,18 +200,13 @@ def _sjoin_within_first(
 ):
     if to_print:
         print(to_print, "- sjoin chunk len:", len(df1))
-
-    df2 = df2.reset_index(drop=True)
-    df2["_from_df2"] = 1
-    df1["_range_idx"] = range(len(df1))
     joined = df1.sjoin(df2, predicate="within", how="left")
-    within = joined.loc[joined["_from_df2"].notna()].drop(
-        columns=["_from_df2", "_range_idx"], errors="raise"
-    )
+    within = joined.loc[joined["_from_df2"].notna()]
     not_within = df1.loc[
-        df1["_range_idx"].isin(joined.loc[joined["_from_df2"].isna(), "_range_idx"])
+        df1["_df1_range_idx"].isin(
+            joined.loc[joined["_from_df2"].isna(), "_df1_range_idx"]
+        )
     ]
-
     return pd.concat(
         [
             within,
