@@ -184,7 +184,7 @@ def parallel_sjoin(
             backend=backend,
         ),
         ignore_index=True,
-    )
+    ).drop(columns=["_range_idx", "_from_df2"], errors="raise")
 
 
 def _sjoin_within_first(
@@ -198,7 +198,7 @@ def _sjoin_within_first(
     df1["_range_idx"] = range(len(df1))
     joined = df1.sjoin(df2, predicate="within", how="left")
     within = joined.loc[joined["_from_df2"].notna()].drop(
-        columns=["_from_df2", "_range_idx", "index_right"], errors="raise"
+        columns=["_from_df2", "_range_idx"], errors="raise"
     )
     not_within = df1.loc[
         df1["_range_idx"].isin(joined.loc[joined["_from_df2"].isna(), "_range_idx"])
