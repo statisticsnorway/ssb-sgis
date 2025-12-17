@@ -67,7 +67,7 @@ def to_geoseries(obj: Any, crs: Any | None = None) -> GeoSeries:
             # pandas objects
             index = obj.index
         else:
-            # list
+            # list (has method 'index')
             index = None
     except AttributeError:
         index = None
