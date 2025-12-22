@@ -1533,22 +1533,6 @@ class NetworkAnalysis:
         To not get an error when running the distance calculation.
         """
         # TODO: add fictional edges before making the graph, to make things faster?
-        self.graph.add_vertices(
-            [
-                idx
-                for idx in self.origins.gdf["temp_idx"]
-                if idx not in self.graph.vs["name"]
-            ]
-        )
-        if self.destinations is not None:
-            self.graph.add_vertices(
-                [
-                    idx
-                    for idx in self.destinations.gdf["temp_idx"]
-                    if idx not in self.graph.vs["name"]
-                ]
-            )
-        return
         missing_ori = [
             idx
             for idx in self.origins.gdf["temp_idx"]
@@ -1576,7 +1560,6 @@ class NetworkAnalysis:
         """Creates an igraph Graph from a list of edges and weights."""
         assert len(edges) == len(weights)
         graph = igraph.Graph.TupleList(edges, directed=directed)
-
         graph.es["weight"] = weights
         graph.es["src_tgt_wt"] = edge_ids
         graph.es["edge_tuples"] = edges
