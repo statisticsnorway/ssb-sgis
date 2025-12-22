@@ -38,8 +38,9 @@ def update_geometries(
 ) -> GeoDataFrame:
     """Puts geometries on top of each other rowwise.
 
-    Since this operation is done rowwise, it's important to
-    first sort the GeoDataFrame approriately. See example below.
+    IMPORTANT: Since this operation is done rowwise, meaning the top rows
+    are put on top of bottommore rows, it is important to first sort the
+    GeoDataFrame approriately. See examples below.
 
     Args:
         gdf: The GeoDataFrame to be updated.
@@ -63,6 +64,22 @@ def update_geometries(
 
     Example:
     --------
+    Create some overlapping circles and update the geometries based on area.
+    Sorting the data small to large might be the appropriate choice if you want to keep all details
+    in the coverage and the data has no attributes that should be given priority over another.
+
+    >>> coords = [(0, 0), (0, 1), (1, 1), (1, 0)]
+    >>> buffers = [0.9, 1.3, 0.7, 1.1]
+    >>> circles = sg.to_gdf(coords)
+    >>> circles["geometry"] = circles["geometry"].buffer(buffers)
+    >>> updated_smallest_first = sg.update_geometries(sg.sort_small_first(circles))
+    >>> updated_largest_first = sg.update_geometries(sg.sort_large_first(circles))
+    >>> sg.explore(circles, updated_smallest_first, updated_largest_first, tiles=["dark"])
+
+    If you want to prioritize geometries based on attributes,
+
+    >>> circles["hva"] = ["skog", "elv", "bro", "tunnel"]
+
     Create two circles and get the overlap.
 
     >>> import sgis as sg
@@ -123,7 +140,7 @@ def update_geometries(
     )
 
     geom_col = copied._geometry_column_name
-    index_mapper = {i: idx for i, idx in enumerate(copied.index)}
+    index_mapper = dict(enumerate(copied.index))
     copied = copied.reset_index(drop=True)
 
     left, right = rtree_runner.run(

@@ -9,6 +9,7 @@ from copy import deepcopy
 from datetime import datetime
 from time import perf_counter
 from typing import Any
+from uuid import uuid4
 
 import igraph
 import numpy as np
@@ -1450,32 +1451,33 @@ class NetworkAnalysis:
         edges = edges + edges_end
         weights = weights + weights_end
 
-        edges = (
-            edges
-            + [
-                (idx, idx)
-                for idx in self.origins.gdf["temp_idx"]
-                # if idx not in self.graph.vs["name"]
-            ]
-            + [
-                (idx, idx)
-                for idx in self.destinations.gdf["temp_idx"]
-                # if idx not in self.graph.vs["name"]
-            ]
-        )
-        weights = (
-            weights
-            + [
-                0
-                for _ in self.origins.gdf["temp_idx"]
-                # if idx not in self.graph.vs["name"]
-            ]
-            + [
-                0
-                for _ in self.destinations.gdf["temp_idx"]
-                # if idx not in self.graph.vs["name"]
-            ]
-        )
+        uuid4()
+        # edges = (
+        #     edges
+        #     + [
+        # (idx, uuid4())
+        #         for idx in self.origins.gdf["temp_idx"]
+        #         # if idx not in self.graph.vs["name"]
+        #     ]
+        #     + [
+        #         (uuid4(), idx)
+        #         for idx in self.destinations.gdf["temp_idx"]
+        #         # if idx not in self.graph.vs["name"]
+        #     ]
+        # )
+        # weights = (
+        #     weights
+        #     + [
+        #         1
+        #         for _ in self.origins.gdf["temp_idx"]
+        #         # if idx not in self.graph.vs["name"]
+        #     ]
+        #     + [
+        #         1
+        #         for _ in self.destinations.gdf["temp_idx"]
+        #         # if idx not in self.graph.vs["name"]
+        #     ]
+        # )
 
         edge_ids = self.network._create_edge_ids(edges, weights)
 
@@ -1531,6 +1533,22 @@ class NetworkAnalysis:
         To not get an error when running the distance calculation.
         """
         # TODO: add fictional edges before making the graph, to make things faster?
+        self.graph.add_vertices(
+            [
+                idx
+                for idx in self.origins.gdf["temp_idx"]
+                if idx not in self.graph.vs["name"]
+            ]
+        )
+        if self.destinations is not None:
+            self.graph.add_vertices(
+                [
+                    idx
+                    for idx in self.destinations.gdf["temp_idx"]
+                    if idx not in self.graph.vs["name"]
+                ]
+            )
+        return
         missing_ori = [
             idx
             for idx in self.origins.gdf["temp_idx"]
@@ -1548,7 +1566,6 @@ class NetworkAnalysis:
         if missing_des:
             self.graph.add_vertices(missing_des)
 
-    # @staticmethod
     def _make_graph(
         self,
         edges: list[tuple[str, ...]] | np.ndarray[tuple[str, ...]],

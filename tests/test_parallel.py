@@ -188,7 +188,7 @@ def test_gridloop_parallel():
     print(intersected)
     print(intersected2)
 
-    assert intersected.equals(intersected2)
+    assert intersected.equals(intersected2), (intersected, intersected2)
 
     intersected3 = (
         pd.concat(
@@ -204,7 +204,9 @@ def test_gridloop_parallel():
         .reset_index(drop=True)
     )
 
-    assert intersected.equals(intersected3)
+    assert intersected.equals(intersected3), intersected[
+        lambda x: ~x.index.isin(intersected3.index)
+    ]
 
     intersected4 = (
         pd.concat(
@@ -221,7 +223,9 @@ def test_gridloop_parallel():
         .reset_index(drop=True)
     )
 
-    assert intersected.equals(intersected4)
+    assert intersected.equals(intersected4), intersected[
+        lambda x: ~x.index.isin(intersected4.index)
+    ]
 
     intersected5 = (
         pd.concat(
@@ -239,7 +243,9 @@ def test_gridloop_parallel():
         .reset_index(drop=True)
     )
 
-    assert intersected.equals(intersected5)
+    assert intersected.equals(intersected5), intersected[
+        lambda x: ~x.index.isin(intersected5.index)
+    ]
 
     intersected6 = (
         pd.concat(
@@ -257,7 +263,9 @@ def test_gridloop_parallel():
         .reset_index(drop=True)
     )
 
-    assert intersected.equals(intersected6)
+    assert intersected.equals(intersected6), intersected[
+        lambda x: ~x.index.isin(intersected6.index)
+    ]
 
     intersected7 = (
         pd.concat(
@@ -275,7 +283,9 @@ def test_gridloop_parallel():
         .reset_index(drop=True)
     )
 
-    assert intersected.equals(intersected7)
+    assert intersected.equals(intersected7), intersected[
+        lambda x: ~x.index.isin(intersected7.index)
+    ]
 
 
 @skip_if_not_github
@@ -384,9 +394,9 @@ def test_gridlooper_parallel():
 
 if __name__ == "__main__":
     # test_run()
+    test_gridloop_parallel()
+    test_gridlooper_parallel()
     test_chunkwise()
     test_args_to_kwargs()
     test_starmap()
     test_map()
-    test_gridloop_parallel()
-    test_gridlooper_parallel()

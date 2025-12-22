@@ -44,7 +44,7 @@ def not_test_od_cost_matrix(nwa, p):
     ]
     assert sg.get_geom_type(od) == "line"
 
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(od.loc[od.origin == 0], nwa.rules.weight, scheme="quantiles")
 
     p = p.sort_index(ascending=True)
@@ -69,7 +69,7 @@ def not_test_od_cost_matrix(nwa, p):
 
 def not_test_get_route_frequency(nwa, p):
     frequencies = nwa.get_route_frequencies(p, p)
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(frequencies, "frequency")
     assert frequencies["frequency"].max() == 44, frequencies["frequency"].max()
 
@@ -93,7 +93,7 @@ def not_test_get_route_frequency(nwa, p):
         frequencies = nwa.get_route_frequencies(p, p, weight_df=no_identical_ods)
         assert frequencies["frequency"].max() == 440, frequencies["frequency"].max()
 
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(frequencies, "frequency", title="weight_df all = * 10")
 
     od_pairs = pd.MultiIndex.from_product([p.index, p.index])
@@ -101,7 +101,7 @@ def not_test_get_route_frequency(nwa, p):
     one_pair_100.loc[(349, 97), "weight"] = 100
 
     frequencies = nwa.get_route_frequencies(p, p, weight_df=one_pair_100)
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(frequencies, "frequency", title="weight_df one = * 10")
     assert frequencies["frequency"].max() == 141, frequencies["frequency"].max()
 
@@ -112,14 +112,14 @@ def not_test_get_route_frequency(nwa, p):
     with_default_weight = nwa.get_route_frequencies(
         p, p, weight_df=one_pair_100, default_weight=1
     )
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(with_default_weight, "frequency", title="weight_df one = * 10")
     assert with_default_weight["frequency"].max() == 141, with_default_weight[
         "frequency"
     ].max()
     assert frequencies.equals(with_default_weight)
 
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(frequencies, "frequency", title="weight_df one = * 10")
     assert frequencies["frequency"].max() == 141, frequencies["frequency"].max()
 
@@ -148,23 +148,23 @@ def not_test_get_route(nwa, p):
     nwa.rules.split_lines = False
 
     routes = nwa.get_route(p.loc[[349]], p.loc[[440]])
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(routes)
     nwa.rules.split_lines = True
     routes = nwa.get_route(p.loc[[349]], p.loc[[440]])
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(routes)
     routes = nwa.get_route(p.loc[[349]], p.loc[[440]])
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(routes)
 
     nwa.rules.split_lines = False
     routes = nwa.get_route(p.loc[[349]], p)
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(routes)
     nwa.rules.split_lines = True
     routes = nwa.get_route(p.loc[[349]], p)
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(routes)
 
     assert list(routes.columns) == [
@@ -174,7 +174,7 @@ def not_test_get_route(nwa, p):
         "geometry",
     ]
     routes = nwa.get_route(p.loc[[349]], p)
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(routes)
 
     p = p.sort_index(ascending=True)
@@ -202,13 +202,13 @@ def not_test_service_area(nwa, p):
     sa = sa.drop_duplicates(["source", "target"])
 
     print(len(sa))
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(sa)
 
     sa = nwa.service_area(p.loc[[349]], breaks=np.arange(1, 11))
     print(sa.columns)
     sa = sa.sort_values("minutes", ascending=False)
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(sa, "minutes", k=10)
     assert list(sa.columns) == [
         "origin",
@@ -222,7 +222,7 @@ def not_test_get_k_routes(nwa, p):
         routes = nwa.get_k_routes(
             p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=x
         )
-        if __name__ == "__main__":
+        if 0:
             sg.qtm(routes, "k")
 
     assert list(routes.columns) == [
@@ -242,7 +242,7 @@ def not_test_get_k_routes(nwa, p):
                 k=5,
                 drop_middle_percent=x,
             )
-            if __name__ == "__main__":
+            if 0:
                 sg.qtm(routes, "k")
         except ValueError:
             n += 1
@@ -252,11 +252,11 @@ def not_test_get_k_routes(nwa, p):
 
     routes = nwa.get_k_routes(p.loc[[349]], p.loc[[440]], k=5, drop_middle_percent=50)
     print(routes)
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(routes)
 
     routes = nwa.get_k_routes(p.loc[[349]], p, k=5, drop_middle_percent=50)
-    if __name__ == "__main__":
+    if 0:
         sg.qtm(routes)
 
     nwa.rules.search_tolerance = 1
@@ -326,7 +326,8 @@ def test_network_analysis(points_oslo, roads_oslo):
     print(nwa)
 
     od = nwa.od_cost_matrix(points_oslo.iloc[[0]], points_oslo, lines=True)
-    if __name__ == "__main__":
+    print(od)
+    if 0:
         sg.qtm(od, column=nwa.rules.weight, scheme="quantiles")
     assert (times := list(od["minutes"].dropna().astype(int))[:100]) == [
         0,
