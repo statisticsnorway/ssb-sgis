@@ -1450,6 +1450,33 @@ class NetworkAnalysis:
         edges = edges + edges_end
         weights = weights + weights_end
 
+        edges = (
+            edges
+            + [
+                (idx, idx)
+                for idx in self.origins.gdf["temp_idx"]
+                # if idx not in self.graph.vs["name"]
+            ]
+            + [
+                (idx, idx)
+                for idx in self.destinations.gdf["temp_idx"]
+                # if idx not in self.graph.vs["name"]
+            ]
+        )
+        weights = (
+            weights
+            + [
+                0
+                for _ in self.origins.gdf["temp_idx"]
+                # if idx not in self.graph.vs["name"]
+            ]
+            + [
+                0
+                for _ in self.destinations.gdf["temp_idx"]
+                # if idx not in self.graph.vs["name"]
+            ]
+        )
+
         edge_ids = self.network._create_edge_ids(edges, weights)
 
         return edges, weights, edge_ids
@@ -1503,27 +1530,27 @@ class NetworkAnalysis:
         Nodes that had no nodes within the search_tolerance are added to the graph.
         To not get an error when running the distance calculation.
         """
-        # TODO: either check if any() beforehand, or add fictional edges before
-        # making the graph, to make things faster
-        # (this method took 64.660 out of 500 seconds)
-        self.graph.add_vertices(
-            [
-                idx
-                for idx in self.origins.gdf["temp_idx"]
-                if idx not in self.graph.vs["name"]
-            ]
-        )
-        if self.destinations is not None:
-            self.graph.add_vertices(
-                [
-                    idx
-                    for idx in self.destinations.gdf["temp_idx"]
-                    if idx not in self.graph.vs["name"]
-                ]
-            )
+        # TODO: add fictional edges before making the graph, to make things faster?
+        missing_ori = [
+            idx
+            for idx in self.origins.gdf["temp_idx"]
+            if idx not in self.graph.vs["name"]
+        ]
+        if missing_ori:
+            self.graph.add_vertices(missing_ori)
+        if self.destinations is None:
+            return
+        missing_des = [
+            idx
+            for idx in self.destinations.gdf["temp_idx"]
+            if idx not in self.graph.vs["name"]
+        ]
+        if missing_des:
+            self.graph.add_vertices(missing_des)
 
-    @staticmethod
+    # @staticmethod
     def _make_graph(
+        self,
         edges: list[tuple[str, ...]] | np.ndarray[tuple[str, ...]],
         weights: list[float] | np.ndarray[float],
         edge_ids: np.ndarray,
@@ -1531,7 +1558,6 @@ class NetworkAnalysis:
     ) -> Graph:
         """Creates an igraph Graph from a list of edges and weights."""
         assert len(edges) == len(weights)
-
         graph = igraph.Graph.TupleList(edges, directed=directed)
 
         graph.es["weight"] = weights
