@@ -5,12 +5,15 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import distance
-from shapely import union_all
 from shapely.ops import nearest_points
 
+from ..conf import _get_instance
+from ..conf import config
+from ..geopandas_tools.conversion import to_geoseries
 from ..geopandas_tools.geometry_types import get_geom_type
 from ..geopandas_tools.geometry_types import to_single_geom_type
 from ..geopandas_tools.polygon_operations import PolygonsAsRings
+from ..geopandas_tools.runners import RTreeQueryRunner
 
 
 def snap_within_distance(
@@ -19,6 +22,8 @@ def snap_within_distance(
     max_distance: int | float,
     *,
     distance_col: str | None = None,
+    n_jobs: int = 1,
+    rtree_runner: RTreeQueryRunner | None = None,
 ) -> GeoDataFrame | GeoSeries:
     """Snaps points to nearest geometry if within given distance.
 
@@ -33,6 +38,9 @@ def snap_within_distance(
         distance_col: Name of column with the snap distance. Defaults to
             'snap_distance'. Set to None to not get any distance column. This will make
             the function a bit faster.
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the
@@ -80,22 +88,31 @@ def snap_within_distance(
     """
     to = _polygons_to_rings(to)
 
+    if not isinstance(to, GeoSeries):
+        to = to_geoseries(to)
+
     if not distance_col and not isinstance(points, GeoDataFrame):
         return _shapely_snap(
             points=points,
-            to=to,
+            to=to.values,
             max_distance=max_distance,
+            rtree_runner=rtree_runner,
+            n_jobs=n_jobs,
         )
-    elif not isinstance(points, GeoDataFrame):
-        points = points.to_frame()
 
     copied = points.copy()
 
-    copied.geometry = _shapely_snap(
-        points=copied.geometry.values,
-        to=to,
+    snapped = _shapely_snap(
+        points=copied.geometry,
+        to=to.values,
         max_distance=max_distance,
+        rtree_runner=rtree_runner,
+        n_jobs=n_jobs,
     )
+    if isinstance(copied, GeoSeries):
+        copied = snapped.to_frame("geometry")
+    else:
+        copied.geometry = snapped
 
     if distance_col:
         copied[distance_col] = copied.distance(points)
@@ -111,6 +128,8 @@ def snap_all(
     to: GeoDataFrame | GeoSeries,
     *,
     distance_col: str | None = None,
+    n_jobs: int = 1,
+    rtree_runner: RTreeQueryRunner | None = None,
 ) -> GeoDataFrame | GeoSeries:
     """Snaps points to the nearest geometry.
 
@@ -121,6 +140,9 @@ def snap_all(
         points: The GeoDataFrame of points to snap.
         to: The GeoDataFrame to snap to.
         distance_col: Name of column with the snap distance. Defaults to None.
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
         A GeoDataFrame or GeoSeries with the points snapped to the nearest point in the
@@ -159,29 +181,14 @@ def snap_all(
     0  POINT (2.00000 2.00000)       2.828427
     1  POINT (2.00000 2.00000)       1.414214
     """
-    to = _polygons_to_rings(to)
-
-    if not isinstance(points, GeoDataFrame):
-        return _shapely_snap(
-            points=points,
-            to=to,
-            max_distance=None,
-        )
-
-    copied = points.copy()
-
-    copied.geometry = _shapely_snap(
-        points=copied.geometry.values,
-        to=to,
+    return snap_within_distance(
+        points,
+        to,
         max_distance=None,
+        distance_col=distance_col,
+        rtree_runner=rtree_runner,
+        n_jobs=n_jobs,
     )
-
-    if distance_col:
-        copied[distance_col] = copied.distance(points)
-        copied[distance_col] = np.where(
-            copied[distance_col] == 0, pd.NA, copied[distance_col]
-        )
-    return copied
 
 
 def _polygons_to_rings(gdf: GeoDataFrame) -> GeoDataFrame:
@@ -197,17 +204,19 @@ def _polygons_to_rings(gdf: GeoDataFrame) -> GeoDataFrame:
 
 def _shapely_snap(
     points: np.ndarray | GeoSeries,
-    to: GeoSeries | GeoDataFrame,
+    to: np.ndarray | GeoSeries,
+    *,
+    rtree_runner: RTreeQueryRunner | None,
+    n_jobs: int,
     max_distance: int | float | None = None,
 ) -> GeoSeries:
-    try:
-        unioned = union_all(to.geometry.values)
-    except AttributeError:
-        unioned = union_all(to)
+    if rtree_runner is None:
+        rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
 
-    nearest = nearest_points(points, unioned)[1]
+    nearest_indices = rtree_runner.run(points, to, method="nearest")
+    nearest = nearest_points(points, to[nearest_indices])[1]
 
-    if not max_distance:
+    if max_distance is None:
         return nearest
 
     distances = distance(points, nearest)
@@ -219,6 +228,6 @@ def _shapely_snap(
     )
 
     if isinstance(points, GeoSeries):
-        return GeoSeries(points, crs=points.crs, index=points.index, name=points.name)
+        return GeoSeries(snapped, crs=points.crs, index=points.index, name=points.name)
 
     return points.__class__(snapped)

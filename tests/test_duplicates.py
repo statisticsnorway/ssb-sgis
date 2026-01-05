@@ -253,7 +253,7 @@ def test_update_geometries():
     assert area == [53, 24, 5, 2], area
 
     updated_smallest_first = sg.update_geometries(
-        sg.sort_large_first(circles).iloc[::-1], n_jobs=n_jobs
+        sg.sort_small_first(circles), n_jobs=n_jobs
     )
     area = updated_smallest_first.area * 10
     assert [int(x) for x in area] == [15, 24, 18, 0, 26], area
@@ -262,10 +262,10 @@ def test_update_geometries():
 
 
 if __name__ == "__main__":
+    test_update_geometries()
     test_false_duplicate()
     test_get_intersections()
     test_random_get_intersections()
-    test_update_geometries()
     test_random_update_geometries(200)
     not_test_bug2()
     not_test_drop_duplicate_geometries()

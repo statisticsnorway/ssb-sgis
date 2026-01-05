@@ -177,10 +177,16 @@ def _strtree_query(
 ):
     tree = STRtree(arr2)
     func = getattr(tree, method)
-    left, right = func(arr1, **kwargs)
+    results = func(arr1, **kwargs)
+    if results.ndim == 2:
+        left, right = results
+    else:
+        left = results
     if indices1 is not None:
         index_mapper1 = {i: x for i, x in enumerate(indices1)}
         left = np.array([index_mapper1[i] for i in left])
+    if results.ndim == 1:
+        return left
     if indices2 is not None:
         index_mapper2 = {i: x for i, x in enumerate(indices2)}
         right = np.array([index_mapper2[i] for i in right])
@@ -228,6 +234,11 @@ class RTreeQueryRunner(AbstractRunner):
                     )
                     for chunk in chunks
                 )
+            results = np.concatenate(results)
+            if results.ndim == 2:
+                left, right = results
+                return left, right
+            return results
             left = np.concatenate([x[0] for x in results])
             right = np.concatenate([x[1] for x in results])
             return left, right
@@ -248,6 +259,11 @@ class RTreeQueryRunner(AbstractRunner):
                     )
                     for chunk in chunks
                 )
+            results = np.concatenate(results)
+            if results.ndim == 2:
+                left, right = results
+                return left, right
+            return results
             left = np.concatenate([x[0] for x in results])
             right = np.concatenate([x[1] for x in results])
             return left, right

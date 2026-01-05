@@ -163,6 +163,8 @@ def test_get_polygon_clusters():
     should_give = pd.Series([4, 2, 1], name="cluster", index=[0, 2, 1])
 
     c, c2 = sg.get_polygon_clusters(gdf, gdf)
+    assert isinstance(c, gpd.GeoDataFrame)
+    assert isinstance(c2, gpd.GeoDataFrame)
 
     gdf_clustered = sg.get_polygon_clusters(gdf)
 

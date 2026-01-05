@@ -828,16 +828,21 @@ def make_edge_coords_cols(gdf: GeoDataFrame) -> GeoDataFrame:
     Returns:
         A GeoDataFrame with new columns 'source_coords' and 'target_coords'
     """
+    if not gdf.index.is_unique:
+        index_mapper = dict(enumerate(gdf.index))
+        gdf = gdf.reset_index(drop=True)
+    else:
+        index_mapper = None
     try:
         gdf, endpoints = _prepare_make_edge_cols_simple(gdf)
     except ValueError:
         gdf, endpoints = _prepare_make_edge_cols(gdf)
 
-    coords = [(geom.x, geom.y) for geom in endpoints.geometry]
-    gdf["source_coords"], gdf["target_coords"] = (
-        coords[0::2],
-        coords[1::2],
-    )
+    gdf["source_coords"] = endpoints.groupby(level=0).first()
+    gdf["target_coords"] = endpoints.groupby(level=0).last()
+
+    if index_mapper is not None:
+        gdf.index = gdf.index.map(index_mapper)
 
     return gdf
 
@@ -855,19 +860,22 @@ def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
     Returns:
         A GeoDataFrame with new columns 'source_wkt' and 'target_wkt'
     """
+    if not gdf.index.is_unique:
+        index_mapper = dict(enumerate(gdf.index))
+        gdf = gdf.reset_index(drop=True)
+    else:
+        index_mapper = None
     try:
         gdf, endpoints = _prepare_make_edge_cols_simple(gdf)
     except ValueError:
         gdf, endpoints = _prepare_make_edge_cols(gdf)
 
-    wkt_geom = [
-        f"POINT ({x} {y})" for x, y in zip(endpoints.x, endpoints.y, strict=True)
-    ]
-    gdf["source_wkt"], gdf["target_wkt"] = (
-        wkt_geom[0::2],
-        wkt_geom[1::2],
-    )
+    endpoints = endpoints.force_2d()
+    gdf["source_wkt"] = endpoints.groupby(level=0).first().to_wkt()
+    gdf["target_wkt"] = endpoints.groupby(level=0).last().to_wkt()
 
+    if index_mapper is not None:
+        gdf.index = gdf.index.map(index_mapper)
     return gdf
 
 
@@ -889,18 +897,16 @@ def _prepare_make_edge_cols(lines: GeoDataFrame) -> tuple[GeoDataFrame, GeoDataF
                 "Try using: to_single_geom_type(gdf, 'lines')."
             )
 
-    geom_col = lines._geometry_column_name
-
     # some LineStrings are in fact rings and must be removed manually
     lines, _ = split_out_circles(lines)
 
-    endpoints = lines[geom_col].boundary.explode(ignore_index=True)
+    endpoints = lines.geometry.boundary.explode(ignore_index=False)
 
     if len(lines) and len(endpoints) / len(lines) != 2:
         raise ValueError(
             "The lines should have only two endpoints each. "
             "Try splitting multilinestrings with explode.",
-            lines[geom_col],
+            lines.geometry,
         )
 
     return lines, endpoints
@@ -910,7 +916,7 @@ def _prepare_make_edge_cols_simple(
     lines: GeoDataFrame,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     """Faster version of _prepare_make_edge_cols."""
-    endpoints = lines[lines._geometry_column_name].boundary.explode(ignore_index=True)
+    endpoints = lines.geometry.boundary.explode(ignore_index=False)
 
     if len(lines) and len(endpoints) / len(lines) != 2:
         raise ValueError(
