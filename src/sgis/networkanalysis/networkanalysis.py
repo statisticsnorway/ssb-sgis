@@ -1455,6 +1455,7 @@ class NetworkAnalysis:
         return edges, weights, edge_ids
 
     def _add_fake_edges(self, edges, weights):
+        """Add edges for origins and destinations to not get error in igraph because of non-existing nodes."""
         nodes = {x[0] for x in edges} | {x[1] for x in edges}
 
         fake_edges = [
