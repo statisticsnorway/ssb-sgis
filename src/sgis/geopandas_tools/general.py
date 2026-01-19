@@ -870,9 +870,9 @@ def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
     except ValueError:
         gdf, endpoints = _prepare_make_edge_cols(gdf)
 
-    endpoints = endpoints.force_2d()
-    gdf["source_wkt"] = endpoints.groupby(level=0).first().to_wkt()
-    gdf["target_wkt"] = endpoints.groupby(level=0).last().to_wkt()
+    endpoints = endpoints.force_2d().to_wkt()
+    gdf["source_wkt"] = endpoints.groupby(level=0).first()
+    gdf["target_wkt"] = endpoints.groupby(level=0).last()
 
     if index_mapper is not None:
         gdf.index = gdf.index.map(index_mapper)
