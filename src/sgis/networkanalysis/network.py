@@ -36,12 +36,11 @@ class Network:
             raise TypeError(f"'lines' should be GeoDataFrame, got {type(gdf)}")
 
         if not len(gdf):
-            raise ZeroLinesError
+            raise ZeroLinesError()
 
         self.gdf = self._prepare_network(gdf)
 
         self._make_node_ids()
-
         self._percent_bidirectional = self._check_percent_bidirectional()
 
     def _make_node_ids(self) -> None:
@@ -55,6 +54,7 @@ class Network:
             The lines must be singlepart linestrings.
         """
         self.gdf, self._nodes = make_node_ids(self.gdf)
+        self._percent_bidirectional = self._check_percent_bidirectional()
 
     @staticmethod
     def _prepare_network(gdf: GeoDataFrame) -> GeoDataFrame:
@@ -138,6 +138,8 @@ class Network:
         or any superfluous node-ids (meaning rows have been removed from the lines
         gdf).
         """
+        if not hasattr(self, "_nodes"):
+            return False
         new_or_missing = (~self.gdf.source.isin(self._nodes.node_id)) | (
             ~self.gdf.target.isin(self._nodes.node_id)
         )

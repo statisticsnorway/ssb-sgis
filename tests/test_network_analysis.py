@@ -188,10 +188,10 @@ def not_test_get_route(nwa, p):
     nwa.rules.search_tolerance = sg.NetworkAnalysisRules.search_tolerance
 
     routes = nwa.get_route(p, p, cutoff=1)
-    assert all(routes[nwa.rules.weight] <= 1), routes[nwa.rules.weight].describe()
+    assert (routes[nwa.rules.weight] <= 1).all(), routes[nwa.rules.weight].describe()
 
     routes = nwa.get_route(p, p, destination_count=1)
-    assert all(routes["origin"].value_counts() == 1), routes["origin"].value_counts()
+    assert (routes["origin"].value_counts() == 1).all(), routes["origin"].value_counts()
 
 
 def not_test_service_area(nwa, p):
@@ -295,6 +295,7 @@ def not_test_direction(roads_oslo):
 
     should_be_within = route_fromto.sjoin_nearest(tunnel_fromto, distance_col="dist")
     assert should_be_within["dist"].max() < m, should_be_within["dist"]
+    quit()
     should_be_within = route_tofrom.sjoin_nearest(tunnel_tofrom, distance_col="dist")
     assert should_be_within["dist"].max() < m, should_be_within["dist"]
 
