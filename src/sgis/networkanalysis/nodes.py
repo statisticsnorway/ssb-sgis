@@ -72,12 +72,7 @@ def make_node_ids(
     nodes["node_id"] = nodes.index
     nodes["node_id"] = nodes["node_id"].astype(str)
 
-    id_dict = {
-        geom: node_id
-        for geom, node_id in zip(nodes[geomcol_final], nodes["node_id"], strict=True)
-    }
-    gdf["source"] = gdf[geomcol1].map(id_dict)
-    gdf["target"] = gdf[geomcol2].map(id_dict)
+    gdf = _map_node_ids_from_wkt(gdf, nodes, wkt=wkt)
 
     n_dict = {geom: n for geom, n in zip(nodes[geomcol_final], nodes["n"], strict=True)}
     gdf["n_source"] = gdf[geomcol1].map(n_dict)
@@ -95,3 +90,17 @@ def make_node_ids(
     gdf = _push_geom_col(gdf)
 
     return gdf, nodes
+
+
+def _map_node_ids_from_wkt(lines, nodes, wkt: bool = True) -> GeoDataFrame:
+    if wkt:
+        geomcol1, geomcol2, geomcol_final = "source_wkt", "target_wkt", "wkt"
+    else:
+        geomcol1, geomcol2, geomcol_final = "source_coords", "target_coords", "coords"
+    id_dict = {
+        geom: node_id
+        for geom, node_id in zip(nodes[geomcol_final], nodes["node_id"], strict=True)
+    }
+    lines["source"] = lines[geomcol1].map(id_dict)
+    lines["target"] = lines[geomcol2].map(id_dict)
+    return lines

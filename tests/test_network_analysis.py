@@ -292,10 +292,8 @@ def not_test_direction(roads_oslo):
     route_tofrom = nwa.get_route(ryen, vippetangen)
 
     m = 5
-
     should_be_within = route_fromto.sjoin_nearest(tunnel_fromto, distance_col="dist")
     assert should_be_within["dist"].max() < m, should_be_within["dist"]
-    quit()
     should_be_within = route_tofrom.sjoin_nearest(tunnel_tofrom, distance_col="dist")
     assert should_be_within["dist"].max() < m, should_be_within["dist"]
 

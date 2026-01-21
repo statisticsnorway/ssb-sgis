@@ -31,6 +31,7 @@ from ._service_area import _service_area
 from .cutting_lines import split_lines_by_nearest_point
 from .network import Network
 from .networkanalysisrules import NetworkAnalysisRules
+from .nodes import _map_node_ids_from_wkt
 from .nodes import make_node_ids
 
 
@@ -1412,7 +1413,7 @@ class NetworkAnalysis:
         """
         if self.rules.split_lines:
             self._split_lines()
-            self.network._make_node_ids()
+            # self.network._make_node_ids()
             self.origins._make_temp_idx(
                 start=max(self.network.nodes.node_id.astype(int)) + 1
             )
@@ -1426,8 +1427,6 @@ class NetworkAnalysis:
         weights = list(self.network.gdf[self.rules.weight])
 
         self.network.gdf["src_tgt_wt"] = self.network._create_edge_ids(edges, weights)
-
-        print(self.network.gdf["source"])
 
         edges_start, weights_start = self.origins._get_edges_and_weights(
             nodes=self.network.nodes,
@@ -1505,12 +1504,6 @@ class NetworkAnalysis:
 
         new_lines, new_nodes = make_node_ids(splitted)
         new_nodes = sfilter_inverse(new_nodes, self.network.nodes.buffer(1e-5))
-        new_lines[["source", "target"]] = new_lines[["source", "target"]].replace(
-            {
-                id_: str(int(id_) + len(self.network.nodes) + 1)
-                for id_ in new_nodes["node_id"]
-            },
-        )
         new_nodes["node_id"] = (
             new_nodes["node_id"].astype(int) + len(self.network.nodes) + 1
         ).astype(str)
@@ -1520,34 +1513,10 @@ class NetworkAnalysis:
         new_lines[self.rules.weight] = new_lines[self.rules.weight] * (
             new_lines.length / new_lines["_meters2"]
         )
-        # new_lines["temp_idx__"] = new_lines["temp_idx__"] + len(self.network.nodes) + 1
-        # new_lines["src_tgt_wt"] = (
-        #     new_lines["source"]
-        #     + "_"
-        #     + new_lines["target"]
-        #     + "_"
-        #     + new_lines[self.rules.weight].astype(str)
-        # )
-
-        print("\nhewihe")
-        print(new_lines[["source", "target"]])
-        print(new_nodes["node_id"])
-        print(
-            self.network.gdf.loc[
-                lambda x: ~x["temp_idx__"].isin(splitted["temp_idx__"])
-            ][["source", "target"]]
+        self.network._nodes = pd.concat(
+            [self.network._nodes, new_nodes],
+            ignore_index=True,
         )
-        print(
-            self.network.gdf.loc[
-                lambda x: x["temp_idx__"].isin(splitted["temp_idx__"])
-            ][["source", "target"]]
-        )
-        # print(
-        #     self.network.gdf.loc[
-        #         lambda x: ~x["temp_idx__"].isin(splitted["temp_idx__"])
-        #     ]
-        # )
-        # print(new_lines)
 
         lines = pd.concat(
             [
@@ -1558,11 +1527,10 @@ class NetworkAnalysis:
             ],
             ignore_index=True,
         )
+
+        lines = _map_node_ids_from_wkt(lines, self.network._nodes)
+
         self.network.gdf = lines
-        self.network._nodes = pd.concat(
-            [self.network._nodes, new_nodes],
-            ignore_index=True,
-        )
 
     def _unsplit_network(self):
         """Remove the splitted lines and add the unsplitted ones."""
