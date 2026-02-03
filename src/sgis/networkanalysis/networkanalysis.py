@@ -1413,7 +1413,6 @@ class NetworkAnalysis:
         """
         if self.rules.split_lines:
             self._split_lines()
-            # self.network._make_node_ids()
             self.origins._make_temp_idx(
                 start=max(self.network.nodes.node_id.astype(int)) + 1
             )
@@ -1428,6 +1427,7 @@ class NetworkAnalysis:
 
         self.network.gdf["src_tgt_wt"] = self.network._create_edge_ids(edges, weights)
 
+        # add edges between origins+destinations to the network nodes
         edges_start, weights_start = self.origins._get_edges_and_weights(
             nodes=self.network.nodes,
             rules=self.rules,
@@ -1587,7 +1587,7 @@ class NetworkAnalysis:
         for points in ["origins", "destinations"]:
             if self[points] is None:
                 continue
-            if points not in self.wkts:
+            if not hasattr(self, points) or self[points] is None:
                 return False
             if self._points_have_changed(self[points].gdf, what=points):
                 return False
@@ -1616,8 +1616,6 @@ class NetworkAnalysis:
 
         """
         self.wkts = {}
-
-        self.wkts["network"] = self.network.gdf.geometry.to_wkt().values
 
         if not hasattr(self, "origins"):
             return

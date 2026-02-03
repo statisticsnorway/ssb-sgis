@@ -239,9 +239,6 @@ class RTreeQueryRunner(AbstractRunner):
                 left, right = results
                 return left, right
             return results
-            left = np.concatenate([x[0] for x in results])
-            right = np.concatenate([x[1] for x in results])
-            return left, right
         elif (
             (self.n_jobs or 1) > 1
             and len(arr2) / self.n_jobs > 10_000
@@ -264,9 +261,6 @@ class RTreeQueryRunner(AbstractRunner):
                 left, right = results
                 return left, right
             return results
-            left = np.concatenate([x[0] for x in results])
-            right = np.concatenate([x[1] for x in results])
-            return left, right
 
         return _strtree_query(arr1, arr2, method=method, **kwargs)
 

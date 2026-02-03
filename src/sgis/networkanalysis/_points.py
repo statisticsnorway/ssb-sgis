@@ -16,10 +16,7 @@ opposite directions.
 
 
 class Points:
-    def __init__(
-        self,
-        points: GeoDataFrame,
-    ) -> None:
+    def __init__(self, points: GeoDataFrame) -> None:
         self.gdf = points.copy()
 
     def _make_temp_idx(self, start: int) -> None:

@@ -26,13 +26,11 @@ def _od_cost_matrix(
     # calculating all-to-all distances is much faster than looping rowwise,
     # so filtering to rowwise afterwards instead
     if rowwise:
-        rowwise_df = DataFrame(
-            {
-                "origin": origins.index,
-                "destination": destinations.index,
-            }
+        keys = pd.MultiIndex.from_arrays(
+            [origins.index, destinations.index],
+            names=["origin", "destination"],
         )
-        results = rowwise_df.merge(results, on=["origin", "destination"], how="left")
+        results = results.set_index(["origin", "destination"]).loc[keys].reset_index()
 
     results["geom_ori"] = results["origin"].map(origins.geometry)
     results["geom_des"] = results["destination"].map(destinations.geometry)

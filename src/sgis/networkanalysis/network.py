@@ -41,7 +41,6 @@ class Network:
         self.gdf = self._prepare_network(gdf)
 
         self._make_node_ids()
-        self._percent_bidirectional = self._check_percent_bidirectional()
 
     def _make_node_ids(self) -> None:
         """Gives the lines node ids and return lines (edges) and nodes.
