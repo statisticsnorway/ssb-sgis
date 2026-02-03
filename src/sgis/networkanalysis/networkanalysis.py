@@ -20,6 +20,7 @@ from pandas import MultiIndex
 from shapely import force_2d
 
 from ..geopandas_tools.general import _push_geom_col
+from ..geopandas_tools.sfilter import sfilter_inverse
 from ._get_route import _get_k_routes
 from ._get_route import _get_route
 from ._get_route import _get_route_frequencies
@@ -30,6 +31,8 @@ from ._service_area import _service_area
 from .cutting_lines import split_lines_by_nearest_point
 from .network import Network
 from .networkanalysisrules import NetworkAnalysisRules
+from .nodes import _map_node_ids_from_wkt
+from .nodes import make_node_ids
 
 
 class NetworkAnalysis:
@@ -1372,15 +1375,14 @@ class NetworkAnalysis:
 
         self.origins = Origins(origins)
         self.origins._make_temp_idx(
-            start=max(self.network.nodes.node_id.astype(int)) + 1
+            start=max(self.network.nodes["node_id"].astype(int)) + 1
         )
 
         if destinations is not None:
             self.destinations = Destinations(destinations)
             self.destinations._make_temp_idx(
-                start=max(self.origins.gdf.temp_idx.astype(int)) + 1
+                start=max(self.origins.gdf["temp_idx"].astype(int)) + 1
             )
-
         else:
             self.destinations = None
 
@@ -1411,7 +1413,6 @@ class NetworkAnalysis:
         """
         if self.rules.split_lines:
             self._split_lines()
-            self.network._make_node_ids()
             self.origins._make_temp_idx(
                 start=max(self.network.nodes.node_id.astype(int)) + 1
             )
@@ -1426,6 +1427,7 @@ class NetworkAnalysis:
 
         self.network.gdf["src_tgt_wt"] = self.network._create_edge_ids(edges, weights)
 
+        # add edges between origins+destinations to the network nodes
         edges_start, weights_start = self.origins._get_edges_and_weights(
             nodes=self.network.nodes,
             rules=self.rules,
@@ -1482,7 +1484,7 @@ class NetworkAnalysis:
 
         points = points.drop_duplicates(points.geometry.name)
 
-        self.network.gdf["meters_"] = self.network.gdf.length
+        self.network.gdf["_meters2"] = self.network.gdf.length
 
         # create an id from before the split, used to revert the split later
         self.network.gdf["temp_idx__"] = range(len(self.network.gdf))
@@ -1495,25 +1497,53 @@ class NetworkAnalysis:
         )
 
         # save the unsplit lines for later
-        splitted = lines.loc[lines["splitted"] == 1, "temp_idx__"]
+        splitted = lines.loc[lines["splitted"] == 1]
         self.network._not_splitted = self.network.gdf.loc[
-            self.network.gdf["temp_idx__"].isin(splitted)
+            lambda x: x["temp_idx__"].isin(splitted["temp_idx__"])
         ]
 
+        new_lines, new_nodes = make_node_ids(splitted)
+        new_nodes = sfilter_inverse(new_nodes, self.network.nodes.buffer(1e-5))
+        new_nodes["node_id"] = (
+            new_nodes["node_id"].astype(int) + len(self.network.nodes) + 1
+        ).astype(str)
+        self.network._new_node_ids = list(new_nodes["node_id"])
+
         # adjust weight to new length
-        lines[self.rules.weight] = lines[self.rules.weight] * (
-            lines.length / lines["meters_"]
+        new_lines[self.rules.weight] = new_lines[self.rules.weight] * (
+            new_lines.length / new_lines["_meters2"]
         )
+        self.network._nodes = pd.concat(
+            [self.network._nodes, new_nodes],
+            ignore_index=True,
+        )
+
+        lines = pd.concat(
+            [
+                self.network.gdf.loc[
+                    lambda x: ~x["temp_idx__"].isin(splitted["temp_idx__"])
+                ],
+                new_lines,
+            ],
+            ignore_index=True,
+        )
+
+        lines = _map_node_ids_from_wkt(lines, self.network._nodes)
 
         self.network.gdf = lines
 
     def _unsplit_network(self):
         """Remove the splitted lines and add the unsplitted ones."""
+        if not hasattr(self.network, "_not_splitted"):
+            return
         lines = self.network.gdf.loc[self.network.gdf["splitted"] != 1]
         self.network.gdf = pd.concat(
             [lines, self.network._not_splitted], ignore_index=True
         ).drop("temp_idx__", axis=1)
-        del self.network._not_splitted
+        self.network._nodes = self.network._nodes[
+            lambda x: ~x["node_id"].isin(self.network._new_node_ids)
+        ]
+        del self.network._not_splitted, self.network._new_node_ids
 
     @staticmethod
     def _make_graph(
@@ -1557,7 +1587,7 @@ class NetworkAnalysis:
         for points in ["origins", "destinations"]:
             if self[points] is None:
                 continue
-            if points not in self.wkts:
+            if not hasattr(self, points) or self[points] is None:
                 return False
             if self._points_have_changed(self[points].gdf, what=points):
                 return False
@@ -1586,8 +1616,6 @@ class NetworkAnalysis:
 
         """
         self.wkts = {}
-
-        self.wkts["network"] = self.network.gdf.geometry.to_wkt().values
 
         if not hasattr(self, "origins"):
             return

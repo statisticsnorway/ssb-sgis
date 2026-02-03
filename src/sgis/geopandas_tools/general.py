@@ -688,8 +688,7 @@ def _split_lines_by_points_along_line(lines, points, splitted_col: str | None = 
     relevant_lines.geometry = shapely.force_2d(relevant_lines.geometry)
     points.geometry = shapely.force_2d(points.geometry)
 
-    # split the lines with buffer + difference, since shaply.split usually doesn't work
-    # relevant_lines["_idx"] = range(len(relevant_lines))
+    # split the lines with tiny buffer + difference, since shaply.split usually doesn't work
     splitted = relevant_lines.overlay(points_buff, how="difference").explode(
         ignore_index=True
     )
@@ -703,8 +702,9 @@ def _split_lines_by_points_along_line(lines, points, splitted_col: str | None = 
     if not len(splitted):
         return pd.concat([the_other_lines, circles], ignore_index=True)
 
-    # the endpoints of the new lines are now sligtly off. Using get_k_nearest_neighbors
-    # to get the exact snapped point coordinates, . This will map the sligtly
+    # the endpoints of the new lines are now sligtly off because of the buffer.
+    # Using get_k_nearest_neighbors
+    # to get the exact snapped point coordinates. This will map the sligtly
     # wrong line endpoints with the point the line was split by.
 
     points["point_coords"] = [(geom.x, geom.y) for geom in points.geometry]
@@ -721,7 +721,6 @@ def _split_lines_by_points_along_line(lines, points, splitted_col: str | None = 
             lambda x: x["distance"] <= precision * 2
         ]
 
-    # points = points.set_index("point_coords")
     points.index = points.geometry
     dists_source = get_nearest(splitted_source, points)
     dists_target = get_nearest(splitted_target, points)
@@ -870,9 +869,9 @@ def make_edge_wkt_cols(gdf: GeoDataFrame) -> GeoDataFrame:
     except ValueError:
         gdf, endpoints = _prepare_make_edge_cols(gdf)
 
-    endpoints = endpoints.force_2d()
-    gdf["source_wkt"] = endpoints.groupby(level=0).first().to_wkt()
-    gdf["target_wkt"] = endpoints.groupby(level=0).last().to_wkt()
+    endpoints = endpoints.force_2d().to_wkt()
+    gdf["source_wkt"] = endpoints.groupby(level=0).first()
+    gdf["target_wkt"] = endpoints.groupby(level=0).last()
 
     if index_mapper is not None:
         gdf.index = gdf.index.map(index_mapper)

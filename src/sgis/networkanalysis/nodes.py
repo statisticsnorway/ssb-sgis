@@ -47,16 +47,14 @@ def make_node_ids(
         gdf = make_edge_coords_cols(gdf)
         geomcol1, geomcol2, geomcol_final = "source_coords", "target_coords", "coords"
 
-    # remove identical lines in opposite directions
+    # remove identical lines in opposite directions in order to get n==1 for deadends
     gdf["meters_"] = gdf.length.astype(str)
-
     sources = gdf[[geomcol1, geomcol2, "meters_"]].rename(
         columns={geomcol1: geomcol_final, geomcol2: "temp"}
     )
     targets = gdf[[geomcol1, geomcol2, "meters_"]].rename(
         columns={geomcol2: geomcol_final, geomcol1: "temp"}
     )
-
     nodes = (
         pd.concat([sources, targets], axis=0, ignore_index=True)
         .drop_duplicates([geomcol_final, "temp", "meters_"])
@@ -66,22 +64,11 @@ def make_node_ids(
     gdf = gdf.drop("meters_", axis=1)
 
     nodes["n"] = nodes.assign(n=1).groupby(geomcol_final)["n"].transform("sum")
-
     nodes = nodes.drop_duplicates(subset=[geomcol_final]).reset_index(drop=True)
-
     nodes["node_id"] = nodes.index
     nodes["node_id"] = nodes["node_id"].astype(str)
 
-    id_dict = {
-        geom: node_id
-        for geom, node_id in zip(nodes[geomcol_final], nodes["node_id"], strict=True)
-    }
-    gdf["source"] = gdf[geomcol1].map(id_dict)
-    gdf["target"] = gdf[geomcol2].map(id_dict)
-
-    n_dict = {geom: n for geom, n in zip(nodes[geomcol_final], nodes["n"], strict=True)}
-    gdf["n_source"] = gdf[geomcol1].map(n_dict)
-    gdf["n_target"] = gdf[geomcol2].map(n_dict)
+    gdf = _map_node_ids_from_wkt(gdf, nodes, wkt=wkt)
 
     if wkt:
         nodes["geometry"] = gpd.GeoSeries.from_wkt(nodes[geomcol_final], crs=gdf.crs)
@@ -95,3 +82,17 @@ def make_node_ids(
     gdf = _push_geom_col(gdf)
 
     return gdf, nodes
+
+
+def _map_node_ids_from_wkt(lines, nodes, wkt: bool = True) -> GeoDataFrame:
+    if wkt:
+        geomcol1, geomcol2, geomcol_final = "source_wkt", "target_wkt", "wkt"
+    else:
+        geomcol1, geomcol2, geomcol_final = "source_coords", "target_coords", "coords"
+    id_dict = {
+        geom: node_id
+        for geom, node_id in zip(nodes[geomcol_final], nodes["node_id"], strict=True)
+    }
+    lines["source"] = lines[geomcol1].map(id_dict)
+    lines["target"] = lines[geomcol2].map(id_dict)
+    return lines

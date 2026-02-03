@@ -188,10 +188,10 @@ def not_test_get_route(nwa, p):
     nwa.rules.search_tolerance = sg.NetworkAnalysisRules.search_tolerance
 
     routes = nwa.get_route(p, p, cutoff=1)
-    assert all(routes[nwa.rules.weight] <= 1), routes[nwa.rules.weight].describe()
+    assert (routes[nwa.rules.weight] <= 1).all(), routes[nwa.rules.weight].describe()
 
     routes = nwa.get_route(p, p, destination_count=1)
-    assert all(routes["origin"].value_counts() == 1), routes["origin"].value_counts()
+    assert (routes["origin"].value_counts() == 1).all(), routes["origin"].value_counts()
 
 
 def not_test_service_area(nwa, p):
@@ -273,6 +273,8 @@ def not_test_get_k_routes(nwa, p):
 
 def not_test_direction(roads_oslo):
     """Check that a route that should go in separate tunnels, goes in correct tunnels."""
+    m = 5
+
     vippetangen = sg.to_gdf([10.741527, 59.9040595], crs=4326).to_crs(roads_oslo.crs)
     ryen = sg.to_gdf([10.8047522, 59.8949826], crs=4326).to_crs(roads_oslo.crs)
 
@@ -283,26 +285,21 @@ def not_test_direction(roads_oslo):
     tunnel_tofrom = sg.to_gdf([10.7724645, 59.899908], crs=4326).to_crs(roads_oslo.crs)
 
     clipped = sg.clean_clip(roads_oslo, tunnel_fromto.buffer(2000))
+
     connected_roads = sg.get_connected_components(clipped).query("connected == 1")
     directed_roads = sg.make_directed_network_norway(connected_roads, dropnegative=True)
     rules = sg.NetworkAnalysisRules(directed=True, weight="minutes")
     nwa = sg.NetworkAnalysis(directed_roads, rules=rules)
-
     route_fromto = nwa.get_route(vippetangen, ryen)
     route_tofrom = nwa.get_route(ryen, vippetangen)
-
-    m = 5
-
     should_be_within = route_fromto.sjoin_nearest(tunnel_fromto, distance_col="dist")
     assert should_be_within["dist"].max() < m, should_be_within["dist"]
     should_be_within = route_tofrom.sjoin_nearest(tunnel_tofrom, distance_col="dist")
     assert should_be_within["dist"].max() < m, should_be_within["dist"]
-
     should_not_be_within = route_fromto.sjoin_nearest(
         tunnel_tofrom, distance_col="dist"
     )
     assert should_not_be_within["dist"].max() > m, should_not_be_within["dist"]
-
     should_not_be_within = route_tofrom.sjoin_nearest(
         tunnel_fromto, distance_col="dist"
     )

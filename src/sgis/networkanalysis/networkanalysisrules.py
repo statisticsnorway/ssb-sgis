@@ -261,10 +261,10 @@ class NetworkAnalysisRules:
     @staticmethod
     def _check_for_nans(df: GeoDataFrame, col: str) -> None:
         """Remove NaNs and give warning if there are any."""
-        if all(df[col].isna()):
+        if df[col].isna().all():
             raise ValueError(f"All values in the {col!r} column are NaN.")
 
-        nans = sum(df[col].isna())
+        nans = df[col].isna().sum()
         if nans:
             raise ValueError(
                 f"{nans} rows have missing values in the {col!r} column. "
@@ -274,7 +274,7 @@ class NetworkAnalysisRules:
     @staticmethod
     def _check_for_negative_values(df: GeoDataFrame, col: str) -> None:
         """Remove negative values and give warning if there are any."""
-        negative = sum(df[col] < 0)
+        negative = (df[col] < 0).sum()
         if negative:
             raise ValueError(
                 f"{negative} negative values found in the {col!r} column. Fill these "

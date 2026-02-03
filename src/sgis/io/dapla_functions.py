@@ -121,7 +121,7 @@ def read_geopandas(
             ).replace("==", "=")
             glob_func = _get_glob_func(file_system)
             suffix: str = Path(gcs_path).suffix
-            paths = glob_func(str(Path(gcs_path) / expression / f"*{suffix}"))
+            paths = glob_func(_standardize_path(gcs_path) + f"/{expression}/*{suffix}")
             if paths:
                 return _read_geopandas_from_iterable(
                     paths,
@@ -256,7 +256,7 @@ def _read_pyarrow(path: str, file_system, mask=None, **kwargs) -> pyarrow.Table 
         if not len(
             {
                 x
-                for x in glob_func(str(Path(path) / "**"))
+                for x in glob_func(str(_standardize_path(path) + "/**"))
                 if not paths_are_equal(path, x)
             }
         ):
@@ -618,7 +618,7 @@ def _write_partitioned_geoparquet(
             as_partition_part(col, value)
             for col, value in zip(partition_cols, group, strict=True)
         )
-        paths.append(Path(path) / partition_parts)
+        paths.append(_standardize_path(path) + f"/{partition_parts}")
         dfs.append(rows)
 
     def threaded_write(rows: DataFrame, path: str) -> None:
@@ -626,7 +626,9 @@ def _write_partitioned_geoparquet(
             this_basename = (uuid.uuid4().hex + "-{i}.parquet").replace("-{i}", "0")
         else:
             this_basename = basename_template.replace("-{i}", "0")
-        for i, sibling_path in enumerate(sorted(glob_func(str(Path(path) / "**")))):
+        for i, sibling_path in enumerate(
+            sorted(glob_func(str(_standardize_path(path) + "/**")))
+        ):
             if paths_are_equal(sibling_path, path):
                 continue
             if existing_data_behavior == "delete_matching":
@@ -638,7 +640,7 @@ def _write_partitioned_geoparquet(
             else:
                 this_basename = basename_template.replace("-{i}", str(i + 1))
 
-        out_path = str(Path(path) / this_basename)
+        out_path = str(_standardize_path(path) + "/" + this_basename)
         try:
             with file_system.open(out_path, mode="wb") as file:
                 write_func(rows, file, schema=schema, **kwargs)
@@ -780,7 +782,7 @@ def _read_partitioned_parquet(
     glob_func = _get_glob_func(file_system)
 
     if child_paths is None:
-        child_paths = list(glob_func(str(Path(path) / "**/*.parquet")))
+        child_paths = list(glob_func(str(_standardize_path(path) + "/**/*.parquet")))
 
     filters = _filters_to_expression(filters)
 
@@ -830,7 +832,7 @@ def get_child_paths(path, file_system) -> list[str]:
     glob_func = _get_glob_func(file_system)
     return [
         x
-        for x in glob_func(str(Path(path) / "**/*.parquet"))
+        for x in glob_func(str(_standardize_path(path) + "/**/*.parquet"))
         if not paths_are_equal(x, path)
     ]
 
@@ -938,3 +940,8 @@ def _maybe_strip_prefix(path, file_system):
     if isinstance(file_system, GCSFileSystem) and path.startswith("gs://"):
         return path.replace("gs://", "")
     return path
+
+
+def _standardize_path(path: str | Path) -> str:
+    """Make sure delimiter is '/' and path ends without '/'."""
+    return str(path).replace("\\", "/").replace(r"\"", "/")

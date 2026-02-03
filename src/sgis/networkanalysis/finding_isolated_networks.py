@@ -57,9 +57,7 @@ def get_connected_components(gdf: GeoDataFrame) -> GeoDataFrame:
 
     gdf["connected"] = gdf.source.map(largest_component_dict).fillna(0)
 
-    gdf = gdf.drop(
-        ["source_wkt", "target_wkt", "source", "target", "n_source", "n_target"], axis=1
-    )
+    gdf = gdf.drop(["source_wkt", "target_wkt", "source", "target"], axis=1)
 
     return gdf
 
@@ -120,8 +118,6 @@ def get_component_size(gdf: GeoDataFrame) -> GeoDataFrame:
     gdf["component_index"] = gdf["source"].map(mapper["component_index"])
     gdf["component_size"] = gdf["source"].map(mapper["component_size"])
 
-    gdf = gdf.drop(
-        ["source_wkt", "target_wkt", "source", "target", "n_source", "n_target"], axis=1
-    )
+    gdf = gdf.drop(["source_wkt", "target_wkt", "source", "target"], axis=1)
 
     return gdf

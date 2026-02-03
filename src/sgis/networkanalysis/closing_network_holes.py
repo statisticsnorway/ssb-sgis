@@ -79,6 +79,7 @@ def close_network_holes(
     gdf: GeoDataFrame,
     max_distance: int | float,
     max_angle: int,
+    *,
     hole_col: str | None = "hole",
 ) -> GeoDataFrame:
     """Fills network gaps with straigt lines.
@@ -282,11 +283,13 @@ def _close_holes_all_lines(
 ) -> GeoSeries:
     k = min(len(nodes), 50)
 
+    n_dict = nodes.set_index("wkt")["n"]
+
     # make points for the deadends and the other endpoint of the deadend lines
-    deadends_target = lines.loc[lines["n_target"] == 1].rename(
+    deadends_target = lines.loc[lines["target_wkt"].map(n_dict) == 1].rename(
         columns={"target_wkt": "wkt", "source_wkt": "wkt_other_end"}
     )
-    deadends_source = lines.loc[lines["n_source"] == 1].rename(
+    deadends_source = lines.loc[lines["source_wkt"].map(n_dict) == 1].rename(
         columns={"source_wkt": "wkt", "target_wkt": "wkt_other_end"}
     )
     deadends = pd.concat([deadends_source, deadends_target], ignore_index=True)
@@ -348,12 +351,6 @@ def _close_holes_all_lines(
         from_wkt = deadends.loc[condition, "wkt"]
         to_idx = indices[condition]
         to_wkt = nodes.iloc[to_idx]["wkt"]
-
-        # all_angles = all_angles + [
-        #     diff
-        #     for f, diff in zip(from_wkt, angles_difference[condition], strict=True)
-        #     if f not in new_sources
-        # ]
 
         # now add the wkts to the lists of new sources and targets. If the source
         # is already added, the new wks will not be added again
