@@ -97,7 +97,6 @@ def _service_area(
             partly_within["remaining_distance"] = break_ - partly_within[weight]
 
             split_lines = _split_lines(partly_within, directed)
-
             split_lines = make_edge_wkt_cols(split_lines)
 
             # select the cutted lines shorter than the cut distance that intersects

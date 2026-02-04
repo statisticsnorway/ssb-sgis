@@ -139,16 +139,16 @@ class Network:
         """
         if not hasattr(self, "_nodes"):
             return False
-        new_or_missing = (~self.gdf.source.isin(self._nodes.node_id)) | (
-            ~self.gdf.target.isin(self._nodes.node_id)
+        new_or_missing = (~self.gdf["source"].isin(self._nodes["node_id"])) | (
+            ~self.gdf["target"].isin(self._nodes["node_id"])
         )
 
         if any(new_or_missing):
             return False
 
         removed = ~(
-            (self._nodes.node_id.isin(self.gdf.source))
-            | (self._nodes.node_id.isin(self.gdf.target))
+            (self._nodes["node_id"].isin(self.gdf["source"]))
+            | (self._nodes["node_id"].isin(self.gdf["target"]))
         )
 
         if any(removed):
@@ -208,9 +208,12 @@ class Network:
         warnings.warn(mess, stacklevel=2)
 
     @property
-    def percent_bidirectional(self) -> float:
+    def percent_bidirectional(self) -> float | None:
         """The percentage of lines that appear in both directions."""
-        return self._percent_bidirectional
+        try:
+            return self._percent_bidirectional
+        except AttributeError:
+            return None
 
     def copy(self) -> "Network":
         """Returns a shallow copy of the class instance."""
@@ -224,7 +227,7 @@ class Network:
         """The print representation."""
         cl = self.__class__.__name__
         km = int(sum(self.gdf.length) / 1000)
-        return f"{cl}({km} km, percent_bidirectional={self._percent_bidirectional})"
+        return f"{cl}({km} km, percent_bidirectional={self.percent_bidirectional})"
 
     def __len__(self) -> int:
         """Number og rows in the GeoDataFrame."""
