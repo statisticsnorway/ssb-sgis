@@ -98,10 +98,3 @@ def _map_node_ids_from_wkt(lines, nodes, wkt: bool = True) -> GeoDataFrame:
     assert lines["source"].notna().all(), lines.loc[lines["source"].isna(), geomcol1]
     assert lines["target"].notna().all(), lines.loc[lines["target"].isna(), geomcol2]
     return lines
-
-
-[
-    "LINESTRING (9886.691837 6642166.835483, 9880.968888 6642150.044567)",
-    "LINESTRING (9880.968888 6642150.044567, 9877 6642138.4)",
-]
-["POINT (9880.968888 6642150.044566)"]
