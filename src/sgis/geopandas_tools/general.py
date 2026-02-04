@@ -915,6 +915,7 @@ def _prepare_make_edge_cols_simple(
     lines: GeoDataFrame,
 ) -> tuple[GeoDataFrame, GeoDataFrame]:
     """Faster version of _prepare_make_edge_cols."""
+    lines = lines[(lines.geometry.notna()) & (~lines.geometry.is_empty)]
     endpoints = lines.geometry.boundary.explode(ignore_index=False)
     if len(lines) and len(endpoints) / len(lines) != 2:
         raise ValueError(

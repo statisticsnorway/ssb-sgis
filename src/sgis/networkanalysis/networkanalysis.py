@@ -1174,7 +1174,6 @@ class NetworkAnalysis:
                 breaks=breaks,
                 dissolve=dissolve,
             )
-
         return results
 
     @staticmethod
@@ -1350,8 +1349,7 @@ class NetworkAnalysis:
                 "rowwise=True"
             )
 
-        if self.rules.split_lines:
-            self._unsplit_network()
+        self._unsplit_network()
 
         self.network.gdf = self.rules._validate_weight(self.network.gdf)
 
