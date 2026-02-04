@@ -95,4 +95,6 @@ def _map_node_ids_from_wkt(lines, nodes, wkt: bool = True) -> GeoDataFrame:
     }
     lines["source"] = lines[geomcol1].map(id_dict)
     lines["target"] = lines[geomcol2].map(id_dict)
+    assert lines["source"].notna().all(), lines.loc[lines["source"].isna(), geomcol1]
+    assert lines["target"].notna().all(), lines.loc[lines["target"].isna(), geomcol2]
     return lines

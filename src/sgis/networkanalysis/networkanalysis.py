@@ -20,7 +20,6 @@ from pandas import MultiIndex
 from shapely import force_2d
 
 from ..geopandas_tools.general import _push_geom_col
-from ..geopandas_tools.sfilter import sfilter_inverse
 from ._get_route import _get_k_routes
 from ._get_route import _get_route
 from ._get_route import _get_route_frequencies
@@ -31,8 +30,6 @@ from ._service_area import _service_area
 from .cutting_lines import split_lines_by_nearest_point
 from .network import Network
 from .networkanalysisrules import NetworkAnalysisRules
-from .nodes import _map_node_ids_from_wkt
-from .nodes import make_node_ids
 
 
 class NetworkAnalysis:
@@ -143,7 +140,7 @@ class NetworkAnalysis:
             "or fill these values with a numeric value (e.g. 0)."
         )
         if (
-            hasattr(self.network.gdf, "hole")
+            "hole" in self.network.gdf.columns
             and len(self.network.gdf.loc[lambda x: x["hole"] == 1])
             and (
                 self.network.gdf.loc[lambda x: x["hole"] == 1, self.rules.weight]
@@ -413,9 +410,6 @@ class NetworkAnalysis:
         if lines:
             results = _push_geom_col(results)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
-
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -650,9 +644,6 @@ class NetworkAnalysis:
 
         results.geometry = force_2d(results.geometry)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
-
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -759,9 +750,6 @@ class NetworkAnalysis:
 
         results["origin"] = results["origin"].map(self.origins.idx_dict)
         results["destination"] = results["destination"].map(self.destinations.idx_dict)
-
-        if self.rules.split_lines:
-            self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -928,9 +916,6 @@ class NetworkAnalysis:
         if isinstance(results, GeoDataFrame):
             results = _push_geom_col(results)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
-
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -1053,9 +1038,6 @@ class NetworkAnalysis:
             results["origin"] = results["origin"].map(self.origins.idx_dict)
 
             results = _push_geom_col(results)
-
-        if self.rules.split_lines:
-            self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -1183,9 +1165,6 @@ class NetworkAnalysis:
 
             results = _push_geom_col(results)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
-
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
             self._runlog(
@@ -1195,7 +1174,6 @@ class NetworkAnalysis:
                 breaks=breaks,
                 dissolve=dissolve,
             )
-
         return results
 
     @staticmethod
@@ -1371,6 +1349,8 @@ class NetworkAnalysis:
                 "rowwise=True"
             )
 
+        self._unsplit_network()
+
         self.network.gdf = self.rules._validate_weight(self.network.gdf)
 
         self.origins = Origins(origins)
@@ -1387,8 +1367,6 @@ class NetworkAnalysis:
             self.destinations = None
 
         if not self._graph_is_up_to_date() or not self.network._nodes_are_up_to_date():
-            self.network._update_nodes_if()
-
             edges, weights, ids = self._get_edges_and_weights()
 
             self.graph = self._make_graph(
@@ -1413,6 +1391,7 @@ class NetworkAnalysis:
         """
         if self.rules.split_lines:
             self._split_lines()
+            self.network._make_node_ids()
             self.origins._make_temp_idx(
                 start=max(self.network.nodes.node_id.astype(int)) + 1
             )
@@ -1420,6 +1399,8 @@ class NetworkAnalysis:
                 self.destinations._make_temp_idx(
                     start=max(self.origins.gdf.temp_idx.astype(int)) + 1
                 )
+        else:
+            self.network._update_nodes_if()
 
         edges: list[tuple[str, str]] = self.network.get_edges()
 
@@ -1497,38 +1478,15 @@ class NetworkAnalysis:
         )
 
         # save the unsplit lines for later
-        splitted = lines.loc[lines["splitted"] == 1]
+        splitted = lines.loc[lines["splitted"] == 1, "temp_idx__"]
         self.network._not_splitted = self.network.gdf.loc[
-            lambda x: x["temp_idx__"].isin(splitted["temp_idx__"])
+            self.network.gdf["temp_idx__"].isin(splitted)
         ]
 
-        new_lines, new_nodes = make_node_ids(splitted)
-        new_nodes = sfilter_inverse(new_nodes, self.network.nodes.buffer(1e-5))
-        new_nodes["node_id"] = (
-            new_nodes["node_id"].astype(int) + len(self.network.nodes) + 1
-        ).astype(str)
-        self.network._new_node_ids = list(new_nodes["node_id"])
-
         # adjust weight to new length
-        new_lines[self.rules.weight] = new_lines[self.rules.weight] * (
-            new_lines.length / new_lines["_meters2"]
+        lines[self.rules.weight] = lines[self.rules.weight] * (
+            lines.length / lines["_meters2"]
         )
-        self.network._nodes = pd.concat(
-            [self.network._nodes, new_nodes],
-            ignore_index=True,
-        )
-
-        lines = pd.concat(
-            [
-                self.network.gdf.loc[
-                    lambda x: ~x["temp_idx__"].isin(splitted["temp_idx__"])
-                ],
-                new_lines,
-            ],
-            ignore_index=True,
-        )
-
-        lines = _map_node_ids_from_wkt(lines, self.network._nodes)
 
         self.network.gdf = lines
 
@@ -1536,14 +1494,13 @@ class NetworkAnalysis:
         """Remove the splitted lines and add the unsplitted ones."""
         if not hasattr(self.network, "_not_splitted"):
             return
+
         lines = self.network.gdf.loc[self.network.gdf["splitted"] != 1]
         self.network.gdf = pd.concat(
             [lines, self.network._not_splitted], ignore_index=True
-        ).drop("temp_idx__", axis=1)
-        self.network._nodes = self.network._nodes[
-            lambda x: ~x["node_id"].isin(self.network._new_node_ids)
-        ]
-        del self.network._not_splitted, self.network._new_node_ids
+        )
+        self.network._make_node_ids()
+        del self.network._not_splitted
 
     @staticmethod
     def _make_graph(
