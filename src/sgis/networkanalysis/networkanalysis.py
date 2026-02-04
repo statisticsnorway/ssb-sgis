@@ -20,7 +20,6 @@ from pandas import MultiIndex
 from shapely import force_2d
 
 from ..geopandas_tools.general import _push_geom_col
-from ..geopandas_tools.sfilter import sfilter_inverse
 from ._get_route import _get_k_routes
 from ._get_route import _get_route
 from ._get_route import _get_route_frequencies
@@ -31,8 +30,6 @@ from ._service_area import _service_area
 from .cutting_lines import split_lines_by_nearest_point
 from .network import Network
 from .networkanalysisrules import NetworkAnalysisRules
-from .nodes import _map_node_ids_from_wkt
-from .nodes import make_node_ids
 
 
 class NetworkAnalysis:
@@ -1360,25 +1357,18 @@ class NetworkAnalysis:
 
         self.origins = Origins(origins)
         self.origins._make_temp_idx(
-            # start=-1
-            start=max(self.network.nodes["node_id"].astype(int))
-            + 1
+            start=max(self.network.nodes["node_id"].astype(int)) + 1
         )
 
         if destinations is not None:
             self.destinations = Destinations(destinations)
             self.destinations._make_temp_idx(
-                # start=len(self.origins.gdf) * -1
-                # - 1
-                start=max(self.origins.gdf["temp_idx"].astype(int))
-                + 1
+                start=max(self.origins.gdf["temp_idx"].astype(int)) + 1
             )
         else:
             self.destinations = None
 
         if not self._graph_is_up_to_date() or not self.network._nodes_are_up_to_date():
-            # self.network._update_nodes_if()
-
             edges, weights, ids = self._get_edges_and_weights()
 
             self.graph = self._make_graph(
@@ -1405,16 +1395,11 @@ class NetworkAnalysis:
             self._split_lines()
             self.network._make_node_ids()
             self.origins._make_temp_idx(
-                # start=-1
-                start=max(self.network.nodes.node_id.astype(int))
-                + 1
+                start=max(self.network.nodes.node_id.astype(int)) + 1
             )
             if self.destinations is not None:
                 self.destinations._make_temp_idx(
-                    # start=len(self.origins.gdf) * -1
-                    # - 1
-                    start=max(self.origins.gdf.temp_idx.astype(int))
-                    + 1
+                    start=max(self.origins.gdf.temp_idx.astype(int)) + 1
                 )
         else:
             self.network._update_nodes_if()
@@ -1507,94 +1492,6 @@ class NetworkAnalysis:
 
         self.network.gdf = lines
 
-        return
-
-        splitted = lines.loc[lines["splitted"] == 1]
-        # save the unsplit lines for later
-        self.network._not_splitted = self.network.gdf.loc[
-            lambda x: x["temp_idx__"].isin(splitted["temp_idx__"])
-        ]
-
-        new_lines, new_nodes = make_node_ids(splitted)
-        # self.network._nodes = sfilter_inverse(
-        #     self.network.nodes, new_nodes.buffer(1e-5)
-        # )
-        new_nodes = sfilter_inverse(new_nodes, self.network.nodes.buffer(1e-5))
-        new_nodes["node_id"] = (
-            new_nodes["node_id"].astype(int)
-            + len(self.network.nodes)
-            + len(new_nodes)
-            + 1
-        ).astype(str)
-        self.network._new_node_ids = list(new_nodes["node_id"])
-
-        # adjust weight to new length
-        new_lines[self.rules.weight] = new_lines[self.rules.weight] * (
-            new_lines.length / new_lines["_meters2"]
-        )
-
-        print()
-        print()
-        print()
-        print(
-            [x for x in new_lines.geometry.to_wkt() if "9880.968888 6642150.04456" in x]
-        )
-        # print(
-        #     [
-        #         x
-        #         for x in self.network.gdf.loc[
-        #             lambda x: ~x["temp_idx__"].isin(splitted["temp_idx__"])
-        #         ].geometry.to_wkt()
-        #         if "9880.968888 6642150.04456" in x
-        #     ]
-        # )
-        # print([x for x in new_nodes.to_wkt() if "9880.968888 6642150.04456" in x])
-        print(
-            [
-                x
-                for x in self.network._nodes.geometry.to_wkt()
-                if "9880.968888 6642150.04456" in x
-            ]
-        )
-        print(
-            new_lines[
-                lambda x: x.geometry.to_wkt().str.contains("9880.968888 6642150.04456")
-            ]
-        )
-        # print(
-        #     self.network.gdf.loc[
-        #         lambda x: ~x["temp_idx__"].isin(splitted["temp_idx__"])
-        #     ][lambda x: x.geometry.to_wkt().str.contains("9880.968888 6642150.04456")]
-        # )
-        # print(
-        #     new_nodes[
-        #         lambda x: x.geometry.to_wkt().str.contains("9880.968888 6642150.04456")
-        #     ]
-        # )
-        print(
-            self.network._nodes[
-                lambda x: x.geometry.to_wkt().str.contains("9880.968888 6642150.04456")
-            ]
-        )
-        self.network._nodes = pd.concat(
-            [self.network._nodes, new_nodes],
-            ignore_index=True,
-        )
-
-        lines = pd.concat(
-            [
-                self.network.gdf.loc[
-                    lambda x: ~x["temp_idx__"].isin(splitted["temp_idx__"])
-                ],
-                new_lines,
-            ],
-            ignore_index=True,
-        )
-
-        lines = _map_node_ids_from_wkt(lines, self.network._nodes)
-
-        self.network.gdf = lines
-
     def _unsplit_network(self):
         """Remove the splitted lines and add the unsplitted ones."""
         if not hasattr(self.network, "_not_splitted"):
@@ -1603,14 +1500,9 @@ class NetworkAnalysis:
         lines = self.network.gdf.loc[self.network.gdf["splitted"] != 1]
         self.network.gdf = pd.concat(
             [lines, self.network._not_splitted], ignore_index=True
-        )  # .drop("temp_idx__", axis=1)
+        )
         self.network._make_node_ids()
         del self.network._not_splitted
-        return
-        self.network._nodes = self.network._nodes[
-            lambda x: ~x["node_id"].isin(self.network._new_node_ids)
-        ]
-        del self.network._not_splitted, self.network._new_node_ids
 
     @staticmethod
     def _make_graph(

@@ -25,7 +25,6 @@ class Points:
         The original indices are stored in a dict and mapped back to the results in the
         end.
         """
-        # self.gdf["temp_idx"] = np.arange(stop=start, start=start - len(self.gdf))
         self.gdf["temp_idx"] = np.arange(start=start, stop=start + len(self.gdf))
         self.gdf["temp_idx"] = self.gdf["temp_idx"].astype(str)
 
@@ -85,17 +84,17 @@ class Points:
 
         search_factor_multiplier = 1 + rules.search_factor / 100
         distances = distances.loc[
-            lambda df: (df.distance <= rules.search_tolerance)
+            lambda df: (df["distance"] <= rules.search_tolerance)
             & (
-                df.distance
-                <= df.distance_min * search_factor_multiplier + rules.search_factor
+                df["distance"]
+                <= df["distance_min"] * search_factor_multiplier + rules.search_factor
             )
         ]
 
         edges = self._make_edges(distances, from_col=from_col, to_col=to_col)
 
         weighs = self._convert_distance_to_weight(
-            distances=list(distances.distance), rules=rules
+            distances=list(distances["distance"]), rules=rules
         )
 
         return edges, weighs
