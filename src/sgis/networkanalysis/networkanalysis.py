@@ -410,8 +410,8 @@ class NetworkAnalysis:
         if lines:
             results = _push_geom_col(results)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
+        # if self.rules.split_lines:
+        #     self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -647,8 +647,8 @@ class NetworkAnalysis:
 
         results.geometry = force_2d(results.geometry)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
+        # if self.rules.split_lines:
+        #     self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -757,8 +757,8 @@ class NetworkAnalysis:
         results["origin"] = results["origin"].map(self.origins.idx_dict)
         results["destination"] = results["destination"].map(self.destinations.idx_dict)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
+        # if self.rules.split_lines:
+        #     self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -925,8 +925,8 @@ class NetworkAnalysis:
         if isinstance(results, GeoDataFrame):
             results = _push_geom_col(results)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
+        # if self.rules.split_lines:
+        #     self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -1051,8 +1051,8 @@ class NetworkAnalysis:
 
             results = _push_geom_col(results)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
+        # if self.rules.split_lines:
+        #     self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -1180,8 +1180,8 @@ class NetworkAnalysis:
 
             results = _push_geom_col(results)
 
-        if self.rules.split_lines:
-            self._unsplit_network()
+        # if self.rules.split_lines:
+        #     self._unsplit_network()
 
         if self._log:
             minutes_elapsed = round((perf_counter() - time_) / 60, 1)
@@ -1368,17 +1368,19 @@ class NetworkAnalysis:
                 "rowwise=True"
             )
 
+        self._unsplit_network()
+
         self.network.gdf = self.rules._validate_weight(self.network.gdf)
 
         self.origins = Origins(origins)
         self.origins._make_temp_idx(
-            start=max(self.network.nodes.node_id.astype(int)) + 1
+            start=max(self.network.nodes["node_id"].astype(int)) + 1
         )
 
         if destinations is not None:
             self.destinations = Destinations(destinations)
             self.destinations._make_temp_idx(
-                start=max(self.origins.gdf.temp_idx.astype(int)) + 1
+                start=max(self.origins.gdf["temp_idx"].astype(int)) + 1
             )
 
         else:
@@ -1413,11 +1415,11 @@ class NetworkAnalysis:
             self._split_lines()
             self.network._make_node_ids()
             self.origins._make_temp_idx(
-                start=max(self.network.nodes.node_id.astype(int)) + 1
+                start=max(self.network.nodes["node_id"].astype(int)) + 1
             )
             if self.destinations is not None:
                 self.destinations._make_temp_idx(
-                    start=max(self.origins.gdf.temp_idx.astype(int)) + 1
+                    start=max(self.origins.gdf["temp_idx"].astype(int)) + 1
                 )
 
         edges: list[tuple[str, str]] = self.network.get_edges()
@@ -1509,6 +1511,9 @@ class NetworkAnalysis:
 
     def _unsplit_network(self):
         """Remove the splitted lines and add the unsplitted ones."""
+        if "splitted" not in self.network.gdf.columns:
+            assert not hasattr(self.network, "_not_splitted")
+            return
         lines = self.network.gdf.loc[self.network.gdf["splitted"] != 1]
         self.network.gdf = pd.concat(
             [lines, self.network._not_splitted], ignore_index=True
@@ -1573,7 +1578,7 @@ class NetworkAnalysis:
         if not np.array_equal(self.wkts[what], points.geometry.to_wkt().values):
             return True
 
-        if not all(x in self.graph.vs["name"] for x in list(points.temp_idx.values)):
+        if not all(x in self.graph.vs["name"] for x in list(points["temp_idx"].values)):
             return True
 
         return False
