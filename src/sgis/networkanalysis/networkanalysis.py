@@ -1511,8 +1511,7 @@ class NetworkAnalysis:
 
     def _unsplit_network(self):
         """Remove the splitted lines and add the unsplitted ones."""
-        if "splitted" not in self.network.gdf.columns:
-            assert not hasattr(self.network, "_not_splitted")
+        if not hasattr(self.network, "_not_splitted"):
             return
         lines = self.network.gdf.loc[self.network.gdf["splitted"] != 1]
         self.network.gdf = pd.concat(
