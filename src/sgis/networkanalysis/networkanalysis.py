@@ -1291,7 +1291,7 @@ class NetworkAnalysis:
             A one-row DataFrame with log info columns
         """
         data = {
-            "endtime": pd.to_datetime(datetime.now()).floor("S").to_pydatetime(),
+            "endtime": pd.to_datetime(datetime.now()).floor("s").to_pydatetime(),
             "minutes_elapsed": minutes_elapsed,
             "method": method,
             "origins_count": pd.NA,
