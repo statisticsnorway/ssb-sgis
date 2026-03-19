@@ -2,16 +2,20 @@ import abc
 import datetime
 import json
 import re
+import urllib
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from typing import ClassVar
 from urllib.request import urlopen
 
 import folium
 import numpy as np
 import pandas as pd
+import requests
 import shapely
+from folium.template import Template
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import Geometry
@@ -94,9 +98,18 @@ class NorgeIBilderWms(WmsLoader):
             if all years are within range. Defaults to True (much faster).
     """
 
-    url: str = "https://wms.geonorge.no/skwms1/wms.nib-prosjekter"
+    load_url: str = (
+        "https://wms.geonorge.no/skwms1/wms.nib-prosjekter?SERVICE=WMS&REQUEST=GetCapabilities"
+    )
+    get_url: str = "https://wms.geonorge.no/skwms1/wms.nib-prosjekter"
+    polygon_mask_url: str = (
+        "https://wms.geonorge.no/skwms1/wms.nib-mosaikk?SERVICE=WMS&REQUEST=GetCapabilities"
+    )
+
     _min_year: int = 1935
     _json_path = Path(__file__).parent / "norge_i_bilder.json"
+
+    wms_class: type = folium.WmsTileLayer
 
     def __init__(
         self,
@@ -129,12 +142,8 @@ class NorgeIBilderWms(WmsLoader):
             r"<northBoundLatitude>(.*?)</northBoundLatitude>.*?</EX_GeographicBoundingBox>"
         )
 
-        url: str = (
-            "https://wms.geonorge.no/skwms1/wms.nib-prosjekter?SERVICE=WMS&REQUEST=GetCapabilities"
-        )
-
         all_tiles: list[dict] = []
-        with urlopen(url) as file:
+        with urlopen(self.load_url) as file:
             xml_data: str = file.read().decode("utf-8")
 
             for text in xml_data.split('<Layer queryable="1">')[1:]:
@@ -201,8 +210,7 @@ class NorgeIBilderWms(WmsLoader):
         relevant_names: dict[str, str] = {x["name"]: x["bbox"] for x in self._tiles}
         assert len(relevant_names), relevant_names
 
-        url = "https://wms.geonorge.no/skwms1/wms.nib-mosaikk?SERVICE=WMS&REQUEST=GetCapabilities"
-        wms = WebMapService(url, version="1.3.0")
+        wms = WebMapService(self.polygon_mask_url, version="1.3.0")
         out = {}
 
         for layer in list(wms.contents):
@@ -267,7 +275,7 @@ class NorgeIBilderWms(WmsLoader):
 
         return out
 
-    def get_tiles(self, mask: Any, max_zoom: int = 40) -> list[folium.WmsTileLayer]:
+    def get_tiles(self, mask: Any, max_zoom: int = 40) -> list:
         """Get all Norge i bilder tiles intersecting with a mask (bbox or polygon)."""
         if self._tiles is None:
             self.load_tiles()
@@ -282,8 +290,8 @@ class NorgeIBilderWms(WmsLoader):
 
         relevant_tiles = self.filter_tiles(mask)
         tile_layers = {
-            name: folium.WmsTileLayer(
-                url="https://wms.geonorge.no/skwms1/wms.nib-prosjekter",
+            name: self.wms_class(
+                url=self.get_url,
                 name=name,
                 layers=name,
                 format="image/png",  # Tile format
@@ -353,7 +361,90 @@ class NorgeIBilderWms(WmsLoader):
         ]
 
 
+class WmtsTileLayer(folium.WmsTileLayer):
+    """WMTS..."""
+
+
+class NorgeIBilderWmts(NorgeIBilderWms):
+    """WMTS..."""
+
+    get_url: ClassVar[str] = "https://tilecache.norgeibilder.no/wmtsp/utm33_euref89"
+    wms_class: ClassVar[type] = WmtsTileLayer
+
+    default_wmts_params: ClassVar[dict[str, str]] = {
+        "service": "WMTS",
+        "request": "GetTile",
+        "version": "1.0.0",
+        "layer": "",
+        "style": "",
+        "tilematrixset": "",
+        "format": "image/jpeg",
+    }
+
+    _template = Template(
+        """
+        {% macro script(this, kwargs) %}
+            var {{ this.get_name() }} = L.tileLayer.wms(
+                {{ this.url|tojson }},
+                {{ this.options|tojson }}
+            );
+        {% endmacro %}
+        """
+    )
+
+    def __init__(self, username: str, password: str, *args, **kwargs) -> None:
+        """Initialiser including fetching token and constructing get_url."""
+        from requests.auth import HTTPBasicAuth
+
+        # token_url = "https://auth2.geoid.no/realms/geoid/protocol/openid-connect/token"
+        token_url = "https://tilecache.norgeibilder.no/token/tilecache"
+        auth = HTTPBasicAuth(username, password)
+        data = {
+            "client": "requestip",
+            "expiration": "10080",
+            "f": "json",
+            "referer": "ssb.no",
+        }
+        with requests.post(token_url, data=data, auth=auth) as response:
+            response.raise_for_status()
+            token = response.json()["token"]
+        self.token = token
+        self.get_url = f"{self.get_url}?token={token}"
+        print(self.token)
+        print(self.get_url)
+
+        self.get_url: str = (
+            "https://tilecache.norgeibilder.no/wmts/webmercator"
+            "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+            "&LAYER=Nibcache_web_mercator_v2"
+            "&STYLE=default"
+            "&TILEMATRIXSET=default028mm"
+            "&FORMAT=image/jpeg"
+            "&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}"
+            "&token=" + urllib.parse.quote(token, safe="~*()'!.-_")
+        ).replace("https://tilecache.norgeibilder.no", "/nib-wmts")
+
+        #     "https://tilecache.norgeibilder.no"
+        #     "/arcgis/rest/services/Nibcache_UTM32_EUREF89_v2/MapServer/"
+        #     "WMTS?SERVICE=WMTS"
+        #     "&REQUEST=GetTile"
+        #     "&VERSION=1.0.0"
+        #     "&LAYER=Nibcache_UTM32_EUREF89_v2"
+        #     "&STYLE=default"
+        #     "&FORMAT=image/jpgpng"
+        #     f"&token={token}"
+        #     "&TILEMATRIXSET=default028mm"
+        #     # "&&TILEMATRIXSET=default028mm"
+        #     "&TILEMATRIX=15"
+        #     "&TILEROW=13615"
+        #     "&TILECOL=15425"
+        # )
+        print(self.get_url)
+        super().__init__(*args, **kwargs)
+
+
 def _string_as_list(x: str | list[str]) -> list[str] | None:
+    """Convert string to list if needed."""
     if not x:
         return None
     return [x] if isinstance(x, str) else list(x)
