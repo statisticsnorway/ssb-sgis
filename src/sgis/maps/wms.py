@@ -30,6 +30,7 @@ from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.sfilter import sfilter
 from ..raster.image_collection import Band
+from .httpserver import run_html_server
 
 DEFAULT_YEARS: tuple[int] = tuple(
     range(
@@ -413,16 +414,7 @@ class NorgeIBilderWmts(NorgeIBilderWms):
         print(self.token)
         print(self.get_url)
 
-        self.get_url: str = (
-            "https://tilecache.norgeibilder.no/wmts/webmercator"
-            "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
-            "&LAYER=Nibcache_web_mercator_v2"
-            "&STYLE=default"
-            "&TILEMATRIXSET=default028mm"
-            "&FORMAT=image/jpeg"
-            "&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}"
-            "&token=" + urllib.parse.quote(token, safe="~*()'!.-_")
-        ).replace("https://tilecache.norgeibilder.no", "/nib-wmts")
+        # self.get_url: str = (
 
         #     "https://tilecache.norgeibilder.no"
         #     "/arcgis/rest/services/Nibcache_UTM32_EUREF89_v2/MapServer/"
@@ -439,8 +431,60 @@ class NorgeIBilderWmts(NorgeIBilderWms):
         #     "&TILEROW=13615"
         #     "&TILECOL=15425"
         # )
-        print(self.get_url)
+        import folium
+
+        map_ = folium.Map(
+            location=[59.9, 10.82415],
+            zoom_start=10,
+            tiles="OpenStreetMap",
+            # width=8000,
+            # height=8000,
+        )
+        map_.add_child(
+            folium.WmsTileLayer(
+                # "https://wms.geonorge.no/skwms1/wms.nib-prosjekter?SERVICE=WMS&REQUEST=GetCapabilities",
+                "https://wms.geonorge.no/skwms1/wms.nib-prosjekter",
+                name="Oslo 2016",
+                layers="Oslo 2016",
+                format="image/png",  # Tile format
+                transparent=True,  # Allow transparency
+                version="1.3.0",  # WMS version
+                attr="&copy; <a href='https://www.geonorge.no/'>Geonorge</a>",
+                show=True,
+                max_zoom=19,
+            )
+        )
+        url: str = (
+            "https://tilecache.norgeibilder.no/wmts/webmercator"
+            "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+            "&LAYER=Nibcache_web_mercator_v2"
+            "&STYLE=default"
+            "&TILEMATRIXSET=default028mm"
+            "&FORMAT=image/jpeg"
+            "&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}"
+            "&token=" + urllib.parse.quote(token, safe="~*()'!.-_")
+        ).replace("https://tilecache.norgeibilder.no", "/nib-wmts")
+        map_.add_child(
+            folium.TileLayer(
+                url,
+                # service="WMTS",
+                # request="GetTile",
+                version="1.0.0",
+                layer="",
+                style="",
+                # tilematrixset="",
+                format="image/jpeg",
+                attr="&copy; <a href='https://www.geonorge.no/'>Geonorge</a>",
+            )
+        )
+        map_.add_child(folium.LayerControl())
+        run_html_server(map_._repr_html_())
         super().__init__(*args, **kwargs)
+
+
+import sys
+
+NorgeIBilderWmts(sys.argv[1], sys.argv[2])
 
 
 def _string_as_list(x: str | list[str]) -> list[str] | None:
