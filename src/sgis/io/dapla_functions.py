@@ -597,7 +597,11 @@ def _write_partitioned_geoparquet(
 
     glob_func = _get_glob_func(file_system)
 
-    if file_system.exists(path) and file_system.isfile(path):
+    if (
+        file_system.exists(path)
+        and not list(file_system.ls(path))
+        and file_system.isfile(path)
+    ):
         _remove_file(path, file_system)
 
     if kwargs.get("schema"):
