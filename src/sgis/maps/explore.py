@@ -66,6 +66,7 @@ except ImportError:
 from .httpserver import run_html_server
 from .map import Map
 from .map import _determine_best_name
+from .tilesources import google
 from .tilesources import kartverket
 from .tilesources import xyz
 
@@ -156,6 +157,8 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
         "grunnkart": kartverket.topo,
         "gråtone": kartverket.topogråtone,
         "norge_i_bilder": kartverket.norge_i_bilder,
+        "google_maps": google.maps,
+        "google_hybrid": google.hybrid,
         "dark": xyz.CartoDB.DarkMatter,
         "voyager": xyz.CartoDB.Voyager,
         "strava": xyz.Strava.All,
@@ -264,6 +267,8 @@ class Explore(Map):
     tiles: ClassVar[tuple[str, ...]] = (
         "grunnkart",
         "norge_i_bilder",
+        "google_maps",
+        "google_hybrid",
         "dark",
         "OpenStreetMap",
     )
