@@ -490,15 +490,32 @@ def write_geopandas(
 
     if ".parquet" in gcs_path or "prqt" in gcs_path:
         if partition_cols is not None:
-            return _write_partitioned_geoparquet(
-                df,
-                gcs_path,
-                partition_cols,
-                file_system,
-                existing_data_behavior=existing_data_behavior,
-                write_func=_to_geopandas,
-                **kwargs,
-            )
+            try:
+                return _write_partitioned_geoparquet(
+                    df,
+                    gcs_path,
+                    partition_cols,
+                    file_system,
+                    existing_data_behavior=existing_data_behavior,
+                    write_func=_to_geopandas,
+                    **kwargs,
+                )
+            except Exception as e:
+                if (
+                    file_system.exists(gcs_path)
+                    and not list(file_system.ls(gcs_path))
+                    and file_system.isfile(gcs_path)
+                ):
+                    _remove_file(gcs_path, file_system)
+                return _write_partitioned_geoparquet(
+                    df,
+                    gcs_path,
+                    partition_cols,
+                    file_system,
+                    existing_data_behavior=existing_data_behavior,
+                    write_func=_to_geopandas,
+                    **kwargs,
+                )
         with file_system.open(gcs_path, mode="wb") as file:
             _to_geopandas(df, file, **kwargs)
         return
@@ -596,13 +613,6 @@ def _write_partitioned_geoparquet(
             raise ValueError("Must specify 'schema' when all rows are NA.")
 
     glob_func = _get_glob_func(file_system)
-
-    if (
-        file_system.exists(path)
-        and not list(file_system.ls(path))
-        and file_system.isfile(path)
-    ):
-        _remove_file(path, file_system)
 
     if kwargs.get("schema"):
         schema = kwargs.pop("schema")

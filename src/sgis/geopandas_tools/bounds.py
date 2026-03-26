@@ -35,6 +35,7 @@ class Gridlooper:
         verbose: Whether to print progress. Defaults to False.
         keep_geom_type: Whether to keep only the input geometry types after clipping.
             Defaults to True.
+        concat: Whether to use pd.concat on the results after each 'run' call.
 
     Examples:
     ---------
