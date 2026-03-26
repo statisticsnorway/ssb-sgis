@@ -395,6 +395,8 @@ class NorgeIBilderWmts(NorgeIBilderWms):
 
     def __init__(self, username: str, password: str, *args, **kwargs) -> None:
         """Initialiser including fetching token and constructing get_url."""
+        raise NotImplementedError
+
         from requests.auth import HTTPBasicAuth
 
         # token_url = "https://auth2.geoid.no/realms/geoid/protocol/openid-connect/token"
@@ -480,11 +482,6 @@ class NorgeIBilderWmts(NorgeIBilderWms):
         map_.add_child(folium.LayerControl())
         run_html_server(map_._repr_html_())
         super().__init__(*args, **kwargs)
-
-
-import sys
-
-NorgeIBilderWmts(sys.argv[1], sys.argv[2])
 
 
 def _string_as_list(x: str | list[str]) -> list[str] | None:
