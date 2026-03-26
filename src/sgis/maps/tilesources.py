@@ -38,12 +38,12 @@ kartverket = Bunch(
 google = Bunch(
     maps=TileProvider(
         name="Google maps",
-        url="http://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
+        url="https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
         attribution="© Google",
     ),
     hybrid=TileProvider(
         name="Google hybrid",
-        url="http://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}",
+        url="https://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}",
         attribution="© Google",
     ),
 )
