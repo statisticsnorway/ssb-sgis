@@ -1,0 +1,11 @@
+HTTP/1.1 200 
+Date: Wed, 18 Mar 2026 07:50:29 GMT
+Content-Type: application/json;charset=UTF-8
+Content-Length: 62
+Connection: keep-alive
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 1; mode=block
+Vary: Origin
+Strict-Transport-Security: max-age=15724800; includeSubDomains
+
+{"error":{"code":499,"message":"Token Required","details":[]}}
