@@ -28,6 +28,7 @@ from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.sfilter import sfilter
 from ..raster.image_collection import Band
+from .secrets import get_secret_version
 
 DEFAULT_YEARS: tuple[int] = tuple(
     range(
@@ -359,10 +360,41 @@ class NorgeIBilderWms(WmsLoader):
         ]
 
 
-def get_norge_i_bilder_wmts() -> folium.TileLayer:
-    """Returns folium.TileLayer with Norge i bilder-WMTS with valid token."""
+def get_norge_i_bilder_wmts(
+    project_id: str | None = None,
+    username_secret_id: str = "norge-i-bilder-username",
+    password_secret_id: str = "norge-i-bilder-password",
+    username: str = "user",
+    password: str = "pass",
+) -> folium.TileLayer:
+    """Returns folium.TileLayer with Norge i bilder-WMTS with valid token.
+
+    Args:
+        project_id: GCP project ID. If provided, credentials are fetched from
+            Google Secret Manager using username_secret_id and password_secret_id.
+        username_secret_id: Secret ID for the username in Secret Manager.
+            Only used if project_id is provided.
+        password_secret_id: Secret ID for the password in Secret Manager.
+            Only used if project_id is provided.
+        username: Username to use if project_id is not provided. Defaults to 'user'.
+        password: Password to use if project_id is not provided. Defaults to 'pass'.
+
+    Returns:
+        A folium.TileLayer configured with a valid Norge i bilder WMTS token.
+
+    Example:
+        >>> tile = get_norge_i_bilder_wmts(
+        ...     project_id="my-gcp-project",
+        ...     username_secret_id="nib-username",
+        ...     password_secret_id="nib-password",
+        ... )
+    """
+    if project_id is not None:
+        username = get_secret_version(project_id, username_secret_id)
+        password = get_secret_version(project_id, password_secret_id)
+
     token_url = "https://tilecache.norgeibilder.no/token/tilecache"
-    auth = HTTPBasicAuth("user", "pass")
+    auth = HTTPBasicAuth(username, password)
     data = {
         "client": "requestip",
         "expiration": "10080",
