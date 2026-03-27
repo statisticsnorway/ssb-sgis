@@ -46,6 +46,7 @@ from ..geopandas_tools.sfilter import sfilter
 from ..helpers import _get_file_system
 from ..helpers import dict_zip
 from .wms import WmsLoader
+from .wms import get_norge_i_bilder_wmts
 
 try:
     from ..raster.image_collection import Band
@@ -156,7 +157,7 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
         ),
         "grunnkart": kartverket.topo,
         "gråtone": kartverket.topogråtone,
-        "norge_i_bilder": kartverket.norge_i_bilder,
+        "norge_i_bilder": get_norge_i_bilder_wmts,
         "google_maps": google.maps,
         "google_hybrid": google.hybrid,
         "dark": xyz.CartoDB.DarkMatter,
@@ -180,6 +181,9 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
         provider = common_bgmaps[tile.lower()]
     except KeyError:
         provider = xyzservices.providers.query_name(tile)
+
+    if callable(provider):
+        provider = provider()
 
     if isinstance(provider, folium.TileLayer):
         return provider

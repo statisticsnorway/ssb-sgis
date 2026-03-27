@@ -479,6 +479,8 @@ def main():
     from oslo import points_oslo
     from oslo import roads_oslo
 
+    sg.explore(points_oslo().sample(10), browser=1)
+
     test_network_analysis(points_oslo(), roads_oslo())
 
 
