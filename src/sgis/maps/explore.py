@@ -46,7 +46,6 @@ from ..geopandas_tools.sfilter import sfilter
 from ..helpers import _get_file_system
 from ..helpers import dict_zip
 from .wms import WmsLoader
-from .wms import get_norge_i_bilder_wmts
 
 try:
     from ..raster.image_collection import Band
@@ -157,7 +156,7 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
         ),
         "grunnkart": kartverket.topo,
         "gråtone": kartverket.topogråtone,
-        "norge_i_bilder": get_norge_i_bilder_wmts,
+        # "norge_i_bilder": _get_norge_i_bilder_wmts,
         "google_maps": google.maps,
         "google_hybrid": google.hybrid,
         "dark": xyz.CartoDB.DarkMatter,
@@ -270,7 +269,7 @@ class Explore(Map):
     # class attribute that can be overridden locally
     tiles: ClassVar[tuple[str, ...]] = (
         "grunnkart",
-        "norge_i_bilder",
+        # "norge_i_bilder",
         "google_maps",
         "google_hybrid",
         "dark",
