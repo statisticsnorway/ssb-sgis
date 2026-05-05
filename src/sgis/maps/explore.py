@@ -156,7 +156,7 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
         ),
         "grunnkart": kartverket.topo,
         "gråtone": kartverket.topogråtone,
-        "norge_i_bilder": kartverket.norge_i_bilder,
+        # "norge_i_bilder": _get_norge_i_bilder_wmts,
         "google_maps": google.maps,
         "google_hybrid": google.hybrid,
         "dark": xyz.CartoDB.DarkMatter,
@@ -180,6 +180,9 @@ def to_tile(tile: str | xyzservices.TileProvider, max_zoom: int) -> folium.TileL
         provider = common_bgmaps[tile.lower()]
     except KeyError:
         provider = xyzservices.providers.query_name(tile)
+
+    if callable(provider):
+        provider = provider()
 
     if isinstance(provider, folium.TileLayer):
         return provider
@@ -266,7 +269,7 @@ class Explore(Map):
     # class attribute that can be overridden locally
     tiles: ClassVar[tuple[str, ...]] = (
         "grunnkart",
-        "norge_i_bilder",
+        # "norge_i_bilder",
         "google_maps",
         "google_hybrid",
         "dark",

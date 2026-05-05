@@ -120,6 +120,7 @@ class Gridlooper:
         )
 
         n = len(grid)
+        keep_geom_type = kwargs.get("keep_geom_type", self.keep_geom_type)
 
         buffered_grid = grid.buffer(self.gridbuffer, resolution=1, join_style=2)
 
@@ -129,7 +130,7 @@ class Gridlooper:
                 func=func,
                 args=args,
                 kwargs=kwargs,
-                keep_geom_type=self.keep_geom_type,
+                keep_geom_type=keep_geom_type,
                 clip=self.clip,
             )
             results = self.parallelizer.map(func_with_clip, buffered_grid)
@@ -138,9 +139,7 @@ class Gridlooper:
             out = []
             for cell_res, unbuffered in zip(results, grid, strict=True):
                 out.append(
-                    _clip_back_to_unbuffered_grid(
-                        cell_res, unbuffered, self.keep_geom_type
-                    )
+                    _clip_back_to_unbuffered_grid(cell_res, unbuffered, keep_geom_type)
                 )
             return self._return(out, args, kwargs)
 
@@ -149,13 +148,11 @@ class Gridlooper:
             zip(grid, buffered_grid, strict=False)
         ):
             cell_kwargs = {
-                key: _clip_if_isinstance(
-                    value, buffered, self.keep_geom_type, self.clip
-                )
+                key: _clip_if_isinstance(value, buffered, keep_geom_type, self.clip)
                 for key, value in kwargs.items()
             }
             cell_args = tuple(
-                _clip_if_isinstance(value, buffered, self.keep_geom_type, self.clip)
+                _clip_if_isinstance(value, buffered, keep_geom_type, self.clip)
                 for value in args
             )
 
@@ -164,7 +161,7 @@ class Gridlooper:
             # clip back to original
             if self.gridbuffer and self.clip:
                 cell_res = _clip_back_to_unbuffered_grid(
-                    cell_res, unbuffered, self.keep_geom_type
+                    cell_res, unbuffered, keep_geom_type
                 )
 
             results.append(cell_res)

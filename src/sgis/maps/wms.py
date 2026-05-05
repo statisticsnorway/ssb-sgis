@@ -2,12 +2,10 @@ import abc
 import datetime
 import json
 import re
-import urllib
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-from typing import ClassVar
 from urllib.request import urlopen
 
 import folium
@@ -15,9 +13,9 @@ import numpy as np
 import pandas as pd
 import requests
 import shapely
-from folium.template import Template
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
+from requests.auth import HTTPBasicAuth
 from shapely import Geometry
 from shapely import get_exterior_ring
 from shapely import make_valid
@@ -30,7 +28,6 @@ from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.sfilter import sfilter
 from ..raster.image_collection import Band
-from .httpserver import run_html_server
 
 DEFAULT_YEARS: tuple[int] = tuple(
     range(
@@ -362,126 +359,37 @@ class NorgeIBilderWms(WmsLoader):
         ]
 
 
-class WmtsTileLayer(folium.WmsTileLayer):
-    """WMTS..."""
-
-
-class NorgeIBilderWmts(NorgeIBilderWms):
-    """WMTS..."""
-
-    get_url: ClassVar[str] = "https://tilecache.norgeibilder.no/wmtsp/utm33_euref89"
-    wms_class: ClassVar[type] = WmtsTileLayer
-
-    default_wmts_params: ClassVar[dict[str, str]] = {
-        "service": "WMTS",
-        "request": "GetTile",
-        "version": "1.0.0",
-        "layer": "",
-        "style": "",
-        "tilematrixset": "",
-        "format": "image/jpeg",
+def _get_norge_i_bilder_wmts() -> folium.TileLayer:
+    """Returns folium.TileLayer with Norge i bilder-WMTS with valid token."""
+    token_url = "https://tilecache.norgeibilder.no/token/tilecache"
+    auth = HTTPBasicAuth("")
+    data = {
+        "client": "requestip",
+        "expiration": "10080",
+        "f": "json",
+        "referer": "ssb.no",
     }
+    with requests.post(token_url, data=data, auth=auth) as response:
+        response.raise_for_status()
+        token = response.json()["token"]
 
-    _template = Template(
-        """
-        {% macro script(this, kwargs) %}
-            var {{ this.get_name() }} = L.tileLayer.wms(
-                {{ this.url|tojson }},
-                {{ this.options|tojson }}
-            );
-        {% endmacro %}
-        """
+    url = (
+        "https://tilecache.norgeibilder.no/wmts/webmercator"
+        "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+        "&LAYER=Nibcache_web_mercator_v2&STYLE=default"
+        "&TILEMATRIXSET=default028mm&FORMAT=image/jpeg"
+        "&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}"
+        "&token=" + token
     )
-
-    def __init__(self, username: str, password: str, *args, **kwargs) -> None:
-        """Initialiser including fetching token and constructing get_url."""
-        raise NotImplementedError
-
-        from requests.auth import HTTPBasicAuth
-
-        # token_url = "https://auth2.geoid.no/realms/geoid/protocol/openid-connect/token"
-        token_url = "https://tilecache.norgeibilder.no/token/tilecache"
-        auth = HTTPBasicAuth(username, password)
-        data = {
-            "client": "requestip",
-            "expiration": "10080",
-            "f": "json",
-            "referer": "ssb.no",
-        }
-        with requests.post(token_url, data=data, auth=auth) as response:
-            response.raise_for_status()
-            token = response.json()["token"]
-        self.token = token
-        self.get_url = f"{self.get_url}?token={token}"
-        print(self.token)
-        print(self.get_url)
-
-        # self.get_url: str = (
-
-        #     "https://tilecache.norgeibilder.no"
-        #     "/arcgis/rest/services/Nibcache_UTM32_EUREF89_v2/MapServer/"
-        #     "WMTS?SERVICE=WMTS"
-        #     "&REQUEST=GetTile"
-        #     "&VERSION=1.0.0"
-        #     "&LAYER=Nibcache_UTM32_EUREF89_v2"
-        #     "&STYLE=default"
-        #     "&FORMAT=image/jpgpng"
-        #     f"&token={token}"
-        #     "&TILEMATRIXSET=default028mm"
-        #     # "&&TILEMATRIXSET=default028mm"
-        #     "&TILEMATRIX=15"
-        #     "&TILEROW=13615"
-        #     "&TILECOL=15425"
-        # )
-        import folium
-
-        map_ = folium.Map(
-            location=[59.9, 10.82415],
-            zoom_start=10,
-            tiles="OpenStreetMap",
-            # width=8000,
-            # height=8000,
-        )
-        map_.add_child(
-            folium.WmsTileLayer(
-                # "https://wms.geonorge.no/skwms1/wms.nib-prosjekter?SERVICE=WMS&REQUEST=GetCapabilities",
-                "https://wms.geonorge.no/skwms1/wms.nib-prosjekter",
-                name="Oslo 2016",
-                layers="Oslo 2016",
-                format="image/png",  # Tile format
-                transparent=True,  # Allow transparency
-                version="1.3.0",  # WMS version
-                attr="&copy; <a href='https://www.geonorge.no/'>Geonorge</a>",
-                show=True,
-                max_zoom=19,
-            )
-        )
-        url: str = (
-            "https://tilecache.norgeibilder.no/wmts/webmercator"
-            "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
-            "&LAYER=Nibcache_web_mercator_v2"
-            "&STYLE=default"
-            "&TILEMATRIXSET=default028mm"
-            "&FORMAT=image/jpeg"
-            "&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}"
-            "&token=" + urllib.parse.quote(token, safe="~*()'!.-_")
-        ).replace("https://tilecache.norgeibilder.no", "/nib-wmts")
-        map_.add_child(
-            folium.TileLayer(
-                url,
-                # service="WMTS",
-                # request="GetTile",
-                version="1.0.0",
-                layer="",
-                style="",
-                # tilematrixset="",
-                format="image/jpeg",
-                attr="&copy; <a href='https://www.geonorge.no/'>Geonorge</a>",
-            )
-        )
-        map_.add_child(folium.LayerControl())
-        run_html_server(map_._repr_html_())
-        super().__init__(*args, **kwargs)
+    return folium.TileLayer(
+        url,
+        name="Norge i bilder",
+        version="1.0.0",
+        layer="",
+        style="",
+        format="image/jpeg",
+        attr="&copy; <a href='https://www.geonorge.no/'>Geonorge</a>",
+    )
 
 
 def _string_as_list(x: str | list[str]) -> list[str] | None:

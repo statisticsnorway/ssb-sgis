@@ -46,5 +46,10 @@ google = Bunch(
         url="https://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}",
         attribution="© Google",
     ),
+    satellite=TileProvider(
+        name="Google satellite",
+        url="https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}",
+        attribution="© Google",
+    ),
 )
 xyz = Bunch({"Kartverket": kartverket} | providers)
