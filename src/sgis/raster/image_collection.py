@@ -31,6 +31,8 @@ from geopandas import GeoSeries
 from pandas.api.types import is_array_like
 from pandas.api.types import is_dict_like
 from rasterio.enums import MergeAlg
+from rasterio.merge import MERGE_METHODS
+from rasterio.merge import merge as rasterio_merge
 from shapely import Geometry
 from shapely import box
 from shapely import unary_union
@@ -1413,7 +1415,7 @@ class Band(_ImageBandBase):
         if isinstance(self.values, np.ma.core.MaskedArray):
             self.values.data[self.values.mask] = self.nodata or 0
         if self.values.shape[0] == 0:
-            df = GeoDataFrame({"geometry": []}, crs=self.crs)
+            df = GeoDataFrame({"geometry": [], column: []}, crs=self.crs)
         else:
             df = GeoDataFrame(
                 pd.DataFrame(
@@ -1729,6 +1731,8 @@ class Image(_ImageBandBase):
             res = {band.res for band in self.bands}
             if len(res) == 1:
                 self._res = next(iter(res))
+            elif not len(res):
+                raise ValueError("Must set 'res' (resolution) for the Image(s)")
             else:
                 raise ValueError(f"Different resolutions for the bands: {res}")
         else:
@@ -2325,7 +2329,7 @@ class ImageCollection(_ImageBase):
         else:
             _method = method
 
-        if self.masking or method not in list(rasterio.merge.MERGE_METHODS) + ["mean"]:
+        if self.masking or method not in list(MERGE_METHODS) + ["mean"]:
             arr = self._merge_with_numpy_func(
                 method=method,
                 bounds=bounds,
@@ -2333,8 +2337,10 @@ class ImageCollection(_ImageBase):
                 **kwargs,
             )
         else:
-            datasets = [_open_raster(path) for path in self.file_paths]
-            arr, _ = rasterio.merge.merge(
+            datasets = [
+                _open_raster(path) for img in self.images for path in img.file_paths
+            ]
+            arr, _ = rasterio_merge(
                 datasets,
                 res=self.res,
                 bounds=(bounds if bounds is not None else self.bounds),
@@ -2408,8 +2414,12 @@ class ImageCollection(_ImageBase):
                     **kwargs,
                 )
             else:
-                datasets = [_open_raster(path) for path in band_collection.file_paths]
-                arr, _ = rasterio.merge.merge(
+                datasets = [
+                    _open_raster(path)
+                    for img in band_collection.images
+                    for path in img.file_paths
+                ]
+                arr, _ = rasterio_merge(
                     datasets,
                     res=self.res,
                     bounds=(bounds if bounds is not None else self.bounds),
