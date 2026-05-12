@@ -2618,7 +2618,7 @@ class ImageCollection(_ImageBase):
                 band.values.shape
                 for img in copied
                 for band in img
-                if img._rounded_bounds == bounds and any(band.values.shape)
+                if img._rounded_bounds == bounds
             }
             if len(shapes) != 1:
                 raise ValueError(f"Different shapes: {shapes}. For bounds {bounds}")
