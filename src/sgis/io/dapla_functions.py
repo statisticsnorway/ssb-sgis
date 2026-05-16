@@ -233,6 +233,22 @@ def _read_pyarrow_with_treads(
         return [x for x in executor.map(read_partial, paths) if x is not None]
 
 
+def _concat_pyarrow_tables(
+    tables: list[pyarrow.Table], promote_options: str = "permissive"
+) -> pyarrow.Table:
+    try:
+        return pyarrow.concat_tables(tables, promote_options=promote_options)
+    except pyarrow.lib.ArrowTypeError:
+        schema = pyarrow.unify_schemas(
+            [table.schema for table in tables], promote_options=promote_options
+        )
+        coerced_tables = [
+            table.cast(schema, safe=False) if not table.schema.equals(schema) else table
+            for table in tables
+        ]
+        return pyarrow.concat_tables(coerced_tables, promote_options=promote_options)
+
+
 def intersects(file, mask, file_system) -> bool:
     bbox, _ = _get_bounds_parquet_from_open_file(file, file_system)
     return shapely.box(*bbox).intersects(to_shapely(mask))
@@ -603,16 +619,12 @@ def _write_partitioned_geoparquet(
     basename_template: str | None = None,
     **kwargs,
 ):
-    file_system = _get_file_system(file_system, kwargs)
+    # if isinstance(partition_cols, str):
+    #     partition_cols = [partition_cols]
 
-    if isinstance(partition_cols, str):
-        partition_cols = [partition_cols]
-
-    for col in partition_cols:
-        if df[col].isna().all() and not kwargs.get("schema"):
-            raise ValueError("Must specify 'schema' when all rows are NA.")
-
-    glob_func = _get_glob_func(file_system)
+    # for col in partition_cols:
+    #     if df[col].isna().all() and not kwargs.get("schema"):
+    #         raise ValueError("Must specify 'schema' when all rows are NA.")
 
     if kwargs.get("schema"):
         schema = kwargs.pop("schema")
@@ -620,6 +632,31 @@ def _write_partitioned_geoparquet(
         schema = _pyarrow_schema_from_geopandas(df)
     else:
         schema = pyarrow.Schema.from_pandas(df, preserve_index=True)
+
+    table = _geopandas_to_arrow(
+        df,
+        index=df.index,
+        schema_version=None,
+    )
+    # make sure to get the actual metadata
+    schema = pyarrow.schema(
+        [(schema.field(col).name, schema.field(col).type) for col in schema.names],
+        metadata=table.schema.metadata,
+    )
+    table = table.select(schema.names).cast(schema)
+
+    pyarrow.parquet.write_to_dataset(
+        table,
+        path,
+        schema=schema,
+        partition_cols=partition_cols,
+        existing_data_behavior=existing_data_behavior,
+        basename_template=basename_template,
+        **kwargs,
+    )
+    return
+
+    glob_func = _get_glob_func(file_system)
 
     def as_partition_part(col: str, value: Any) -> str:
         value = value if not pd.isna(value) else NULL_VALUE
@@ -763,7 +800,7 @@ def _read_pandas(gcs_path: str, use_threads: bool = True, **kwargs):
             use_threads=use_threads,
             **kwargs,
         )
-        results = pyarrow.concat_tables(results, promote_options="permissive")
+        results = _concat_pyarrow_tables(results, promote_options="permissive")
         return results.to_pandas()
 
     child_paths = get_child_paths(gcs_path, file_system)
@@ -830,7 +867,7 @@ def _read_partitioned_parquet(
 def _concat_pyarrow_to_geopandas(
     results: list[pyarrow.Table], paths: list[str], file_system: Any
 ):
-    results = pyarrow.concat_tables(
+    results = _concat_pyarrow_tables(
         results,
         promote_options="permissive",
     )
