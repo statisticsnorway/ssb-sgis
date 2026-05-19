@@ -713,9 +713,10 @@ def _write_partitioned_geoparquet(
             write_func(rows, out_path, schema=schema, **kwargs)
         except FileNotFoundError:
             try:
-                os.makedirs(Path(out_path).parent, exist_ok=True)
-            except FileNotFoundError:
                 file_system.makedirs(str(Path(out_path).parent), exist_ok=True)
+            except FileNotFoundError as e:
+                raise e
+                os.makedirs(Path(out_path).parent, exist_ok=True)
             for sibling_path in sorted(glob_func(str(_standardize_path(path) + "/**"))):
                 if paths_are_equal(sibling_path, path):
                     continue
@@ -727,9 +728,10 @@ def _write_partitioned_geoparquet(
         list(executor.map(threaded_write, dfs, paths))
 
     try:
-        os.makedirs(path + "/komm_nr=this_will_force_str_dtype", exist_ok=True)
-    except FileNotFoundError:
         file_system.makedirs(path + "/komm_nr=this_will_force_str_dtype", exist_ok=True)
+    except FileNotFoundError as e:
+        raise e
+        os.makedirs(path + "/komm_nr=this_will_force_str_dtype", exist_ok=True)
     pd.DataFrame({col: [] for col in df}).to_parquet(
         path + "/komm_nr=this_will_force_str_dtype/this_will_force_str_dtype.parquet"
     )
@@ -869,7 +871,7 @@ def _read_partitioned_parquet(
 
     filters = _filters_to_expression(filters)
 
-    child_paths = [
+    filtered_child_paths = [
         path
         for path in child_paths
         if filters is None or expression_match_path(filters, path)
@@ -879,28 +881,28 @@ def _read_partitioned_parquet(
 
     if mask is not None:
         intersections = sfilter(
-            get_bounds_series(child_paths, pandas_fallback=True)[
+            get_bounds_series(filtered_child_paths, pandas_fallback=True)[
                 lambda x: (x.notna()) & (~x.is_empty)
             ],
             mask,
         )
         if not len(intersections):
             # add columns to empty DataFrame
-            first_path = next(iter(child_paths + [path]))
+            first_path = next(iter(filtered_child_paths + [path]))
             _, crs = _get_bounds_parquet(first_path, file_system)
             df = GeoDataFrame(columns=_get_columns(first_path, file_system), crs=crs)
             if kwargs.get("columns"):
                 return df[list(kwargs["columns"])]
             return df
 
-        child_paths = list(intersections.index)
+        filtered_child_paths = list(intersections.index)
         filters_from_mask = [
             (
                 part.split("=")[0],
                 "in",
-                [Path(path).parts[i].split("=")[-1] for path in child_paths],
+                [Path(path).parts[i].split("=")[-1] for path in filtered_child_paths],
             )
-            for i, part in enumerate(Path(child_paths[0]).parts)
+            for i, part in enumerate(Path(filtered_child_paths[0]).parts)
             if "=" in part and part not in base_parts
         ]
         filters_from_mask = _filters_to_expression(filters_from_mask)
@@ -923,7 +925,7 @@ def _read_partitioned_parquet(
     results: list[pyarrow.Table] = _read_pyarrow_with_threads(
         (
             path
-            for path in child_paths
+            for path in filtered_child_paths
             if filters is None or expression_match_path(filters, path)
         ),
         file_system=file_system,
@@ -934,7 +936,7 @@ def _read_partitioned_parquet(
     )
 
     if results and to_geopandas:
-        return _concat_pyarrow_to_geopandas(results, child_paths, file_system)
+        return _concat_pyarrow_to_geopandas(results, filtered_child_paths, file_system)
     elif results:
         return pyarrow.concat_tables(results, promote_options="permissive").to_pandas()
 
