@@ -6,6 +6,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyproj
 import pytest
 from helpers import create_all_geometry_types
 from shapely.geometry import Polygon
@@ -35,7 +36,7 @@ def test_get_common_crs():
     gdf = sg.to_gdf([0, 0], crs=25833)
     gdf2 = sg.to_gdf([0, 0], crs=None)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(pyproj.exceptions.CRSError):
         sg.get_common_crs([gdf, gdf2], strict=True)
 
     assert sg.get_common_crs([gdf, gdf2]) == 25833
