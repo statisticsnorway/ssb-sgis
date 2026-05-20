@@ -65,7 +65,10 @@ def get_common_crs(
     crs = set()
     for obj in iterable:
         try:
-            crs.add(obj.crs)
+            crs.add(pyproj.CRS(obj.crs).to_string())
+        except pyproj.exceptions.CRSError as e:
+            if strict:
+                raise e
         except AttributeError:
             pass
 
@@ -261,10 +264,10 @@ def get_grouped_centroids(
     Returns:
         A pandas.Series of grouped centroids with the index of 'gdf'.
     """
-    centerpoints = gdf.assign(geometry=lambda x: x.centroid)
+    centerpoints = gdf.assign(**{gdf.geometry.name: lambda x: x.centroid})
 
     grouped_centerpoints = centerpoints.dissolve(by=groupby).assign(
-        geometry=lambda x: x.centroid
+        **{centerpoints.geometry.name: lambda x: x.centroid}
     )
     xs = grouped_centerpoints.geometry.x
     ys = grouped_centerpoints.geometry.y
