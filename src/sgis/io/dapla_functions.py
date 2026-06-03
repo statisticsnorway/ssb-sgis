@@ -117,9 +117,7 @@ def read_geopandas(
             expression: list[str] = "".join(
                 [str(x) for x in next(iter(filters))]
             ).replace("==", "=")
-            glob_func = _get_glob_func(file_system)
-            suffix: str = Path(gcs_path).suffix
-            paths = glob_func(_standardize_path(gcs_path) + f"/{expression}/*{suffix}")
+            paths = get_child_paths(gcs_path, file_system, pattern=f"/{expression}/*")
             if paths:
                 return _read_geopandas_from_iterable(
                     paths,
@@ -178,6 +176,9 @@ def _read_geopandas_from_iterable(
     pandas_fallback,
     **kwargs,
 ):
+    if isinstance(file_system, GCSFileSystem):
+        paths = ["gs://" + str(x).replace("gs://", "") for x in paths]
+
     cols = {}
     if mask is None and isinstance(paths, GeoSeries):
         # bounds GeoSeries indexed with file paths
@@ -282,11 +283,14 @@ def _read_pyarrow(
         if mask is not None and not intersects(path, mask, file_system):
             return
 
-        # 'get' instead of 'pop' because dict is mutable
-        # schema = kwargs.get("schema", get_schema(path))
-        # new_kwargs = {key: value for key, value in kwargs.items() if key != "schema"}
-        # table = pq.read_table(path, schema=schema, **new_kwargs)
-        table = pq.read_table(path, **kwargs)
+        try:
+            table = pq.read_table(path, **kwargs)
+        except pyarrow.lib.ArrowTypeError:
+            schema = kwargs.get("schema", get_schema(path))
+            new_kwargs = {
+                key: value for key, value in kwargs.items() if key != "schema"
+            }
+            table = pq.read_table(path, schema=schema, **new_kwargs)
         for col, value in partition_cols_and_values.items():
             if col in table.schema.names:
                 continue
@@ -964,11 +968,11 @@ def paths_are_equal(path1: Path | str, path2: Path | str) -> bool:
     return Path(path1).parts == Path(path2).parts
 
 
-def get_child_paths(path, file_system) -> list[str]:
+def get_child_paths(path, file_system, pattern: str = "/**/*.parquet") -> list[str]:
     glob_func = _get_glob_func(file_system)
     paths = [
         x
-        for x in glob_func(str(_standardize_path(path) + "/**/*.parquet"))
+        for x in glob_func(str(_standardize_path(path) + pattern))
         if not paths_are_equal(x, path)
     ]
     if str(path).startswith("gs://"):
