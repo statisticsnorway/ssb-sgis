@@ -81,8 +81,6 @@ def sfilter(
     0  POINT (0.00000 0.00000)
 
     """
-    if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
-        raise TypeError(gdf_type_error_message)
     if not len(gdf):
         return gdf
 
@@ -164,9 +162,6 @@ def sfilter_split(
     if not len(gdf):
         return gdf, gdf
 
-    if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
-        raise TypeError(gdf_type_error_message)
-
     other = _sfilter_checks(other, crs=gdf.crs)
 
     indices = _get_sfilter_indices(
@@ -238,8 +233,6 @@ def sfilter_inverse(
     >>> not_intersecting = df1.loc[~df1.intersects(df2.union_all())]
 
     """
-    if not isinstance(gdf, (GeoDataFrame | GeoSeries)):
-        raise TypeError(gdf_type_error_message)
     if not len(gdf):
         return gdf
 

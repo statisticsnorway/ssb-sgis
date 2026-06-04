@@ -24,8 +24,10 @@ def get_k_nearest_points_for_deadends(
     lines = lines.assign(_range_idx_left=range(len(lines)))
     points = (
         lines.assign(
-            geometry=lambda x: x.extract_unique_points().values,
-            _range_idx_right=range(len(lines)),
+            **{
+                lines.geometry.name: lambda x: x.extract_unique_points().values,
+                "_range_idx_right": range(len(lines)),
+            }
         )
         .explode(index_parts=False)
         .sort_index()
@@ -47,7 +49,9 @@ def get_k_nearest_points_for_deadends(
 
     deadends = nodes[has_no_duplicates].reset_index(drop=True)
 
-    deadends_buffered = deadends.assign(geometry=lambda x: x.buffer(max_distance))
+    deadends_buffered = deadends.assign(
+        **{deadends.geometry.name: lambda x: x.buffer(max_distance)}
+    )
 
     segs_by_deadends = (
         sfilter(lines, deadends_buffered)
