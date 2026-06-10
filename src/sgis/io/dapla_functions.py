@@ -714,7 +714,8 @@ def _write_partitioned_geoparquet(
         try:
             write_func(rows, out_path, schema=schema, **kwargs)
         except FileNotFoundError:
-            file_system.makedirs(str(Path(out_path).parent), exist_ok=True)
+            parent = "/".join(out_path.split("/")[:-1])
+            file_system.makedirs(parent, exist_ok=True)
             for sibling_path in sorted(glob_func(str(_standardize_path(path) + "/**"))):
                 if paths_are_equal(sibling_path, path):
                     continue
@@ -726,7 +727,7 @@ def _write_partitioned_geoparquet(
         list(executor.map(threaded_write, dfs, paths))
 
     a_partition_col_is_string_type_but_all_numeric_values = any(
-        func(df[col]) and df[col].dropna().str.isnumeric().all()
+        func(df[col]) and df[col].dropna().str.replace(".", "").str.isnumeric().all()
         for col in partition_cols
         for func in [
             pd.api.types.is_string_dtype,
