@@ -598,8 +598,6 @@ def _to_geopandas(df, path, **kwargs) -> None:
             metadata=table.schema.metadata,
         )
         table = table.select(schema.names).cast(schema)
-    assert "komm_nr" in str(table.schema.metadata[b"pandas"].decode()), path
-    assert "komm_nr" in str(schema.metadata[b"pandas"].decode()), path
     pq.write_table(
         table,
         path,
@@ -716,11 +714,8 @@ def _write_partitioned_geoparquet(
         try:
             write_func(rows, out_path, schema=schema, **kwargs)
         except FileNotFoundError:
-            try:
-                file_system.makedirs(str(Path(out_path).parent), exist_ok=True)
-            except FileNotFoundError as e:
-                raise e
-                os.makedirs(Path(out_path).parent, exist_ok=True)
+            parent = "/".join(out_path.split("/")[:-1])
+            file_system.makedirs(parent, exist_ok=True)
             for sibling_path in sorted(glob_func(str(_standardize_path(path) + "/**"))):
                 if paths_are_equal(sibling_path, path):
                     continue
@@ -731,14 +726,23 @@ def _write_partitioned_geoparquet(
     with ThreadPoolExecutor() as executor:
         list(executor.map(threaded_write, dfs, paths))
 
-    try:
-        file_system.makedirs(path + "/komm_nr=this_will_force_str_dtype", exist_ok=True)
-    except FileNotFoundError as e:
-        raise e
-        os.makedirs(path + "/komm_nr=this_will_force_str_dtype", exist_ok=True)
-    pd.DataFrame({col: [] for col in df}).to_parquet(
-        path + "/komm_nr=this_will_force_str_dtype/this_will_force_str_dtype.parquet"
+    a_partition_col_is_string_type_but_all_numeric_values = any(
+        func(df[col]) and df[col].dropna().str.replace(".", "").str.isnumeric().all()
+        for col in partition_cols
+        for func in [
+            pd.api.types.is_string_dtype,
+            pd.api.types.is_object_dtype,
+        ]
     )
+    if not a_partition_col_is_string_type_but_all_numeric_values:
+        return
+
+    new_path = str(path)
+    for col in partition_cols:
+        new_path += f"/{col}=this_will_force_str_dtype"
+        file_system.makedirs(new_path, exist_ok=True)
+        new_path += "/this_will_force_str_dtype.parquet"
+        pd.DataFrame({col: [] for col in df}).to_parquet(new_path)
 
 
 def _get_glob_func(file_system) -> functools.partial:
