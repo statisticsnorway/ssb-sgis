@@ -206,17 +206,22 @@ def _read_geopandas_from_iterable(
 
     filters = kwargs.pop("filters")
     filters = _filters_to_expression(filters)
-    results: list[pyarrow.Table] = _read_pyarrow_with_threads(
-        [
-            path
-            for path in paths
-            if filters is None or expression_match_path(filters, path)
-        ],
-        file_system=file_system,
-        mask=mask,
-        use_threads=use_threads,
-        **kwargs,
-    )
+    paths = [
+        path
+        for path in paths
+        if filters is None or expression_match_path(filters, path)
+    ]
+    try:
+        results: list[pyarrow.Table] = _read_pyarrow_with_threads(
+            paths,
+            file_system=file_system,
+            mask=mask,
+            use_threads=use_threads,
+            **kwargs,
+        )
+    except Exception as e:
+        raise e
+        return pd.concat([_read_partitioned_parquet(path) for path in paths])
     if results:
         try:
             return _concat_pyarrow_to_geopandas(results, paths, file_system)
@@ -302,14 +307,18 @@ def _read_pyarrow(
         return table
     except ArrowInvalid as e:
         glob_func = _get_glob_func(file_system)
-        if not len(
-            {
-                x
-                for x in glob_func(str(_standardize_path(path) + "/**"))
-                if not paths_are_equal(path, x)
-            }
-        ):
+        child_paths = {
+            x
+            for x in glob_func(str(_standardize_path(path) + "/**"))
+            if not paths_are_equal(path, x)
+        }
+        if not len(child_paths):
             raise e
+        elif any(x.endswith(".parquet") for x in child_paths):
+            return _read_partitioned_parquet(
+                path, file_system=file_system, mask=mask, **kwargs
+            )
+
         # allow not being able to read empty directories that are hard to delete in gcs
 
 
@@ -337,12 +346,15 @@ def _get_bounds_parquet_from_open_file(
 def _get_geo_metadata(file, file_system) -> dict:
     try:
         meta = pq.read_schema(file).metadata
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         try:
-            with file_system.open(file, "rb") as f:
-                meta = pq.read_schema(f).metadata
+            meta = pq.ParquetDataset(file).schema.metadata
         except Exception as e:
-            raise e.__class__(f"{file}: {e}") from e
+            try:
+                with file_system.open(file, "rb") as f:
+                    meta = pq.read_schema(f).metadata
+            except Exception:
+                raise e.__class__(f"{file}: {e}") from e
     except Exception as e:
         raise e.__class__(f"{file}: {e}") from e
 
@@ -960,12 +972,16 @@ def _read_partitioned_parquet(
 def _concat_pyarrow_to_geopandas(
     results: list[pyarrow.Table], paths: list[str], file_system: Any
 ):
+    dfs = [x for x in results if isinstance(x, pd.DataFrame)]
     results = _concat_pyarrow_tables(
-        results,
+        [x for x in results if not isinstance(x, pd.DataFrame)],
         promote_options="permissive",
     )
     geo_metadata = _get_geo_metadata(next(iter(paths)), file_system)
-    return _arrow_to_geopandas(results, geo_metadata)
+    df = _arrow_to_geopandas(results, geo_metadata)
+    if dfs:
+        return pd.concat([df, *dfs])
+    return df
 
 
 def paths_are_equal(path1: Path | str, path2: Path | str) -> bool:
