@@ -974,13 +974,10 @@ def paths_are_equal(path1: Path | str, path2: Path | str) -> bool:
 
 def get_child_paths(path, file_system, pattern: str = "/**/*.parquet") -> list[str]:
     glob_func = _get_glob_func(file_system)
-    paths = [
-        x
-        for x in glob_func(str(_standardize_path(path) + pattern))
-        if not paths_are_equal(x, path)
-    ]
+    paths = [x for x in glob_func(str(_standardize_path(path) + pattern))]
     if str(path).startswith("gs://"):
         paths = ["gs://" + str(x).replace("gs://", "") for x in paths]
+    paths = [x for x in paths if not paths_are_equal(x, path)]
     return paths
 
 
