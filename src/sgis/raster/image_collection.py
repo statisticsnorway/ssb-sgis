@@ -581,7 +581,7 @@ class _ImageBase:
         df = pd.DataFrame({"file_path": list(file_paths)})
         df["file_name"] = df["file_path"].apply(lambda x: Path(x).name)
         df["image_path"] = df["file_path"].apply(
-            lambda x: _fix_path(str(Path(x).parent))
+            lambda x: "/".join(_fix_path(x).split("/")[:-1])
         )
 
         if not len(df):
@@ -882,13 +882,13 @@ class Band(_ImageBandBase):
 
         if self._all_file_paths:
             self._all_file_paths = {_fix_path(path) for path in self._all_file_paths}
-            parent = _fix_path(Path(self.path).parent)
+            parent = "/".join(_fix_path(self.path).split("/")[:-1])
             self._all_file_paths = {
                 path for path in self._all_file_paths if parent in path
             }
 
         if self.metadata:
-            parent = _fix_path(str(Path(self.path).parent))
+            parent = "/".join(_fix_path(self.path).split("/")[:-1])
             for key, value in self.metadata.get(parent, {}).items():
                 if key == "bands" and self.band_id in value:
                     band_metadata = value[self.band_id]
@@ -905,7 +905,9 @@ class Band(_ImageBandBase):
 
         elif self.metadata_attributes and self.path is not None:
             if self._all_file_paths is None:
-                self._all_file_paths = _get_all_file_paths(str(Path(self.path).parent))
+                self._all_file_paths = _get_all_file_paths(
+                    "/".join(_fix_path(self.path).split("/")[:-1])
+                )
             for key, value in self._get_metadata_attributes(
                 self.metadata_attributes
             ).items():
@@ -1720,7 +1722,9 @@ class Image(_ImageBandBase):
         the json file.
         """
         metadata = self.get_image_metadata_dict()
-        with _open_func(str(Path(self.path) / "metadata.json"), "w") as file:
+        with _open_func(
+            _fix_path(self.path).rstrip("/") + "/metadata.json", "w"
+        ) as file:
             json.dump(metadata, file)
 
     def _construct_image_from_bands(
@@ -3009,7 +3013,7 @@ class ImageCollection(_ImageBase):
             data = f"'{self.path}'"
         elif all(img.path is not None for img in self):
             data = [img.path for img in self]
-            parents = {str(Path(path).parent) for path in data}
+            parents = {"/".join(_fix_path(path).split("/")[:-1]) for path in data}
             if len(parents) == 1:
                 data = [Path(path).name for path in data]
                 root = f" root='{next(iter(parents))}',"

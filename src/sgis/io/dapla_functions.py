@@ -211,17 +211,13 @@ def _read_geopandas_from_iterable(
         for path in paths
         if filters is None or expression_match_path(filters, path)
     ]
-    try:
-        results: list[pyarrow.Table] = _read_pyarrow_with_threads(
-            paths,
-            file_system=file_system,
-            mask=mask,
-            use_threads=use_threads,
-            **kwargs,
-        )
-    except Exception as e:
-        raise e
-        return pd.concat([_read_partitioned_parquet(path) for path in paths])
+    results: list[pyarrow.Table] = _read_pyarrow_with_threads(
+        paths,
+        file_system=file_system,
+        mask=mask,
+        use_threads=use_threads,
+        **kwargs,
+    )
     if results:
         try:
             return _concat_pyarrow_to_geopandas(results, paths, file_system)
@@ -349,12 +345,9 @@ def _get_geo_metadata(file, file_system) -> dict:
     except FileNotFoundError as e:
         try:
             meta = pq.ParquetDataset(file).schema.metadata
-        except Exception as e:
-            try:
-                with file_system.open(file, "rb") as f:
-                    meta = pq.read_schema(f).metadata
-            except Exception:
-                raise e.__class__(f"{file}: {e}") from e
+        except Exception:
+            with file_system.open(file, "rb") as f:
+                meta = pq.read_schema(f).metadata
     except Exception as e:
         raise e.__class__(f"{file}: {e}") from e
 
