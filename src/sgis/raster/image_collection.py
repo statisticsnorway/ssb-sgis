@@ -70,7 +70,7 @@ from ..geopandas_tools.conversion import to_bbox
 from ..geopandas_tools.conversion import to_gdf
 from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
-from ..helpers import _fix_path
+from ..helpers import _standardize_path
 from ..helpers import get_numpy_func
 from ..helpers import is_method
 from ..helpers import is_property
@@ -516,13 +516,13 @@ class _ImageBase:
 
             # to nested dict instead of pandas because pandas indexing gives rare KeyError with long strings
             return {
-                _fix_path(path): {
+                _standardize_path(path): {
                     attr: na_to_none(value) for attr, value in row.items()
                 }
                 for path, row in metadata.iterrows()
             }
         elif is_dict_like(metadata):
-            return {_fix_path(path): value for path, value in metadata.items()}
+            return {_standardize_path(path): value for path, value in metadata.items()}
 
         # try to allow custom types with dict-like indexing
         return metadata
@@ -581,7 +581,7 @@ class _ImageBase:
         df = pd.DataFrame({"file_path": list(file_paths)})
         df["file_name"] = df["file_path"].apply(lambda x: Path(x).name)
         df["image_path"] = df["file_path"].apply(
-            lambda x: "/".join(_fix_path(x).split("/")[:-1])
+            lambda x: "/".join(_standardize_path(x).split("/")[:-1])
         )
 
         if not len(df):
@@ -607,7 +607,7 @@ class _ImageBase:
             grouped = df.drop_duplicates("image_path")
 
         grouped["imagename"] = grouped["image_path"].apply(
-            lambda x: _fix_path(Path(x).name)
+            lambda x: _standardize_path(Path(x).name)
         )
         if self.image_patterns and len(grouped):
             grouped = _get_regexes_matches_for_df(
@@ -871,7 +871,7 @@ class Band(_ImageBandBase):
                 f"Got {type(data)}"
             )
         else:
-            self._path = _fix_path(str(data))
+            self._path = _standardize_path(str(data))
             self._res = res if not (callable(res) and res() is None) else None
 
         if cmap is not None:
@@ -881,14 +881,16 @@ class Band(_ImageBandBase):
         self.processes = processes
 
         if self._all_file_paths:
-            self._all_file_paths = {_fix_path(path) for path in self._all_file_paths}
-            parent = "/".join(_fix_path(self.path).split("/")[:-1])
+            self._all_file_paths = {
+                _standardize_path(path) for path in self._all_file_paths
+            }
+            parent = "/".join(_standardize_path(self.path).split("/")[:-1])
             self._all_file_paths = {
                 path for path in self._all_file_paths if parent in path
             }
 
         if self.metadata:
-            parent = "/".join(_fix_path(self.path).split("/")[:-1])
+            parent = "/".join(_standardize_path(self.path).split("/")[:-1])
             for key, value in self.metadata.get(parent, {}).items():
                 if key == "bands" and self.band_id in value:
                     band_metadata = value[self.band_id]
@@ -906,7 +908,7 @@ class Band(_ImageBandBase):
         elif self.metadata_attributes and self.path is not None:
             if self._all_file_paths is None:
                 self._all_file_paths = _get_all_file_paths(
-                    "/".join(_fix_path(self.path).split("/")[:-1])
+                    "/".join(_standardize_path(self.path).split("/")[:-1])
                 )
             for key, value in self._get_metadata_attributes(
                 self.metadata_attributes
@@ -1261,7 +1263,7 @@ class Band(_ImageBandBase):
                 if isinstance(self.values, np.ma.core.MaskedArray):
                     dst.write_mask(self.values.mask)
 
-        self._path = _fix_path(str(path))
+        self._path = _standardize_path(str(path))
 
     def apply(self, func_: Callable, copy: bool = True, **kwargs) -> "Band":
         """Apply a function to the array."""
@@ -1532,14 +1534,14 @@ class Image(_ImageBandBase):
                 f"'data' must be string, Path-like or a sequence of Band. Got {data}"
             )
 
-        self._path = _fix_path(data)
+        self._path = _standardize_path(data)
         self._res = res if not (callable(res) and res() is None) else None
 
         if all_file_paths is None and self.path:
             self._all_file_paths = _get_all_file_paths(self.path)
         elif self.path:
             name = Path(self.path).name
-            all_file_paths = {_fix_path(x) for x in all_file_paths if name in x}
+            all_file_paths = {_standardize_path(x) for x in all_file_paths if name in x}
             self._all_file_paths = {x for x in all_file_paths if self.path in x}
         else:
             self._all_file_paths = None
@@ -1723,7 +1725,7 @@ class Image(_ImageBandBase):
         """
         metadata = self.get_image_metadata_dict()
         with _open_func(
-            _fix_path(self.path).rstrip("/") + "/metadata.json", "w"
+            _standardize_path(self.path).rstrip("/") + "/metadata.json", "w"
         ) as file:
             json.dump(metadata, file)
 
@@ -2069,7 +2071,7 @@ class ImageCollection(_ImageBase):
     ) -> None:
         """Initialiser."""
         if data is not None and kwargs.get("root"):
-            root = _fix_path(kwargs.pop("root"))
+            root = _standardize_path(kwargs.pop("root"))
             data = [f"{root}/{name}" for name in data]
             _from_root = True
         else:
@@ -2103,7 +2105,7 @@ class ImageCollection(_ImageBase):
                 try:
                     # adding band paths (asuming 'data' is a sequence of image paths)
                     self._all_file_paths = _get_child_paths_threaded(data) | {
-                        _fix_path(x) for x in data
+                        _standardize_path(x) for x in data
                     }
                 except FileNotFoundError as e:
                     if _from_root:
@@ -2113,7 +2115,7 @@ class ImageCollection(_ImageBase):
                     raise e
 
         elif isinstance(data, (str | Path | os.PathLike)):
-            self._path = _fix_path(str(data))
+            self._path = _standardize_path(str(data))
             self._all_file_paths = _get_all_file_paths(self.path)
         else:
             raise TypeError("'data' must be string, Path-like or a sequence of Image.")
@@ -2181,7 +2183,7 @@ class ImageCollection(_ImageBase):
         for img in copied:
             assert len(img) == 1
             try:
-                img._path = _fix_path(img[0].path)
+                img._path = _standardize_path(img[0].path)
             except PathlessImageError:
                 pass
         return copied
@@ -3013,7 +3015,9 @@ class ImageCollection(_ImageBase):
             data = f"'{self.path}'"
         elif all(img.path is not None for img in self):
             data = [img.path for img in self]
-            parents = {"/".join(_fix_path(path).split("/")[:-1]) for path in data}
+            parents = {
+                "/".join(_standardize_path(path).split("/")[:-1]) for path in data
+            }
             if len(parents) == 1:
                 data = [Path(path).name for path in data]
                 root = f" root='{next(iter(parents))}',"
@@ -3292,7 +3296,7 @@ def _slope_2d(array: np.ndarray, res: int | tuple[int], degrees: int) -> np.ndar
 
 
 def _get_all_file_paths(path: str) -> set[str]:
-    return {_fix_path(x) for x in sorted(set(_glob_func(path + "/**")))}
+    return {_standardize_path(x) for x in sorted(set(_glob_func(path + "/**")))}
 
 
 def _get_child_paths_threaded(data: Sequence[str]) -> set[str]:

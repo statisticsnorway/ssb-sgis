@@ -36,6 +36,7 @@ from ..geopandas_tools.conversion import to_shapely
 from ..geopandas_tools.general import get_common_crs
 from ..geopandas_tools.sfilter import sfilter
 from ..helpers import _get_file_system
+from ..helpers import _standardize_path
 
 try:
     from gcsfs import GCSFileSystem
@@ -145,20 +146,25 @@ def read_geopandas(
             )
         )
 
-    if gcs_path.endswith(".parquet"):
-        file_format: str = "parquet"
-        read_func = gpd.read_parquet
-    else:
+    if not gcs_path.endswith(".parquet"):
         file_format: str = Path(gcs_path).suffix.lstrip(".")
-        read_func = gpd.read_file
+        return _read_geopandas_single_path(
+            gcs_path,
+            read_func=gpd.read_file,
+            file_format=file_format,
+            filters=filters,
+            **kwargs,
+        )
 
-    return _read_geopandas_single_path(
+    table = _read_geopandas_single_path(
         gcs_path,
-        read_func=read_func,
-        file_format=file_format,
+        read_func=functools.partial(_read_pyarrow, file_system=file_system),
+        file_format="parquet",
         filters=filters,
         **kwargs,
     )
+    geo_metadata = _get_geo_metadata(gcs_path, file_system)
+    return _arrow_to_geopandas(table, geo_metadata)
 
 
 def get_schema(file) -> pyarrow.Schema:
@@ -314,7 +320,6 @@ def _read_pyarrow(
             return _read_partitioned_parquet(
                 path, file_system=file_system, mask=mask, **kwargs
             )
-
         # allow not being able to read empty directories that are hard to delete in gcs
 
 
@@ -1086,8 +1091,3 @@ def _get_files_in_subfolders(folderinfo: list[dict]) -> list[tuple]:
         folderinfo = new_folderinfo
 
     return fileinfo
-
-
-def _standardize_path(path: str | Path) -> str:
-    """Make sure delimiter is '/' and path ends without '/'."""
-    return str(path).replace("\\", "/").replace(r"\"", "/")
