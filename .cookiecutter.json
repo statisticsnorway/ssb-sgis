@@ -11,6 +11,8 @@
   "code_quality_level": "Medium",
   "copyright_owner": "Statistics Norway",
   "copyright_year": "2024",
+  "department_number": "",
+  "dependency_manager_tool": "poetry",
   "development_status": "Development Status :: 5 - Production/Stable",
   "email": "morten.letnes@ssb.no",
   "friendly_name": "SSB sgis",

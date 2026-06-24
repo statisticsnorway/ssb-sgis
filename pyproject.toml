@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ssb-sgis"
-version = "1.4.3"
+version = "1.4.4"
 description = "GIS functions used at Statistics Norway."
 authors = ["Morten Letnes <morten.letnes@ssb.no>"]
 license = "MIT"
@@ -187,6 +187,9 @@ max-complexity = 15
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"  # You can also use "numpy".
+
+[tool.ruff.lint.pylint]
+max-args = 8
 
 [tool.ruff.lint.pep8-naming]
 classmethod-decorators = ["classmethod", "validator", "root_validator", "pydantic.validator"]

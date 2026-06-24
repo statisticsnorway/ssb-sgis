@@ -1,29 +1,14 @@
 diff a/.pre-commit-config.yaml b/.pre-commit-config.yaml	(rejected hunks)
-@@ -23,19 +23,16 @@ repos:
-         entry: end-of-file-fixer
-         language: system
-         types: [text]
--        stages: [commit, push, manual]
-       - id: trailing-whitespace
-         name: Trim Trailing Whitespace
-         entry: trailing-whitespace-fixer
-         language: system
-         types: [text]
--        stages: [commit, push, manual]
-       - id: mixed-line-ending
-         name: Mixed Line Ending
-         entry: mixed-line-ending
-         language: system
-         types: [text]
--        stages: [commit, push, manual]
-
-       # Serialization format checkers
-       - id: check-yaml
-@@ -65,7 +62,6 @@ repos:
-         entry: darglint
+@@ -57,9 +57,9 @@ repos:
+         entry: check-ast
          language: system
          types: [python]
--        stages: [manual]
+-      - id: darglint
+-        name: darglint
+-        entry: darglint
++      - id: pydoclint
++        name: pydoclint
++        entry: pydoclint
+         language: system
+         types: [python]
        - id: ruff
-         name: ruff
-         entry: ruff check --fix --exit-non-zero-on-fix

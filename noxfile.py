@@ -34,6 +34,26 @@ nox.options.sessions = (
 )
 
 
+def install_poetry_groups(session: Session, *groups: str) -> None:
+    """Install dependencies from poetry groups, pinned to poetry.lock
+
+    Using this as a workaround until this PR is merged in:
+    https://github.com/cjolowicz/nox-poetry/pull/1080
+    """
+    with tempfile.TemporaryDirectory() as tempdir:
+        requirements_path = os.path.join(tempdir, "requirements.txt")
+        session.run(
+            "poetry",
+            "export",
+            *[f"--only={group}" for group in groups],
+            "--format=requirements.txt",
+            "--without-hashes",
+            f"--output={requirements_path}",
+            external=True,
+        )
+        session.install("-r", requirements_path)
+
+
 def activate_virtualenv_in_precommit_hooks(session: Session) -> None:
     """Activate virtualenv in hooks installed by pre-commit.
 
@@ -176,9 +196,7 @@ def tests(session: Session) -> None:
 def coverage(session: Session) -> None:
     """Produce the coverage report."""
     args = session.posargs or ["report", "--skip-empty"]
-
-    session.install("coverage[toml]")
-
+    install_poetry_groups(session, "dev")
     if not session.posargs and any(Path().glob(".coverage.*")):
         session.run("coverage", "combine")
 
@@ -204,7 +222,7 @@ def xdoctest(session: Session) -> None:
             args.append("--colored=1")
 
     session.install(".")
-    session.install("xdoctest[colors]")
+    install_poetry_groups(session, "dev")
     session.run("python", "-m", "xdoctest", *args)
 
 
@@ -216,9 +234,7 @@ def docs_build(session: Session) -> None:
         args.insert(0, "--color")
 
     session.install(".")
-    session.install(
-        "sphinx", "sphinx-autodoc-typehints", "sphinx-click", "furo", "myst-parser"
-    )
+    install_poetry_groups(session, "doc")
 
     build_dir = Path("docs", "_build")
     if build_dir.exists():
@@ -232,14 +248,7 @@ def docs(session: Session) -> None:
     """Build and serve the documentation with live reloading on file changes."""
     args = session.posargs or ["--open-browser", "docs", "docs/_build"]
     session.install(".")
-    session.install(
-        "sphinx",
-        "sphinx-autobuild",
-        "sphinx-autodoc-typehints",
-        "sphinx-click",
-        "furo",
-        "myst-parser",
-    )
+    install_poetry_groups(session, "doc")
 
     build_dir = Path("docs", "_build")
     if build_dir.exists():

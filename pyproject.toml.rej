@@ -1,10 +1,156 @@
 diff a/pyproject.toml b/pyproject.toml	(rejected hunks)
-@@ -92,8 +92,6 @@ select = [
+@@ -1,48 +1,66 @@
+-[tool.poetry]
++[project]
+ name = "ssb-sgis"
+ version = "1.0.1"
+ description = "SSB sgis"
+-authors = ["Morten Letnes <morten.letnes@ssb.no>"]
++authors = [{ name = "Morten Letnes", email = "morten.letnes@ssb.no" }]
+ license = "MIT"
+ readme = "README.md"
++requires-python = ">=3.12"
++dynamic = ["classifiers"]
++dependencies = [
++    "click>=8.0.1",
++]
++
++[project.urls]
+ homepage = "https://github.com/statisticsnorway/ssb-sgis"
+ repository = "https://github.com/statisticsnorway/ssb-sgis"
+ documentation = "https://statisticsnorway.github.io/ssb-sgis"
+-packages = [{ include = "sgis", from = "src" }]
+-classifiers = ["Development Status :: 5 - Production/Stable"]
+-
+-[tool.poetry.urls]
+ Changelog = "https://github.com/statisticsnorway/ssb-sgis/releases"
+
+-[tool.poetry.dependencies]
+-python = "^3.10"
+-click = ">=8.0.1"
+-
+-[tool.poetry.group.dev.dependencies]
+-pygments = ">=2.10.0"
+-black = { extras = ["jupyter"], version = ">=23.1.0" }
+-coverage = { extras = ["toml"], version = ">=6.2" }
+-darglint = ">=1.8.1"
+-furo = ">=2021.11.12"
+-mypy = ">=0.930"
+-pre-commit = ">=2.16.0"
+-pre-commit-hooks = ">=4.1.0"
+-ruff = ">=0.0.284"
+-pytest = ">=6.2.5"
+-sphinx = ">=6.2.1"
+-sphinx-autobuild = ">=2021.3.14"
+-sphinx-autodoc-typehints = ">=1.24.0"
+-sphinx-click = ">=3.0.2"
+-typeguard = ">=2.13.3"
+-xdoctest = { extras = ["colors"], version = ">=0.15.10" }
+-myst-parser = { version = ">=0.16.1" }
++[project.scripts]
++ssb-sgis = "sgis.__main__:main"
++
++[dependency-groups]
++lint = [
++    "black[jupyter]>=25.11.0",
++    "pre-commit>=4.4.0",
++    "pre-commit-hooks>=6.0.0",
++    "pydoclint>=0.8.3",
++    "ruff>=0.14.5",
++]
++doc = [
++    "furo>=2025.9.25",
++    "myst-parser>=4.0.1",
++    "sphinx>=8.2.3",
++    "sphinx-autobuild>=2025.8.25",
++    "sphinx-autodoc-typehints>=3.5.2",
++    "sphinx-click>=6.1.0",
++]
++
++# Type hint stubs should be placed in the dev dependency group
++dev = [
++    {include-group = "lint"},
++    {include-group = "doc"},
++    "coverage[toml]>=7.11.3",
++    "deptry>=0.24.0; python_version < '4.0'",
++    "mypy>=1.18.2",
++    "pygments>=2.19.0",
++    "pytest>=9.0.0",
++    "typeguard>=2.13.3",
++    "xdoctest[colors]>=1.3.0",
++]
++
++[tool.poetry]
++classifiers = ["Development Status :: 5 - Production/Stable"]
++requires-poetry = ">=2.3"
++packages = [{ include = "sgis", from = "src" }]
++
++[tool.poetry.requires-plugins]
++poetry-plugin-export = ">=1.9"
+
+ [tool.pytest.ini_options]
+ pythonpath = ["src"]
+
+-[tool.poetry.scripts]
+-ssb-sgis = "sgis.__main__:main"
+-
+ [tool.coverage.paths]
+ source = ["src", "*/site-packages"]
+ tests = ["tests", "*/tests"]
+@@ -56,6 +74,9 @@ relative_files = true
+ show_missing = true
+ fail_under = 50
+
++[tool.deptry.per_rule_ignores]
++DEP001 = ["nox", "nox_poetry"]  # packages available by default
++
+ [tool.mypy]
+ strict = true
+ warn_unreachable = true
+@@ -63,11 +84,20 @@ pretty = true
+ show_column_numbers = true
+ show_error_context = true
+
++[tool.pydoclint]
++style = "google"
++exclude = '\.git|\.nox'
++arg-type-hints-in-docstring = false
++check-return-types = false
++check-yield-types = false
++allow-init-docstring = true
++quiet = true
++
+ [tool.ruff]
+ force-exclude = true  # Apply excludes to pre-commit
+ show-fixes = true
+ src = ["src", "tests"]
+-target-version = "py310"  # Minimum Python version supported
++target-version = "py313"  # Minimum Python version supported
+ include = ["*.py", "*.pyi", "**/pyproject.toml", "*.ipynb"]
+ extend-exclude = [
+     "__pycache__",
+@@ -92,12 +122,16 @@ select = [
      "RUF",  # the ruff developer's own rules
  ]
  ignore = [
--    "ANN101", # Supress missing-type-self.
--    "ANN102", # Supress missing-type-cls.
-     "ANN202", # Don't requiere return type annotation for private functions.
+-    "ANN202", # Don't requiere return type annotation for private functions.
++    "ANN202", # Don't require return type annotation for private functions.
      "ANN401", # Allow type annotation with type Any.
      "D100",   # Supress undocumented-public-module. Only doc of public api required.
++    "FBT001", # Allow boolean positional arguments in a function.
++    "FBT002", # Allow boolean default positional arguments in a function.
+     "E402",   # Supress module-import-not-at-top-of-file, needed in jupyter notebooks.
+     "E501",   # Supress line-too-long warnings: trust black's judgement on this one.
++    "PLR2004", # Allow to compare with unnamed numerical constants.
+ ]
++external = ["DOC"]  # Avoiding removing any codes starting with `DOC` from any `# noqa` directives.
+
+ [tool.ruff.lint.isort]
+ force-single-line = true
+@@ -129,5 +166,5 @@ classmethod-decorators = ["classmethod", "validator", "root_validator", "pydanti
+ ]
+
+ [build-system]
+-requires = ["poetry-core>=1.0.0"]
++requires = ["poetry-core>=2.0.0,<3.0.0"]
+ build-backend = "poetry.core.masonry.api"

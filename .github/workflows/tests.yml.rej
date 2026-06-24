@@ -1,22 +1,64 @@
 diff a/.github/workflows/tests.yml b/.github/workflows/tests.yml	(rejected hunks)
-@@ -38,7 +38,7 @@ jobs:
-         uses: actions/checkout@v4
+@@ -15,18 +18,18 @@ jobs:
+       fail-fast: false
+       matrix:
+         include:
+-          - { python: "3.10", os: "ubuntu-latest", session: "pre-commit" }
+-          - { python: "3.10", os: "ubuntu-latest", session: "mypy" }
+-          - { python: "3.11", os: "ubuntu-latest", session: "mypy" }
++          - { python: "3.13", os: "ubuntu-latest", session: "pre-commit" }
+           - { python: "3.12", os: "ubuntu-latest", session: "mypy" }
+-          - { python: "3.10", os: "ubuntu-latest", session: "tests" }
+-          - { python: "3.11", os: "ubuntu-latest", session: "tests" }
++          - { python: "3.13", os: "ubuntu-latest", session: "mypy" }
++          - { python: "3.14", os: "ubuntu-latest", session: "mypy" }
+           - { python: "3.12", os: "ubuntu-latest", session: "tests" }
+-          - { python: "3.12", os: "windows-latest", session: "tests" }
+-          - { python: "3.12", os: "macos-latest", session: "tests" }
+-          - { python: "3.10", os: "ubuntu-latest", session: "typeguard" }
+-          - { python: "3.10", os: "ubuntu-latest", session: "xdoctest" }
+-          - { python: "3.10", os: "ubuntu-latest", session: "docs-build" }
++          - { python: "3.13", os: "ubuntu-latest", session: "tests" }
++          - { python: "3.14", os: "ubuntu-latest", session: "tests" }
++          - { python: "3.13", os: "windows-latest", session: "tests" }
++          - { python: "3.13", os: "macos-latest", session: "tests" }
++          - { python: "3.13", os: "ubuntu-latest", session: "typeguard" }
++          - { python: "3.13", os: "ubuntu-latest", session: "xdoctest" }
++          - { python: "3.13", os: "ubuntu-latest", session: "docs-build" }
+
+     env:
+       NOXSESSION: ${{ matrix.session }}
+@@ -35,10 +38,12 @@ jobs:
+
+     steps:
+       - name: Check out the repository
+-        uses: actions/checkout@v4
++        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
++        with:
++          persist-credentials: false
 
        - name: Set up Python ${{ matrix.python }}
--        uses: actions/setup-python@v5.2.0
-+        uses: actions/setup-python@v5.3.0
+-        uses: actions/setup-python@v5.3.0
++        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
          with:
            python-version: ${{ matrix.python }}
 
-@@ -121,9 +122,9 @@ jobs:
+@@ -117,14 +122,15 @@ jobs:
+     needs: tests
+     steps:
+       - name: Check out the repository
+-        uses: actions/checkout@v4
++        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+         with:
++          persist-credentials: false
            fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
 
        - name: Set up Python
--        uses: actions/setup-python@v5.2.0
-+        uses: actions/setup-python@v5.3.0
+-        uses: actions/setup-python@v5.3.0
++        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
          with:
--          python-version: "3.12"
-+          python-version: "3.10"
+-          python-version: "3.10"
++          python-version: "3.13"
 
        - name: Upgrade pip
          run: |
