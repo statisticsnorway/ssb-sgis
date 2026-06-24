@@ -290,16 +290,33 @@ def _read_pyarrow(
         if mask is not None and not intersects(path, mask, file_system):
             return
 
+        columns = None
         try:
             table = pq.read_table(path, **kwargs)
         except pyarrow.lib.ArrowTypeError:
-            schema = kwargs.get("schema", get_schema(path))
+            if "schema" not in kwargs:
+                schema = get_schema(path)
+                if "columns" in kwargs and hasattr(kwargs["columns"], "__iter__"):
+                    columns = list(kwargs["columns"])
+                    schema = pyarrow.schema(
+                        [
+                            (schema.field(col).name, schema.field(col).type)
+                            for col in schema.names
+                            if col in columns
+                        ],
+                        metadata=schema.metadata,
+                    )
+            else:
+                schema = kwargs["schema"]
+
             new_kwargs = {
                 key: value for key, value in kwargs.items() if key != "schema"
             }
             table = pq.read_table(path, schema=schema, **new_kwargs)
         for col, value in partition_cols_and_values.items():
-            if col in table.schema.names:
+            if col in table.schema.names or (
+                columns is not None and col not in columns
+            ):
                 continue
             dtype = partition_dtypes.get(col)
             table = table.append_column(
@@ -347,15 +364,8 @@ def _get_bounds_parquet_from_open_file(
 def _get_geo_metadata(file, file_system) -> dict:
     try:
         meta = pq.read_schema(file).metadata
-    except FileNotFoundError as e:
-        try:
-            meta = pq.ParquetDataset(file).schema.metadata
-        except Exception:
-            with file_system.open(file, "rb") as f:
-                meta = pq.read_schema(f).metadata
-    except Exception as e:
-        raise e.__class__(f"{file}: {e}") from e
-
+    except FileNotFoundError:
+        meta = pq.ParquetDataset(file).schema.metadata
     return json.loads(meta[b"geo"])
 
 
@@ -929,7 +939,7 @@ def _read_partitioned_parquet(
         else:
             filters = filters_from_mask
 
-    schema = get_schema(path)
+    schema = kwargs.pop("schema", get_schema(path))
     if not any(col in partition_cols for col in schema.names):
         # Note that schema is not passed to read_parquet because the partition_cols are not part of the schema, meaning they get left out if specified
         return gpd.read_parquet(
