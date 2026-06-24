@@ -398,9 +398,7 @@ def to_gdf(
                 crs = CRS(
                     int(
                         "".join(
-                            x
-                            for x in matches.group(0)  # type:ignore
-                            if x.isnumeric()
+                            x for x in matches.group(0) if x.isnumeric()  # type: ignore
                         )
                     )
                 )

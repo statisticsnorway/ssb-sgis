@@ -45,12 +45,10 @@ def run_html_server(contents: str | None = None, port: int = 3000) -> None:
         # """
         # )
     stop_address = f"{display_address}/stop"
-    display_content = HTML(
-        f"""
+    display_content = HTML(f"""
     <p>Click <a href='{display_address}'>here</a> to open in browser.</p>
     <p>Click <a href='{stop_address}'>here</a> to stop.</p>
-    """
-    )
+    """)
 
     class HTTPServerRequestHandler(BaseHTTPRequestHandler):
         """A handler of request for the server, hosting static content."""
