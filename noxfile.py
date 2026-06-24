@@ -235,7 +235,7 @@ def docs_build(session: Session) -> None:
         args.insert(0, "--color")
 
     session.install(".")
-    install_poetry_groups(session, "doc")
+    install_poetry_groups(session, "dev")
 
     build_dir = Path("docs", "_build")
     if build_dir.exists():
