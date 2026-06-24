@@ -43,6 +43,9 @@ def test_failing_line_along_road():
     closest_node = sg.get_k_nearest_points_for_deadends(df, k=1, max_distance=3)
     sg.explore(closest_node, df)
     assert len(closest_node) == 1, closest_node
+    assert (
+        sg.get_geom_type(closest_node) == "point"
+    ), closest_node.geom_type.value_counts()
     assert int(df.length.sum()) == 120, df.length.sum()
     df = sg.split_lines_by_nearest_point(df, closest_node)
     assert int(df.length.sum()) == 120, df.length.sum()

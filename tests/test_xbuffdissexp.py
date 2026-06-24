@@ -61,10 +61,11 @@ def not_test_dissexp_n_jobs():
 
 def test_dissexp_by_cluster():
     gdf = sg.random_points(100).assign(
-        x=[np.random.choice([*"abc"]) for _ in range(100)],
-        y=[np.random.choice([*"abc"]) for _ in range(100)],
+        x=[np.random.choice([*"abc"] + [pd.NA, None]) for _ in range(100)],
+        y=[np.random.choice([*"abc"] + [pd.NA, None]) for _ in range(100)],
     )
     gdf.geometry = gdf.buffer(0.001)
+    assert "x" in gdf
     for n_jobs in [1, 3]:
         for processes in [1, 3]:
             print(n_jobs, processes)
@@ -72,13 +73,12 @@ def test_dissexp_by_cluster():
             regular = sg.dissexp(gdf, n_jobs=n_jobs)
             assert len(by_cluster) == len(regular), (len(by_cluster), len(regular))
             assert round(by_cluster.area.sum(), 3) == round(regular.area.sum(), 3)
-
+            assert "x" in gdf, (n_jobs, processes)
             assert list(sorted(by_cluster.columns)) == [
                 "geometry",
                 "x",
                 "y",
             ], by_cluster.columns
-
             assert list(regular.columns) == ["x", "y", "geometry"], regular.columns
 
             diss = sg.diss_by_cluster(gdf, by="x", n_jobs=n_jobs, processes=processes)
