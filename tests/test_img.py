@@ -4,6 +4,7 @@ import numbers
 import os
 import platform
 import re
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 from time import perf_counter
@@ -23,9 +24,6 @@ src = str(Path(__file__).parent).replace("tests", "") + "src"
 testdata = str(Path(__file__).parent.parent) + "/tests/testdata/raster"
 
 metadata_df_path = str(Path(testdata) / "sentinel2_metadata.parquet")
-
-import sys
-
 sys.path.insert(0, src)
 
 import sgis as sg
