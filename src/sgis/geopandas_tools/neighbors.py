@@ -502,5 +502,4 @@ def _get_edges(
       A 2d numpy array of edges (from-to indices).
     """
     row_indices = np.arange(len(indices)).reshape(-1, 1)
-
     return np.stack((np.broadcast_to(row_indices, indices.shape), indices), axis=-1)
