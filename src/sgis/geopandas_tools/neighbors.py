@@ -484,6 +484,7 @@ def k_nearest_neighbors(
 
     nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(to_array)
     distances, indices = nbr.kneighbors(from_array)
+
     return distances, indices
 
 

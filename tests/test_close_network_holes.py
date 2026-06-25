@@ -97,6 +97,11 @@ def test_line_angle_90():
         crs=25833,
     )
 
+    nw = sg.close_network_holes(lines_angle_90, max_distance=1, max_angle=45)
+    if __name__ == "__main__":
+        nw.plot("hole")
+    assert len(nw) == 3, nw
+
     nw = sg.close_network_holes(lines_angle_90, max_distance=1, max_angle=180)
     if __name__ == "__main__":
         lines_angle_90.plot()
@@ -109,11 +114,6 @@ def test_line_angle_90():
     nw = sg.close_network_holes(lines_angle_90, max_distance=2, max_angle=180)
     assert len(nw) == 6, len(nw)
 
-    nw = sg.close_network_holes(lines_angle_90, max_distance=1, max_angle=45)
-    if __name__ == "__main__":
-        nw.plot("hole")
-    assert len(nw) == 3, len(nw)
-
     lines_angle_90_both = sg.to_gdf(
         MultiLineString([LineString([(0, 0), (1, 0)]), LineString([(1, 1), (2, 1)])]),
         crs=25833,
@@ -123,7 +123,7 @@ def test_line_angle_90():
     if __name__ == "__main__":
         lines_angle_90_both.plot()
         nw.plot("hole")
-    assert len(nw) == 2, len(nw)
+    assert len(nw) == 2, nw
 
     nw = sg.close_network_holes(lines_angle_90_both, max_distance=1, max_angle=90)
     if __name__ == "__main__":
@@ -310,12 +310,10 @@ def main():
     from oslo import points_oslo
     from oslo import roads_oslo
 
-    test_very_small_network_hole()
-
-    test_failing_line_along_road()
-
-    test_line_angle_0()
     test_line_angle_90()
+    test_very_small_network_hole()
+    test_failing_line_along_road()
+    test_line_angle_0()
     test_line_angle_45()
     test_sharp_angle()
     test_close_network_holes(roads_oslo(), points_oslo())
