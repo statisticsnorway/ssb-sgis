@@ -667,6 +667,8 @@ class Explore(Map):
             gdf = self.gdf.loc[self.gdf[self.column] == cat]
             new_gdfs[cat] = gdf
             new_shows[cat] = next(iter(self.show.values()))
+        new_gdfs[self.nan_label] = self.gdf[self.gdf[self.column].isna()]
+        new_shows[self.nan_label] = next(iter(self.show.values()))
         self._gdfs = new_gdfs
         self._gdf = pd.concat(new_gdfs, ignore_index=True)
         self.show = new_shows

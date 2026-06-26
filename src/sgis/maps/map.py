@@ -128,8 +128,8 @@ class Map:
         self.bins = bins
         self._k = k
         self.nan_label = nan_label
-        self.nan_color = nan_color
         self._nan_color_was_none = nan_color is None
+        self.nan_color = nan_color or "#969696"
         self._cmap = cmap
         self.scheme = scheme
         self._categories_colors_dict = {}

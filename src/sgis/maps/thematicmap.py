@@ -173,7 +173,7 @@ class ThematicMap(Map):
         k: int = 5,
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
-        nan_color: str | None = None,
+        nan_color: str = "#666666",
         nan_hatch: str | None = None,
         hatch: str | None = None,
         legend_kwargs: dict | None = None,
