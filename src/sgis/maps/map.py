@@ -99,7 +99,7 @@ class Map:
         k: int = 5,
         bins: tuple[float] | None = None,
         nan_label: str = "Missing",
-        nan_color: str = "#969696",
+        nan_color: str | None = None,
         scheme: str = DEFAULT_SCHEME,
         cmap: str | None = None,
         categorical: bool | None = None,
@@ -128,7 +128,8 @@ class Map:
         self.bins = bins
         self._k = k
         self.nan_label = nan_label
-        self.nan_color = nan_color
+        self._nan_color_was_none = nan_color is None
+        self.nan_color = nan_color or "#969696"
         self._cmap = cmap
         self.scheme = scheme
         self._categories_colors_dict = {}
