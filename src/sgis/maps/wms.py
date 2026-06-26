@@ -362,7 +362,7 @@ class NorgeIBilderWms(WmsLoader):
 def _get_norge_i_bilder_wmts() -> folium.TileLayer:
     """Returns folium.TileLayer with Norge i bilder-WMTS with valid token."""
     token_url = "https://tilecache.norgeibilder.no/token/tilecache"
-    auth = HTTPBasicAuth("")
+    auth = HTTPBasicAuth()
     data = {
         "client": "requestip",
         "expiration": "10080",

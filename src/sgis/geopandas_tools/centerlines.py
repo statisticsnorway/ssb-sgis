@@ -2,6 +2,7 @@ import functools
 import itertools
 import warnings
 
+import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
@@ -257,9 +258,10 @@ def _get_points_in_polygons(geometries: GeoSeries, precision: float) -> GeoSerie
     within_polygons, not_within = sfilter_split(
         crossing_lines, geometries, predicate="within"
     )
-
     intersect_polys_at_two_places = (
-        not_within.intersection(unary_union(get_rings(geometries))).geom_type
+        not_within.intersection(
+            unary_union(get_rings(np.array(geometries, copy=True)))
+        ).geom_type
         == "MultiPoint"
     )
     not_within_but_relevant = not_within.loc[intersect_polys_at_two_places]
@@ -277,7 +279,7 @@ def _get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
     rectangles = pd.concat([not_thin, thin]).minimum_rotated_rectangle()
 
     # get_rings returns array with integer index that must be mapped to pandas index
-    rings, indices = get_rings(rectangles, return_index=True)
+    rings, indices = get_rings(np.array(rectangles, copy=True), return_index=True)
     int_to_pd_index = dict(enumerate(rectangles.index))
     indices = [int_to_pd_index[i] for i in indices]
 

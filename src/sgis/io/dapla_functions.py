@@ -217,13 +217,29 @@ def _read_geopandas_from_iterable(
         for path in paths
         if filters is None or expression_match_path(filters, path)
     ]
-    results: list[pyarrow.Table] = _read_pyarrow_with_threads(
-        paths,
-        file_system=file_system,
-        mask=mask,
-        use_threads=use_threads,
-        **kwargs,
-    )
+    try:
+        results: list[pyarrow.Table] = _read_pyarrow_with_threads(
+            paths,
+            file_system=file_system,
+            mask=mask,
+            use_threads=use_threads,
+            **kwargs,
+        )
+    except _FileIsPartitionedError:
+        return pd.concat(
+            [
+                _read_partitioned_parquet(
+                    path,
+                    filters=filters,
+                    file_system=file_system,
+                    mask=mask,
+                    use_threads=use_threads,
+                    **kwargs,
+                )
+                for path in paths
+            ]
+        )
+
     if results:
         try:
             return _concat_pyarrow_to_geopandas(results, paths, file_system)
@@ -334,10 +350,16 @@ def _read_pyarrow(
         if not len(child_paths):
             raise e
         elif any(x.endswith(".parquet") for x in child_paths):
-            return _read_partitioned_parquet(
-                path, file_system=file_system, mask=mask, **kwargs
-            )
-        # allow not being able to read empty directories that are hard to delete in gcs
+            raise _FileIsPartitionedError(
+                f"Cannot read partitioned files here for {path} with child paths {child_paths}"
+            ) from e
+
+        # return None to allow not being able to read empty directories that are hard to delete in gcs
+        return None
+
+
+class _FileIsPartitionedError(ValueError):
+    pass
 
 
 def _get_bounds_parquet(

@@ -26,12 +26,12 @@ def make_all_singlepart(
     """
     # only explode if nessecary
     if index_parts or ignore_index:
-        gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
+        gdf = gdf.copy().explode(index_parts=index_parts, ignore_index=ignore_index)
 
     while not np.all(
         np.isin(_get_geom_types(gdf), ["Polygon", "Point", "LineString", "LinearRing"])
     ):
-        gdf = gdf.explode(index_parts=index_parts, ignore_index=ignore_index)
+        gdf = gdf.copy().explode(index_parts=index_parts, ignore_index=ignore_index)
 
     return gdf
 

@@ -440,20 +440,11 @@ def _run_func_by_cluster(
     gdf = make_all_singlepart(gdf)
 
     if by:
-        if processes == 1:
-            gdf = gdf.groupby(by, group_keys=False, dropna=False, as_index=False).apply(
-                get_group_clusters
-            )
-        else:
-            gdf = pd.concat(
-                Parallel(processes, backend="loky").map(
-                    get_group_clusters,
-                    [
-                        gdf[lambda x: x[by].values == values]
-                        for values in np.unique(gdf[by].values)
-                    ],
-                ),
-            )
+        parts = [
+            get_group_clusters(grp)
+            for _, grp in gdf.groupby(by, dropna=False, sort=False)
+        ]
+        gdf = pd.concat(parts, ignore_index=True)
         _by = ["_cluster"] + by
     else:
         gdf = get_group_clusters(gdf)

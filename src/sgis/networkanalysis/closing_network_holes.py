@@ -64,7 +64,7 @@ def get_k_nearest_points_for_deadends(
         segs_by_deadends.geometry.values,
         deadends.loc[segs_by_deadends["index_right"].values].geometry.values,
     )
-    segs_by_deadends.geometry.loc[:] = shapely.get_point(lines_between, 0)
+    segs_by_deadends.loc[:, "geometry"] = shapely.get_point(lines_between, 0)
 
     length_mapper = dict(enumerate(shapely.length(lines_between)))
     sorted_lengths = dict(
@@ -75,7 +75,6 @@ def get_k_nearest_points_for_deadends(
     k_nearest_per_deadend = nearest_first.geometry.groupby(level=0).apply(
         lambda x: x.head(k)
     )
-
     return GeoDataFrame({"geometry": k_nearest_per_deadend.values}, crs=lines.crs)
 
 
@@ -169,7 +168,6 @@ def close_network_holes(
 
     lines = lines.drop_duplicates("_sorted").drop(columns="_sorted")
 
-    # new_lines, angles = _close_holes_all_lines(
     new_lines: GeoSeries = _close_holes_all_lines(
         lines,
         nodes,
@@ -319,6 +317,7 @@ def _close_holes_all_lines(
     # and endpoints of the new lines in lists, looping through the k neighbour points
     new_sources: list[str] = []
     new_targets: list[str] = []
+
     # all_angles = []
     for i in np.arange(idx_start, k):
         # to break out of the loop if no new_targets that meet the condition are found
@@ -364,7 +363,7 @@ def _close_holes_all_lines(
         new_sources = new_sources + [f for f in from_wkt if f not in new_sources]
 
         # break out of the loop when no new new_targets meet the condition
-        if len_now == len(new_sources):
+        if len_now and len_now == len(new_sources):
             break
 
     # make GeoSeries with straight lines

@@ -1,7 +1,7 @@
 {
   "template": "https://github.com/statisticsnorway/ssb-pypitemplate.git",
-  "commit": "66884cffa5aa67ed505bb121009501b51cc4d847",
-  "checkout": null,
+  "commit": "57b7b713c78245687a1d5421aba8bf01bead2245",
+  "checkout": "2026.5.27",
   "context": {
     "cookiecutter": {
       "project_name": "ssb-sgis",
@@ -16,6 +16,8 @@
       "license": "MIT",
       "development_status": "Development Status :: 5 - Production/Stable",
       "code_quality_level": "Medium",
+      "dependency_manager_tool": "poetry",
+      "department_number": "",
       "_copy_without_render": [
         "*.rst_t"
       ],

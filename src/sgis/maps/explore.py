@@ -128,8 +128,7 @@ class MeasureControlFix(plugins.MeasureControl):
     Kudos to abewartech (https://github.com/ljagis/leaflet-measure/issues/171).
     """
 
-    _template = Template(
-        """
+    _template = Template("""
 {% macro script(this, kwargs) %}
     L.Control.Measure.include({ _setCaptureMarkerIcon: function () { this._captureMarker.options.autoPanOnFocus = false; this._captureMarker.setIcon( L.divIcon({ iconSize: this._map.getSize().multiplyBy(2), }), ); }, });
     var {{ this.get_name() }} = new L.Control.Measure(
@@ -137,8 +136,7 @@ class MeasureControlFix(plugins.MeasureControl):
     {{this._parent.get_name()}}.addControl({{this.get_name()}});
 
 {% endmacro %}
-    """
-    )
+    """)
 
     def __init__(
         self, active_color: str = "red", completed_color: str = "red", **kwargs

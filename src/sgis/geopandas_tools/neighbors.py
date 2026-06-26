@@ -484,6 +484,7 @@ def k_nearest_neighbors(
 
     nbr = NearestNeighbors(n_neighbors=k, algorithm="ball_tree").fit(to_array)
     distances, indices = nbr.kneighbors(from_array)
+
     return distances, indices
 
 
@@ -501,5 +502,4 @@ def _get_edges(
       A 2d numpy array of edges (from-to indices).
     """
     row_indices = np.arange(len(indices)).reshape(-1, 1)
-
     return np.stack((np.broadcast_to(row_indices, indices.shape), indices), axis=-1)
