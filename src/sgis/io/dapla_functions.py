@@ -11,12 +11,12 @@ import shutil
 import uuid
 from collections.abc import Callable
 from collections.abc import Iterable
+from collections.abc import Sized
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
-import joblib
 import numpy as np
 import pandas as pd
 import pyarrow
@@ -48,6 +48,7 @@ except ImportError:
 
 PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
 NULL_VALUE = "__HIVE_DEFAULT_PARTITION__"
+N_JOBS = 20
 
 
 def read_geopandas(
@@ -265,7 +266,10 @@ def _read_pyarrow_with_threads(
     read_partial = functools.partial(_read_pyarrow, **kwargs)
     if not use_threads:
         return [x for x in map(read_partial, paths) if x is not None]
-    with ThreadPoolExecutor() as executor:
+    if not isinstance(paths, Sized):
+        paths = list(paths)
+    threads = min(len(paths), N_JOBS, int(multiprocessing.cpu_count() * 0.9)) or 1
+    with ThreadPoolExecutor(threads) as executor:
         return [x for x in executor.map(read_partial, paths) if x is not None]
 
 
@@ -488,19 +492,24 @@ def get_bounds_series(
 
     if isinstance(paths, (str | Path)):
         paths = [paths]
-
+    if not isinstance(paths, Sized):
+        paths = list(paths)
     threads = (
-        min(len(paths), int(multiprocessing.cpu_count() * 1.2)) or 1
+        min(len(paths), N_JOBS, int(multiprocessing.cpu_count() * 0.9)) or 1
         if use_threads
         else 1
     )
 
-    with joblib.Parallel(n_jobs=threads, backend="threading") as parallel:
-        bounds: list[tuple[list[float], dict]] = parallel(
-            joblib.delayed(_get_bounds_parquet)(
-                path, file_system=file_system, pandas_fallback=pandas_fallback
+    with ThreadPoolExecutor(threads) as executor:
+        bounds: list[tuple[list[float], dict]] = list(
+            executor.map(
+                functools.partial(
+                    _get_bounds_parquet,
+                    file_system=file_system,
+                    pandas_fallback=pandas_fallback,
+                ),
+                paths,
             )
-            for path in paths
         )
     crss = {json.dumps(x[1]) for x in bounds}
     crs = get_common_crs(
@@ -767,7 +776,9 @@ def _write_partitioned_geoparquet(
                     _remove_file(sibling_path, file_system)
             write_func(rows, out_path, schema=schema, **kwargs)
 
-    with ThreadPoolExecutor() as executor:
+    threads = min(len(paths), N_JOBS, int(multiprocessing.cpu_count() * 0.9)) or 1
+
+    with ThreadPoolExecutor(threads) as executor:
         list(executor.map(threaded_write, dfs, paths))
 
     a_partition_col_is_string_type_but_all_numeric_values = any(
