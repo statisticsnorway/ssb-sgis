@@ -163,6 +163,8 @@ def read_geopandas(
         filters=filters,
         **kwargs,
     )
+    if pandas_fallback and not len(table):
+        return table.to_pandas()
     geo_metadata = _get_geo_metadata(gcs_path, file_system)
     return _arrow_to_geopandas(table, geo_metadata)
 
