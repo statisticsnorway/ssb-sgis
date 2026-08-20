@@ -188,7 +188,7 @@ def buffdiss(
 def _dissolve(
     gdf: GeoDataFrame,
     aggfunc: str = "first",
-    grid_size: None | float = None,
+    grid_size: float | None = None,
     as_index: bool = True,
     n_jobs: int = 1,
     union_runner: UnionRunner | None = None,

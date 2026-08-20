@@ -25,7 +25,7 @@ from .conf import config
 
 
 def _get_file_system(
-    file_system: None | AbstractFileSystem, kwargs: dict
+    file_system: AbstractFileSystem | None, kwargs: dict
 ) -> AbstractFileSystem:
     if (
         file_system is not None and ("filesystem" in kwargs or "file_system" in kwargs)
