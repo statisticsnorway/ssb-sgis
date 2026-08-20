@@ -226,6 +226,7 @@ def _read_geopandas_from_iterable(
             file_system=file_system,
             mask=mask,
             use_threads=use_threads,
+            filters=filters,
             **kwargs,
         )
     except _FileIsPartitionedError:
@@ -315,7 +316,7 @@ def _read_pyarrow(
         columns = None
         try:
             table = pq.read_table(path, **kwargs)
-        except pyarrow.lib.ArrowTypeError:
+        except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid):
             if "schema" not in kwargs:
                 schema = get_schema(path)
                 if "columns" in kwargs and hasattr(kwargs["columns"], "__iter__"):
