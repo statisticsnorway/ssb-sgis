@@ -365,7 +365,8 @@ def samplemap(
 
         sample = sample.clip(mask).explode(ignore_index=True).sample(1)
 
-    random_point = sample.sample_points(size=1)
+    # explode because sample_points returns MultiPoint, which has no .x and .y attr
+    random_point = sample.sample_points(size=1).explode(ignore_index=True)
 
     try:
         center = (random_point.geometry.iloc[0].x, random_point.geometry.iloc[0].y)
