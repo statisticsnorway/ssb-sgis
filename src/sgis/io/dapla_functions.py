@@ -761,8 +761,12 @@ def _write_partitioned_geoparquet(
                 raise pyarrow.ArrowInvalid(
                     f"Could not write to {path} as the directory is not empty and existing_data_behavior is to error"
                 )
+            elif existing_data_behavior == "overwrite_or_ignore":
+                this_basename = this_basename.replace("-{i}", str(i + 1))
             else:
-                this_basename = basename_template.replace("-{i}", str(i + 1))
+                raise ValueError(
+                    f"existing_data_behavior must be one of 'error', 'overwrite_or_ignore', or 'delete_matching'. Got {existing_data_behavior}."
+                )
 
         out_path = str(_standardize_path(path) + "/" + this_basename)
         try:

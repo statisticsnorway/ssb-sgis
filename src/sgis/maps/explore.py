@@ -295,6 +295,7 @@ class Explore(Map):
         display: bool = True,
         wms: WmsLoader | None = None,
         file_system=None,
+        reset_index: bool = True,
         **kwargs,
     ) -> None:
         """Initialiser.
@@ -324,6 +325,7 @@ class Explore(Map):
             max_nodata_percentage: Maximum percentage nodata values (e.g. clouds) ro allow in
                 image arrays.
             display: Whether to display the map interactively.
+            reset_index: Whether to reset the index.
             wms: A WmsLoader instance for loading image tiles as layers. E.g. NorgeIBilderWms.
             file_system: Any file system instance with an 'open' method. Used to write html file
                 to 'out_path'.
@@ -345,6 +347,7 @@ class Explore(Map):
         self.display = display
         self.wms = [wms] if isinstance(wms, WmsLoader) else wms
         self.legend = None
+        self.reset_index = reset_index
         self.file_system = _get_file_system(file_system, kwargs)
 
         self.browser = browser
@@ -390,10 +393,11 @@ class Explore(Map):
         # stringify or remove columns not renerable by leaflet (list, geometry etc.)
         new_gdfs, show_new = {}, {}
         for label, gdf, show in dict_zip(self._gdfs, self.show):
-            try:
-                gdf = gdf.reset_index()
-            except Exception:
-                pass
+            if self.reset_index:
+                try:
+                    gdf = gdf.reset_index()
+                except Exception:
+                    pass
             for col in gdf.columns:
                 if is_datetime64_any_dtype(gdf[col]):
                     try:

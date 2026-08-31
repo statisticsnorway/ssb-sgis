@@ -1,6 +1,6 @@
 # Contributor Guide
 
-Thank you for your interest in improving this project.
+Thank you for your interest in improving the Hypermodern Python Cookiecutter.
 This project is open-source under the [MIT license] and
 welcomes contributions in the form of bug reports, feature requests, and pull requests.
 
@@ -32,74 +32,28 @@ Request features on the [Issue Tracker].
 
 ## How to set up your development environment
 
-You need Python 3.11+ and the following tools:
+You need Python 3.10+ and the following tools:
 
+- [Cookiecutter]
 - [Poetry]
 - [Nox]
 - [nox-poetry]
 
-Install [pipx]:
+Fork the repository on [GitHub],
+and clone the fork to your local machine. You can now generate a project
+from your development version:
 
 ```console
-python -m pip install --user pipx
-python -m pipx ensurepath
+$ cookiecutter path/to/cookiecutter-hypermodern-python
 ```
 
-Install [Poetry]:
-
-```console
-pipx install poetry
-```
-
-Install [Nox] and [nox-poetry]:
-
-```console
-pipx install nox
-pipx inject nox nox-poetry
-```
-
-Install the pre-commit hooks
-
-```console
-nox --session=pre-commit -- install
-```
-
-Install the package with development requirements:
-
-```console
-poetry install
-```
-
-You can now run an interactive Python session, or your app:
-
-```console
-poetry run python
-poetry run ssb-sgis
-```
+You may also want to push your generated project to GitHub,
+and set up [continuous integration].
 
 ## How to test the project
 
-Run the full test suite:
-
-```console
-nox
-```
-
-List the available Nox sessions:
-
-```console
-nox --list-sessions
-```
-
-You can also run a specific Nox session.
-For example, invoke the unit test suite like this:
-
-```console
-nox --session=tests
-```
-
-Unit tests are located in the _tests_ directory,
-and are written using the [pytest] testing framework.
+Please refer to the [User Guide]
+for instructions on how to run the test suite locally.
 
 ## How to submit changes
 
@@ -113,26 +67,95 @@ Your pull request needs to meet the following guidelines for acceptance:
 
 Feel free to submit early, though—we can always iterate on this.
 
-To run linting and code formatting checks before committing your change, you can install pre-commit as a Git hook by running the following command:
-
-```console
-nox --session=pre-commit -- install
-```
-
 It is recommended to open an issue before starting work on anything.
 This will allow a chance to talk it over with the owners and validate your approach.
 
-[mit license]: https://opensource.org/licenses/MIT
-[source code]: https://github.com/statisticsnorway/ssb-sgis
-[documentation]: https://statisticsnorway.github.io/ssb-sgis
-[issue tracker]: https://github.com/statisticsnorway/ssb-sgis/issues
-[pipx]: https://pipx.pypa.io/
-[poetry]: https://python-poetry.org/
+## How to accept changes
+
+_You need to be a project maintainer to accept changes._
+
+Before accepting a pull request, go through the following checklist:
+
+- The PR must pass all checks.
+- The PR must have a descriptive title.
+- The PR should be labelled with the kind of change (see below).
+
+Release notes are pre-filled with titles and authors of merged pull requests.
+Labels group the pull requests into sections.
+The following list shows the available sections,
+with associated labels in parentheses:
+
+- 💥 Breaking Changes (`breaking`)
+- 🚀 Features (`enhancement`)
+- 🔥 Removals and Deprecations (`removal`)
+- 🐞 Fixes (`bug`)
+- 🐎 Performance (`performance`)
+- 🚨 Testing (`testing`)
+- 👷 Continuous Integration (`ci`)
+- 📚 Documentation (`documentation`)
+- 🔨 Refactoring (`refactoring`)
+- 💄 Style (`style`)
+- 📦 Dependencies (`dependencies`)
+
+To merge the pull request, follow these steps:
+
+1. Click **Squash and Merge**.
+   (Select this option from the dropdown menu of the merge button, if it is not shown.)
+2. Click **Confirm squash and merge**.
+3. Click **Delete branch**.
+
+## How to make a release
+
+_You need to be a project maintainer to make a release._
+
+Before making a release, go through the following checklist:
+
+- All pull requests for the release have been merged.
+- The default branch passes all checks.
+
+Releases are made by publishing a GitHub Release.
+A draft release is being maintained based on merged pull requests.
+To publish the release, follow these steps:
+
+1. Click the Releases heading on the GitHub repo and check that the Release Draft is
+   OK. Edit if necessary.
+2. On a clean main-branch in the repo, run the following command:
+   `nox -s prepare-release -- --token=<your github token>`
+   It will update the current release version in the documentation to the current
+   date. Example: 2023.10.20
+3. Verify that the pull request checks are OK (green).
+4. Run the following command:
+   `nox -s publish-release -- --token=<your github token>`
+5. If you need multiple releases a day or a custom tag, use the following commands
+   instead of the commands in 2 and 4:
+   ```shell
+   nox -s prepare-release -- --token=<your github token> <tag>
+   nox -s publish-release -- --token=<your github token> <tag>
+   ```
+
+Version numbers adhere to [Calendar Versioning],
+of the form `YYYY.MM.DD`.
+
+After publishing the release, the following automated steps are triggered:
+
+- The Git tag is applied to the repository.
+- [GitHub Pages] builds a new stable version of the documentation.
+
+[calendar versioning]: https://calver.org/
+[continuous integration]: https://cookiecutter-hypermodern-python.readthedocs.io/en/stable/quickstart.html#continuous-integration
+[cookiecutter]: https://cookiecutter.readthedocs.io/
+[documentation]: https://cookiecutter-hypermodern-python.readthedocs.io/
+[github]: https://github.com/statisticsnorway/ssb-pypitemplate
+[github pages]: https://statisticsnorway.github.io/ssb-pypitemplate/
+[issue tracker]: https://github.com/statisticsnorway/ssb-pypitemplate/issues
+[mit license]: https://opensource.org/license/mit/
 [nox]: https://nox.thea.codes/
 [nox-poetry]: https://nox-poetry.readthedocs.io/
-[pytest]: https://pytest.readthedocs.io/
-[pull request]: https://github.com/statisticsnorway/ssb-sgis/pulls
+[poetry]: https://python-poetry.org/
+[pull request]: https://github.com/statisticsnorway/ssb-pypitemplate/pulls
+[source code]: https://github.com/statisticsnorway/ssb-pypitemplate
+[user guide]: https://cookiecutter-hypermodern-python.readthedocs.io/en/latest/guide.html#how-to-test-your-project
 
 <!-- github-only -->
 
-[code of conduct]: CODE_OF_CONDUCT.md
+[code of conduct]: CODE_OF_CONDUCT.mds
