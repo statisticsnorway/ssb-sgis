@@ -162,7 +162,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.pydoclint]
-style = "google"
+style = "numpy"
 exclude = '\.git|\.nox'
 arg-type-hints-in-docstring = false
 check-return-types = false

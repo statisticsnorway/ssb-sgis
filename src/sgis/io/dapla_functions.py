@@ -251,11 +251,10 @@ def _read_geopandas_from_iterable(
             if not pandas_fallback:
                 print(e)
                 raise e
-    else:
-        first_path = next(iter(paths))
-        _, crs = _get_bounds_parquet(first_path, file_system)
-        df = GeoDataFrame(cols | {"geometry": []}, crs=crs)
 
+    first_path = next(iter(paths))
+    _, crs = _get_bounds_parquet(first_path, file_system)
+    df = GeoDataFrame(cols | {"geometry": []}, crs=crs)
     return df
 
 
@@ -533,7 +532,7 @@ def write_geopandas(
     overwrite: bool = True,
     pandas_fallback: bool = False,
     file_system: GCSFileSystem | None = None,
-    partition_cols=None,
+    partition_cols: list[str] | None = None,
     existing_data_behavior: str = "error",
     **kwargs,
 ) -> None:
@@ -831,6 +830,13 @@ def _filters_to_expression(filters) -> list[ds.Expression]:
 
 def expression_match_path(expression: ds.Expression, path: str) -> bool:
     """Check if a file path match a pyarrow Expression.
+
+    Args:
+        expression: A pyarrow Expression.
+        path: A file path.
+
+    Returns:
+        bool: True if the file path match the expression, False otherwise.
 
     Examples:
     ---------

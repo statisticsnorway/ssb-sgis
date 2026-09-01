@@ -48,4 +48,4 @@ flake8 = ["flake8 (>=4)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.12,<4.0"
-content-hash = "4ebe0380659f57f041f65eb23af8a75d7ef16a89e515685d2698a81b2e515980"
+content-hash = "e9959cfbe0079ebb0f20f6516937bc073d58bf4cc442fcd38ffc30aad25a4361"
