@@ -1,7 +1,7 @@
 {
   "template": "https://github.com/statisticsnorway/ssb-pypitemplate.git",
-  "commit": "dc2ab59a33df1ff4b22245fe29b109ef7701da4f",
-  "checkout": null,
+  "commit": "57b7b713c78245687a1d5421aba8bf01bead2245",
+  "checkout": "2026.5.27",
   "context": {
     "cookiecutter": {
       "project_name": "ssb-sgis",

@@ -1,87 +1,119 @@
-[tool.poetry]
+[project]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+]
 name = "ssb-sgis"
-version = "1.4.8"
+version = "1.5.0"
 description = "GIS functions used at Statistics Norway."
-authors = ["Morten Letnes <morten.letnes@ssb.no>"]
+authors = [{ name = "Morten Letnes", email = "morten.letnes@ssb.no" }]
 license = "MIT"
 readme = "README.md"
+
+requires-python = ">=3.12"
+
+dependencies = [
+    "click>=8.0.1",
+    "affine>=2.4.0",
+    "branca>=0.6.0",
+    "folium>=0.14.0",
+    "geopandas>=0.14.0",
+    "igraph>=0.11.2",
+    "ipython>=8.13.2",
+    "jenkspy>=0.3.2",
+    "jinja2>=3.1.3",
+    "joblib>=1.4.0",
+    "mapclassify>=2.5.0",
+    "matplotlib>=3.7.0",
+    "networkx>=3.0",
+    "numpy>=1.26.4",
+    "pandas>=2.3.1",
+    "pyarrow>=11.0.0",
+    "pyproj>=3.6.1",
+    "rasterio>=1.3.8",
+    "requests>=2.28.2",
+    "rtree>=1.0.1",
+    "scikit-learn>=1.5.2",
+    "shapely>=2.1.2",
+    "typing-extensions>=4.11.0",
+    "xyzservices>=2023.2.0",
+]
+
+[tool.poetry]
+name = "ssb-sgis"
+version = "1.5.0"
+description = "GIS functions used at Statistics Norway."
+authors = ["Morten Letnes <morten.letnes@ssb.no>"]
+packages = [{ include = "sgis", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+pydoclint = ">=0.9.1"
+
+[project.urls]
+Changelog = "https://github.com/statisticsnorway/ssb-sgis/releases"
 homepage = "https://github.com/statisticsnorway/ssb-sgis"
 repository = "https://github.com/statisticsnorway/ssb-sgis"
 documentation = "https://statisticsnorway.github.io/ssb-sgis"
-packages = [{ include = "sgis", from = "src" }]
-classifiers = [
-    "Development Status :: 5 - Production/Stable",
-    "Topic :: Scientific/Engineering :: GIS",
+
+[project.optional-dependencies]
+dask = [
+    "dask>=2024.1.1",
+]
+gcsfs = [
+    "gcsfs>=2024.3.1",
+]
+all = [
+    "pyogrio>=0.7.0",
+    "xarray>=2024.3.0",
+    "rioxarray>=0.15.5",
+    "gcsfs>=2024.3.1",
+    "dask>=2024.1.1",
+]
+bucket = [
+    "gcsfs>=2024.3.1",
+]
+xarray = [
+    "xarray>=2024.3.0",
+    "rioxarray>=0.15.5",
+]
+test = [
+    "xarray>=2024.3.0",
+    "rioxarray>=0.15.5",
+    "dask>=2024.1.1",
 ]
 
-[tool.poetry.urls]
-Changelog = "https://github.com/statisticsnorway/ssb-sgis/releases"
+[project.scripts]
+ssb-sgis = "sgis.__main__:main"
 
-[tool.poetry.dependencies]
-python = ">=3.11,<4"
-affine = ">=2.4.0"
-branca = ">=0.6.0"
-folium = ">=0.14.0"
-geopandas = ">=0.14.0"
-igraph = ">=0.11.2"
-ipython = ">=8.13.2"
-jenkspy = ">=0.3.2"
-jinja2 = ">=3.1.3"
-joblib = ">=1.4.0"
-mapclassify = ">=2.5.0"
-matplotlib = ">=3.7.0"
-networkx = ">=3.0"
-numpy = ">=1.26.4"
-pandas = ">=2.3.1"
-pyarrow = ">=11.0.0"
-pyproj = ">=3.6.1"
-rasterio = ">=1.3.8"
-requests = ">=2.28.2"
-rtree = ">=1.0.1"
-scikit-learn = ">=1.5.2"
-shapely = ">=2.1.2"
-typing-extensions = ">=4.11.0"
-xyzservices = ">=2023.2.0"
-dask = { version = ">=2024.1.1", optional = true }
-xarray = { version = ">=2024.3.0", optional = true }
-rioxarray = { version = ">=0.15.5", optional = true }
-gcsfs = { version = ">=2024.3.1", optional = true }
+[dependency-groups]
+lint = [
+    "black[jupyter]>=25.11.0",
+    "pre-commit>=4.4.0",
+    "pre-commit-hooks>=6.0.0",
+    "pydoclint>=0.8.3",
+    "ruff>=0.14.5",
+]
+doc = [
+    "furo>=2025.9.25",
+    "myst-parser>=4.0.1",
+    "sphinx>=8.2.3",
+    "sphinx-autobuild>=2025.8.25",
+    "sphinx-autodoc-typehints>=3.5.2",
+    "sphinx-click>=6.1.0",
+]
 
-[tool.poetry.extras]
-all = ["pyogrio", "xarray", "rioxarray", "gcsfs", "dask"]
-bucket = ["gcsfs"]
-xarray = ["xarray", "rioxarray"]
-test = ["xarray", "rioxarray", "dask"]
-
-[tool.poetry.group.dev.dependencies]
-pygments = ">=2.10.0"
-black = { extras = ["jupyter"], version = ">=23.1.0" }
-coverage = { extras = ["toml"], version = ">=6.2" }
-darglint = ">=1.8.1"
-furo = ">=2021.11.12"
-mypy = ">=0.930"
-pre-commit = ">=2.16.0"
-pre-commit-hooks = ">=4.1.0"
-ruff = ">=0.0.284"
-owslib = ">=0.34.0"
-pillow = ">=11.0.0"
-pytest = ">=6.2.5"
-sphinx = ">=6.2.1"
-sphinx-autobuild = ">=2021.3.14"
-sphinx-autodoc-typehints = ">=1.24.0"
-sphinx-click = ">=3.0.2"
-typeguard = ">=2.13.3"
-xdoctest = { extras = ["colors"], version = ">=0.15.10" }
-myst-parser = { version = ">=0.16.1" }
-deptry = ">=0.8.0"
-isort = ">=5.13.2"
-jupyter = ">=1.0.0"
-jupytext = ">=1.16.1"
-pytest-cov = ">=5.0.0"
-pandas-stubs = ">=2.2.1.240316"
-types-requests = ">=2.31.0.20240406"
-# bitsandbytes not released for macos for version > 0.42
-bitsandbytes = { version = "0.42.0", markers = "sys_platform == 'darwin'" }
+# Type hint stubs should be placed in the dev dependency group
+dev = [
+    {include-group = "lint"},
+    {include-group = "doc"},
+    "coverage[toml]>=7.11.3",
+    "deptry>=0.24.0; python_version < '4.0'",
+    "mypy>=1.18.2",
+    "pygments>=2.19.0",
+    "pytest>=9.0.0",
+    "typeguard>=2.13.3",
+    "xdoctest[colors]>=1.3.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -129,11 +161,20 @@ module = [
 ]
 ignore_missing_imports = true
 
+[tool.pydoclint]
+style = "google"
+exclude = '\.git|\.nox'
+arg-type-hints-in-docstring = false
+check-return-types = false
+check-yield-types = false
+allow-init-docstring = true
+quiet = true
+
 [tool.ruff]
 force-exclude = true  # Apply excludes to pre-commit
 show-fixes = true
 src = ["src", "tests"]
-target-version = "py311"  # Minimum Python version supported
+target-version = "py312"  # Minimum Python version supported
 include = ["*.py", "*.pyi", "**/pyproject.toml", "*.ipynb"]
 extend-exclude = [
     "__pycache__",
@@ -161,12 +202,14 @@ ignore = [
     "ANN003", # Typehint **kwargs
     "ANN101", # Supress missing-type-self.
     "ANN102", # Supress missing-type-cls.
-    "ANN202", # Don't requiere return type annotation for private functions.
+    "ANN202", # Don't require return type annotation for private functions.
     "ANN401", # Allow type annotation with type Any.
     "D100",   # Supress undocumented-public-module. Only doc of public api required.
     "E402",   # Supress module-import-not-at-top-of-file, needed in jupyter notebooks.
     "E501",   # Supress line-too-long warnings: trust black's judgement on this one.
     "D104",   # Missing docstring in public package
+    "FBT001", # Allow boolean positional arguments in a function.
+    "FBT002", # Allow boolean default positional arguments in a function.
     "RUF018", # Avoid assignment expressions in `assert` statements
     "RUF005", # Consider `["_cluster", *by]` instead of concatenation
     "F841",   # Local variable is assigned to but never used
@@ -177,7 +220,9 @@ ignore = [
     "D103",   # TODO temporary. Missing docstring in public function
     "B018",   # Found useless expression
     "E712",   # Avoid equality comparisons to `True`; use `if x:` for truth checks (because 'is' doesn't work with numpy/pandas)
+    "PLR2004", # Allow to compare with unnamed numerical constants.
 ]
+external = ["DOC"]  # Avoiding removing any codes starting with `DOC` from any `# noqa` directives.
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -228,5 +273,5 @@ treat_comments_as_code = ["# %%"]
 DEP001 = ["sgis", "nox", "nox_poetry"]  # packages available by default
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
