@@ -576,7 +576,7 @@ class Map:
             elif not pd.api.types.is_numeric_dtype(gdf[self._column]):
                 if all(gdf[self._column].isna()):
                     all_nan += 1
-                return True
+                # return True
 
         if maybe_area_km2 > 1:
             self._column = "area_km2"
