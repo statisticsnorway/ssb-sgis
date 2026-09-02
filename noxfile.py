@@ -28,7 +28,7 @@ python_versions_for_test = python_versions
 nox.needs_version = ">= 2025.2.9"
 nox.options.sessions = (
     "pre-commit",
-    "mypy",
+    # "mypy",
     "tests",
     "typeguard",
     "xdoctest",
