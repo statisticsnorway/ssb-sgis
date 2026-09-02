@@ -265,7 +265,7 @@ def to_gdf(
         | pd.DataFrame
         | Iterator
     ),
-    crs: str | tuple[str] | None = None,
+    crs: str | Any | None = None,
     geometry: str | tuple[str] | int | None = None,
     **kwargs,
 ) -> GeoDataFrame:
