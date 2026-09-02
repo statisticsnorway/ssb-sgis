@@ -39,10 +39,6 @@ dependencies = [
 ]
 
 [tool.poetry]
-name = "ssb-sgis"
-version = "1.5.0"
-description = "GIS functions used at Statistics Norway."
-authors = ["Morten Letnes <morten.letnes@ssb.no>"]
 packages = [{ include = "sgis", from = "src" }]
 
 [tool.poetry.dependencies]
