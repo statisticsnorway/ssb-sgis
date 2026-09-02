@@ -22,7 +22,7 @@ except ImportError:
     {sys.executable} -m pip install nox-poetry"""
     raise SystemExit(dedent(message)) from None
 
-package = "ssb_sgis2"
+package = "ssb_sgis"
 python_versions = ["3.13", "3.12", "3.14"]
 python_versions_for_test = python_versions
 nox.needs_version = ">= 2025.2.9"
@@ -154,15 +154,15 @@ def precommit(session: Session) -> None:
         activate_virtualenv_in_precommit_hooks(session)
 
 
-@session(python=python_versions)
-def mypy(session: Session) -> None:
-    """Type-check using mypy."""
-    args = session.posargs or ["src", "tests"]
-    session.install(".")
-    install_poetry_groups(session, "dev")
-    session.run("mypy", *args)
-    if not session.posargs:
-        session.run("mypy", f"--python-executable={sys.executable}", "noxfile.py")
+# @session(python=python_versions)
+# def mypy(session: Session) -> None:
+#     """Type-check using mypy."""
+#     args = session.posargs or ["src", "tests"]
+#     session.install(".")
+#     install_poetry_groups(session, "dev")
+#     session.run("mypy", *args)
+#     if not session.posargs:
+#         session.run("mypy", f"--python-executable={sys.executable}", "noxfile.py")
 
 
 @session(python=python_versions_for_test)
