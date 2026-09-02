@@ -1237,16 +1237,18 @@ def _categorical_legend(
 
     Copyright (c) 2020 Michel Metran
 
-    Parameters
-    ----------
-    m : folium.Map
-        Existing map instance on which to draw the plot
-    title : str
-        title of the legend (e.g. column name)
-    categories : list-like
-        list of categories
-    colors : list-like
-        list of colors (in the same order as categories)
+    Args:
+        m : folium.Map
+            Existing map instance on which to draw the plot
+        title : str
+            title of the legend (e.g. column name)
+        categories : list-like
+            list of categories
+        colors : list-like
+            list of colors (in the same order as categories)
+
+    Returns:
+        None
     """
     # Header to Add
     head = """
