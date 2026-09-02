@@ -537,7 +537,7 @@ class Map:
 
     def _check_if_categorical(self) -> bool:
         """Quite messy this..."""
-        if not self._column or not self._gdfs:
+        if not self._column or self._column == "label" or not self._gdfs:
             return True
 
         def is_maybe_km2():
@@ -559,6 +559,7 @@ class Map:
         )
 
         all_nan = 0
+        is_numeric = 0
         col_not_present = 0
         for gdf in self._gdfs.values():
             if self._column not in gdf:
@@ -576,7 +577,8 @@ class Map:
             elif not pd.api.types.is_numeric_dtype(gdf[self._column]):
                 if all(gdf[self._column].isna()):
                     all_nan += 1
-                # return True
+            else:
+                is_numeric += 1
 
         if maybe_area_km2 > 1:
             self._column = "area_km2"
@@ -596,7 +598,7 @@ class Map:
         if col_not_present == len(self._gdfs):
             raise ValueError(f"{self.column} not found.")
 
-        return False
+        return is_numeric == 0
 
     def _make_categories_colors_dict(self) -> None:
         if "color" in self.kwargs and is_dict_like(self.kwargs["color"]):
