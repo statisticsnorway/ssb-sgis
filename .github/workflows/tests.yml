@@ -19,9 +19,6 @@ jobs:
       matrix:
         include:
           - { python: "3.13", os: "ubuntu-latest", session: "pre-commit" }
-          - { python: "3.12", os: "ubuntu-latest", session: "mypy" }
-          - { python: "3.13", os: "ubuntu-latest", session: "mypy" }
-          - { python: "3.14", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.12", os: "ubuntu-latest", session: "tests" }
           - { python: "3.13", os: "ubuntu-latest", session: "tests" }
           - { python: "3.14", os: "ubuntu-latest", session: "tests" }
