@@ -280,21 +280,20 @@ def _get_sfilter_indices(
     Taken from:
     geopandas.tools.sjoin._geom_predicate_query
 
-    Parameters
-    ----------
-    left : GeoDataFrame
-    right : GeoDataFrame
-    predicate : string
-        Binary predicate to query.
-    n_jobs: Number of workers.
-    rtree_runner: Optionally debug/manipulate the spatial indexing operations.
-        See the 'runners' module for example implementations.
+    Args:
+        left : GeoDataFrame
+        right : GeoDataFrame
+        predicate : string
+            Binary predicate to query.
+        distance: Max distance to allow if predicate=="dwithin".
+        n_jobs: Number of workers.
+        rtree_runner: Optionally debug/manipulate the spatial indexing operations.
+            See the 'runners' module for example implementations.
 
     Returns:
-    -------
-    DataFrame
-        DataFrame with matching indices in
-        columns named `_key_left` and `_key_right`.
+        DataFrame
+            DataFrame with matching indices in
+            columns named `_key_left` and `_key_right`.
     """
     original_predicate = predicate
 

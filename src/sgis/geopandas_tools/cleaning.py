@@ -58,7 +58,7 @@ def coverage_clean(
     mask=None,
     *,
     duplicate_action: str = "fix",
-    grid_sizes: tuple[None | int] = (None,),
+    grid_sizes: tuple[int | None] = (None,),
     logger=None,
 ) -> GeoDataFrame:
     """Fix thin gaps, holes, slivers and double surfaces.
@@ -531,7 +531,7 @@ def split_and_eliminate_by_longest(
     gdf: GeoDataFrame | list[GeoDataFrame],
     to_eliminate: GeoDataFrame,
     tolerance: int | float,
-    grid_sizes: tuple[None | float | int] = (None,),
+    grid_sizes: tuple[float | int | None] = (None,),
     logger=None,
     **kwargs,
 ) -> GeoDataFrame | tuple[GeoDataFrame]:

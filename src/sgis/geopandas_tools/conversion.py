@@ -265,7 +265,7 @@ def to_gdf(
         | pd.DataFrame
         | Iterator
     ),
-    crs: str | tuple[str] | None = None,
+    crs: str | Any | None = None,
     geometry: str | tuple[str] | int | None = None,
     **kwargs,
 ) -> GeoDataFrame:
@@ -591,7 +591,7 @@ def is_nested_geojson(obj: Any) -> bool:
     return False
 
 
-def get_crs_from_dict(obj: Any) -> CRS | None | Any:
+def get_crs_from_dict(obj: Any) -> CRS | Any | None:
     """Try to extract the 'crs' attribute of the object or an object in the object."""
     if not hasattr(obj, "__iter__") or (
         not is_dict_like(obj) and not is_dict_like(obj[0])

@@ -3433,7 +3433,7 @@ def _copy_and_add_df_parallel(
     return (group_values, copied)
 
 
-def _get_bounds(bounds, bbox, band_bounds: Polygon) -> None | Polygon:
+def _get_bounds(bounds, bbox, band_bounds: Polygon) -> Polygon | None:
     if bounds is None and bbox is None:
         return None
     elif bounds is not None and bbox is None:

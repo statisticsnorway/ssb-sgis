@@ -620,7 +620,9 @@ class Parallel:
         }
 
         if isinstance(out_data, (str, Path)):
-            out_data = {name: Path(out_data) / name for name in in_data}
+            out_data = {
+                name: str(out_data).rstrip("/") + f"/{name}" for name in in_data
+            }
 
         if funcdict is None:
             funcdict = {}
@@ -798,7 +800,7 @@ def _validate_data(
     if isinstance(data, (str, Path)):
         try:
             return read_geopandas(str(data))
-        except ValueError as e:
+        except (ValueError, TypeError) as e:
             try:
                 return read_pandas(str(data))
             except ValueError as e2:
@@ -807,7 +809,7 @@ def _validate_data(
 
 
 def _get_out_path(out_folder: str | Path, muni: str, file_type: str) -> str:
-    return str(Path(out_folder) / f"{muni}.{file_type.strip('.')}")
+    return str(out_folder).rstrip("/") + f"/{muni}.{file_type.strip('.')}"
 
 
 def _write_municipality_data(
@@ -947,7 +949,6 @@ def _write_one_muni(
             gdf_muni["geometry"] = None
             write_pandas(gdf_muni, out)
         return
-
     write_geopandas(gdf_muni, out)
 
 

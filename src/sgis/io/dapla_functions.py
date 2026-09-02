@@ -143,6 +143,7 @@ def read_geopandas(
                 filters=filters,
                 child_paths=child_paths,
                 use_threads=use_threads,
+                pandas_fallback=pandas_fallback,
                 **kwargs,
             )
         )
@@ -226,6 +227,8 @@ def _read_geopandas_from_iterable(
             file_system=file_system,
             mask=mask,
             use_threads=use_threads,
+            filters=filters,
+            pandas_fallback=pandas_fallback,
             **kwargs,
         )
     except _FileIsPartitionedError:
@@ -237,6 +240,7 @@ def _read_geopandas_from_iterable(
                     file_system=file_system,
                     mask=mask,
                     use_threads=use_threads,
+                    pandas_fallback=pandas_fallback,
                     **kwargs,
                 )
                 for path in paths
@@ -245,16 +249,17 @@ def _read_geopandas_from_iterable(
 
     if results:
         try:
-            return _concat_pyarrow_to_geopandas(results, paths, file_system)
+            return _concat_pyarrow_to_geopandas(
+                results, paths, file_system, pandas_fallback
+            )
         except Exception as e:
+            print(e)
             if not pandas_fallback:
-                print(e)
                 raise e
-    else:
-        first_path = next(iter(paths))
-        _, crs = _get_bounds_parquet(first_path, file_system)
-        df = GeoDataFrame(cols | {"geometry": []}, crs=crs)
 
+    first_path = next(iter(paths))
+    _, crs = _get_bounds_parquet(first_path, file_system)
+    df = GeoDataFrame(cols | {"geometry": []}, crs=crs)
     return df
 
 
@@ -289,8 +294,10 @@ def _concat_pyarrow_tables(
         return pyarrow.concat_tables(coerced_tables, promote_options=promote_options)
 
 
-def intersects(file, mask, file_system) -> bool:
-    bbox, _ = _get_bounds_parquet_from_open_file(file, file_system)
+def _intersects_or_has_no_rows(file, mask, file_system, pandas_fallback) -> bool:
+    bbox, _ = _get_bounds_parquet(file, file_system, pandas_fallback)
+    if bbox is None:
+        return True
     return shapely.box(*bbox).intersects(to_shapely(mask))
 
 
@@ -299,6 +306,7 @@ def _read_pyarrow(
     file_system,
     mask=None,
     partition_dtypes: dict[str, pyarrow.DataType] | None = None,
+    pandas_fallback: bool = False,
     **kwargs,
 ) -> pyarrow.Table | None:
     if partition_dtypes is None:
@@ -309,13 +317,15 @@ def _read_pyarrow(
         if "=" in part
     }
     try:
-        if mask is not None and not intersects(path, mask, file_system):
+        if mask is not None and not _intersects_or_has_no_rows(
+            path, mask, file_system, pandas_fallback
+        ):
             return
 
         columns = None
         try:
             table = pq.read_table(path, **kwargs)
-        except pyarrow.lib.ArrowTypeError:
+        except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid):
             if "schema" not in kwargs:
                 schema = get_schema(path)
                 if "columns" in kwargs and hasattr(kwargs["columns"], "__iter__"):
@@ -532,7 +542,7 @@ def write_geopandas(
     overwrite: bool = True,
     pandas_fallback: bool = False,
     file_system: GCSFileSystem | None = None,
-    partition_cols=None,
+    partition_cols: list[str] | None = None,
     existing_data_behavior: str = "error",
     **kwargs,
 ) -> None:
@@ -760,8 +770,12 @@ def _write_partitioned_geoparquet(
                 raise pyarrow.ArrowInvalid(
                     f"Could not write to {path} as the directory is not empty and existing_data_behavior is to error"
                 )
+            elif existing_data_behavior == "overwrite_or_ignore":
+                this_basename = this_basename.replace("-{i}", str(i + 1))
             else:
-                this_basename = basename_template.replace("-{i}", str(i + 1))
+                raise ValueError(
+                    f"existing_data_behavior must be one of 'error', 'overwrite_or_ignore', or 'delete_matching'. Got {existing_data_behavior}."
+                )
 
         out_path = str(_standardize_path(path) + "/" + this_basename)
         try:
@@ -826,6 +840,13 @@ def _filters_to_expression(filters) -> list[ds.Expression]:
 
 def expression_match_path(expression: ds.Expression, path: str) -> bool:
     """Check if a file path match a pyarrow Expression.
+
+    Args:
+        expression: A pyarrow Expression.
+        path: A file path.
+
+    Returns:
+        bool: True if the file path match the expression, False otherwise.
 
     Examples:
     ---------
@@ -893,6 +914,7 @@ def _read_partitioned_parquet(
     child_paths: list[str] | None = None,
     use_threads: bool = True,
     to_geopandas: bool = True,
+    pandas_fallback: bool = False,
     **kwargs,
 ):
     file_system = _get_file_system(file_system, kwargs)
@@ -995,11 +1017,14 @@ def _read_partitioned_parquet(
         filters=filters,
         use_threads=use_threads,
         schema=schema,
+        pandas_fallback=pandas_fallback,
         **kwargs,
     )
 
     if results and to_geopandas:
-        return _concat_pyarrow_to_geopandas(results, filtered_child_paths, file_system)
+        return _concat_pyarrow_to_geopandas(
+            results, filtered_child_paths, file_system, pandas_fallback
+        )
     elif results:
         return pyarrow.concat_tables(results, promote_options="permissive").to_pandas()
 
@@ -1013,15 +1038,28 @@ def _read_partitioned_parquet(
 
 
 def _concat_pyarrow_to_geopandas(
-    results: list[pyarrow.Table], paths: list[str], file_system: Any
+    results: list[pyarrow.Table],
+    paths: list[str],
+    file_system: Any,
+    pandas_fallback: bool,
 ):
     dfs = [x for x in results if isinstance(x, pd.DataFrame)]
     results = _concat_pyarrow_tables(
         [x for x in results if not isinstance(x, pd.DataFrame)],
         promote_options="permissive",
     )
-    geo_metadata = _get_geo_metadata(next(iter(paths)), file_system)
-    df = _arrow_to_geopandas(results, geo_metadata)
+    geo_metadata = None
+    for path in paths:
+        try:
+            geo_metadata = _get_geo_metadata(path, file_system)
+        except KeyError as e:
+            if pandas_fallback and "geo" in str(e):
+                continue
+            raise e
+    if geo_metadata is None:
+        df = results.to_pandas()
+    else:
+        df = _arrow_to_geopandas(results, geo_metadata)
     if dfs:
         return pd.concat([df, *dfs])
     return df

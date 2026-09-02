@@ -373,7 +373,7 @@ def _update(
     df1: pd.DataFrame,
     df2: pd.DataFrame,
     left: np.ndarray,
-    grid_size: float | None | int,
+    grid_size: float | int | None,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
     union_runner: UnionRunner,
@@ -393,7 +393,7 @@ def _update(
 
 def _intersection(
     pairs: pd.DataFrame,
-    grid_size: None | float | int,
+    grid_size: float | int | None,
     geom_type: str | None,
     overlay_runner: OverlayRunner,
 ) -> GeoDataFrame:
