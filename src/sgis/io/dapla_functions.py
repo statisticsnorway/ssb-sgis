@@ -48,7 +48,7 @@ except ImportError:
 
 PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
 NULL_VALUE = "__HIVE_DEFAULT_PARTITION__"
-N_JOBS = 20
+N_JOBS = 25
 
 
 def read_geopandas(
@@ -1050,6 +1050,7 @@ def _concat_pyarrow_to_geopandas(
     for path in paths:
         try:
             geo_metadata = _get_geo_metadata(path, file_system)
+            break
         except KeyError as e:
             if pandas_fallback and "geo" in str(e):
                 continue
