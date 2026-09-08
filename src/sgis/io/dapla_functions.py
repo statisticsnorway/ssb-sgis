@@ -248,14 +248,9 @@ def _read_geopandas_from_iterable(
         )
 
     if results:
-        try:
-            return _concat_pyarrow_to_geopandas(
-                results, paths, file_system, pandas_fallback
-            )
-        except Exception as e:
-            print(e)
-            if not pandas_fallback:
-                raise e
+        return _concat_pyarrow_to_geopandas(
+            results, paths, file_system, pandas_fallback
+        )
 
     first_path = next(iter(paths))
     _, crs = _get_bounds_parquet(first_path, file_system)
@@ -1044,8 +1039,11 @@ def _concat_pyarrow_to_geopandas(
     pandas_fallback: bool,
 ):
     dfs = [x for x in results if isinstance(x, pd.DataFrame)]
+    pyarrow_tables = [x for x in results if not isinstance(x, pd.DataFrame)]
+    pyarrow_tables_with_length = [x for x in pyarrow_tables if x.num_rows]
+    pyarrow_tables = pyarrow_tables_with_length or pyarrow_tables
     results = _concat_pyarrow_tables(
-        [x for x in results if not isinstance(x, pd.DataFrame)],
+        pyarrow_tables,
         promote_options="permissive",
     )
     geo_metadata = None
