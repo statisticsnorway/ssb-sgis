@@ -3,7 +3,7 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 name = "ssb-sgis"
-version = "1.5.1"
+version = "1.5.2"
 description = "GIS functions used at Statistics Norway."
 authors = [{ name = "Morten Letnes", email = "morten.letnes@ssb.no" }]
 license = "MIT"

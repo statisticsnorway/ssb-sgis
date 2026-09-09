@@ -107,32 +107,6 @@ def read_geopandas(
     if isinstance(file_system, GCSFileSystem) and not str(gcs_path).startswith("gs://"):
         gcs_path = "gs://" + str(gcs_path)
 
-    single_eq_filter = (
-        isinstance(filters, Iterable)
-        and len(filters) == 1
-        and ("=" in next(iter(filters)) or "==" in next(iter(filters)))
-    )
-    # try to read files in subfolder path / "column=value"
-    # because glob is slow without GCSFileSystem from the root partition
-    if single_eq_filter:
-        try:
-            expression: list[str] = "".join(
-                [str(x) for x in next(iter(filters))]
-            ).replace("==", "=")
-            paths = get_child_paths(gcs_path, file_system, pattern=f"/{expression}/*")
-            if paths:
-                return _read_geopandas_from_iterable(
-                    paths,
-                    mask=mask,
-                    file_system=file_system,
-                    use_threads=use_threads,
-                    pandas_fallback=pandas_fallback,
-                    filters=filters,
-                    **kwargs,
-                )
-        except FileNotFoundError:
-            pass
-
     child_paths = get_child_paths(gcs_path, file_system)
     if child_paths:
         return gpd.GeoDataFrame(
@@ -919,35 +893,8 @@ def _read_partitioned_parquet(
         for part in Path(child_paths[0]).parts
         if "=" in part and part not in path
     ]
-    base_parts = Path(path).parts
-    partition_parts = [
-        [Path(path).parts[i] for path in child_paths]
-        for i, part in enumerate(Path(child_paths[0]).parts)
-        if "=" in part and part not in base_parts
-    ]
 
-    def infer_dtype(values: list[str]) -> pyarrow.DataType:
-        values = np.array(values)
-        try:
-            values = values.astype(np.int32)
-            return pyarrow.int32()
-        except ValueError:
-            try:
-                values = values.astype(np.float32)
-                return pyarrow.float32()
-            except Exception:
-                return pyarrow.string()
-
-    partition_dtypes: dict[str, pyarrow.DataType] = {
-        next(iter(parts)).split("=")[0]: infer_dtype([x.split("=")[-1] for x in parts])
-        for parts in partition_parts
-    }
-    partitioning = pyarrow.dataset.partitioning(
-        pyarrow.schema(
-            [pyarrow.field(col, dtype) for col, dtype in partition_dtypes.items()]
-        ),
-        flavor="hive",
-    )
+    partitioning, partition_dtypes = _get_partitioning(path, child_paths)
 
     filters = _filters_to_expression(filters)
 
@@ -1013,6 +960,8 @@ def _read_partitioned_parquet(
         use_threads=use_threads,
         schema=schema,
         pandas_fallback=pandas_fallback,
+        partitioning=partitioning,
+        partition_dtypes=partition_dtypes,
         **kwargs,
     )
 
@@ -1030,6 +979,48 @@ def _read_partitioned_parquet(
     if kwargs.get("columns"):
         return df[list(kwargs["columns"])]
     return df
+
+
+def _get_partitioning(
+    path, child_paths: list[str]
+) -> tuple[pyarrow.dataset.Partitioning, dict[str, pyarrow.DataType]]:
+    base_parts = Path(path).parts
+    partition_parts = [
+        [Path(path).parts[i] for path in child_paths]
+        for i, part in enumerate(Path(child_paths[0]).parts)
+        if "=" in part and part not in base_parts
+    ]
+
+    class NotAnIntError(ValueError):
+        pass
+
+    def infer_dtype(values: list[str]) -> pyarrow.DataType:
+        values = np.array(values)
+        try:
+            _ = values.astype(np.int32)
+            if np.char.startswith(values.astype(str), "0").any():
+                raise NotAnIntError("Leading zeros found in integer values.")
+            return pyarrow.int32()
+        except NotAnIntError:
+            return pyarrow.string()
+        except ValueError:
+            try:
+                _ = values.astype(np.float32)
+                return pyarrow.float32()
+            except Exception:
+                return pyarrow.string()
+
+    partition_dtypes: dict[str, pyarrow.DataType] = {
+        next(iter(parts)).split("=")[0]: infer_dtype([x.split("=")[-1] for x in parts])
+        for parts in partition_parts
+    }
+    partitioning = pyarrow.dataset.partitioning(
+        pyarrow.schema(
+            [pyarrow.field(col, dtype) for col, dtype in partition_dtypes.items()]
+        ),
+        flavor="hive",
+    )
+    return partitioning, partition_dtypes
 
 
 def _concat_pyarrow_to_geopandas(
