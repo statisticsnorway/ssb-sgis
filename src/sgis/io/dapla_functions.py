@@ -15,6 +15,7 @@ from collections.abc import Sized
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+import time
 
 import geopandas as gpd
 import numpy as np
@@ -368,11 +369,16 @@ def _get_bounds_parquet_from_open_file(
     return geo_metadata["bbox"], geo_metadata["crs"]
 
 
-def _get_geo_metadata(file, file_system) -> dict:
+def _get_geo_metadata(file, file_system, i=0) -> dict:
     try:
         meta = pq.read_schema(file).metadata
     except FileNotFoundError:
         meta = pq.ParquetDataset(file).schema.metadata
+    except OSError as e:
+        if "Retry policy exhausted" not in str(e) or i > 5:
+            raise e
+        time.sleep(i + 0.1)
+        return _get_geo_metadata(file, file_system, i=i + 1)
     return json.loads(meta[b"geo"])
 
 
