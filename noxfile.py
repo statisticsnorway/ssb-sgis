@@ -22,7 +22,7 @@ except ImportError:
     {sys.executable} -m pip install nox-poetry"""
     raise SystemExit(dedent(message)) from None
 
-package = "ssb_sgis"
+package = "sgis"
 python_versions = ["3.13", "3.12", "3.14"]
 python_versions_for_test = python_versions
 nox.needs_version = ">= 2025.2.9"
