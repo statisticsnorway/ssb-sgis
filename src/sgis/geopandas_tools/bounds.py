@@ -121,6 +121,7 @@ class Gridlooper:
 
         n = len(grid)
         keep_geom_type = kwargs.get("keep_geom_type", self.keep_geom_type)
+        geom_type = kwargs.get("geom_type", None)
 
         buffered_grid = grid.buffer(self.gridbuffer, resolution=1, join_style=2)
 
@@ -131,6 +132,7 @@ class Gridlooper:
                 args=args,
                 kwargs=kwargs,
                 keep_geom_type=keep_geom_type,
+                geom_type=geom_type,
                 clip=self.clip,
             )
             results = self.parallelizer.map(func_with_clip, buffered_grid)
@@ -139,7 +141,12 @@ class Gridlooper:
             out = []
             for cell_res, unbuffered in zip(results, grid, strict=True):
                 out.append(
-                    _clip_back_to_unbuffered_grid(cell_res, unbuffered, keep_geom_type)
+                    _clip_back_to_unbuffered_grid(
+                        cell_res,
+                        mask=unbuffered,
+                        keep_geom_type=keep_geom_type,
+                        geom_type=geom_type,
+                    )
                 )
             return self._return(out, args, kwargs)
 
@@ -148,11 +155,23 @@ class Gridlooper:
             zip(grid, buffered_grid, strict=False)
         ):
             cell_kwargs = {
-                key: _clip_if_isinstance(value, buffered, keep_geom_type, self.clip)
+                key: _clip_if_isinstance(
+                    value,
+                    cell=buffered,
+                    geom_type=geom_type,
+                    keep_geom_type=keep_geom_type,
+                    clip=self.clip,
+                )
                 for key, value in kwargs.items()
             }
             cell_args = tuple(
-                _clip_if_isinstance(value, buffered, keep_geom_type, self.clip)
+                _clip_if_isinstance(
+                    value,
+                    cell=buffered,
+                    geom_type=geom_type,
+                    keep_geom_type=keep_geom_type,
+                    clip=self.clip,
+                )
                 for value in args
             )
 
@@ -161,7 +180,10 @@ class Gridlooper:
             # clip back to original
             if self.gridbuffer and self.clip:
                 cell_res = _clip_back_to_unbuffered_grid(
-                    cell_res, unbuffered, keep_geom_type
+                    cell_res,
+                    mask=unbuffered,
+                    keep_geom_type=keep_geom_type,
+                    geom_type=geom_type,
                 )
 
             results.append(cell_res)
@@ -304,6 +326,8 @@ def gridloop(
 
     buffered_grid = grid.buffer(gridbuffer, resolution=1, join_style=2)
 
+    geom_type = kwargs.get("geom_type", None)
+
     if parallelizer is not None:
         func_with_clip = functools.partial(
             _clip_and_run_func,
@@ -311,6 +335,7 @@ def gridloop(
             args=args,
             kwargs=kwargs,
             keep_geom_type=keep_geom_type,
+            geom_type=geom_type,
             clip=clip,
         )
         results = parallelizer.map(func_with_clip, buffered_grid)
@@ -319,18 +344,36 @@ def gridloop(
         out = []
         for cell_res, unbuffered in zip(results, grid, strict=True):
             out.append(
-                _clip_back_to_unbuffered_grid(cell_res, unbuffered, keep_geom_type)
+                _clip_back_to_unbuffered_grid(
+                    cell_res,
+                    mask=unbuffered,
+                    keep_geom_type=keep_geom_type,
+                    geom_type=geom_type,
+                )
             )
         return out
 
     results = []
     for i, (unbuffered, buffered) in enumerate(zip(grid, buffered_grid, strict=False)):
         cell_kwargs = {
-            key: _clip_if_isinstance(value, buffered, keep_geom_type, clip)
+            key: _clip_if_isinstance(
+                value,
+                cell=buffered,
+                geom_type=geom_type,
+                keep_geom_type=keep_geom_type,
+                clip=clip,
+            )
             for key, value in kwargs.items()
         }
         cell_args = tuple(
-            _clip_if_isinstance(value, buffered, keep_geom_type, clip) for value in args
+            _clip_if_isinstance(
+                value,
+                cell=buffered,
+                geom_type=geom_type,
+                keep_geom_type=keep_geom_type,
+                clip=clip,
+            )
+            for value in args
         )
 
         cell_res = func(*cell_args, **cell_kwargs)
@@ -338,7 +381,10 @@ def gridloop(
         # clip back to original
         if gridbuffer and clip:
             cell_res = _clip_back_to_unbuffered_grid(
-                cell_res, unbuffered, keep_geom_type
+                cell_res,
+                mask=unbuffered,
+                keep_geom_type=keep_geom_type,
+                geom_type=geom_type,
             )
 
         results.append(cell_res)
@@ -354,14 +400,28 @@ def _clip_and_run_func(
     func: Callable,
     args: tuple,
     kwargs: dict,
+    geom_type: str | None,
     keep_geom_type: bool,
     clip: bool,
 ) -> Any:
     cell_args = tuple(
-        _clip_if_isinstance(value, grid_cell, keep_geom_type, clip) for value in args
+        _clip_if_isinstance(
+            value,
+            cell=grid_cell,
+            geom_type=geom_type,
+            keep_geom_type=keep_geom_type,
+            clip=clip,
+        )
+        for value in args
     )
     cell_kwargs = {
-        key: _clip_if_isinstance(value, grid_cell, keep_geom_type, clip)
+        key: _clip_if_isinstance(
+            value,
+            cell=grid_cell,
+            geom_type=geom_type,
+            keep_geom_type=keep_geom_type,
+            clip=clip,
+        )
         for key, value in kwargs.items()
     }
 
@@ -369,33 +429,57 @@ def _clip_and_run_func(
 
 
 def _clip_if_isinstance(
-    value: Any, cell: Geometry, keep_geom_type: bool, clip: bool
+    value: Any,
+    cell: Geometry,
+    keep_geom_type: bool,
+    geom_type: str | None,
+    clip: bool,
 ) -> Any:
     if not isinstance(value, (gpd.GeoDataFrame | gpd.GeoSeries | Geometry)):
         return value
 
     if isinstance(value, (gpd.GeoDataFrame | gpd.GeoSeries)):
         if clip:
-            return clean_clip(value, cell, keep_geom_type=keep_geom_type)
+            return clean_clip(
+                value, cell, keep_geom_type=keep_geom_type, geom_type=geom_type
+            )
         return value.loc[value.intersects(cell)]
 
     return value.intersection(cell).make_valid()
 
 
 def _clip_back_to_unbuffered_grid(
-    results: Any, mask: GeoDataFrame, keep_geom_type: bool
+    results: Any, mask: GeoDataFrame, keep_geom_type: bool, geom_type: str | None = None
 ) -> Any:
     if isinstance(results, (gpd.GeoDataFrame | gpd.GeoSeries | Geometry)):
-        return _clip_if_isinstance(results, mask, keep_geom_type, clip=True)
+        return _clip_if_isinstance(
+            results,
+            cell=mask,
+            geom_type=geom_type,
+            keep_geom_type=keep_geom_type,
+            clip=True,
+        )
     elif isinstance(results, (pd.DataFrame | pd.Series | np.ndarray)):
         return results
     try:
         for key, value in results.items():
-            results[key] = _clip_if_isinstance(value, mask, keep_geom_type, clip=True)
+            results[key] = _clip_if_isinstance(
+                value,
+                cell=mask,
+                geom_type=geom_type,
+                keep_geom_type=keep_geom_type,
+                clip=True,
+            )
     except AttributeError:
         try:
             return [
-                _clip_if_isinstance(res, mask, keep_geom_type, clip=True)
+                _clip_if_isinstance(
+                    res,
+                    cell=mask,
+                    geom_type=geom_type,
+                    keep_geom_type=keep_geom_type,
+                    clip=True,
+                )
                 for res in results
             ]
         except TypeError:

@@ -164,7 +164,10 @@ def _read_geopandas_from_iterable(
     if isinstance(file_system, GCSFileSystem):
         paths = ["gs://" + str(x).replace("gs://", "") for x in paths]
 
-    cols = {}
+    if isinstance(kwargs.get("columns"), Iterable):
+        cols = {col: [] for col in kwargs["columns"]}
+    else:
+        cols = {}
     if mask is None and isinstance(paths, GeoSeries):
         # bounds GeoSeries indexed with file paths
         paths = list(paths.index)
@@ -178,7 +181,7 @@ def _read_geopandas_from_iterable(
                 cols = {col: [] for col in kwargs["columns"]}
             else:
                 cols = {}
-                for path in bounds_series.index:
+                for path in paths.index:
                     try:
                         cols |= {col: [] for col in _get_columns(path, file_system)}
                     except ArrowInvalid as e:
@@ -221,12 +224,10 @@ def _read_geopandas_from_iterable(
                 for path in paths
             ]
         )
-
     if results:
         return _concat_pyarrow_to_geopandas(
             results, paths, file_system, pandas_fallback
         )
-
     first_path = next(iter(paths))
     _, crs = _get_bounds_parquet(first_path, file_system)
     df = GeoDataFrame(cols | {"geometry": []}, crs=crs)
