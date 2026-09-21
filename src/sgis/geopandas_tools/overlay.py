@@ -131,11 +131,6 @@ def clean_overlay(
                 df1.geometry.geom_type.value_counts(),
             )
 
-    if geom_type == "polygon" or get_geom_type(df1) == "polygon":
-        df1.geometry = df1.buffer(0)
-    if geom_type == "polygon" or get_geom_type(df2) == "polygon":
-        df2.geometry = df2.buffer(0)
-
     df1 = clean_geoms(df1)
     df2 = clean_geoms(df2)
 
