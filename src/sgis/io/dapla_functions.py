@@ -254,7 +254,7 @@ def _concat_pyarrow_tables(
 ) -> pyarrow.Table:
     try:
         return pyarrow.concat_tables(tables, promote_options=promote_options)
-    except pyarrow.lib.ArrowTypeError:
+    except pyarrow.lib.ArrowException:
         schema = pyarrow.unify_schemas(
             [table.schema for table in tables], promote_options=promote_options
         )
@@ -296,7 +296,7 @@ def _read_pyarrow(
         columns = None
         try:
             table = pq.read_table(path, **kwargs)
-        except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid):
+        except pyarrow.lib.ArrowException:
             if "schema" not in kwargs:
                 schema = get_schema(path)
                 if "columns" in kwargs and hasattr(kwargs["columns"], "__iter__"):
@@ -945,14 +945,18 @@ def _read_partitioned_parquet(
         else:
             filters = filters_from_mask
 
-    schema = kwargs.pop("schema", get_schema(path))
-    if not any(col in partition_cols for col in schema.names):
-        # Note that schema is not passed to read_parquet because the partition_cols are not part of the schema, meaning they get left out if specified
+    schema_was_in_kwargs = "schema" in kwargs
+    file_schema = get_schema(path)
+    schema = kwargs.pop("schema", file_schema)
+    if not any(col in partition_cols for col in file_schema.names):
+        if not schema_was_in_kwargs:
+            schema = None
         return gpd.read_parquet(
             path,
             filters=filters,
             use_threads=use_threads,
             partitioning=partitioning,
+            schema=schema,
             **kwargs,
         )
 
