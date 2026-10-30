@@ -49,6 +49,7 @@ except ImportError:
 
 PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
 NULL_VALUE = "__HIVE_DEFAULT_PARTITION__"
+STRING_DTYPE_FORCE_TEXT = "this_will_force_str_dtype"
 N_JOBS = 25
 
 
@@ -486,6 +487,19 @@ def get_bounds_series(
         else 1
     )
 
+    if isinstance(file_system, GCSFileSystem):
+        paths = [
+            (
+                f"gs://{path}"
+                if isinstance(path, str) and not path.startswith("gs://")
+                else path
+            )
+            for path in paths
+            if STRING_DTYPE_FORCE_TEXT not in str(path)
+        ]
+    else:
+        paths = [path for path in paths if STRING_DTYPE_FORCE_TEXT not in str(path)]
+
     with ThreadPoolExecutor(threads) as executor:
         bounds: list[tuple[list[float], dict]] = list(
             executor.map(
@@ -784,9 +798,9 @@ def _write_partitioned_geoparquet(
 
     new_path = str(path)
     for col in partition_cols:
-        new_path += f"/{col}=this_will_force_str_dtype"
+        new_path += f"/{col}={STRING_DTYPE_FORCE_TEXT}"
         file_system.makedirs(new_path, exist_ok=True)
-        new_path += "/this_will_force_str_dtype.parquet"
+        new_path += f"/{STRING_DTYPE_FORCE_TEXT}.parquet"
         pd.DataFrame({col: [] for col in df}).to_parquet(new_path)
 
 

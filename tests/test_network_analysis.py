@@ -311,7 +311,6 @@ def test_network_analysis(points_oslo, roads_oslo):
     pd.options.mode.chained_assignment = None
 
     split_lines = False
-
     rules = sg.NetworkAnalysisRules(
         directed=True,
         weight="minutes",

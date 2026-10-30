@@ -308,6 +308,7 @@ def _shapely_pd_overlay(
         overlayed = _identity(
             pairs,
             df1,
+            df2,
             left,
             grid_size=grid_size,
             geom_type=geom_type,
@@ -445,6 +446,7 @@ def _union(
 def _identity(
     pairs: pd.DataFrame,
     df1: pd.DataFrame,
+    df2: pd.DataFrame,
     left: np.ndarray,
     grid_size: int | float | None,
     geom_type: str | None,
@@ -459,7 +461,11 @@ def _identity(
             geom_type=geom_type,
             overlay_runner=overlay_runner,
         )
-        merged.append(intersections)
+    else:
+        intersections = pd.DataFrame(
+            columns=df2.columns.union(df1.columns).difference({"geom_right"})
+        )
+    merged.append(intersections)
     diff = _difference(
         pairs,
         df1,

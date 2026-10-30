@@ -5,7 +5,8 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import distance
-from shapely.ops import nearest_points
+from shapely import shortest_line
+from shapely import get_point
 
 from ..conf import _get_instance
 from ..conf import config
@@ -214,7 +215,7 @@ def _shapely_snap(
         rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
 
     nearest_indices = rtree_runner.run(points, to, method="nearest")
-    nearest = nearest_points(points, to[nearest_indices])[1]
+    nearest = get_point(shortest_line(points, to[nearest_indices]), 1)
 
     if max_distance is None:
         return nearest
