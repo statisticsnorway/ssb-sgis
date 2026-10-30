@@ -5625,4 +5625,4 @@ xarray = ["rioxarray", "xarray"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "26fa56bbc72d5a238742260cc34e97f98773998ec43d1c98f0db8f10fb4b1585"
+content-hash = "92e31d5ca00c448c918f7a6b4ce675622c990cb7c6d327f963c0e99e6b1e584a"
