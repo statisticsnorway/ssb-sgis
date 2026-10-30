@@ -9,6 +9,7 @@ from collections.abc import Collection
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+from typing import Literal
 
 from pandas.api.types import is_array_like
 
@@ -50,7 +51,7 @@ def parallel_overlay(
     df1: GeoDataFrame,
     df2: GeoDataFrame,
     processes: int,
-    how: str = "intersection",
+    how: Literal["intersection"] = "intersection",
     max_rows_per_chunk: int | None = None,
     backend: str = "loky",
     to_print: str | None = None,
