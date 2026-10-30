@@ -486,6 +486,16 @@ def get_bounds_series(
         else 1
     )
 
+    if isinstance(file_system, GCSFileSystem):
+        paths = [
+            (
+                f"gs://{path}"
+                if isinstance(path, str) and not path.startswith("gs://")
+                else path
+            )
+            for path in paths
+        ]
+
     with ThreadPoolExecutor(threads) as executor:
         bounds: list[tuple[list[float], dict]] = list(
             executor.map(
