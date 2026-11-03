@@ -94,27 +94,27 @@ def get_polygon_clusters(
 
     >>> import sgis as sg
     >>> gdf = sg.to_gdf([(0, 0), (1, 1), (0, 1), (4, 4), (4, 3), (7, 7)])
-    >>> buffered = sg.buff(gdf, 1)
+    >>> gdf = sg.buff(gdf, 1)
     >>> gdf
                                                 geometry
-    0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
-    1  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
-    2  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
-    3  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
-    4  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
-    5  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+    0  POLYGON ((1 0, 0.99863 -0.05234, 0.99452 -0.10...
+    1  POLYGON ((2 1, 1.99863 0.94766, 1.99452 0.8954...
+    2  POLYGON ((1 1, 0.99863 0.94766, 0.99452 0.8954...
+    3  POLYGON ((5 4, 4.99863 3.94766, 4.99452 3.8954...
+    4  POLYGON ((5 3, 4.99863 2.94766, 4.99452 2.8954...
+    5  POLYGON ((8 7, 7.99863 6.94766, 7.99452 6.8954...
 
     Add a cluster column to the GeoDataFrame:
 
     >>> gdf = sg.get_polygon_clusters(gdf, cluster_col="cluster")
     >>> gdf
        cluster                                           geometry
-    0        0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
-    1        0  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
-    2        0  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
-    3        1  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
-    4        1  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
-    5        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+    0        0  POLYGON ((1 0, 0.99863 -0.05234, 0.99452 -0.10...
+    1        0  POLYGON ((2 1, 1.99863 0.94766, 1.99452 0.8954...
+    2        0  POLYGON ((1 1, 0.99863 0.94766, 0.99452 0.8954...
+    3        1  POLYGON ((5 4, 4.99863 3.94766, 4.99452 3.8954...
+    4        1  POLYGON ((5 3, 4.99863 2.94766, 4.99452 2.8954...
+    5        2  POLYGON ((8 7, 7.99863 6.94766, 7.99452 6.8954...
 
     If multiple GeoDataFrames are given, all are returned with common
     cluster values.
@@ -122,17 +122,17 @@ def get_polygon_clusters(
     >>> gdf2 = sg.to_gdf([(0, 0), (7, 7)])
     >>> gdf, gdf2 = sg.get_polygon_clusters(gdf, gdf2, cluster_col="cluster")
     >>> gdf2
-       cluster                 geometry
-    0        0  POINT (0.00000 0.00000)
-    1        2  POINT (7.00000 7.00000)
+       cluster     geometry
+    0        0  POINT (0 0)
+    1        2  POINT (7 7)
     >>> gdf
        cluster                                           geometry
-    0        0  POLYGON ((1.00000 0.00000, 0.99951 -0.03141, 0...
-    1        0  POLYGON ((2.00000 1.00000, 1.99951 0.96859, 1....
-    2        0  POLYGON ((1.00000 1.00000, 0.99951 0.96859, 0....
-    3        1  POLYGON ((5.00000 4.00000, 4.99951 3.96859, 4....
-    4        1  POLYGON ((5.00000 3.00000, 4.99951 2.96859, 4....
-    5        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+    0        0  POLYGON ((1 0, 0.99863 -0.05234, 0.99452 -0.10...
+    1        0  POLYGON ((2 1, 1.99863 0.94766, 1.99452 0.8954...
+    2        0  POLYGON ((1 1, 0.99863 0.94766, 0.99452 0.8954...
+    3        1  POLYGON ((5 4, 4.99863 3.94766, 4.99452 3.8954...
+    4        1  POLYGON ((5 3, 4.99863 2.94766, 4.99452 2.8954...
+    5        2  POLYGON ((8 7, 7.99863 6.94766, 7.99452 6.8954...
 
     Dissolving 'by' the cluster column will make the dissolve much
     faster if there are a lot of non-overlapping polygons.
@@ -140,9 +140,9 @@ def get_polygon_clusters(
     >>> dissolved = gdf.dissolve(by="cluster", as_index=False)
     >>> dissolved
        cluster                                           geometry
-    0        0  POLYGON ((0.99951 -0.03141, 0.99803 -0.06279, ...
-    1        1  POLYGON ((4.99951 2.96859, 4.99803 2.93721, 4....
-    2        2  POLYGON ((8.00000 7.00000, 7.99951 6.96859, 7....
+    0        0  POLYGON ((0.99863 -0.05234, 0.99452 -0.10453, ...
+    1        1  POLYGON ((4.99863 2.94766, 4.99452 2.89547, 4....
+    2        2  POLYGON ((8 7, 7.99863 6.94766, 7.99452 6.8954...
     """
     if isinstance(gdfs[-1], str):
         *gdfs, cluster_col = gdfs
@@ -278,6 +278,9 @@ def eliminate_by_longest(
     ---------
     Create two polygons with a sliver in between:
 
+    >>> import sgis as sg
+    >>> import pandas as pd
+    >>> from shapely.geometry import Polygon
     >>> sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)]))
     >>> small_poly = sg.to_gdf(
     ...     Polygon([(0, 0), (-0.1, 1), (0, 2), (-1, 2), (-2, 2), (-1, 1)])
@@ -552,6 +555,9 @@ def eliminate_by_largest(
     ---------
     Create two polygons with a sliver in between:
 
+    >>> import sgis as sg
+    >>> import pandas as pd
+    >>> from shapely.geometry import Polygon
     >>> sliver = sg.to_gdf(Polygon([(0, 0), (0.1, 1), (0, 2), (-0.1, 1)]))
     >>> small_poly = sg.to_gdf(
     ...     Polygon([(0, 0), (-0.1, 1), (0, 2), (-1, 2), (-2, 2), (-1, 1)])
@@ -1107,22 +1113,23 @@ def close_all_holes(
     ---------
     Let's create a circle with a hole in it.
 
+    >>> import sgis as sg
     >>> point = sg.to_gdf([260000, 6650000], crs=25833)
     >>> point
-                            geometry
-    0  POINT (260000.000 6650000.000)
+                     geometry
+    0  POINT (260000 6650000)
     >>> circle = sg.buff(point, 1000)
     >>> small_circle = sg.buff(point, 500)
     >>> circle_with_hole = circle.overlay(small_circle, how="difference")
     >>> circle_with_hole.area
-    0    2.355807e+06
+    0    2.355118e+06
     dtype: float64
 
     Close the hole.
 
     >>> holes_closed = sg.close_all_holes(circle_with_hole)
     >>> holes_closed.area
-    0    3.141076e+06
+    0    3.140157e+06
     dtype: float64
     """
     if not isinstance(gdf, (GeoDataFrame, GeoSeries)):
@@ -1196,29 +1203,30 @@ def close_small_holes(
     ---------
     Let's create a circle with a hole in it.
 
+    >>> import sgis as sg
     >>> point = sg.to_gdf([260000, 6650000], crs=25833)
     >>> point
-                            geometry
-    0  POINT (260000.000 6650000.000)
+                     geometry
+    0  POINT (260000 6650000)
     >>> circle = sg.buff(point, 1000)
     >>> small_circle = sg.buff(point, 500)
     >>> circle_with_hole = circle.overlay(small_circle, how="difference")
     >>> circle_with_hole.area
-    0    2.355807e+06
+    0    2.355118e+06
     dtype: float64
 
     Close holes smaller than 1 square kilometer (1 million square meters).
 
     >>> holes_closed = sg.close_small_holes(circle_with_hole, max_area=1_000_000)
     >>> holes_closed.area
-    0    3.141076e+06
+    0    3.140157e+06
     dtype: float64
 
     The hole will not be closed if it is larger.
 
     >>> holes_closed = sg.close_small_holes(circle_with_hole, max_area=1_000)
     >>> holes_closed.area
-    0    2.355807e+06
+    0    2.355118e+06
     dtype: float64
     """
     if not isinstance(gdf, (GeoSeries, GeoDataFrame)):

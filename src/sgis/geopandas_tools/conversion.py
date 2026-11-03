@@ -227,24 +227,39 @@ def coordinate_array(
     ...     ]
     ... )
     >>> points
-                    geometry
-    0  POINT (0.59376 0.92577)
-    1  POINT (0.34075 0.91650)
-    2  POINT (0.74841 0.10627)
-    3  POINT (0.00966 0.87868)
-    4  POINT (0.38046 0.87879)
+                geometry
+    0        POINT (0 1)
+    1        POINT (1 0)
+    2        POINT (1 1)
+    3        POINT (0 0)
+    4    POINT (0.5 0.5)
+    5   POINT (0.5 0.25)
+    6  POINT (0.25 0.25)
+    7  POINT (0.75 0.75)
+    8  POINT (0.25 0.75)
+    9  POINT (0.75 0.25)
     >>> sg.coordinate_array(points)
-    array([[0.59376221, 0.92577159],
-        [0.34074678, 0.91650446],
-        [0.74840912, 0.10626954],
-        [0.00965935, 0.87867915],
-        [0.38045827, 0.87878816]])
+    array([[0.  , 1.  ],
+           [1.  , 0.  ],
+           [1.  , 1.  ],
+           [0.  , 0.  ],
+           [0.5 , 0.5 ],
+           [0.5 , 0.25],
+           [0.25, 0.25],
+           [0.75, 0.75],
+           [0.25, 0.75],
+           [0.75, 0.25]])
     >>> sg.coordinate_array(points.geometry)
-    array([[0.59376221, 0.92577159],
-        [0.34074678, 0.91650446],
-        [0.74840912, 0.10626954],
-        [0.00965935, 0.87867915],
-        [0.38045827, 0.87878816]])
+    array([[0.  , 1.  ],
+           [1.  , 0.  ],
+           [1.  , 1.  ],
+           [0.  , 0.  ],
+           [0.5 , 0.5 ],
+           [0.5 , 0.25],
+           [0.25, 0.25],
+           [0.75, 0.75],
+           [0.25, 0.75],
+           [0.75, 0.25]])
     """
     try:
         return shapely.get_coordinates(gdf.geometry.values, include_z=include_z)
@@ -297,30 +312,36 @@ def to_gdf(
     Examples:
     ---------
     >>> import sgis as sg
+    >>> import numpy as np
+    >>> np.random.seed(0)
+    >>> import pandas as pd
     >>> coords = (10, 60)
     >>> sg.to_gdf(coords, crs=4326)
-                        geometry
-    0  POINT (10.00000 60.00000)
+            geometry
+    0  POINT (10 60)
 
     From wkt.
 
     >>> wkt = "POINT (10 60)"
     >>> sg.to_gdf(wkt, crs=4326)
-                        geometry
-    0  POINT (10.00000 60.00000)
+            geometry
+    0  POINT (10 60)
 
     From DataFrame with x, y (optionally z) coordinate columns. Index and
     columns are preserved.
 
     >>> df = pd.DataFrame({"x": [10, 11], "y": [60, 59]}, index=[1,3])
+    >>> df
         x   y
     1  10  60
     3  11  59
     >>> gdf = sg.to_gdf(df, geometry=["x", "y"], crs=4326)
-    >>> gdf
-        x   y                   geometry
-    1  10  60  POINT (10.00000 60.00000)
-    3  11  59  POINT (11.00000 59.00000)
+    >>> print(gdf.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+        x   y       geometry
+    1  10  60  POINT (10 60)
+    3  11  59  POINT (11 59)
+    <BLANKLINE>
+    [2 rows x 3 columns]
 
     For DataFrame/dict with a geometry-like column named "geometry". If the column has
     another name, it must be set with the geometry parameter.
@@ -332,42 +353,42 @@ def to_gdf(
     1    2       (11, 59)
     >>> gdf = sg.to_gdf(df, crs=4326)
     >>> gdf
-       col                   geometry
-    0    1  POINT (10.00000 60.00000)
-    1    2  POINT (11.00000 59.00000)
+       col       geometry
+    0    1  POINT (10 60)
+    1    2  POINT (11 59)
 
     From Series.
 
-    >>> series = Series({1: (10, 60), 3: (11, 59)})
+    >>> series = pd.Series({1: (10, 60), 3: (11, 59)})
     >>> sg.to_gdf(series)
-                        geometry
-    1  POINT (10.00000 60.00000)
-    3  POINT (11.00000 59.00000)
+            geometry
+    1  POINT (10 60)
+    3  POINT (11 59)
 
     Multiple coordinates will be converted to points, unless a line or polygon geometry
     is constructed beforehand.
 
     >>> coordslist = [(10, 60), (11, 59)]
     >>> sg.to_gdf(coordslist, crs=4326)
-                        geometry
-    0  POINT (10.00000 60.00000)
-    1  POINT (11.00000 59.00000)
+            geometry
+    0  POINT (10 60)
+    1  POINT (11 59)
 
     >>> from shapely.geometry import LineString
     >>> sg.to_gdf(LineString(coordslist), crs=4326)
-                                                geometry
-    0  LINESTRING (10.00000 60.00000, 11.00000 59.00000)
+                        geometry
+    0  LINESTRING (10 60, 11 59)
 
     From 2 or 3 dimensional array.
 
     >>> arr = np.random.randint(100, size=(5, 3))
     >>> sg.to_gdf(arr)
-                             geometry
-    0  POINT Z (82.000 88.000 82.000)
-    1  POINT Z (70.000 92.000 20.000)
-    2   POINT Z (91.000 34.000 3.000)
-    3   POINT Z (1.000 50.000 77.000)
-    4  POINT Z (58.000 49.000 46.000)
+                 geometry
+    0  POINT Z (44 47 64)
+    1   POINT Z (67 67 9)
+    2  POINT Z (83 21 36)
+    3  POINT Z (87 70 88)
+    4  POINT Z (88 12 58)
     """
     if isinstance(obj, GeoDataFrame):
         if not crs:
