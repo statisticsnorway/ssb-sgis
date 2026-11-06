@@ -132,9 +132,7 @@ def to_bbox(
         assert isinstance(bounds, tuple)
         return bounds
     try:
-        bounds = tuple(obj.bounds)
-        assert isinstance(bounds, tuple)
-        return bounds
+        return tuple(obj.bounds)
     except Exception:
         pass
 

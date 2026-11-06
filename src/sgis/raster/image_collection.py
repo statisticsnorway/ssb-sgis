@@ -769,6 +769,7 @@ class _ImageBandBase(_ImageBase):
         return missing_metadata_attributes | nonmissing_metadata_attributes
 
 
+@functools.total_ordering
 class Band(_ImageBandBase):
     """Band holding a single 2 dimensional array representing an image band."""
 
@@ -1336,7 +1337,7 @@ class Band(_ImageBandBase):
 
         Now let's create a Raster from this array with a resolution of 10.
 
-        >>> band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50), res=10)
+        >>> band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50))
 
         The gradient will be 1 (1 meter up for every meter forward).
         The calculation is by default done in place to save memory.
@@ -1490,6 +1491,7 @@ class NDVIBand(Band):
     cmap: str = "Greens"
 
 
+@functools.total_ordering
 class Image(_ImageBandBase):
     """Image consisting of one or more Bands."""
 

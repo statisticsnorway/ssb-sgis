@@ -53,7 +53,7 @@ def get_connected_components(gdf: GeoDataFrame) -> GeoDataFrame:
 
     largest_component = max(nx.connected_components(graph), key=len)
 
-    largest_component_dict = {node_id: 1 for node_id in largest_component}
+    largest_component_dict = dict.fromkeys(largest_component, 1)
 
     gdf["connected"] = gdf.source.map(largest_component_dict).fillna(0)
 
