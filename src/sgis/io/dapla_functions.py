@@ -442,6 +442,7 @@ def get_bounds_series(
 
     Examples:
     ---------
+    >>> # xdoctest: +SKIP
     >>> import sgis as sg
     >>> from gcsfs import GCSFileSystem
     >>> all_paths =  GCSFileSystem().ls("...")
@@ -840,17 +841,23 @@ def expression_match_path(expression: ds.Expression, path: str) -> bool:
 
     Examples:
     ---------
+    Partition values extracted from a path are strings.
+
     >>> import pyarrow.compute as pc
     >>> path = 'data/file.parquet/x=1/y=10/name0.parquet'
-    >>> expression = (pc.Field("x") == 1) & (pc.Field("y") == 10)
-    >>> expression_match_path(path, expression)
+    >>> expression = (pc.field("x") == "1") & (pc.field("y") == "10")
+    >>> expression_match_path(expression, path)
     True
-    >>> expression = (pc.Field("x") == 1) & (pc.Field("y") == 5)
-    >>> expression_match_path(path, expression)
+    >>> expression = (pc.field("x") == "1") & (pc.field("y") == "5")
+    >>> expression_match_path(expression, path)
     False
-    >>> expression = (pc.Field("x") == 1) & (pc.Field("z") == 10)
-    >>> expression_match_path(path, expression)
-    False
+
+    If a field is not in the partition path, the file is kept because its contents
+    must be read to evaluate the expression.
+
+    >>> expression = (pc.field("x") == "1") & (pc.field("z") == "10")
+    >>> expression_match_path(expression, path)
+    True
     """
     # keep only the parts in between the two .parquet parts
     path = str(path).split(".parquet")[1]

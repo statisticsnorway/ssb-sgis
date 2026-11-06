@@ -184,10 +184,10 @@ def clean_geoms(
     ...         "POLYGON ((3 3, 4 4, 3 4, 3 3))"
     ...         ])
     >>> gdf
-                                                geometry
-    0                            POINT (0.00000 0.00000)
-    1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
-    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
+                             geometry
+    0                     POINT (0 0)
+    1           LINESTRING (1 1, 2 2)
+    2  POLYGON ((3 3, 4 4, 3 4, 3 3))
 
     Add None and empty geometries.
 
@@ -195,20 +195,20 @@ def clean_geoms(
     >>> empty = sg.to_gdf(wkt.loads("POINT (0 0)").buffer(0))
     >>> gdf = pd.concat([gdf, missing, empty])
     >>> gdf
-                                                geometry
-    0                            POINT (0.00000 0.00000)
-    1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
-    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
-    0                                               None
-    0                                      POLYGON EMPTY
+                             geometry
+    0                     POINT (0 0)
+    1           LINESTRING (1 1, 2 2)
+    2  POLYGON ((3 3, 4 4, 3 4, 3 3))
+    0                            None
+    0                   POLYGON EMPTY
 
     Clean.
 
     >>> sg.clean_geoms(gdf)
-                                                geometry
-    0                            POINT (0.00000 0.00000)
-    1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
-    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
+                             geometry
+    0                     POINT (0 0)
+    1           LINESTRING (1 1, 2 2)
+    2  POLYGON ((3 3, 4 4, 3 4, 3 3))
     """
     warnings.filterwarnings("ignore", "GeoSeries.notna", UserWarning)
 
@@ -311,29 +311,35 @@ def sort_large_first(gdf: GeoDataFrame | GeoSeries) -> GeoDataFrame | GeoSeries:
     >>> df["col"] = [None, 1, 2, None, 1]
     >>> df["col2"] = [None, 1, 2, 3, None]
     >>> df["area"] = df.area
-    >>> df
+    >>> print(df.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
                                                 geometry  col  col2       area
-    0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
-    1  POLYGON ((1.40111 0.71798, 1.39630 0.61996, 1....  1.0   1.0   3.136548
-    2  POLYGON ((2.33302 0.49287, 2.32339 0.29683, 2....  2.0   2.0  12.546194
-    3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
-    4  POLYGON ((5.63590 0.16005, 5.61182 -0.33004, 5...  1.0   NaN  78.413712
+    0  POLYGON ((4 1, 3.98074 0.60793, 3.92314 0.2196...  NaN   NaN  50.184776
+    1  POLYGON ((2 0, 1.99518 -0.09802, 1.98079 -0.19...  1.0   1.0   3.136548
+    2  POLYGON ((3 1, 2.99037 0.80397, 2.96157 0.6098...  2.0   2.0  12.546194
+    3  POLYGON ((3 0, 2.98555 -0.29405, 2.94236 -0.58...  NaN   3.0  28.228936
+    4  POLYGON ((5.5 0.5, 5.47592 0.00991, 5.40393 -0...  1.0   NaN  78.413712
+    <BLANKLINE>
+    [5 rows x 4 columns]
 
-    >>> sg.sort_large_first(df)
+    >>> print(sg.sort_large_first(df).to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
                                                 geometry  col  col2       area
-    4  POLYGON ((5.63590 0.16005, 5.61182 -0.33004, 5...  1.0   NaN  78.413712
-    0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
-    3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
-    2  POLYGON ((2.33302 0.49287, 2.32339 0.29683, 2....  2.0   2.0  12.546194
-    1  POLYGON ((1.40111 0.71798, 1.39630 0.61996, 1....  1.0   1.0   3.136548
+    4  POLYGON ((5.5 0.5, 5.47592 0.00991, 5.40393 -0...  1.0   NaN  78.413712
+    0  POLYGON ((4 1, 3.98074 0.60793, 3.92314 0.2196...  NaN   NaN  50.184776
+    3  POLYGON ((3 0, 2.98555 -0.29405, 2.94236 -0.58...  NaN   3.0  28.228936
+    2  POLYGON ((3 1, 2.99037 0.80397, 2.96157 0.6098...  2.0   2.0  12.546194
+    1  POLYGON ((2 0, 1.99518 -0.09802, 1.98079 -0.19...  1.0   1.0   3.136548
+    <BLANKLINE>
+    [5 rows x 4 columns]
 
-    >>> sg.sort_nans_last(sg.sort_large_first(df))
+    >>> print(sg.sort_nans_last(sg.sort_large_first(df)).to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
                                                 geometry  col  col2       area
-    2  POLYGON ((2.33302 0.49287, 2.32339 0.29683, 2....  2.0   2.0  12.546194
-    1  POLYGON ((1.40111 0.71798, 1.39630 0.61996, 1....  1.0   1.0   3.136548
-    4  POLYGON ((5.63590 0.16005, 5.61182 -0.33004, 5...  1.0   NaN  78.413712
-    3  POLYGON ((3.68381 0.46299, 3.66936 0.16894, 3....  NaN   3.0  28.228936
-    0  POLYGON ((4.56136 0.53436, 4.54210 0.14229, 4....  NaN   NaN  50.184776
+    2  POLYGON ((3 1, 2.99037 0.80397, 2.96157 0.6098...  2.0   2.0  12.546194
+    1  POLYGON ((2 0, 1.99518 -0.09802, 1.98079 -0.19...  1.0   1.0   3.136548
+    4  POLYGON ((5.5 0.5, 5.47592 0.00991, 5.40393 -0...  1.0   NaN  78.413712
+    3  POLYGON ((3 0, 2.98555 -0.29405, 2.94236 -0.58...  NaN   3.0  28.228936
+    0  POLYGON ((4 1, 3.98074 0.60793, 3.92314 0.2196...  NaN   NaN  50.184776
+    <BLANKLINE>
+    [5 rows x 4 columns]
     """
     # using enumerate, then iloc on the sorted dict keys.
     # to avoid creating a temporary area column (which doesn't work for GeoSeries).
@@ -432,20 +438,23 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     Examples:
     ---------
     >>> import sgis as sg
+    >>> import numpy as np
+    >>> np.random.seed(0)
     >>> points = sg.random_points(10_000)
     >>> points
                          geometry
-    0     POINT (0.62044 0.22805)
-    1     POINT (0.31885 0.38109)
-    2     POINT (0.39632 0.61130)
-    3     POINT (0.99401 0.35732)
-    4     POINT (0.76403 0.73539)
+    0     POINT (0.54881 0.74827)
+    1      POINT (0.71519 0.1802)
+    2     POINT (0.60276 0.38902)
+    3      POINT (0.54488 0.0376)
+    4     POINT (0.42365 0.01179)
     ...                       ...
-    9995  POINT (0.90433 0.75080)
-    9996  POINT (0.10959 0.59785)
-    9997  POINT (0.00330 0.79168)
-    9998  POINT (0.90926 0.96215)
-    9999  POINT (0.01386 0.22935)
+    9995  POINT (0.55045 0.74817)
+    9996  POINT (0.39715 0.29827)
+    9997  POINT (0.75843 0.44646)
+    9998  POINT (0.02379 0.36013)
+    9999  POINT (0.81358 0.62589)
+    <BLANKLINE>
     [10000 rows x 1 columns]
 
     Values with a mean of 100.
@@ -453,17 +462,18 @@ def random_points(n: int, loc: float | int = 0.5) -> GeoDataFrame:
     >>> points = sg.random_points(10_000, loc=100)
     >>> points
                          geometry
-    0      POINT (50.442 199.729)
-    1       POINT (26.450 83.367)
-    2     POINT (111.054 147.610)
-    3      POINT (93.141 141.456)
-    4       POINT (94.101 24.837)
+    0      POINT (78.435 151.625)
+    1       POINT (8.231 100.664)
+    2       POINT (184.66 35.403)
+    3      POINT (81.247 166.507)
+    4     POINT (188.856 103.365)
     ...                       ...
-    9995   POINT (174.344 91.772)
-    9996    POINT (95.375 11.391)
-    9997    POINT (45.694 60.843)
-    9998   POINT (73.261 101.881)
-    9999  POINT (134.503 168.155)
+    9995  POINT (124.472 133.677)
+    9996  POINT (106.228 198.982)
+    9997  POINT (170.581 117.645)
+    9998   POINT (146.846 84.923)
+    9999  POINT (127.799 180.327)
+    <BLANKLINE>
     [10000 rows x 1 columns]
     """
     x = np.random.rand(n) * float(loc) * 2
@@ -606,29 +616,33 @@ def to_lines(
     >>> poly1 = sg.to_gdf(Polygon([(0, 0), (0, 1), (1, 1), (1, 0)]))
     >>> poly1["poly1"] = 1
     >>> line = sg.to_lines(poly1)
-    >>> line
-                                                geometry  poly1
-    0  LINESTRING (0.00000 0.00000, 0.00000 1.00000, ...      1
+    >>> print(line.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+       poly1                              geometry
+    0      1  LINESTRING (0 0, 0 1, 1 1, 1 0, 0 0)
+    <BLANKLINE>
+    [1 rows x 2 columns]
 
     Convert two overlapping polygons to linestrings.
 
     >>> poly2 = sg.to_gdf(Polygon([(0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5)]))
     >>> poly2["poly2"] = 1
     >>> lines = sg.to_lines(poly1, poly2)
-    >>> lines
-    poly1  poly2                                           geometry
-    0    1.0    NaN  LINESTRING (0.00000 0.00000, 0.00000 1.00000, ...
-    1    1.0    NaN  LINESTRING (0.50000 1.00000, 1.00000 1.00000, ...
-    2    1.0    NaN  LINESTRING (1.00000 0.50000, 1.00000 0.00000, ...
-    3    NaN    1.0      LINESTRING (0.50000 0.50000, 0.50000 1.00000)
-    4    NaN    1.0  LINESTRING (0.50000 1.00000, 0.50000 1.50000, ...
-    5    NaN    1.0      LINESTRING (1.00000 0.50000, 0.50000 0.50000)
+    >>> print(lines.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+       poly1  poly2                                           geometry
+    0    1.0    NaN                       LINESTRING (0 0, 0 1, 0.5 1)
+    1    1.0    NaN                     LINESTRING (0.5 1, 1 1, 1 0.5)
+    2    1.0    NaN                       LINESTRING (1 0.5, 1 0, 0 0)
+    3    NaN    1.0                        LINESTRING (0.5 0.5, 0.5 1)
+    4    NaN    1.0  LINESTRING (0.5 1, 0.5 1.5, 1.5 1.5, 1.5 0.5, ...
+    5    NaN    1.0                        LINESTRING (1 0.5, 0.5 0.5)
+    <BLANKLINE>
+    [6 rows x 3 columns]
 
-    Plot before and after.
+    Plot before and after in an interactive session::
 
-    >>> sg.qtm(poly1, poly2)
-    >>> lines["l"] = lines.length
-    >>> sg.qtm(lines, "l")
+        sg.qtm(poly1, poly2)
+        lines["l"] = lines.length
+        sg.qtm(lines, "l")
     """
     gdf = (
         pd.concat(df.assign(**{"_df_idx": i}) for i, df in enumerate(gdfs))

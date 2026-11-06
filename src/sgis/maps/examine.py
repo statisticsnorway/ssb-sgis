@@ -40,26 +40,26 @@ class Examine:
     in a separate notebook cell to the previous.
 
     >>> e.next()
-    i == 1 (of 1000)
-    <folium.folium.Map object at 0x000002AC73ACC090>
+    i == 0 (max. 999)
+    <folium.folium.Map object at ...>
 
     Previous geometry:
 
     >>> e.next(-1)
-    i == 0 (of 1000)
-    <folium.folium.Map object at 0x0000020F3D68BE50>
+    i == -1 (max. 999)
+    <folium.folium.Map object at ...>
 
-    Repeating -1 will display the last row of 'points'.
+    Repeating -1 will display the preceding row of 'points'.
 
     >>> e.next(-1)
-    i == -1 (of 1000)
-    <folium.folium.Map object at 0x0000020F3E46FB50>
+    i == -2 (max. 999)
+    <folium.folium.Map object at ...>
 
-    Show index 100 and color the map by 'idx':
+    Show index 100:
 
-    >>> e.next(100, column="idx")
-    i == 100 (of 1000)
-    <folium.folium.Map object at 0x0000020F3DD73F50>
+    >>> e.next(100)
+    i == 100 (max. 999)
+    <folium.folium.Map object at ...>
 
     """
 

@@ -134,13 +134,13 @@ def cut_lines(
     dtype: float64
     >>> roads = cut_lines(roads, max_length=100)
     >>> roads.length.describe().round(1)
-    count    126304.0
-    mean         30.5
-    std          30.1
+    count    103105.0
+    mean         37.4
+    std          29.2
     min           0.0
-    25%           5.7
-    50%          22.5
-    75%          44.7
+    25%          14.5
+    50%          29.0
+    75%          51.8
     max         100.0
     dtype: float64
     """
@@ -183,6 +183,10 @@ def cut_lines_once(
     Takes a GeoDataFrame of lines and cuts each line in two. If distances is a number,
     all lines will be cut at the same length.
 
+    Cuts within an endpoint tolerance leave the line unchanged to avoid creating
+    effectively zero-length segments from floating-point rounding. The tolerance
+    is capped at 1e-6 coordinate units and scaled down for short lines.
+
     Args:
         gdf: GeoDataFrame.
         distances: The distance from the start of the lines to cut at. Either a number,
@@ -198,47 +202,50 @@ def cut_lines_once(
     >>> gdf = to_gdf(LineString([(0, 0), (1, 1), (2, 2)]))
     >>> gdf = pd.concat([gdf, gdf, gdf])
     >>> gdf
-                                                geometry
-    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...
-    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...
-    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...
+                         geometry
+    0  LINESTRING (0 0, 1 1, 2 2)
+    0  LINESTRING (0 0, 1 1, 2 2)
+    0  LINESTRING (0 0, 1 1, 2 2)
 
     Cut all lines at 1 unit from the start of the lines.
 
     >>> cut_lines_once(gdf, 1)
-                                                geometry
-    0      LINESTRING (0.00000 0.00000, 0.70711 0.70711)
-    1  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...
-    2      LINESTRING (0.00000 0.00000, 0.70711 0.70711)
-    3  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...
-    4      LINESTRING (0.00000 0.00000, 0.70711 0.70711)
-    5  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...
+                                     geometry
+    0       LINESTRING (0 0, 0.70711 0.70711)
+    0  LINESTRING (0.70711 0.70711, 1 1, 2 2)
+    0       LINESTRING (0 0, 0.70711 0.70711)
+    0  LINESTRING (0.70711 0.70711, 1 1, 2 2)
+    0       LINESTRING (0 0, 0.70711 0.70711)
+    0  LINESTRING (0.70711 0.70711, 1 1, 2 2)
 
     Cut distance as column.
 
     >>> gdf["dist"] = [1, 2, 3]
     >>> cut_lines_once(gdf, "dist")
-                                                geometry  dist
-    0      LINESTRING (0.00000 0.00000, 0.70711 0.70711)     1
-    0  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...     1
-    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     2
-    0      LINESTRING (1.41421 1.41421, 2.00000 2.00000)     2
-    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     3
+                                     geometry  dist
+    0       LINESTRING (0 0, 0.70711 0.70711)     1
+    0  LINESTRING (0.70711 0.70711, 1 1, 2 2)     1
+    0  LINESTRING (0 0, 1 1, 1.41421 1.41421)     2
+    0       LINESTRING (1.41421 1.41421, 2 2)     2
+    0              LINESTRING (0 0, 1 1, 2 2)     3
 
     Cut distance as list (same result as above).
 
     >>> cut_lines_once(gdf, [1, 2, 3])
-                                                geometry  dist
-    0      LINESTRING (0.00000 0.00000, 0.70711 0.70711)     1
-    0  LINESTRING (0.70711 0.70711, 1.00000 1.00000, ...     1
-    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     2
-    0      LINESTRING (1.41421 1.41421, 2.00000 2.00000)     2
-    0  LINESTRING (0.00000 0.00000, 1.00000 1.00000, ...     3
+                                     geometry  dist
+    0       LINESTRING (0 0, 0.70711 0.70711)     1
+    0  LINESTRING (0.70711 0.70711, 1 1, 2 2)     1
+    0  LINESTRING (0 0, 1 1, 1.41421 1.41421)     2
+    0       LINESTRING (1.41421 1.41421, 2 2)     2
+    0              LINESTRING (0 0, 1 1, 2 2)     3
     """
 
     def _cut(line: LineString, distance: int | float) -> list[LineString]:
         """From the shapely docs."""
-        if distance <= 0.0 or distance >= line.length:
+        # Repeated cuts can leave lengths a fraction above the cut distance.
+        # Do not split off effectively zero-length segments at either endpoint.
+        tolerance = min(PRECISION, line.length * 1e-9)
+        if distance <= tolerance or distance >= line.length - tolerance:
             return line
         coords = list(line.coords)
         for i, p in enumerate(coords):

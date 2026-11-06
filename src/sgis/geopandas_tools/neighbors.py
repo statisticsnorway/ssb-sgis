@@ -63,9 +63,9 @@ def get_neighbor_indices(
     >>> from sgis import get_neighbor_indices, to_gdf
     >>> points = to_gdf([(0, 0), (0.5, 0.5)])
     >>> points
-                    geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (0.50000 0.50000)
+              geometry
+    0      POINT (0 0)
+    1  POINT (0.5 0.5)
 
     With the default max_distance (0), the points return the index of themselves.
 
@@ -80,8 +80,8 @@ def get_neighbor_indices(
     >>> neighbor_indices = get_neighbor_indices(points, points, max_distance=1)
     >>> neighbor_indices
     0    0
-    1    0
     0    1
+    1    0
     1    1
     Name: neighbor_index, dtype: int64
 
@@ -91,19 +91,21 @@ def get_neighbor_indices(
     >>> neighbor_indices = get_neighbor_indices(points, points.set_index("text"), max_distance=1)
     >>> neighbor_indices
     0    a
-    1    a
     0    b
+    1    a
     1    b
-    Name: neighbor_index, dtype: object
+    Name: neighbor_index, dtype: str
 
     The returned Series will always keep the index of 'gdf' and have values of the
     'neighbors' index.
 
     >>> neighbor_indices.index
-    Int64Index([0, 1, 0, 1], dtype='int64')
+    Index([0, 0, 1, 1], dtype='int64')
 
     >>> neighbor_indices.values
-    ['a' 'a' 'b' 'b']
+    <ArrowStringArray>
+    ['a', 'b', 'a', 'b']
+    Length: 4, dtype: str
 
     """
     if isinstance(gdf.index, MultiIndex) or isinstance(neighbors.index, MultiIndex):
@@ -184,82 +186,85 @@ def get_all_distances(
     Examples:
     ---------
     >>> from sgis import get_all_distances, random_points
+    >>> import numpy as np
+    >>> np.random.seed(0)
     >>> points = random_points(100)
     >>> neighbors = random_points(100)
 
     >>> distances = get_all_distances(points, neighbors)
-    >>> distances
+    >>> print(distances.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
         neighbor_index  distance
-    0               70  0.050578
-    0               24  0.070267
-    0               91  0.088510
-    0               72  0.095352
-    0               40  0.103720
+    0                8  0.049319
+    0               69  0.064355
+    0               88  0.070973
+    0               26  0.138782
+    0               35  0.159142
     ..             ...       ...
-    99              27  0.713055
-    99              60  0.718162
-    99              63  0.719675
-    99              62  0.719747
-    99              90  0.761324
-
+    99              70  1.008302
+    99              51  1.017274
+    99              10  1.041393
+    99              86  1.048825
+    99              98  1.054635
+    <BLANKLINE>
     [10000 rows x 2 columns]
 
     Use set_index to get values from other columns.
 
     >>> neighbors["custom_id"] = np.random.choice([*"abcde"], len(neighbors))
     >>> distances = get_all_distances(points, neighbors.set_index("custom_id"))
+    >>> print(distances.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
        neighbor_index  distance
-    0               d  0.050578
-    0               b  0.070267
-    0               e  0.088510
-    0               d  0.095352
-    0               c  0.103720
+    0               a  0.049319
+    0               d  0.064355
+    0               c  0.070973
+    0               b  0.138782
+    0               d  0.159142
     ..            ...       ...
-    99              b  0.713055
-    99              d  0.718162
-    99              d  0.719675
-    99              d  0.719747
-    99              e  0.761324
-
+    99              e  1.008302
+    99              b  1.017274
+    99              e  1.041393
+    99              b  1.048825
+    99              e  1.054635
+    <BLANKLINE>
     [10000 rows x 2 columns]
 
     Since the index from 'gdf' is preserved, we can join the results with the 'points'.
 
     >>> joined = points.join(distances)
-    >>> joined
+    >>> print(joined.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
                        geometry neighbor_index  distance
-    0   POINT (0.59809 0.34636)              d  0.050578
-    0   POINT (0.59809 0.34636)              b  0.070267
-    0   POINT (0.59809 0.34636)              e  0.088510
-    0   POINT (0.59809 0.34636)              d  0.095352
-    0   POINT (0.59809 0.34636)              c  0.103720
+    0   POINT (0.54881 0.67782)              a  0.049319
+    0   POINT (0.54881 0.67782)              d  0.064355
+    0   POINT (0.54881 0.67782)              c  0.070973
+    0   POINT (0.54881 0.67782)              b  0.138782
+    0   POINT (0.54881 0.67782)              d  0.159142
     ..                      ...            ...       ...
-    99  POINT (0.35305 0.47445)              b  0.713055
-    99  POINT (0.35305 0.47445)              d  0.718162
-    99  POINT (0.35305 0.47445)              d  0.719675
-    99  POINT (0.35305 0.47445)              d  0.719747
-    99  POINT (0.35305 0.47445)              e  0.761324
-
+    99   POINT (0.0047 0.43442)              e  1.008302
+    99   POINT (0.0047 0.43442)              b  1.017274
+    99   POINT (0.0047 0.43442)              e  1.041393
+    99   POINT (0.0047 0.43442)              b  1.048825
+    99   POINT (0.0047 0.43442)              e  1.054635
+    <BLANKLINE>
     [10000 rows x 3 columns]
 
     Or assign aggregated values onto the points.
 
     >>> points["mean_distance"] = distances.groupby(level=0)["distance"].mean()
     >>> points["min_distance"] = distances.groupby(level=0)["distance"].min()
-    >>> points
+    >>> print(points.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
                        geometry  mean_distance  min_distance
-    0   POINT (0.59809 0.34636)       0.417128      0.050578
-    1   POINT (0.25444 0.02876)       0.673966      0.016781
-    2   POINT (0.22475 0.08637)       0.643514      0.030049
-    3   POINT (0.14814 0.23037)       0.593224      0.025758
-    4   POINT (0.69298 0.81931)       0.434355      0.051575
+    0   POINT (0.54881 0.67782)       0.433036      0.049319
+    1   POINT (0.71519 0.27001)       0.454673      0.049724
+    2   POINT (0.60276 0.73519)       0.462998      0.066877
+    3   POINT (0.54488 0.96219)       0.594874      0.056894
+    4   POINT (0.42365 0.24875)       0.439790      0.050622
     ..                      ...            ...           ...
-    95  POINT (0.62453 0.26793)       0.460177      0.031749
-    96  POINT (0.11882 0.26615)       0.592930      0.044010
-    97  POINT (0.03998 0.77527)       0.592031      0.090983
-    98  POINT (0.46047 0.79056)       0.400134      0.016012
-    99  POINT (0.35305 0.47445)       0.397660      0.052134
-
+    95  POINT (0.18319 0.49046)       0.483288      0.080965
+    96  POINT (0.58651 0.22741)       0.443947      0.045408
+    97  POINT (0.02011 0.25436)       0.624337      0.052075
+    98  POINT (0.82894 0.05803)       0.607370      0.082215
+    99   POINT (0.0047 0.43442)       0.600952      0.033732
+    <BLANKLINE>
     [100 rows x 3 columns]
     """
     return get_k_nearest_neighbors(
@@ -330,46 +335,48 @@ def get_k_nearest_neighbors(
     Make some random points.
 
     >>> from sgis import get_k_nearest_neighbors, random_points
+    >>> import numpy as np
+    >>> np.random.seed(0)
     >>> points = random_points(100)
     >>> neighbors = random_points(100)
 
     Get 10 nearest neighbors.
 
     >>> distances = get_k_nearest_neighbors(points, neighbors, k=10)
-    >>> distances
+    >>> print(distances.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
         neighbor_index  distance
-    0               84  0.049168
-    0               59  0.053592
-    0               14  0.091812
-    0               40  0.118403
-    0               77  0.129565
+    0                8  0.049319
+    0               69  0.064355
+    0               88  0.070973
+    0               26  0.138782
+    0               35  0.159142
     ..             ...       ...
-    99              86  0.153771
-    99              92  0.157481
-    99              70  0.177368
-    99              65  0.184087
-    99              26  0.202216
-
+    99              48  0.200319
+    99               5  0.211638
+    99              47  0.219490
+    99              14  0.238166
+    99              24  0.249852
+    <BLANKLINE>
     [1000 rows x 2 columns]
 
     Use set_index to use another column as identifier for the neighbors.
 
     >>> neighbors["custom_id"] = [letter for letter in [*"abcde"] for _ in range(20)]
     >>> distances = get_k_nearest_neighbors(points, neighbors.set_index("custom_id"), k=10)
-    >>> distances
+    >>> print(distances.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
        neighbor_index  distance
-    0               e  0.049168
-    0               c  0.053592
-    0               a  0.091812
-    0               c  0.118403
-    0               d  0.129565
+    0               a  0.049319
+    0               d  0.064355
+    0               e  0.070973
+    0               b  0.138782
+    0               b  0.159142
     ..            ...       ...
-    99              e  0.153771
-    99              e  0.157481
-    99              d  0.177368
-    99              d  0.184087
-    99              b  0.202216
-
+    99              c  0.200319
+    99              a  0.211638
+    99              c  0.219490
+    99              a  0.238166
+    99              b  0.249852
+    <BLANKLINE>
     [1000 rows x 2 columns]
 
     The index from 'points' is preserved. Use join to get the distance and neighbor
@@ -377,40 +384,40 @@ def get_k_nearest_neighbors(
 
     >>> joined = points.join(distances)
     >>> joined["k"] = joined.groupby(level=0)["distance"].transform("rank")
-    >>> joined
+    >>> print(joined.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
                        geometry neighbor_index  distance     k
-    0   POINT (0.89067 0.75346)              e  0.049168   1.0
-    0   POINT (0.89067 0.75346)              c  0.053592   2.0
-    0   POINT (0.89067 0.75346)              a  0.091812   3.0
-    0   POINT (0.89067 0.75346)              c  0.118403   4.0
-    0   POINT (0.89067 0.75346)              d  0.129565   5.0
+    0   POINT (0.54881 0.67782)              a  0.049319   1.0
+    0   POINT (0.54881 0.67782)              d  0.064355   2.0
+    0   POINT (0.54881 0.67782)              e  0.070973   3.0
+    0   POINT (0.54881 0.67782)              b  0.138782   4.0
+    0   POINT (0.54881 0.67782)              b  0.159142   5.0
     ..                      ...            ...       ...   ...
-    99  POINT (0.65910 0.16714)              e  0.153771   6.0
-    99  POINT (0.65910 0.16714)              e  0.157481   7.0
-    99  POINT (0.65910 0.16714)              d  0.177368   8.0
-    99  POINT (0.65910 0.16714)              d  0.184087   9.0
-    99  POINT (0.65910 0.16714)              b  0.202216  10.0
-
+    99   POINT (0.0047 0.43442)              c  0.200319   6.0
+    99   POINT (0.0047 0.43442)              a  0.211638   7.0
+    99   POINT (0.0047 0.43442)              c  0.219490   8.0
+    99   POINT (0.0047 0.43442)              a  0.238166   9.0
+    99   POINT (0.0047 0.43442)              b  0.249852  10.0
+    <BLANKLINE>
     [1000 rows x 4 columns]
 
     Or assign aggregated values directly onto the points.
 
     >>> points["mean_distance"] = distances.groupby(level=0)["distance"].mean()
     >>> points["min_distance"] = distances.groupby(level=0)["distance"].min()
-    >>> points
+    >>> print(points.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
                        geometry  mean_distance  min_distance
-    0   POINT (0.89067 0.75346)       0.132193      0.049168
-    1   POINT (0.41308 0.09462)       0.116610      0.009072
-    2   POINT (0.13458 0.44248)       0.100539      0.059576
-    3   POINT (0.32670 0.44102)       0.117730      0.056133
-    4   POINT (0.82184 0.41231)       0.106685      0.013174
+    0   POINT (0.54881 0.67782)       0.140596      0.049319
+    1   POINT (0.71519 0.27001)       0.119401      0.049724
+    2   POINT (0.60276 0.73519)       0.136178      0.066877
+    3   POINT (0.54488 0.96219)       0.180756      0.056894
+    4   POINT (0.42365 0.24875)       0.142112      0.050622
     ..                      ...            ...           ...
-    95  POINT (0.29706 0.27520)       0.137398      0.079672
-    96  POINT (0.42416 0.26956)       0.160817      0.074759
-    97  POINT (0.98337 0.54492)       0.164551      0.070798
-    98  POINT (0.42458 0.77459)       0.127562      0.027662
-    99  POINT (0.65910 0.16714)       0.143257      0.058453
-
+    95  POINT (0.18319 0.49046)       0.156066      0.080965
+    96  POINT (0.58651 0.22741)       0.121569      0.045408
+    97  POINT (0.02011 0.25436)       0.165561      0.052075
+    98  POINT (0.82894 0.05803)       0.150797      0.082215
+    99   POINT (0.0047 0.43442)       0.165959      0.033732
+    <BLANKLINE>
     [100 rows x 3 columns]
     """
     if not len(gdf) or not len(neighbors):

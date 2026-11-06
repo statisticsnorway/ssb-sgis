@@ -501,8 +501,8 @@ class _ImageBase:
 
         First level keys are are file paths, second level keys are attributes.
 
-        Extract metadata value:
-        >>> self.metadata[self.path]['cloud_cover_percentage']
+        Extract a metadata value with
+        ``self.metadata[self.path]['cloud_cover_percentage']``.
         """
         if isinstance(metadata, pd.DataFrame):
 
@@ -1340,9 +1340,9 @@ class Band(_ImageBandBase):
         >>> band = sg.Band(arr, crs=None, bounds=(0, 0, 50, 50))
 
         The gradient will be 1 (1 meter up for every meter forward).
-        The calculation is by default done in place to save memory.
+        Use copy=False to calculate in place and save memory.
 
-        >>> band.gradient(copy=False)
+        >>> _ = band.gradient(copy=False)
         >>> band.values
         array([[0., 1., 1., 1., 0.],
             [1., 1., 1., 1., 1.],

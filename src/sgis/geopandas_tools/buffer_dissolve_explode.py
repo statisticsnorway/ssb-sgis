@@ -132,51 +132,60 @@ def buffdiss(
 
     Examples:
     ---------
-    Create some random points.
+    Read points and create reproducible random group labels and numeric values.
 
     >>> import sgis as sg
     >>> import numpy as np
     >>> points = sg.read_parquet_url(
     ...     "https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet"
     ... )[["geometry"]]
-    >>> points["group"] = np.random.choice([*"abd"], len(points))
-    >>> points["number"] = np.random.random(size=len(points))
-    >>> points
-                               geometry group    number
-    0    POINT (263122.700 6651184.900)     a  0.878158
-    1    POINT (272456.100 6653369.500)     a  0.693311
-    2    POINT (270082.300 6653032.700)     b  0.323960
-    3    POINT (259804.800 6650339.700)     a  0.606745
-    4    POINT (272876.200 6652889.100)     a  0.194360
-    ..                              ...   ...       ...
-    995  POINT (266801.700 6647844.500)     a  0.814424
-    996  POINT (261274.000 6653593.400)     b  0.769479
-    997  POINT (263542.900 6645427.000)     a  0.925991
-    998  POINT (269226.700 6650628.000)     b  0.431972
-    999  POINT (264570.300 6644239.500)     d  0.555239
+    >>> rng = np.random.default_rng(0)
+    >>> points["group"] = rng.choice([*"abd"], len(points))
+    >>> points["number"] = rng.random(size=len(points))
+    >>> print(points.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+                           geometry group    number
+    0    POINT (263122.7 6651184.9)     d  0.081324
+    1    POINT (272456.1 6653369.5)     b  0.875228
+    2    POINT (270082.3 6653032.7)     b  0.941706
+    3    POINT (259804.8 6650339.7)     a  0.261864
+    4    POINT (272876.2 6652889.1)     a  0.012101
+    ..                          ...   ...       ...
+    995  POINT (266801.7 6647844.5)     d  0.725364
+    996    POINT (261274 6653593.4)     a  0.687725
+    997    POINT (263542.9 6645427)     b  0.923277
+    998    POINT (269226.7 6650628)     a  0.765027
+    999  POINT (264570.3 6644239.5)     d  0.387705
+    <BLANKLINE>
+    [1000 rows x 3 columns]
 
     Buffer by 100 meters and dissolve.
 
-    >>> sg.buffdiss(points, 100)
-                                                geometry group    number
-    0  MULTIPOLYGON (((256421.833 6649878.117, 256420...     d  0.580157
+    >>> print(sg.buffdiss(points, 100).to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+      group    number                                           geometry
+    0     d  0.081324  MULTIPOLYGON (((256411.714 6649864.787, 256408...
+    <BLANKLINE>
+    [1 rows x 3 columns]
 
     Dissolve by 'group' and get sum of columns.
 
-    >>> sg.buffdiss(points, 100, by="group", aggfunc="sum")
-                                                    geometry      number
+    >>> print(sg.buffdiss(points, 100, by="group", aggfunc="sum").to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+               number                                           geometry
     group
-    a      MULTIPOLYGON (((258866.258 6648220.031, 258865...  167.265619
-    b      MULTIPOLYGON (((258404.858 6647830.931, 258404...  171.939169
-    d      MULTIPOLYGON (((258180.258 6647935.731, 258179...  156.964300
+    a      162.382079  MULTIPOLYGON (((258174.755 6647919.926, 258172...
+    b      160.033421  MULTIPOLYGON (((258399.355 6647815.126, 258397...
+    d      175.070618  MULTIPOLYGON (((258219.455 6648068.626, 258217...
+    <BLANKLINE>
+    [3 rows x 2 columns]
 
     To get the 'by' columns as columns, not index.
 
-    >>> sg.buffdiss(points, 100, by="group", as_index=False)
-      group                                           geometry    number
-    0     a  MULTIPOLYGON (((258866.258 6648220.031, 258865...  0.323948
-    1     b  MULTIPOLYGON (((258404.858 6647830.931, 258404...  0.687635
-    2     d  MULTIPOLYGON (((258180.258 6647935.731, 258179...  0.580157
+    >>> print(sg.buffdiss(points, 100, by="group", as_index=False).to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+      group    number                                           geometry
+    0     a  0.261864  MULTIPOLYGON (((258174.755 6647919.926, 258172...
+    1     b  0.875228  MULTIPOLYGON (((258399.355 6647815.126, 258397...
+    2     d  0.081324  MULTIPOLYGON (((258219.455 6648068.626, 258217...
+    <BLANKLINE>
+    [3 rows x 3 columns]
     """
     buffered = buff(
         gdf, distance, resolution=resolution, copy=copy, join_style=join_style
