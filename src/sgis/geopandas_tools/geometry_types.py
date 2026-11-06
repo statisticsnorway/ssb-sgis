@@ -73,28 +73,28 @@ def to_single_geom_type(
     ...     Polygon([(3, 3), (4, 4), (3, 4), (3, 3)])
     ...     ])
     >>> gdf
-                                                geometry
-    0                            POINT (0.00000 0.00000)
-    1      LINESTRING (1.00000 1.00000, 2.00000 2.00000)
-    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
+                             geometry
+    0                     POINT (0 0)
+    1           LINESTRING (1 1, 2 2)
+    2  POLYGON ((3 3, 4 4, 3 4, 3 3))
 
     >>> to_single_geom_type(gdf, "line")
-                                            geometry
-    1  LINESTRING (1.00000 1.00000, 2.00000 2.00000)
+                    geometry
+    1  LINESTRING (1 1, 2 2)
     >>> to_single_geom_type(gdf, "polygon")
-                                                geometry
-    2  POLYGON ((3.00000 3.00000, 4.00000 4.00000, 3....
+                             geometry
+    2  POLYGON ((3 3, 4 4, 3 4, 3 3))
 
     Also keeps multigeometries and geometries within GeometryCollections.
 
     >>> gdf = gdf.dissolve()
     >>> gdf
                                                 geometry
-    0  GEOMETRYCOLLECTION (POINT (0.00000 0.00000), L...
+    0  GEOMETRYCOLLECTION (POINT (0 0), LINESTRING (1...
 
     >>> to_single_geom_type(gdf, "line")
-                                            geometry
-    2  LINESTRING (1.00000 1.00000, 2.00000 2.00000)
+                    geometry
+    0  LINESTRING (1 1, 2 2)
     """
     if all(g not in geom_type for g in ["polygon", "line", "point"]):
         raise ValueError(
@@ -160,8 +160,8 @@ def get_geom_type(gdf: GeoDataFrame | GeoSeries) -> str:
     >>> from sgis import to_gdf, get_geom_type
     >>> gdf = to_gdf([0, 0])
     >>> gdf
-                      geometry
-    0  POINT (0.00000 0.00000)
+          geometry
+    0  POINT (0 0)
     >>> get_geom_type(gdf)
     'point'
     """
@@ -203,13 +203,13 @@ def is_single_geom_type(gdf: GeoDataFrame | GeoSeries) -> bool:
 
     Examples:
     ---------
-    >>> from sgis import to_gdf, get_geom_type
+    >>> from sgis import to_gdf, is_single_geom_type
     >>> gdf = to_gdf([0, 0])
     >>> gdf
-                                                geometry
-    0                            POINT (0.00000 0.00000)
+          geometry
+    0  POINT (0 0)
     >>> is_single_geom_type(gdf)
-    True
+    np.True_
     """
     return (
         np.all(np.isin(_get_geom_types(gdf), ["Polygon", "MultiPolygon"]))

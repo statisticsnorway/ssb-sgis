@@ -49,20 +49,20 @@ def sfilter(
     >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
-                      geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (0.00000 1.00000)
+          geometry
+    0  POINT (0 0)
+    1  POINT (0 1)
     >>> df2 = sg.to_gdf([(0, 0), (1, 2)])
     >>> df2
-                      geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (1.00000 2.00000)
+          geometry
+    0  POINT (0 0)
+    1  POINT (1 2)
 
     Keep rows in df1 intersecting any geometry in df2.
 
     >>> sg.sfilter(df1, df2)
-                      geometry
-    0  POINT (0.00000 0.00000)
+          geometry
+    0  POINT (0 0)
 
     Equivelent to sjoin-ing and selecting based on integer index
     (in case of non-unique index).
@@ -70,15 +70,15 @@ def sfilter(
     >>> df1["idx"] = range(len(df1))
     >>> joined = df1.sjoin(df2)
     >>> df1.loc[df1["idx"].isin(joined["idx"])].drop(columns="idx")
-                          geometry
-    0  POINT (0.00000 0.00000)
+          geometry
+    0  POINT (0 0)
 
     Also equivelent to using the intersects method, which
     is often a lot slower since df2 must be dissolved:
 
     >>> df1.loc[df1.intersects(df2.union_all())]
-                      geometry
-    0  POINT (0.00000 0.00000)
+          geometry  idx
+    0  POINT (0 0)    0
 
     """
     if not len(gdf):
@@ -124,24 +124,24 @@ def sfilter_split(
     >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
-                      geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (0.00000 1.00000)
+          geometry
+    0  POINT (0 0)
+    1  POINT (0 1)
     >>> df2 = sg.to_gdf([(0, 0), (1, 2)])
     >>> df2
-                      geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (1.00000 2.00000)
+          geometry
+    0  POINT (0 0)
+    1  POINT (1 2)
 
     Split df1 into the rows that do and do not intersect df2.
 
     >>> intersecting, not_intersecting = sg.sfilter_split(df1, df2)
     >>> intersecting
-                      geometry
-    0  POINT (0.00000 0.00000)
+          geometry
+    0  POINT (0 0)
     >>> not_intersecting
-                      geometry
-    1  POINT (0.00000 1.00000)
+          geometry
+    1  POINT (0 1)
 
     Equivelent to sjoin-ing and selecting based on index (which requires the
     index to be unique).
@@ -204,21 +204,21 @@ def sfilter_inverse(
     >>> import sgis as sg
     >>> df1 = sg.to_gdf([(0, 0), (0, 1)])
     >>> df1
-                      geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (0.00000 1.00000)
+          geometry
+    0  POINT (0 0)
+    1  POINT (0 1)
     >>> df2 = sg.to_gdf([(0, 0), (1, 2)])
     >>> df2
-                      geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (1.00000 2.00000)
+          geometry
+    0  POINT (0 0)
+    1  POINT (1 2)
 
     Keep the rows in df1 that do not intersect a geometry in df2.
 
     >>> not_intersecting = sg.sfilter_inverse(df1, df2)
     >>> not_intersecting
-                      geometry
-    1  POINT (0.00000 1.00000)
+          geometry
+    1  POINT (0 1)
 
     Equivelent to sjoin-ing and selecting based on index (which requires the
     index to be unique).

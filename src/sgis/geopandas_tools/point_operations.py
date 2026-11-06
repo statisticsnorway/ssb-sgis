@@ -5,7 +5,8 @@ import pandas as pd
 from geopandas import GeoDataFrame
 from geopandas import GeoSeries
 from shapely import distance
-from shapely.ops import nearest_points
+from shapely import shortest_line
+from shapely import get_point
 
 from ..conf import _get_instance
 from ..conf import config
@@ -36,7 +37,7 @@ def snap_within_distance(
         to: The GeoDataFrame to snap to.
         max_distance: The maximum distance to snap to.
         distance_col: Name of column with the snap distance. Defaults to
-            'snap_distance'. Set to None to not get any distance column. This will make
+            None. Set to None to not get any distance column. This will make
             the function a bit faster.
         n_jobs: Number of workers.
         rtree_runner: Optionally debug/manipulate the spatial indexing operations.
@@ -62,29 +63,29 @@ def snap_within_distance(
     >>> from sgis import snap_within_distance, to_gdf
     >>> points = to_gdf([(0, 0), (1, 1)])
     >>> points
-                    geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (1.00000 1.00000)
+          geometry
+    0  POINT (0 0)
+    1  POINT (1 1)
     >>> to = to_gdf([(2, 2), (3, 3)])
     >>> to
-                    geometry
-    0  POINT (2.00000 2.00000)
-    1  POINT (3.00000 3.00000)
+          geometry
+    0  POINT (2 2)
+    1  POINT (3 3)
 
     Snap 'points' to closest geometry in 'to' if distance is less 1, 2 and 3.
 
-    >>> snap_within_distance(points, to, 1)
-                    geometry snap_distance
-    0  POINT (0.00000 0.00000)          <NA>
-    1  POINT (1.00000 1.00000)          <NA>
-    >>> snap_within_distance(points, to, 2)
-                        geometry snap_distance
-    0  POINT (0.00000 0.00000)          <NA>
-    1  POINT (2.00000 2.00000)      1.414214
-    >>> snap_within_distance(points, to, 3)
-                    geometry snap_distance
-    0  POINT (2.00000 2.00000)      2.828427
-    1  POINT (2.00000 2.00000)      1.414214
+    >>> snap_within_distance(points, to, 1, distance_col="snap_distance")
+          geometry snap_distance
+    0  POINT (0 0)          <NA>
+    1  POINT (1 1)          <NA>
+    >>> snap_within_distance(points, to, 2, distance_col="snap_distance")
+          geometry snap_distance
+    0  POINT (0 0)          <NA>
+    1  POINT (2 2)      1.414214
+    >>> snap_within_distance(points, to, 3, distance_col="snap_distance")
+          geometry snap_distance
+    0  POINT (2 2)      2.828427
+    1  POINT (2 2)      1.414214
     """
     to = _polygons_to_rings(to)
 
@@ -164,22 +165,22 @@ def snap_all(
     >>> from sgis import snap_all, to_gdf
     >>> points = to_gdf([(0, 0), (1, 1)])
     >>> points
-                    geometry
-    0  POINT (0.00000 0.00000)
-    1  POINT (1.00000 1.00000)
+          geometry
+    0  POINT (0 0)
+    1  POINT (1 1)
     >>> to = to_gdf([(2, 2), (3, 3)])
     >>> to["snap_idx"] = to.index
     >>> to
-                    geometry  snap_idx
-    0  POINT (2.00000 2.00000)            0
-    1  POINT (3.00000 3.00000)            1
+          geometry  snap_idx
+    0  POINT (2 2)         0
+    1  POINT (3 3)         1
 
     Snap all points to closest geometry in 'to'.
 
-    >>> snap_all(points, to)
-                    geometry  snap_distance
-    0  POINT (2.00000 2.00000)       2.828427
-    1  POINT (2.00000 2.00000)       1.414214
+    >>> snap_all(points, to, distance_col="snap_distance")
+          geometry snap_distance
+    0  POINT (2 2)      2.828427
+    1  POINT (2 2)      1.414214
     """
     return snap_within_distance(
         points,
@@ -214,7 +215,7 @@ def _shapely_snap(
         rtree_runner = _get_instance(config, "rtree_runner", n_jobs=n_jobs)
 
     nearest_indices = rtree_runner.run(points, to, method="nearest")
-    nearest = nearest_points(points, to[nearest_indices])[1]
+    nearest = get_point(shortest_line(points, to[nearest_indices]), 1)
 
     if max_distance is None:
         return nearest

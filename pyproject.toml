@@ -3,7 +3,7 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 name = "ssb-sgis"
-version = "1.5.6"
+version = "1.5.7"
 description = "GIS functions used at Statistics Norway."
 authors = [{ name = "Morten Letnes", email = "morten.letnes@ssb.no" }]
 license = "MIT"
@@ -36,6 +36,8 @@ dependencies = [
     "shapely>=2.1.2",
     "typing-extensions>=4.11.0",
     "xyzservices>=2023.2.0",
+    "certifi>=2026.7.22",
+    "pip>=26.2.1",
 ]
 
 [tool.poetry]

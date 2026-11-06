@@ -30,16 +30,18 @@ def get_connected_components(gdf: GeoDataFrame) -> GeoDataFrame:
 
     >>> roads = get_connected_components(roads)
     >>> roads.connected.value_counts()
+    connected
     1.0    85638
     0.0     7757
-    Name: connected, dtype: int64
+    Name: count, dtype: int64
 
     Removing the isolated network islands.
 
     >>> connected_roads = get_connected_components(roads).loc[lambda x: x["connected"] == 1]
-    >>> roads.connected.value_counts()
+    >>> connected_roads.connected.value_counts()
+    connected
     1.0    85638
-    Name: connected, dtype: int64
+    Name: count, dtype: int64
     """
     gdf, _ = make_node_ids(gdf)
 
@@ -53,7 +55,7 @@ def get_connected_components(gdf: GeoDataFrame) -> GeoDataFrame:
 
     largest_component = max(nx.connected_components(graph), key=len)
 
-    largest_component_dict = {node_id: 1 for node_id in largest_component}
+    largest_component_dict = dict.fromkeys(largest_component, 1)
 
     gdf["connected"] = gdf.source.map(largest_component_dict).fillna(0)
 

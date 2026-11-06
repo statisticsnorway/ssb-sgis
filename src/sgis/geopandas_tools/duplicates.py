@@ -68,13 +68,17 @@ def update_geometries(
     Sorting the data small to large might be the appropriate choice if you want to keep all details
     in the coverage and the data has no attributes that should be given priority over another.
 
+    >>> import sgis as sg
     >>> coords = [(0, 0), (0, 1), (1, 1), (1, 0)]
     >>> buffers = [0.9, 1.3, 0.7, 1.1]
     >>> circles = sg.to_gdf(coords)
     >>> circles["geometry"] = circles["geometry"].buffer(buffers)
     >>> updated_smallest_first = sg.update_geometries(sg.sort_small_first(circles))
     >>> updated_largest_first = sg.update_geometries(sg.sort_large_first(circles))
-    >>> sg.explore(circles, updated_smallest_first, updated_largest_first, tiles=["dark"])
+
+    Compare the results in an interactive map::
+
+        sg.explore(circles, updated_smallest_first, updated_largest_first, tiles=["dark"])
 
     If you want to prioritize geometries based on attributes,
 
@@ -86,9 +90,9 @@ def update_geometries(
     >>> circles = sg.to_gdf([(0, 0), (1, 1)]).pipe(sg.buff, 1)
     >>> duplicates = sg.get_intersections(circles)
     >>> duplicates
-       idx                                           geometry
-    0    1  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
-    1    2  POLYGON ((1.00000 0.00000, 0.96859 0.00049, 0....
+                                                geometry
+    0  POLYGON ((0.05234 0.99863, 0.10453 0.99452, 0....
+    1  POLYGON ((0.94766 0.00137, 0.89547 0.00548, 0....
 
     The polygons are identical except for the order of the coordinates.
 
@@ -100,13 +104,13 @@ def update_geometries(
     of the GeoDataFrame.
 
     >>> sg.update_geometries(duplicates)
-        idx                                           geometry
-    0    1  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
+                                                geometry
+    0  POLYGON ((0.05234 0.99863, 0.10453 0.99452, 0....
 
     >>> dups_rev = duplicates.iloc[::-1]
     >>> sg.update_geometries(dups_rev)
-        idx                                           geometry
-    1    2  POLYGON ((1.00000 0.00000, 0.96859 0.00049, 0....
+                                                geometry
+    1  POLYGON ((0.94766 0.00137, 0.89547 0.00548, 0....
 
     It might be appropriate to put the largest polygons on top
     and sort all NaNs to the bottom.
@@ -115,9 +119,10 @@ def update_geometries(
     ...     sg.sort_large_first(duplicates)
     ...     .pipe(sg.sort_nans_last)
     ...     .pipe(sg.update_geometries)
+    ... )
     >>> updated
-        idx                                           geometry
-    0    1  POLYGON ((0.03141 0.99951, 0.06279 0.99803, 0....
+                                                geometry
+    0  POLYGON ((0.05234 0.99863, 0.10453 0.99452, 0....
 
     """
     if len(gdf) <= 1:
@@ -227,9 +232,9 @@ def get_intersections(
     >>> import sgis as sg
     >>> circles = sg.to_gdf([(0, 0), (1, 0), (2, 0)]).pipe(sg.buff, 1.2)
     >>> circles.area
-    0    4.523149
-    1    4.523149
-    2    4.523149
+    0    4.521827
+    1    4.521827
+    2    4.521827
     dtype: float64
 
     Get the duplicates.
@@ -238,12 +243,12 @@ def get_intersections(
     >>> duplicates["area"] = duplicates.area
     >>> duplicates
                                                 geometry      area
-    0  POLYGON ((1.19941 -0.03769, 1.19763 -0.07535, ...  2.194730
-    0  POLYGON ((1.19941 -0.03769, 1.19763 -0.07535, ...  0.359846
-    1  POLYGON ((0.48906 -1.08579, 0.45521 -1.06921, ...  2.194730
-    1  POLYGON ((2.19941 -0.03769, 2.19763 -0.07535, ...  2.194730
-    2  POLYGON ((0.98681 -0.64299, 0.96711 -0.61085, ...  0.359846
-    2  POLYGON ((1.48906 -1.08579, 1.45521 -1.06921, ...  2.194730
+    0  POLYGON ((1.19836 -0.0628, 1.19343 -0.12543, 1...  2.193761
+    0  POLYGON ((1.19836 -0.0628, 1.19343 -0.12543, 1...  0.359361
+    1  POLYGON ((0.45521 -1.06921, 0.4 -1.03923, 0.34...  2.193761
+    1  POLYGON ((2.19836 -0.0628, 2.19343 -0.12543, 2...  2.193761
+    2  POLYGON ((0.9936 -0.65357, 0.96077 -0.6, 0.930...  0.359361
+    2  POLYGON ((1.45521 -1.06921, 1.4 -1.03923, 1.34...  2.193761
 
     We get two rows for each intersection pair.
 
@@ -253,9 +258,9 @@ def get_intersections(
     >>> updated = sg.update_geometries(duplicates)
     >>> updated["area"] = updated.area
     >>> updated
-           area                                           geometry
-    0  2.194730  POLYGON ((1.19941 -0.03769, 1.19763 -0.07535, ...
-    1  1.834884  POLYGON ((2.19763 -0.07535, 2.19467 -0.11293, ...
+                                                geometry      area
+    0  POLYGON ((1.19836 -0.0628, 1.19343 -0.12543, 1...  2.193761
+    1  POLYGON ((2.19343 -0.12543, 2.18523 -0.18772, ...  1.834401
 
     It might be appropriate to sort the dataframe by columns.
     Or put large polygons first and NaN values last.
@@ -266,9 +271,9 @@ def get_intersections(
     ...     .pipe(sg.update_geometries)
     ... )
     >>> updated
-          area                                           geometry
-    0  2.19473  POLYGON ((1.19941 -0.03769, 1.19763 -0.07535, ...
-    1  2.19473  POLYGON ((2.19763 -0.07535, 2.19467 -0.11293, ...
+                                                geometry      area
+    1  POLYGON ((2.19836 -0.0628, 2.19343 -0.12543, 2...  2.193761
+    0  POLYGON ((0.97082 -0.70534, 0.93258 -0.75518, ...  2.193761
 
     """
     if isinstance(gdf, GeoSeries):
