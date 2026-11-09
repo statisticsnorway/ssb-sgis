@@ -93,8 +93,8 @@ class NetworkAnalysis:
     >>> nwa
     NetworkAnalysis(
         network=Network(6364 km, percent_bidirectional=87),
-        rules=NetworkAnalysisRules(weight=minutes, directed=True, search_tolerance=250, search_factor=0, split_lines=False, ...),
-        log=True, detailed_log=True,
+        rules=NetworkAnalysisRules(weight=minutes, directed=True, search_tolerance=250, search_factor=0, split_lines=True, ...),
+        log=True, detailed_log=False,
     )
 
     Now we're ready for network analysis.
@@ -193,6 +193,8 @@ class NetworkAnalysis:
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
+        >>> import numpy as np
+        >>> np.random.seed(0)
         >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
         >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
@@ -201,140 +203,137 @@ class NetworkAnalysis:
         Create some origin and destination points.
 
         >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
-        >>> origins = points.loc[:99, ["geometry"]]
-        >>> origins
-                                  geometry
-        0   POINT (263122.700 6651184.900)
-        1   POINT (272456.100 6653369.500)
-        2   POINT (270082.300 6653032.700)
-        3   POINT (259804.800 6650339.700)
-        4   POINT (272876.200 6652889.100)
-        ..                             ...
-        95  POINT (270348.000 6651899.400)
-        96  POINT (264845.600 6649005.800)
-        97  POINT (263162.000 6650732.200)
-        98  POINT (272322.700 6653729.100)
-        99  POINT (265622.800 6644644.200)
+        >>> origins = points.loc[:9, ["geometry"]]
+        >>> print(origins.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+                             geometry
+        0  POINT (263122.7 6651184.9)
+        1  POINT (272456.1 6653369.5)
+        2  POINT (270082.3 6653032.7)
+        3  POINT (259804.8 6650339.7)
+        4  POINT (272876.2 6652889.1)
+        5  POINT (257076.8 6652598.4)
+        6  POINT (268426.2 6649159.6)
+        7    POINT (261664.6 6650990)
+        8  POINT (258505.6 6654539.4)
+        9      POINT (259736 6650048)
         <BLANKLINE>
-        [100 rows x 1 columns]
+        [10 rows x 1 columns]
 
-        >>> destinations = points.loc[100:199, ["geometry"]]
-        >>> destinations
-                                   geometry
-        100  POINT (265997.900 6647899.400)
-        101  POINT (263835.200 6648677.700)
-        102  POINT (265764.000 6644063.900)
-        103  POINT (265970.700 6651258.500)
-        104  POINT (264624.300 6649937.700)
-        ..                              ...
-        195  POINT (258175.600 6653694.300)
-        196  POINT (258772.200 6652487.600)
-        197  POINT (273135.300 6653198.100)
-        198  POINT (270582.300 6652163.800)
-        199  POINT (264980.800 6647231.300)
+        >>> destinations = points.loc[10:19, ["geometry"]]
+        >>> print(destinations.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+                              geometry
+        10  POINT (265479.7 6652146.1)
+        11  POINT (267812.3 6646693.7)
+        12    POINT (265624 6646283.7)
+        13    POINT (258666.6 6648408)
+        14  POINT (266136.8 6641975.4)
+        15  POINT (261829.1 6653277.7)
+        16  POINT (266549.9 6652070.9)
+        17  POINT (257867.8 6651037.6)
+        18  POINT (257347.7 6656069.5)
+        19  POINT (267030.2 6642630.6)
         <BLANKLINE>
-        [100 rows x 1 columns]
+        [10 rows x 1 columns]
 
-        Travel time from 100 to 100 points.
+        Travel time from ten origins to ten destinations.
 
         >>> od = nwa.od_cost_matrix(origins, destinations)
-        >>> od
-              origin  destination    minutes
-        0          0          100   8.765621
-        1          0          101   6.383407
-        2          0          102  13.482324
-        3          0          103   6.410121
-        4          0          104   5.882124
-        ...      ...          ...        ...
-        9995      99          195  20.488644
-        9996      99          196  16.721241
-        9997      99          197  19.977029
-        9998      99          198  15.233163
-        9999      99          199   6.439002
+        >>> print(od.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+            origin  destination    minutes
+        0        0           10   5.614867
+        1        1           10  12.098424
+        2        2           10  10.776401
+        3        3           10  12.359597
+        4        4           10  13.736730
+        ..     ...          ...        ...
+        95       5           19  26.021529
+        96       6           19  16.017797
+        97       7           19  16.982346
+        98       8           19  24.561074
+        99       9           19  16.844023
         <BLANKLINE>
-        [10000 rows x 3 columns]
+        [100 rows x 3 columns]
 
         Assign aggregated values onto the origins (or destinations).
 
         >>> origins["minutes_min"] = od.groupby("origin")["minutes"].min()
         >>> origins["minutes_mean"] = od.groupby("origin")["minutes"].mean()
-        >>> origins["n_missing"] = len(origins) - od.groupby("origin")["minutes"].count()
-        >>> origins
-                                  geometry  minutes_min  minutes_mean  n_missing
-        0   POINT (263122.700 6651184.900)     0.966702     11.628637          0
-        1   POINT (272456.100 6653369.500)     2.754545     16.084722          0
-        2   POINT (270082.300 6653032.700)     1.768334     15.304246          0
-        3   POINT (259804.800 6650339.700)     2.776873     14.044023          0
-        4   POINT (272876.200 6652889.100)     0.541074     17.565747          0
-        ..                             ...          ...           ...        ...
-        95  POINT (270348.000 6651899.400)     1.529400     15.427027          0
-        96  POINT (264845.600 6649005.800)     1.336207     11.239592          0
-        97  POINT (263162.000 6650732.200)     1.010721     11.904372          0
-        98  POINT (272322.700 6653729.100)     3.175472     17.579399          0
-        99  POINT (265622.800 6644644.200)     1.116209     12.185800          0
+        >>> origins["n_missing"] = len(destinations) - od.groupby("origin")["minutes"].count()
+        >>> print(origins.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+                             geometry  minutes_min  minutes_mean  n_missing
+        0  POINT (263122.7 6651184.9)     5.614867     11.711857          0
+        1  POINT (272456.1 6653369.5)     8.338750     17.323004          0
+        2  POINT (270082.3 6653032.7)     7.423471     16.285906          0
+        3  POINT (259804.8 6650339.7)     4.983162     12.202607          0
+        4  POINT (272876.2 6652889.1)     9.977056     18.961310          0
+        5  POINT (257076.8 6652598.4)    10.316722     17.903136          0
+        6  POINT (268426.2 6649159.6)     7.239519     15.471286          0
+        7    POINT (261664.6 6650990)     5.256121     12.346193          0
+        8  POINT (258505.6 6654539.4)     4.992840     15.739859          0
+        9      POINT (259736 6650048)     4.808400     12.308181          0
         <BLANKLINE>
-        [100 rows x 4 columns]
+        [10 rows x 4 columns]
 
         Join the results onto the 'origins' via the index.
 
         >>> joined = origins.join(od.set_index("origin"))
-        >>> joined
-                                  geometry  destination    minutes
-        0   POINT (263122.700 6651184.900)          100   8.765621
-        0   POINT (263122.700 6651184.900)          101   6.383407
-        0   POINT (263122.700 6651184.900)          102  13.482324
-        0   POINT (263122.700 6651184.900)          103   6.410121
-        0   POINT (263122.700 6651184.900)          104   5.882124
-        ..                             ...          ...        ...
-        99  POINT (265622.800 6644644.200)          195  20.488644
-        99  POINT (265622.800 6644644.200)          196  16.721241
-        99  POINT (265622.800 6644644.200)          197  19.977029
-        99  POINT (265622.800 6644644.200)          198  15.233163
-        99  POINT (265622.800 6644644.200)          199   6.439002
+        >>> print(joined.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+                              geometry  minutes_min  minutes_mean  n_missing  destination    minutes
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0           10   5.614867
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0           11  13.491910
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0           12  11.642500
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0           13  12.996674
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0           14  14.862544
+        ..                         ...          ...           ...        ...          ...        ...
+        9       POINT (259736 6650048)     4.808400     12.308181          0           15   7.935885
+        9       POINT (259736 6650048)     4.808400     12.308181          0           16  13.470447
+        9       POINT (259736 6650048)     4.808400     12.308181          0           17   4.808400
+        9       POINT (259736 6650048)     4.808400     12.308181          0           18  17.019517
+        9       POINT (259736 6650048)     4.808400     12.308181          0           19  16.844023
         <BLANKLINE>
-        [10000 rows x 3 columns]
+        [100 rows x 6 columns]
 
         Keep only travel times of 10 minutes or less. This is the same as using the
         cutoff parameter.
 
         >>> ten_min_or_less = od.loc[od.minutes <= 10]
         >>> joined = origins.join(ten_min_or_less.set_index("origin"))
-        >>> joined
-                                  geometry  destination   minutes
-        0   POINT (263122.700 6651184.900)        100.0  8.765621
-        0   POINT (263122.700 6651184.900)        101.0  6.383407
-        0   POINT (263122.700 6651184.900)        103.0  6.410121
-        0   POINT (263122.700 6651184.900)        104.0  5.882124
-        0   POINT (263122.700 6651184.900)        106.0  9.811828
-        ..                             ...          ...       ...
-        99  POINT (265622.800 6644644.200)        173.0  4.305523
-        99  POINT (265622.800 6644644.200)        174.0  6.094040
-        99  POINT (265622.800 6644644.200)        177.0  5.944194
-        99  POINT (265622.800 6644644.200)        183.0  8.449906
-        99  POINT (265622.800 6644644.200)        199.0  6.439002
+        >>> print(joined.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+                              geometry  minutes_min  minutes_mean  n_missing  destination   minutes
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0         10.0  5.614867
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0         15.0  5.913632
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0         16.0  6.199637
+        1   POINT (272456.1 6653369.5)     8.338750     17.323004          0         16.0  8.338750
+        2   POINT (270082.3 6653032.7)     7.423471     16.285906          0         16.0  7.423471
+        ..                         ...          ...           ...        ...          ...       ...
+        8   POINT (258505.6 6654539.4)     4.992840     15.739859          0         15.0  7.980121
+        8   POINT (258505.6 6654539.4)     4.992840     15.739859          0         18.0  4.992840
+        9       POINT (259736 6650048)     4.808400     12.308181          0         13.0  5.660898
+        9       POINT (259736 6650048)     4.808400     12.308181          0         15.0  7.935885
+        9       POINT (259736 6650048)     4.808400     12.308181          0         17.0  4.808400
         <BLANKLINE>
-        [2195 rows x 3 columns]
+        [20 rows x 6 columns]
 
         Keep the three fastest times from each origin. This is the same as using the
         destination_count parameter.
 
         >>> three_fastest = od.loc[od.groupby("origin")["minutes"].rank() <= 3]
         >>> joined = origins.join(three_fastest.set_index("origin"))
-        >>> joined
-                                  geometry  destination   minutes
-        0   POINT (263122.700 6651184.900)        135.0  0.966702
-        0   POINT (263122.700 6651184.900)        175.0  2.202638
-        0   POINT (263122.700 6651184.900)        188.0  2.931595
-        1   POINT (272456.100 6653369.500)        171.0  2.918100
-        1   POINT (272456.100 6653369.500)        184.0  2.754545
-        ..                             ...          ...       ...
-        98  POINT (272322.700 6653729.100)        184.0  3.175472
-        98  POINT (272322.700 6653729.100)        189.0  3.179428
-        99  POINT (265622.800 6644644.200)        102.0  1.648705
-        99  POINT (265622.800 6644644.200)        134.0  1.116209
-        99  POINT (265622.800 6644644.200)        156.0  1.368926
+        >>> print(joined.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+                              geometry  minutes_min  minutes_mean  n_missing  destination    minutes
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0           10   5.614867
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0           15   5.913632
+        0   POINT (263122.7 6651184.9)     5.614867     11.711857          0           16   6.199637
+        1   POINT (272456.1 6653369.5)     8.338750     17.323004          0           10  12.098424
+        1   POINT (272456.1 6653369.5)     8.338750     17.323004          0           11  13.974151
+        ..                         ...          ...           ...        ...          ...        ...
+        8   POINT (258505.6 6654539.4)     4.992840     15.739859          0           17  10.804265
+        8   POINT (258505.6 6654539.4)     4.992840     15.739859          0           18   4.992840
+        9       POINT (259736 6650048)     4.808400     12.308181          0           13   5.660898
+        9       POINT (259736 6650048)     4.808400     12.308181          0           15   7.935885
+        9       POINT (259736 6650048)     4.808400     12.308181          0           17   4.808400
         <BLANKLINE>
-        [294 rows x 3 columns]
+        [30 rows x 6 columns]
 
         Use set_index to use column as identifier insted of the index.
 
@@ -343,41 +342,41 @@ class NetworkAnalysis:
         ...    origins.set_index("areacode"),
         ...    destinations
         ... )
-        >>> od
-             origin  destination    minutes
-        0      0301          100   8.765621
-        1      0301          101   6.383407
-        2      0301          102  13.482324
-        3      0301          103   6.410121
-        4      0301          104   5.882124
-        ...     ...          ...        ...
-        9995   3401          195  20.488644
-        9996   3401          196  16.721241
-        9997   3401          197  19.977029
-        9998   3401          198  15.233163
-        9999   3401          199   6.439002
+        >>> print(od.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+           origin  destination    minutes
+        0    0301           10   5.614867
+        1    3401           10  12.098424
+        2    3401           10  10.776401
+        3    0301           10  12.359597
+        4    3401           10  13.736730
+        ..    ...          ...        ...
+        95   3401           19  26.021529
+        96   3401           19  16.017797
+        97   3401           19  16.982346
+        98   3401           19  24.561074
+        99   3401           19  16.844023
         <BLANKLINE>
-        [10000 rows x 3 columns]
+        [100 rows x 3 columns]
 
-        Travel time from 1000 to 1000 points rowwise.
+        Pair ten origins with ten destinations rowwise.
 
-        >>> points_reversed = points.iloc[::-1]
-        >>> od = nwa.od_cost_matrix(points, points_reversed, rowwise=True)
-        >>> od
-             origin  destination    minutes
-        0         0          999  14.692667
-        1         1          998   8.452691
-        2         2          997  16.370569
-        3         3          996   9.486131
-        4         4          995  16.521346
-        ..      ...          ...        ...
-        995     995            4  16.794610
-        996     996            3   9.611700
-        997     997            2  19.968743
-        998     998            1   9.484374
-        999     999            0  14.892648
+        >>> rowwise_points = points.iloc[:10]
+        >>> points_reversed = rowwise_points.iloc[::-1]
+        >>> od = nwa.od_cost_matrix(rowwise_points, points_reversed, rowwise=True)
+        >>> print(od.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+           origin  destination    minutes
+        0       0            9   8.275748
+        1       1            8  20.526351
+        2       2            7  14.464923
+        3       3            6  17.637484
+        4       4            5  24.663967
+        5       5            4  25.611493
+        6       6            3  17.687899
+        7       7            2  14.507884
+        8       8            1  21.634552
+        9       9            0   8.189336
         <BLANKLINE>
-        [1000 rows x 3 columns]
+        [10 rows x 3 columns]
 
         """
         if self._log:
@@ -492,27 +491,17 @@ class NetworkAnalysis:
         Get some points.
 
         >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
-        >>> origins = points.iloc[:25]
-        >>> destinations = points.iloc[25:50]
+        >>> origins = points.iloc[:3]
+        >>> destinations = points.iloc[3:6]
 
-        Get number of times each road was visited for trips from 25 to 25 points.
+        Get number of times each road was visited for trips from three to three points.
+        Count the roads for each frequency, independently of the ordering of roads
+        with equal frequencies.
 
         >>> frequencies = nwa.get_route_frequencies(origins, destinations)
-        >>> frequencies[["source", "target", "frequency", "geometry"]]
-               source target  frequency                                           geometry
-        160188  77264  79112        1.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
-        153682  68376   4136        1.0  LINESTRING Z (268542.700 6652162.400 121.266, ...
-        153679  75263  75502        1.0  LINESTRING Z (268665.600 6652165.400 117.466, ...
-        153678  75262  75263        1.0  LINESTRING Z (268660.000 6652167.100 117.466, ...
-        153677  47999  75262        1.0  LINESTRING Z (268631.500 6652176.800 118.166, ...
-        ...       ...    ...        ...                                                ...
-        151465  73801  73802      103.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
-        151464  73800  73801      103.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
-        151466  73802  73632      103.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
-        151463  73799  73800      123.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
-        152170  74418  74246      130.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
-        <BLANKLINE>
-        [8556 rows x 4 columns]
+        >>> frequencies.groupby("frequency").size().to_dict()
+        {1.0: 277, 2.0: 425, 3.0: 173, 4.0: 112}
+        >>> unweighted = frequencies["frequency"].sort_index()
 
         The frequencies can be weighted for each origin-destination pair by specifying
         'weight_df'. This can be a DataFrame with three columns, where the first two
@@ -529,40 +518,26 @@ class NetworkAnalysis:
         ... )
         >>> weight_df = pd.DataFrame(index=od_pairs).reset_index()
         >>> weight_df["weight"] = 10
-        >>> weight_df
-             origin  destination  weight
-        0         0           25      10
-        1         0           26      10
-        2         0           27      10
-        3         0           28      10
-        4         0           29      10
-        ..      ...          ...     ...
-        620      24           45      10
-        621      24           46      10
-        622      24           47      10
-        623      24           48      10
-        624      24           49      10
+        >>> print(weight_df.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+           origin  destination  weight
+        0       0            3      10
+        1       0            4      10
+        2       0            5      10
+        3       1            3      10
+        4       1            4      10
+        5       1            5      10
+        6       2            3      10
+        7       2            4      10
+        8       2            5      10
         <BLANKLINE>
-        [625 rows x 3 columns]
+        [9 rows x 3 columns]
 
         All frequencies will now be multiplied by 10.
 
-        >>> frequencies = nwa.get_route_frequencies(origins, destinations, weight_df, weight_df=weight_df)
-        >>> frequencies[["source", "target", "frequency", "geometry"]]
-               source target  frequency                                           geometry
-        160188  77264  79112       10.0  LINESTRING Z (268641.225 6651871.624 111.355, ...
-        153682  68376   4136       10.0  LINESTRING Z (268542.700 6652162.400 121.266, ...
-        153679  75263  75502       10.0  LINESTRING Z (268665.600 6652165.400 117.466, ...
-        153678  75262  75263       10.0  LINESTRING Z (268660.000 6652167.100 117.466, ...
-        153677  47999  75262       10.0  LINESTRING Z (268631.500 6652176.800 118.166, ...
-        ...       ...    ...        ...                                                ...
-        151465  73801  73802     1030.0  LINESTRING Z (265368.600 6647142.900 131.660, ...
-        151464  73800  73801     1030.0  LINESTRING Z (265362.800 6647137.100 131.660, ...
-        151466  73802  73632     1030.0  LINESTRING Z (265371.400 6647147.900 131.660, ...
-        151463  73799  73800     1230.0  LINESTRING Z (265359.600 6647135.400 131.660, ...
-        152170  74418  74246     1300.0  LINESTRING Z (264579.835 6651954.573 113.209, ...
-        <BLANKLINE>
-        [8556 rows x 4 columns]
+        >>> frequencies = nwa.get_route_frequencies(origins, destinations, weight_df=weight_df)
+        >>> frequencies.groupby("frequency").size().to_dict()
+        {10.0: 277, 20.0: 425, 30.0: 173, 40.0: 112}
+        >>> pd.testing.assert_series_equal(frequencies["frequency"].sort_index(), unweighted * 10)
 
         'weight_df' can also be a DataFrame with one column (the weight) and a
         MultiIndex.
@@ -570,20 +545,17 @@ class NetworkAnalysis:
         >>> weight_df = pd.DataFrame(index=od_pairs)
         >>> weight_df["weight"] = 10
         >>> weight_df
-               weight
-        0  25      10
-           26      10
-           27      10
-           28      10
-           29      10
-        ...       ...
-        24 45      10
-           46      10
-           47      10
-           48      10
-           49      10
-        <BLANKLINE>
-        [625 rows x 1 columns]
+                            weight
+        origin destination
+        0      3                10
+               4                10
+               5                10
+        1      3                10
+               4                10
+               5                10
+        2      3                10
+               4                10
+               5                10
         """
         if self._log:
             time_ = perf_counter()
@@ -706,26 +678,24 @@ class NetworkAnalysis:
         >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
         >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
 
-        Get routes from 1 to 1000 points.
+        Get routes from one origin to ten destination points.
 
         >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
 
-        >>> routes = nwa.get_route(points.iloc[[0]], points)
-        >>> routes
-            origin  destination    minutes                                           geometry
-        0         1            2  12.930588  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        1         1            3  10.867076  MULTILINESTRING Z ((270054.367 6653367.774 144...
-        2         1            4   8.075722  MULTILINESTRING Z ((259735.774 6650362.886 24....
-        3         1            5  14.659333  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        4         1            6  14.406460  MULTILINESTRING Z ((257034.948 6652685.595 156...
-        ..      ...          ...        ...                                                ...
-        992       1          996  10.858519  MULTILINESTRING Z ((266881.100 6647824.860 132...
-        993       1          997   7.461032  MULTILINESTRING Z ((262623.190 6652506.640 79....
-        994       1          998  10.698588  MULTILINESTRING Z ((263489.330 6645655.330 11....
-        995       1          999  10.109855  MULTILINESTRING Z ((269217.997 6650654.895 166...
-        996       1         1000  14.657289  MULTILINESTRING Z ((264475.675 6644245.782 114...
+        >>> routes = nwa.get_route(points.iloc[[0]], points.iloc[:10])
+        >>> print(routes.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+           origin  destination    minutes                                           geometry
+        0       0            1  13.209125  MULTILINESTRING ((263167.581 6651182.119, 2631...
+        1       0            2  10.994973  MULTILINESTRING ((263167.581 6651182.119, 2631...
+        2       0            3   7.749668  MULTILINESTRING ((263167.581 6651182.119, 2631...
+        3       0            4  14.849464  MULTILINESTRING ((263167.581 6651182.119, 2631...
+        4       0            5  14.391621  MULTILINESTRING ((263167.581 6651182.119, 2631...
+        5       0            6  13.071382  MULTILINESTRING ((263167.581 6651182.119, 2631...
+        6       0            7   4.439742  MULTILINESTRING ((263167.581 6651182.119, 2631...
+        7       0            8  13.673451  MULTILINESTRING ((263167.581 6651182.119, 2631...
+        8       0            9   8.275748  MULTILINESTRING ((263167.581 6651182.119, 2631...
         <BLANKLINE>
-        [997 rows x 4 columns]
+        [9 rows x 4 columns]
         """
         if self._log:
             time_ = perf_counter()
@@ -847,18 +817,20 @@ class NetworkAnalysis:
         ...             k=10,
         ...             drop_middle_percent=1
         ... )
-        >>> k_routes
+        >>> print(k_routes.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
            origin  destination    minutes   k                                           geometry
-        0       0            1  13.039830   1  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        1       0            1  14.084324   2  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        2       0            1  14.238108   3  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        3       0            1  14.897682   4  MULTILINESTRING Z ((271257.900 6654378.100 193...
-        4       0            1  14.962593   5  MULTILINESTRING Z ((271257.900 6654378.100 193...
-        5       0            1  15.423934   6  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        6       0            1  16.217271   7  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        7       0            1  16.483982   8  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        8       0            1  16.513253   9  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        9       0            1  16.551196  10  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        0       0            1  13.209125   1  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        1       0            1  14.253618   2  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        2       0            1  14.407402   3  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        3       0            1  15.066977   4  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        4       0            1  15.131888   5  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        5       0            1  15.593228   6  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        6       0            1  16.386565   7  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        7       0            1  16.653277   8  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        8       0            1  16.682548   9  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        9       0            1  17.956501  10  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        <BLANKLINE>
+        [10 rows x 5 columns]
 
         We got all 10 routes because only the middle 1 percent of the routes are
         removed in each iteration. Let's compare with dropping middle 50 and middle
@@ -870,12 +842,14 @@ class NetworkAnalysis:
         ...             k=10,
         ...             drop_middle_percent=50
         ...         )
-        >>> k_routes
+        >>> print(k_routes.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
            origin  destination    minutes  k                                           geometry
-        0       0            1  13.039830  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        1       0            1  14.238108  2  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        2       0            1  20.139294  3  MULTILINESTRING Z ((272281.367 6653079.745 160...
-        3       0            1  23.506778  4  MULTILINESTRING Z ((265226.515 6650674.617 88....
+        0       0            1  13.209125  1  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        1       0            1  14.445367  2  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        2       0            1  20.308589  3  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        3       0            1  23.676072  4  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        <BLANKLINE>
+        [4 rows x 5 columns]
 
         >>> k_routes = nwa.get_k_routes(
         ...             point1,
@@ -883,9 +857,11 @@ class NetworkAnalysis:
         ...             k=10,
         ...             drop_middle_percent=100
         ...         )
-        >>> k_routes
-           origin  destination   minutes  k                                           geometry
-        0       0            1  13.03983  1  MULTILINESTRING Z ((272281.367 6653079.745 160...
+        >>> print(k_routes.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+           origin  destination    minutes  k                                           geometry
+        0       0            1  13.209125  1  MULTILINESTRING Z ((263167.581 6651182.119 NaN...
+        <BLANKLINE>
+        [1 rows x 5 columns]
 
         """
         if not 0 <= drop_middle_percent <= 100:
@@ -976,38 +952,47 @@ class NetworkAnalysis:
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
-        >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
+        >>> from shapely.geometry import LineString
+        >>> roads = sg.to_gdf([
+        ...     LineString([(0, 0), (1000, 0)]),
+        ...     LineString([(1000, 0), (2000, 0)]),
+        ...     LineString([(2000, 0), (3000, 0)]),
+        ... ], crs=25833)
+        >>> roads["minutes"] = 5.0
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=False)
+        >>> nwa = sg.NetworkAnalysis(network=roads, rules=rules)
 
         10 minute service area for three origin points.
 
-        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
+        >>> points = sg.to_gdf([(0, 0), (500, 0), (1000, 0)], crs=25833)
         >>> service_areas = nwa.service_area(
         ...         points.loc[:2],
         ...         breaks=10,
         ... )
-        >>> service_areas
+        >>> print(service_areas.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
            origin  minutes                                           geometry
-        0       0       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
-        1       1       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
-        2       2       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
+        0       0       10  MULTILINESTRING ((0 0, 500 0), (500 0, 1000 0)...
+        1       1       10  MULTILINESTRING ((0 0, 500 0), (500 0, 1000 0)...
+        2       2       10  MULTILINESTRING ((2000 0, 3000 0), (0 0, 500 0...
+        <BLANKLINE>
+        [3 rows x 3 columns]
 
-        Service areas of 5, 10 and 15 minutes from three origin points.
+        Service areas of 5, 10 and 15 minutes from two origin points.
 
         >>> service_areas = nwa.service_area(
         ...         points.iloc[:2],
         ...         breaks=[5, 10, 15],
         ... )
-        >>> service_areas
-           origin  minutes                                           geometry
-        0       0        5  MULTILINESTRING Z ((265378.000 6650581.600 85....
-        1       0       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
-        2       0       15  MULTILINESTRING Z ((263110.060 6658296.870 154...
-        3       1        5  MULTILINESTRING Z ((273330.930 6653248.870 208...
-        4       1       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
-        5       1       15  MULTILINESTRING Z ((264348.673 6648271.134 17....
+        >>> print(service_areas.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+           origin  minutes                                         geometry
+        0       0        5  MULTILINESTRING ((0 0, 500 0), (500 0, 1000 0))
+        1       0       10                      LINESTRING (1000 0, 2000 0)
+        2       0       15                      LINESTRING (2000 0, 3000 0)
+        3       1        5  MULTILINESTRING ((0 0, 500 0), (500 0, 1000 0))
+        4       1       10                      LINESTRING (1000 0, 2000 0)
+        5       1       15                      LINESTRING (2000 0, 3000 0)
+        <BLANKLINE>
+        [6 rows x 3 columns]
         """
         if self._log:
             time_ = perf_counter()
@@ -1103,37 +1088,42 @@ class NetworkAnalysis:
         Create the NetworkAnalysis instance.
 
         >>> import sgis as sg
-        >>> roads = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/roads_oslo_2022.parquet")
-        >>> directed_roads = sg.get_connected_components(roads).loc[lambda x: x["connected"] == 1].pipe(sg.make_directed_network_norway, dropnegative=True)
-        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=True)
-        >>> nwa = sg.NetworkAnalysis(network=directed_roads, rules=rules, detailed_log=False)
+        >>> from shapely.geometry import LineString
+        >>> roads = sg.to_gdf([
+        ...     LineString([(0, 0), (1000, 0)]),
+        ...     LineString([(1000, 0), (2000, 0)]),
+        ...     LineString([(2000, 0), (3000, 0)]),
+        ... ], crs=25833)
+        >>> roads["minutes"] = 5.0
+        >>> rules = sg.NetworkAnalysisRules(weight="minutes", directed=False)
+        >>> nwa = sg.NetworkAnalysis(network=roads, rules=rules)
 
         10 minute service area for one origin point.
 
-        >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
+        >>> points = sg.to_gdf([(0, 0), (500, 0), (1000, 0)], crs=25833)
 
         >>> sa = nwa.precice_service_area(
         ...         points.iloc[[0]],
         ...         breaks=10,
         ...     )
         >>> sa
-            idx  minutes                                           geometry
-        0    1       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
+           minutes                                           geometry
+        0       10  MULTILINESTRING ((1000 0, 1005 0), (1005 0, 19...
 
-        Service areas of 5, 10 and 15 minutes from three origin points.
+        Service areas of 5, 10 and 15 minutes from two origin points.
 
         >>> sa = nwa.precice_service_area(
         ...         points.iloc[:2],
         ...         breaks=[5, 10, 15],
         ...     )
         >>> sa
-            idx  minutes                                           geometry
-        0    1        5  MULTILINESTRING Z ((265378.000 6650581.600 85....
-        1    1       10  MULTILINESTRING Z ((264348.673 6648271.134 17....
-        2    1       15  MULTILINESTRING Z ((263110.060 6658296.870 154...
-        3    2        5  MULTILINESTRING Z ((273330.930 6653248.870 208...
-        4    2       10  MULTILINESTRING Z ((266909.769 6651075.250 114...
-        5    2       15  MULTILINESTRING Z ((264348.673 6648271.134 17....
+           minutes                                           geometry
+        0        5  MULTILINESTRING ((0 0, 2.5 0), (2.5 0, 5 0), (...
+        1       10  MULTILINESTRING ((1000 0, 1005 0), (1005 0, 19...
+        2       15  MULTILINESTRING ((1000 0, 1005 0), (1005 0, 10...
+        3        5  MULTILINESTRING ((0 0, 2.5 0), (2.5 0, 5 0), (...
+        4       10  MULTILINESTRING ((1000 0, 1002.5 0), (1002.5 0...
+        5       15  MULTILINESTRING ((1000 0, 1007.5 0), (1007.5 0...
         """
         if self._log:
             time_ = perf_counter()

@@ -23,6 +23,7 @@ def opener(
 
     Example:
     -------
+    >>> # xdoctest: +SKIP
     >>> with opener(path) as file:
     >>>     with rasterio.open(file) as src:
     >>>         array = src.read()

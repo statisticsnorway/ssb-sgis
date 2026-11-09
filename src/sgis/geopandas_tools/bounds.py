@@ -45,20 +45,20 @@ class Gridlooper:
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
     >>> points["idx"] = points.index
     >>> buffered = sg.buff(points, 100)
-    >>> buffered
-        idx                                           geometry
-    0      0  POLYGON ((263222.700 6651184.900, 263222.651 6...
-    1      1  POLYGON ((272556.100 6653369.500, 272556.051 6...
-    2      2  POLYGON ((270182.300 6653032.700, 270182.251 6...
-        3      3  POLYGON ((259904.800 6650339.700, 259904.751 6...
-    4      4  POLYGON ((272976.200 6652889.100, 272976.151 6...
+    >>> print(buffered.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+         idx                                           geometry
+    0      0  POLYGON ((263222.7 6651184.9, 263222.563 66511...
+    1      1  POLYGON ((272556.1 6653369.5, 272555.963 66533...
+    2      2  POLYGON ((270182.3 6653032.7, 270182.163 66530...
+    3      3  POLYGON ((259904.8 6650339.7, 259904.663 66503...
+    4      4  POLYGON ((272976.2 6652889.1, 272976.063 66528...
     ..   ...                                                ...
-    995  995  POLYGON ((266901.700 6647844.500, 266901.651 6...
-    996  996  POLYGON ((261374.000 6653593.400, 261373.951 6...
-    997  997  POLYGON ((263642.900 6645427.000, 263642.851 6...
-    998  998  POLYGON ((269326.700 6650628.000, 269326.651 6...
-    999  999  POLYGON ((264670.300 6644239.500, 264670.251 6...
-
+    995  995  POLYGON ((266901.7 6647844.5, 266901.563 66478...
+    996  996  POLYGON ((261374 6653593.4, 261373.863 6653588...
+    997  997  POLYGON ((263642.9 6645427, 263642.763 6645421...
+    998  998  POLYGON ((269326.7 6650628, 269326.563 6650622...
+    999  999  POLYGON ((264670.3 6644239.5, 264670.163 66442...
+    <BLANKLINE>
     [1000 rows x 2 columns]
 
     Instantiate a gridlooper.
@@ -72,20 +72,20 @@ class Gridlooper:
     ...     points,
     ...     buffered,
     ... )
-    >>> results
-        idx_1 idx_2                        geometry
-    0      220   220  POINT (254575.200 6661631.500)
-    1      735   735  POINT (256337.400 6649931.700)
-    2      575   575  POINT (256369.200 6650413.300)
-    3       39    39  POINT (256142.300 6650526.300)
-    4      235   235  POINT (256231.300 6650720.200)
-    ...    ...   ...                             ...
-    1481   711   795  POINT (272845.500 6655048.800)
-    1482   711   711  POINT (272845.500 6655048.800)
-    1483   757   757  POINT (273507.600 6652806.600)
-    1484   457   457  POINT (273524.400 6652979.900)
-    1485   284   284  POINT (273650.800 6653000.500)
-
+    >>> print(results.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+         idx_1 idx_2                    geometry
+    0      220   220  POINT (254575.2 6661631.5)
+    1      299   299  POINT (255727.9 6651036.8)
+    2      514   514  POINT (255862.1 6651178.8)
+    3      289   289  POINT (255812.8 6651631.4)
+    4      765   765  POINT (255929.7 6650851.1)
+    ...    ...   ...                         ...
+    1481   425   802  POINT (273316.8 6653248.9)
+    1482   425   425  POINT (273316.8 6653248.9)
+    1483   757   757  POINT (273507.6 6652806.6)
+    1484   457   457  POINT (273524.4 6652979.9)
+    1485   284   284  POINT (273650.8 6653000.5)
+    <BLANKLINE>
     [1486 rows x 3 columns]
 
     """
@@ -256,20 +256,20 @@ def gridloop(
     >>> points = sg.read_parquet_url("https://media.githubusercontent.com/media/statisticsnorway/ssb-sgis/main/tests/testdata/points_oslo.parquet")
     >>> points["idx"] = points.index
     >>> buffered = sg.buff(points, 100)
-    >>> buffered
+    >>> print(buffered.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
          idx                                           geometry
-    0      0  POLYGON ((263222.700 6651184.900, 263222.651 6...
-    1      1  POLYGON ((272556.100 6653369.500, 272556.051 6...
-    2      2  POLYGON ((270182.300 6653032.700, 270182.251 6...
-    3      3  POLYGON ((259904.800 6650339.700, 259904.751 6...
-    4      4  POLYGON ((272976.200 6652889.100, 272976.151 6...
+    0      0  POLYGON ((263222.7 6651184.9, 263222.563 66511...
+    1      1  POLYGON ((272556.1 6653369.5, 272555.963 66533...
+    2      2  POLYGON ((270182.3 6653032.7, 270182.163 66530...
+    3      3  POLYGON ((259904.8 6650339.7, 259904.663 66503...
+    4      4  POLYGON ((272976.2 6652889.1, 272976.063 66528...
     ..   ...                                                ...
-    995  995  POLYGON ((266901.700 6647844.500, 266901.651 6...
-    996  996  POLYGON ((261374.000 6653593.400, 261373.951 6...
-    997  997  POLYGON ((263642.900 6645427.000, 263642.851 6...
-    998  998  POLYGON ((269326.700 6650628.000, 269326.651 6...
-    999  999  POLYGON ((264670.300 6644239.500, 264670.251 6...
-
+    995  995  POLYGON ((266901.7 6647844.5, 266901.563 66478...
+    996  996  POLYGON ((261374 6653593.4, 261373.863 6653588...
+    997  997  POLYGON ((263642.9 6645427, 263642.763 6645421...
+    998  998  POLYGON ((269326.7 6650628, 269326.563 6650622...
+    999  999  POLYGON ((264670.3 6644239.5, 264670.163 66442...
+    <BLANKLINE>
     [1000 rows x 2 columns]
 
     Run the function clean_overlay where the data is clipped to a grid
@@ -284,23 +284,23 @@ def gridloop(
     ...     kwargs={"how": "intersection"}
     ... )
     >>> type(resultslist)
-    list
+    <class 'list'>
 
     >>> results = pd.concat(resultslist, ignore_index=True)
-    >>> results
-         idx_1 idx_2                        geometry
-    0      220   220  POINT (254575.200 6661631.500)
-    1      735   735  POINT (256337.400 6649931.700)
-    2      575   575  POINT (256369.200 6650413.300)
-    3       39    39  POINT (256142.300 6650526.300)
-    4      235   235  POINT (256231.300 6650720.200)
-    ...    ...   ...                             ...
-    1481   711   795  POINT (272845.500 6655048.800)
-    1482   711   711  POINT (272845.500 6655048.800)
-    1483   757   757  POINT (273507.600 6652806.600)
-    1484   457   457  POINT (273524.400 6652979.900)
-    1485   284   284  POINT (273650.800 6653000.500)
-
+    >>> print(results.to_string(max_rows=10, max_colwidth=50, show_dimensions=True))
+         idx_1 idx_2                    geometry
+    0      220   220  POINT (254575.2 6661631.5)
+    1      735   735  POINT (256337.4 6649931.7)
+    2      575   575  POINT (256369.2 6650413.3)
+    3       39    39  POINT (256142.3 6650526.3)
+    4      235   235  POINT (256231.3 6650720.2)
+    ...    ...   ...                         ...
+    1481   711   795  POINT (272845.5 6655048.8)
+    1482   711   711  POINT (272845.5 6655048.8)
+    1483   757   757  POINT (273507.6 6652806.6)
+    1484   457   457  POINT (273524.4 6652979.9)
+    1485   284   284  POINT (273650.8 6653000.5)
+    <BLANKLINE>
     [1486 rows x 3 columns]
 
     """
@@ -706,16 +706,17 @@ def bounds_to_polygon(
     Examples:
     ---------
     >>> import sgis as sg
+    >>> from shapely.geometry import MultiPoint, Point
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
-                                            geometry
-    0  MULTIPOINT (0.00000 0.00000, 1.00000 1.00000)
-    1                        POINT (0.00000 0.00000)
+                        geometry
+    0  MULTIPOINT ((0 0), (1 1))
+    1                POINT (0 0)
 
     >>> sg.bounds_to_polygon(gdf)
-                                                geometry
-    0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....
-    1  POLYGON ((0.00000 0.00000, 0.00000 0.00000, 0....
+                                  geometry
+    0  POLYGON ((1 0, 1 1, 0 1, 0 0, 1 0))
+    1  POLYGON ((0 0, 0 0, 0 0, 0 0, 0 0))
 
     """
     bounds = gdf.bounds.values
@@ -746,14 +747,14 @@ def bounds_to_points(
     >>> from shapely.geometry import MultiPoint, Point
     >>> gdf = sg.to_gdf([MultiPoint([(0, 0), (1, 1)]), Point(0, 0)])
     >>> gdf
-                                            geometry
-    0  MULTIPOINT (0.00000 0.00000, 1.00000 1.00000)
-    1                        POINT (0.00000 0.00000)
+                        geometry
+    0  MULTIPOINT ((0 0), (1 1))
+    1                POINT (0 0)
 
     >>> sg.bounds_to_points(gdf)
-                                                geometry
-    0  MULTIPOINT (1.00000 0.00000, 1.00000 1.00000, ...
-    1                       MULTIPOINT (0.00000 0.00000)
+                                      geometry
+    0  MULTIPOINT ((1 0), (1 1), (0 1), (0 0))
+    1                       MULTIPOINT ((0 0))
     """
     gdf = gdf.copy() if copy else gdf
     as_bounds = bounds_to_polygon(gdf, copy=copy)

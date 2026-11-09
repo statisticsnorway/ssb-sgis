@@ -52,14 +52,14 @@ def traveling_salesman_problem(
     [<POINT (0 0)>, <POINT (10 -10)>, <POINT (0 -10)>, <POINT (10 0)>, <POINT (20 0)>, <POINT (10 10)>, <POINT (0 10)>, <POINT (0 20)>, <POINT (0 0)>]
 
     >>> LineString(roundtrip)
-    LINESTRING (0 0, 10 -10, 0 -10, 10 0, 20 0, 10 10, 0 10, 0 20, 0 0)
+    <LINESTRING (0 0, 10 -10, 0 -10, 10 0, 20 0, 10 10, 0 10, 0 20, 0 0)>
 
     >>> oneway_trip = sg.traveling_salesman_problem(points, return_to_start=False)
     >>> oneway_trip
-    [<POINT (0 0)>, <POINT (10 0)>, <POINT (20 0)>, <POINT (10 -10)>, <POINT (0 -10)>, <POINT (10 10)>, <POINT (0 10)>, <POINT (0 0)>]
+    [<POINT (0 20)>, <POINT (0 10)>, <POINT (10 10)>, <POINT (0 0)>, <POINT (10 0)>, <POINT (20 0)>, <POINT (10 -10)>, <POINT (0 -10)>]
 
     >>> LineString(oneway_trip)
-    LINESTRING (0 20, 0 10, 10 10, 0 0, 10 0, 20 0, 10 -10, 0 -10)
+    <LINESTRING (0 20, 0 10, 10 10, 0 0, 10 0, 20 0, 10 -10, 0 -10)>
 
     """
     points = to_geoseries(points).drop_duplicates()

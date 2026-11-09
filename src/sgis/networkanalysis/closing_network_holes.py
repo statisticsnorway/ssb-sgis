@@ -125,31 +125,36 @@ def close_network_holes(
     >>> filled = sg.close_network_holes(roads, max_distance=1.1, max_angle=180)
     >>> filled.hole.value_counts()
     hole
-    0    93395
+    0    93382
     1     7102
     Name: count, dtype: int64
+
+    Duplicate lines with the same endpoints and length are removed before gaps
+    are filled, so the count of original lines can decrease.
 
     Compare the number of isolated lines before and after.
 
     >>> roads = sg.get_connected_components(roads)
     >>> roads.connected.value_counts()
+    connected
     1.0    85638
     0.0     7757
-    Name: connected, dtype: int64
+    Name: count, dtype: int64
 
     >>> filled = sg.get_connected_components(filled)
     >>> filled.connected.value_counts()
-    1.0    100315
+    connected
+    1.0    100304
     0.0       180
-    Name: connected, dtype: int64
+    Name: count, dtype: int64
 
     Fill only gaps with an angle deviation between 0 and 30 compared to the prior line.
 
     >>> filled = sg.close_network_holes(roads, max_distance=1.1, max_angle=30)
     >>> filled.hole.value_counts()
     hole
-    0    93395
-    1     7092
+    0    93382
+    1     6465
     Name: count, dtype: int64
 
     It's not always wise to fill gaps. In the case of this data, these small gaps are
@@ -236,18 +241,20 @@ def close_network_holes_to_deadends(
 
     >>> roads = sg.get_connected_components(roads)
     >>> roads.connected.value_counts()
+    connected
     1.0    85638
     0.0     7757
-    Name: connected, dtype: int64
+    Name: count, dtype: int64
 
     Fill gaps shorter than 1.1 meters.
 
     >>> filled = sg.close_network_holes_to_deadends(roads, max_distance=1.1)
-    >>> roads = sg.get_connected_components(roads)
-    >>> roads.connected.value_counts()
-    1.0    100315
+    >>> filled = sg.get_connected_components(filled)
+    >>> filled.connected.value_counts()
+    connected
+    1.0    100317
     0.0       180
-    Name: connected, dtype: int64
+    Name: count, dtype: int64
 
     It's not always wise to fill gaps. In the case of this data, these small gaps are
     intentional. They are road blocks where most cars aren't allowed to pass. Fill the

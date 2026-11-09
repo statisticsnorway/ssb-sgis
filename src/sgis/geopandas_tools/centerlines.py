@@ -19,7 +19,8 @@ from shapely import union_all
 from shapely import voronoi_polygons
 from shapely.errors import GEOSException
 from shapely.geometry import LineString
-from shapely.ops import nearest_points
+from shapely import shortest_line
+from shapely import get_point
 
 from ..networkanalysis.traveling_salesman import traveling_salesman_problem
 from .conversion import to_geoseries
@@ -62,9 +63,13 @@ def _remove_longest_if_not_intersecting(
     longest_endpoints = longest.boundary.explode(index_parts=False).sort_index()
 
     nearest = longest_endpoints.groupby(level=0).apply(
-        lambda x: nearest_points(
-            x, union_all(not_longest[not_longest.index.isin(x.index)].geometry.values)
-        )[1]
+        lambda x: get_point(
+            shortest_line(
+                x,
+                union_all(not_longest[not_longest.index.isin(x.index)].geometry.values),
+            ),
+            1,
+        )
     )
     longest_endpoints.loc[:] = make_lines_between_points(
         longest_endpoints.values, nearest.values
@@ -298,9 +303,9 @@ def _get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
         .centroid
     )
 
-    nearest_ring_point = nearest_points(
-        corner_points.values, geoms.loc[corner_points.index].values
-    )[1]
+    nearest_ring_point = get_point(
+        shortest_line(corner_points.values, geoms.loc[corner_points.index].values), 1
+    )
 
     distance_to_corner = pd.Series(
         distance(nearest_ring_point, corner_points), index=corner_points.index
@@ -329,8 +334,10 @@ def _get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
             .centroid
         )
 
-        nearest_rectangle_points = nearest_points(by_rectangle, rectangles)[1]
-        nearest_geom_points = nearest_points(nearest_rectangle_points, geoms)[1]
+        nearest_rectangle_points = get_point(shortest_line(by_rectangle, rectangles), 1)
+        nearest_geom_points = get_point(
+            shortest_line(nearest_rectangle_points, geoms), 1
+        )
 
         out_geoms.append(nearest_geom_points)
 
@@ -359,12 +366,15 @@ def _get_approximate_polygon_endpoints(geoms: GeoSeries) -> GeoSeries:
 
         # then move the points to the closest vertice
         points_moved = pd.Series(
-            nearest_points(
-                relevant_lines_around_geometries.values,
-                extract_unique_points(
-                    geoms.loc[relevant_lines_around_geometries.index]
-                ).values,
-            )[1],
+            get_point(
+                shortest_line(
+                    relevant_lines_around_geometries.values,
+                    extract_unique_points(
+                        geoms.loc[relevant_lines_around_geometries.index]
+                    ).values,
+                ),
+                1,
+            ),
             index=to_be_moved.index,
         )
         out_geoms.append(points_moved)

@@ -49,6 +49,7 @@ except ImportError:
 
 PANDAS_FALLBACK_INFO = " Set pandas_fallback=True to ignore this error."
 NULL_VALUE = "__HIVE_DEFAULT_PARTITION__"
+STRING_DTYPE_FORCE_TEXT = "this_will_force_str_dtype"
 N_JOBS = 25
 
 
@@ -441,6 +442,7 @@ def get_bounds_series(
 
     Examples:
     ---------
+    >>> # xdoctest: +SKIP
     >>> import sgis as sg
     >>> from gcsfs import GCSFileSystem
     >>> all_paths =  GCSFileSystem().ls("...")
@@ -485,6 +487,19 @@ def get_bounds_series(
         if use_threads
         else 1
     )
+
+    if isinstance(file_system, GCSFileSystem):
+        paths = [
+            (
+                f"gs://{path}"
+                if isinstance(path, str) and not path.startswith("gs://")
+                else path
+            )
+            for path in paths
+            if STRING_DTYPE_FORCE_TEXT not in str(path)
+        ]
+    else:
+        paths = [path for path in paths if STRING_DTYPE_FORCE_TEXT not in str(path)]
 
     with ThreadPoolExecutor(threads) as executor:
         bounds: list[tuple[list[float], dict]] = list(
@@ -784,9 +799,9 @@ def _write_partitioned_geoparquet(
 
     new_path = str(path)
     for col in partition_cols:
-        new_path += f"/{col}=this_will_force_str_dtype"
+        new_path += f"/{col}={STRING_DTYPE_FORCE_TEXT}"
         file_system.makedirs(new_path, exist_ok=True)
-        new_path += "/this_will_force_str_dtype.parquet"
+        new_path += f"/{STRING_DTYPE_FORCE_TEXT}.parquet"
         pd.DataFrame({col: [] for col in df}).to_parquet(new_path)
 
 
@@ -826,17 +841,23 @@ def expression_match_path(expression: ds.Expression, path: str) -> bool:
 
     Examples:
     ---------
+    Partition values extracted from a path are strings.
+
     >>> import pyarrow.compute as pc
     >>> path = 'data/file.parquet/x=1/y=10/name0.parquet'
-    >>> expression = (pc.Field("x") == 1) & (pc.Field("y") == 10)
-    >>> expression_match_path(path, expression)
+    >>> expression = (pc.field("x") == "1") & (pc.field("y") == "10")
+    >>> expression_match_path(expression, path)
     True
-    >>> expression = (pc.Field("x") == 1) & (pc.Field("y") == 5)
-    >>> expression_match_path(path, expression)
+    >>> expression = (pc.field("x") == "1") & (pc.field("y") == "5")
+    >>> expression_match_path(expression, path)
     False
-    >>> expression = (pc.Field("x") == 1) & (pc.Field("z") == 10)
-    >>> expression_match_path(path, expression)
-    False
+
+    If a field is not in the partition path, the file is kept because its contents
+    must be read to evaluate the expression.
+
+    >>> expression = (pc.field("x") == "1") & (pc.field("z") == "10")
+    >>> expression_match_path(expression, path)
+    True
     """
     # keep only the parts in between the two .parquet parts
     path = str(path).split(".parquet")[1]

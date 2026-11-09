@@ -9,6 +9,7 @@ from collections.abc import Collection
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+from typing import Literal
 
 from pandas.api.types import is_array_like
 
@@ -50,7 +51,7 @@ def parallel_overlay(
     df1: GeoDataFrame,
     df2: GeoDataFrame,
     processes: int,
-    how: str = "intersection",
+    how: Literal["intersection"] = "intersection",
     max_rows_per_chunk: int | None = None,
     backend: str = "loky",
     to_print: str | None = None,
@@ -301,6 +302,7 @@ class Parallel:
         ---------
         Multiply each list element by 2.
 
+        >>> import sgis as sg
         >>> iterable = [1, 2, 3]
         >>> def x2(x):
         ...     return x * 2
@@ -329,12 +331,15 @@ class Parallel:
         And if using the multiprocessing backend, the code should be
         guarded by if __name__ == "__main__".
 
-        >>> from .file import x2
-        >>> if __name__ == "__main__":
-        ...     p = sg.Parallel(4, backend="loky")
-        ...     results = p.map(x2, iterable)
-        ...     print(results)
-        [2, 4, 6]
+        For example, in a standalone script (with ``x2`` defined in ``file.py``)::
+
+            from file import x2
+            import sgis as sg
+
+            if __name__ == "__main__":
+                p = sg.Parallel(4, backend="multiprocessing")
+                results = p.map(x2, [1, 2, 3])
+                print(results)
         """
         if args:
             # start at index 1, meaning the 0th argument (the iterable) is still available
@@ -424,6 +429,7 @@ class Parallel:
         ---------
         Multiply each list element by 2.
 
+        >>> import sgis as sg
         >>> iterable = [(1, 2), (2, 3), (3, 4)]
         >>> def add(x, y):
         ...     return x + y
@@ -447,12 +453,15 @@ class Parallel:
         And if using the multiprocessing backend, the code should be
         guarded by if __name__ == "__main__".
 
-        >>> from .file import x2
-        >>> if __name__ == "__main__":
-        ...     p = sg.Parallel(4, backend="loky")
-        ...     results = p.starmap(add, iterable)
-        ...     print(results)
-        [3, 5, 7]
+        For example, in a standalone script (with ``add`` defined in ``file.py``)::
+
+            from file import add
+            import sgis as sg
+
+            if __name__ == "__main__":
+                p = sg.Parallel(4, backend="multiprocessing")
+                results = p.starmap(add, [(1, 2), (2, 3), (3, 4)])
+                print(results)
 
         """
         if args:

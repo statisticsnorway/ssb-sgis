@@ -137,24 +137,24 @@ class Legend:
     ... )
     >>> points["number"] = range(10)
     >>> points
-                      geometry  number
-    0  POINT (0.00000 1.00000)       0
-    1  POINT (1.00000 0.00000)       1
-    2  POINT (1.00000 1.00000)       2
-    3  POINT (0.00000 0.00000)       3
-    4  POINT (0.50000 0.50000)       4
-    5  POINT (0.50000 0.25000)       5
-    6  POINT (0.25000 0.25000)       6
-    7  POINT (0.75000 0.75000)       7
-    8  POINT (0.25000 0.75000)       8
-    9  POINT (0.75000 0.25000)       9
+                geometry  number
+    0        POINT (0 1)       0
+    1        POINT (1 0)       1
+    2        POINT (1 1)       2
+    3        POINT (0 0)       3
+    4    POINT (0.5 0.5)       4
+    5   POINT (0.5 0.25)       5
+    6  POINT (0.25 0.25)       6
+    7  POINT (0.75 0.75)       7
+    8  POINT (0.25 0.75)       8
+    9  POINT (0.75 0.25)       9
 
     Creating the ThematicMap instance will also create the legend. Since we
     pass a numeric column, a ContinousLegend is created.
 
     >>> m = sg.ThematicMap(
     ...     points,
-    ...     column="number"
+    ...     column="number",
     ...     legend_kwargs=dict(
     ...         title="Meters",
     ...         label_sep="to",
@@ -168,7 +168,9 @@ class Legend:
     ... )
     >>> m.plot()
     >>> m.legend
-    <sgis.maps.legend.ContinousLegend object at 0x00000222206738D0>
+    <sgis.maps.legend.ContinousLegend object at ...>
+    >>> import matplotlib.pyplot as plt
+    >>> plt.close("all")
     """
 
     def __init__(
@@ -470,20 +472,22 @@ class ContinousLegend(Legend):
     Create ten random points with a numeric column from 0 to 9.
 
     >>> import sgis as sg
+    >>> import numpy as np
+    >>> np.random.seed(0)
     >>> points = sg.random_points(10)
     >>> points["number"] = range(10)
     >>> points
-                    geometry  number
-    0  POINT (0.59780 0.50425)       0
-    1  POINT (0.07019 0.26167)       1
-    2  POINT (0.56475 0.15422)       2
-    3  POINT (0.87293 0.60316)       3
-    4  POINT (0.47373 0.20040)       4
-    5  POINT (0.98661 0.15614)       5
-    6  POINT (0.30951 0.77057)       6
-    7  POINT (0.47802 0.52824)       7
-    8  POINT (0.12215 0.96588)       8
-    9  POINT (0.02938 0.93467)       9
+                      geometry  number
+    0  POINT (0.54881 0.79173)       0
+    1  POINT (0.71519 0.52889)       1
+    2  POINT (0.60276 0.56804)       2
+    3   POINT (0.54488 0.9256)       3
+    4  POINT (0.42365 0.07104)       4
+    5  POINT (0.64589 0.08713)       5
+    6  POINT (0.43759 0.02022)       6
+    7  POINT (0.89177 0.83262)       7
+    8  POINT (0.96366 0.77816)       8
+    9  POINT (0.38344 0.87001)       9
 
     Creating the ThematicMap instance with a numeric column.
 
@@ -496,27 +500,27 @@ class ContinousLegend(Legend):
 
     Change the attributes that only apply to numeric columns.
 
-    >>> m.label_sep = "to"
-    >>> m.label_suffix = "num"
-    >>> m.rounding = 2
+    >>> m.legend.label_sep = "to"
+    >>> m.legend.label_suffix = "num"
+    >>> m.legend.rounding = 2
     >>> m.plot()
 
     Setting labels manually. For better control, it might be wise to also set the bins
     manually. The following bins will create a plot with the color groups
     0-2, 3-5, 6-7 and 8-9. The legend labels can then be set accordingly.
 
-    >>> m = sg.ThematicMap(points, column="number")
-    >>> m.bins = [0, 2, 5, 7, 9]
+    >>> m = sg.ThematicMap(points, column="number", bins=[0, 2, 5, 7, 9], k=4)
     >>> m.legend.labels = ["0 to 2 num", "3 to 5 num", "6 to 7 num", "8 to 9 num"]
     >>> m.plot()
 
     We will get the same groups if we exclude the first and last bin values. The
     minimum and maximum values will be filled anyway.
 
-    >>> m = sg.ThematicMap(points, column="number")
-    >>> m.bins = [2, 5, 7]
+    >>> m = sg.ThematicMap(points, column="number", bins=[2, 5, 7], k=4)
     >>> m.legend.labels = ["0 to 2 num", "3 to 5 num", "6 to 7 num", "8 to 9 num"]
     >>> m.plot()
+    >>> import matplotlib.pyplot as plt
+    >>> plt.close("all")
 
     """
 
