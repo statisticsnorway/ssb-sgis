@@ -26,14 +26,14 @@ package = "sgis"
 python_versions = ["3.13", "3.12", "3.14"]
 python_versions_for_test = python_versions
 nox.needs_version = ">= 2025.2.9"
-nox.options.sessions = (
+nox.options.sessions = [
     "pre-commit",
     # "mypy",
     "tests",
     "typeguard",
     "xdoctest",
     "docs-build",
-)
+]
 
 
 def install_poetry_groups(session: Session, *groups: str) -> None:
@@ -119,7 +119,9 @@ def activate_virtualenv_in_precommit_hooks(session: Session) -> None:
             continue
 
         lines = text.splitlines()
-        hook.write_text(insert_header_in_hook(headers, lines))
+        hook.write_text(
+            insert_header_in_hook(headers, lines)
+        )  # NOSONAR - Safe because hardcoded local directory, and not user-controlled input.
 
 
 def is_bindir_in_text(bindirs: list[str], text: str) -> bool:
@@ -154,15 +156,13 @@ def precommit(session: Session) -> None:
         activate_virtualenv_in_precommit_hooks(session)
 
 
-# @session(python=python_versions)
-# def mypy(session: Session) -> None:
-#     """Type-check using mypy."""
-#     args = session.posargs or ["src", "tests"]
-#     session.install(".")
-#     install_poetry_groups(session, "dev")
-#     session.run("mypy", *args)
-#     if not session.posargs:
-#         session.run("mypy", f"--python-executable={sys.executable}", "noxfile.py")
+@session(python=python_versions)
+def mypy(session: Session) -> None:
+    """Type-check using mypy."""
+    args = session.posargs or ["src", "tests"]
+    session.install(".")
+    install_poetry_groups(session, "dev")
+    session.run("mypy", *args)
 
 
 @session(python=python_versions_for_test)
