@@ -300,8 +300,12 @@ class OverlayRunner(AbstractRunner):
         except GEOSException:
             arr1 = make_valid_and_keep_geom_type(arr1, geom_type=geom_type)
             arr2 = make_valid_and_keep_geom_type(arr2, geom_type=geom_type)
-            arr1 = arr1.loc[lambda x: x.index.isin(arr2.index)].to_numpy()
-            arr2 = arr2.loc[lambda x: x.index.isin(arr1.index)].to_numpy()
+            assert isinstance(arr1, GeoSeries)
+            assert isinstance(arr2, GeoSeries)
+            arr1, arr2 = (
+                arr1.loc[lambda x: x.index.isin(arr2.index)].to_numpy(),
+                arr2.loc[lambda x: x.index.isin(arr1.index)].to_numpy(),
+            )
             return func(arr1, arr2, grid_size=grid_size)
 
 
